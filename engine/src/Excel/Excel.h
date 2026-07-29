@@ -84,7 +84,13 @@ class CExcel5Filter
 
   private:
 	
-	status_t GetBookStream(BPositionIO& stream) throw();
+	/* Niente "throw()": il corpo chiama CExcelStream::Read, che
+	   lancia CErr su dati insufficienti/malformati. Una funzione
+	   marcata "throw()" (equivalente a noexcept in C++17) che lancia
+	   comunque causa std::terminate() immediato, bypassando ogni
+	   catch a monte -- osservato concretamente importando un file
+	   OLE2 con contenuto BIFF non valido. */
+	status_t GetBookStream(BPositionIO& stream);
 	bool LocateBof(BPositionIO& stream);
 	
 	class CExcelStream

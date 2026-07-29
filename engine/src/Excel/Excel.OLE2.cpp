@@ -77,7 +77,7 @@ void Write(BPositionIO& dest, BPositionIO& source)
 }
 #endif
 
-status_t CExcel5Filter::GetBookStream(BPositionIO& stream) throw()
+status_t CExcel5Filter::GetBookStream(BPositionIO& stream)
 {
 	CExcelStream es(stream);
 	unsigned long l[128];
