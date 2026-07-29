@@ -14,6 +14,7 @@
 #include <Messenger.h>
 #include <Region.h>
 #include <ScrollBar.h>
+#include <String.h>
 #include <TextControl.h>
 #include <TextView.h>
 
@@ -216,6 +217,22 @@ void SheetView::Draw(BRect updateRect)
 				fDoc->GetCellResult(c, text, true);
 				if (text[0] == 0)
 					continue;
+
+				// Il motore formatta i numeri in modo generico
+				// (CFormatter/eGeneral): per un valore puramente
+				// numerico si applica invece una formattazione
+				// locale-aware (separatore delle migliaia, punto o
+				// virgola decimale secondo le preferenze di sistema)
+				// tramite il Locale Kit, come livello di presentazione
+				// sopra il testo gia' calcolato dal motore.
+				Value val;
+				if (fDoc->GetValue(c, val) && val.fType == eNumData && !val.IsNan())
+				{
+					BString formatted;
+					if (fNumberFormat.Format(formatted, (double)val) == B_OK
+						&& formatted.Length() > 0)
+						strlcpy(text, formatted.String(), sizeof(text));
+				}
 
 				BRect r = CellRect(c);
 				BPoint pos(r.left + 3, r.bottom - 5);
