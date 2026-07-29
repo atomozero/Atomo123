@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<svg version="1.1" width="64" height="64" color-interpolation="linearRGB"
+     xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg">
+ <g>
+  <path style="fill:#2f6fed"
+        d="M18 4C27.33 4 36.66 4 46 4C53.73 4 60 10.26 60 18C60 27.33 60 36.66 60 46C60 53.73 53.73 60 46 60C36.66 60 27.33 60 18 60C10.26 60 4 53.73 4 46C4 36.66 4 27.33 4 18C4 10.26 10.26 4 18 4V4V4z"
+  />
+  <path style="fill:#ffffff"
+        d="M16 12C26.33 12 36.66 12 47 12C49.2 12 51 13.79 51 16C51 26.33 51 36.66 51 47C51 49.2 49.2 51 47 51C36.66 51 26.33 51 16 51C13.79 51 12 49.2 12 47C12 36.66 12 26.33 12 16C12 13.79 13.79 12 16 12V12V12z"
+  />
+  <path style="fill:#ff8a3d"
+        d="M15 14C17.33 14 19.66 14 22 14C22.55 14 23 14.44 23 15C23 17.33 23 19.66 23 22C23 22.55 22.55 23 22 23C19.66 23 17.33 23 15 23C14.44 23 14 22.55 14 22C14 19.66 14 17.33 14 15C14 14.44 14.44 14 15 14V14V14z"
+  />
+  <path style="fill:#000000"
+        d="M25 12C25 25 25 38 25 51"
+  />
+  <path style="fill:none; stroke:#2f6fed; stroke-width:2"
+        d="M25 12C25 25 25 38 25 51"
+  />
+  <path style="fill:#000000"
+        d="M38 12C38 25 38 38 38 51"
+  />
+  <path style="fill:none; stroke:#2f6fed; stroke-width:2"
+        d="M38 12C38 25 38 38 38 51"
+  />
+  <path style="fill:#000000"
+        d="M12 25C25 25 38 25 51 25"
+  />
+  <path style="fill:none; stroke:#2f6fed; stroke-width:2"
+        d="M12 25C25 25 38 25 51 25"
+  />
+  <path style="fill:#000000"
+        d="M12 38C25 38 38 38 51 38"
+  />
+  <path style="fill:none; stroke:#2f6fed; stroke-width:2"
+        d="M12 38C25 38 38 38 51 38"
+  />
+ </g>
+</svg>

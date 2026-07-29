@@ -22,6 +22,7 @@ translators/*/tests/test_*_translator
 # Build artifacts (ui/ Makefile)
 ui/Atomo123
 ui/src/*.o
+ui/Atomo123.rsrc
 
 # Compiled binaries produced by the legacy build (not source)
 legacy/opensumit/bsl/bsl

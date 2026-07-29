@@ -24,6 +24,8 @@ LIBS := -L$(ENGINE_DIR) -lengine -lbe -ltranslation -ltracker
 APP := Atomo123
 SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/AscdIO.cpp src/FindWindow.cpp
 OBJECTS := $(SOURCES:.cpp=.o)
+RDEF := Atomo123.rdef
+RSRC := Atomo123.rsrc
 
 all: $(APP)
 
@@ -33,8 +35,16 @@ $(ENGINE_DIR)/libengine.a:
 %.o: %.cpp
 	$(CXX) -c $< -o $@ $(INCLUDES) $(CXXFLAGS)
 
-$(APP): $(OBJECTS) $(ENGINE_DIR)/libengine.a
+$(RSRC): $(RDEF)
+	rc -o $(RSRC) $(RDEF)
+
+# L'icona (risorsa VICN/BEOS:ICON, disegnata in icons/atomo123.svg e
+# convertita in HVIF con Icon-O-Matic, incorporata in Atomo123.rdef)
+# va allegata al binario con xres DOPO il link, non prima: xres opera
+# sul file eseguibile finito.
+$(APP): $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 	$(CXX) -o $(APP) $(OBJECTS) $(INCLUDES) $(CXXFLAGS) $(LIBS)
+	xres -o $(APP) $(RSRC)
 
 run: $(APP)
 	./$(APP)
@@ -60,7 +70,7 @@ test-clipboard: $(ENGINE_DIR)/libengine.a
 	./tests/test_clipboard
 
 clean:
-	rm -f $(APP) $(OBJECTS) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
+	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
 		tests/roundtrip.ascd tests/test_clipboard tests/test_clipboard.o
 
 .PHONY: all run test test-clipboard clean
