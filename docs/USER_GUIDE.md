@@ -125,14 +125,25 @@ punto/virgola decimale) — cambiano automaticamente insieme alle
 preferenze di sistema (Preferenze → Locale). La barra formule mostra
 sempre il valore grezzo, non formattato.
 
-**Non ancora disponibile**: un modo per l'utente di scegliere il
-formato di visualizzazione di una cella (valuta, percentuale, data,
-numero di decimali) — nessun menu Formato per ora.
+Il menu **Formato** applica uno stile di visualizzazione alla cella
+selezionata:
+
+- **Generale**: il comportamento predefinito descritto sopra.
+- **Numero**: numero semplice.
+- **Valuta**: simbolo di valuta secondo le preferenze di sistema (es.
+  "1.234,50 €").
+- **Percentuale**: il valore moltiplicato per 100 con il simbolo "%"
+  (una cella con 0,42 mostra "42%").
+
+**Non ancora disponibile**: controllo del numero di decimali, font,
+colore, bordo, allineamento, formattazione data.
 
 ## Cosa manca ancora (in breve)
 
 Vedi `ROADMAP.md` per l'elenco completo e aggiornato. In sintesi, allo
-stato attuale: nessun export verso formati non nativi, nessun menu
-Formato, nessun "Sostituisci", nessuna icona applicazione dedicata,
-nessun supporto per più fogli in un unico documento, nessun grafico o
-tabella pivot.
+stato attuale: nessun export verso XLS/XLSX/ODS (solo CSV e ASCD
+nativo), formattazione cella limitata a Generale/Numero/Valuta/
+Percentuale (niente decimali/font/colore/data), nessun supporto per
+più fogli in un unico documento, nessun grafico o tabella pivot,
+nessuna funzione con nome nelle formule (SOMMA, SE, ecc. — solo
+operatori aritmetici e riferimenti a cella).

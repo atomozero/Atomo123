@@ -1,20 +1,19 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
-Stato: **Fase 1, Fase 2 e Fase 3 chiuse** (translator CSV, XLS legacy,
-XLSX e ODS tutti completati e testati); **Fase 4 (UI nativa) in stato
-molto avanzato** — finestra principale, griglia, apertura file via
-Translation Kit, barra formule, editing in-cella, menu Modifica
-(taglia/copia/incolla/cancella/trova e sostituisci), toolbar, Locale
-Kit, Print Kit, icona applicazione (HVIF, disegnata da zero) ed export
-CSV tutti fatti e testati; manca solo un menu Formato (formattazione
-cella) per considerarla sostanzialmente completa. **Fase 5 (packaging/
-compatibilità) in corso** — ricetta HaikuDepot pronta ma non ancora
-buildabile (nessun repository pubblico); licenza **MIT** decisa per
-il codice nuovo (vedi LICENSE — il codice storico Sum-It/`engine/`
-resta sotto la sua licenza BSD originale); resta il test di
-compatibilità su un corpus di file reali. **Fase 6 avviata** (guida
-utente fatta; grafici/pivot/funzioni con nome/ottimizzazione ancora da
-fare). Aggiornato ad ogni fase completata.
+Stato: **Fase 1, Fase 2, Fase 3 e Fase 4 chiuse**. Fase 4 (UI nativa):
+finestra principale, griglia, apertura file via Translation Kit, barra
+formule, editing in-cella, menu Modifica (taglia/copia/incolla/
+cancella/trova e sostituisci), menu Formato (Generale/Numero/Valuta/
+Percentuale), toolbar, Locale Kit, Print Kit, icona applicazione
+(HVIF, disegnata da zero) ed export CSV — tutti fatti e testati dal
+vivo in una sessione grafica reale. **Fase 5 (packaging/compatibilità)
+in corso** — ricetta HaikuDepot pronta ma non ancora buildabile
+(nessun repository pubblico); licenza **MIT** decisa per il codice
+nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
+la sua licenza BSD originale); resta il test di compatibilità su un
+corpus di file reali. **Fase 6 avviata** (guida utente fatta;
+grafici/pivot/funzioni con nome/ottimizzazione ancora da fare).
+Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -266,7 +265,7 @@ attesa di un'interazione utente (debug/termina) che non arriva mai in
 un'esecuzione headless da riga di comando. Usare sempre `timeout N`
 nei test headless per non restare bloccati.
 
-## Fase 4 — UI nativa Interface/Layout Kit (IN CORSO)
+## Fase 4 — UI nativa Interface/Layout Kit (CHIUSA)
 
 Obiettivo: applicazione con griglia celle, editing, formattazione,
 grafici base, scritta da zero (non riusando `CellView`/`CellWindow`
@@ -346,6 +345,22 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       corrispondente — nessuna logica nuova, solo un secondo punto di
       accesso alle stesse azioni. Verificato dal vivo: la barra compare
       correttamente con tutti e otto i pulsanti (screenshot).
+- [x] Menu Formato: Generale/Numero/Valuta/Percentuale applicati alla
+      cella selezionata, agendo su `CellStyle::fFormat`
+      (`CContainer::GetCellStyle`/`SetCellStyle`, già esistenti nel
+      motore) — nessuna nuova API dell'engine servita. `SheetView::Draw`
+      ora controlla il formato della cella prima di applicare la
+      formattazione locale-aware: valuta e percentuale usano
+      `BNumberFormat::FormatMonetary`/`FormatPercent` (Locale Kit),
+      generale/numero usano il raggruppamento numerico semplice già
+      presente. **Verificato dal vivo** (invocando il menu con `hey`,
+      non simulando `BMessage`): incollata una cella con "1234.5",
+      applicato Valuta dal menu, la griglia mostra "1.234,50 €"
+      mentre la barra formule resta sul valore grezzo "1234.5".
+      **Non ancora fatto**: controllo del numero di decimali/font/
+      colore/bordo (il motore li supporta tramite `CellStyle`, ma
+      senza una UI dedicata restano fissi ai valori predefiniti).
+      Con questo la Fase 4 è considerata sostanzialmente completa.
 - [x] Export CSV: "Salva con nome" sceglie il formato dall'estensione
       del nome file (".csv" esporta in CSV, altrimenti resta sul
       formato nativo ASCD — non c'è ancora un selettore di formato

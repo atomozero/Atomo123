@@ -142,11 +142,39 @@ sessione grafica reale con locale italiano attivo — la griglia mostra
 "1.234.567,89" (punto come separatore delle migliaia, convenzione
 italiana), la barra formule mostra "1234567.89" invariato.
 
-**Non ancora fatto**: formattazione valuta (`BNumberFormat::
-FormatMonetary`) e data (`BDateFormat`) — il motore distingue i tipi
-internamente ma la UI non offre ancora un modo per l'utente di
-impostare il formato di una cella (nessun menu Formato, vedi limiti
-noti sotto).
+## Menu Formato: Generale/Numero/Valuta/Percentuale
+
+Il menu Formato applica un `ENumberFormat` (`eGeneral`/`eFixed`/
+`eCurrency`/`ePercent`, già definiti in `engine/src/Cell/Formatter.h`)
+alla cella selezionata, agendo su `CellStyle::fFormat`
+(`MainWindow::SetCellFormat`: `GetCellStyle` → modifica `fFormat` →
+`SetCellStyle`, entrambi già esistenti in `CContainer` — nessuna nuova
+API dell'engine servita). Ogni voce del menu porta lo stesso
+`kMsgSetFormat` con il valore da applicare in un campo `int32
+"format"` del `BMessage`, invece di un messaggio diverso per voce.
+
+`SheetView::Draw()` ora legge `CellStyle::fFormat` (via
+`CContainer::GetCellStyle`) prima di applicare la formattazione
+locale-aware, per rispettare la scelta dell'utente invece di
+sovrascriverla sempre con il raggruppamento numerico generico:
+`eCurrency` usa `BNumberFormat::FormatMonetary()`, `ePercent` usa
+`BNumberFormat::FormatPercent()` (valore atteso come frazione, es.
+0.42 → "42%" — stessa convenzione già usata internamente dal motore
+per `ePercent`, vedi `exp10 += 2` in
+`engine/src/Cell/Formatter.number.cpp`), tutto il resto (incluso
+`eGeneral`) usa `BNumberFormat::Format()` come già faceva prima di
+questa funzione.
+
+**Verifica**: dal vivo, invocando il menu con `hey` (non simulando un
+`BMessage` a mano: `MenuItem 2 of Menu 2 of MenuBar of Window 0` per
+"Valuta") su una cella con "1234.5" incollato dagli appunti —
+applicato il formato, la griglia mostra "1.234,50 €" (formattazione
+Locale Kit italiana), la barra formule resta invariata su "1234.5".
+
+**Non ancora fatto**: controllo del numero di decimali, font, colore,
+bordo — il motore li supporta tutti tramite `CellStyle`, ma senza una
+UI dedicata restano fissi ai valori predefiniti. Formattazione data
+(`BDateFormat`) non ancora esposta.
 
 ## Print Kit: stampa con `BPrintJob`
 
@@ -426,6 +454,7 @@ invece della sola revisione manuale del codice.
   salvataggio: il formato si decide dall'estensione del nome file.
 - **Un solo foglio**: coerente col limite già accettato in Fase 3 per
   XLSX/ODS (si importa solo il primo foglio/tabella).
-- Solo i menu File e Modifica: nessun menu Formato.
-- Nessuna formattazione (font/colore/numero) esposta all'utente, anche
-  se il motore la supporta internamente.
+- Menu Formato limitato a Generale/Numero/Valuta/Percentuale: nessun
+  controllo su decimali, font, colore, bordo, allineamento, data —
+  il motore li supporta tutti tramite `CellStyle`, ma senza una UI
+  dedicata restano fissi ai valori predefiniti.
