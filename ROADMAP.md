@@ -1,9 +1,8 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
-Stato: **Fase 1 e Fase 2 chiuse** (build integrale riuscita; motore di
-calcolo estratto in libreria isolata, testato headless, nessuna
-dipendenza da BView/BWindow). **Fase 3 da avviare** (translator
-Translation Kit). Aggiornato ad ogni fase completata.
+Stato: **Fase 1 e Fase 2 chiuse**; **Fase 3 in corso** (translator CSV
+completato, translator XLS legacy in lavorazione). Aggiornato ad ogni
+fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -129,27 +128,79 @@ nessun link a `BView`/`BWindow` verificato con
 (unica eccezione nota: `BAlert` nel percorso di error-reporting, vedi
 limitazioni in `docs/ENGINE_API.md`).
 
-## Fase 3 — Translator Kit: import/export XLSX/ODS/CSV/XLS
+## Fase 3 — Translator Kit: import/export XLSX/ODS/CSV/XLS (IN CORSO)
 
 Obiettivo: add-on `BTranslator` installabili, uno per formato, che
 usano l'engine di Fase 2 e librerie esterne leggere.
 
+- [x] Translator CSV: `translators/csv/`, converte CSV <-> formato
+      nativo provvisorio ASCD tramite `CTextConverter` (già nel
+      motore) e `CContainer::GetCellFormula`/`TryToParseString`. Test
+      di round-trip verde (`make test`). Vedi `docs/TRANSLATORS.md`
+      per i dettagli e i bug scoperti costruendolo (elenco completo
+      sotto).
 - [ ] Translator XLS legacy: riusa l'importer `Excel*.cpp` già portato
 - [ ] Translator XLSX: basato su OpenXLSX (BSD-3, C++17, dipendenze
       leggere PugiXML+Zippy/libzip) — valutare porting su Haiku
 - [ ] Translator ODS: valutare liborcus (Document Liberation Project,
       storicamente portabile su Haiku out-of-the-box via POSIX) o
       implementazione custom minimale
-- [ ] Translator CSV: parser proprio, banale
-- [ ] Ogni translator dichiara `Identify()`/`Translate()`/
+- [x] Ogni translator dichiara `Identify()`/`Translate()`/
       `InputFormats()`/`OutputFormats()` secondo il framework
-      `BTranslatorRoster`
+      `BTranslatorRoster` (pattern stabilito con il translator CSV,
+      riusato per i successivi)
 
 **Test di congruità/compatibilità**: round-trip per ogni formato
 (esporta un documento di test, reimportalo, verifica che i dati
 coincidano); import di file reali generati da Excel e da LibreOffice
 Calc (non solo generati dal nostro export, per verificare vera
-interoperabilità).
+interoperabilità) — non ancora fatto, richiede file di test reali.
+
+### Bug di blocco headless scoperti in Fase 2 e Fase 3
+
+Costruire un translator concreto (non solo il motore in isolamento)
+ha fatto emergere altri bug oltre a quelli già chiusi in Fase 2.
+Elenco completo, in ordine di scoperta (dettaglio tecnico completo in
+`docs/ENGINE_API.md` e `docs/TRANSLATORS.md`):
+
+1. **Fase 2** — `be_plain_font`/`gPrefs` non protetti nel costruttore
+   di `CContainer`: si bloccavano senza una vera applicazione GUI.
+2. **Fase 2** — `kPFWordSize = sizeof(long)` invece di un tipo a
+   larghezza fissa nel formato bytecode delle formule compilate:
+   disallineava la lettura degli opcode su Haiku a 64 bit, facendo
+   fallire qualunque formula con un riferimento a cella.
+3. **Fase 3** — `CFontMetrics::operator[]`/`StringWidth` chiamavano
+   `be_plain_font->StringWidth()` senza controllare se esisteva un
+   font reale caricato.
+4. **Fase 3** — `CFontSizeTable::operator[]` accedeva a un
+   `std::vector` sempre vuoto nella libreria engine senza controllo
+   dei limiti.
+5. **Fase 3** — `GetFunctionNr` eseguiva una ricerca binaria su una
+   tabella funzioni (`gFuncArrayByName`/`gFuncCount`) mai inizializzata
+   nella libreria engine (richiederebbe `InitFunctions()`, mai
+   chiamata), dereferenziando un puntatore nullo.
+6. **Fase 3** — subito dopo, `parser.cpp` indicizzava
+   `gFuncArrayByNr` con l'identificatore di funzione **prima** di
+   controllare se fosse valido (-1 = non trovata) — indice negativo
+   su un array C.
+
+**Nota aperta importante**: i fix 3-6 rendono il codice sicuro (nessun
+crash/blocco), ma la causa di fondo dei bug 5-6 (tabella funzioni mai
+caricata) resta: **le formule con funzioni con nome (SOMMA, SE, ecc.)
+non sono ancora realmente utilizzabili**. Serve generare/allegare la
+risorsa `'Func'` (con `bsl`/`rez`, già pronti dalla Fase 1) e chiamare
+`InitFunctions()` all'avvio dell'engine. Da risolvere prima che le
+formule con funzioni possano funzionare — per ora funzionano solo
+formule con operatori aritmetici e riferimenti a cella.
+
+**Perché sembravano blocchi infiniti invece di crash**: molti di
+questi bug sono dereferenziazioni di puntatori nulli, che normalmente
+darebbero un crash immediato. Su questa Haiku il processo restava
+bloccato indefinitamente invece di terminare — ipotesi più probabile:
+`debug_server` di Haiku intercetta il crash e sospende il thread in
+attesa di un'interazione utente (debug/termina) che non arriva mai in
+un'esecuzione headless da riga di comando. Usare sempre `timeout N`
+nei test headless per non restare bloccati.
 
 ## Fase 4 — UI nativa Interface/Layout Kit
 

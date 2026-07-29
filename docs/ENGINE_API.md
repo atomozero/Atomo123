@@ -105,6 +105,79 @@ dati binari) è probabilmente presente anche altrove nel codice non
 ancora isolato/testato in `legacy/opensumit/sum-it` — vedi nota in
 `legacy/opensumit/PORTING_STATUS.md`.
 
+## Bug trovati costruendo il primo translator concreto (Fase 3)
+
+Testare il motore attraverso un vero translator (`translators/csv/`,
+non solo tramite `engine/tests/smoke_test.cpp`) ha esercitato percorsi
+di codice mai toccati prima (formattazione di valori, riconoscimento
+di identificatori nelle formule), facendo emergere altri bug reali
+della stessa famiglia "codice che assume una vera UI/app_server
+collegati":
+
+4. **`CFontMetrics::operator[]`/`StringWidth`** (`FontMetrics.cpp`):
+   quando non c'è un font reale caricato (`fFontStyle == NULL`, sempre
+   vero nella libreria engine), chiamavano `be_plain_font->StringWidth()`
+   — richiede una connessione all'app_server, che nella libreria
+   engine non esiste: la chiamata si bloccava indefinitamente. **Fix**:
+   fallback fisso (8 pixel/carattere) quando non c'è un font reale.
+
+5. **`CFontSizeTable::operator[]`** (`FontMetrics.h`): accede a
+   `fFonts[indx]`, uno `std::vector` che nella libreria engine resta
+   sempre vuoto (nessuna vera view popola mai la tabella font tramite
+   `GetFontID`) — un accesso fuori dai limiti su vettore vuoto è
+   undefined behavior. **Fix**: bound-check che restituisce un
+   `CFontMetrics` di default (già sicuro grazie al fix precedente)
+   quando l'indice non è valido.
+
+6. **`GetFunctionNr`** (`Utils.cpp`): esegue una ricerca binaria su
+   `gFuncArrayByName`/`gFuncCount` per riconoscere nomi di funzione
+   nelle formule (es. per distinguere `SOMMA(...)` da un riferimento a
+   intervallo con nome). Questa tabella viene normalmente popolata da
+   `InitFunctions()`, che legge una risorsa `'Func'` compilata dal
+   testo in `Resources/funcs_by_nr.txt` — funzione mai chiamata nella
+   libreria engine (nessuna risorsa allegata), quindi `gFuncCount`
+   resta `0` e i puntatori restano nulli. Con `gFuncCount=0`,
+   `R = gFuncCount - 1 = -1`, e il ciclo `do...while` della ricerca
+   binaria esegue comunque almeno un'iterazione dereferenziando
+   `gFuncArrayByName[0]` (puntatore nullo). **Fix**: guardia esplicita
+   `if (gFuncCount <= 0) return -1;` in testa alla funzione, che tratta
+   "tabella non caricata" allo stesso modo di "nome non trovato" (dato
+   che è comunque vero che nessuna funzione è riconoscibile in
+   quello stato).
+
+7. **`parser.cpp`** (`Factor()`, caso `IDENT`): anche dopo il fix
+   precedente, `GetFunctionNr` può legittimamente restituire `-1`
+   (nome non riconosciuto) — ma il codice usava subito quel valore per
+   indicizzare `gFuncArrayByNr[fcd.funcNr]` **prima** di controllare
+   se fosse `>= 0`, cioè con un indice negativo su un array C
+   (`FuncRec*` grezzo, non un container con bound-check). **Fix**:
+   calcolare `expectedArgs` solo se `fcd.funcNr >= 0`, altrimenti `-1`
+   (valore sentinella già usato altrove nel codice per "numero di
+   argomenti sconosciuto").
+
+**Nota aperta importante**: i fix 6-7 eliminano il crash/blocco, ma
+non risolvono il problema di fondo — **la libreria engine non carica
+mai la tabella delle funzioni**, quindi le formule con funzioni con
+nome (`SOMMA`, `SE`, `MEDIA`, ecc.) non sono ancora realmente
+utilizzabili: vengono correttamente trattate come "identificatore
+sconosciuto" (e quindi come testo letterale se non c'è un `=` iniziale,
+o come errore di formula se c'è). Serve, in una fase futura: generare
+la risorsa `'Func'` con gli strumenti già pronti dalla Fase 1
+(`bsl`/`rez` su `Resources/funcs_by_nr.txt`), allegarla al binario che
+usa l'engine (o caricarla da un percorso noto), e chiamare
+`InitFunctions()` una volta all'avvio.
+
+**Perché sembravano blocchi infiniti invece di crash**: i bug 6-7 (e
+altri di questa sessione) sono dereferenziazioni di puntatori nulli,
+che normalmente causerebbero un crash immediato (SIGSEGV). Su questa
+Haiku il processo restava invece bloccato, richiedendo `kill -9` per
+essere terminato. L'ipotesi più probabile è che `debug_server`
+intercetti il crash e sospenda il thread in attesa di
+un'interazione utente (debug/termina) tramite interfaccia grafica —
+interazione che non arriva mai in un'esecuzione headless da riga di
+comando. Per questo ogni test headless in questo progetto va sempre
+lanciato con `timeout N ./binario`.
+
 ## Limitazioni note
 
 - **Alert di errore reali**: `CErr::DoError()` (`MyError.cpp`) crea
