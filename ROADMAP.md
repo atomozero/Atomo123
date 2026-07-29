@@ -503,11 +503,19 @@ uno strumento di iniezione mouse/tastiera in questo ambiente).
 - [ ] Verifica licenze — vedi nota sopra, decisione della licenza per
       il codice nuovo non ancora presa
 
-## Fase 6 — Polish e funzionalità avanzate
+## Fase 6 — Polish e funzionalità avanzate (IN CORSO)
 
 - [ ] Grafici, tabelle pivot base, funzioni aggiuntive
 - [ ] Ottimizzazione ricalcolo su fogli grandi
-- [ ] Documentazione utente
+- [x] Documentazione utente: `docs/USER_GUIDE.md` — avvio, editing
+      (barra formule e in-cella), formule (con il limite delle
+      funzioni con nome ancora non implementate), apertura/salvataggio
+      file (solo import da CSV/XLS/XLSX/ODS, export solo verso ASCD
+      nativo), taglia/copia/incolla, Trova, stampa (col limite delle
+      intestazioni non ripetute per pagina), formattazione numeri
+      locale-aware. Aggiornata linkata anche da `README.md`, insieme
+      ai documenti tecnici di Fase 2/3/4 che non erano ancora
+      referenziati lì.
 
 ---
 

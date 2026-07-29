@@ -57,7 +57,15 @@ vanno installati (`make install` in ciascuna cartella sotto
 ## Documentazione
 
 - [ROADMAP.md](ROADMAP.md) — fasi del progetto e stato di avanzamento
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — guida rapida per chi usa
+  l'app (non per chi sviluppa il codice)
 - [docs/RESEARCH.md](docs/RESEARCH.md) — analisi tecnica di partenza
   (API Haiku, librerie formati file, valutazione SumIt)
+- [docs/ENGINE_API.md](docs/ENGINE_API.md) — architettura del motore di
+  calcolo isolato (Fase 2), stub, bug trovati
+- [docs/TRANSLATORS.md](docs/TRANSLATORS.md) — architettura dei
+  translator CSV/XLS/XLSX/ODS (Fase 3)
+- [docs/UI_ARCHITECTURE.md](docs/UI_ARCHITECTURE.md) — architettura
+  dell'app nativa (Fase 4), bug trovati
 - [legacy/opensumit/PORTING_STATUS.md](legacy/opensumit/PORTING_STATUS.md) —
   dettaglio tecnico del porting a 64 bit del codice storico
