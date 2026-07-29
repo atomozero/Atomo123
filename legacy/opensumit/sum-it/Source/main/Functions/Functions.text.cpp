@@ -59,7 +59,7 @@ void ASCFunction(Value *stack, int argCnt, CContainer *cells)
 	if (GetTextArgument(stack, argCnt, 1, s) &&
 		strlen(s) == 1)
 		stack[0] = (double)s[0];
-	else if (GetDoubleArgument(stack, argCnt, 1, &d) && isnan(d))
+	else if (GetDoubleArgument(stack, argCnt, 1, &d) && std::isnan(d))
 		stack[0] = d;
 	else
 		stack[0] = gValueNan;
@@ -72,7 +72,7 @@ void CHRFunction(Value *stack, int argCnt, CContainer *cells)
 	if (GetDoubleArgument(stack, argCnt, 1, &num) &&
 		num > 0.0 && num <= 127.0)
 	{
-		if (isnan(num))
+		if (std::isnan(num))
 			stack[0] = num;
 		else
 		{
@@ -112,7 +112,7 @@ void LENGTHFunction(Value *stack, int argCnt, CContainer *cells)
 	
 	if (GetTextArgument(stack, argCnt, 1, s))
 		stack[0] = (double)mstrlen(s);
-	else if (GetDoubleArgument(stack, argCnt, 1, &d) && isnan(d))
+	else if (GetDoubleArgument(stack, argCnt, 1, &d) && std::isnan(d))
 		stack[0] = d;
 	else
 		stack[0] = gValueNan;

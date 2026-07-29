@@ -63,6 +63,7 @@
 
 #include <support/Debug.h>
 #include <ByteOrder.h>
+#include <arpa/inet.h>
 
 CRunArray::CRunArray(int inMax, int inValue)
 {

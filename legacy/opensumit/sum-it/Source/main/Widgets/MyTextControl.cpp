@@ -131,7 +131,7 @@ void CTextControl::MessageReceived(BMessage *inMessage)
 
 void CTextControl::EnterString(const char *s, long selStart, long selLen)
 {
-	long sStart, sEnd;
+	int32 sStart, sEnd;
 
 	if (!fCellView->IsEntering())
 		fCellView->SetEntering(true);
@@ -166,7 +166,7 @@ void CTextControl::EnterRange(range inRange)
 {
 	char s[20];
 
-	long sStart, sEnd;
+	int32 sStart, sEnd;
 	GetSelection(&sStart, &sEnd);
 	
 	if (!fCellEntered)

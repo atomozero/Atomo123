@@ -152,7 +152,7 @@
 #include <Entry.h>
 
 BList 	CCellWindow::sWindowList;
-long	CCellWindow::sUntitledCount = 1;
+int32	CCellWindow::sUntitledCount = 1;
 
 class CCellWindowMessageFilter : public BMessageFilter {
 public:
@@ -608,7 +608,7 @@ filter_result CCellWindowMessageFilter::Filter(
 
 	filter_result result = B_DISPATCH_MESSAGE;
 
-	long key, modifiers;
+	int32 key, modifiers;
 	message->FindInt32("raw_char", &key);
 	message->FindInt32("modifiers", &modifiers);
 	modifiers &= ~B_NUM_LOCK;

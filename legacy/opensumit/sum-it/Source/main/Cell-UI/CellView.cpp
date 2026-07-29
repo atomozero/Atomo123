@@ -484,7 +484,7 @@ void CCellView::CancelCalculation()
 	if (fJob)
 	{
 		fJob->Cancel();
-		long l;
+		status_t l;
 		wait_for_thread(fJob->Thread(), &l);
 		fJob = NULL;
 	}

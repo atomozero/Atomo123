@@ -192,7 +192,7 @@ long CCalculateJob::Execute() throw()
 					}
 			}
 
-			long l = 0;
+			status_t l = 0;
 			write_port(fPortID, 'quit', &l, 4);
 //			write_port(fPortID, 'quit', &l, 4);
 			wait_for_thread(fCalcThread1->Thread(), &l);
@@ -209,7 +209,7 @@ long CCalculateJob::Execute() throw()
 	
 		fCalcThread1->Cancel();
 //		fCalcThread2->Cancel();
-		long l;
+		status_t l;
 		wait_for_thread(fCalcThread1->Thread(), &l);
 //		wait_for_thread(fCalcThread2->Thread(), &l);
 

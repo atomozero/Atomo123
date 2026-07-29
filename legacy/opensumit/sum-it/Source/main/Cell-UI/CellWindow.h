@@ -163,7 +163,7 @@ protected:
 	static BRect		GetFrameRect();
 	
 	static BList		sWindowList;
-	static long		sUntitledCount;
+	static int32		sUntitledCount;
 };
 
 inline long
