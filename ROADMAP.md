@@ -1,8 +1,8 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
-Stato: **Fase 1 e Fase 2 chiuse**; **Fase 3 in corso** (translator CSV
-e translator XLS legacy completati, mancano XLSX e ODS). Aggiornato ad
-ogni fase completata.
+Stato: **Fase 1 e Fase 2 chiuse**; **Fase 3 in corso** (translator CSV,
+XLS legacy e XLSX completati, manca solo ODS per chiudere la fase).
+Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -147,11 +147,24 @@ usano l'engine di Fase 2 e librerie esterne leggere.
       con un file `.xls` reale** (nessuno disponibile in questa
       sessione — vedi `docs/TRANSLATORS.md`). Solo import per ora, il
       motore non ha un writer per il formato binario legacy.
-- [ ] Translator XLSX: basato su OpenXLSX (BSD-3, C++17, dipendenze
-      leggere PugiXML+Zippy/libzip) — valutare porting su Haiku
+- [x] Translator XLSX: `translators/xlsx/`. Non usa OpenXLSX (non
+      valutato il porting): un file XLSX è ZIP+XML, e su questo
+      sistema erano già presenti (con header di sviluppo) **expat**
+      per l'XML e **zlib** per la decompressione, ma non una libreria
+      ZIP-contenitore con gli header installati — scritto quindi un
+      lettore ZIP minimo dedicato (`MiniZip.h/.cpp`, sola lettura,
+      senza aggiungere nuove dipendenze di sistema). Test end-to-end
+      **reale**: un XLSX vero costruito con `zip`, importato e
+      verificato — inclusa la ricostruzione di un documento dai dati
+      importati con **ricalcolo effettivo della formula dal motore**
+      (non solo verifica testuale). Nessun bug nuovo del motore
+      scoperto (codice tutto nuovo, non riusa `CExcel5Filter`).
 - [ ] Translator ODS: valutare liborcus (Document Liberation Project,
-      storicamente portabile su Haiku out-of-the-box via POSIX) o
-      implementazione custom minimale
+      storicamente portabile su Haiku out-of-the-box via POSIX) o un
+      parser custom minimo sullo stesso modello di XLSX (ODS è
+      anch'esso ZIP+XML, con schema OpenDocument invece di OOXML —
+      MiniZip.h/.cpp ed expat sono probabilmente riusabili così come
+      sono)
 - [x] Ogni translator dichiara `Identify()`/`Translate()`/
       `InputFormats()`/`OutputFormats()` secondo il framework
       `BTranslatorRoster` (pattern stabilito con il translator CSV,

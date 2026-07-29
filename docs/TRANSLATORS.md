@@ -163,3 +163,66 @@ differenza degli altri bug di questa sessione) — è un problema di
 correttezza C++ puro, preesistente nel codice storico ma mai
 manifestatosi finché nessuno aveva testato l'importer con un file
 realmente malformato/incompleto.
+
+## translators/xlsx — import XLSX (Excel 2007+, OOXML)
+
+Importa il formato XLSX moderno (`kAtomoXlsxFormat`, MIME
+`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`)
+verso ASCD. Un file XLSX è semplicemente un archivio ZIP contenente
+XML (`xl/worksheets/sheet1.xml` per i dati del foglio,
+`xl/sharedStrings.xml` per la tabella di stringhe condivise,
+`[Content_Types].xml` come marcatore del formato).
+
+**Nessuna nuova dipendenza di sistema**: invece di scrivere da zero un
+parser XML o affidarsi a `OpenXLSX` (valutato nella ricerca iniziale
+ma con dipendenze non ancora verificate su Haiku), si riusano due
+librerie già presenti su questo sistema (header e binari installati):
+**expat** (parser XML leggero, C) per l'XML e **zlib** (già usato
+altrove nell'ecosistema Haiku) per la decompressione. Per il
+contenitore ZIP vero e proprio (non solo la compressione, ma la
+struttura dell'archivio: central directory, header locali) non c'è
+una libreria con gli header di sviluppo già installati (`libzip`/
+`minizip` mancano dei pacchetti `_devel`); invece di richiedere
+l'installazione di un nuovo pacchetto, si è scritto un lettore ZIP
+minimo e mirato (**`MiniZip.h`/`.cpp`**, sola lettura, senza supporto
+ZIP64/cifratura — sufficiente per gli XLSX generati da strumenti
+standard), in linea con l'approccio di dipendenze minime già seguito
+nel resto del progetto.
+
+Il parsing XML (`XlsxTranslator.cpp`) gestisce: celle con riferimento
+`r="A1"`, valori numerici, stringhe condivise (`t="s"`, indice nella
+tabella `sharedStrings.xml`), e formule (`<f>...</f>`) — importate
+come testo con `=` davanti tramite `TryToParseString`, così il nostro
+motore le ricalcola in modo indipendente invece di fidarsi
+ciecamente del valore già calcolato da Excel/LibreOffice (`<v>`
+accanto a `<f>`, che viene ignorato). Per semplicità si assume che il
+primo foglio sia sempre `xl/worksheets/sheet1.xml` (vero per i
+documenti con un solo foglio generati da strumenti standard; un
+documento con più fogli richiederebbe leggere `xl/workbook.xml` e i
+relativi `_rels` per la mappatura nome-foglio → file XML — non ancora
+implementato).
+
+### Build, test, installazione
+
+```
+cd translators/xlsx
+make            # compila l'add-on XlsxTranslator
+make test       # compila ed esegue il test end-to-end
+make install    # copia l'add-on in ~/config/non-packaged/add-ons/Translators
+```
+
+**Test end-to-end reale**, a differenza di XLS legacy: `tests/sample.xlsx`
+è un file XLSX vero, costruito con il comando `zip` (XML scritti a
+mano, poi compressi — verificabile con `unzip -l`), contenente due
+valori, una formula e una stringa condivisa. Il test importa il file,
+verifica che i valori e la formula (non il suo valore già calcolato)
+siano stati importati correttamente, poi **ricostruisce un documento
+dai dati ASCD prodotti e verifica che il motore ricalcoli
+autonomamente la formula ottenendo il risultato corretto** — prova
+concreta che l'intera catena ZIP → XML → motore di calcolo funziona,
+non solo che il testo sopravvive al giro.
+
+Nessun bug nuovo del motore scoperto costruendo questo translator: il
+codice XLSX è tutto nuovo (non riusa codice storico non ancora
+testato come `CExcel5Filter`), quindi non ha ereditato le stesse
+categorie di problemi.
