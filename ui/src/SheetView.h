@@ -3,10 +3,11 @@
 
 	Vista griglia del foglio di calcolo: disegna intestazioni di
 	colonna (lettere) e riga (numeri), il contenuto delle celle
-	esistenti, e gestisce selezione (mouse/tastiera). L'editing vero
-	e proprio del contenuto passa dalla barra formula di
-	MainWindow, non da un editor in-cella (limite noto della prima
-	versione della UI, vedi ROADMAP.md Fase 4).
+	esistenti, e gestisce selezione (mouse/tastiera) ed editing.
+	L'editing e' doppio: dalla barra formula di MainWindow (sempre
+	visibile) oppure in-cella (doppio click su una cella, o si inizia
+	a digitare mentre e' selezionata), tramite un BTextControl
+	temporaneo posizionato sopra la cella.
 */
 
 #ifndef SHEET_VIEW_H
@@ -16,6 +17,7 @@
 
 #include "Cell.h"
 
+class BTextControl;
 class CContainer;
 class MainWindow;
 
@@ -29,6 +31,7 @@ public:
 	virtual void KeyDown(const char* bytes, int32 numBytes);
 	virtual void AttachedToWindow();
 	virtual void FrameResized(float width, float height);
+	virtual void MessageReceived(BMessage* message);
 
 	void SetDocument(CContainer* doc);
 	CContainer* Document() const { return fDoc; }
@@ -40,6 +43,9 @@ private:
 	CContainer* fDoc;
 	cell fSelection;
 
+	BTextControl* fEditor;
+	cell fEditingCell;
+
 	static const int kColWidth = 80;
 	static const int kRowHeight = 20;
 	static const int kHeaderWidth = 40;
@@ -49,6 +55,9 @@ private:
 	void ScrollToShowSelection();
 	void NotifySelectionChanged();
 	void FixupScrollBars();
+
+	void StartEditing(cell c, const char* initialText = NULL);
+	void CommitEditing(bool cancel);
 };
 
 #endif

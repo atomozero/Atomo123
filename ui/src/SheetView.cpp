@@ -10,17 +10,55 @@
 #include <cstdio>
 #include <cstring>
 
+#include <MessageFilter.h>
+#include <Messenger.h>
 #include <Region.h>
 #include <ScrollBar.h>
+#include <TextControl.h>
+#include <TextView.h>
 
+#include "Value.h"
+#include "CellParser.h"
 #include "Container.h"
 #include "Constants.h"
+
+static const uint32 kMsgCellEditCommit = 'cedt';
+static const uint32 kMsgCellEditCancel = 'cedc';
+
+// Filtro applicato alla BTextView interna del BTextControl usato per
+// l'editing in-cella: la BTextView interna e' quella che riceve
+// davvero il fuoco tastiera (BTextControl::MakeFocus lo inoltra a
+// lei), quindi e' li' che serve intercettare Escape per annullare
+// l'editing -- una BTextControl non riceve KeyDown direttamente per
+// questo motivo.
+class CellEditEscapeFilter : public BMessageFilter {
+public:
+	CellEditEscapeFilter(BHandler* target)
+		: BMessageFilter(B_KEY_DOWN), fTarget(target) {}
+
+	virtual filter_result Filter(BMessage* message, BHandler** target)
+	{
+		int32 rawChar;
+		if (message->FindInt32("raw_char", &rawChar) == B_OK
+			&& rawChar == B_ESCAPE)
+		{
+			BMessenger(fTarget).SendMessage(kMsgCellEditCancel);
+			return B_SKIP_MESSAGE;
+		}
+		return B_DISPATCH_MESSAGE;
+	}
+
+private:
+	BHandler* fTarget;
+};
 
 SheetView::SheetView(BRect frame, CContainer* doc)
 	:
 	BView(frame, "SheetView", B_FOLLOW_NONE, B_WILL_DRAW | B_FRAME_EVENTS),
 	fDoc(doc),
-	fSelection(1, 1)
+	fSelection(1, 1),
+	fEditor(NULL),
+	fEditingCell(1, 1)
 {
 	SetViewColor(255, 255, 255);
 }
@@ -221,12 +259,24 @@ void SheetView::Draw(BRect updateRect)
 
 void SheetView::MouseDown(BPoint where)
 {
+	if (fEditor)
+		CommitEditing(false);
+
 	if (where.x < kHeaderWidth || where.y < kHeaderHeight)
 		return;
 
 	int col = (int)((where.x - kHeaderWidth) / kColWidth) + 1;
 	int row = (int)((where.y - kHeaderHeight) / kRowHeight) + 1;
-	SetSelection(cell(col, row));
+	cell c(col, row);
+
+	int32 clicks = 1;
+	BMessage* msg = Window() ? Window()->CurrentMessage() : NULL;
+	if (msg)
+		msg->FindInt32("clicks", &clicks);
+
+	SetSelection(c);
+	if (clicks >= 2)
+		StartEditing(c);
 }
 
 void SheetView::KeyDown(const char* bytes, int32 numBytes)
@@ -268,9 +318,99 @@ void SheetView::KeyDown(const char* bytes, int32 numBytes)
 			}
 			break;
 		default:
-			BView::KeyDown(bytes, numBytes);
+			// Digitare direttamente su una cella selezionata sostituisce
+			// il contenuto (come Excel/LibreOffice Calc): si apre
+			// l'editor in-cella gia' con il carattere digitato.
+			if ((unsigned char)bytes[0] >= 0x20 && (unsigned char)bytes[0] < 0x7f)
+			{
+				char initial[2] = { bytes[0], 0 };
+				StartEditing(fSelection, initial);
+			}
+			else
+				BView::KeyDown(bytes, numBytes);
 			break;
 	}
+}
+
+void SheetView::MessageReceived(BMessage* message)
+{
+	switch (message->what)
+	{
+		case kMsgCellEditCommit:
+			CommitEditing(false);
+			break;
+		case kMsgCellEditCancel:
+			CommitEditing(true);
+			break;
+		default:
+			BView::MessageReceived(message);
+			break;
+	}
+}
+
+void SheetView::StartEditing(cell c, const char* initialText)
+{
+	if (!fDoc)
+		return;
+
+	if (fEditor)
+		CommitEditing(false);
+
+	fEditingCell = c;
+
+	BRect r = CellRect(c);
+	fEditor = new BTextControl(r, "celledit", NULL, "",
+		new BMessage(kMsgCellEditCommit), B_FOLLOW_NONE, B_WILL_DRAW | B_NAVIGABLE);
+	fEditor->SetDivider(0);
+	fEditor->SetTarget(this);
+	AddChild(fEditor);
+
+	if (initialText)
+		fEditor->SetText(initialText);
+	else
+	{
+		char text[512];
+		fDoc->GetCellFormula(c, text, false);
+		fEditor->SetText(text);
+	}
+
+	if (fEditor->TextView())
+	{
+		fEditor->TextView()->AddFilter(new CellEditEscapeFilter(this));
+		int32 len = (int32)strlen(fEditor->Text());
+		fEditor->TextView()->Select(len, len);
+	}
+
+	fEditor->MakeFocus(true);
+}
+
+void SheetView::CommitEditing(bool cancel)
+{
+	if (!fEditor)
+		return;
+
+	BTextControl* editor = fEditor;
+	cell editedCell = fEditingCell;
+	fEditor = NULL;
+
+	if (!cancel && fDoc)
+	{
+		try
+		{
+			TryToParseString(editor->Text(), editedCell, fDoc, true);
+		}
+		catch (...)
+		{
+		}
+		fDoc->CalcCell(editedCell);
+	}
+
+	editor->RemoveSelf();
+	delete editor;
+
+	MakeFocus(true);
+	Invalidate(CellRect(editedCell));
+	NotifySelectionChanged();
 }
 
 void SheetView::NotifySelectionChanged()

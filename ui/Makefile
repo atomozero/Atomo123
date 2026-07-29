@@ -39,7 +39,17 @@ $(APP): $(OBJECTS) $(ENGINE_DIR)/libengine.a
 run: $(APP)
 	./$(APP)
 
-clean:
-	rm -f $(APP) $(OBJECTS)
+# Test di round-trip di AscdIO (SaveASCD/LoadASCD): non richiede una
+# sessione grafica, solo l'engine e libbe per BFile/BPositionIO.
+test: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_ascd_io.cpp -o tests/test_ascd_io.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/AscdIO.cpp -o tests/AscdIO.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
+	./tests/test_ascd_io
 
-.PHONY: all run clean
+clean:
+	rm -f $(APP) $(OBJECTS) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o tests/roundtrip.ascd
+
+.PHONY: all run test clean
