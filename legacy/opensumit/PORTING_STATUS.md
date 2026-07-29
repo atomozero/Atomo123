@@ -61,34 +61,83 @@ Haiku moderne vogliono tipi a larghezza fissa (`int32`, `uint32`,
 `type_code`, `status_t`). Non è un problema architetturale: è lavoro
 meccanico, file per file.
 
-## File ancora da sistemare (elenco al momento dello snapshot)
-Source/ColorPicker/ColorSlider.cpp (parziale, GetMouse fixato)
-Source/ColorPicker/HSVView.cpp (parziale, GetMouse fixato)
-Source/Huffman/Huffman.cpp (FIXATO)
-Source/Metrowerks/MThread.cpp (FIXATO)
-Source/main/App/Sum-It.cpp (in corso: BMessage::GetInfo firma)
-Source/main/Cell/Container.cpp
-Source/main/Cell-UI/CellView.cpp (parziale, GetMouse fixato)
-Source/main/Cell-UI/CellView.drag.cpp
-Source/main/Cell-UI/CellView.mouse.cpp (parziale, GetMouse fixato)
-Source/main/Cell-UI/CellView.resizing.cpp (parziale, GetMouse fixato)
-Source/main/Cell-UI/CellWindow.cpp
-Source/main/Formula/CalculateJob.cpp
-Source/main/Functions/Functions.text.cpp
-Source/main/Misc-Classes/Benaphore.cpp
-Source/main/Misc-Classes/RunArray.cpp
-Source/main/Plugin/GraphPlugIn.cpp
-Source/main/UI-Misc/Formatter.cpp
-Source/main/UI-Misc/Graphic.cpp (parziale, GetMouse fixato)
-Source/main/Utils/Utils.cpp
-Source/main/Widgets/MyTextControl.cpp
-Source/main/Widgets/ProgressView.cpp
-Source/main/Widgets/SelectionView.cpp (parziale, GetMouse fixato)
+## Aggiornamento: build completa raggiunta
+
+Tutti i file rimanenti sono stati sistemati con lo stesso pattern
+meccanico (`long`/`ulong` -> `int32`/`uint32`/`type_code`/`status_t`,
+o `#include <arpa/inet.h>` mancante):
+
+- `Source/main/App/Sum-It.cpp` — `type`/`count` in `RefsReceived` ->
+  `type_code`/`int32` per `BMessage::GetInfo`
+- `Source/main/Cell/Container.h` — `fReferenceCount` -> `int32` per
+  `atomic_add`
+- `Source/main/Cell-UI/CellView.cpp` — `l` in `CancelCalculation` ->
+  `status_t` per `wait_for_thread`
+- `Source/main/Cell-UI/CellView.drag.cpp` — `LoadCursor(0L)` ambiguo
+  tra overload `int32`/`const char*` -> cast esplicito `(int32)0`
+- `Source/main/Cell-UI/CellWindow.h`/`.cpp` — `sUntitledCount` ->
+  `int32`; `key`/`modifiers` in `CCellWindowMessageFilter::Filter` ->
+  `int32` per `BMessage::FindInt32`
+- `Source/main/Formula/CalculateJob.cpp` — due variabili `l` ->
+  `status_t` per `wait_for_thread`
+- `Source/main/Functions/Functions.text.cpp` — `isnan` -> `std::isnan`
+- `Source/main/Misc-Classes/Benaphore.h` — `fCount` -> `int32` per
+  `atomic_add`
+- `Source/main/Misc-Classes/RunArray.cpp` — `#include <arpa/inet.h>`
+  mancante (`htons`/`ntohs`)
+- `Source/main/Plugin/GraphPlugIn.cpp` — `clicks` -> `int32` per
+  `BMessage::FindInt32`
+- `Source/main/UI-Misc/Formatter.cpp` — `gNextFormatNr` -> `int32` per
+  `atomic_add`
+- `Source/main/Utils/Utils.cpp` — `buttons`/`modifiers` -> `int32` per
+  `BMessage::FindInt32`
+- `Source/main/Widgets/MyTextControl.cpp` — `sStart`/`sEnd` -> `int32`
+  per `BTextView::GetSelection`
+- `Source/main/Widgets/ProgressView.cpp` — `l` -> `int32` per
+  `BMessage::FindInt32`
+
+**Risultato: `make` in `legacy/opensumit/sum-it` completa senza errori
+e produce il binario `OpenSum-It` (ELF 64-bit, link riuscito, risorse
+incorporate con `xres`).**
+
+## Smoke test di avvio
+
+Il binario è stato lanciato su Haiku hrev59800 reale: il processo
+resta in esecuzione (nessun crash) e mostra una singola finestra di
+errore recuperabile:
+
+```
+### Sum-It Error
+# (errDamagedResources)
+#----
+File "./Source/main/Dialog/RDialog.cpp"; Line 230;
+#----
+```
+
+`CRDialog::ConstructFromTemplate` (RDialog.cpp:230) incontra un tag a
+4 byte non riconosciuto nello switch che legge il template di un
+dialogo dalle risorse generate, e solleva un'eccezione catturata
+(l'app non crasha, mostra solo l'alert). Non ancora determinato se sia
+un bug preesistente nel codice storico (dialogo con elemento non
+gestito da questa build) o un effetto collaterale dei fix di
+byte-order/puntatori applicati a `rez`. **Nota aperta per la Fase 1**:
+va isolato quale dialogo/template scatena l'errore (probabilmente
+generato al primo avvio, prima ancora di aprire un documento) e
+determinarne la causa esatta prima di considerare la Fase 1
+completamente chiusa. Non blocca il proseguimento verso la Fase 2,
+poiché il motore di calcolo non passa da `RDialog`.
+
+Test non ancora eseguiti (richiedono automazione di input UI, rimandati):
+import di un file `.xls` reale; verifica calcolo di una formula
+semplice via UI. Vedi `docs/ROADMAP.md` per come questi test verranno
+ripresi (in Fase 2 l'engine sarà testabile senza passare dalla UI,
+il che aggira comunque il problema di `RDialog`).
 
 ## Perché questo lavoro conta
-Questo NON è più solo un'ipotesi teorica: il motore di calcolo
-(parser formule, grafo celle) e l'importer Excel legacy binario
-compilano già puliti su Haiku moderno con fix minimi. Sono asset
-concreti e riusabili, non da riscrivere da zero. Vedi `docs/ROADMAP.md`
-nella root del progetto per il piano che usa questo codice come base
-per `engine/`.
+
+Questo NON è più solo un'ipotesi teorica: l'intera applicazione
+storica Sum-It/OpenSumIt compila ora per intero su Haiku moderno a 64
+bit e si avvia senza crash. Il motore di calcolo, l'importer Excel
+legacy binario, e l'intera UI CellView/CellWindow sono asset concreti
+e riusabili. Vedi `docs/ROADMAP.md` nella root del progetto per il
+piano che usa questo codice come base per `engine/` (Fase 2).

@@ -1,6 +1,8 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
-Stato: **Fase 1 in corso**. Aggiornato ad ogni fase completata.
+Stato: **Fase 1 quasi completa** — build integrale riuscita, resta una
+nota aperta sul dialog template (vedi sotto). Aggiornato ad ogni fase
+completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -51,12 +53,25 @@ Fatto finora (sessione di porting empirico):
       `arpa/inet.h`)
 - [x] `Huffman.cpp`, `MThread.cpp`, libreria `ColorPicker`: compilano
       puliti dopo fix mirati
-- [ ] Restanti ~15-18 file con lo stesso pattern meccanico
+- [x] Tutti i file rimanenti sistemati con lo stesso pattern meccanico
       (`long`/`ulong` BeOS R5 -> `int32`/`uint32`/`type_code`/`status_t`
-      Haiku moderno) — vedi lista in `legacy/opensumit/PORTING_STATUS.md`
-- [ ] Link finale del binario `sum-it` completo
-- [ ] Smoke test: avvio applicazione, apertura/salvataggio file nativo,
-      calcolo formule base
+      Haiku moderno) — dettaglio in `legacy/opensumit/PORTING_STATUS.md`
+- [x] Link finale del binario `sum-it` completo (`OpenSum-It`, ELF
+      64-bit) — build pulita senza errori
+- [x] Smoke test: avvio applicazione senza crash (processo resta vivo,
+      un solo alert recuperabile — vedi nota aperta sotto)
+- [ ] **Nota aperta**: `CRDialog::ConstructFromTemplate` (RDialog.cpp:230)
+      solleva `errDamagedResources` per un tag non riconosciuto in un
+      template di dialogo letto dalle risorse. Da isolare quale dialogo
+      lo scatena e se è un bug preesistente o introdotto dai fix di
+      byte-order su `rez`. Non blocca la Fase 2 (l'engine non passa da
+      RDialog), ma va richiuso prima di considerare la Fase 1
+      definitivamente completa lato UI.
+- [ ] Test rimandati (richiedono automazione input UI): import di un
+      file `.xls` reale via UI, calcolo formula base via UI — verranno
+      probabilmente assorbiti dai test dell'engine isolato in Fase 2,
+      che possono verificare import/calcolo senza passare dalla UI
+      storica (aggirando così anche il problema RDialog qui sopra)
 
 **Test di congruità/compatibilità di questa fase**: build pulita
 (`make` senza errori) di `bsl`, `rez`, `sum-it`; avvio del binario senza
@@ -116,6 +131,8 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3.
 - [ ] Menu/toolbar, dialoghi (trova/sostituisci, formattazione, ecc.)
 - [ ] Locale Kit: formattazione numeri/valute/date locale-aware
 - [ ] Print Kit: stampa/anteprima
+- [ ] Icone: autorizzato l'uso del portale www.hvif-store.art (formato
+      HVIF nativo Haiku) come fonte per le icone dell'applicazione
 
 **Test di congruità/compatibilità**: test manuale interattivo (apri,
 modifica, salva, ristampa un foglio); nessuna regressione nei test di
