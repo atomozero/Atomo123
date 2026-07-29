@@ -23,19 +23,19 @@ Il motore di calcolo e l'importer Excel legacy riusano e modernizzano \
 il codice storico BeOS del progetto Sum-It, portato a compilare su \
 Haiku moderno a 64 bit; la UI e' scritta da zero in Interface/Layout \
 Kit."
-# LICENSE: situazione non ancora chiarita, segnata qui come nota
-# aperta invece di assumere una licenza non dichiarata dall'utente.
-# engine/ deriva da codice storico Sum-It sotto licenza BSD a 4
-# clausole CON clausola pubblicitaria (vedi
-# legacy/opensumit/sum-it/Docs/Licence e la nota in README.md): quella
-# clausola si applica quindi anche al binario pacchettizzato, che
-# include engine/ per forza (e' il motore di calcolo). Il codice nuovo
-# (translators/, ui/) non ha ancora una licenza dichiarata dall'utente
-# — da chiarire prima di una vera distribuzione/sottomissione a
-# HaikuPorts. "LICENSE" sotto e' un segnaposto, non una decisione.
+# LICENSE: il codice nuovo di questo progetto (translators/, ui/) e'
+# MIT (vedi LICENSE alla radice del repository). engine/ pero' deriva
+# da codice storico Sum-It sotto licenza BSD a 4 clausole CON clausola
+# pubblicitaria (vedi legacy/opensumit/sum-it/Docs/Licence): non e' una
+# riscrittura da zero, quindi resta sotto quella licenza, non MIT. Il
+# binario pacchettizzato include engine/ per forza (e' il motore di
+# calcolo), quindi la clausola pubblicitaria si applica comunque a
+# questa distribuzione. Per una vera sottomissione a HaikuPorts
+# servirebbe probabilmente un file di licenza custom in licenses/ per
+# la parte BSD, non solo il campo LICENSE qui sotto.
 HOMEPAGE="https://github.com/atomozero/Atomo123"
 COPYRIGHT="2026 Andrea Bernardi"
-LICENSE="BSD (4-clause) -- da confermare, vedi nota sopra"
+LICENSE="MIT"
 REVISION="1"
 
 # Segnaposto: da sostituire con l'URL reale dell'archivio sorgente

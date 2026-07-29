@@ -1,0 +1,55 @@
+Questo repository contiene codice sotto due licenze distinte.
+
+================================================================
+1. Codice nuovo di questo progetto — Licenza MIT
+================================================================
+
+Si applica a tutto il codice in questo repository AD ECCEZIONE di
+`legacy/opensumit/` e `engine/` (vedi punto 2 sotto): in pratica
+`translators/`, `ui/`, `docs/`, `packaging/` e i file alla radice del
+repository (README.md, ROADMAP.md, questo LICENSE, ecc.).
+
+Copyright (c) 2026 Andrea Bernardi
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+================================================================
+2. Codice storico Sum-It — `legacy/opensumit/` ed `engine/`
+================================================================
+
+`legacy/opensumit/` contiene il codice storico del progetto BeOS
+Sum-It (fork community OpenSumIt), Copyright 1996-2000 Hekkelman
+Programmatuur B.V. Non è codice di questo progetto: resta sotto la
+sua licenza originale (BSD a 4 clausole, CON clausola pubblicitaria),
+testo integrale in `legacy/opensumit/sum-it/Docs/Licence`.
+
+`engine/` estrae, modifica e corregge bug in quel codice storico (il
+motore di calcolo e l'importer Excel legacy, vedi
+`docs/ENGINE_API.md`): è quindi un'opera derivata del codice Sum-It,
+non codice nuovo scritto da zero per questo progetto, e resta sotto
+la stessa licenza BSD a 4 clausole del codice da cui deriva — non
+poteva essere riassegnato a MIT senza l'autorizzazione del detentore
+originale del copyright.
+
+**Importante**: qualunque distribuzione binaria che includa il codice
+di `legacy/opensumit/` o `engine/` deve rispettare la clausola
+pubblicitaria del punto 3 della licenza originale (riportare la dicitura
+"This product includes software developed by Hekkelman Programmatuur
+B.V." nella documentazione/materiale pubblicitario).

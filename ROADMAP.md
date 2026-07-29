@@ -367,13 +367,16 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       mouse/tastiera in questo ambiente).
 - [ ] Icone: autorizzato l'uso del portale www.hvif-store.art (formato
       HVIF nativo Haiku) come fonte per le icone dell'applicazione —
-      **bloccato**: verificato il 2026-07-29, la galleria del sito
-      risultava vuota ("0 icons found" in home, i percorsi tentati
-      /icons e /search?q=... restituivano 404). Non essendo disponibile
-      contenuto scaricabile dalla fonte autorizzata, l'item resta
-      aperto invece di disegnare un'icona da zero non richiesta —
-      da riprovare in una sessione futura (magari il sito verrà
-      popolato) o da chiedere indicazioni dirette all'utente.
+      **ancora bloccato**: verificato una prima volta il 2026-07-29
+      (galleria vuota, "0 icons found" in home, /icons e /search?q=...
+      a 404), e riverificato lo stesso giorno su richiesta esplicita
+      dell'utente ("riprova con il servizio di icone HVIF") — stesso
+      risultato, più anche /browse a 404. Due controlli, stesso esito:
+      il sito non ha ancora contenuto scaricabile. L'item resta aperto
+      invece di disegnare un'icona da zero non richiesta o usare
+      un'altra fonte non autorizzata — da riprovare più avanti nel
+      tempo (magari il sito verrà popolato) o da chiedere
+      esplicitamente all'utente come procedere.
 
 **Limite noto — intestazioni non "congelate"**: le lettere di colonna
 e i numeri di riga sono disegnati alla loro posizione virtuale
@@ -487,21 +490,27 @@ uno strumento di iniezione mouse/tastiera in questo ambiente).
       perché il progetto non è ancora pubblicato su un repository
       pubblico raggiungibile da `haikuporter` (nessun remote git
       configurato) — da completare quando/se il progetto verrà
-      pubblicato. **Licenza non ancora chiarita** (vedi nota nella
-      recipe): il codice storico riusato in `engine/` porta con sé la
-      clausola pubblicitaria BSD a 4 clausole di Sum-It, ma il codice
-      nuovo (`translators/`, `ui/`) non ha ancora una licenza
-      dichiarata dall'utente — non si è assunta una licenza non
-      richiesta, il campo `LICENSE` della recipe è esplicitamente
-      marcato come segnaposto in attesa di una decisione.
+      pubblicato.
+- [x] Licenza: l'utente ha scelto **MIT** per il codice nuovo di
+      questo progetto. Aggiunto `LICENSE` alla radice del repository,
+      con lo scopo chiarito esplicitamente: MIT per `translators/`,
+      `ui/`, `docs/`, `packaging/` e i file alla radice; `engine/`
+      resta invece sotto la licenza originale BSD a 4 clausole (con
+      clausola pubblicitaria) di Sum-It, perché è un'estrazione/
+      modifica di quel codice storico, non una riscrittura da zero —
+      non si poteva riassegnarlo a MIT senza l'autorizzazione del
+      detentore originale del copyright (Hekkelman Programmatuur
+      B.V.), quindi non è stato fatto anche se la richiesta dell'utente
+      era per "il progetto" nel suo complesso. `legacy/opensumit/`
+      resta ovviamente sotto la sua licenza originale invariata.
+      `README.md` e il campo `LICENSE` di `packaging/atomo123-0.1.0.recipe`
+      aggiornati di conseguenza.
 - [ ] Test di compatibilità con corpus di file reali: Excel (xls/xlsx
       di varie versioni), LibreOffice Calc (ods), OpenOffice legacy —
       finora testato solo con file costruiti a mano per questo
       progetto (vedi `translators/*/tests/`), non un vero corpus
       eterogeneo generato da applicazioni reali in condizioni non
       controllate
-- [ ] Verifica licenze — vedi nota sopra, decisione della licenza per
-      il codice nuovo non ancora presa
 
 ## Fase 6 — Polish e funzionalità avanzate (IN CORSO)
 

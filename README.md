@@ -31,13 +31,20 @@ ui/                  applicazione nativa Interface/Layout Kit (Fase 4)
 docs/                ricerca tecnica, architettura, note di porting
 ```
 
-## Licenza del codice storico
+## Licenza
+
+Il codice nuovo di questo progetto (`translators/`, `ui/`, `docs/`,
+`packaging/`) è distribuito con licenza **MIT** — vedi [LICENSE](LICENSE).
 
 Il codice in `legacy/opensumit/` proviene dal progetto Sum-It
 (Copyright 1996-2000 Hekkelman Programmatuur B.V.) ed è distribuito
 con licenza BSD a 4 clausole, inclusa la clausola pubblicitaria — vedi
-`legacy/opensumit/sum-it/Docs/Licence`. Qualunque distribuzione binaria
-che includa questo codice deve rispettare tale clausola.
+`legacy/opensumit/sum-it/Docs/Licence`. `engine/` estrae e modifica
+quel codice storico (non è una riscrittura da zero): resta quindi
+sotto la stessa licenza BSD a 4 clausole, non MIT — vedi
+[LICENSE](LICENSE) per il dettaglio completo. Qualunque distribuzione
+binaria che includa il codice di `legacy/opensumit/` o `engine/` deve
+rispettare la clausola pubblicitaria.
 
 ## Build
 
