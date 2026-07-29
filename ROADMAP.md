@@ -1,8 +1,11 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
 Stato: **Fase 1, Fase 2 e Fase 3 chiuse** (translator CSV, XLS legacy,
-XLSX e ODS tutti completati e testati); **Fase 4 (UI nativa) da
-iniziare**. Aggiornato ad ogni fase completata.
+XLSX e ODS tutti completati e testati); **Fase 4 (UI nativa) in
+corso** — finestra principale, griglia, apertura file via Translation
+Kit e barra formule funzionanti e testati dal vivo in una sessione
+grafica reale; mancano editing in-cella, export, Locale/Print Kit e
+icone. Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -254,23 +257,101 @@ attesa di un'interazione utente (debug/termina) che non arriva mai in
 un'esecuzione headless da riga di comando. Usare sempre `timeout N`
 nei test headless per non restare bloccati.
 
-## Fase 4 — UI nativa Interface/Layout Kit
+## Fase 4 — UI nativa Interface/Layout Kit (IN CORSO)
 
 Obiettivo: applicazione con griglia celle, editing, formattazione,
 grafici base, scritta da zero (non riusando `CellView`/`CellWindow`
 BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3.
 
-- [ ] Finestra principale, griglia celle (`BGridLayout`/vista custom)
-- [ ] Editing in-cella, barra formule
-- [ ] Menu/toolbar, dialoghi (trova/sostituisci, formattazione, ecc.)
+- [x] Finestra principale, griglia celle (vista custom `SheetView`,
+      non `BGridLayout`: la griglia è disegnata a mano in `Draw()`
+      sopra una `BScrollView`, con calcolo manuale del range di
+      scroll — `BGridLayout` è pensato per un numero fisso di
+      sotto-view, non per un foglio virtualmente enorme con celle
+      sparse). Vedi `ui/` (nuova cartella): `App`/`MainWindow`/
+      `SheetView`/`AscdIO`.
+- [x] Apertura file tramite `BTranslatorRoster`: sceglie
+      automaticamente il translator installato adatto (CSV/XLS/XLSX/
+      ODS/ASCD nativo) in base al contenuto reale del file, non
+      all'estensione — stesso meccanismo Translation Kit di Fase 3,
+      ora usato da un consumer reale.
+- [x] Editing tramite barra formule (non ancora un editor in-cella
+      con doppio click — limite noto, vedi sotto): selezione con
+      mouse/tastiera, la barra formula mostra/modifica la formula
+      della cella corrente, Invio conferma e ricalcola.
+- [ ] Editing in-cella (doppio click sulla cella, non solo dalla
+      barra formule)
+- [ ] Menu/toolbar completi, dialoghi (trova/sostituisci,
+      formattazione, ecc.) — per ora solo il menu File (Nuovo/Apri/
+      Salva con nome/Esci)
+- [ ] Export: "Salva con nome" scrive solo in ASCD nativo (nessun
+      translator ha ancora un writer per CSV/XLS/XLSX/ODS, coerente
+      col limite "solo import" già documentato in Fase 3)
 - [ ] Locale Kit: formattazione numeri/valute/date locale-aware
 - [ ] Print Kit: stampa/anteprima
 - [ ] Icone: autorizzato l'uso del portale www.hvif-store.art (formato
       HVIF nativo Haiku) come fonte per le icone dell'applicazione
 
-**Test di congruità/compatibilità**: test manuale interattivo (apri,
-modifica, salva, ristampa un foglio); nessuna regressione nei test di
-Fase 2/3 lanciati contro l'engine sottostante.
+**Limite noto — intestazioni non "congelate"**: le lettere di colonna
+e i numeri di riga sono disegnati alla loro posizione virtuale
+assoluta, non ancorati al bordo della viewport durante lo scroll:
+scorrendo oltre la prima schermata le intestazioni scorrono via
+insieme al contenuto invece di restare fisse. Scelta deliberata per
+questa prima versione (evitare la complessità di viste multiple
+sincronizzate/flicker da `CopyBits`); da rivedere in un secondo
+momento.
+
+### Bug scoperto: violazione di thread fra `BApplication` e `BWindow`
+
+Il primo test end-to-end (apertura di un file XLSX reale mentre l'app
+gira dentro una vera sessione grafica, non headless) si è chiuso con
+un vero crash intercettato da `debug_server` — a differenza di quasi
+tutti i bug delle fasi precedenti, qui *c'era* un `app_server`
+collegato, quindi non poteva trattarsi della stessa famiglia di bug
+"codice mai eseguito senza UI".
+
+Causa: `App::RefsReceived` (chiamato sul thread di `BApplication`)
+invocava direttamente `MainWindow::OpenFile()`, un metodo che tocca
+le `BView` della finestra (`Invalidate()`, `BTextControl::SetText()`,
+ecc.) — ma `BWindow` e le sue `BView` vivono sul thread del *loro*
+`BLooper`, non su quello dell'applicazione, e non sono sicure da
+toccare senza prima acquisire il lock della finestra
+(`BWindow::Lock()`). Chiamare quel metodo direttamente dal thread
+sbagliato, senza lock, corrompe lo stato mentre l'app_server
+potrebbe contemporaneamente elaborare un `Draw()`/`Invalidate()` sullo
+stesso oggetto dal thread corretto — una race condition classica
+nell'Application Kit di Haiku/BeOS.
+
+**Fix**: `App::RefsReceived` ora si limita a inoltrare il `BMessage`
+alla finestra con `fWindow->PostMessage(message)`, lasciando che sia
+`MainWindow::MessageReceived` (già scritto per gestire
+`B_REFS_RECEIVED`) a processarlo — così l'elaborazione avviene sul
+thread corretto, con il lock preso automaticamente dal ciclo dei
+messaggi del `BLooper`. Regola generale per il resto della Fase 4:
+mai chiamare direttamente un metodo che tocca le `BView` di una
+finestra da un altro thread — sempre passare da un `BMessage`
+inoltrato con `PostMessage()`/`SendMessage()`.
+
+**Verifica**: dopo il fix, l'app è stata rilanciata in una sessione
+grafica reale (`app_server`/Deskbar/Tracker attivi su questo sistema)
+e testata inviando veri `B_REFS_RECEIVED` (simulando un trascinamento
+da Tracker) per un file XLSX e un file ODS reali — l'app resta viva,
+importa e mostra i valori correttamente (verificato sia via
+screenshot sia interrogando la finestra dal vivo con lo strumento di
+scripting nativo `hey`), e un percorso file non valido mostra il
+proprio `BAlert` di errore invece di andare in crash.
+
+**Test di congruità/compatibilità**: build pulita (`cd ui && make`);
+avvio in una sessione grafica reale (non headless, a differenza di
+engine/translator: qui serve `app_server` per definizione); apertura
+di file reali XLSX/ODS tramite un vero `B_REFS_RECEIVED` senza crash,
+con valori mostrati correttamente nella griglia e nella barra formule;
+verifica che nessun'altra chiamata cross-thread diretta esista
+(ispezione manuale di `App.cpp`/`MainWindow.cpp` — unico punto di
+contatto fra i due thread era `RefsReceived`, già corretto). Rimane
+da fare un vero test interattivo di editing/salvataggio (barra
+formula → ricalcolo → Salva con nome → riapri), rimandato alla
+prossima iterazione insieme all'editing in-cella.
 
 ## Fase 5 — Integrazione, packaging, compatibilità reale
 

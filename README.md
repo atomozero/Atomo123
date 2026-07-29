@@ -42,9 +42,17 @@ che includa questo codice deve rispettare tale clausola.
 ## Build
 
 Vedi `legacy/opensumit/README` per le istruzioni di build del codice
-storico (in corso di stabilizzazione, Fase 1). Le istruzioni di build
-per `engine/`, `translators/` e `ui/` verranno aggiunte man mano che
-quelle fasi vengono completate.
+storico (in corso di stabilizzazione, Fase 1).
+
+```
+cd engine && make && make test         # motore di calcolo isolato
+cd translators/<nome> && make && make test && make install  # per csv/xls/xlsx/ods
+cd ui && make && make run              # applicazione (richiede una sessione grafica)
+```
+
+L'app in `ui/` apre i file tramite il Translation Kit: i translator
+vanno installati (`make install` in ciascuna cartella sotto
+`translators/`) prima di poter aprire CSV/XLS/XLSX/ODS dall'app.
 
 ## Documentazione
 
