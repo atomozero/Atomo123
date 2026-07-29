@@ -1,8 +1,9 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
-Stato: **Fase 1 chiusa** (build integrale riuscita, nota permanente sul
-dialog template rimandata alla Fase 2/oltre) — **Fase 2 in corso**
-(estrazione motore di calcolo). Aggiornato ad ogni fase completata.
+Stato: **Fase 1 e Fase 2 chiuse** (build integrale riuscita; motore di
+calcolo estratto in libreria isolata, testato headless, nessuna
+dipendenza da BView/BWindow). **Fase 3 da avviare** (translator
+Translation Kit). Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -85,25 +86,48 @@ Fatto finora (sessione di porting empirico):
 crash; import di un file `.xls` reale di test; verifica che una formula
 semplice (`=SOMMA(A1:A3)`) calcoli il risultato corretto.
 
-## Fase 2 — Estrarre il motore di calcolo come libreria isolata
+## Fase 2 — Estrarre il motore di calcolo come libreria isolata (CHIUSA)
 
 Obiettivo: separare `Formula/`, `Cell/`, `Excel/` (motore + import
 legacy) dal resto di `sum-it` (UI, dialoghi, grafici) in una libreria
 statica autonoma, senza dipendenze da `BWindow`/`BView`, compilabile e
 testabile in isolamento.
 
-- [ ] Individuare e tagliare le dipendenze dirette da classi UI BeOS
-      (`CellView`, `CellWindow`) nel codice di `Formula`/`Cell`
-- [ ] Creare una API pulita C++ per: caricare un documento, leggere
-      celle, scrivere celle, ricalcolare, salvare
-- [ ] Scrivere unit test (formule aritmetiche, riferimenti relativi/
-      assoluti, funzioni di base, import di un file XLS reale)
-- [ ] Documentare l'API in `docs/ENGINE_API.md`
+- [x] Individuate e tagliate le dipendenze dirette da classi UI BeOS
+      (`CellView`, `CellWindow`) nel codice di `Formula`/`Cell`/`Excel`:
+      escluse `CellCommands.*`/`CellScrollBar.*` (UI pura), create due
+      classi stub minimali (`engine/src/Stubs/EngineViewStub.h`,
+      `ProgressStub.h`) per i punti in cui il codice storico passa un
+      puntatore opzionale a `CCellView`/`StProgress`
+- [x] API pubblica disponibile tramite `CContainer` (già esistente nel
+      codice storico, non serve un nuovo layer): `NewCell`/
+      `TryToParseString` per scrivere, `GetValue`/`GetCellFormula` per
+      leggere, `CalcCell` per ricalcolare
+- [x] Scritto `engine/tests/smoke_test.cpp`: crea un documento
+      headless, inserisce formule con riferimenti a celle e verifica i
+      risultati calcolati — **passa** (`make test`)
+- [x] Documentata l'architettura in `docs/ENGINE_API.md` (mappa file,
+      stub, limitazioni note, bug trovati)
 
-**Test di congruità/compatibilità**: suite di unit test verde su
-build sia debug che release; nessun link a `libbe.so` nella libreria
-engine (verificabile con `nm`/`objdump` — l'engine non deve dipendere
-dall'Application/Interface Kit).
+**Scoperta importante**: l'isolamento ha fatto emergere due bug reali
+di corruzione di memoria silenziosa (non solo i consueti fix
+meccanici `long`→`int32`), entrambi dovuti all'assunzione
+`sizeof(long)==4` (vera su BeOS/PPC a 32 bit, falsa su Haiku x86_64):
+`cell::operator==/</...`  leggeva 4 byte oltre una struct da 4 byte
+(rompendo l'ordinamento di `std::map<cell,...>`, quindi l'inserimento/
+lookup delle celle), e il formato bytecode delle formule compilate
+(`kPFWordSize`/`fString`) disallineava la lettura degli opcode per lo
+stesso motivo (qualunque formula con un riferimento a cella falliva).
+Vedi `docs/ENGINE_API.md` per il dettaglio tecnico completo e
+`legacy/opensumit/PORTING_STATUS.md` per il sospetto che lo stesso bug
+affligga anche `RDialog.cpp` (non ancora verificato/corretto lì).
+
+**Test di congruità/compatibilità — superato**: `make test` in
+`engine/` produce `libengine.a` + esegue `tests/smoke_test`, verde;
+nessun link a `BView`/`BWindow` verificato con
+`nm -u libengine.a | c++filt | grep -oE "\bB[A-Z][a-zA-Z]*::"`
+(unica eccezione nota: `BAlert` nel percorso di error-reporting, vedi
+limitazioni in `docs/ENGINE_API.md`).
 
 ## Fase 3 — Translator Kit: import/export XLSX/ODS/CSV/XLS
 

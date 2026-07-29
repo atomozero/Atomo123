@@ -134,6 +134,22 @@ calcolo non passa da `RDialog`) e probabilmente diventa irrilevante in
 Fase 4, quando la UI storica verrà comunque sostituita da una nuova
 scritta da zero.
 
+**Indizio emerso durante la Fase 2**: nell'estrazione del motore di
+calcolo isolato sono stati trovati due bug reali di corruzione di
+memoria silenziosa, entrambi dovuti alla stessa assunzione errata
+`sizeof(long)==4` (vera su BeOS/PPC a 32 bit, falsa su Haiku x86_64
+dove `sizeof(long)==8`): `cell::operator==` che leggeva 4 byte oltre
+una struct da 4 byte, e il formato bytecode delle formule
+(`kPFWordSize`/`fString`) che disallineava la lettura degli opcode
+per lo stesso motivo (vedi `docs/ENGINE_API.md` per il dettaglio
+completo). `CRDialog::ConstructFromTemplate` legge anch'esso un
+flusso di byte a tag da 4 byte con logica di avanzamento indice — è
+plausibile che soffra dello stesso identico pattern di bug. Chi
+riprende l'indagine su RDialog dovrebbe controllare per primo se
+`RDialog.cpp`/`RState.cpp` o il codice di generazione risorse fanno
+assunzioni simili su `sizeof(long)` invece di usare tipi a larghezza
+fissa (`int32`).
+
 Test non ancora eseguiti (richiedono automazione di input UI, rimandati):
 import di un file `.xls` reale; verifica calcolo di una formula
 semplice via UI. Vedi `docs/ROADMAP.md` per come questi test verranno
