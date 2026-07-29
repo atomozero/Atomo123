@@ -19,6 +19,10 @@ translators/*/XlsxTranslator
 translators/*/OdsTranslator
 translators/*/tests/test_*_translator
 
+# Build artifacts (ui/ Makefile)
+ui/Atomo123
+ui/src/*.o
+
 # Compiled binaries produced by the legacy build (not source)
 legacy/opensumit/bsl/bsl
 legacy/opensumit/rez/rez
