@@ -178,6 +178,27 @@ interazione che non arriva mai in un'esecuzione headless da riga di
 comando. Per questo ogni test headless in questo progetto va sempre
 lanciato con `timeout N ./binario`.
 
+## Bug trovato costruendo il translator XLS legacy (Fase 3)
+
+8. **`CExcel5Filter::GetBookStream`** (`Excel.h`/`Excel.OLE2.cpp`):
+   dichiarata `throw()` (nessuna eccezione permessa — equivalente a
+   `noexcept` in C++17, lo standard usato da questo progetto), ma il
+   suo corpo chiama `CExcelStream::Read`, che lancia `CErr` quando lo
+   stream non ha abbastanza dati validi (caso normale con un file XLS
+   malformato o troncato, non un caso limite raro). Una funzione
+   `noexcept`/`throw()` che lancia comunque fa chiamare
+   **`std::terminate()` immediatamente**, bypassando qualunque
+   `try`/`catch` più in alto nella catena di chiamate — anche un
+   `catch(...)` che avvolge direttamente la chiamata. Sintomo: il
+   translator XLS terminava il processo con "terminate called after
+   throwing an instance of 'CErr'" nonostante `Translate()` avesse un
+   `catch(...)` attorno alla costruzione di `CExcel5Filter`. **Fix**:
+   rimossa la specifica `throw()` da dichiarazione e definizione. A
+   differenza degli altri bug di questa sessione, non è legato
+   all'assenza di app_server/UI: è un problema di correttezza C++
+   puro, preesistente ma mai manifestatosi prima di testare
+   l'importer con dati realmente malformati.
+
 ## Limitazioni note
 
 - **Alert di errore reali**: `CErr::DoError()` (`MyError.cpp`) crea

@@ -1,8 +1,8 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
 Stato: **Fase 1 e Fase 2 chiuse**; **Fase 3 in corso** (translator CSV
-completato, translator XLS legacy in lavorazione). Aggiornato ad ogni
-fase completata.
+e translator XLS legacy completati, mancano XLSX e ODS). Aggiornato ad
+ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -139,7 +139,14 @@ usano l'engine di Fase 2 e librerie esterne leggere.
       di round-trip verde (`make test`). Vedi `docs/TRANSLATORS.md`
       per i dettagli e i bug scoperti costruendolo (elenco completo
       sotto).
-- [ ] Translator XLS legacy: riusa l'importer `Excel*.cpp` già portato
+- [x] Translator XLS legacy: `translators/xls/`, riusa
+      `CExcel5Filter` (già portato in Fase 1/2) per l'import, converte
+      verso ASCD. Riconoscimento formato (firma OLE2) e robustezza
+      (fallimento pulito su dati non validi) verificati con test verde
+      (`make test`); **manca ancora un test di importazione end-to-end
+      con un file `.xls` reale** (nessuno disponibile in questa
+      sessione — vedi `docs/TRANSLATORS.md`). Solo import per ora, il
+      motore non ha un writer per il formato binario legacy.
 - [ ] Translator XLSX: basato su OpenXLSX (BSD-3, C++17, dipendenze
       leggere PugiXML+Zippy/libzip) — valutare porting su Haiku
 - [ ] Translator ODS: valutare liborcus (Document Liberation Project,
@@ -183,6 +190,14 @@ Elenco completo, in ordine di scoperta (dettaglio tecnico completo in
    `gFuncArrayByNr` con l'identificatore di funzione **prima** di
    controllare se fosse valido (-1 = non trovata) — indice negativo
    su un array C.
+7. **Fase 3** — `CExcel5Filter::GetBookStream` era dichiarata
+   `throw()` (equivalente a `noexcept` in C++17) ma il suo corpo può
+   lanciare `CErr` su dati non validi: una funzione `noexcept` che
+   lancia comunque causa `std::terminate()` immediato, bypassando
+   qualunque `catch` a monte (anche uno che avvolge direttamente la
+   chiamata). A differenza degli altri bug di questa lista, non è
+   legato all'assenza di app_server/UI — è un problema di correttezza
+   C++ puro, preesistente nel codice storico.
 
 **Nota aperta importante**: i fix 3-6 rendono il codice sicuro (nessun
 crash/blocco), ma la causa di fondo dei bug 5-6 (tabella funzioni mai
