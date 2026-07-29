@@ -100,6 +100,33 @@ incrociata reale con il tool a riga di comando di sistema
 prova concreta che si tratta davvero degli appunti di sistema
 condivisi, non di uno stato privato del processo.
 
+## Locale Kit: numeri formattati secondo le preferenze di sistema
+
+Il motore di calcolo formatta i numeri in modo generico
+(`CFormatter`/`eGeneral` in `engine/src/Cell/Formatter.cpp`, nessuna
+nozione di locale) — coerente col fatto che è codice storico BeOS
+isolato, non pensato per il Locale Kit moderno di Haiku. `SheetView`
+aggiunge un livello di presentazione sopra quel testo: se il valore di
+una cella è numerico (`CContainer::GetValue` restituisce `eNumData`,
+non NaN), il testo mostrato nella griglia viene rigenerato con
+`BNumberFormat::Format()`, che usa le preferenze di formattazione del
+sistema (separatore delle migliaia, punto o virgola decimale). La
+barra formule invece mostra sempre il testo grezzo/editabile
+(`GetCellFormula`), non quello formattato — coerente col comportamento
+di un vero foglio di calcolo (editing sul valore vero, visualizzazione
+formattata solo nella cella).
+
+**Verifica**: aperto un file ASCD di test con A1 = 1234567.89 in una
+sessione grafica reale con locale italiano attivo — la griglia mostra
+"1.234.567,89" (punto come separatore delle migliaia, convenzione
+italiana), la barra formule mostra "1234567.89" invariato.
+
+**Non ancora fatto**: formattazione valuta (`BNumberFormat::
+FormatMonetary`) e data (`BDateFormat`) — il motore distingue i tipi
+internamente ma la UI non offre ancora un modo per l'utente di
+impostare il formato di una cella (nessun menu Formato, vedi limiti
+noti sotto).
+
 ## Bug scoperto: violazione di thread fra `BApplication` e `BWindow`
 
 Il primo test end-to-end (apertura di un file XLSX reale in una vera

@@ -316,7 +316,18 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
 - [ ] Export: "Salva con nome" scrive solo in ASCD nativo (nessun
       translator ha ancora un writer per CSV/XLS/XLSX/ODS, coerente
       col limite "solo import" già documentato in Fase 3)
-- [ ] Locale Kit: formattazione numeri/valute/date locale-aware
+- [x] Locale Kit: i valori numerici nella griglia (non nella barra
+      formule, che mostra sempre il testo grezzo modificabile) sono
+      formattati con `BNumberFormat` secondo le preferenze di sistema
+      (separatore delle migliaia, punto/virgola decimale) — livello di
+      presentazione sopra il testo già calcolato dal motore
+      (`CFormatter`/`eGeneral`, generico e non locale-aware). Verificato
+      dal vivo aprendo un file con un numero grande (1234567.89): la
+      griglia mostra "1.234.567,89" (convenzione italiana, punto per le
+      migliaia) mentre la barra formule mostra il valore grezzo
+      "1234567.89". Formattazione valuta/data non ancora esposta (il
+      motore distingue i tipi ma la UI non offre ancora un modo per
+      impostare il formato di una cella).
 - [ ] Print Kit: stampa/anteprima
 - [ ] Icone: autorizzato l'uso del portale www.hvif-store.art (formato
       HVIF nativo Haiku) come fonte per le icone dell'applicazione
