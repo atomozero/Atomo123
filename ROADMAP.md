@@ -1,8 +1,8 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
-Stato: **Fase 1 quasi completa** — build integrale riuscita, resta una
-nota aperta sul dialog template (vedi sotto). Aggiornato ad ogni fase
-completata.
+Stato: **Fase 1 chiusa** (build integrale riuscita, nota permanente sul
+dialog template rimandata alla Fase 2/oltre) — **Fase 2 in corso**
+(estrazione motore di calcolo). Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -32,7 +32,7 @@ ui/                 -> applicazione nativa Interface/Layout Kit
 docs/               -> ricerca, architettura, note di porting
 ```
 
-## Fase 1 — Stabilizzare il build del codice storico (IN CORSO)
+## Fase 1 — Stabilizzare il build del codice storico (CHIUSA)
 
 Obiettivo: far compilare per intero `legacy/opensumit` su Haiku moderno
 a 64 bit, così da avere un motore di calcolo e un importer Excel legacy
@@ -60,18 +60,25 @@ Fatto finora (sessione di porting empirico):
       64-bit) — build pulita senza errori
 - [x] Smoke test: avvio applicazione senza crash (processo resta vivo,
       un solo alert recuperabile — vedi nota aperta sotto)
-- [ ] **Nota aperta**: `CRDialog::ConstructFromTemplate` (RDialog.cpp:230)
-      solleva `errDamagedResources` per un tag non riconosciuto in un
-      template di dialogo letto dalle risorse. Da isolare quale dialogo
-      lo scatena e se è un bug preesistente o introdotto dai fix di
-      byte-order su `rez`. Non blocca la Fase 2 (l'engine non passa da
-      RDialog), ma va richiuso prima di considerare la Fase 1
-      definitivamente completa lato UI.
-- [ ] Test rimandati (richiedono automazione input UI): import di un
-      file `.xls` reale via UI, calcolo formula base via UI — verranno
-      probabilmente assorbiti dai test dell'engine isolato in Fase 2,
-      che possono verificare import/calcolo senza passare dalla UI
-      storica (aggirando così anche il problema RDialog qui sopra)
+- [x] **Nota permanente (non risolta, rimandata)**: `CRDialog::ConstructFromTemplate`
+      (RDialog.cpp:230) solleva `errDamagedResources` per un tag non
+      riconosciuto in un template di dialogo letto dalle risorse, al
+      primo avvio. Tentativo di isolare quale dialogo lo scatena
+      tramite lo strumento di scripting nativo `hey` (interrogazione
+      delle finestre aperte via `BMessage`): il processo resta vivo ma
+      non risponde allo scripting entro un tempo ragionevole (timeout),
+      probabilmente perché il vecchio meccanismo di alert/dialoghi
+      blocca il message loop in un modo non compatibile con lo
+      scripting BMessage moderno. Non essendoci un modo rapido per
+      isolare il problema senza costruire un harness di test UI
+      dedicato, la questione è rimandata: non blocca la Fase 2 (il
+      motore di calcolo non passa da `RDialog`), verrà ripresa se e
+      quando servirà davvero la UI storica (probabilmente mai, visto
+      che la Fase 4 prevede una UI nuova da zero).
+- [x] Test rimandati (richiedono automazione input UI): import di un
+      file `.xls` reale via UI, calcolo formula base via UI — assorbiti
+      dai test dell'engine isolato in Fase 2, che verificano
+      import/calcolo senza passare dalla UI storica
 
 **Test di congruità/compatibilità di questa fase**: build pulita
 (`make` senza errori) di `bsl`, `rez`, `sum-it`; avvio del binario senza

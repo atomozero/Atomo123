@@ -120,12 +120,19 @@ dialogo dalle risorse generate, e solleva un'eccezione catturata
 (l'app non crasha, mostra solo l'alert). Non ancora determinato se sia
 un bug preesistente nel codice storico (dialogo con elemento non
 gestito da questa build) o un effetto collaterale dei fix di
-byte-order/puntatori applicati a `rez`. **Nota aperta per la Fase 1**:
-va isolato quale dialogo/template scatena l'errore (probabilmente
-generato al primo avvio, prima ancora di aprire un documento) e
-determinarne la causa esatta prima di considerare la Fase 1
-completamente chiusa. Non blocca il proseguimento verso la Fase 2,
-poiché il motore di calcolo non passa da `RDialog`.
+byte-order/puntatori applicati a `rez`.
+
+Tentativo di isolare il dialogo responsabile usando lo strumento di
+scripting nativo `hey` (query delle finestre aperte via BMessage
+scripting): il processo resta vivo ma non risponde alla query entro
+un tempo ragionevole (timeout dopo 2 minuti), probabilmente perché il
+vecchio meccanismo di alert modale del codice storico blocca il
+message loop in un modo incompatibile con lo scripting BMessage
+moderno. **Deciso di rimandare** questa indagine invece di investire
+in un harness di test UI dedicato: non blocca la Fase 2 (il motore di
+calcolo non passa da `RDialog`) e probabilmente diventa irrilevante in
+Fase 4, quando la UI storica verrà comunque sostituita da una nuova
+scritta da zero.
 
 Test non ancora eseguiti (richiedono automazione di input UI, rimandati):
 import di un file `.xls` reale; verifica calcolo di una formula
