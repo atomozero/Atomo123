@@ -328,7 +328,26 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       "1234567.89". Formattazione valuta/data non ancora esposta (il
       motore distingue i tipi ma la UI non offre ancora un modo per
       impostare il formato di una cella).
-- [ ] Print Kit: stampa/anteprima
+- [x] Print Kit: voce "Stampa…" nel menu File, tramite `BPrintJob`
+      (`ConfigJob` per il dialogo di sistema stampante/opzioni,
+      `BeginJob`/`DrawView`/`SpoolPage`/`CommitJob` per la stampa
+      vera e propria). Si stampa solo l'area del foglio con dati
+      (`SheetView::ContentRect`, nuovo metodo pubblico), suddivisa in
+      pagine in base all'area stampabile scelta — non l'intero
+      intervallo virtuale del motore. **Limite noto**: le intestazioni
+      di riga/colonna compaiono solo sulla prima pagina (sono
+      disegnate da `SheetView::Draw` solo nella banda fissa
+      0–kHeaderWidth/kHeaderHeight, non ripetute per ogni pagina
+      stampata). **Verificato**: build pulita, e test di
+      non-regressione (apertura di un file reale col nuovo codice
+      presente, nessun crash) — non è stato possibile un test
+      end-to-end di stampa reale in questa sessione: `BPrintJob::
+      ConfigJob()` apre un dialogo di sistema che richiede una scelta
+      utente (stampante/opzioni/OK), non simulabile con un `BMessage`
+      costruito a mano come `B_REFS_RECEIVED` (stesso limite già
+      documentato per `B_SAVE_REQUESTED` e per il doppio click/
+      digitazione diretta in-cella — nessuno strumento di iniezione
+      mouse/tastiera in questo ambiente).
 - [ ] Icone: autorizzato l'uso del portale www.hvif-store.art (formato
       HVIF nativo Haiku) come fonte per le icone dell'applicazione
 

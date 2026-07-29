@@ -127,6 +127,50 @@ internamente ma la UI non offre ancora un modo per l'utente di
 impostare il formato di una cella (nessun menu Formato, vedi limiti
 noti sotto).
 
+## Print Kit: stampa con `BPrintJob`
+
+"Stampa…" nel menu File (`MainWindow::PrintDocument`) segue il
+pattern standard di Haiku per la stampa:
+
+1. `BPrintJob::ConfigJob()` — mostra il dialogo di sistema
+   (stampante/opzioni); se l'utente annulla o non c'è nessuna
+   stampante configurata, restituisce un errore e non si stampa
+   nulla.
+2. `BeginJob()`, poi un ciclo che copre `SheetView::ContentRect()`
+   (nuovo metodo pubblico: il rettangolo in pixel, intestazioni
+   comprese, che copre le celle con contenuto — calcolato da
+   `CContainer::GetBounds()` più `SheetView::CellRect()`, non
+   l'intero intervallo virtuale del motore di 702×16384 celle)
+   suddiviso in pagine larghe/alte quanto `BPrintJob::
+   PrintableRect()`. Per ogni pagina: `DrawView(fSheetView,
+   pageSlice, BPoint(0,0))` (Haiku disegna quella porzione della
+   view direttamente sul job di stampa) poi `SpoolPage()`.
+3. `CommitJob()` se tutto è andato bene (`CanContinue()` ancora
+   vero), altrimenti `CancelJob()`.
+
+**Limite noto**: le intestazioni di riga/colonna sono disegnate da
+`SheetView::Draw()` solo nella banda fissa `0`–`kHeaderWidth`/
+`kHeaderHeight` (stessa scelta della UI a schermo, vedi limite
+"intestazioni non congelate" sotto) — nella stampa multi-pagina
+questo significa che compaiono solo sulla prima pagina (in alto a
+sinistra), non ripetute su ogni pagina come farebbe un foglio di
+calcolo maturo. Andrebbe risolto facendo disegnare a `SheetView` le
+intestazioni separatamente per ogni pagina durante la stampa, non
+insieme al contenuto — rimandato.
+
+**Verifica**: build pulita e test di non-regressione (apertura di un
+file reale col nuovo codice presente, nessun crash). Un test
+end-to-end di stampa reale non è stato possibile in questa sessione:
+`ConfigJob()` apre un dialogo di sistema che richiede una scelta
+dell'utente (stampante, opzioni, conferma) — non simulabile
+costruendo un `BMessage` a mano come si fa per `B_REFS_RECEIVED`
+(stesso limite già incontrato per `B_SAVE_REQUESTED` e per il doppio
+click/digitazione diretta in-cella: nessuno strumento di iniezione
+mouse/tastiera disponibile in questo ambiente di test). Il sistema ha
+comunque i transport "Preview" e "Save as PDF" già disponibili come
+add-on (`/boot/system/add-ons/Print/`), utilizzabili da un utente
+reale per un test interattivo senza bisogno di una stampante fisica.
+
 ## Bug scoperto: violazione di thread fra `BApplication` e `BWindow`
 
 Il primo test end-to-end (apertura di un file XLSX reale in una vera
