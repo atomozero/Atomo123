@@ -349,7 +349,14 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       digitazione diretta in-cella — nessuno strumento di iniezione
       mouse/tastiera in questo ambiente).
 - [ ] Icone: autorizzato l'uso del portale www.hvif-store.art (formato
-      HVIF nativo Haiku) come fonte per le icone dell'applicazione
+      HVIF nativo Haiku) come fonte per le icone dell'applicazione —
+      **bloccato**: verificato il 2026-07-29, la galleria del sito
+      risultava vuota ("0 icons found" in home, i percorsi tentati
+      /icons e /search?q=... restituivano 404). Non essendo disponibile
+      contenuto scaricabile dalla fonte autorizzata, l'item resta
+      aperto invece di disegnare un'icona da zero non richiesta —
+      da riprovare in una sessione futura (magari il sito verrà
+      popolato) o da chiedere indicazioni dirette all'utente.
 
 **Limite noto — intestazioni non "congelate"**: le lettere di colonna
 e i numeri di riga sono disegnati alla loro posizione virtuale
