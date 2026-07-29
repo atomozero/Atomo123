@@ -2,18 +2,19 @@
 
 Stato: **Fase 1, Fase 2 e Fase 3 chiuse** (translator CSV, XLS legacy,
 XLSX e ODS tutti completati e testati); **Fase 4 (UI nativa) in stato
-avanzato** — finestra principale, griglia, apertura file via
+molto avanzato** — finestra principale, griglia, apertura file via
 Translation Kit, barra formule, editing in-cella, menu Modifica
-(taglia/copia/incolla/cancella/trova), Locale Kit, Print Kit e icona
-applicazione (HVIF, disegnata da zero) tutti fatti e testati dal vivo
-in una sessione grafica reale; mancano ancora export, formattazione
-(menu Formato), sostituisci e toolbar. **Fase 5 (packaging/
+(taglia/copia/incolla/cancella/trova e sostituisci), toolbar, Locale
+Kit, Print Kit, icona applicazione (HVIF, disegnata da zero) ed export
+CSV tutti fatti e testati; manca solo un menu Formato (formattazione
+cella) per considerarla sostanzialmente completa. **Fase 5 (packaging/
 compatibilità) in corso** — ricetta HaikuDepot pronta ma non ancora
 buildabile (nessun repository pubblico); licenza **MIT** decisa per
 il codice nuovo (vedi LICENSE — il codice storico Sum-It/`engine/`
 resta sotto la sua licenza BSD originale); resta il test di
-compatibilità su un corpus di file reali. Aggiornato ad ogni fase
-completata.
+compatibilità su un corpus di file reali. **Fase 6 avviata** (guida
+utente fatta; grafici/pivot/funzioni con nome/ottimizzazione ancora da
+fare). Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -335,9 +336,16 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       documento che contiene il testo cercato, con un riepilogo del
       numero di celle modificate. **Non ancora fatto**: nessun menu
       Formato.
-- [ ] Toolbar — per ora solo i menu File (Nuovo/Apri/Salva con
-      nome/Stampa/Esci) e Modifica (Taglia/Copia/Incolla/Cancella/
-      Trova e sostituisci)
+- [x] Toolbar: riga di `BButton` semplici (Nuovo/Apri/Salva/Stampa/
+      Taglia/Copia/Incolla/Trova) sotto il menu, non `BToolBar` — quella
+      classe vive solo sotto `develop/headers/private/shared/` su
+      questo sistema, non nell'SDK pubblico stabile, e il progetto usa
+      solo API pubbliche (nessuna nuova dipendenza da icone: pulsanti
+      di solo testo, non icone-più-testo come un vero `BToolBar`).
+      Ogni pulsante invia lo stesso `BMessage` già gestito dal menu
+      corrispondente — nessuna logica nuova, solo un secondo punto di
+      accesso alle stesse azioni. Verificato dal vivo: la barra compare
+      correttamente con tutti e otto i pulsanti (screenshot).
 - [x] Export CSV: "Salva con nome" sceglie il formato dall'estensione
       del nome file (".csv" esporta in CSV, altrimenti resta sul
       formato nativo ASCD — non c'è ancora un selettore di formato

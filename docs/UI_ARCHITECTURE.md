@@ -10,14 +10,14 @@ file (`translators/`).
 ```
 ui/src/App.h/.cpp          BApplication: crea la finestra, inoltra i
                             file aperti da Tracker/riga di comando
-ui/src/MainWindow.h/.cpp   BWindow: menu File/Modifica, barra formule,
-                            cella corrente, apertura/salvataggio file
+ui/src/MainWindow.h/.cpp   BWindow: menu File/Modifica, toolbar, barra
+                            formule, cella corrente, apertura/salvataggio
 ui/src/SheetView.h/.cpp    BView custom: griglia, selezione, editing
 ui/src/AscdIO.h/.cpp       Lettura/scrittura del formato nativo ASCD
                             (stessa logica duplicata nei translator,
                             vedi docs/TRANSLATORS.md)
-ui/src/FindWindow.h/.cpp   BWindow separata per "Trova" (campo di
-                            ricerca + pulsante), inoltra a MainWindow
+ui/src/FindWindow.h/.cpp   BWindow separata per "Trova e sostituisci"
+                            (campi + pulsanti), inoltra a MainWindow
 ui/Atomo123.rdef           Risorse dell'app (firma, versione, icona
                             VICN/BEOS:ICON), compilate da rc + xres
 ui/icons/                  Icona sorgente: atomo123.svg (disegnata a
@@ -81,6 +81,20 @@ sulla `BTextView` interna (`BTextControl::TextView()->AddFilter(...)`),
 che intercetta `B_KEY_DOWN` con `raw_char == B_ESCAPE`, lo trasforma
 in un messaggio di annullamento per `SheetView` e restituisce
 `B_SKIP_MESSAGE` per impedire che venga anche inserito come carattere.
+
+## Toolbar: `BButton` semplici, non `BToolBar`
+
+Una riga di `BButton` di solo testo sotto il menu (Nuovo/Apri/Salva/
+Stampa/Taglia/Copia/Incolla/Trova), non la classe `BToolBar` di Haiku:
+quella vive solo sotto `develop/headers/private/shared/` su questo
+sistema, non nell'SDK pubblico stabile, e il progetto usa
+deliberatamente solo API pubbliche documentate (Interface/Locale/
+Print/Translation/Clipboard Kit). Ogni pulsante invia lo stesso
+`BMessage` già gestito dal menu corrispondente (`SetTarget(this)`,
+stesso target di `MessageReceived`) — nessuna logica nuova, solo un
+secondo punto di accesso alle stesse azioni. Nessuna icona per i
+pulsanti (solo testo): evita di dover disegnare un intero set di
+icone HVIF in più, oltre a quella dell'applicazione.
 
 ## Taglia/copia/incolla: appunti di sistema veri, non un buffer privato
 
@@ -412,7 +426,6 @@ invece della sola revisione manuale del codice.
   salvataggio: il formato si decide dall'estensione del nome file.
 - **Un solo foglio**: coerente col limite già accettato in Fase 3 per
   XLSX/ODS (si importa solo il primo foglio/tabella).
-- Solo i menu File e Modifica: nessun menu Formato, nessun dialogo
-  trova/sostituisci.
+- Solo i menu File e Modifica: nessun menu Formato.
 - Nessuna formattazione (font/colore/numero) esposta all'utente, anche
   se il motore la supporta internamente.
