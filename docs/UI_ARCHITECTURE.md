@@ -178,18 +178,20 @@ comunque i transport "Preview" e "Save as PDF" già disponibili come
 add-on (`/boot/system/add-ons/Print/`), utilizzabili da un utente
 reale per un test interattivo senza bisogno di una stampante fisica.
 
-## Trova: una seconda finestra, stessa regola sui thread
+## Trova e sostituisci: una seconda finestra, stessa regola sui thread
 
-"Trova…" nel menu Modifica apre `FindWindow`, una piccola `BWindow`
-separata con un campo di ricerca e un pulsante "Trova successivo".
-Non esegue la ricerca da sé — le celle appartengono al documento di
-`MainWindow`, che vive sul thread della finestra principale, un
-`BLooper` diverso da quello di `FindWindow` — quindi invia il testo
-cercato con un `BMessage` (`kMsgFindNext`) a un `BMessenger` passato
-dal chiamante, non chiama un metodo di `MainWindow` direttamente:
-stessa regola del bug di thread `BApplication`/`BWindow` descritto
-sotto, applicata stavolta fra due finestre invece che fra applicazione
-e finestra.
+"Trova e sostituisci…" nel menu Modifica apre `FindWindow`, una
+piccola `BWindow` separata con un campo di ricerca, un campo
+"Sostituisci con:", e tre pulsanti ("Trova successivo", "Sostituisci",
+"Sostituisci tutto"). Non esegue la ricerca/sostituzione da sé — le
+celle appartengono al documento di `MainWindow`, che vive sul thread
+della finestra principale, un `BLooper` diverso da quello di
+`FindWindow` — quindi invia i testi con un `BMessage`
+(`kMsgFindNext`/`kMsgReplaceCurrent`/`kMsgReplaceAll`) a un
+`BMessenger` passato dal chiamante, non chiama un metodo di
+`MainWindow` direttamente: stessa regola del bug di thread
+`BApplication`/`BWindow` descritto sotto, applicata stavolta fra due
+finestre invece che fra applicazione e finestra.
 
 `MainWindow::FindNext()` scandisce le celle esistenti del documento
 (`CCellIterator`) confrontando il testo (`GetCellFormula`,
@@ -202,12 +204,37 @@ di un iteratore invalidato da una modifica del documento fra due
 "Trova successivo") — adeguata alle dimensioni di foglio di questa
 prima versione dell'app.
 
+`MainWindow::ReplaceCurrent()`/`ReplaceAll()` riusano la stessa
+funzione (`ReplaceAllCaseInsensitive`, locale a `MainWindow.cpp`) per
+sostituire tutte le occorrenze del testo cercato dentro il testo di
+una cella, cercando senza distinguere maiuscole/minuscole ma
+inserendo il testo di sostituzione così com'è scritto (non nella
+capitalizzazione originale). `ReplaceAll` prima raccoglie in un
+`std::vector<cell>` tutte le celle da modificare, poi le modifica in
+un secondo ciclo separato: `CCellIterator` scorre la mappa interna del
+documento, che non va alterata (`TryToParseString` può
+aggiungere/rimuovere celle) mentre la si sta iterando.
+
 `FindWindow::QuitRequested()` non chiude mai davvero la finestra (si
 nasconde e basta, restituendo `false`): `MainWindow` tiene un unico
 puntatore per tutta la vita dell'app, mostrandola/attivandola di nuovo
-a ogni "Trova…" invece di ricrearla, e la distrugge per davvero solo
-nel proprio distruttore (`Lock()` + `Quit()` diretto, non tramite
-`B_QUIT_REQUESTED` che passerebbe da quell'hook).
+a ogni apertura del dialogo invece di ricrearla, e la distrugge per
+davvero solo nel proprio distruttore (`Lock()` + `Quit()` diretto, non
+tramite `B_QUIT_REQUESTED` che passerebbe da quell'hook).
+
+**Verifica**: la finestra si apre correttamente dal vivo (invocata dal
+menu con `hey` — `MenuItem 6 of Menu 1 of MenuBar of Window 0` — non
+simulando il `BMessage` a mano), mostrando tutti e tre i controlli.
+La logica di sostituzione (`ReplaceAllCaseInsensitive` + la scansione
+a due passate di `ReplaceAll`) è stata verificata con un harness
+dedicato che riproduce esattamente lo stesso algoritmo su un
+documento con due celle contenenti "Mondo"/"mondo": trova entrambe,
+sostituisce correttamente producendo "Ciao Terra"/"Terra intero". La
+sessione di test in questo momento condivideva il desktop con
+un'altra attività grafica indipendente dell'utente (finestre che
+apparivano/sparivano, processi chiusi dall'esterno) — non affidabile
+per uno screenshot pulito dell'esito finale nella griglia, da qui la
+scelta dell'harness diretto invece di un ennesimo tentativo dal vivo.
 
 ## Icona dell'applicazione
 

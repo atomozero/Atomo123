@@ -87,13 +87,21 @@ editor di testo, e viceversa. Il contenuto copiato è la formula della
 cella (lo stesso testo mostrato dalla barra formule), non il valore
 già calcolato.
 
-## Trova
+## Trova e sostituisci
 
-Modifica → Trova… apre una piccola finestra con un campo di ricerca e
-un pulsante "Trova successivo". Cerca (senza distinguere
-maiuscole/minuscole) nel testo delle celle, a partire dalla cella
-attualmente selezionata, tornando all'inizio se non trova altri
-risultati dopo. **Non ancora disponibile**: "Sostituisci".
+Modifica → Trova e sostituisci… apre una piccola finestra con un
+campo "Cerca:", un campo "Sostituisci con:" e tre pulsanti. La ricerca
+(senza distinguere maiuscole/minuscole) parte dalla cella attualmente
+selezionata, tornando all'inizio se non trova altri risultati dopo.
+
+- **Trova successivo**: seleziona la cella successiva che contiene il
+  testo cercato.
+- **Sostituisci**: sostituisce tutte le occorrenze del testo cercato
+  nella cella attualmente selezionata, poi passa al risultato
+  successivo.
+- **Sostituisci tutto**: sostituisce tutte le occorrenze in ogni
+  cella del documento che contiene il testo cercato, e mostra quante
+  celle sono state modificate.
 
 ## Stampa
 

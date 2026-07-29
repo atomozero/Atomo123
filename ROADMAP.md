@@ -318,19 +318,26 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       dal nostro binario → lettura con `clipboard -p`, e scrittura con
       `clipboard -c` → lettura dal nostro binario, in entrambe le
       direzioni con esito corretto.
-- [x] Dialogo Trova: nuova finestra `FindWindow` (campo di ricerca +
-      pulsante "Trova successivo"), voce "Trova…" nel menu Modifica.
-      Non esegue la ricerca da sé (le celle appartengono al documento
-      di `MainWindow`, su un altro thread/`BLooper`): inoltra il testo
-      cercato con un `BMessage` a un `BMessenger`, stessa regola del
-      bug di thread `BApplication`/`BWindow` già corretto sopra. La
-      ricerca (`MainWindow::FindNext`) scandisce le celle esistenti
+- [x] Dialogo Trova e sostituisci: finestra `FindWindow` (campo di
+      ricerca, campo "Sostituisci con:", pulsanti "Trova successivo"/
+      "Sostituisci"/"Sostituisci tutto"), voce "Trova e sostituisci…"
+      nel menu Modifica. Non esegue la ricerca/sostituzione da sé (le
+      celle appartengono al documento di `MainWindow`, su un altro
+      thread/`BLooper`): inoltra i testi con un `BMessage` a un
+      `BMessenger`, stessa regola del bug di thread
+      `BApplication`/`BWindow` già corretto sopra. La ricerca
+      (`MainWindow::FindNext`) scandisce le celle esistenti
       confrontando il testo (case-insensitive, sottostringa) e sceglie
-      il primo risultato dopo la cella selezionata, con
-      "wrap-around" se non ce n'è nessuno. **Non ancora fatto**:
-      "Sostituisci", nessun menu Formato.
+      il primo risultato dopo la cella selezionata, con "wrap-around"
+      se non ce n'è nessuno. "Sostituisci" sostituisce tutte le
+      occorrenze nella cella selezionata poi passa al risultato
+      successivo; "Sostituisci tutto" lo fa su ogni cella del
+      documento che contiene il testo cercato, con un riepilogo del
+      numero di celle modificate. **Non ancora fatto**: nessun menu
+      Formato.
 - [ ] Toolbar — per ora solo i menu File (Nuovo/Apri/Salva con
-      nome/Stampa/Esci) e Modifica (Taglia/Copia/Incolla/Cancella/Trova)
+      nome/Stampa/Esci) e Modifica (Taglia/Copia/Incolla/Cancella/
+      Trova e sostituisci)
 - [x] Export CSV: "Salva con nome" sceglie il formato dall'estensione
       del nome file (".csv" esporta in CSV, altrimenti resta sul
       formato nativo ASCD — non c'è ancora un selettore di formato
