@@ -261,7 +261,9 @@ nei test headless per non restare bloccati.
 
 Obiettivo: applicazione con griglia celle, editing, formattazione,
 grafici base, scritta da zero (non riusando `CellView`/`CellWindow`
-BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3.
+BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
+`docs/UI_ARCHITECTURE.md` per il dettaglio tecnico completo
+(architettura, editing in-cella, bug trovati, test, limiti noti).
 
 - [x] Finestra principale, griglia celle (vista custom `SheetView`,
       non `BGridLayout`: la griglia è disegnata a mano in `Draw()`
@@ -275,12 +277,27 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3.
       ODS/ASCD nativo) in base al contenuto reale del file, non
       all'estensione — stesso meccanismo Translation Kit di Fase 3,
       ora usato da un consumer reale.
-- [x] Editing tramite barra formule (non ancora un editor in-cella
-      con doppio click — limite noto, vedi sotto): selezione con
-      mouse/tastiera, la barra formula mostra/modifica la formula
-      della cella corrente, Invio conferma e ricalcola.
-- [ ] Editing in-cella (doppio click sulla cella, non solo dalla
-      barra formule)
+- [x] Editing tramite barra formule: selezione con mouse/tastiera, la
+      barra formula mostra/modifica la formula della cella corrente,
+      Invio conferma e ricalcola.
+- [x] Editing in-cella: doppio click su una cella (rilevato dal campo
+      "clicks" del messaggio di mouse down) o si inizia direttamente a
+      digitare mentre una cella è selezionata (come Excel/LibreOffice
+      Calc: il carattere digitato sostituisce il contenuto) aprono un
+      `BTextControl` temporaneo posizionato sopra la cella
+      (`SheetView::StartEditing`/`CommitEditing`). Invio o perdita di
+      selezione (click altrove) confermano; Escape annulla. Vedi nota
+      tecnica sotto sul perché Escape richiede un `BMessageFilter`
+      sulla `BTextView` interna invece di un semplice `KeyDown`.
+- [ ] Test end-to-end del doppio click/digitazione diretta: verificato
+      con test di non-regressione (apertura file reale con il nuovo
+      codice presente, nessun crash) e con revisione manuale del
+      codice, ma non con un click/tasto realmente sintetizzato — questo
+      ambiente di test non ha uno strumento di iniezione mouse/tastiera
+      (a differenza di `B_REFS_RECEIVED`/`B_SAVE_REQUESTED`, che si
+      possono simulare costruendo il `BMessage` a mano). Verifica
+      interattiva manuale rimandata a un utente reale o a un ambiente
+      con tale strumento.
 - [ ] Menu/toolbar completi, dialoghi (trova/sostituisci,
       formattazione, ecc.) — per ora solo il menu File (Nuovo/Apri/
       Salva con nome/Esci)
@@ -341,17 +358,52 @@ screenshot sia interrogando la finestra dal vivo con lo strumento di
 scripting nativo `hey`), e un percorso file non valido mostra il
 proprio `BAlert` di errore invece di andare in crash.
 
+### Nota tecnica: perché Escape nell'editor in-cella serve un `BMessageFilter`
+
+Un primo tentativo di gestire Escape per annullare l'editing in-cella
+sovrascrivendo `KeyDown` in una sottoclasse di `BTextControl` non
+avrebbe funzionato: `BTextControl::MakeFocus()` inoltra il fuoco
+tastiera alla sua `BTextView` interna (che gestisce davvero
+l'inserimento testo), quindi è quella a ricevere gli eventi tastiera,
+non il `BTextControl` contenitore — un `KeyDown` sovrascritto sul
+contenitore non verrebbe mai chiamato durante la digitazione normale.
+Soluzione: un `BMessageFilter` installato direttamente sulla
+`BTextView` interna (ottenuta con `BTextControl::TextView()`), che
+intercetta `B_KEY_DOWN` con `raw_char == B_ESCAPE` e la trasforma in
+un messaggio di annullamento per `SheetView`, restituendo
+`B_SKIP_MESSAGE` per impedire che l'Escape venga anche inserito come
+carattere.
+
+### Test di round-trip di AscdIO (Fase 4)
+
+`ui/tests/test_ascd_io.cpp` (`cd ui && make test`, non richiede una
+sessione grafica) verifica che `SaveASCD`/`LoadASCD` — la stessa
+logica usata da "Salva con nome" e dall'apertura di file `.ascd`
+nativi — siano l'una l'inversa dell'altra: numeri, testo e una
+formula (verificata anche nel suo ricalcolo dal motore, non solo nel
+testo) sopravvivono a un giro salva→ricarica completo. Non passa dalla
+vera finestra (niente `BFilePanel`): un tentativo di simulare
+`B_SAVE_REQUESTED` con un messaggio costruito a mano e inviato
+all'applicazione non ha funzionato, perché — a differenza di
+`B_REFS_RECEIVED` (per cui `App::RefsReceived` inoltra esplicitamente
+alla finestra) — non c'è nessun inoltro automatico per
+`B_SAVE_REQUESTED` quando arriva alla `BApplication`: nell'uso reale
+il `BFilePanel` lo manda direttamente alla finestra (è il target
+impostato nel suo costruttore), non passa mai dall'applicazione.
+
 **Test di congruità/compatibilità**: build pulita (`cd ui && make`);
-avvio in una sessione grafica reale (non headless, a differenza di
+`cd ui && make test` verde (round-trip ASCD, vedi sopra); avvio in una
+sessione grafica reale (non headless, a differenza di
 engine/translator: qui serve `app_server` per definizione); apertura
 di file reali XLSX/ODS tramite un vero `B_REFS_RECEIVED` senza crash,
-con valori mostrati correttamente nella griglia e nella barra formule;
-verifica che nessun'altra chiamata cross-thread diretta esista
-(ispezione manuale di `App.cpp`/`MainWindow.cpp` — unico punto di
-contatto fra i due thread era `RefsReceived`, già corretto). Rimane
-da fare un vero test interattivo di editing/salvataggio (barra
-formula → ricalcolo → Salva con nome → riapri), rimandato alla
-prossima iterazione insieme all'editing in-cella.
+con valori mostrati correttamente nella griglia e nella barra formule
+(ripetuto anche dopo aver aggiunto l'editor in-cella, come test di
+non-regressione); verifica che nessun'altra chiamata cross-thread
+diretta esista (ispezione manuale di `App.cpp`/`MainWindow.cpp` —
+unico punto di contatto fra i due thread era `RefsReceived`, già
+corretto). Rimane da fare un vero test interattivo del doppio
+click/digitazione diretta in-cella (vedi nota sopra sulla mancanza di
+uno strumento di iniezione mouse/tastiera in questo ambiente).
 
 ## Fase 5 — Integrazione, packaging, compatibilità reale
 
