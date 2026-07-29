@@ -7,6 +7,11 @@ lib.*/
 *.a
 *.rsrc
 
+# Build artifacts (engine/ Makefile)
+engine/obj/
+engine/libengine.a
+engine/tests/smoke_test
+
 # Compiled binaries produced by the legacy build (not source)
 legacy/opensumit/bsl/bsl
 legacy/opensumit/rez/rez
