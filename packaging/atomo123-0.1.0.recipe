@@ -1,0 +1,96 @@
+# Recipe HaikuPorter per Atomo123 — foglio di calcolo nativo per Haiku OS.
+#
+# NON ANCORA UTILIZZABILE COSI' COM'E': SOURCE_URI punta a un
+# segnaposto perche' il progetto non e' ancora pubblicato su un
+# repository pubblico raggiungibile da haikuporter (nessun remote git
+# configurato al momento della stesura di questa recipe). Struttura e
+# passi di build/install sono pronti e rispecchiano i Makefile reali
+# di engine/, translators/*/ e ui/ — vanno solo aggiornati SOURCE_URI
+# e CHECKSUM_SHA256 quando il codice sara' pubblicato.
+#
+# Per lo stesso motivo questa recipe vive in packaging/ dentro il
+# repository del progetto, non in un vero albero haikuports (categoria
+# apps/atomo123/atomo123-0.1.0.recipe): andrebbe spostata li' per una
+# sottomissione reale a HaikuPorts.
+
+SUMMARY="Foglio di calcolo nativo per Haiku OS"
+DESCRIPTION="Atomo123 e' un'applicazione foglio di calcolo (stile Excel) \
+nativa per Haiku OS, scritta con le API native (Interface/Layout Kit, \
+Locale Kit, Print Kit, Translation Kit). E' compatibile con i file \
+generati da Microsoft Excel (XLS/XLSX) e OpenOffice/LibreOffice (ODS/CSV) \
+tramite add-on di conversione basati sul Translation Kit di sistema. \
+Il motore di calcolo e l'importer Excel legacy riusano e modernizzano \
+il codice storico BeOS del progetto Sum-It, portato a compilare su \
+Haiku moderno a 64 bit; la UI e' scritta da zero in Interface/Layout \
+Kit."
+# LICENSE: situazione non ancora chiarita, segnata qui come nota
+# aperta invece di assumere una licenza non dichiarata dall'utente.
+# engine/ deriva da codice storico Sum-It sotto licenza BSD a 4
+# clausole CON clausola pubblicitaria (vedi
+# legacy/opensumit/sum-it/Docs/Licence e la nota in README.md): quella
+# clausola si applica quindi anche al binario pacchettizzato, che
+# include engine/ per forza (e' il motore di calcolo). Il codice nuovo
+# (translators/, ui/) non ha ancora una licenza dichiarata dall'utente
+# — da chiarire prima di una vera distribuzione/sottomissione a
+# HaikuPorts. "LICENSE" sotto e' un segnaposto, non una decisione.
+HOMEPAGE="https://github.com/atomozero/Atomo123"
+COPYRIGHT="2026 Andrea Bernardi"
+LICENSE="BSD (4-clause) -- da confermare, vedi nota sopra"
+REVISION="1"
+
+# Segnaposto: da sostituire con l'URL reale dell'archivio sorgente
+# quando il progetto sara' pubblicato, e con lo SHA256 reale calcolato
+# su quell'archivio (haikuporter rifiuta un checksum placeholder).
+SOURCE_URI="https://github.com/atomozero/Atomo123/archive/v$portVersion.tar.gz"
+CHECKSUM_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
+SOURCE_DIR="Atomo123-$portVersion"
+
+ARCHITECTURES="all !x86_gcc2"
+SECONDARY_ARCHITECTURES="x86"
+
+PROVIDES="
+	atomo123$secondaryArchSuffix = $portVersion
+	app:Atomo123 = $portVersion
+	"
+REQUIRES="
+	haiku$secondaryArchSuffix
+	lib:libexpat$secondaryArchSuffix
+	"
+
+BUILD_REQUIRES="
+	haiku${secondaryArchSuffix}_devel
+	devel:libexpat$secondaryArchSuffix
+	"
+BUILD_PREREQUIRES="
+	cmd:g++$secondaryArchSuffix
+	cmd:make
+	"
+
+BUILD()
+{
+	# engine/ e' una libreria statica, non un pacchetto a se stante:
+	# la costruisce ogni Makefile che ne ha bisogno (translators/*/ e
+	# ui/), ma la si builda esplicitamente qui una volta sola per
+	# evitare quattro build ridondanti in parallelo.
+	make -C engine $jobArgs
+
+	make -C translators/csv $jobArgs
+	make -C translators/xls $jobArgs
+	make -C translators/xlsx $jobArgs
+	make -C translators/ods $jobArgs
+
+	make -C ui $jobArgs
+}
+
+INSTALL()
+{
+	mkdir -p $appsDir
+	cp ui/Atomo123 $appsDir/Atomo123
+	addAppDeskbarSymlink $appsDir/Atomo123
+
+	mkdir -p $addOnsDir/Translators
+	cp translators/csv/CsvTranslator $addOnsDir/Translators/
+	cp translators/xls/XlsTranslator $addOnsDir/Translators/
+	cp translators/xlsx/XlsxTranslator $addOnsDir/Translators/
+	cp translators/ods/OdsTranslator $addOnsDir/Translators/
+}
