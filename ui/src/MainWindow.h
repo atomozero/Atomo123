@@ -43,6 +43,9 @@ private:
 	void NewDocument();
 	void CommitFormulaBar();
 	void SaveToFile(const entry_ref& dir, const char* name);
+	void CopySelection(bool cut);
+	void PasteSelection();
+	void DeleteSelection();
 };
 
 #endif

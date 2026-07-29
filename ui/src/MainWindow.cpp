@@ -13,6 +13,7 @@
 
 #include <Alert.h>
 #include <Application.h>
+#include <Clipboard.h>
 #include <Directory.h>
 #include <File.h>
 #include <FilePanel.h>
@@ -34,6 +35,10 @@ static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
 static const uint32 kMsgSaveAs = 'asva';
 static const uint32 kMsgFormulaCommit = 'afml';
+static const uint32 kMsgCut = 'acut';
+static const uint32 kMsgCopy = 'acpy';
+static const uint32 kMsgPaste = 'apst';
+static const uint32 kMsgClear = 'aclr';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 
@@ -71,6 +76,18 @@ MainWindow::MainWindow()
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem("Esci", new BMessage(B_QUIT_REQUESTED), 'Q'));
 	menuBar->AddItem(fileMenu);
+
+	// Taglia/copia/incolla passano dal vero BClipboard di sistema (non
+	// da un appunti interno all'app): il contenuto della cella (la
+	// formula, come mostrata dalla barra formule) diventa testo piano
+	// condivisibile anche con altre applicazioni Haiku.
+	BMenu* editMenu = new BMenu("Modifica");
+	editMenu->AddItem(new BMenuItem("Taglia", new BMessage(kMsgCut), 'X'));
+	editMenu->AddItem(new BMenuItem("Copia", new BMessage(kMsgCopy), 'C'));
+	editMenu->AddItem(new BMenuItem("Incolla", new BMessage(kMsgPaste), 'V'));
+	editMenu->AddSeparatorItem();
+	editMenu->AddItem(new BMenuItem("Cancella", new BMessage(kMsgClear)));
+	menuBar->AddItem(editMenu);
 
 	fCellLabel = new BStringView("cellLabel", "A1");
 	fCellLabel->SetExplicitMinSize(BSize(50, B_SIZE_UNSET));
@@ -179,6 +196,79 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	}
 }
 
+void MainWindow::CopySelection(bool cut)
+{
+	if (!fDoc)
+		return;
+
+	cell sel = fSheetView->Selection();
+	char text[512];
+	fDoc->GetCellFormula(sel, text, false);
+
+	if (be_clipboard->Lock())
+	{
+		be_clipboard->Clear();
+		BMessage* clip = be_clipboard->Data();
+		if (clip)
+			clip->AddData("text/plain", B_MIME_TYPE, text, strlen(text));
+		be_clipboard->Commit();
+		be_clipboard->Unlock();
+	}
+
+	if (cut)
+	{
+		fDoc->DisposeCell(sel);
+		fDoc->CalcCell(sel);
+		fSheetView->Invalidate();
+		SelectionChanged(sel);
+	}
+}
+
+void MainWindow::PasteSelection()
+{
+	if (!fDoc)
+		return;
+
+	cell sel = fSheetView->Selection();
+
+	if (!be_clipboard->Lock())
+		return;
+
+	BMessage* clip = be_clipboard->Data();
+	const char* text = NULL;
+	ssize_t len = 0;
+	bool found = clip && clip->FindData("text/plain", B_MIME_TYPE,
+		(const void**)&text, &len) == B_OK;
+
+	if (found)
+	{
+		BString pasted(text, len);
+		try
+		{
+			TryToParseString(pasted.String(), sel, fDoc, true);
+		}
+		catch (...)
+		{
+		}
+		fDoc->CalcCell(sel);
+		fSheetView->Invalidate();
+		SelectionChanged(sel);
+	}
+
+	be_clipboard->Unlock();
+}
+
+void MainWindow::DeleteSelection()
+{
+	if (!fDoc)
+		return;
+
+	cell sel = fSheetView->Selection();
+	fDoc->DisposeCell(sel);
+	fSheetView->Invalidate();
+	SelectionChanged(sel);
+}
+
 void MainWindow::CommitFormulaBar()
 {
 	if (!fDoc)
@@ -250,6 +340,22 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgFormulaCommit:
 			CommitFormulaBar();
+			break;
+
+		case kMsgCut:
+			CopySelection(true);
+			break;
+
+		case kMsgCopy:
+			CopySelection(false);
+			break;
+
+		case kMsgPaste:
+			PasteSelection();
+			break;
+
+		case kMsgClear:
+			DeleteSelection();
 			break;
 
 		default:

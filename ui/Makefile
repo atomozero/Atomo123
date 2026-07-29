@@ -49,7 +49,18 @@ test: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
 	./tests/test_ascd_io
 
-clean:
-	rm -f $(APP) $(OBJECTS) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o tests/roundtrip.ascd
+# Test degli appunti (be_clipboard): a differenza di "test" richiede
+# una vera sessione grafica (il Clipboard Kit passa dall'app_server),
+# quindi e' un target separato, non incluso nel normale "make test".
+test-clipboard: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_clipboard.cpp -o tests/test_clipboard.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_clipboard tests/test_clipboard.o \
+		$(INCLUDES) $(CXXFLAGS) -lbe
+	./tests/test_clipboard
 
-.PHONY: all run test clean
+clean:
+	rm -f $(APP) $(OBJECTS) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
+		tests/roundtrip.ascd tests/test_clipboard tests/test_clipboard.o
+
+.PHONY: all run test test-clipboard clean
