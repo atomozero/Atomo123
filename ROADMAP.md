@@ -298,9 +298,21 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       possono simulare costruendo il `BMessage` a mano). Verifica
       interattiva manuale rimandata a un utente reale o a un ambiente
       con tale strumento.
-- [ ] Menu/toolbar completi, dialoghi (trova/sostituisci,
-      formattazione, ecc.) — per ora solo il menu File (Nuovo/Apri/
-      Salva con nome/Esci)
+- [x] Menu Modifica: Taglia/Copia/Incolla/Cancella, passano dagli
+      appunti di sistema veri (`be_clipboard`, Clipboard Kit) e non da
+      un buffer privato dell'app — il contenuto copiato (la formula,
+      come mostrata dalla barra formule) è testo piano
+      (`text/plain`/`B_MIME_TYPE`) condivisibile con qualunque altra
+      applicazione Haiku. Verificato dal vivo con
+      `ui/tests/test_clipboard.cpp` (`cd ui && make test-clipboard`,
+      richiede una sessione grafica) e con una prova incrociata reale
+      usando il tool a riga di comando di sistema `clipboard`: scrittura
+      dal nostro binario → lettura con `clipboard -p`, e scrittura con
+      `clipboard -c` → lettura dal nostro binario, in entrambe le
+      direzioni con esito corretto.
+- [ ] Dialoghi (trova/sostituisci, formattazione, ecc.), toolbar — per
+      ora solo i menu File (Nuovo/Apri/Salva con nome/Esci) e Modifica
+      (Taglia/Copia/Incolla/Cancella)
 - [ ] Export: "Salva con nome" scrive solo in ASCD nativo (nessun
       translator ha ancora un writer per CSV/XLS/XLSX/ODS, coerente
       col limite "solo import" già documentato in Fase 3)

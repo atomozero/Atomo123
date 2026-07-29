@@ -10,8 +10,8 @@ file (`translators/`).
 ```
 ui/src/App.h/.cpp          BApplication: crea la finestra, inoltra i
                             file aperti da Tracker/riga di comando
-ui/src/MainWindow.h/.cpp   BWindow: menu File, barra formule, cella
-                            corrente, apertura/salvataggio file
+ui/src/MainWindow.h/.cpp   BWindow: menu File/Modifica, barra formule,
+                            cella corrente, apertura/salvataggio file
 ui/src/SheetView.h/.cpp    BView custom: griglia, selezione, editing
 ui/src/AscdIO.h/.cpp       Lettura/scrittura del formato nativo ASCD
                             (stessa logica duplicata nei translator,
@@ -74,6 +74,31 @@ sulla `BTextView` interna (`BTextControl::TextView()->AddFilter(...)`),
 che intercetta `B_KEY_DOWN` con `raw_char == B_ESCAPE`, lo trasforma
 in un messaggio di annullamento per `SheetView` e restituisce
 `B_SKIP_MESSAGE` per impedire che venga anche inserito come carattere.
+
+## Taglia/copia/incolla: appunti di sistema veri, non un buffer privato
+
+Il menu Modifica (`MainWindow::CopySelection`/`PasteSelection`/
+`DeleteSelection`) passa dal vero **Clipboard Kit** di Haiku
+(`be_clipboard`), non da una variabile membro interna all'app: il
+contenuto copiato (la formula della cella, la stessa mostrata dalla
+barra formule) viene scritto come `text/plain`/`B_MIME_TYPE` dentro il
+`BMessage` restituito da `be_clipboard->Data()`, fra un
+`Lock()`/`Clear()` e un `Commit()`/`Unlock()` — esattamente il
+pattern standard di ogni app Haiku che vuole interoperare con gli
+appunti di sistema (copiare in Atomo123 e incollare in un editor di
+testo funziona, e viceversa).
+
+**Verifica**: `ui/tests/test_clipboard.cpp` (richiede una sessione
+grafica, il Clipboard Kit passa dall'app_server — `cd ui && make
+test-clipboard`, non incluso nel normale `make test` headless-safe)
+replica esattamente la logica di `CopySelection`/`PasteSelection` in
+isolamento. Oltre al giro autocontenuto, è stata fatta una prova
+incrociata reale con il tool a riga di comando di sistema
+`clipboard` (già presente su Haiku): scrittura con il binario di test
+→ lettura con `clipboard -p` (esito corretto), e scrittura con
+`clipboard -c` → lettura con il binario di test (esito corretto) —
+prova concreta che si tratta davvero degli appunti di sistema
+condivisi, non di uno stato privato del processo.
 
 ## Bug scoperto: violazione di thread fra `BApplication` e `BWindow`
 
@@ -154,7 +179,7 @@ umano o a un ambiente con tale strumento.
   translator ha ancora un writer per CSV/XLS/XLSX/ODS).
 - **Un solo foglio**: coerente col limite già accettato in Fase 3 per
   XLSX/ODS (si importa solo il primo foglio/tabella).
-- Nessun menu/dialogo oltre a File (Nuovo/Apri/Salva con nome/Esci):
-  niente Modifica, Formato, trova/sostituisci.
+- Solo i menu File e Modifica: nessun menu Formato, nessun dialogo
+  trova/sostituisci.
 - Nessuna formattazione (font/colore/numero) esposta all'utente, anche
   se il motore la supporta internamente.
