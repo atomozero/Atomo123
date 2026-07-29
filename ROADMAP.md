@@ -310,9 +310,19 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       dal nostro binario → lettura con `clipboard -p`, e scrittura con
       `clipboard -c` → lettura dal nostro binario, in entrambe le
       direzioni con esito corretto.
-- [ ] Dialoghi (trova/sostituisci, formattazione, ecc.), toolbar — per
-      ora solo i menu File (Nuovo/Apri/Salva con nome/Esci) e Modifica
-      (Taglia/Copia/Incolla/Cancella)
+- [x] Dialogo Trova: nuova finestra `FindWindow` (campo di ricerca +
+      pulsante "Trova successivo"), voce "Trova…" nel menu Modifica.
+      Non esegue la ricerca da sé (le celle appartengono al documento
+      di `MainWindow`, su un altro thread/`BLooper`): inoltra il testo
+      cercato con un `BMessage` a un `BMessenger`, stessa regola del
+      bug di thread `BApplication`/`BWindow` già corretto sopra. La
+      ricerca (`MainWindow::FindNext`) scandisce le celle esistenti
+      confrontando il testo (case-insensitive, sottostringa) e sceglie
+      il primo risultato dopo la cella selezionata, con
+      "wrap-around" se non ce n'è nessuno. **Non ancora fatto**:
+      "Sostituisci", nessun menu Formato.
+- [ ] Toolbar — per ora solo i menu File (Nuovo/Apri/Salva con
+      nome/Stampa/Esci) e Modifica (Taglia/Copia/Incolla/Cancella/Trova)
 - [ ] Export: "Salva con nome" scrive solo in ASCD nativo (nessun
       translator ha ancora un writer per CSV/XLS/XLSX/ODS, coerente
       col limite "solo import" già documentato in Fase 3)

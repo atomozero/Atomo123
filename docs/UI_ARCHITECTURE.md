@@ -16,6 +16,8 @@ ui/src/SheetView.h/.cpp    BView custom: griglia, selezione, editing
 ui/src/AscdIO.h/.cpp       Lettura/scrittura del formato nativo ASCD
                             (stessa logica duplicata nei translator,
                             vedi docs/TRANSLATORS.md)
+ui/src/FindWindow.h/.cpp   BWindow separata per "Trova" (campo di
+                            ricerca + pulsante), inoltra a MainWindow
 ```
 
 `SheetView` non usa `BGridLayout`: la griglia è disegnata a mano in
@@ -171,6 +173,37 @@ comunque i transport "Preview" e "Save as PDF" già disponibili come
 add-on (`/boot/system/add-ons/Print/`), utilizzabili da un utente
 reale per un test interattivo senza bisogno di una stampante fisica.
 
+## Trova: una seconda finestra, stessa regola sui thread
+
+"Trova…" nel menu Modifica apre `FindWindow`, una piccola `BWindow`
+separata con un campo di ricerca e un pulsante "Trova successivo".
+Non esegue la ricerca da sé — le celle appartengono al documento di
+`MainWindow`, che vive sul thread della finestra principale, un
+`BLooper` diverso da quello di `FindWindow` — quindi invia il testo
+cercato con un `BMessage` (`kMsgFindNext`) a un `BMessenger` passato
+dal chiamante, non chiama un metodo di `MainWindow` direttamente:
+stessa regola del bug di thread `BApplication`/`BWindow` descritto
+sotto, applicata stavolta fra due finestre invece che fra applicazione
+e finestra.
+
+`MainWindow::FindNext()` scandisce le celle esistenti del documento
+(`CCellIterator`) confrontando il testo (`GetCellFormula`,
+case-insensitive, sottostringa) con quanto digitato, e seleziona il
+primo risultato dopo la cella correntemente selezionata — con
+"wrap-around" al primo risultato assoluto se non ce n'è nessuno dopo.
+Nessun iteratore persistito fra una ricerca e l'altra: una scansione
+completa ogni volta, scelta deliberata per semplicità (niente rischio
+di un iteratore invalidato da una modifica del documento fra due
+"Trova successivo") — adeguata alle dimensioni di foglio di questa
+prima versione dell'app.
+
+`FindWindow::QuitRequested()` non chiude mai davvero la finestra (si
+nasconde e basta, restituendo `false`): `MainWindow` tiene un unico
+puntatore per tutta la vita dell'app, mostrandola/attivandola di nuovo
+a ogni "Trova…" invece di ricrearla, e la distrugge per davvero solo
+nel proprio distruttore (`Lock()` + `Quit()` diretto, non tramite
+`B_QUIT_REQUESTED` che passerebbe da quell'hook).
+
 ## Bug scoperto: violazione di thread fra `BApplication` e `BWindow`
 
 Il primo test end-to-end (apertura di un file XLSX reale in una vera
@@ -236,6 +269,24 @@ test (a differenza di `B_REFS_RECEIVED`, che si simula costruendo il
 file reale con il nuovo codice presente, nessun crash) e revisione
 manuale del codice; verifica interattiva reale rimandata a un utente
 umano o a un ambiente con tale strumento.
+
+### Scoperta successiva: `hey` sa invocare le voci di menu
+
+Dopo aver scritto la nota sopra, si è scoperto che lo strumento di
+scripting nativo `hey` espone davvero l'esecuzione delle voci di menu
+tramite lo scripting suite standard di `BMenuBar`/`BMenu`
+(`MenuItem ... B_EXECUTE_PROPERTY`, "Invokes the specified menu item"),
+navigabile con la catena di specificatori `MenuItem <indice> of Menu
+<indice> of MenuBar of Window <indice>` (gli indici delle voci si
+scoprono con `hey -o Atomo123 get Label of MenuItem <n> of Menu <m> of
+MenuBar of Window 0`). Usato per aprire davvero la finestra "Trova"
+dal menu (non simulando il `BMessage` a mano) e verificare che
+l'intera catena menu → `MainWindow::ShowFindWindow` → `FindWindow`
+funzioni senza crash in una sessione grafica reale, con entrambe le
+finestre visibili e responsive in uno screenshot. Questo apre la
+possibilità di testare in modo simile anche Taglia/Copia/Incolla/
+Stampa/Nuovo/Apri tramite la stessa tecnica nelle prossime iterazioni,
+invece della sola revisione manuale del codice.
 
 ## Limiti noti (prima versione)
 
