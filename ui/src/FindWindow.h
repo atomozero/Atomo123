@@ -1,14 +1,14 @@
 /*
 	FindWindow.h
 
-	Piccola finestra di utilita' per "Trova": un campo di testo e un
-	pulsante "Trova successivo". Non esegue la ricerca da se' (le
-	celle appartengono al documento di MainWindow, su un altro
-	thread/BLooper): inoltra il testo cercato con un BMessage a un
-	BMessenger passato dal chiamante, invece di chiamare direttamente
-	un metodo della finestra proprietaria -- la stessa regola del bug
-	di thread BApplication/BWindow gia' trovato e corretto in Fase 4
-	(vedi docs/UI_ARCHITECTURE.md).
+	Piccola finestra di utilita' per "Trova"/"Sostituisci": due campi
+	di testo (cerca/sostituisci con) e tre pulsanti. Non esegue la
+	ricerca/sostituzione da se' (le celle appartengono al documento di
+	MainWindow, su un altro thread/BLooper): inoltra il testo con un
+	BMessage a un BMessenger passato dal chiamante, invece di chiamare
+	direttamente un metodo della finestra proprietaria -- la stessa
+	regola del bug di thread BApplication/BWindow gia' trovato e
+	corretto in Fase 4 (vedi docs/UI_ARCHITECTURE.md).
 
 	Non si chiude mai davvero alla pressione del pulsante di chiusura:
 	resta nascosta e riusabile, per evitare che MainWindow debba
@@ -22,6 +22,8 @@
 #include <Window.h>
 
 const uint32 kMsgFindNext = 'fndn';
+const uint32 kMsgReplaceCurrent = 'rplc';
+const uint32 kMsgReplaceAll = 'rpla';
 
 class BTextControl;
 
@@ -34,7 +36,10 @@ public:
 
 private:
 	BTextControl* fSearchField;
+	BTextControl* fReplaceField;
 	BMessenger fTarget;
+
+	void SendSearchMessage(uint32 what);
 };
 
 #endif

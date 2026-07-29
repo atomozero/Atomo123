@@ -11,6 +11,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include <Alert.h>
 #include <Application.h>
@@ -96,7 +97,8 @@ MainWindow::MainWindow()
 	editMenu->AddSeparatorItem();
 	editMenu->AddItem(new BMenuItem("Cancella", new BMessage(kMsgClear)));
 	editMenu->AddSeparatorItem();
-	editMenu->AddItem(new BMenuItem("Trova" B_UTF8_ELLIPSIS, new BMessage(kMsgFind), 'F'));
+	editMenu->AddItem(new BMenuItem("Trova e sostituisci" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgFind), 'F'));
 	menuBar->AddItem(editMenu);
 
 	fCellLabel = new BStringView("cellLabel", "A1");
@@ -399,6 +401,108 @@ void MainWindow::FindNext(const char* searchText)
 	// resta aperto per piu' tentativi).
 }
 
+// Sostituisce tutte le occorrenze di "search" con "replace" dentro
+// "text" (senza distinguere maiuscole/minuscole nella ricerca, ma
+// inserendo "replace" cosi' come scritto, non nella capitalizzazione
+// del testo originale).
+static BString ReplaceAllCaseInsensitive(const BString& text,
+	const BString& search, const BString& replace)
+{
+	BString result(text);
+	if (search.Length() == 0)
+		return result;
+
+	int32 pos = 0;
+	while (true)
+	{
+		int32 found = result.IFindFirst(search, pos);
+		if (found < 0)
+			break;
+		result.Remove(found, search.Length());
+		result.Insert(replace, found);
+		pos = found + replace.Length();
+	}
+	return result;
+}
+
+void MainWindow::ReplaceCurrent(const char* searchText, const char* replaceText)
+{
+	if (!fDoc || !searchText || !searchText[0])
+		return;
+
+	cell sel = fSheetView->Selection();
+	char text[512];
+	fDoc->GetCellFormula(sel, text, false);
+
+	BString original(text);
+	if (original.IFindFirst(searchText) < 0)
+		return; // la cella selezionata non contiene il testo cercato
+
+	BString replaced = ReplaceAllCaseInsensitive(original, searchText, replaceText);
+
+	try
+	{
+		TryToParseString(replaced.String(), sel, fDoc, true);
+	}
+	catch (...)
+	{
+	}
+	fDoc->CalcCell(sel);
+	fSheetView->Invalidate();
+	SelectionChanged(sel);
+
+	FindNext(searchText);
+}
+
+void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
+{
+	if (!fDoc || !searchText || !searchText[0])
+		return;
+
+	range bounds;
+	fDoc->GetBounds(bounds);
+	if (bounds.right < 1 || bounds.bottom < 1)
+		return;
+
+	// Prima si raccolgono le celle da modificare, poi si modificano:
+	// CCellIterator scorre la mappa interna del documento, che non va
+	// alterata (TryToParseString puo' aggiungere/rimuovere celle)
+	// mentre la si sta iterando.
+	std::vector<cell> matches;
+	CCellIterator iter(fDoc, &bounds);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		char text[512];
+		fDoc->GetCellFormula(c, text, false);
+		if (BString(text).IFindFirst(searchText) >= 0)
+			matches.push_back(c);
+	}
+
+	for (size_t i = 0; i < matches.size(); i++)
+	{
+		char text[512];
+		fDoc->GetCellFormula(matches[i], text, false);
+		BString replaced = ReplaceAllCaseInsensitive(text, searchText, replaceText);
+		try
+		{
+			TryToParseString(replaced.String(), matches[i], fDoc, true);
+		}
+		catch (...)
+		{
+		}
+		fDoc->CalcCell(matches[i]);
+	}
+
+	fSheetView->Invalidate();
+	SelectionChanged(fSheetView->Selection());
+
+	BString msg;
+	msg << (int32)matches.size() << " cella/e sostituita/e.";
+	BAlert* alert = new BAlert("Sostituisci tutto", msg.String(), "OK");
+	alert->Go();
+}
+
 void MainWindow::PrintDocument()
 {
 	if (!fDoc)
@@ -552,6 +656,24 @@ void MainWindow::MessageReceived(BMessage* message)
 			BString text;
 			if (message->FindString("text", &text) == B_OK)
 				FindNext(text.String());
+			break;
+		}
+
+		case kMsgReplaceCurrent:
+		{
+			BString text, replace;
+			if (message->FindString("text", &text) == B_OK
+				&& message->FindString("replace", &replace) == B_OK)
+				ReplaceCurrent(text.String(), replace.String());
+			break;
+		}
+
+		case kMsgReplaceAll:
+		{
+			BString text, replace;
+			if (message->FindString("text", &text) == B_OK
+				&& message->FindString("replace", &replace) == B_OK)
+				ReplaceAll(text.String(), replace.String());
 			break;
 		}
 
