@@ -22,7 +22,7 @@ INCLUDES := $(addprefix -I, $(ENGINE_SRCDIRS)) -Isrc
 LIBS := -L$(ENGINE_DIR) -lengine -lbe -ltranslation -ltracker
 
 APP := Atomo123
-SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/AscdIO.cpp
+SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/AscdIO.cpp src/FindWindow.cpp
 OBJECTS := $(SOURCES:.cpp=.o)
 
 all: $(APP)

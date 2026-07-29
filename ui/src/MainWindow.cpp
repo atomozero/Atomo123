@@ -7,6 +7,7 @@
 #include "MainWindow.h"
 #include "SheetView.h"
 #include "AscdIO.h"
+#include "FindWindow.h"
 
 #include <cstdio>
 #include <cstring>
@@ -30,6 +31,7 @@
 #include <TranslationDefs.h>
 
 #include "Container.h"
+#include "CellIterator.h"
 #include "CellParser.h"
 
 static const uint32 kMsgNew = 'anew';
@@ -41,6 +43,7 @@ static const uint32 kMsgCopy = 'acpy';
 static const uint32 kMsgPaste = 'apst';
 static const uint32 kMsgClear = 'aclr';
 static const uint32 kMsgPrint = 'aprt';
+static const uint32 kMsgFind = 'afnd';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 
@@ -91,6 +94,8 @@ MainWindow::MainWindow()
 	editMenu->AddItem(new BMenuItem("Incolla", new BMessage(kMsgPaste), 'V'));
 	editMenu->AddSeparatorItem();
 	editMenu->AddItem(new BMenuItem("Cancella", new BMessage(kMsgClear)));
+	editMenu->AddSeparatorItem();
+	editMenu->AddItem(new BMenuItem("Trova" B_UTF8_ELLIPSIS, new BMessage(kMsgFind), 'F'));
 	menuBar->AddItem(editMenu);
 
 	fCellLabel = new BStringView("cellLabel", "A1");
@@ -116,12 +121,23 @@ MainWindow::MainWindow()
 
 	fOpenPanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this));
 	fSavePanel = new BFilePanel(B_SAVE_PANEL, new BMessenger(this));
+	fFindWindow = NULL;
 }
 
 MainWindow::~MainWindow()
 {
 	delete fOpenPanel;
 	delete fSavePanel;
+	if (fFindWindow)
+	{
+		// FindWindow::QuitRequested() la nasconde soltanto (per
+		// restare riusabile finche' l'app e' viva): qui invece va
+		// davvero distrutta, quindi si chiama Quit() direttamente
+		// (non tramite il messaggio B_QUIT_REQUESTED che passerebbe
+		// da quell'hook).
+		fFindWindow->Lock();
+		fFindWindow->Quit();
+	}
 	if (fDoc)
 		fDoc->Release();
 }
@@ -273,6 +289,76 @@ void MainWindow::DeleteSelection()
 	SelectionChanged(sel);
 }
 
+void MainWindow::ShowFindWindow()
+{
+	if (!fFindWindow)
+		fFindWindow = new FindWindow(BMessenger(this));
+
+	if (fFindWindow->IsHidden())
+		fFindWindow->Show();
+	fFindWindow->Activate();
+}
+
+void MainWindow::FindNext(const char* searchText)
+{
+	if (!fDoc || !searchText || !searchText[0])
+		return;
+
+	BString needle(searchText);
+	needle.ToLower();
+
+	range bounds;
+	fDoc->GetBounds(bounds);
+	if (bounds.right < 1 || bounds.bottom < 1)
+		return;
+
+	cell start = fSheetView->Selection();
+
+	// Scansione completa a ogni ricerca (nessun iteratore persistito
+	// fra una chiamata e l'altra): per le dimensioni di foglio di
+	// questa prima versione dell'app e' un compromesso semplice e
+	// robusto, senza il rischio di un iteratore invalidato da una
+	// modifica del documento fra due "Trova successivo".
+	CCellIterator iter(fDoc, &bounds);
+	cell c;
+	cell wrapMatch(0, 0);
+	bool haveWrapMatch = false;
+	cell nextMatch(0, 0);
+	bool haveNextMatch = false;
+
+	while (iter.NextExisting(c))
+	{
+		char text[512];
+		fDoc->GetCellFormula(c, text, false);
+
+		BString hay(text);
+		hay.ToLower();
+		if (hay.FindFirst(needle) < 0)
+			continue;
+
+		if (!haveWrapMatch)
+		{
+			wrapMatch = c;
+			haveWrapMatch = true;
+		}
+
+		bool after = (c.v > start.v) || (c.v == start.v && c.h > start.h);
+		if (after && !haveNextMatch)
+		{
+			nextMatch = c;
+			haveNextMatch = true;
+		}
+	}
+
+	if (haveNextMatch)
+		fSheetView->SetSelection(nextMatch);
+	else if (haveWrapMatch)
+		fSheetView->SetSelection(wrapMatch);
+	// Nessun risultato: nessuna azione, niente BAlert invasivo per
+	// ogni ricerca senza esito (coerente con un dialogo "Trova" che
+	// resta aperto per piu' tentativi).
+}
+
 void MainWindow::PrintDocument()
 {
 	if (!fDoc)
@@ -416,6 +502,18 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgPrint:
 			PrintDocument();
 			break;
+
+		case kMsgFind:
+			ShowFindWindow();
+			break;
+
+		case kMsgFindNext:
+		{
+			BString text;
+			if (message->FindString("text", &text) == B_OK)
+				FindNext(text.String());
+			break;
+		}
 
 		default:
 			BWindow::MessageReceived(message);

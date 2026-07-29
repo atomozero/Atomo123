@@ -20,6 +20,7 @@ class BTextControl;
 class BStringView;
 class SheetView;
 class CContainer;
+class FindWindow;
 
 class MainWindow : public BWindow {
 public:
@@ -39,6 +40,7 @@ private:
 	CContainer* fDoc;
 	BFilePanel* fOpenPanel;
 	BFilePanel* fSavePanel;
+	FindWindow* fFindWindow;
 
 	void NewDocument();
 	void CommitFormulaBar();
@@ -47,6 +49,8 @@ private:
 	void PasteSelection();
 	void DeleteSelection();
 	void PrintDocument();
+	void ShowFindWindow();
+	void FindNext(const char* searchText);
 };
 
 #endif
