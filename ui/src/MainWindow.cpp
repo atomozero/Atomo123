@@ -15,6 +15,7 @@
 
 #include <Alert.h>
 #include <Application.h>
+#include <Button.h>
 #include <Clipboard.h>
 #include <Directory.h>
 #include <File.h>
@@ -101,6 +102,29 @@ MainWindow::MainWindow()
 		new BMessage(kMsgFind), 'F'));
 	menuBar->AddItem(editMenu);
 
+	// Barra strumenti: pulsanti di testo semplici (BButton), non
+	// BToolBar -- quella classe vive solo sotto develop/headers/
+	// private/shared/ su questo sistema, non nell'SDK pubblico
+	// stabile, e il progetto usa solo API pubbliche. I pulsanti
+	// inviano semplicemente gli stessi messaggi gia' gestiti dai
+	// menu, nessuna logica nuova.
+	BButton* newButton = new BButton("toolNew", "Nuovo", new BMessage(kMsgNew));
+	BButton* openButton = new BButton("toolOpen", "Apri", new BMessage(kMsgOpen));
+	BButton* saveButton = new BButton("toolSave", "Salva", new BMessage(kMsgSaveAs));
+	BButton* printButton = new BButton("toolPrint", "Stampa", new BMessage(kMsgPrint));
+	BButton* cutButton = new BButton("toolCut", "Taglia", new BMessage(kMsgCut));
+	BButton* copyButton = new BButton("toolCopy", "Copia", new BMessage(kMsgCopy));
+	BButton* pasteButton = new BButton("toolPaste", "Incolla", new BMessage(kMsgPaste));
+	BButton* findButton = new BButton("toolFind", "Trova", new BMessage(kMsgFind));
+	newButton->SetTarget(this);
+	openButton->SetTarget(this);
+	saveButton->SetTarget(this);
+	printButton->SetTarget(this);
+	cutButton->SetTarget(this);
+	copyButton->SetTarget(this);
+	pasteButton->SetTarget(this);
+	findButton->SetTarget(this);
+
 	fCellLabel = new BStringView("cellLabel", "A1");
 	fCellLabel->SetExplicitMinSize(BSize(50, B_SIZE_UNSET));
 	fCellLabel->SetExplicitMaxSize(BSize(50, B_SIZE_UNSET));
@@ -115,6 +139,18 @@ MainWindow::MainWindow()
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
+		.AddGroup(B_HORIZONTAL, 4)
+			.SetInsets(4, 4, 4, 4)
+			.Add(newButton)
+			.Add(openButton)
+			.Add(saveButton)
+			.Add(printButton)
+			.Add(cutButton)
+			.Add(copyButton)
+			.Add(pasteButton)
+			.Add(findButton)
+			.AddGlue()
+		.End()
 		.AddGroup(B_HORIZONTAL, 4)
 			.SetInsets(4, 4, 4, 4)
 			.Add(fCellLabel)
