@@ -1,8 +1,8 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
-Stato: **Fase 1 e Fase 2 chiuse**; **Fase 3 in corso** (translator CSV,
-XLS legacy e XLSX completati, manca solo ODS per chiudere la fase).
-Aggiornato ad ogni fase completata.
+Stato: **Fase 1, Fase 2 e Fase 3 chiuse** (translator CSV, XLS legacy,
+XLSX e ODS tutti completati e testati); **Fase 4 (UI nativa) da
+iniziare**. Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -128,7 +128,7 @@ nessun link a `BView`/`BWindow` verificato con
 (unica eccezione nota: `BAlert` nel percorso di error-reporting, vedi
 limitazioni in `docs/ENGINE_API.md`).
 
-## Fase 3 — Translator Kit: import/export XLSX/ODS/CSV/XLS (IN CORSO)
+## Fase 3 — Translator Kit: import/export XLSX/ODS/CSV/XLS (CHIUSA)
 
 Obiettivo: add-on `BTranslator` installabili, uno per formato, che
 usano l'engine di Fase 2 e librerie esterne leggere.
@@ -159,22 +159,46 @@ usano l'engine di Fase 2 e librerie esterne leggere.
       importati con **ricalcolo effettivo della formula dal motore**
       (non solo verifica testuale). Nessun bug nuovo del motore
       scoperto (codice tutto nuovo, non riusa `CExcel5Filter`).
-- [ ] Translator ODS: valutare liborcus (Document Liberation Project,
-      storicamente portabile su Haiku out-of-the-box via POSIX) o un
-      parser custom minimo sullo stesso modello di XLSX (ODS è
-      anch'esso ZIP+XML, con schema OpenDocument invece di OOXML —
-      MiniZip.h/.cpp ed expat sono probabilmente riusabili così come
-      sono)
+- [x] Translator ODS: `translators/ods/`. Confermata l'ipotesi
+      dell'annotazione precedente — niente liborcus, ODS è ZIP+XML
+      come XLSX ma con schema OpenDocument, quindi `MiniZip.h/.cpp` è
+      stato riusato senza modifiche e expat con un parser dedicato per
+      `content.xml`. Differenza strutturale importante da XLSX: le
+      celle ODF non hanno un riferimento esplicito tipo `r="A1"`, la
+      posizione va ricavata contando righe/colonne mentre si scorre il
+      documento, con gli attributi `table:number-rows-repeated`/
+      `table:number-columns-repeated` che comprimono gli intervalli di
+      celle vuote (fino al margine del foglio) — gestiti esplicitamente
+      per non generare celle fantasma nell'ASCD. Le formule ODF (stile
+      `of:=[.A1]+[.B1]`) vengono convertite in formula nativa
+      (`A1+B1`) con un piccolo traduttore di sintassi dedicato, non
+      lasciate come testo opaco. Test end-to-end **reale**: un ODS
+      vero costruito a mano (mimetype + manifest + content.xml,
+      compattato con `zip`), importato e verificato — inclusa la
+      ricostruzione di un documento dai dati importati con
+      **ricalcolo effettivo della formula dal motore**. Nessun bug
+      nuovo del motore scoperto (come XLSX, codice tutto nuovo che non
+      passa da `CExcel5Filter`). Limite noto: si importa solo il primo
+      foglio (`<table:table>`), e la conversione di formula non
+      gestisce riferimenti multi-foglio o intervalli complessi — stesso
+      tipo di limite già accettato per XLSX/sheet1.
 - [x] Ogni translator dichiara `Identify()`/`Translate()`/
       `InputFormats()`/`OutputFormats()` secondo il framework
       `BTranslatorRoster` (pattern stabilito con il translator CSV,
       riusato per i successivi)
 
+**Fase 3 chiusa**: i quattro translator (CSV, XLS legacy, XLSX, ODS)
+sono tutti implementati e testati con `make test` verde. Rimane un
+gap esplicito: i test usano file di esempio costruiti per questa
+sessione (non un corpus di file reali generati da Excel/LibreOffice in
+condizioni non controllate) — la verifica di interoperabilità reale
+su larga scala è rimandata alla Fase 5 (che ha già un item dedicato).
+
 **Test di congruità/compatibilità**: round-trip per ogni formato
 (esporta un documento di test, reimportalo, verifica che i dati
-coincidano); import di file reali generati da Excel e da LibreOffice
-Calc (non solo generati dal nostro export, per verificare vera
-interoperabilità) — non ancora fatto, richiede file di test reali.
+coincidano) — fatto per tutti e quattro; import di file reali generati
+da Excel e da LibreOffice Calc, non solo dal nostro export, per una
+vera interoperabilità end-to-end — rimandato alla Fase 5.
 
 ### Bug di blocco headless scoperti in Fase 2 e Fase 3
 

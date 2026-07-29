@@ -226,3 +226,85 @@ Nessun bug nuovo del motore scoperto costruendo questo translator: il
 codice XLSX è tutto nuovo (non riusa codice storico non ancora
 testato come `CExcel5Filter`), quindi non ha ereditato le stesse
 categorie di problemi.
+
+## translators/ods — import ODS (OpenDocument Spreadsheet)
+
+Importa il formato di LibreOffice/OpenOffice Calc (`kAtomoOdsFormat`,
+MIME `application/vnd.oasis.opendocument.spreadsheet`) verso ASCD. Un
+file ODS è, come XLSX, un archivio ZIP contenente XML — ma con schema
+OpenDocument invece di OOXML: un unico `content.xml` con tutti i fogli
+(non un file XML per foglio), più `META-INF/manifest.xml` come
+marcatore del formato e un file `mimetype` (non compresso, primo
+elemento dell'archivio nello standard, ma non necessario da leggere
+per questo translator).
+
+**Riuso diretto di `MiniZip.h`/`.cpp`** (stessa copia del translator
+XLSX, nessuna modifica necessaria: il contenitore ZIP è identico) ed
+**expat** per il parsing di `content.xml`, con un parser dedicato allo
+schema OpenDocument (`OdsTranslator.cpp`).
+
+### Differenza strutturale importante rispetto a XLSX
+
+Le celle XLSX hanno un riferimento esplicito (`<c r="A1">`); le celle
+ODF **no**. Lo schema OpenDocument rappresenta il foglio come una
+sequenza di `<table:table-row>` contenenti `<table:table-cell>`, e la
+posizione (riga, colonna) va ricavata contando gli elementi mentre si
+scorre il documento. Per comprimere gli intervalli di celle vuote
+(comuni fino al margine destro/in fondo al foglio, spesso migliaia),
+lo schema usa gli attributi `table:number-rows-repeated` e
+`table:number-columns-repeated`: una singola riga/cella XML con
+`repeated="500"` rappresenta 500 righe/colonne identiche. Il parser
+avanza i contatori di riga/colonna di questo valore, ma **non genera
+celle nell'ASCD per gli intervalli vuoti ripetuti** (solo per celle
+con contenuto reale) — altrimenti un foglio LibreOffice tipico
+produrrebbe decine di migliaia di celle vuote inutili nell'export.
+
+### Conversione delle formule ODF
+
+Le formule OpenDocument hanno una sintassi diversa da quella nativa:
+prefisso `of:=` (namespace "OpenFormula") e riferimenti a cella tra
+parentesi quadre con punto (`[.A1]`, `[.$A$1]` per riferimenti
+assoluti). A differenza di XLSX (dove le formule Excel sono già
+compatibili con la sintassi del nostro parser, basta togliere il `=`
+iniziale... anzi va aggiunto), qui serve una conversione di sintassi:
+`ConvertODFFormula()` toglie il prefisso `of:=`, e per ogni
+riferimento tra `[.` e `]` rimuove le parentesi e i simboli `$`,
+producendo `A1+B1` a partire da `of:=[.A1]+[.B1]`. **Limite noto**:
+non gestisce riferimenti a fogli diversi (`[Foglio2.A1]`) né
+intervalli complessi dentro le parentesi — sufficiente per formule
+aritmetiche semplici con riferimenti nello stesso foglio, che sono il
+caso comune.
+
+Come per XLSX, le formule vengono importate come testo (con `=`
+davanti) tramite `TryToParseString`, non il valore già calcolato da
+LibreOffice (`office:value` sulla cella con `table:formula`, che viene
+ignorato) — così il nostro motore le ricalcola in modo indipendente.
+
+Si importa solo il primo `<table:table>` (primo foglio): un documento
+multi-foglio richiederebbe iterare tutte le tabelle e decidere quale
+esporre — stesso tipo di limite già accettato per XLSX/sheet1.
+
+### Build, test, installazione
+
+```
+cd translators/ods
+make            # compila l'add-on OdsTranslator
+make test       # compila ed esegue il test end-to-end
+make install    # copia l'add-on in ~/config/non-packaged/add-ons/Translators
+```
+
+**Test end-to-end reale**, come XLSX: `tests/sample.ods` è un file ODS
+vero, costruito a mano (`mimetype` + `META-INF/manifest.xml` +
+`content.xml` scritti a mano, compattati con `zip -X` — verificabile
+con `unzip -l`), contenente due valori, una formula in sintassi ODF e
+una stringa, più un blocco di celle vuote compresso con
+`table:number-columns-repeated` (per verificare che non generi celle
+fantasma). Il test importa il file, verifica che i valori e la formula
+(convertita in sintassi nativa, non il suo valore già calcolato) siano
+stati importati correttamente, poi **ricostruisce un documento dai
+dati ASCD prodotti e verifica che il motore ricalcoli autonomamente la
+formula ottenendo il risultato corretto**.
+
+Nessun bug nuovo del motore scoperto costruendo questo translator:
+come XLSX, il codice è tutto nuovo e non riusa percorsi del motore già
+noti come fragili.
