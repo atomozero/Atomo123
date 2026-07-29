@@ -4,14 +4,15 @@ Stato: **Fase 1, Fase 2 e Fase 3 chiuse** (translator CSV, XLS legacy,
 XLSX e ODS tutti completati e testati); **Fase 4 (UI nativa) in stato
 avanzato** — finestra principale, griglia, apertura file via
 Translation Kit, barra formule, editing in-cella, menu Modifica
-(taglia/copia/incolla/cancella/trova), Locale Kit e Print Kit tutti
-funzionanti e testati dal vivo in una sessione grafica reale; mancano
-ancora export, formattazione (menu Formato), sostituisci, toolbar e
-icone (bloccate: galleria HVIF autorizzata risultata vuota al
-controllo). **Fase 5 (packaging/compatibilità) in corso** — ricetta
-HaikuDepot pronta ma non ancora buildabile (nessun repository
-pubblico); test di compatibilità su corpus reale e decisione della
-licenza del codice nuovo ancora da fare. Aggiornato ad ogni fase
+(taglia/copia/incolla/cancella/trova), Locale Kit, Print Kit e icona
+applicazione (HVIF, disegnata da zero) tutti fatti e testati dal vivo
+in una sessione grafica reale; mancano ancora export, formattazione
+(menu Formato), sostituisci e toolbar. **Fase 5 (packaging/
+compatibilità) in corso** — ricetta HaikuDepot pronta ma non ancora
+buildabile (nessun repository pubblico); licenza **MIT** decisa per
+il codice nuovo (vedi LICENSE — il codice storico Sum-It/`engine/`
+resta sotto la sua licenza BSD originale); resta il test di
+compatibilità su un corpus di file reali. Aggiornato ad ogni fase
 completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
@@ -365,18 +366,22 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       documentato per `B_SAVE_REQUESTED` e per il doppio click/
       digitazione diretta in-cella — nessuno strumento di iniezione
       mouse/tastiera in questo ambiente).
-- [ ] Icone: autorizzato l'uso del portale www.hvif-store.art (formato
-      HVIF nativo Haiku) come fonte per le icone dell'applicazione —
-      **ancora bloccato**: verificato una prima volta il 2026-07-29
-      (galleria vuota, "0 icons found" in home, /icons e /search?q=...
-      a 404), e riverificato lo stesso giorno su richiesta esplicita
-      dell'utente ("riprova con il servizio di icone HVIF") — stesso
-      risultato, più anche /browse a 404. Due controlli, stesso esito:
-      il sito non ha ancora contenuto scaricabile. L'item resta aperto
-      invece di disegnare un'icona da zero non richiesta o usare
-      un'altra fonte non autorizzata — da riprovare più avanti nel
-      tempo (magari il sito verrà popolato) o da chiedere
-      esplicitamente all'utente come procedere.
+- [x] Icone: il portale autorizzato www.hvif-store.art è risultato
+      vuoto a due controlli separati (2026-07-29). Chiesto esplicitamente
+      all'utente come procedere — ha scelto di disegnare l'icona da
+      zero. Bozza in `ui/icons/atomo123.svg` (griglia bianca 3×3 con
+      una cella evidenziata, su sfondo blu arrotondato — richiama
+      chiaramente un foglio di calcolo), importata in Icon-O-Matic ed
+      esportata in HVIF **direttamente dall'utente**
+      (`ui/icons/atomo123.hvif`, verificato: firma `ncif` corretta).
+      Incorporata come risorsa `VICN`/`BEOS:ICON` in `ui/Atomo123.rdef`
+      (stesso meccanismo — `rc`+`xres` — già usato da altri progetti
+      dell'utente su questo sistema, es. HaikuBench), ora parte
+      automatica della build (`make` in `ui/` compila e allega la
+      risorsa da solo). **Verificato dal vivo**: l'icona compare
+      correttamente su Tracker in vista icone (screenshot), e
+      `xres -l` conferma la risorsa `VICN` da 440 byte, identica per
+      dimensione al file HVIF sorgente.
 
 **Limite noto — intestazioni non "congelate"**: le lettere di colonna
 e i numeri di riga sono disegnati alla loro posizione virtuale

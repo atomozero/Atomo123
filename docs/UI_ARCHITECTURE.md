@@ -18,6 +18,11 @@ ui/src/AscdIO.h/.cpp       Lettura/scrittura del formato nativo ASCD
                             vedi docs/TRANSLATORS.md)
 ui/src/FindWindow.h/.cpp   BWindow separata per "Trova" (campo di
                             ricerca + pulsante), inoltra a MainWindow
+ui/Atomo123.rdef           Risorse dell'app (firma, versione, icona
+                            VICN/BEOS:ICON), compilate da rc + xres
+ui/icons/                  Icona sorgente: atomo123.svg (disegnata a
+                            mano) e atomo123.hvif (esportata da
+                            Icon-O-Matic, incorporata in Atomo123.rdef)
 ```
 
 `SheetView` non usa `BGridLayout`: la griglia è disegnata a mano in
@@ -203,6 +208,35 @@ puntatore per tutta la vita dell'app, mostrandola/attivandola di nuovo
 a ogni "Trova…" invece di ricrearla, e la distrugge per davvero solo
 nel proprio distruttore (`Lock()` + `Quit()` diretto, non tramite
 `B_QUIT_REQUESTED` che passerebbe da quell'hook).
+
+## Icona dell'applicazione
+
+Il portale autorizzato per le icone (www.hvif-store.art) è risultato
+vuoto a due controlli separati; l'utente ha scelto di disegnarla da
+zero. `ui/icons/atomo123.svg` è una griglia bianca 3×3 con una cella
+evidenziata in arancione su sfondo blu arrotondato (richiama
+chiaramente un foglio di calcolo), disegnata a mano in SVG piatto
+(niente gradient/filtri, per la massima compatibilità con
+l'importatore SVG di Icon-O-Matic). Aperta in Icon-O-Matic (che importa
+SVG nativamente, senza bisogno di un `BTranslator` dedicato) ed
+esportata in HVIF **direttamente dall'utente** — `ui/icons/atomo123.hvif`
+(verificato: firma `ncif` corretta nei primi 4 byte, il magic number
+del formato).
+
+L'HVIF viene incorporato come risorsa `VICN`/`BEOS:ICON` in
+`ui/Atomo123.rdef` (byte esadecimali diretti nella sintassi `rc`,
+stesso meccanismo — non un file `.hvif` distribuito a parte — usato da
+altri progetti nativi Haiku sullo stesso sistema, es. HaikuBench).
+`ui/Makefile` compila `Atomo123.rdef` con `rc` e allega il risultato al
+binario con `xres` come parte automatica della build normale
+(`make` in `ui/`), non un passo manuale a parte.
+
+**Verifica**: `xres -l Atomo123` conferma la risorsa `VICN` da 440
+byte — la stessa dimensione esatta del file HVIF sorgente. Verificato
+anche visivamente: aperta una finestra Tracker sulla cartella `ui/` in
+vista icone (passaggio di vista fatto scriptando il menu Finestra di
+Tracker con `hey`, stessa tecnica già usata per Atomo123 stesso),
+l'icona compare correttamente sul file `Atomo123`.
 
 ## Bug scoperto: violazione di thread fra `BApplication` e `BWindow`
 
