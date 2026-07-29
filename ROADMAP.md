@@ -331,9 +331,19 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       "Sostituisci", nessun menu Formato.
 - [ ] Toolbar — per ora solo i menu File (Nuovo/Apri/Salva con
       nome/Stampa/Esci) e Modifica (Taglia/Copia/Incolla/Cancella/Trova)
-- [ ] Export: "Salva con nome" scrive solo in ASCD nativo (nessun
-      translator ha ancora un writer per CSV/XLS/XLSX/ODS, coerente
-      col limite "solo import" già documentato in Fase 3)
+- [x] Export CSV: "Salva con nome" sceglie il formato dall'estensione
+      del nome file (".csv" esporta in CSV, altrimenti resta sul
+      formato nativo ASCD — non c'è ancora un selettore di formato
+      dedicato). Il translator CSV aveva già entrambe le direzioni
+      (`CTextConverter::ConvertToText`/`ConvertFromText`) fin dalla
+      Fase 3: mancava solo instradare "Salva con nome" attraverso
+      `BTranslatorRoster` invece di scrivere sempre ASCD a mano.
+      Costruito per essere direttamente riusabile quando XLS/XLSX/ODS
+      avranno anche loro un writer, non solo per CSV. **Bug scoperto e
+      corretto costruendo questa funzione**: vedi sotto.
+- [ ] Export XLS/XLSX/ODS: nessuno dei tre translator ha ancora un
+      writer (solo import) — servirebbe generare BIFF/OLE2 per XLS,
+      ZIP+XML per XLSX/ODS in scrittura, non solo in lettura
 - [x] Locale Kit: i valori numerici nella griglia (non nella barra
       formule, che mostra sempre il testo grezzo modificabile) sono
       formattati con `BNumberFormat` secondo le preferenze di sistema
@@ -478,6 +488,52 @@ unico punto di contatto fra i due thread era `RefsReceived`, già
 corretto). Rimane da fare un vero test interattivo del doppio
 click/digitazione diretta in-cella (vedi nota sopra sulla mancanza di
 uno strumento di iniezione mouse/tastiera in questo ambiente).
+
+### Bug scoperto: le celle con formula non venivano mai ricalcolate al caricamento
+
+Costruendo l'export CSV (che deve scrivere il *valore* calcolato di
+una formula, non il testo della formula — a differenza di ASCD, CSV
+non ha alcun concetto di formula) è emerso che una formula importata
+da ASCD risultava sempre vuota nell'export, anche se il motore la
+ricalcola correttamente quando richiesto esplicitamente (già
+verificato nei test dei translator XLSX/ODS).
+
+Causa: `TryToParseString` (usata da `LoadASCD` e dal `ReadASCD` del
+translator CSV per popolare le celle da un flusso ASCD) imposta la
+formula o il valore di una cella ma **non la calcola** — serve una
+chiamata esplicita a `CalcCell` per ciascuna cella. Nessuno dei due
+punti la faceva. In pratica questo significava che **qualunque file
+aperto nell'app con celle a formula le mostrava vuote nella griglia**
+finché l'utente non toccava quella cella a mano (barra formule o
+editing in-cella, che *chiamano* `CalcCell` dopo aver scritto) — un
+problema di usabilità serio, passato inosservato finora perché ogni
+test dei translator (XLSX/ODS) chiamava `CalcCell` esplicitamente
+*nel test stesso* per verificare che il motore ricalcolasse
+correttamente, mascherando il fatto che il percorso di produzione
+(apertura di un file nell'app vera) non lo faceva mai da solo.
+
+**Fix**: aggiunta `RecalculateAll(CContainer*)` (nuova funzione
+pubblica in `ui/src/AscdIO.h/.cpp`, usata da `LoadASCD`) e la stessa
+logica duplicata nel `ReadASCD` del translator CSV (stesso approccio
+di duplicazione intenzionale già usato per `WriteASCD`/`ReadASCD` fra
+app e translator, per non introdurre una dipendenza di link). La
+funzione itera su tutte le celle e chiama `CalcCell` su ciascuna,
+**ripetendo finché nessuna cella cambia più valore** (con un limite di
+sicurezza di 50 passate): `CFormula::Calculate` legge i riferimenti ad
+altre celle con una semplice `GetValue` non ricorsiva, quindi
+l'ordine in cui le celle vengono inserite non garantisce che una
+cella referenziata sia già stata calcolata — più passate propagano
+correttamente le dipendenze in qualunque ordine, senza dover
+implementare un vero ordinamento topologico del grafo delle
+dipendenze.
+
+**Verificato**: `ui/tests/test_ascd_io.cpp` ora controlla il valore
+di C1 **subito dopo** `LoadASCD`, prima di qualunque `CalcCell`
+esplicito nel test (prima controllava solo dopo un `CalcCell` fatto
+apposta dal test, che nascondeva il bug) — verde. Anche un test
+diretto dell'export CSV (harness a parte, non nella suite committata)
+ha confermato che una formula `=A1+B1` con A1=10/B1=20 esporta
+correttamente "30" invece che una cella vuota.
 
 ## Fase 5 — Integrazione, packaging, compatibilità reale (IN CORSO)
 

@@ -27,7 +27,12 @@ end-to-end con il motore di calcolo isolato.
 L'export verso CSV vero e proprio (`CTextConverter::ConvertToText`,
 già nel motore) usa invece il **valore calcolato** delle celle, non la
 formula: è il comportamento corretto per un formato che non ha alcun
-concetto di formula.
+concetto di formula. Perché questo funzioni davvero quando la sorgente
+è ASCD (es. "Salva con nome" dell'app che esporta in `.csv`),
+`ReadASCD` deve ricalcolare tutte le celle con formula dopo averle
+popolate — `TryToParseString` imposta la formula ma non la calcola,
+un bug reale scoperto costruendo l'export CSV dall'app (vedi
+`docs/UI_ARCHITECTURE.md`, sezione "Export CSV e bug scoperto").
 
 ### Build, test, installazione
 

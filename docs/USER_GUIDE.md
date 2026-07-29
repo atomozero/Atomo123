@@ -69,10 +69,15 @@ aritmetici e riferimenti a cella. Vedi la "nota aperta" nella
   installato il translator corrispondente, oltre al formato nativo
   ASCD. Il formato viene riconosciuto dal contenuto del file, non
   dall'estensione.
-- **File → Salva con nome…**: scrive **solo** nel formato nativo ASCD
-  (estensione libera, es. `.ascd`). Non è ancora possibile esportare
-  di nuovo verso CSV/XLS/XLSX/ODS: i translator per ora importano
-  soltanto. Per riaprire un file salvato, usare di nuovo File → Apri.
+- **File → Salva con nome…**: il formato di uscita si sceglie
+  dall'estensione scritta nel nome del file — `.csv` esporta in CSV
+  (con i valori delle formule già calcolati, non il testo della
+  formula), qualunque altra estensione (o nessuna) scrive nel formato
+  nativo ASCD. Non è ancora possibile esportare verso XLS/XLSX/ODS: quei
+  translator per ora importano soltanto. Per riaprire un file ASCD
+  salvato, usare di nuovo File → Apri (un CSV esportato riapre invece
+  solo i valori, non le formule originali — CSV non ha alcun concetto
+  di formula).
 
 ## Taglia, copia, incolla
 

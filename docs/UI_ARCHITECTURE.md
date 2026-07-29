@@ -278,6 +278,54 @@ trascinamento da Tracker) riproduceva il crash prima del fix e non lo
 riproduceva più dopo, verificato sia via screenshot sia interrogando
 la finestra dal vivo con lo strumento di scripting nativo `hey`.
 
+## Export CSV e bug scoperto: formule mai ricalcolate al caricamento
+
+"Salva con nome" instrada ora attraverso `BTranslatorRoster` invece di
+scrivere sempre ASCD a mano: serializza prima il documento corrente in
+ASCD in memoria (`BMallocIO`), poi chiama
+`BTranslatorRoster::Default()->Translate(&ascd, NULL, NULL, &file,
+outType)`, lasciando che il roster trovi un translator installato che
+sappia leggere ASCD e scrivere il formato scelto — il formato si
+decide dall'estensione del nome file scelto nel `BFilePanel` (".csv"
+esporta in CSV, altrimenti resta sul nativo ASCD). Il translator CSV
+aveva già entrambe le direzioni fin dalla Fase 3
+(`CTextConverter::ConvertToText`/`ConvertFromText`): mancava solo
+questo instradamento. Disegnato per essere direttamente riusabile
+quando XLS/XLSX/ODS avranno anche loro un writer, non solo per CSV.
+
+Costruendo questo export è emerso un bug reale: una cella con formula
+importata da ASCD esportava sempre **vuota** in CSV, anche se il
+motore la ricalcola correttamente quando richiesto esplicitamente.
+Causa: `TryToParseString` (usata da `LoadASCD` e dal `ReadASCD` del
+translator CSV per popolare celle da un flusso ASCD) imposta la
+formula/il valore di una cella ma **non la calcola** — serve una
+`CalcCell` esplicita. Nessuno dei due punti la faceva, il che
+significava che **qualunque file aperto nell'app con celle a formula
+le mostrava vuote nella griglia** finché l'utente non le toccava a
+mano (barra formule/editing in-cella, che chiamano `CalcCell` dopo
+aver scritto) — passato inosservato perché ogni test dei translator
+XLSX/ODS chiamava `CalcCell` esplicitamente *nel test stesso*,
+mascherando che il percorso di produzione non lo faceva mai da solo.
+
+**Fix**: nuova `RecalculateAll(CContainer*)` in `ui/src/AscdIO.h/.cpp`
+(usata da `LoadASCD`), più la stessa logica duplicata nel `ReadASCD`
+del translator CSV (stessa duplicazione intenzionale già usata per
+`WriteASCD`/`ReadASCD`, per non introdurre una dipendenza di link fra
+app e translator). Itera su tutte le celle chiamando `CalcCell` su
+ciascuna, **ripetendo finché nessuna cella cambia più valore** (limite
+di sicurezza: 50 passate): `CFormula::Calculate` legge i riferimenti
+ad altre celle con una `GetValue` non ricorsiva, quindi l'ordine di
+inserimento non garantisce che una cella referenziata sia già stata
+calcolata — più passate propagano correttamente le dipendenze in
+qualunque ordine, senza un vero ordinamento topologico del grafo delle
+dipendenze.
+
+**Verificato**: `ui/tests/test_ascd_io.cpp` ora controlla il valore di
+C1 subito dopo `LoadASCD`, prima di qualunque `CalcCell` esplicito nel
+test (prima il test chiamava `CalcCell` apposta, che nascondeva il
+bug); un harness diretto dell'export CSV ha confermato che una formula
+`=A1+B1` con A1=10/B1=20 esporta "30" invece di una cella vuota.
+
 ## Test
 
 `ui/tests/test_ascd_io.cpp` (`cd ui && make test`, non richiede una
@@ -330,9 +378,11 @@ invece della sola revisione manuale del codice.
   la prima schermata scorrono via insieme al contenuto. Scelta
   deliberata per evitare la complessità di viste multiple sincronizzate
   (e il flicker da `CopyBits` che ne deriverebbe con questa tecnica).
-- **Nessun export**: "Salva con nome" scrive solo in ASCD nativo,
-  coerente col limite "solo import" già documentato in Fase 3 (nessun
-  translator ha ancora un writer per CSV/XLS/XLSX/ODS).
+- **Export solo verso CSV**: "Salva con nome" esporta in CSV (se il
+  nome scelto finisce per ".csv") o nel nativo ASCD, ma non ancora
+  verso XLS/XLSX/ODS — nessuno dei tre translator ha un writer, solo
+  import. Nessun selettore di formato dedicato nel pannello di
+  salvataggio: il formato si decide dall'estensione del nome file.
 - **Un solo foglio**: coerente col limite già accettato in Fase 3 per
   XLSX/ODS (si importa solo il primo foglio/tabella).
 - Solo i menu File e Modifica: nessun menu Formato, nessun dialogo
