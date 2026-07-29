@@ -32,9 +32,11 @@
 #include <TranslatorRoster.h>
 #include <TranslationDefs.h>
 
+#include "CellStyle.h"
 #include "Container.h"
 #include "CellIterator.h"
 #include "CellParser.h"
+#include "Formatter.h"
 
 static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
@@ -46,6 +48,7 @@ static const uint32 kMsgPaste = 'apst';
 static const uint32 kMsgClear = 'aclr';
 static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
+static const uint32 kMsgSetFormat = 'stfm';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -101,6 +104,25 @@ MainWindow::MainWindow()
 	editMenu->AddItem(new BMenuItem("Trova e sostituisci" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgFind), 'F'));
 	menuBar->AddItem(editMenu);
+
+	// Formato numero della cella selezionata: agisce su CellStyle::fFormat
+	// (letto da CContainer::GetCellResult/SheetView per la
+	// visualizzazione). Valuta e percentuale sfruttano anche le
+	// formattazioni dedicate del Locale Kit in SheetView::Draw.
+	BMenu* formatMenu = new BMenu("Formato");
+	BMessage* generalMsg = new BMessage(kMsgSetFormat);
+	generalMsg->AddInt32("format", eGeneral);
+	formatMenu->AddItem(new BMenuItem("Generale", generalMsg));
+	BMessage* fixedMsg = new BMessage(kMsgSetFormat);
+	fixedMsg->AddInt32("format", eFixed);
+	formatMenu->AddItem(new BMenuItem("Numero", fixedMsg));
+	BMessage* currencyMsg = new BMessage(kMsgSetFormat);
+	currencyMsg->AddInt32("format", eCurrency);
+	formatMenu->AddItem(new BMenuItem("Valuta", currencyMsg));
+	BMessage* percentMsg = new BMessage(kMsgSetFormat);
+	percentMsg->AddInt32("format", ePercent);
+	formatMenu->AddItem(new BMenuItem("Percentuale", percentMsg));
+	menuBar->AddItem(formatMenu);
 
 	// Barra strumenti: pulsanti di testo semplici (BButton), non
 	// BToolBar -- quella classe vive solo sotto develop/headers/
@@ -539,6 +561,19 @@ void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
 	alert->Go();
 }
 
+void MainWindow::SetCellFormat(int32 format)
+{
+	if (!fDoc)
+		return;
+
+	cell sel = fSheetView->Selection();
+	CellStyle cs;
+	fDoc->GetCellStyle(sel, cs);
+	cs.fFormat = format;
+	fDoc->SetCellStyle(sel, cs);
+	fSheetView->Invalidate();
+}
+
 void MainWindow::PrintDocument()
 {
 	if (!fDoc)
@@ -710,6 +745,14 @@ void MainWindow::MessageReceived(BMessage* message)
 			if (message->FindString("text", &text) == B_OK
 				&& message->FindString("replace", &replace) == B_OK)
 				ReplaceAll(text.String(), replace.String());
+			break;
+		}
+
+		case kMsgSetFormat:
+		{
+			int32 format;
+			if (message->FindInt32("format", &format) == B_OK)
+				SetCellFormat(format);
 			break;
 		}
 

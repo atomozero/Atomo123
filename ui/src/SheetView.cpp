@@ -20,8 +20,10 @@
 
 #include "Value.h"
 #include "CellParser.h"
+#include "CellStyle.h"
 #include "Container.h"
 #include "Constants.h"
+#include "Formatter.h"
 
 static const uint32 kMsgCellEditCommit = 'cedt';
 static const uint32 kMsgCellEditCancel = 'cedc';
@@ -239,13 +241,27 @@ void SheetView::Draw(BRect updateRect)
 				// locale-aware (separatore delle migliaia, punto o
 				// virgola decimale secondo le preferenze di sistema)
 				// tramite il Locale Kit, come livello di presentazione
-				// sopra il testo gia' calcolato dal motore.
+				// sopra il testo gia' calcolato dal motore. Rispetta il
+				// formato scelto per la cella (menu Formato): valuta e
+				// percentuale usano le formattazioni dedicate del
+				// Locale Kit, gli altri (incluso il generico) usano il
+				// raggruppamento numerico semplice.
 				Value val;
 				if (fDoc->GetValue(c, val) && val.fType == eNumData && !val.IsNan())
 				{
+					CellStyle cs;
+					fDoc->GetCellStyle(c, cs);
+
 					BString formatted;
-					if (fNumberFormat.Format(formatted, (double)val) == B_OK
-						&& formatted.Length() > 0)
+					status_t fmtErr;
+					if (cs.fFormat == eCurrency)
+						fmtErr = fNumberFormat.FormatMonetary(formatted, (double)val);
+					else if (cs.fFormat == ePercent)
+						fmtErr = fNumberFormat.FormatPercent(formatted, (double)val);
+					else
+						fmtErr = fNumberFormat.Format(formatted, (double)val);
+
+					if (fmtErr == B_OK && formatted.Length() > 0)
 						strlcpy(text, formatted.String(), sizeof(text));
 				}
 
