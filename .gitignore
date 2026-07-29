@@ -16,6 +16,7 @@ engine/tests/smoke_test
 translators/*/CsvTranslator
 translators/*/XlsTranslator
 translators/*/XlsxTranslator
+translators/*/OdsTranslator
 translators/*/tests/test_*_translator
 
 # Compiled binaries produced by the legacy build (not source)
