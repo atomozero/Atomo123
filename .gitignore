@@ -15,6 +15,7 @@ engine/tests/smoke_test
 # Build artifacts (translators/*/ Makefiles)
 translators/*/CsvTranslator
 translators/*/XlsTranslator
+translators/*/XlsxTranslator
 translators/*/tests/test_*_translator
 
 # Compiled binaries produced by the legacy build (not source)
