@@ -139,6 +139,34 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		}
 	}
 
+	// TryToParseString imposta la formula/il valore di ogni cella ma
+	// non la calcola: CFormula::Calculate legge i riferimenti ad
+	// altre celle con una semplice GetValue (non ricorsiva), quindi
+	// senza questo passo l'esportazione CSV di una formula (che deve
+	// scrivere il valore calcolato, non il testo della formula)
+	// risulterebbe vuota. Piu' passate finche' nessuna cella cambia
+	// piu' valore propagano correttamente le dipendenze in qualunque
+	// ordine siano state inserite; limite di passate per non restare
+	// bloccati su un riferimento circolare.
+	{
+		range bounds;
+		doc->GetBounds(bounds);
+		bool changed = true;
+		int guard = 0;
+		while (changed && guard < 50)
+		{
+			changed = false;
+			CCellIterator recalcIter(doc, &bounds);
+			cell rc;
+			while (recalcIter.NextExisting(rc))
+			{
+				if (doc->CalcCell(rc))
+					changed = true;
+			}
+			guard++;
+		}
+	}
+
 	return B_OK;
 }
 

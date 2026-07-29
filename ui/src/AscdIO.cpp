@@ -105,5 +105,38 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc)
 		}
 	}
 
+	RecalculateAll(doc);
+
 	return B_OK;
+}
+
+// TryToParseString imposta la formula/il valore di ogni cella ma non
+// la calcola: CFormula::Calculate legge i riferimenti ad altre celle
+// con una semplice GetValue (non ricorsiva), quindi una cella che fa
+// riferimento a un'altra cella non ancora calcolata leggerebbe un
+// valore vuoto/NaN. Piu' passate su tutte le celle finche' nessuna
+// cambia piu' valore propagano correttamente le dipendenze in
+// qualunque ordine siano state inserite -- senza aver bisogno di un
+// vero ordinamento topologico del grafo delle dipendenze. Limite di
+// sicurezza sulle passate per non restare bloccati su un riferimento
+// circolare.
+void RecalculateAll(CContainer* doc)
+{
+	range bounds;
+	doc->GetBounds(bounds);
+
+	bool changed = true;
+	int guard = 0;
+	while (changed && guard < 50)
+	{
+		changed = false;
+		CCellIterator iter(doc, &bounds);
+		cell c;
+		while (iter.NextExisting(c))
+		{
+			if (doc->CalcCell(c))
+				changed = true;
+		}
+		guard++;
+	}
 }

@@ -46,6 +46,7 @@ static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
+static const uint32 kAtomoCsvFormat = 'ACSV';
 
 // Stessa logica di SheetView::ColumnName (vedi li' per il perche'
 // della duplicazione: e' una manciata di righe, non vale la pena
@@ -199,6 +200,16 @@ void MainWindow::OpenFile(const entry_ref& ref)
 
 void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 {
+	// Il formato di destinazione si sceglie dall'estensione del nome
+	// scelto nel BFilePanel (".csv" esporta in CSV, qualunque altra
+	// estensione o nessuna resta sul formato nativo ASCD) -- non c'e'
+	// ancora un selettore di formato dedicato nel pannello di salvataggio.
+	BString nameStr(name);
+	uint32 outType = kAtomoNativeFormat;
+	int32 csvPos = nameStr.IFindLast(".csv");
+	if (csvPos >= 0 && csvPos == nameStr.Length() - 4)
+		outType = kAtomoCsvFormat;
+
 	BDirectory directory(&dir);
 	BFile file(&directory, name, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 	if (file.InitCheck() != B_OK)
@@ -208,10 +219,39 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		return;
 	}
 
-	status_t err = SaveASCD(fDoc, &file);
+	if (outType == kAtomoNativeFormat)
+	{
+		status_t err = SaveASCD(fDoc, &file);
+		if (err != B_OK)
+		{
+			BAlert* alert = new BAlert("Errore", "Scrittura del file fallita.", "OK");
+			alert->Go();
+		}
+		return;
+	}
+
+	// Per qualunque formato non nativo si passa dal Translation Kit:
+	// si serializza prima il documento in ASCD in memoria, poi si
+	// lascia che BTranslatorRoster trovi un translator installato che
+	// sappia leggere ASCD e scrivere il formato scelto (il translator
+	// CSV lo fa gia' in entrambe le direzioni; XLS/XLSX/ODS per ora
+	// importano soltanto, quindi qui la Translate fallisce per loro
+	// finche' non avranno anche un writer).
+	BMallocIO ascd;
+	status_t err = SaveASCD(fDoc, &ascd);
 	if (err != B_OK)
 	{
-		BAlert* alert = new BAlert("Errore", "Scrittura del file fallita.", "OK");
+		BAlert* alert = new BAlert("Errore", "Serializzazione del documento fallita.", "OK");
+		alert->Go();
+		return;
+	}
+
+	ascd.Seek(0, SEEK_SET);
+	err = BTranslatorRoster::Default()->Translate(&ascd, NULL, NULL, &file, outType);
+	if (err != B_OK)
+	{
+		BAlert* alert = new BAlert("Errore",
+			"Nessun translator installato sa esportare in questo formato.", "OK");
 		alert->Go();
 	}
 }

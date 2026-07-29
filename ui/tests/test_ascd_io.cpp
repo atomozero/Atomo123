@@ -75,11 +75,15 @@ int main()
 	reloaded.GetCellFormula(d1, text, false);
 	Check(strcmp(text, "Ciao Atomo123") == 0, "D1 mantiene il testo dopo il giro completo");
 
-	reloaded.CalcCell(c1);
-	Value afterReload;
-	reloaded.GetValue(c1, afterReload);
-	Check((double)afterReload == 30.0,
-		"il motore ricalcola C1 a 30 anche dopo il giro salva/ricarica");
+	// LoadASCD deve aver gia' ricalcolato da solo (RecalculateAll): a
+	// differenza di TryToParseString, che imposta solo la formula
+	// senza calcolarla, il valore deve essere gia' corretto qui,
+	// PRIMA di qualunque CalcCell esplicito -- altrimenti la griglia
+	// mostrerebbe celle vuote finche' l'utente non le tocca a mano.
+	Value afterLoad;
+	reloaded.GetValue(c1, afterLoad);
+	Check((double)afterLoad == 30.0,
+		"LoadASCD ricalcola gia' da solo C1 a 30, senza bisogno di un CalcCell esplicito");
 
 	reloaded.Release();
 

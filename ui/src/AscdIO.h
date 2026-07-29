@@ -22,4 +22,11 @@ class CContainer;
 status_t LoadASCD(BPositionIO* source, CContainer* doc);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest);
 
+// Ricalcola tutte le celle con formula del documento fino a
+// convergenza (o a un limite di passate). Usata da LoadASCD dopo aver
+// popolato le celle: TryToParseString non calcola, quindi senza
+// questo passo le celle con formula restano vuote finche' l'utente
+// non le tocca a mano.
+void RecalculateAll(CContainer* doc);
+
 #endif
