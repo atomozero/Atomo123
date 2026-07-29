@@ -46,6 +46,7 @@ private:
 	void CopySelection(bool cut);
 	void PasteSelection();
 	void DeleteSelection();
+	void PrintDocument();
 };
 
 #endif

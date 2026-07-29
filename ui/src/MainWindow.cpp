@@ -21,6 +21,7 @@
 #include <MenuBar.h>
 #include <MenuItem.h>
 #include <Path.h>
+#include <PrintJob.h>
 #include <ScrollView.h>
 #include <String.h>
 #include <StringView.h>
@@ -39,6 +40,7 @@ static const uint32 kMsgCut = 'acut';
 static const uint32 kMsgCopy = 'acpy';
 static const uint32 kMsgPaste = 'apst';
 static const uint32 kMsgClear = 'aclr';
+static const uint32 kMsgPrint = 'aprt';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 
@@ -73,6 +75,8 @@ MainWindow::MainWindow()
 	fileMenu->AddItem(new BMenuItem("Apri" B_UTF8_ELLIPSIS, new BMessage(kMsgOpen), 'O'));
 	fileMenu->AddItem(new BMenuItem("Salva con nome" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgSaveAs), 'S'));
+	fileMenu->AddSeparatorItem();
+	fileMenu->AddItem(new BMenuItem("Stampa" B_UTF8_ELLIPSIS, new BMessage(kMsgPrint), 'P'));
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem("Esci", new BMessage(B_QUIT_REQUESTED), 'Q'));
 	menuBar->AddItem(fileMenu);
@@ -269,6 +273,57 @@ void MainWindow::DeleteSelection()
 	SelectionChanged(sel);
 }
 
+void MainWindow::PrintDocument()
+{
+	if (!fDoc)
+		return;
+
+	BPrintJob printJob("Atomo123");
+
+	// ConfigJob mostra il dialogo di stampa di sistema (scelta
+	// stampante/opzioni): se l'utente annulla, o non c'e' nessuna
+	// stampante configurata, restituisce un errore e non si stampa
+	// nulla.
+	if (printJob.ConfigJob() != B_OK)
+		return;
+
+	printJob.BeginJob();
+
+	BRect printableRect = printJob.PrintableRect();
+	BRect contentRect = fSheetView->ContentRect();
+	float pageWidth = printableRect.Width();
+	float pageHeight = printableRect.Height();
+
+	if (pageWidth <= 0 || pageHeight <= 0)
+	{
+		printJob.CancelJob();
+		return;
+	}
+
+	// Si stampa solo l'area del foglio che contiene dati
+	// (SheetView::ContentRect), suddivisa in tante pagine quante ne
+	// servono in base all'area stampabile della stampante scelta —
+	// non l'intero intervallo virtuale del motore (702x16384 celle).
+	// Limite noto: le intestazioni di riga/colonna, disegnate da
+	// SheetView::Draw solo nella banda 0-kHeaderWidth/kHeaderHeight,
+	// compaiono quindi solo sulla prima pagina (in alto a sinistra),
+	// non ripetute su ogni pagina.
+	for (float y = 0; y <= contentRect.bottom && printJob.CanContinue(); y += pageHeight)
+	{
+		for (float x = 0; x <= contentRect.right && printJob.CanContinue(); x += pageWidth)
+		{
+			BRect pageSlice(x, y, x + pageWidth, y + pageHeight);
+			printJob.DrawView(fSheetView, pageSlice, BPoint(0, 0));
+			printJob.SpoolPage();
+		}
+	}
+
+	if (printJob.CanContinue())
+		printJob.CommitJob();
+	else
+		printJob.CancelJob();
+}
+
 void MainWindow::CommitFormulaBar()
 {
 	if (!fDoc)
@@ -356,6 +411,10 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgClear:
 			DeleteSelection();
+			break;
+
+		case kMsgPrint:
+			PrintDocument();
 			break;
 
 		default:

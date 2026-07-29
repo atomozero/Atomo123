@@ -144,6 +144,21 @@ BRect SheetView::CellRect(cell c) const
 	return BRect(x, y, x + kColWidth, y + kRowHeight);
 }
 
+BRect SheetView::ContentRect() const
+{
+	range bounds;
+	if (fDoc)
+		fDoc->GetBounds(bounds);
+
+	// Foglio senza celle (o nessun documento): un solo rettangolo di
+	// cella, non l'intero intervallo virtuale del motore.
+	if (bounds.right < 1 || bounds.bottom < 1)
+		return BRect(0, 0, kHeaderWidth + kColWidth, kHeaderHeight + kRowHeight);
+
+	BRect botRight = CellRect(bounds.BotRight());
+	return BRect(0, 0, botRight.right, botRight.bottom);
+}
+
 void SheetView::ScrollToShowSelection()
 {
 	BRect r = CellRect(fSelection);

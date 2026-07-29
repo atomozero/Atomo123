@@ -40,6 +40,12 @@ public:
 	cell Selection() const { return fSelection; }
 	void SetSelection(cell c);
 
+	// Rettangolo in pixel (a partire da 0,0, intestazioni comprese) che
+	// copre le celle con contenuto -- usato da MainWindow per la stampa
+	// (Print Kit), per sapere quanto foglio serve davvero senza
+	// stampare l'intero intervallo virtuale del motore (702x16384).
+	BRect ContentRect() const;
+
 private:
 	CContainer* fDoc;
 	cell fSelection;
