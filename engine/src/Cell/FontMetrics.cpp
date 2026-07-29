@@ -118,10 +118,16 @@ float CFontMetrics::operator[] (int inChar) const
 
 	if (!fFontStyle)
 	{
-		ASSERT(false);
-		return be_plain_font->StringWidth(s);
+		/* Nessun font reale caricato (caso normale nella libreria
+		   engine isolata, dove nessuna CCellView popola mai
+		   gFontSizeTable tramite GetFontID). be_plain_font->StringWidth
+		   richiede una connessione all'app_server: senza (motore
+		   headless) la chiamata si blocca in attesa di una risposta
+		   che non arriva mai. Si restituisce una stima fissa
+		   ragionevole invece di interrogare l'Interface Kit. */
+		return 8.0f;
 	}
-	
+
 	return fFontStyle->CharWidth(s);
 } /* CFontMetrics::operator[] */
 
@@ -129,7 +135,10 @@ float CFontMetrics::StringWidth(const char *inString) const
 {
 	int i = 0;
 	float result = 0;
-	
+
+	if (!fFontStyle)
+		return strlen(inString) * 8.0f;
+
 	while (inString[i])
 	{
 		result += fFontStyle->CharWidth(inString + i);

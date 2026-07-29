@@ -99,7 +99,19 @@ public:
 		font_style *familyStyle, float *size, rgb_color *fontColor = NULL);
 	
 	const CFontMetrics& operator[](int indx)
-		{ return fFonts[indx]; };
+	{
+		/* Nella libreria engine isolata (nessuna CCellView reale) la
+		   tabella non viene mai popolata tramite GetFontID, quindi
+		   resta vuota: un accesso fFonts[indx] sarebbe out-of-bounds
+		   (undefined behavior). CFontMetrics ha un costruttore di
+		   default sicuro (fFontStyle=NULL) che i metodi di misura
+		   gia' gestiscono con una stima di fallback: lo si usa qui
+		   invece di rischiare un accesso non valido al vettore. */
+		static CFontMetrics sDefault;
+		if (indx < 0 || (size_t)indx >= fFonts.size())
+			return sDefault;
+		return fFonts[indx];
+	};
 
 	unsigned long Count() const
 		{ return fFonts.size(); };

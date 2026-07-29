@@ -122,7 +122,16 @@ int GetFunctionNr(const char *name)
 	sLen = strlen(name);
 	if (sLen >= 9)
 		return -1;
-	
+
+	/* Se la tabella delle funzioni non e' mai stata caricata (nessuno
+	   ha chiamato InitFunctions(), che la popola da una risorsa 'Func'
+	   — caso normale nella libreria engine isolata, che non allega
+	   ancora risorse), gFuncArrayByName resta NULL e gFuncCount resta
+	   0. Senza questo controllo la ricerca binaria sottostante
+	   dereferenzia un puntatore nullo. */
+	if (gFuncCount <= 0)
+		return -1;
+
 	for (i = 0; i < sLen; i++)
 		myFunc[i] = toupper(name[i]);
 	myFunc[sLen] = 0;

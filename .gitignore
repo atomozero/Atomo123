@@ -12,6 +12,11 @@ engine/obj/
 engine/libengine.a
 engine/tests/smoke_test
 
+# Build artifacts (translators/*/ Makefiles)
+translators/*/CsvTranslator
+translators/*/XlsTranslator
+translators/*/tests/test_*_translator
+
 # Compiled binaries produced by the legacy build (not source)
 legacy/opensumit/bsl/bsl
 legacy/opensumit/rez/rez

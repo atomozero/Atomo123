@@ -366,7 +366,7 @@ void CTextConverter::ConvertToText(range *sRange, CCellView *inView)
 	while (iter.NextExisting(c))
 	{
 		Value v;
-		
+
 		bp = buffer;
 		fContainer->Lock();
 		fContainer->GetValue(c, v);

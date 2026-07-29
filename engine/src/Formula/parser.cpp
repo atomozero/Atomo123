@@ -120,7 +120,7 @@ bool CParser::Parse(const char *inString, cell inLocation)
 	{
 		mTokenStart = mExpr;
 		mLookahead = GetNextToken(true);
-		
+
 		if (mLookahead == RELOP && mRelop == opEQ)
 		{
 			Match(RELOP);
@@ -128,10 +128,10 @@ bool CParser::Parse(const char *inString, cell inLocation)
 		}
 		else
 			mIsFormula = false;
-	
+
 		RelExpr();
 		Match(END);
-	
+
 		AddToken(opEnd);
 	}
 	catch (CErr& e)
@@ -296,7 +296,13 @@ void CParser::Factor()
 
 			FuncCallData fcd;
 			fcd.funcNr = GetFunctionNr(name);
-			int expectedArgs = gFuncArrayByNr[fcd.funcNr].argCnt;
+			/* fcd.funcNr e' -1 se il nome non corrisponde a nessuna
+			   funzione nota (incluso il caso in cui la tabella delle
+			   funzioni non e' stata caricata, vedi GetFunctionNr):
+			   in tal caso non si deve indicizzare gFuncArrayByNr con
+			   un indice negativo. expectedArgs = -1 e' gia' il valore
+			   che piu' avanti nel codice significa "sconosciuta". */
+			int expectedArgs = (fcd.funcNr >= 0) ? gFuncArrayByNr[fcd.funcNr].argCnt : -1;
 
 			Match(IDENT);
 

@@ -38,6 +38,7 @@
 
 */
 
+#include <cstdio>
 #include <support/Debug.h>
 #ifndef   CELLVIEW_H
 #endif
@@ -90,7 +91,7 @@ CParseErr::CParseErr(int offset, int len, int err, ...)
 	fOffset = offset;
 	fLen = len;
 	fErr = err;
-	
+
 	const char *r;
 	r = GetIndString(6, err < 0 ? 0 : err);
 	if (!r)
