@@ -1,11 +1,18 @@
 # Roadmap — foglio di calcolo nativo per Haiku OS
 
 Stato: **Fase 1, Fase 2 e Fase 3 chiuse** (translator CSV, XLS legacy,
-XLSX e ODS tutti completati e testati); **Fase 4 (UI nativa) in
-corso** — finestra principale, griglia, apertura file via Translation
-Kit e barra formule funzionanti e testati dal vivo in una sessione
-grafica reale; mancano editing in-cella, export, Locale/Print Kit e
-icone. Aggiornato ad ogni fase completata.
+XLSX e ODS tutti completati e testati); **Fase 4 (UI nativa) in stato
+avanzato** — finestra principale, griglia, apertura file via
+Translation Kit, barra formule, editing in-cella, menu Modifica
+(taglia/copia/incolla/cancella/trova), Locale Kit e Print Kit tutti
+funzionanti e testati dal vivo in una sessione grafica reale; mancano
+ancora export, formattazione (menu Formato), sostituisci, toolbar e
+icone (bloccate: galleria HVIF autorizzata risultata vuota al
+controllo). **Fase 5 (packaging/compatibilità) in corso** — ricetta
+HaikuDepot pronta ma non ancora buildabile (nessun repository
+pubblico); test di compatibilità su corpus reale e decisione della
+licenza del codice nuovo ancora da fare. Aggiornato ad ogni fase
+completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -464,14 +471,37 @@ corretto). Rimane da fare un vero test interattivo del doppio
 click/digitazione diretta in-cella (vedi nota sopra sulla mancanza di
 uno strumento di iniezione mouse/tastiera in questo ambiente).
 
-## Fase 5 — Integrazione, packaging, compatibilità reale
+## Fase 5 — Integrazione, packaging, compatibilità reale (IN CORSO)
 
-- [ ] Ricetta pacchetto per HaikuDepot
+- [x] Ricetta pacchetto per HaikuDepot: `packaging/atomo123-0.1.0.recipe`,
+      formato HaikuPorter reale (verificato contro `haikubench-1.2.0.recipe`,
+      un'altra recipe dello stesso autore già funzionante su questo
+      sistema, e contro `HaikuPorter/Port.py` per i nomi esatti delle
+      variabili di installazione — `$appsDir`, `$addOnsDir`).
+      `BUILD()` compila `engine/`, i quattro translator e `ui/` con gli
+      stessi Makefile già testati nelle fasi precedenti; `INSTALL()`
+      copia il binario in `$appsDir` con collegamento Deskbar
+      (`addAppDeskbarSymlink`) e i quattro translator in
+      `$addOnsDir/Translators`. **Non ancora utilizzabile per una
+      build reale**: `SOURCE_URI`/`CHECKSUM_SHA256` sono segnaposto
+      perché il progetto non è ancora pubblicato su un repository
+      pubblico raggiungibile da `haikuporter` (nessun remote git
+      configurato) — da completare quando/se il progetto verrà
+      pubblicato. **Licenza non ancora chiarita** (vedi nota nella
+      recipe): il codice storico riusato in `engine/` porta con sé la
+      clausola pubblicitaria BSD a 4 clausole di Sum-It, ma il codice
+      nuovo (`translators/`, `ui/`) non ha ancora una licenza
+      dichiarata dall'utente — non si è assunta una licenza non
+      richiesta, il campo `LICENSE` della recipe è esplicitamente
+      marcato come segnaposto in attesa di una decisione.
 - [ ] Test di compatibilità con corpus di file reali: Excel (xls/xlsx
-      di varie versioni), LibreOffice Calc (ods), OpenOffice legacy
-- [ ] Verifica licenze (codice storico Sum-It: BSD 4 clausole con
-      advertising clause — va rispettata la clausola pubblicitaria in
-      ogni distribuzione binaria che includa quel codice)
+      di varie versioni), LibreOffice Calc (ods), OpenOffice legacy —
+      finora testato solo con file costruiti a mano per questo
+      progetto (vedi `translators/*/tests/`), non un vero corpus
+      eterogeneo generato da applicazioni reali in condizioni non
+      controllate
+- [ ] Verifica licenze — vedi nota sopra, decisione della licenza per
+      il codice nuovo non ancora presa
 
 ## Fase 6 — Polish e funzionalità avanzate
 
