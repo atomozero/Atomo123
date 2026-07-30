@@ -21,20 +21,35 @@
 	della vera area visibile della finestra.
 
 	Non passa dalla vera finestra MainWindow (per isolare la sola
-	logica di scroll): costruisce una finestra e una BScrollView
-	minime, riproducendo pero' esattamente lo stesso pattern
-	(BScrollView classica + ResizeTo esplicito) usato in
-	MainWindow::MainWindow. Richiede una sessione grafica reale (il
-	Layout Kit passa dall'app_server) — target Makefile separato,
-	come test-clipboard.
+	logica di scroll): costruisce una finestra con un layout a piu'
+	righe simile (menu, barra strumenti, barra formula, poi la
+	griglia), riproducendo lo stesso pattern (BScrollView classica +
+	ResizeTo esplicito) usato in MainWindow::MainWindow. Richiede una
+	sessione grafica reale (il Layout Kit passa dall'app_server) —
+	target Makefile separato, come test-clipboard.
+
+	Nota su un secondo bug della stessa famiglia (parte 2 sotto): il
+	controllo "dopo un ridimensionamento della finestra" qui sotto
+	NON riproduce quel bug in questo harness (passa anche senza il
+	fix) -- la diagnosi e la verifica di quel fix sono state fatte
+	dal vivo sull'app vera (vedi docs/UI_ARCHITECTURE.md), interrogando
+	Frame() della BScrollView con `hey <app> get Frame of View "scroll"
+	of Window 0` prima e dopo il fix. Il controllo resta qui come
+	guardia aggiuntiva onesta (non fa mai male verificarlo), non come
+	prova che il bug specifico sia coperto da questo test.
 */
 
 #include <cstdio>
 
 #include <Application.h>
+#include <Button.h>
 #include <InterfaceDefs.h>
 #include <LayoutBuilder.h>
+#include <MenuBar.h>
+#include <MenuItem.h>
 #include <ScrollView.h>
+#include <StringView.h>
+#include <TextControl.h>
 #include <Window.h>
 
 #include "Cell.h"
@@ -77,7 +92,33 @@ int main()
 	// senza, BScrollView eredita la dimensione enorme del target.
 	scroll->ResizeTo(400, 300);
 
+	// Un layout con la sola BScrollView (una versione precedente di
+	// questo test) non riproduceva il bug della parte 2 sotto: serve
+	// un layout a piu' righe sopra la griglia (menu, barra strumenti,
+	// barra formula), come in MainWindow::MainWindow, perche' il
+	// ricalcolo del layout con piu' elementi si comporti allo stesso
+	// modo dell'app vera.
+	BMenuBar* menuBar = new BMenuBar("menu");
+	BMenu* fileMenu = new BMenu("File");
+	fileMenu->AddItem(new BMenuItem("Esci", NULL));
+	menuBar->AddItem(fileMenu);
+
+	BButton* toolButton = new BButton("tool", "Nuovo", NULL);
+	BStringView* cellLabel = new BStringView("cellLabel", "A1");
+	BTextControl* formulaBar = new BTextControl("formula", NULL, "", NULL);
+
 	BLayoutBuilder::Group<>(win, B_VERTICAL, 0)
+		.Add(menuBar)
+		.AddGroup(B_HORIZONTAL, 4)
+			.SetInsets(4, 4, 4, 4)
+			.Add(toolButton)
+			.AddGlue()
+		.End()
+		.AddGroup(B_HORIZONTAL, 4)
+			.SetInsets(4, 4, 4, 4)
+			.Add(cellLabel)
+			.Add(formulaBar)
+		.End()
 		.Add(scroll);
 	win->Show();
 
@@ -86,6 +127,23 @@ int main()
 	BRect viewport = view->Parent()->Bounds();
 	Check(viewport.Width() < 1000 && viewport.Height() < 1000,
 		"la BScrollView ha una dimensione ragionevole (non eredita il canvas virtuale del target)");
+
+	// Il bug originale non si manifestava alla primissima passata di
+	// layout (dove il ResizeTo() esplicito sulla BScrollView "mascherava"
+	// il problema): serviva un secondo ricalcolo del layout, come capita
+	// nell'uso reale a ogni ridimensionamento della finestra. Senza un
+	// limite esplicito di dimensione impostato su SheetView stessa (non
+	// solo un ResizeTo() una tantum sulla BScrollView), il layout
+	// tornava a interrogare il Frame() enorme del target a ogni nuovo
+	// ricalcolo, riportando Parent()->Bounds() alla dimensione ereditata
+	// -- bug realmente segnalato dall'utente e non riprodotto da questo
+	// stesso test prima di aggiungere questo controllo.
+	win->ResizeTo(900, 600);
+	BRect viewportAfterResize = view->Parent()->Bounds();
+	Check(viewportAfterResize.Width() < 2000 && viewportAfterResize.Height() < 2000,
+		"la BScrollView resta di dimensione ragionevole anche dopo un "
+		"ridimensionamento della finestra (non torna alla dimensione ereditata "
+		"dal target a un ricalcolo successivo del layout)");
 
 	cell start = view->Selection();
 	Check(start.h == 1 && start.v == 1, "la selezione iniziale e' A1");

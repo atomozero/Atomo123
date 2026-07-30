@@ -66,6 +66,27 @@ SheetView::SheetView(CContainer* doc)
 	fEditingCell(1, 1)
 {
 	SetViewColor(255, 255, 255);
+
+	// Senza questi limiti espliciti, BView deriva i propri suggerimenti
+	// di dimensione (Min/Max/PreferredSize) dal Frame() della view --
+	// qui il canvas virtuale intero (FullCanvasFrame(), ~56000x328000
+	// pixel). BScrollView li interroga per capire quanto spazio offrire
+	// nel layout, quindi senza porre un limite esplicito richiede
+	// quella stessa dimensione enorme -- non solo alla prima passata di
+	// layout (un ResizeTo() una tantum sulla BScrollView "risolveva"
+	// quel caso, vedi MainWindow::MainWindow), ma a OGNI ricalcolo
+	// successivo del layout, riportando la BScrollView alla dimensione
+	// ereditata. Effetto pratico: Parent()->Bounds(), usato da
+	// ScrollToShowSelection per sapere quanto e' davvero visibile,
+	// tornava a riflettere quella dimensione enorme dopo il primo
+	// ricalcolo, facendo credere che qualunque cella fosse sempre
+	// gia' visibile -- lo scroll automatico verso la selezione
+	// smetteva di scattare (bug segnalato dall'utente, non riprodotto
+	// dal test in una finestra sintetica con una sola passata di
+	// layout).
+	SetExplicitMinSize(BSize(100, 100));
+	SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
+	SetExplicitPreferredSize(BSize(400, 300));
 }
 
 SheetView::~SheetView()
