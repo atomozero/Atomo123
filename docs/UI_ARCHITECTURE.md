@@ -543,6 +543,159 @@ utente end-to-end), un harness diretto in processo come
 `test_scroll.cpp` resta più affidabile di qualunque iniezione di
 input in questo ambiente.
 
+## Grafico a barre e tabella pivot: menu Inserisci, due finestre, stessa regola sui thread
+
+Fase 6 aggiunge un menu **Inserisci** con due voci: "Grafico a
+barre…" e "Tabella pivot…". Entrambe leggono un intervallo di due
+colonne (etichetta/categoria testuale, valore numerico) digitato
+dall'utente, non selezionato trascinando sulla griglia — `SheetView`
+supporta solo una singola cella selezionata (`fSelection`), non un
+intervallo con ancora e cella corrente, quindi non c'era nessuna
+"selezione corrente" multi-cella da cui partire senza prima
+implementare quella funzionalità separatamente (rimandata: vedi
+"Limiti noti" sotto). L'intervallo si scrive a mano, es. `A1:B5`,
+analizzato da `RangeRef.cpp` con `cell::GetCell` — lo stesso parser
+di riferimenti di cella già usato dal motore per le formule (non un
+parser scritto da zero).
+
+**Separazione logica/UI**: `Chart.cpp` (lettura dati + calcolo del
+layout delle barre) e `Pivot.cpp` (raggruppamento/aggregazione) non
+toccano mai `BView`/`BWindow`, seguendo lo stesso principio già
+usato per `SheetView::ScrollToShowSelection` e per `InitFunctions`:
+logica pura testabile senza sessione grafica (`make test-chart`,
+`make test-pivot`, headless come `make test` per `AscdIO`). Anche
+`ComputeBarLayout` (geometria delle barre dentro un `BRect`) è
+separata da `ChartView::Draw`, cosi' si verifica il calcolo con dei
+`BRect` di prova senza disegnare nulla per davvero.
+
+**Regola sui thread, applicata due volte**: `ChartWindow` e
+`PivotWindow` sono `BWindow` separate, ciascuna sul proprio
+`BLooper` — la stessa situazione di `FindWindow` (vedi sezione
+dedicata sopra), quindi vale la stessa regola: mai toccare `fDoc` (di
+proprietà di `MainWindow`) da un thread diverso dal suo.
+
+- **Tabella pivot**: `PivotWindow` manda l'intervallo sorgente, la
+  cella di destinazione e l'aggregazione scelta a `MainWindow` con un
+  solo `BMessage` (`kMsgPivotRequest`, via `BMessenger`).
+  `MainWindow::HandlePivotRequest` legge/scrive `fDoc` e invalida
+  `SheetView` interamente sul proprio thread — nessun dato torna
+  indietro a `PivotWindow`, perché il risultato finisce nel foglio
+  stesso, non in una vista di proprietà di `PivotWindow`.
+- **Grafico**: qui il risultato *deve* tornare indietro (il disegno
+  vive dentro `ChartView`, di proprietà di `ChartWindow`), quindi lo
+  scambio è bidirezionale: `ChartWindow` manda il testo
+  dell'intervallo (`kMsgChartRequest`); `MainWindow` lo analizza,
+  legge `fDoc` sul proprio thread, poi manda i dati già estratti
+  (etichette/valori, non puntatori al documento) indietro a
+  `ChartWindow` con un secondo `BMessage` (`kMsgChartData`) via
+  `BMessenger(fChartWindow)`; `ChartWindow::MessageReceived` (sul
+  proprio thread) aggiorna `ChartView` e la reinvalida — mai una
+  chiamata diretta fra i due thread in nessuna delle due direzioni.
+
+**Scrittura pivot e sovrapposizione con i dati sorgente**:
+`MainWindow::HandlePivotRequest` rifiuta esplicitamente (con un
+`BAlert`, non un crash o una sovrascrittura silenziosa) una cella di
+destinazione il cui intervallo di scrittura si sovrapponga
+all'intervallo sorgente, perché `WritePivotTable` scrive una riga
+alla volta e leggerebbe dati già sovrascritti a metà lettura se le
+due zone coincidessero.
+
+## Grafico incorporato nel foglio: da anteprima a oggetto vero, con dati letti dal vivo
+
+Nella prima versione di questa funzionalità (sopra) il grafico viveva
+solo in `ChartWindow`, disconnesso dal documento — l'utente ha
+segnalato subito il problema testando dal vivo: "il grafico si genera
+ma non posso inserirlo nel foglio". La soluzione scelta (fra tre
+opzioni proposte: restare così, incorporarlo come oggetto vero, o
+incollarlo come immagine statica) è stata l'incorporamento vero.
+
+**`ChartObject`** (`Chart.h`): `{ range dataRange; BRect frame; }` —
+posizione fissa in pixel nello stesso sistema di coordinate delle
+celle (`CellRect`), ma **nessuna istantanea dei dati**: a ogni
+ridisegno si rilegge `dataRange` dal documento
+(`SheetView::Draw`, in coda dopo le intestazioni, per restare visibile
+per intero anche vicino al bordo riga/colonna 1):
+
+```cpp
+if (fCharts && fDoc) {
+    for (auto& obj : *fCharts) {
+        if (!obj.frame.Intersects(updateRect)) continue;
+        std::vector<ChartSeries> series;
+        BuildChartSeries(fDoc, obj.dataRange, series);
+        DrawBarChart(this, obj.frame, series);
+    }
+}
+```
+
+`MainWindow` possiede l'unico `std::vector<ChartObject> fCharts`;
+`SheetView` ne riceve solo un puntatore a sola lettura
+(`SetCharts`), non lo possiede né lo modifica mai — stesso principio
+di `fDoc`.
+
+**Disegno condiviso, non duplicato**: `DrawBarChart(BView*, BRect,
+const std::vector<ChartSeries>&)` (`Chart.cpp`) prende dati già
+estratti, mai un `CContainer*` — questo è cruciale per rispettare la
+regola sui thread sopra: `ChartView::Draw` (thread di `ChartWindow`,
+dati ricevuti via `BMessage`) e `SheetView::Draw` (thread di
+`MainWindow`, dati letti dal vivo con `BuildChartSeries` **prima** di
+chiamare `DrawBarChart`) chiamano la stessa funzione di disegno, ma
+ciascuno prepara i dati sul proprio thread nel modo lecito per quel
+thread — `DrawBarChart` stessa non tocca mai il documento, quindi è
+sicura da entrambi.
+
+**Flusso di inserimento**: `ChartWindow` ha un secondo campo (cella
+di destinazione) e un pulsante "Inserisci nel foglio", che manda
+`kMsgChartInsert{range, dest}` a `MainWindow`.
+`MainWindow::HandleChartInsert` valida (stesso `BuildChartSeries` già
+usato per l'anteprima), calcola `frame` da `SheetView::CellOrigin(dest)`
+(nuovo accessor pubblico, riusa `CellRect` privato) con una dimensione
+fissa di default (300×180 px), aggiunge a `fCharts` e invalida
+`SheetView` — tutto sul thread di `MainWindow`, quindi sicuro.
+
+**Persistenza (`AscdIO.cpp`)**: `LoadASCD`/`SaveASCD` guadagnano un
+parametro opzionale `std::vector<ChartObject>*` (default `NULL`,
+comportamento invariato per chi non lo passa — es. `translators/*/`,
+che duplicano la propria copia di `ReadASCD`/`WriteASCD` e restano
+ignari di questa sezione, coerente col fatto che i grafici sono un
+concetto della UI, non del formato dati generico). La sezione
+grafici è scritta **in coda**, dopo l'ultima cella: un file scritto
+prima di questa modifica semplicemente non ce l'ha. `LoadASCD`
+distingue "fine dello stream esattamente lì" (`Read` restituisce 0 —
+formato vecchio, zero grafici, non un errore) da un file davvero
+troncato (`Read` restituisce un valore diverso da 0 ma minore della
+dimensione attesa — quello sì `B_BAD_DATA`).
+
+**Bug scoperto sistemando la persistenza**: `MainWindow::OpenFile`
+passava *sempre* dal Translation Kit (`BTranslatorRoster::Translate`)
+anche per riaprire un file già nel formato nativo — per un file
+ASCD, il translator scelto (es. `CsvTranslator`, che riconosce la
+firma ASCD in `Identify()`) lo rilegge con la propria copia duplicata
+di `ReadASCD` e lo riscrive con la propria copia di `WriteASCD` prima
+che `MainWindow` lo rilegga a sua volta: quella copia duplicata non
+conosce affatto la sezione grafici (è una copia autonoma, per non
+introdurre una dipendenza di link fra translator e app — vedi
+`AscdIO.h`), quindi qualunque grafico incorporato sarebbe sparito in
+un giro salva→riapri, silenziosamente. **Fix**: nuovo
+`IsASCDFile(BPositionIO*)` (legge la firma, riporta la posizione di
+lettura dov'era) — se il file è già nativo, `MainWindow::OpenFile`
+chiama `LoadASCD` direttamente sul file, saltando del tutto il giro
+superfluo (e ora lossy) dal Translation Kit. File non nativi
+(CSV/XLS/XLSX/ODS) continuano a passare dal translator adatto, come
+prima — nessun formato esterno porta comunque grafici incorporati.
+
+**Verificato**: `ui/tests/test_ascd_io.cpp` esteso con un giro
+salva→ricarica di un `ChartObject` (intervallo e posizione preservati
+byte per byte) e con la verifica esplicita di retrocompatibilità (un
+file scritto senza sezione grafici si rilegge con un vettore vuoto,
+non un errore). Build completa e `make test`/`test-chart`/
+`test-pivot`/`test-scroll` confermati senza regressioni dopo la
+modifica. Verifica dal vivo: menu "Inserisci" invocato con `hey
+<app> do MenuItem <n> of Menu <m> of MenuBar of Window 0` (non
+`execute` — nome del verbo scoperto per tentativi in questa sessione,
+`execute` restituisce "Bad verb" nonostante la scripting suite
+sottostante si chiami `B_EXECUTE_PROPERTY`), `ChartWindow` confermata
+aperta senza crash via `list_windows`.
+
 ## Test
 
 `ui/tests/test_ascd_io.cpp` (`cd ui && make test`, non richiede una

@@ -11,9 +11,10 @@ in corso** — ricetta HaikuDepot pronta ma non ancora buildabile
 (nessun repository pubblico); licenza **MIT** decisa per il codice
 nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
 la sua licenza BSD originale); resta il test di compatibilità su un
-corpus di file reali. **Fase 6 avviata** (guida utente e funzioni con
-nome nelle formule fatte; grafici/pivot/ottimizzazione ancora da
-fare). Aggiornato ad ogni fase completata.
+corpus di file reali. **Fase 6 avviata** (guida utente, funzioni con
+nome nelle formule, grafici a barre e tabelle pivot di base fatti;
+funzioni aggiuntive/ottimizzazione ricalcolo ancora da fare).
+Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -782,7 +783,57 @@ logica, non l'esperienza utente end-to-end.
       clean && make -C ui all`) e `make -C ui test`/`test-scroll`
       confermati senza regressioni. Dettaglio tecnico completo in
       `docs/ENGINE_API.md`.
-- [ ] Grafici, tabelle pivot base, funzioni aggiuntive
+- [x] Grafici (a barre) e tabelle pivot di base: nuovo menu
+      "Inserisci" con due voci. Entrambe le funzionalità leggono un
+      intervallo di due colonne digitato dall'utente (etichetta/
+      categoria testuale, valore numerico) — la griglia oggi supporta
+      solo la selezione di una singola cella, non un intervallo
+      trascinato col mouse, quindi l'intervallo si scrive a mano
+      (es. `A1:B5`), non si seleziona sul foglio.
+      **Grafico a barre**: `ChartWindow` (campo intervallo + area di
+      anteprima `ChartView`, "Disegna") mostra un'anteprima statica,
+      ma il pulsante "Inserisci nel foglio" (con una cella di
+      destinazione) lo incorpora davvero come oggetto sulla griglia
+      (`ChartObject` in `Chart.h`, disegnato da `SheetView::Draw`) —
+      a differenza dell'anteprima, il grafico incorporato **rilegge i
+      dati dal vivo a ogni ridisegno** (non un'istantanea), quindi
+      riflette da solo le modifiche alle celle sorgente, e sopravvive
+      al salvataggio/ricaricamento nel formato nativo ASCD (nuova
+      sezione in coda al formato, opzionale e retrocompatibile — un
+      file scritto prima di questa modifica si rilegge normalmente
+      senza grafici, vedi `ui/src/AscdIO.cpp`). Aggiunta anche una
+      correzione collegata: riaprire un file nativo passava comunque
+      dal Translation Kit, che lo faceva rileggere/riscrivere dalla
+      copia duplicata di `ReadASCD`/`WriteASCD` di un translator
+      qualunque (es. `translators/csv/CsvTranslator.cpp`) — innocuo
+      prima, ma avrebbe silenziosamente perso i grafici incorporati;
+      ora un file già nativo si legge direttamente con `LoadASCD`,
+      bypassando quel giro superfluo.
+      **Tabella pivot**: `PivotWindow` raggruppa per categoria e
+      aggrega (Somma/Conteggio/Media, un solo livello — non un pivot
+      multidimensionale come Excel), poi scrive il risultato
+      direttamente nel foglio a partire da una cella di destinazione
+      scelta dall'utente (con controllo che non si sovrapponga
+      all'intervallo sorgente); a differenza del grafico, il
+      risultato è una scrittura una tantum (nuove celle vere e
+      proprie), non un oggetto che si aggiorna da solo.
+      Logica (`ui/src/Chart.cpp`, `ui/src/Pivot.cpp`) separata dalla
+      UI apposta per essere testabile senza sessione grafica (`make
+      test-chart`, `make test-pivot`, `make test` esteso per la
+      persistenza dei grafici — 39 asserzioni in totale) — la cella
+      di destinazione/intervallo si analizza con `cell::GetCell`, lo
+      stesso parser di riferimenti già usato dal motore per le
+      formule. Entrambe le finestre seguono la stessa regola sui
+      thread già stabilita da `FindWindow` (mai toccare il documento
+      da un thread diverso da quello di `MainWindow`: si scambiano
+      `BMessage` via `BMessenger` in entrambe le direzioni).
+      Dettaglio tecnico in `docs/UI_ARCHITECTURE.md`.
+      **Limiti noti di questa prima versione**: solo grafico a barre
+      (niente a linee/torta), un solo livello di raggruppamento nella
+      pivot, dimensione del grafico incorporato fissa (non
+      ridimensionabile/spostabile dopo l'inserimento), nessuna
+      interfaccia per rimuoverne uno già inserito.
+- [ ] Funzioni aggiuntive
 - [ ] Ottimizzazione ricalcolo su fogli grandi
 - [x] Documentazione utente: `docs/USER_GUIDE.md` — avvio, editing
       (barra formule e in-cella), formule (con il limite delle

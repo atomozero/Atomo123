@@ -31,9 +31,9 @@ trova automaticamente tramite il Translation Kit di sistema.
 
 ## La finestra principale
 
-In alto: menu **File** e **Modifica**, poi una riga con il
-riferimento della cella selezionata (es. "A1") e la barra formule.
-Sotto, la griglia del foglio.
+In alto: menu **File**, **Modifica**, **Formato** e **Inserisci**, poi
+una riga con il riferimento della cella selezionata (es. "A1") e la
+barra formule. Sotto, la griglia del foglio.
 
 - **Selezionare una cella**: click, oppure le frecce direzionali da
   tastiera.
@@ -143,10 +143,49 @@ selezionata:
 **Non ancora disponibile**: controllo del numero di decimali, font,
 colore, bordo, allineamento, formattazione data.
 
+## Grafici e tabelle pivot
+
+Il menu **Inserisci** offre due funzionalità che leggono un
+intervallo di **due colonne** (prima colonna: etichetta/categoria di
+testo; seconda colonna: valore numerico) — l'intervallo si digita a
+mano nella finestra dedicata (es. `A1:B5`), non si seleziona
+trascinando sulla griglia (che oggi supporta solo una cella
+selezionata alla volta).
+
+- **Grafico a barre…**: apre una finestra con un campo "Intervallo" e
+  il pulsante "Disegna", che mostra un'anteprima (ogni riga
+  dell'intervallo diventa una barra, etichetta sotto, altezza
+  proporzionale al valore) — l'anteprima non si aggiorna da sola,
+  bisogna premere di nuovo "Disegna" dopo aver cambiato i dati. Il
+  pulsante **"Inserisci nel foglio"**, con una cella di destinazione,
+  incorpora invece il grafico davvero nella griglia, come in Excel:
+  una volta inserito, il grafico **si aggiorna da solo** ogni volta
+  che i dati dell'intervallo cambiano (non serve ridisegnarlo a
+  mano), e viene salvato/ricaricato insieme al documento (solo nel
+  formato nativo — un export CSV non lo porta con sé, essendo un
+  formato di solo testo).
+- **Tabella pivot…**: apre una finestra con l'intervallo dati
+  sorgente, la cella di destinazione e il tipo di aggregazione
+  (Somma, Conteggio o Media). Premendo "Crea", le righe con la stessa
+  categoria vengono raggruppate e aggregate; il risultato (due
+  colonne: categoria, valore aggregato) viene scritto nel foglio a
+  partire dalla cella di destinazione scelta — che non può
+  sovrapporsi all'intervallo dati sorgente. A differenza del grafico
+  incorporato, il risultato è una scrittura una tantum (celle vere e
+  proprie): non si aggiorna da solo se i dati sorgente cambiano dopo;
+  per un risultato aggiornato bisogna rilanciare "Crea".
+
+**Limiti di questa prima versione**: solo grafico a barre (niente a
+linee o a torta); la tabella pivot raggruppa per una sola categoria e
+aggrega una sola colonna di valori (non un pivot multidimensionale
+come in Excel/LibreOffice Calc); il grafico incorporato ha una
+dimensione fissa (non si ridimensiona/sposta dopo l'inserimento) e
+non c'è ancora un modo per rimuoverne uno dalla griglia.
+
 ## Cosa manca ancora (in breve)
 
 Vedi `ROADMAP.md` per l'elenco completo e aggiornato. In sintesi, allo
 stato attuale: nessun export verso XLS/XLSX/ODS (solo CSV e ASCD
 nativo), formattazione cella limitata a Generale/Numero/Valuta/
 Percentuale (niente decimali/font/colore/data), nessun supporto per
-più fogli in un unico documento, nessun grafico o tabella pivot.
+più fogli in un unico documento.
