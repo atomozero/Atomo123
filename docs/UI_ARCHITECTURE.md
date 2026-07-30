@@ -26,11 +26,16 @@ ui/icons/                  Icona sorgente: atomo123.svg (disegnata a
 ```
 
 `SheetView` non usa `BGridLayout`: la griglia è disegnata a mano in
-`Draw()` sopra una `BScrollView`, con calcolo manuale del range di
-scroll (`FixupScrollBars()`, agganciato a `BView::ScrollBar()`) — un
-foglio di calcolo ha celle sparse in un intervallo enorme
-(`kColCount`/`kRowCount` da `engine/src/Config/Constants.h`, 702×16384),
-non un numero fisso di sotto-view come `BGridLayout` si aspetta.
+`Draw()` sopra una `BScrollView`. Il `Frame()` della vista copre
+l'intero intervallo virtuale del motore fin dalla costruzione
+(`kColCount`/`kRowCount` da `engine/src/Config/Constants.h`,
+702×16384 celle, ~56200×327700 pixel — il pattern classico BeOS/Haiku
+per una vista scorrevole: la `BScrollView` ritaglia e scorre una
+vista grande, non viceversa), con calcolo manuale del range delle
+scrollbar (`FixupScrollBars()`, agganciato a `BView::ScrollBar()`).
+Vedi la nota tecnica più sotto sul perché questo dettaglio — vista
+grande, non piccola — è importante e su un bug reale che è nato
+proprio da qui.
 
 ## Apertura file: Translation Kit come consumer reale
 
@@ -394,6 +399,63 @@ C1 subito dopo `LoadASCD`, prima di qualunque `CalcCell` esplicito nel
 test (prima il test chiamava `CalcCell` apposta, che nascondeva il
 bug); un harness diretto dell'export CSV ha confermato che una formula
 `=A1+B1` con A1=10/B1=20 esporta "30" invece di una cella vuota.
+
+## Bug scoperto: la griglia non riempiva la finestra (segnalato dall'utente)
+
+Aprendo l'app a schermo intero, la griglia mostrava solo la colonna A
+e le prime 4 righe (~100×100 pixel in alto a sinistra), con il resto
+della finestra vuoto — non uno sfondo scorrevole, proprio nessuna
+riga/colonna disegnata oltre quel piccolo riquadro. Segnalato
+dall'utente con uno screenshot, non trovato durante lo sviluppo
+perché ogni test precedente aveva usato finestre piccole o si era
+concentrato su altre funzionalità senza notare quanto poco della
+griglia fosse effettivamente disegnato.
+
+**Causa**: `SheetView` veniva costruita con un `Frame()` fisso e
+minuscolo (`BRect(0, 0, 100, 100)`, un placeholder mai più
+ridimensionato dopo la costruzione). `Draw()` calcola l'intervallo di
+celle da disegnare a partire da `updateRect`, che per una `BView` non
+può mai eccedere il proprio `Frame()` — indipendentemente da quanto
+grande fosse la finestra o la `BScrollView` a schermo, l'app_server
+non genera mai un `updateRect` più grande del `Frame()` della vista
+stessa. Il sintomo (~100×100 pixel disegnati, esattamente
+`kHeaderWidth + kColWidth` per `kHeaderHeight + 4×kRowHeight`)
+combaciava esattamente con quella dimensione di costruzione,
+confermando la diagnosi.
+
+**Fix**: `SheetView::FullCanvasFrame()` (nuovo metodo statico)
+restituisce un `BRect` che copre l'intero intervallo virtuale del
+motore (`kColCount`×`kColWidth` per `kRowCount`×`kRowHeight`,
+~56200×327700 pixel), usato nell'inizializzatore del costruttore —
+il pattern classico BeOS/Haiku per una vista scorrevole (la
+`BScrollView` ritaglia e scorre una vista grande, invece di
+ridimensionare una vista piccola per adattarla al contenuto).
+Conseguenza collaterale da correggere insieme: `Bounds()` di una
+vista così grande riflette sempre la dimensione piena del `Frame()`,
+mai la porzione effettivamente visibile a schermo — quindi sia
+`FixupScrollBars()` (intervallo delle scrollbar) sia
+`ScrollToShowSelection()` (scorrimento automatico verso la cella
+selezionata), che prima usavano `Bounds()` assumendo riflettesse
+l'area visibile, avevano lo stesso baco latente (mai emerso
+visibilmente perché mascherato dal bug più vistoso della vista
+minuscola). Corrette entrambe per usare `Parent()->Bounds()` (l'area
+visibile reale della `BScrollView`, il vero "genitore" della vista
+nella gerarchia) per le dimensioni, e `Bounds().left`/`.top` (l'unica
+parte che `ScrollBy()`/`ScrollTo()` aggiornano davvero) per
+l'origine corrente dello scroll.
+
+Rimosso anche il parametro `BRect frame` dal costruttore di
+`SheetView` (era fuorviante: sembrava controllare la dimensione
+visualizzata, ma da questo fix in poi la vista si dimensiona sempre
+da sola) — ora `SheetView(CContainer* doc)`, non più
+`SheetView(BRect frame, CContainer* doc)`.
+
+**Verificato dal vivo**: screenshot dopo il fix mostra colonne A-J e
+righe 1-25 che riempiono correttamente la finestra (prima: solo
+colonna A, righe 1-4); la finestra è stata ridimensionata due volte
+via `hey` (`set Frame of Window 0 to "BRect(...)"`) per esercitare
+ripetutamente `FixupScrollBars()` con le nuove dimensioni — nessun
+crash, nessun errore.
 
 ## Test
 

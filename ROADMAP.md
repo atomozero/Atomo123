@@ -565,6 +565,42 @@ diretto dell'export CSV (harness a parte, non nella suite committata)
 ha confermato che una formula `=A1+B1` con A1=10/B1=20 esporta
 correttamente "30" invece che una cella vuota.
 
+### Bug scoperto: la griglia non riempiva la finestra (segnalato dall'utente)
+
+Aprendo l'app a schermo intero, la griglia mostrava solo la colonna A
+e le prime 4 righe (~100×100 pixel in alto a sinistra), con il resto
+della finestra vuoto — non uno sfondo scorrevole, proprio nessuna
+riga/colonna disegnata oltre quel piccolo riquadro.
+
+Causa: `SheetView` veniva costruita con un `Frame()` fisso e minuscolo
+(`BRect(0, 0, 100, 100)`, un placeholder mai più ridimensionato).
+`Draw()` calcola l'intervallo di celle da disegnare a partire da
+`updateRect`, che per una `BView` non può mai eccedere il suo stesso
+`Frame()` — quindi, indipendentemente da quanto grande fosse la
+finestra o la `BScrollView` a schermo, non veniva mai generato un
+`updateRect` più grande di quel riquadro iniziale di 100×100.
+
+**Fix**: `SheetView` ora si costruisce con un `Frame()` che copre
+l'intero intervallo virtuale del motore (`kColCount`×`kColWidth` per
+`kRowCount`×`kRowHeight`, ~56200×327700 pixel) fin dalla costruzione
+— il pattern classico BeOS/Haiku per una vista scorrevole, dove la
+`BScrollView` ritaglia e scorre una vista grande invece di ridimensionare
+una vista piccola per adattarla al contenuto. Conseguenza collaterale
+corretta insieme: `Bounds()` di una vista così ora riflette sempre la
+dimensione piena (mai la porzione visibile), quindi sia
+`FixupScrollBars()` (calcolo dell'intervallo delle scrollbar) sia
+`ScrollToShowSelection()` (scorrimento automatico verso la cella
+selezionata) — che prima usavano `Bounds()` assumendo riflettesse
+l'area visibile — ora usano `Parent()->Bounds()` (l'area visibile
+reale della `BScrollView`) per le dimensioni, e `Bounds().left/top`
+(l'unica parte che `ScrollBy`/`ScrollTo` aggiornano davvero) per
+l'origine dello scroll.
+
+**Verificato dal vivo**: screenshot dopo il fix mostra colonne A-J e
+righe 1-25 che riempiono correttamente la finestra (prima: solo
+colonna A, righe 1-4); ridimensionata la finestra due volte via `hey`
+per esercitare `FixupScrollBars()` ripetutamente, nessun crash.
+
 ## Fase 5 — Integrazione, packaging, compatibilità reale (IN CORSO)
 
 - [x] Ricetta pacchetto per HaikuDepot: `packaging/atomo123-0.1.0.recipe`,
