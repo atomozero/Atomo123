@@ -13,9 +13,9 @@ nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
 la sua licenza BSD originale); resta il test di compatibilità su un
 corpus di file reali. **Fase 6 avviata** (guida utente, funzioni con
 nome nelle formule, grafici a barre e tabelle pivot di base, editing
-in-cella e navigazione da tastiera in stile Excel fatti; funzioni
-aggiuntive/ottimizzazione ricalcolo ancora da fare). Aggiornato ad
-ogni fase completata.
+in-cella e navigazione da tastiera in stile Excel, SUMIF/COUNTIF/
+AVERAGEIF fatti; resta solo l'ottimizzazione ricalcolo su fogli
+grandi). Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -911,7 +911,30 @@ logica, non l'esperienza utente end-to-end.
       un nuovo test, `ui/tests/test_navigation.cpp` (`make
       test-navigation`, 9 asserzioni). Dettaglio tecnico in
       `docs/UI_ARCHITECTURE.md`.
-- [ ] Funzioni aggiuntive
+- [x] Funzioni aggiuntive: `SUMIF`/`COUNTIF`/`AVERAGEIF`, assenti dalle
+      86 funzioni originali di Sum-It (aggregazione condizionata,
+      mancava proprio dal set storico) nonostante siano fra le più
+      usate in un foglio di calcolo moderno. Il criterio accetta un
+      numero (o testo numerico) per confronto esatto, testo per
+      confronto letterale (senza distinguere maiuscole/minuscole), o
+      un operatore di confronto stile Excel in testa (`">10"`,
+      `"<=5"`, `"<>0"`) seguito da un numero. Stesso meccanismo di
+      registrazione delle altre 86 funzioni (enum in `Functions.h`,
+      voce in `engine/resources/funcs_by_nr.r`, mappatura in
+      `SetupDefaultFuncs`) — nessuna modifica architetturale, solo
+      nuove voci. **Bug scoperto aggiungendole**: `GetFunctionNr`
+      (`engine/src/Utils/Utils.cpp`) scartava per un off-by-one i nomi
+      di funzione di esattamente 9 caratteri (`AVERAGEIF` trattato
+      come identificatore sconosciuto nonostante fosse nella tabella)
+      — nessuno degli 86 nomi originali arrivava a 9 caratteri, quindi
+      il bug non si era mai manifestato. Corretto (`sLen >= 9` →
+      `sLen >= sizeof(myFunc)`). Verificato estendendo
+      `engine/tests/named_functions_test.cpp` (`make test-functions`,
+      ora 8 asserzioni): `=SUMIF(D1:D4;"Mela";E1:E4)`,
+      `=COUNTIF(D1:D4;"Mela")`, `=AVERAGEIF(D1:D4;"Mela";E1:E4)`,
+      `=SUMIF(E1:E4;">8")` calcolano tutti il risultato corretto;
+      nessuna regressione nella suite completa (engine + tutti i test
+      `ui/`).
 - [ ] Ottimizzazione ricalcolo su fogli grandi
 - [x] Documentazione utente: `docs/USER_GUIDE.md` — avvio, editing
       (barra formule e in-cella), formule (con il limite delle

@@ -76,6 +76,16 @@ una funzione si usa il **punto e virgola** (`;`), non la virgola —
 formula). La virgola resta il separatore delle migliaia nella
 formattazione numero (Formato → Numero), un dettaglio distinto.
 
+**Aggregazione condizionata**: `=SUMIF(A1:A10;"Roma";B1:B10)` somma i
+valori di B1:B10 dove la cella corrispondente in A1:A10 è "Roma";
+`=COUNTIF(A1:A10;"Roma")` conta invece quante celle corrispondono.
+`=AVERAGEIF(...)` funziona come `SUMIF` ma calcola la media. Il
+terzo argomento (l'intervallo da sommare/mediare) è opzionale — se
+omesso si usa lo stesso primo intervallo. Il criterio può essere un
+numero, del testo (senza distinguere maiuscole/minuscole), oppure un
+confronto con `>`, `>=`, `<`, `<=` o `<>` seguito da un numero, es.
+`=SUMIF(B1:B10;">100")`.
+
 ## File: aprire, salvare, nuovo
 
 - **File → Nuovo**: foglio vuoto (il contenuto non salvato attuale va

@@ -30,10 +30,11 @@ verifica che i risultati calcolati siano corretti — dimostra che il
 motore funziona headless.
 
 `tests/named_functions_test.cpp` verifica in aggiunta le formule con
-funzioni con nome (`=SUM(A1:A3)`, `=IF(...)`, `=MAX(...)`), che
-richiedono `InitFunctions()` e quindi una risorsa `'Func'` reale
-(compilata al volo da questo stesso target con gli strumenti storici
-`rez`/`bsl` — vedi sezione dedicata più sotto).
+funzioni con nome (`=SUM(A1:A3)`, `=IF(...)`, `=MAX(...)`,
+`=SUMIF(...)`, `=COUNTIF(...)`, `=AVERAGEIF(...)`), che richiedono
+`InitFunctions()` e quindi una risorsa `'Func'` reale (compilata al
+volo da questo stesso target con gli strumenti storici `rez`/`bsl` —
+vedi sezione dedicata più sotto).
 
 ## Mappa dei file
 
@@ -182,22 +183,46 @@ legate al binario in esecuzione tramite `gResourceManager`
 `BResources`):
 
 - `'Func'` (ID 128): array di `FuncRec { char funcName[10]; short
-  argCnt, funcNr, groupNr; }`, una entry per funzione (86 in totale) —
-  compilata da `resources/funcs_by_nr.r` con `rez`.
+  argCnt, funcNr, groupNr; }`, una entry per funzione (89 in totale:
+  le 86 storiche di Sum-It più `SUMIF`/`COUNTIF`/`AVERAGEIF`, vedi
+  sotto) — compilata da `resources/funcs_by_nr.r` con `rez`.
 - `'StrL'` ID 7 e 8: stringhe di paste/descrizione per ciascuna
   funzione (usate solo per un'eventuale finestra "Incolla funzione",
   non ancora presente nella UI nativa) — compilate da
   `resources/FuncNames.txt`/`FuncDescs.txt` con `bsl`.
 
-`resources/funcs_by_nr.r`, `FuncNames.txt` e `FuncDescs.txt` sono
-copie immutate dei file storici in
+`resources/funcs_by_nr.r`, `FuncNames.txt` e `FuncDescs.txt` erano in
+origine copie immutate dei file storici in
 `legacy/opensumit/sum-it/Resources/` (stessa licenza BSD a 4
-clausole di Sum-It, coerente con il resto di `engine/`): il loro
-contenuto è indicizzato per posizione contro l'enum in
+clausole di Sum-It, coerente con il resto di `engine/`) — restano
+sotto quella licenza anche con le tre voci aggiunte in Fase 6 (nuovo
+codice, ma nello stesso file/formato storico). Il loro contenuto è
+indicizzato **per posizione** contro l'enum in
 `src/Functions/Functions.h` (`kABSFuncNr`, ecc., usato da
 `SetupDefaultFuncs()` per legare ogni entry al vero puntatore a
-funzione C++), quindi non va modificato senza aggiornare anche
-quell'enum.
+funzione C++): una nuova funzione va sempre **aggiunta in coda**
+(mai inserita/rimossa a metà), aggiornando i tre file insieme
+all'enum e a `SetupDefaultFuncs()`, altrimenti l'indicizzazione per
+posizione si disallinea.
+
+**Funzioni aggiunte oltre le 86 storiche**: `SUMIF`/`COUNTIF`/
+`AVERAGEIF` (funcNr 86-88) — aggregazione condizionata su un
+intervallo, assente dal set originale di Sum-It nonostante sia fra le
+funzioni più usate in un foglio di calcolo moderno. Implementate in
+`src/Functions/Functions.math.cpp` seguendo lo stesso pattern di
+`SUM`/`COUNT`/`AVG` (`CCellIterator` + `GetRangeArgument`/
+`GetDoubleArgument`), con un confronto criterio (`MatchesCriteria`,
+file-local) che accetta numeri, testo esatto (senza distinguere
+maiuscole/minuscole) o un operatore di confronto stile Excel in testa
+(`">10"`, `"<="`, `"<>"`) seguito da un numero. **Bug scoperto
+aggiungendole**: `GetFunctionNr` (`src/Utils/Utils.cpp`) aveva un
+controllo off-by-one (`sLen >= 9` invece di `sLen >=
+sizeof(myFunc)`, dove `myFunc[10]` può ospitare fino a 9 caratteri
+più il terminatore) che scartava per errore i nomi di funzione di
+esattamente 9 caratteri — `AVERAGEIF` veniva trattato come
+identificatore sconosciuto nonostante fosse correttamente nella
+tabella. Nessuno degli 86 nomi originali arrivava a 9 caratteri,
+quindi il bug non si era mai manifestato prima. Corretto.
 
 `rez` e `bsl` (`legacy/opensumit/rez/`, `legacy/opensumit/bsl/`) sono
 gli stessi strumenti storici di compilazione risorse di Sum-It,
