@@ -22,7 +22,9 @@ INCLUDES := $(addprefix -I, $(ENGINE_SRCDIRS)) -Isrc
 LIBS := -L$(ENGINE_DIR) -lengine -lbe -ltranslation -ltracker
 
 APP := Atomo123
-SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/AscdIO.cpp src/FindWindow.cpp
+SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/AscdIO.cpp \
+	src/FindWindow.cpp src/ChartWindow.cpp src/ChartView.cpp src/Chart.cpp \
+	src/PivotWindow.cpp src/Pivot.cpp src/RangeRef.cpp
 OBJECTS := $(SOURCES:.cpp=.o)
 RDEF := Atomo123.rdef
 RSRC := Atomo123.rsrc
@@ -88,6 +90,25 @@ test: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
 	./tests/test_ascd_io
 
+# Test della logica del grafico a barre (Chart.cpp): headless come
+# "test" sopra, non tocca mai BView/BWindow (quello e' ChartView, non
+# testato qui).
+test-chart: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_chart.cpp -o tests/test_chart.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/Chart.cpp -o tests/Chart.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_chart tests/test_chart.o tests/Chart.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
+	./tests/test_chart
+
+# Test della logica della tabella pivot (Pivot.cpp): stessa ragione di
+# test-chart, headless.
+test-pivot: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_pivot.cpp -o tests/test_pivot.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/Pivot.cpp -o tests/Pivot.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_pivot tests/test_pivot.o tests/Pivot.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
+	./tests/test_pivot
+
 # Test degli appunti (be_clipboard): a differenza di "test" richiede
 # una vera sessione grafica (il Clipboard Kit passa dall'app_server),
 # quindi e' un target separato, non incluso nel normale "make test".
@@ -108,12 +129,16 @@ test-scroll: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_scroll tests/test_scroll.o \
 		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_scroll
 
 clean:
 	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
-		tests/roundtrip.ascd tests/test_clipboard tests/test_clipboard.o \
-		tests/test_scroll tests/test_scroll.o
+		tests/roundtrip.ascd tests/roundtrip_charts.ascd tests/test_clipboard tests/test_clipboard.o \
+		tests/test_scroll tests/test_scroll.o \
+		tests/test_chart tests/test_chart.o tests/Chart.o \
+		tests/test_pivot tests/test_pivot.o tests/Pivot.o
 
-.PHONY: all run test test-clipboard test-scroll clean
+.PHONY: all run test test-chart test-pivot test-clipboard test-scroll clean

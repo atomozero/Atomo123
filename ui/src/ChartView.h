@@ -1,0 +1,32 @@
+/*
+	ChartView.h
+
+	Disegna il grafico a barre (vedi Chart.h per il calcolo del
+	layout) dentro ChartWindow. Non tocca mai il documento: riceve i
+	dati gia' pronti (etichette + valori) da ChartWindow, che a sua
+	volta li riceve da MainWindow via BMessage (vedi ChartWindow.cpp
+	e la nota sui thread in FindWindow.h).
+*/
+
+#ifndef CHART_VIEW_H
+#define CHART_VIEW_H
+
+#include <vector>
+
+#include <View.h>
+
+#include "Chart.h"
+
+class ChartView : public BView {
+public:
+	ChartView();
+
+	void SetData(const std::vector<ChartSeries>& data);
+
+	virtual void Draw(BRect updateRect);
+
+private:
+	std::vector<ChartSeries> fData;
+};
+
+#endif

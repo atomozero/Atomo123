@@ -15,6 +15,7 @@
 
 #include "AscdIO.h"
 #include "Cell.h"
+#include "Chart.h"
 #include "Value.h"
 #include "Container.h"
 #include "CellParser.h"
@@ -86,6 +87,56 @@ int main()
 		"LoadASCD ricalcola gia' da solo C1 a 30, senza bisogno di un CalcCell esplicito");
 
 	reloaded.Release();
+
+	// Sezione grafici incorporati (Chart.h): un file scritto senza
+	// (SaveASCD/LoadASCD sopra, chiamati senza il parametro "charts")
+	// deve restare leggibile -- verificato implicitamente sopra, dove
+	// LoadASCD ha gia' avuto successo senza quel parametro. Qui si
+	// verifica invece che uno o piu' grafici sopravvivano a un giro
+	// completo salva->ricarica, e che "charts" resti vuoto (non un
+	// errore) se il file non ne conteneva nessuno.
+	CContainer& chartDoc = *new CContainer(NULL, NULL);
+	TryToParseString("10", cell(1, 1), &chartDoc, true);
+
+	std::vector<ChartObject> saved;
+	ChartObject obj;
+	obj.dataRange.Set(1, 1, 2, 5);
+	obj.frame.Set(100, 200, 400, 380);
+	saved.push_back(obj);
+
+	BFile chartFile("tests/roundtrip_charts.ascd", B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	err = SaveASCD(&chartDoc, &chartFile, &saved);
+	Check(err == B_OK, "SaveASCD con un grafico incorporato riesce");
+	chartDoc.Release();
+
+	BFile chartReopened("tests/roundtrip_charts.ascd", B_READ_ONLY);
+	CContainer& chartReloaded = *new CContainer(NULL, NULL);
+	std::vector<ChartObject> loaded;
+	err = LoadASCD(&chartReopened, &chartReloaded, &loaded);
+	Check(err == B_OK, "LoadASCD con un grafico incorporato riesce");
+	Check(loaded.size() == 1, "il grafico sopravvive al giro salva->ricarica");
+	if (loaded.size() == 1)
+	{
+		Check(loaded[0].dataRange.left == 1 && loaded[0].dataRange.top == 1
+				&& loaded[0].dataRange.right == 2 && loaded[0].dataRange.bottom == 5,
+			"l'intervallo dati del grafico e' preservato");
+		Check(loaded[0].frame == BRect(100, 200, 400, 380),
+			"la posizione del grafico e' preservata");
+	}
+	chartReloaded.Release();
+
+	// Un file scritto SENZA sezione grafici (il primo di questo test,
+	// scritto senza passare "charts" a SaveASCD) deve restituire un
+	// vettore vuoto quando riletto CON "charts" richiesto -- non un
+	// errore: e' la compatibilita' all'indietro che rende sicuro
+	// aprire un .ascd salvato prima che questa sezione esistesse.
+	BFile oldFormat("tests/roundtrip.ascd", B_READ_ONLY);
+	CContainer& oldDoc = *new CContainer(NULL, NULL);
+	std::vector<ChartObject> noCharts;
+	err = LoadASCD(&oldFormat, &oldDoc, &noCharts);
+	Check(err == B_OK && noCharts.empty(),
+		"un file senza sezione grafici si rilegge senza errori e senza grafici");
+	oldDoc.Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;

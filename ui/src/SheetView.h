@@ -13,10 +13,13 @@
 #ifndef SHEET_VIEW_H
 #define SHEET_VIEW_H
 
+#include <vector>
+
 #include <NumberFormat.h>
 #include <View.h>
 
 #include "Cell.h"
+#include "Chart.h"
 
 class BTextControl;
 class CContainer;
@@ -40,6 +43,18 @@ public:
 	cell Selection() const { return fSelection; }
 	void SetSelection(cell c);
 
+	// Angolo in alto a sinistra di una cella, in pixel: usato da
+	// MainWindow per posizionare un grafico incorporato (vedi
+	// ChartObject in Chart.h) alla cella di destinazione scelta
+	// dall'utente, senza duplicare qui i costanti di layout
+	// (kHeaderWidth/kColWidth/ecc., gia' privati a questa classe).
+	BPoint CellOrigin(cell c) const { return CellRect(c).LeftTop(); }
+
+	// Elenco dei grafici incorporati da disegnare sopra la griglia
+	// (di proprieta' di MainWindow, che lo passa qui solo per
+	// disegnarlo: SheetView non lo possiede ne' lo modifica mai).
+	void SetCharts(const std::vector<ChartObject>* charts) { fCharts = charts; }
+
 	// Rettangolo in pixel (a partire da 0,0, intestazioni comprese) che
 	// copre le celle con contenuto -- usato da MainWindow per la stampa
 	// (Print Kit), per sapere quanto foglio serve davvero senza
@@ -49,6 +64,7 @@ public:
 private:
 	CContainer* fDoc;
 	cell fSelection;
+	const std::vector<ChartObject>* fCharts;
 
 	BTextControl* fEditor;
 	cell fEditingCell;

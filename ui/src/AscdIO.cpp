@@ -7,6 +7,7 @@
 #include "AscdIO.h"
 
 #include <cstring>
+#include <fcntl.h>
 
 #include "Cell.h"
 #include "Container.h"
@@ -16,7 +17,19 @@
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 static const int32 kASCDVersion = 1;
 
-status_t SaveASCD(CContainer* doc, BPositionIO* dest)
+bool IsASCDFile(BPositionIO* source)
+{
+	off_t pos = source->Position();
+
+	char magic[4];
+	bool isAscd = source->Read(magic, 4) == 4 && memcmp(magic, kASCDMagic, 4) == 0;
+
+	source->Seek(pos, SEEK_SET);
+	return isAscd;
+}
+
+status_t SaveASCD(CContainer* doc, BPositionIO* dest,
+	const std::vector<ChartObject>* charts)
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -53,10 +66,34 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest)
 			return B_IO_ERROR;
 	}
 
+	// Sezione grafici incorporati, in coda: opzionale, un file scritto
+	// da una versione precedente di questo formato semplicemente non
+	// ce l'ha (vedi il commento in LoadASCD sotto).
+	int32 chartCount = charts ? (int32)charts->size() : 0;
+	if (dest->Write(&chartCount, sizeof(chartCount)) != (ssize_t)sizeof(chartCount))
+		return B_IO_ERROR;
+
+	for (int32 i = 0; i < chartCount; i++)
+	{
+		const ChartObject& obj = (*charts)[i];
+		int16 left = obj.dataRange.left, top = obj.dataRange.top;
+		int16 right = obj.dataRange.right, bottom = obj.dataRange.bottom;
+		float frame[4] = { obj.frame.left, obj.frame.top,
+			obj.frame.right, obj.frame.bottom };
+
+		if (dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+			|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+			|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right)
+			|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+			|| dest->Write(frame, sizeof(frame)) != (ssize_t)sizeof(frame))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
-status_t LoadASCD(BPositionIO* source, CContainer* doc)
+status_t LoadASCD(BPositionIO* source, CContainer* doc,
+	std::vector<ChartObject>* charts)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -106,6 +143,42 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc)
 	}
 
 	RecalculateAll(doc);
+
+	// Sezione grafici incorporati, in coda al formato: puo' non
+	// esserci affatto (file scritto prima che questa sezione
+	// esistesse). Read() restituisce 0 se lo stream e' gia' finito
+	// esattamente li' (formato vecchio, nessun grafico: non un
+	// errore); un valore diverso da 0 ma minore di sizeof(chartCount)
+	// e' invece un file davvero troncato/corrotto.
+	if (charts)
+	{
+		charts->clear();
+		int32 chartCount = 0;
+		ssize_t got = source->Read(&chartCount, sizeof(chartCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartCount; i++)
+			{
+				int16 left, top, right, bottom;
+				float frame[4];
+
+				if (source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right)
+					|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+					|| source->Read(frame, sizeof(frame)) != (ssize_t)sizeof(frame))
+					return B_BAD_DATA;
+
+				ChartObject obj;
+				obj.dataRange.Set(left, top, right, bottom);
+				obj.frame.Set(frame[0], frame[1], frame[2], frame[3]);
+				charts->push_back(obj);
+			}
+		}
+	}
 
 	return B_OK;
 }

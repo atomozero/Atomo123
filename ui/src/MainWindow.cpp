@@ -8,6 +8,11 @@
 #include "SheetView.h"
 #include "AscdIO.h"
 #include "FindWindow.h"
+#include "ChartWindow.h"
+#include "PivotWindow.h"
+#include "Chart.h"
+#include "Pivot.h"
+#include "RangeRef.h"
 
 #include <cstdio>
 #include <cstring>
@@ -37,6 +42,7 @@
 #include "CellIterator.h"
 #include "CellParser.h"
 #include "Formatter.h"
+#include "Range.h"
 
 static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
@@ -49,6 +55,8 @@ static const uint32 kMsgClear = 'aclr';
 static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
 static const uint32 kMsgSetFormat = 'stfm';
+static const uint32 kMsgShowChart = 'shch';
+static const uint32 kMsgShowPivot = 'shpv';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -124,6 +132,18 @@ MainWindow::MainWindow()
 	formatMenu->AddItem(new BMenuItem("Percentuale", percentMsg));
 	menuBar->AddItem(formatMenu);
 
+	// Grafico e tabella pivot leggono un intervallo di due colonne
+	// scelto dall'utente (non la sola cella selezionata, che oggi e'
+	// l'unica selezione supportata dalla griglia -- vedi
+	// docs/UI_ARCHITECTURE.md): l'intervallo si digita nella finestra
+	// dedicata, non si trascina sulla griglia.
+	BMenu* insertMenu = new BMenu("Inserisci");
+	insertMenu->AddItem(new BMenuItem("Grafico a barre" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowChart)));
+	insertMenu->AddItem(new BMenuItem("Tabella pivot" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowPivot)));
+	menuBar->AddItem(insertMenu);
+
 	// Barra strumenti: pulsanti di testo semplici (BButton), non
 	// BToolBar -- quella classe vive solo sotto develop/headers/
 	// private/shared/ su questo sistema, non nell'SDK pubblico
@@ -156,6 +176,7 @@ MainWindow::MainWindow()
 	fFormulaBar->SetTarget(this);
 
 	fSheetView = new SheetView(fDoc);
+	fSheetView->SetCharts(&fCharts);
 	BScrollView* scroll = new BScrollView("scroll", fSheetView,
 		B_FOLLOW_ALL, 0, true, true);
 
@@ -194,6 +215,8 @@ MainWindow::MainWindow()
 	fOpenPanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this));
 	fSavePanel = new BFilePanel(B_SAVE_PANEL, new BMessenger(this));
 	fFindWindow = NULL;
+	fChartWindow = NULL;
+	fPivotWindow = NULL;
 }
 
 MainWindow::~MainWindow()
@@ -210,6 +233,16 @@ MainWindow::~MainWindow()
 		fFindWindow->Lock();
 		fFindWindow->Quit();
 	}
+	if (fChartWindow)
+	{
+		fChartWindow->Lock();
+		fChartWindow->Quit();
+	}
+	if (fPivotWindow)
+	{
+		fPivotWindow->Lock();
+		fPivotWindow->Quit();
+	}
 	if (fDoc)
 		fDoc->Release();
 }
@@ -220,6 +253,7 @@ void MainWindow::NewDocument()
 	if (fDoc)
 		fDoc->Release();
 	fDoc = newDoc;
+	fCharts.clear();
 	fSheetView->SetDocument(fDoc);
 	fFormulaBar->SetText("");
 }
@@ -235,24 +269,44 @@ void MainWindow::OpenFile(const entry_ref& ref)
 		return;
 	}
 
-	// BTranslatorRoster sceglie automaticamente il translator
-	// installato adatto (CSV/XLS legacy/XLSX/ODS/ASCD nativo) in base
-	// al contenuto reale del file, non all'estensione.
-	BMallocIO ascd;
-	status_t err = BTranslatorRoster::Default()->Translate(&file, NULL, NULL,
-		&ascd, kAtomoNativeFormat);
-	if (err != B_OK)
+	CContainer* newDoc = new CContainer(NULL, NULL);
+	std::vector<ChartObject> newCharts;
+	status_t err;
+
+	if (IsASCDFile(&file))
 	{
-		BAlert* alert = new BAlert("Errore",
-			"Formato file non riconosciuto da nessun translator installato.",
-			"OK");
-		alert->Go();
-		return;
+		// File gia' nel formato nativo: si legge direttamente, senza
+		// passare dal Translation Kit -- che per un file gia' ASCD lo
+		// farebbe comunque rileggere/riscrivere tramite la copia
+		// duplicata di ReadASCD/WriteASCD di un translator qualunque
+		// (vedi translators/csv/CsvTranslator.cpp), perdendo la
+		// sezione dei grafici incorporati che quella copia non
+		// conosce.
+		err = LoadASCD(&file, newDoc, &newCharts);
+	}
+	else
+	{
+		// BTranslatorRoster sceglie automaticamente il translator
+		// installato adatto (CSV/XLS/XLSX/ODS) in base al contenuto
+		// reale del file, non all'estensione. Nessuno di questi
+		// formati porta grafici incorporati: newCharts resta vuoto.
+		BMallocIO ascd;
+		err = BTranslatorRoster::Default()->Translate(&file, NULL, NULL,
+			&ascd, kAtomoNativeFormat);
+		if (err != B_OK)
+		{
+			newDoc->Release();
+			BAlert* alert = new BAlert("Errore",
+				"Formato file non riconosciuto da nessun translator installato.",
+				"OK");
+			alert->Go();
+			return;
+		}
+
+		ascd.Seek(0, SEEK_SET);
+		err = LoadASCD(&ascd, newDoc);
 	}
 
-	CContainer* newDoc = new CContainer(NULL, NULL);
-	ascd.Seek(0, SEEK_SET);
-	err = LoadASCD(&ascd, newDoc);
 	if (err != B_OK)
 	{
 		newDoc->Release();
@@ -263,6 +317,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 		return;
 	}
 
+	fCharts = newCharts;
 	if (fDoc)
 		fDoc->Release();
 	fDoc = newDoc;
@@ -292,7 +347,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 
 	if (outType == kAtomoNativeFormat)
 	{
-		status_t err = SaveASCD(fDoc, &file);
+		status_t err = SaveASCD(fDoc, &file, &fCharts);
 		if (err != B_OK)
 		{
 			BAlert* alert = new BAlert("Errore", "Scrittura del file fallita.", "OK");
@@ -408,6 +463,144 @@ void MainWindow::ShowFindWindow()
 	if (fFindWindow->IsHidden())
 		fFindWindow->Show();
 	fFindWindow->Activate();
+}
+
+void MainWindow::ShowChartWindow()
+{
+	if (!fChartWindow)
+		fChartWindow = new ChartWindow(BMessenger(this));
+
+	if (fChartWindow->IsHidden())
+		fChartWindow->Show();
+	fChartWindow->Activate();
+}
+
+void MainWindow::ShowPivotWindow()
+{
+	if (!fPivotWindow)
+		fPivotWindow = new PivotWindow(BMessenger(this));
+
+	if (fPivotWindow->IsHidden())
+		fPivotWindow->Show();
+	fPivotWindow->Activate();
+}
+
+// Legge l'intervallo dati richiesto da ChartWindow e manda indietro i
+// dati estratti via BMessage: sia la lettura del documento sia la
+// costruzione del messaggio di risposta girano sul thread di
+// MainWindow (che possiede fDoc), mai su quello di ChartWindow.
+void MainWindow::HandleChartRequest(const char* rangeText)
+{
+	if (!fDoc || !fChartWindow)
+		return;
+
+	range r;
+	std::vector<ChartSeries> series;
+	if (!ParseRangeRef(rangeText, r) || !BuildChartSeries(fDoc, r, series))
+	{
+		BAlert* alert = new BAlert("Grafico",
+			"Intervallo non valido: serve esattamente due colonne "
+			"(etichette, valori) con almeno una riga numerica, es. A1:B5.",
+			"OK");
+		alert->Go();
+		return;
+	}
+
+	BMessage data(kMsgChartData);
+	for (size_t i = 0; i < series.size(); i++)
+	{
+		data.AddString("label", series[i].label);
+		data.AddDouble("value", series[i].value);
+	}
+	BMessenger(fChartWindow).SendMessage(&data);
+}
+
+// A differenza di HandleChartRequest (sola anteprima in ChartWindow),
+// qui il grafico entra a far parte del documento: aggiunto a fCharts
+// e disegnato da SheetView (vedi Chart.h/ChartObject) da questo
+// momento in poi, sopravvive al salvataggio/ricaricamento nel
+// formato nativo (vedi AscdIO.cpp) e legge i dati dal vivo ogni volta
+// che si ridisegna, non un'istantanea fissa come l'anteprima.
+void MainWindow::HandleChartInsert(const char* rangeText, const char* destText)
+{
+	if (!fDoc)
+		return;
+
+	range dataRange;
+	std::vector<ChartSeries> series;
+	cell dest;
+	if (!ParseRangeRef(rangeText, dataRange) || !BuildChartSeries(fDoc, dataRange, series)
+		|| !cell::GetCell(destText, dest))
+	{
+		BAlert* alert = new BAlert("Grafico",
+			"Intervallo dati o cella di destinazione non validi: l'intervallo "
+			"deve avere due colonne (etichette, valori) con almeno una riga "
+			"numerica, es. A1:B5.", "OK");
+		alert->Go();
+		return;
+	}
+
+	// Dimensione fissa di default (non ridimensionabile in questa
+	// prima versione): abbastanza per leggere etichette/barre senza
+	// essere invasiva sulla griglia.
+	BPoint origin = fSheetView->CellOrigin(dest);
+	ChartObject obj;
+	obj.dataRange = dataRange;
+	obj.frame.Set(origin.x, origin.y, origin.x + 300, origin.y + 180);
+	fCharts.push_back(obj);
+
+	fSheetView->Invalidate();
+}
+
+// Come sopra: legge/scrive fDoc sul thread di MainWindow, poi
+// aggiorna direttamente la griglia (stesso thread, sicuro).
+void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText,
+	int32 agg)
+{
+	if (!fDoc)
+		return;
+
+	range source;
+	cell dest;
+	if (!ParseRangeRef(sourceText, source) || !cell::GetCell(destText, dest))
+	{
+		BAlert* alert = new BAlert("Tabella pivot",
+			"Intervallo dati o cella di destinazione non validi.", "OK");
+		alert->Go();
+		return;
+	}
+
+	std::vector<PivotRow> rows;
+	if (!BuildPivotTable(fDoc, source, rows))
+	{
+		BAlert* alert = new BAlert("Tabella pivot",
+			"Nessun dato valido nell'intervallo (servono due colonne: "
+			"categoria testuale, valore numerico).", "OK");
+		alert->Go();
+		return;
+	}
+
+	// La destinazione (intestazioni + una riga per categoria) non deve
+	// sovrapporsi ai dati sorgente, altrimenti la scrittura riga per
+	// riga li corromperebbe mentre li si sta ancora leggendo.
+	range destRange(dest.h, dest.v, dest.h + 1, dest.v + (int)rows.size());
+	if (destRange.left <= source.right && destRange.right >= source.left
+		&& destRange.top <= source.bottom && destRange.bottom >= source.top)
+	{
+		BAlert* alert = new BAlert("Tabella pivot",
+			"La cella di destinazione si sovrappone all'intervallo dati: "
+			"scegline una fuori dai dati sorgente.", "OK");
+		alert->Go();
+		return;
+	}
+
+	WritePivotTable(fDoc, dest, rows, (PivotAggFunc)agg);
+	fSheetView->Invalidate();
+
+	BString msg;
+	msg << (int32)rows.size() << " categoria/e trovate.";
+	BAlert* alert = new BAlert("Tabella pivot", msg.String(), "OK");
+	alert->Go();
 }
 
 void MainWindow::FindNext(const char* searchText)
@@ -764,6 +957,42 @@ void MainWindow::MessageReceived(BMessage* message)
 			int32 format;
 			if (message->FindInt32("format", &format) == B_OK)
 				SetCellFormat(format);
+			break;
+		}
+
+		case kMsgShowChart:
+			ShowChartWindow();
+			break;
+
+		case kMsgShowPivot:
+			ShowPivotWindow();
+			break;
+
+		case kMsgChartRequest:
+		{
+			BString rangeText;
+			if (message->FindString("range", &rangeText) == B_OK)
+				HandleChartRequest(rangeText.String());
+			break;
+		}
+
+		case kMsgChartInsert:
+		{
+			BString rangeText, destText;
+			if (message->FindString("range", &rangeText) == B_OK
+				&& message->FindString("dest", &destText) == B_OK)
+				HandleChartInsert(rangeText.String(), destText.String());
+			break;
+		}
+
+		case kMsgPivotRequest:
+		{
+			BString sourceText, destText;
+			int32 agg;
+			if (message->FindString("source", &sourceText) == B_OK
+				&& message->FindString("dest", &destText) == B_OK
+				&& message->FindInt32("agg", &agg) == B_OK)
+				HandlePivotRequest(sourceText.String(), destText.String(), agg);
 			break;
 		}
 

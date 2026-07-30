@@ -11,9 +11,12 @@
 #ifndef MAIN_WINDOW_H
 #define MAIN_WINDOW_H
 
+#include <vector>
+
 #include <Window.h>
 
 #include "Cell.h"
+#include "Chart.h"
 
 class BFilePanel;
 class BTextControl;
@@ -21,6 +24,8 @@ class BStringView;
 class SheetView;
 class CContainer;
 class FindWindow;
+class ChartWindow;
+class PivotWindow;
 
 class MainWindow : public BWindow {
 public:
@@ -41,6 +46,9 @@ private:
 	BFilePanel* fOpenPanel;
 	BFilePanel* fSavePanel;
 	FindWindow* fFindWindow;
+	ChartWindow* fChartWindow;
+	PivotWindow* fPivotWindow;
+	std::vector<ChartObject> fCharts;
 
 	void NewDocument();
 	void CommitFormulaBar();
@@ -54,6 +62,11 @@ private:
 	void ReplaceCurrent(const char* searchText, const char* replaceText);
 	void ReplaceAll(const char* searchText, const char* replaceText);
 	void SetCellFormat(int32 format);
+	void ShowChartWindow();
+	void ShowPivotWindow();
+	void HandleChartRequest(const char* rangeText);
+	void HandleChartInsert(const char* rangeText, const char* destText);
+	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg);
 };
 
 #endif

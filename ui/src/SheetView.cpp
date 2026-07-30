@@ -61,6 +61,7 @@ SheetView::SheetView(CContainer* doc)
 		B_WILL_DRAW | B_FRAME_EVENTS),
 	fDoc(doc),
 	fSelection(1, 1),
+	fCharts(NULL),
 	fEditor(NULL),
 	fEditingCell(1, 1)
 {
@@ -322,6 +323,25 @@ void SheetView::Draw(BRect updateRect)
 		snprintf(name, sizeof(name), "%d", row);
 		BPoint pos(4, kHeaderHeight + (row - 1) * kRowHeight + kRowHeight - 6);
 		DrawString(name, pos);
+	}
+
+	// Grafici incorporati: dopo le intestazioni, cosi' restano visibili
+	// per intero anche se posizionati vicino al bordo di riga/colonna
+	// 1. I dati si leggono dal vivo (BuildChartSeries) a ogni ridisegno,
+	// non da un'istantanea salvata -- cosi' un grafico incorporato
+	// riflette sempre lo stato attuale delle celle sorgente.
+	if (fCharts && fDoc)
+	{
+		for (size_t i = 0; i < fCharts->size(); i++)
+		{
+			const ChartObject& obj = (*fCharts)[i];
+			if (!obj.frame.Intersects(updateRect))
+				continue;
+
+			std::vector<ChartSeries> series;
+			BuildChartSeries(fDoc, obj.dataRange, series);
+			DrawBarChart(this, obj.frame, series);
+		}
 	}
 }
 
