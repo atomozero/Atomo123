@@ -826,14 +826,64 @@ possibilità di testare in modo simile anche Taglia/Copia/Incolla/
 Stampa/Nuovo/Apri tramite la stessa tecnica nelle prossime iterazioni,
 invece della sola revisione manuale del codice.
 
+## Intestazioni "congelate" durante lo scroll
+
+Richiesta esplicita dell'utente dopo aver visto la prima versione
+della UI (dove lettere di colonna e numeri di riga scorrevano via
+insieme al resto del foglio, come documentato per un certo periodo in
+"Limiti noti" sotto) — prima solo per la riga delle lettere di
+colonna, poi anche per la colonna dei numeri di riga, con la stessa
+tecnica applicata sull'asse opposto. La riga delle lettere di colonna
+resta fissa in alto durante lo scroll verticale (ma segue quello
+orizzontale, restando allineata alle colonne vere); la colonna dei
+numeri di riga resta fissa a sinistra durante lo scroll orizzontale
+(ma segue quello verticale, mostrando sempre i numeri delle righe
+davvero visibili).
+
+**Tecnica**: niente viste multiple sincronizzate (la complessità che
+la nota "Limiti noti" originale voleva evitare) — `SheetView::Draw`
+disegna la banda dell'intestazione di colonna a `Bounds().top` (la
+cima della porzione attualmente visibile) e quella di riga a
+`Bounds().left` (il bordo sinistro), non più a `y=0`/`x=0` fissi nel
+canvas virtuale come prima. L'intestazione di colonna e' disegnata
+per ultima, cosi' resta sopra a tutto il resto (contenuto celle,
+grafici incorporati, e anche l'intestazione di riga, che si disegna
+prima).
+
+**Bug scoperto e corretto durante l'implementazione** (prima ancora
+di estendere la tecnica alla colonna dei numeri di riga): la sola
+modifica a `Draw()` non bastava — l'utente ha segnalato uno
+sfarfallio ("le celle sembrano scivolare sotto la riga delle
+colonne"). Causa: `ScrollBy()`/`ScrollTo()` blittano normalmente solo
+i pixel già disegnati verso la loro nuova posizione a schermo,
+invalidando poi solo la striscia appena esposta (ottimizzazione
+standard per non ridisegnare tutto a ogni scroll) — la banda
+dell'intestazione, già disegnata alla vecchia posizione, veniva
+quindi spostata insieme al resto invece di restare ferma, lasciando
+una banda grigia "fantasma" in mezzo alle celle. Un primo tentativo
+di correggerlo con un `Invalidate()` di tutta la vista eliminava il
+fantasma ma introduceva lo sfarfallio segnalato (perdendo il blit
+efficiente per l'intera vista, non solo per l'intestazione). **Fix**:
+override di `SheetView::ScrollTo(BPoint)` — l'unico punto che
+intercetta *ogni* scroll, da qualunque cosa lo inneschi (frecce,
+"Trova", trascinamento della scrollbar, rotellina del mouse) — che
+invalida solo le bande (vecchia e nuova, per ciascun asse coinvolto)
+alte/larghe quanto le intestazioni, non l'intera vista: quelle
+vecchie (dove il blit lascia il fantasma, da ridisegnare come celle
+normali) e quelle nuove (dove ora devono comparire le intestazioni
+vere). Applicato lo stesso fix (bande vecchia/nuova, non `Invalidate()`
+totale) fin dall'inizio anche per l'intestazione di riga, per non
+reintrodurre lo stesso sfarfallio sull'asse orizzontale.
+
+**Verificato dal vivo** (non da un test automatico — un tentativo di
+verifica a livello di pixel con una vista offscreen ospitata in una
+`BBitmap` ha causato un hang/crash del test entro il tempo disponibile
+in questa sessione, abbandonato): l'utente ha confermato sia il
+congelamento (di entrambe le intestazioni) sia la scomparsa dello
+sfarfallio dopo il fix.
+
 ## Limiti noti (prima versione)
 
-- **Intestazioni non "congelate"**: le lettere di colonna e i numeri
-  di riga sono disegnati alla loro posizione virtuale assoluta, non
-  ancorati al bordo della viewport durante lo scroll — scorrendo oltre
-  la prima schermata scorrono via insieme al contenuto. Scelta
-  deliberata per evitare la complessità di viste multiple sincronizzate
-  (e il flicker da `CopyBits` che ne deriverebbe con questa tecnica).
 - **Export solo verso CSV**: "Salva con nome" esporta in CSV (se il
   nome scelto finisce per ".csv") o nel nativo ASCD, ma non ancora
   verso XLS/XLSX/ODS — nessuno dei tre translator ha un writer, solo

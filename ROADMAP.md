@@ -870,6 +870,22 @@ logica, non l'esperienza utente end-to-end.
       pivot, dimensione del grafico incorporato fissa (non
       ridimensionabile/spostabile dopo l'inserimento), nessuna
       interfaccia per rimuoverne uno già inserito.
+- [x] Intestazioni "congelate" durante lo scroll: la riga delle
+      lettere di colonna resta fissa in alto durante lo scroll
+      verticale, la colonna dei numeri di riga resta fissa a sinistra
+      durante lo scroll orizzontale — richiesta esplicita dell'utente.
+      `SheetView::Draw` disegna le due bande a `Bounds().top`/
+      `Bounds().left` (la porzione attualmente visibile) invece che a
+      una posizione fissa nel canvas virtuale. Bug scoperto e corretto
+      durante l'implementazione: senza altro, lo scroll causava uno
+      sfarfallio (banda dell'intestazione "fantasma" lasciata dal blit
+      di `ScrollBy`/`ScrollTo`) — risolto con un override di
+      `SheetView::ScrollTo` che invalida solo le bande vecchia/nuova
+      delle intestazioni, non l'intera vista. Verificato dal vivo
+      dall'utente (non da un test automatico: un tentativo di verifica
+      a livello di pixel con una vista offscreen ha causato un
+      hang/crash del test, abbandonato). Dettaglio tecnico in
+      `docs/UI_ARCHITECTURE.md`.
 - [ ] Funzioni aggiuntive
 - [ ] Ottimizzazione ricalcolo su fogli grandi
 - [x] Documentazione utente: `docs/USER_GUIDE.md` — avvio, editing

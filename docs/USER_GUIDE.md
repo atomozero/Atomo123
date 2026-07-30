@@ -48,6 +48,9 @@ barra formule. Sotto, la griglia del foglio.
   Esc annulla.
 - **Cancellare il contenuto di una cella**: tasto Canc/Backspace con
   la cella selezionata, oppure Modifica → Cancella.
+- **Intestazioni "congelate"**: la riga con le lettere di colonna
+  resta visibile in cima anche scorrendo in basso; la colonna con i
+  numeri di riga resta visibile a sinistra anche scorrendo a destra.
 
 ## Formule
 
