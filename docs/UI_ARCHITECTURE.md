@@ -457,6 +457,92 @@ via `hey` (`set Frame of Window 0 to "BRect(...)"`) per esercitare
 ripetutamente `FixupScrollBars()` con le nuove dimensioni — nessun
 crash, nessun errore.
 
+## Bug scoperto (parte 2): `BScrollView` eredita la dimensione del target, non del layout
+
+Poche ore dopo il fix sopra, l'utente ha segnalato che spostando la
+selezione verso una cella fuori dall'area visibile (con le frecce, o
+con "Trova") la vista non scorre per mostrarla — nonostante
+`ScrollToShowSelection()` fosse già stata corretta per usare
+`Parent()->Bounds()`.
+
+**Diagnosi**: un harness diretto (poi promosso a `ui/tests/test_scroll.cpp`)
+che costruisce una vera `BWindow` + `BScrollView` + `SheetView` e
+chiama `SetSelection()` su una cella lontana ha riprodotto il bug in
+isolamento, stampando i valori reali di `Parent()->Bounds()`:
+**~56217×327717 pixel**, non una viewport ragionevole. Causa:
+`BScrollView`, costruita con la forma classica (`BScrollView(name,
+target, resizeMask, flags, horizontal, vertical)`, non tramite
+`BLayoutBuilder`), **eredita di default la dimensione del proprio
+target al momento della costruzione**, invece di farsi vincolare dal
+layout della finestra che la contiene — un dettaglio dell'implementazione
+di `BScrollView` non documentato esplicitamente, scoperto per via
+sperimentale in questa sessione. Dato che `SheetView` ha ora un
+`Frame()` enorme (fix della parte 1 sopra), anche la `BScrollView`
+diventava enorme, e `Parent()->Bounds()` restituiva quella stessa
+dimensione sbagliata: la vista *pensava* di essere già "abbastanza
+grande" da contenere qualunque cella, quindi non scorreva mai —
+il fix della parte 1 era corretto nella logica ma inefficace nella
+pratica, perché la sua premessa (`Parent()->Bounds()` riflette la vera
+area visibile) non era ancora vera.
+
+Provato anche `scroll->SetExplicitMinSize(BSize(100, 100))` prima di
+trovare il fix reale: non ha avuto alcun effetto, a conferma che
+`BScrollView` si ridimensiona con una `ResizeTo()` diretta nella
+propria inizializzazione (bypassando la negoziazione normale di
+min/max size del layout), non con un semplice suggerimento di
+dimensione minima.
+
+**Fix**: un `ResizeTo()` esplicito sulla `BScrollView` subito dopo la
+costruzione, prima di aggiungerla al layout (`MainWindow::MainWindow`):
+
+```cpp
+BScrollView* scroll = new BScrollView("scroll", fSheetView,
+	B_FOLLOW_ALL, 0, true, true);
+scroll->ResizeTo(400, 300);  // "sgancia" dalla dimensione ereditata dal target
+BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
+	// ...
+	.Add(scroll);
+```
+
+La dimensione passata a `ResizeTo()` non conta molto (il layout la
+corregge subito al primo giro): serve solo a rompere l'eredità
+iniziale dal target, dando alla `BScrollView` una dimensione concreta
+di partenza che il layout può poi liberamente ridimensionare in base
+allo spazio disponibile nella finestra.
+
+**Verificato**: `ui/tests/test_scroll.cpp` (richiede una sessione
+grafica, target Makefile `test-scroll` separato come `test-clipboard`)
+verifica: `Parent()->Bounds()` ha una dimensione ragionevole (non
+eredita il canvas virtuale del target); selezione iniziale A1; nessuno
+scroll prima di selezionare una cella lontana; la vista scorre
+selezionando una cella fuori schermo (colonna 30, riga 200); torna
+all'origine riselezionando A1 — tutti verdi. Rifatto anche lo
+screenshot di regressione del bug della parte 1 (griglia che riempie
+la finestra): nessun cambiamento visivo.
+
+### Nota sugli strumenti usati per l'indagine: `hey` e Pippo (MCP)
+
+Durante questa indagine è stato provato per la prima volta **Pippo**
+(`/Magazzino/Pippo`), un server MCP nativo per Haiku dell'utente
+(`localhost:2607`, JSON-RPC via `curl -X POST .../mcp`) che espone
+iniezione reale di mouse/tastiera, screenshot e scripting app. Ha
+funzionato bene per `focus_window`, `key_stroke` (digitazione di
+testo normale) e `screenshot`. Non ha funzionato per `mouse_move`/
+`mouse_down`/`mouse_up` (bug di parsing JSON→Hay in
+`McpDispatcher::_BuildHayCommand`, non di questo progetto) né per
+`key_down` con gli scancode delle frecce direzionali (verificati
+corretti contro `keymap -d .../Keymaps/US`, ma interpretati come
+caratteri normali anziché tasti speciali — probabile bug
+nell'add-on `hay_input` di Pippo). Anche l'indirizzamento di finestre
+secondarie (es. `FindWindow`) è rimasto inaffidabile sia con `hey` sia
+con Pippo. Dettaglio completo, incluso il problema di un desktop
+condiviso con altre sessioni concorrenti durante i test, in
+`ROADMAP.md` (nota "Integrazione con `hey` e con Pippo").
+Conclusione pratica: per verificare la *logica* (non l'esperienza
+utente end-to-end), un harness diretto in processo come
+`test_scroll.cpp` resta più affidabile di qualunque iniezione di
+input in questo ambiente.
+
 ## Test
 
 `ui/tests/test_ascd_io.cpp` (`cd ui && make test`, non richiede una

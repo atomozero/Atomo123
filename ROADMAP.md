@@ -601,6 +601,125 @@ righe 1-25 che riempiono correttamente la finestra (prima: solo
 colonna A, righe 1-4); ridimensionata la finestra due volte via `hey`
 per esercitare `FixupScrollBars()` ripetutamente, nessun crash.
 
+### Bug scoperto (parte 2, stesso giorno): lo scroll automatico verso la cella selezionata non funzionava
+
+L'utente ha segnalato che spostandosi con il cursore (o cercando con
+"Trova") verso una cella fuori dall'area visibile, la vista non
+scorre per mostrarla — nonostante `ScrollToShowSelection()` fosse
+gia' stata corretta poche ore prima (vedi bug sopra) per usare
+`Parent()->Bounds()` invece di `Bounds()`.
+
+**Diagnosi**: un harness diretto (`ui/tests/test_scroll.cpp`, poi
+promosso a test permanente) che costruisce una vera `BWindow` +
+`BScrollView` + `SheetView` e chiama `SetSelection()` su una cella
+lontana ha riprodotto il bug in isolamento, rivelando la causa reale:
+`BScrollView`, costruita con la forma classica (`BScrollView(name,
+target, resizeMask, flags, horizontal, vertical)`, non tramite
+`BLayoutBuilder`), **eredita di default la dimensione del proprio
+target** invece di farsi vincolare dal layout della finestra. Dato
+che `SheetView` ha ora un `Frame()` enorme (~56200×327700 pixel, il
+fix del bug precedente), anche la `BScrollView` diventava enorme —
+`Parent()->Bounds()` restituiva quindi quella stessa dimensione
+sbagliata (confermato nel test: `Parent()->Bounds()` risultava
+~56217×327717 invece di una viewport ragionevole), rendendo inutile
+il fix precedente: la vista *pensava* di essere gia' "abbastanza
+grande" da mostrare qualunque cella, quindi non scorreva mai.
+
+**Fix**: un `ResizeTo()` esplicito sulla `BScrollView` subito dopo la
+costruzione (`MainWindow::MainWindow`, prima di aggiungerla al
+layout) la "sgancia" dalla dimensione ereditata dal target — dopo
+quella chiamata il layout la ridimensiona liberamente in base allo
+spazio disponibile nella finestra, e `Parent()->Bounds()` torna a
+riflettere la vera area visibile.
+
+**Verificato**: `ui/tests/test_scroll.cpp` (richiede una sessione
+grafica, target Makefile `test-scroll` separato come `test-clipboard`)
+verifica cinque cose: la `BScrollView` ha una dimensione ragionevole
+(non eredita il canvas virtuale del target), la selezione iniziale e'
+A1, nessuno scroll prima di selezionare una cella lontana, la vista
+scorre selezionando una cella fuori schermo (colonna 30, riga 200), e
+torna all'origine riselezionando A1 — tutti verdi. Anche la
+regressione sul bug precedente (griglia che riempie la finestra)
+riverificata dal vivo, nessun cambiamento visivo.
+
+**Nota sugli strumenti di test usati in questa sessione**: durante
+l'indagine e' stato scoperto e provato **Pippo**
+(`/Magazzino/Pippo`), un server MCP nativo per Haiku dell'utente che
+espone iniezione reale di mouse/tastiera, screenshot, scripting app
+via HTTP+SSE su `localhost:2607` — vedi la nota dedicata più sotto
+("Integrazione con hey e Pippo") con i dettagli su cosa ha funzionato
+e cosa no in questo tentativo.
+
+### Nota per il futuro: integrazione con `hey` e con Pippo (MCP)
+
+Richiesta esplicita dell'utente: valutare un'integrazione più a fondo
+con `hey` (scripting BeOS nativo, già usato ampiamente in questo
+progetto per aprire/testare l'app) e con **Pippo**
+(`/Magazzino/Pippo`, server MCP nativo per Haiku dell'utente,
+`localhost:2607`, JSON-RPC via `curl -X POST .../mcp`). Nella sessione
+in cui e' stato scoperto il bug dello scroll, Pippo e' stato provato
+per la prima volta come strumento di test per questo progetto — utile
+riassumere cosa ha funzionato e cosa no, per non ripartire da zero la
+prossima volta.
+
+**Cosa ha funzionato bene**:
+- `focus_window`/`list_windows` — affidabili per portare in primo
+  piano la finestra principale di Atomo123 (Window index 0) e
+  leggerne il frame.
+- `key_stroke` con `chars` (digitazione di testo normale, incluso
+  `"\n"` per Invio) — funziona correttamente per digitare in un
+  campo con il fuoco tastiera giusto, stessa affidabilità
+  dell'incollare da `be_clipboard` già usato altrove nel progetto.
+- `screenshot`/`screenshot_region` — alternativa diretta al tool
+  `screenshot` da riga di comando già usato in tutta questa sessione,
+  con il vantaggio di restituire l'immagine come base64 nella
+  risposta MCP invece di scrivere un file da leggere separatamente.
+
+**Cosa non ha funzionato / limiti scoperti**:
+1. **`mouse_move`/`mouse_down`/`mouse_up` con `where:{x,y}` falliscono
+   sempre** ("mouse_move requires where={x,y}", anche passando
+   coordinate valide). Causa (in `McpDispatcher::_BuildHayCommand`,
+   `/Magazzino/Pippo/src/pippo/McpDispatcher.cpp`): il parsing JSON→Hay
+   fatto a mano dovrebbe riconoscere un oggetto `{"x":N,"y":M}` e
+   convertirlo in `BPoint(N,M)`, ma la conversione non scatta nei casi
+   provati in questa sessione — non approfondito oltre (non è codice
+   di questo progetto), segnalabile all'autore di Pippo.
+2. **I codici scancode per le frecce direzionali (`key_down` con
+   `key=0x57/0x61/0x62/0x63`, verificati corretti contro
+   `keymap -d /boot/system/data/Keymaps/US`) vengono interpretati
+   come caratteri normali** (es. `key=0x63` digita la lettera "c"
+   invece di muovere il cursore) invece che come tasti speciali —
+   suggerisce che l'add-on `hay_input` di Pippo non popoli
+   correttamente i campi `bytes`/`raw_char` del `B_KEY_DOWN` sintetico
+   per i tasti non stampabili. Non risolto in questa sessione.
+3. **Le finestre secondarie (es. `FindWindow`, "Window 1") sono
+   inaffidabili da indirizzare sia con `hey` sia con `focus_window` di
+   Pippo** — query su "Window 1" con `hey` restanto appese
+   indefinitamente (mai un errore rapido, serve interrompere a mano),
+   e `focus_window` con un indice diverso da 0 non garantisce che il
+   fuoco tastiera vada davvero li'.
+4. **Ambiente desktop condiviso**: durante questa sessione erano
+   attive contemporaneamente almeno altre due sessioni Claude Code
+   indipendenti sullo stesso desktop (una su un progetto
+   "VideoChiamate", una su un client Spotify/librespot) — questo ha
+   causato interferenze reali (finestre di Atomo123 chiuse
+   dall'esterno più volte, un tentativo di `key_down` finito nel
+   terminale sbagliato digitando testo non voluto in un prompt di
+   un'altra sessione, per fortuna innocuo). Da tenere presente: su un
+   desktop condiviso, `focus_window` + azione immediata (senza pause)
+   riduce ma non elimina il rischio che un'altra sessione rubi il
+   fuoco nel frattempo.
+
+**Conclusione pratica**: per digitare testo e fare screenshot, Pippo
+è già utilizzabile oggi. Per simulare tasti di navigazione (frecce) o
+click del mouse serve prima risolvere i due bug sopra (non di questo
+progetto) — fino ad allora, per quei casi conviene continuare con la
+tecnica già consolidata in questo progetto: un harness diretto in
+processo che chiama i metodi C++ della vista (come
+`ui/tests/test_scroll.cpp`), più affidabile e più preciso di
+qualunque iniezione di input quando quello che serve è verificare la
+logica, non l'esperienza utente end-to-end.
+
 ## Fase 5 — Integrazione, packaging, compatibilità reale (IN CORSO)
 
 - [x] Ricetta pacchetto per HaikuDepot: `packaging/atomo123-0.1.0.recipe`,
