@@ -106,6 +106,43 @@ void SheetView::FrameResized(float width, float height)
 	FixupScrollBars();
 }
 
+void SheetView::ScrollTo(BPoint where)
+{
+	// Le intestazioni di colonna (in cima) e di riga (a sinistra)
+	// restano "incollate" al bordo della viewport (vedi Draw(),
+	// headerTop = Bounds().top, rowHeaderLeft = Bounds().left): lo
+	// scroll blitta pero' i pixel gia' disegnati verso la loro nuova
+	// posizione a schermo (ottimizzazione standard di ScrollBy()/
+	// ScrollTo(), che invaliderebbe da sola solo la striscia appena
+	// esposta), quindi le bande delle intestazioni, gia' disegnate
+	// alla vecchia posizione, verrebbero spostate insieme al resto
+	// invece di restare ferme -- finendo "in mezzo" alle celle come
+	// bande grigie fantasma, invece di sparire. Un Invalidate() di
+	// tutta la vista risolverebbe il sintomo ma perderebbe il blit
+	// efficiente per OGNI pixel (non solo le intestazioni), causando
+	// lo sfarfallio notato dall'utente ("le celle sembrano scivolare
+	// sotto la riga delle colonne"): si invalidano invece solo le
+	// quattro bande (vecchia/nuova per ciascun asse) alte/larghe
+	// quanto le intestazioni che servono davvero -- quelle vecchie
+	// (dove il blit ha lasciato il fantasma, da ridisegnare come
+	// celle normali) e quelle nuove (dove ora devono comparire le
+	// intestazioni vere, altrimenti si vedrebbe il contenuto delle
+	// celle scorso li' sotto).
+	float oldTop = Bounds().top;
+	float oldLeft = Bounds().left;
+	BView::ScrollTo(where);
+
+	BRect oldColHeaderBand(Bounds().left, oldTop, Bounds().right, oldTop + kHeaderHeight - 1);
+	BRect newColHeaderBand(Bounds().left, where.y, Bounds().right, where.y + kHeaderHeight - 1);
+	Invalidate(oldColHeaderBand);
+	Invalidate(newColHeaderBand);
+
+	BRect oldRowHeaderBand(oldLeft, Bounds().top, oldLeft + kHeaderWidth - 1, Bounds().bottom);
+	BRect newRowHeaderBand(where.x, Bounds().top, where.x + kHeaderWidth - 1, Bounds().bottom);
+	Invalidate(oldRowHeaderBand);
+	Invalidate(newRowHeaderBand);
+}
+
 // Frame() copre l'intero intervallo virtuale del motore
 // (kColCount/kRowCount in Config/Constants.h) fin dalla costruzione
 // (vedi FullCanvasFrame()), non i limiti reali dei dati inseriti --
@@ -323,34 +360,34 @@ void SheetView::Draw(BRect updateRect)
 	StrokeRect(sel);
 	StrokeRect(sel.InsetByCopy(1, 1));
 
-	// Intestazioni (posizione virtuale assoluta, non "congelate"
-	// durante lo scroll -- limite noto della prima versione della UI,
-	// vedi ROADMAP.md Fase 4).
+	// Intestazione di riga (numeri): "congelata" durante lo scroll
+	// orizzontale -- stessa tecnica e stessa richiesta dell'utente
+	// dell'intestazione di colonna sotto, ma sull'altro asse
+	// (Bounds().left invece di Bounds().top). I numeri restano
+	// comunque quelli delle righe davvero visibili, che seguono lo
+	// scroll verticale normalmente (solo la coordinata orizzontale e'
+	// "agganciata" al bordo sinistro della viewport).
+	float rowHeaderLeft = Bounds().left;
 	SetHighColor(230, 230, 230);
-	FillRect(BRect(updateRect.left, 0, updateRect.right, kHeaderHeight - 1));
-	FillRect(BRect(0, updateRect.top, kHeaderWidth - 1, updateRect.bottom));
+	FillRect(BRect(rowHeaderLeft, updateRect.top,
+		rowHeaderLeft + kHeaderWidth - 1, updateRect.bottom));
 
 	SetHighColor(0, 0, 0);
-	for (int col = firstCol; col <= lastCol; col++)
-	{
-		char name[8];
-		ColumnName(col, name);
-		BPoint pos(kHeaderWidth + (col - 1) * kColWidth + 4, kHeaderHeight - 6);
-		DrawString(name, pos);
-	}
 	for (int row = firstRow; row <= lastRow; row++)
 	{
 		char name[16];
 		snprintf(name, sizeof(name), "%d", row);
-		BPoint pos(4, kHeaderHeight + (row - 1) * kRowHeight + kRowHeight - 6);
+		BPoint pos(rowHeaderLeft + 4, kHeaderHeight + (row - 1) * kRowHeight + kRowHeight - 6);
 		DrawString(name, pos);
 	}
 
-	// Grafici incorporati: dopo le intestazioni, cosi' restano visibili
-	// per intero anche se posizionati vicino al bordo di riga/colonna
-	// 1. I dati si leggono dal vivo (BuildChartSeries) a ogni ridisegno,
-	// non da un'istantanea salvata -- cosi' un grafico incorporato
-	// riflette sempre lo stato attuale delle celle sorgente.
+	// Grafici incorporati: prima dell'intestazione di colonna (sotto),
+	// cosi' quest'ultima -- "congelata", quindi sempre sopra qualunque
+	// altra cosa -- copre un eventuale grafico scorso proprio sotto di
+	// lei, invece di comparire dietro. I dati si leggono dal vivo
+	// (BuildChartSeries) a ogni ridisegno, non da un'istantanea
+	// salvata -- cosi' un grafico incorporato riflette sempre lo stato
+	// attuale delle celle sorgente.
 	if (fCharts && fDoc)
 	{
 		for (size_t i = 0; i < fCharts->size(); i++)
@@ -363,6 +400,30 @@ void SheetView::Draw(BRect updateRect)
 			BuildChartSeries(fDoc, obj.dataRange, series);
 			DrawBarChart(this, obj.frame, series);
 		}
+	}
+
+	// Intestazione di colonna (lettere): "congelata" durante lo scroll
+	// verticale -- disegnata sempre all'inizio dell'area visibile
+	// (Bounds().top, che segue la posizione corrente di scroll), non a
+	// una posizione fissa nel canvas virtuale (com'era prima, e come
+	// resta l'intestazione di riga sopra) -- richiesta esplicita
+	// dell'utente dopo aver visto la prima versione della UI. Segue
+	// comunque lo scroll orizzontale normalmente (le lettere restano
+	// allineate alle colonne vere): solo la coordinata verticale e'
+	// "agganciata" alla cima della viewport, non quella orizzontale.
+	// Disegnata per ultima cosi' resta sopra a tutto il resto
+	// (contenuto delle celle, grafici) che le scorre sotto.
+	float headerTop = Bounds().top;
+	SetHighColor(230, 230, 230);
+	FillRect(BRect(updateRect.left, headerTop, updateRect.right, headerTop + kHeaderHeight - 1));
+
+	SetHighColor(0, 0, 0);
+	for (int col = firstCol; col <= lastCol; col++)
+	{
+		char name[8];
+		ColumnName(col, name);
+		BPoint pos(kHeaderWidth + (col - 1) * kColWidth + 4, headerTop + kHeaderHeight - 6);
+		DrawString(name, pos);
 	}
 }
 

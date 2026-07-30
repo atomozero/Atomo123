@@ -36,6 +36,7 @@ public:
 	virtual void AttachedToWindow();
 	virtual void FrameResized(float width, float height);
 	virtual void MessageReceived(BMessage* message);
+	virtual void ScrollTo(BPoint where);
 
 	void SetDocument(CContainer* doc);
 	CContainer* Document() const { return fDoc; }
