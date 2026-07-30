@@ -882,6 +882,99 @@ in questa sessione, abbandonato): l'utente ha confermato sia il
 congelamento (di entrambe le intestazioni) sia la scomparsa dello
 sfarfallio dopo il fix.
 
+## Invio non confermava l'editing in-cella; poi anche l'avanzamento della selezione; scorciatoie da tastiera in stile Excel
+
+Segnalazione dell'utente in due tempi, sulla stessa area. Prima:
+"se scrivo un numero in una cella e premo invio non succede nulla".
+Poi, dopo un primo fix (vedi sotto) rivelatosi solo parziale: "se
+scrivo un numero all'interno di una cella con invio non lo confermo,
+non avviene nulla, devo cliccare con il mouse per confermare il
+valore inserito" — quest'ultima frase è stata la vera chiave
+diagnostica.
+
+**Primo fix (incompleto)**: la prima ipotesi era che `CommitEditing`
+scrivesse correttamente il valore ma non facesse avanzare la
+selezione alla cella sotto come in Excel/LibreOffice Calc (verificato
+con un test diretto via `MessageReceived`, che passava) — un fix
+plausibile ma **non la causa reale**, perché quel test manda il
+messaggio di commit direttamente, bypassando il vero meccanismo con
+cui Invio dovrebbe generarlo.
+
+**Diagnosi reale**: la seconda segnalazione dell'utente ("devo
+cliccare con il mouse per confermare") è stata la prova decisiva.
+`SheetView::MouseDown` chiama `CommitEditing()` con una **chiamata
+C++ diretta**, non tramite messaggio — funziona sempre, a prescindere
+da qualunque meccanismo di dispatch. Invio invece si affidava
+all'`Invoke()` automatico che `BTextControl` dovrebbe generare da
+sola alla pressione di Invio al suo interno — meccanismo che non
+scattava in modo affidabile in questo contesto d'uso (causa esatta
+non isolata con certezza nel tempo disponibile in questa sessione:
+verificarla a fondo avrebbe richiesto simulare un vero evento
+`B_KEY_DOWN` con un ciclo dei messaggi realmente in esecuzione su un
+thread separato, tecnica scartata per il rischio di hang già
+sperimentato con un tentativo simile per il test dell'intestazione
+congelata sopra). Un primo tentativo di riprodurre dal vivo con
+`key_stroke` (digitando `"42\n"`) aveva peraltro dato un risultato
+fuorviante — un altro programma di una sessione concorrente sullo
+stesso desktop condiviso ("VideoChiamate") aveva rubato il fuoco
+proprio in quel momento, quindi la digitazione era finita nella
+finestra sbagliata (uno screenshot l'ha confermato).
+
+**Fix reale**: invece di continuare a dipendere dal comportamento
+automatico di `BTextControl` su Invio, lo si intercetta esplicitamente
+— stessa tecnica già usata per Escape (`CellEditEscapeFilter`,
+rinominato `CellEditKeyFilter` includendo ora entrambi i tasti): un
+`BMessageFilter` per `B_KEY_DOWN` aggiunto alla `BTextView` interna
+dell'editor, che per `raw_char == B_RETURN` manda esplicitamente
+`kMsgCellEditCommit` al target (la stessa `SheetView`) e restituisce
+`B_SKIP_MESSAGE`. Non serve più capire perché l'`Invoke()` automatico
+non scattasse: ora Invio, come il click del mouse, non dipende da
+quel meccanismo.
+
+**Fix collegato (dalla prima segnalazione, resta valido)**:
+`CommitEditing`, quando non annullato, chiama ora
+`SetSelection(cell(editedCell.h, editedCell.v + 1))` per avanzare alla
+cella sotto come in Excel/LibreOffice Calc — dato che `fSelection` è
+ancora `editedCell` a quel punto (mai cambiata durante l'editing),
+`SetSelection` si occupa già da sola di invalidare/notificare/scorrere
+se la riga sotto è fuori dall'area visibile. Annullare con Escape resta
+invariato (nessun avanzamento della selezione).
+
+**Scorciatoie aggiuntive**, richieste dall'utente subito dopo
+("vorrei replicare tutti i comandi da tastiera di Excel"): Inizio/
+Ctrl+Inizio, Ctrl+Fine, PagSu/PagGiù, Maiusc+Tab (sposta a sinistra),
+Maiusc+Invio (sposta in alto) — un sottoinsieme scelto perché
+implementabile nella dispatch di `SheetView::KeyDown` esistente senza
+richiedere nuova architettura (a differenza, per esempio, della
+selezione di un intervallo con Maiusc+frecce, che richiederebbe prima
+di introdurre il concetto di intervallo selezionato nella griglia,
+oggi assente — vedi anche la nota sull'assenza di selezione multi-
+cella nella sezione sui grafici/pivot sopra).
+
+**Refactor per la testabilità**: `KeyDown(bytes, numBytes)` legge
+Ctrl/Maiusc dal vero messaggio `B_KEY_DOWN` corrente
+(`Window()->CurrentMessage()`) e poi chiama un nuovo metodo pubblico,
+`HandleKey(char key, bool ctrl, bool shift)`, che contiene tutta la
+logica di navigazione/modifica con i modificatori già risolti. Reso
+pubblico apposta per essere chiamato direttamente dai test con
+modificatori "finti" — un test che chiama `KeyDown()` direttamente
+(bypassando il vero dispatch della tastiera, come fanno già
+`test_scroll.cpp`/`test_editing.cpp`) leggerebbe
+`Window()->CurrentMessage()` come `NULL` o comunque senza i
+modificatori voluti, non potendo quindi esercitare i percorsi
+Ctrl/Maiusc.
+
+**Verificato**: nuovo `ui/tests/test_navigation.cpp` (`make
+test-navigation`, richiede una sessione grafica reale per `PagSu`/
+`PagGiù`, che leggono `Parent()->Bounds()`), 9 asserzioni; `ui/tests/
+test_editing.cpp` esteso con la verifica dell'avanzamento dopo Invio/
+la non-avanzamento dopo Escape (via `MessageReceived`, quindi non
+prova da sola che il filtro intercetti davvero un vero Invio nella
+`BTextView` reale — lacuna nota, come per lo sfarfallio
+dell'intestazione sopra). Nessuna regressione nei test esistenti.
+Verificato dal vivo dall'utente sull'app reale dopo il fix col
+filtro esplicito (non solo con lo scambio di messaggi nel test).
+
 ## Limiti noti (prima versione)
 
 - **Export solo verso CSV**: "Salva con nome" esporta in CSV (se il

@@ -44,13 +44,22 @@ barra formule. Sotto, la griglia del foglio.
 - **Editing direttamente sulla griglia**: doppio click su una cella,
   oppure si inizia a digitare direttamente mentre è selezionata (il
   testo digitato sostituisce il contenuto esistente, come in Excel/
-  LibreOffice Calc). Invio o un click su un'altra cella confermano;
-  Esc annulla.
+  LibreOffice Calc). Invio o un click su un'altra cella confermano (e,
+  come in Excel, la selezione avanza alla cella sotto); Esc annulla
+  (senza spostare la selezione).
 - **Cancellare il contenuto di una cella**: tasto Canc/Backspace con
   la cella selezionata, oppure Modifica → Cancella.
 - **Intestazioni "congelate"**: la riga con le lettere di colonna
   resta visibile in cima anche scorrendo in basso; la colonna con i
   numeri di riga resta visibile a sinistra anche scorrendo a destra.
+- **Scorciatoie da tastiera aggiuntive** (in stile Excel/LibreOffice
+  Calc): **Tab**/**Maiusc+Tab** spostano a destra/sinistra; **Invio**/
+  **Maiusc+Invio** spostano in basso/alto (anche fuori dall'editing,
+  non solo per confermare); **Inizio** va alla colonna A della riga
+  corrente, **Ctrl+Inizio** va sempre alla cella A1; **Ctrl+Fine** va
+  all'ultima cella con contenuto (l'angolo in basso a destra dei
+  dati); **PagSu**/**PagGiù** spostano la selezione di una schermata
+  intera in alto/basso.
 
 ## Formule
 

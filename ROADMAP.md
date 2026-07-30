@@ -12,9 +12,10 @@ in corso** — ricetta HaikuDepot pronta ma non ancora buildabile
 nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
 la sua licenza BSD originale); resta il test di compatibilità su un
 corpus di file reali. **Fase 6 avviata** (guida utente, funzioni con
-nome nelle formule, grafici a barre e tabelle pivot di base fatti;
-funzioni aggiuntive/ottimizzazione ricalcolo ancora da fare).
-Aggiornato ad ogni fase completata.
+nome nelle formule, grafici a barre e tabelle pivot di base, editing
+in-cella e navigazione da tastiera in stile Excel fatti; funzioni
+aggiuntive/ottimizzazione ricalcolo ancora da fare). Aggiornato ad
+ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -885,6 +886,30 @@ logica, non l'esperienza utente end-to-end.
       dall'utente (non da un test automatico: un tentativo di verifica
       a livello di pixel con una vista offscreen ha causato un
       hang/crash del test, abbandonato). Dettaglio tecnico in
+      `docs/UI_ARCHITECTURE.md`.
+- [x] Invio non confermava l'editing in-cella (bisognava cliccare col
+      mouse): `BTextControl` non generava in modo affidabile il suo
+      `Invoke()` automatico su Invio in questo contesto d'uso — causa
+      esatta non isolata con certezza, ma non più rilevante dato il
+      fix. Risolto intercettando Invio esplicitamente con lo stesso
+      `BMessageFilter` già usato per Escape (`CellEditKeyFilter`),
+      che manda il messaggio di commit direttamente — non dipende più
+      dal comportamento automatico del controllo, come il click del
+      mouse (che già funzionava, chiamando `CommitEditing()`
+      direttamente). Aggiunto anche l'avanzamento della selezione alla
+      cella sotto dopo la conferma (come Excel/LibreOffice Calc, non
+      c'era prima).
+- [x] Scorciatoie da tastiera in stile Excel/LibreOffice Calc,
+      richiesta esplicita dell'utente: Inizio/Ctrl+Inizio, Ctrl+Fine,
+      PagSu/PagGiù, Maiusc+Tab, Maiusc+Invio — un sottoinsieme
+      implementabile senza nuova architettura (non la selezione di un
+      intervallo con Maiusc+frecce, che richiederebbe prima
+      introdurre il concetto di intervallo selezionato nella griglia,
+      oggi assente). Refactor `SheetView::KeyDown` →
+      `HandleKey(char, bool ctrl, bool shift)` pubblico, per restare
+      testabile senza un vero dispatch della tastiera. Verificato con
+      un nuovo test, `ui/tests/test_navigation.cpp` (`make
+      test-navigation`, 9 asserzioni). Dettaglio tecnico in
       `docs/UI_ARCHITECTURE.md`.
 - [ ] Funzioni aggiuntive
 - [ ] Ottimizzazione ricalcolo su fogli grandi
