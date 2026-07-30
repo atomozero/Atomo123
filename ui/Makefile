@@ -134,11 +134,40 @@ test-scroll: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_scroll
 
+# Test dell'editing in-cella (digitare su una cella, confermare con
+# Invio/annullare con Escape): stessa ragione di test-scroll (richiede
+# una vera sessione grafica per BTextControl), target separato.
+test-editing: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_editing.cpp -o tests/test_editing.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_editing tests/test_editing.o \
+		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_editing
+
+# Test delle scorciatoie da tastiera in stile Excel (Inizio/Ctrl+
+# Inizio/Ctrl+Fine/PagSu/PagGiu/Maiusc+Tab/Maiusc+Invio): stessa
+# ragione di test-scroll (BScrollView reale per PagSu/PagGiu, che
+# leggono Parent()->Bounds()), target separato.
+test-navigation: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_navigation.cpp -o tests/test_navigation.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_navigation tests/test_navigation.o \
+		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_navigation
+
 clean:
 	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
 		tests/roundtrip.ascd tests/roundtrip_charts.ascd tests/test_clipboard tests/test_clipboard.o \
 		tests/test_scroll tests/test_scroll.o \
 		tests/test_chart tests/test_chart.o tests/Chart.o \
-		tests/test_pivot tests/test_pivot.o tests/Pivot.o
+		tests/test_pivot tests/test_pivot.o tests/Pivot.o \
+		tests/test_editing tests/test_editing.o \
+		tests/test_navigation tests/test_navigation.o
 
-.PHONY: all run test test-chart test-pivot test-clipboard test-scroll clean
+.PHONY: all run test test-chart test-pivot test-clipboard test-scroll test-editing test-navigation clean

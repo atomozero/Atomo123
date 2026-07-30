@@ -44,6 +44,17 @@ public:
 	cell Selection() const { return fSelection; }
 	void SetSelection(cell c);
 
+	// Logica di navigazione/modifica da tastiera, con i modificatori
+	// (Ctrl/Maiusc) gia' risolti -- KeyDown() li legge dal vero
+	// messaggio B_KEY_DOWN e poi chiama questa, che e' pubblica
+	// apposta per essere testabile direttamente (i test non passano
+	// da un vero ciclo dei messaggi/dispatch della tastiera, quindi
+	// Window()->CurrentMessage() non rifletterebbe modificatori
+	// "finti" impostati a mano). Restituisce false per i tasti non
+	// gestiti (KeyDown() passa allora a BView::KeyDown, per il
+	// comportamento predefinito del Interface Kit).
+	bool HandleKey(char key, bool ctrl, bool shift);
+
 	// Angolo in alto a sinistra di una cella, in pixel: usato da
 	// MainWindow per posizionare un grafico incorporato (vedi
 	// ChartObject in Chart.h) alla cella di destinazione scelta

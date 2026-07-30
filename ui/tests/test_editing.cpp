@@ -1,0 +1,132 @@
+/*
+	test_editing.cpp
+
+	Verifica l'editing in-cella: digitare direttamente su una cella
+	selezionata apre l'editor (SheetView::KeyDown, caso "default" per
+	un carattere stampabile), e confermare scrive il valore nel
+	documento. Bug segnalato dall'utente: "se scrivo un numero in una
+	cella e premo invio non succede nulla" -- il valore veniva in
+	realta' scritto correttamente (CommitEditing gia' funzionava), ma
+	la selezione restava ferma sulla stessa cella invece di avanzare a
+	quella sotto come in Excel/LibreOffice Calc, dando l'impressione
+	che il tasto Invio non facesse nulla.
+
+	Aziona KeyDown() e MessageReceived() direttamente (entrambi
+	pubblici) invece di passare dal vero dispatch della tastiera --
+	stesso principio di test_scroll.cpp: piu' affidabile di
+	un'iniezione di input reale (vedi ROADMAP.md/docs/UI_ARCHITECTURE.md
+	per i problemi gia' documentati con hey/Pippo, incluso un episodio
+	in questa stessa sessione in cui l'iniezione e' finita per errore
+	su una finestra di un'altra sessione concorrente sullo stesso
+	desktop condiviso). kMsgCellEditCommit e' privato/statico in
+	SheetView.cpp (valore 'cedt'): riprodotto qui letteralmente perche'
+	non e' esportato nell'header pubblico.
+*/
+
+#include <cstdio>
+
+#include <Application.h>
+#include <Window.h>
+
+#include "Cell.h"
+#include "Container.h"
+#include "SheetView.h"
+#include "Value.h"
+
+static const uint32 kMsgCellEditCommit = 'cedt';
+
+static int gFailures = 0;
+
+static void Check(bool condition, const char* what)
+{
+	if (condition)
+		printf("OK   %s\n", what);
+	else
+	{
+		printf("FAIL %s\n", what);
+		gFailures++;
+	}
+}
+
+class TestWindow : public BWindow {
+public:
+	TestWindow()
+		: BWindow(BRect(100, 100, 700, 500), "test-editing", B_TITLED_WINDOW, 0)
+	{
+	}
+};
+
+int main()
+{
+	BApplication app("application/x-vnd.Atomo-TestEditing");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	TestWindow* win = new TestWindow();
+	SheetView* view = new SheetView(doc);
+	win->AddChild(view);
+	win->Show();
+
+	win->Lock();
+
+	// Digitare "4" su A1 (selezionata di default) apre l'editor con
+	// quel carattere gia' dentro -- lo stesso percorso di
+	// StartEditing usato per la digitazione diretta sulla griglia.
+	char digit = '4';
+	view->KeyDown(&digit, 1);
+
+	// Confermare (lo stesso messaggio che BTextControl manda da solo
+	// al proprio target premendo Invio al suo interno) deve scrivere
+	// il valore in A1.
+	BMessage commit(kMsgCellEditCommit);
+	view->MessageReceived(&commit);
+
+	Value v;
+	doc->GetValue(cell(1, 1), v);
+	Check(v.fType == eNumData && (double)v == 4.0,
+		"digitare un numero su una cella e confermare scrive il valore nel documento");
+
+	cell afterCommit = view->Selection();
+	Check(afterCommit.h == 1 && afterCommit.v == 2,
+		"confermando con Invio la selezione avanza alla cella sotto (come Excel/LibreOffice Calc)");
+
+	// Stesso giro su A2 (dove siamo finiti): confermare con Invio deve
+	// avanzare ancora, non restare ferma indefinitamente sulla stessa
+	// riga dopo la prima conferma.
+	char digit2 = '7';
+	view->KeyDown(&digit2, 1);
+	view->MessageReceived(&commit);
+
+	doc->GetValue(cell(1, 2), v);
+	Check(v.fType == eNumData && (double)v == 7.0,
+		"il secondo valore digitato viene scritto nella cella corretta (A2, dove si era avanzati)");
+
+	cell afterSecondCommit = view->Selection();
+	Check(afterSecondCommit.h == 1 && afterSecondCommit.v == 3,
+		"la selezione avanza di nuovo dopo la seconda conferma (A2 -> A3)");
+
+	// Annullare con Escape (CommitEditing(true), lo stesso messaggio
+	// che CellEditEscapeFilter manda) non deve invece avanzare la
+	// selezione ne' scrivere nulla -- comportamento diverso da Invio,
+	// coerente con Excel/LibreOffice Calc.
+	static const uint32 kMsgCellEditCancel = 'cedc';
+	char digit3 = '9';
+	view->KeyDown(&digit3, 1);
+	BMessage cancel(kMsgCellEditCancel);
+	view->MessageReceived(&cancel);
+
+	doc->GetValue(cell(1, 3), v);
+	Check(v.fType != eNumData,
+		"annullare con Escape non scrive nessun valore nella cella");
+
+	cell afterCancel = view->Selection();
+	Check(afterCancel.h == 1 && afterCancel.v == 3,
+		"annullare con Escape non fa avanzare la selezione (resta su A3)");
+
+	win->Unlock();
+
+	win->Lock();
+	win->Quit();
+
+	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
+	return gFailures == 0 ? 0 : 1;
+}

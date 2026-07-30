@@ -31,21 +31,39 @@ static const uint32 kMsgCellEditCancel = 'cedc';
 // Filtro applicato alla BTextView interna del BTextControl usato per
 // l'editing in-cella: la BTextView interna e' quella che riceve
 // davvero il fuoco tastiera (BTextControl::MakeFocus lo inoltra a
-// lei), quindi e' li' che serve intercettare Escape per annullare
-// l'editing -- una BTextControl non riceve KeyDown direttamente per
-// questo motivo.
-class CellEditEscapeFilter : public BMessageFilter {
+// lei), quindi e' li' che serve intercettare Escape/Invio -- una
+// BTextControl non riceve KeyDown direttamente per questo motivo.
+//
+// Invio e' gestito qui esplicitamente (invece di affidarsi
+// all'Invoke() automatico su Invio che BTextControl dovrebbe fare da
+// sola) perche' quel meccanismo non scattava in modo affidabile in
+// questo contesto -- segnalato dall'utente: "se scrivo un numero e
+// premo invio non succede nulla, devo cliccare con il mouse per
+// confermare" (il click funziona perche' SheetView::MouseDown chiama
+// CommitEditing() direttamente come chiamata C++, non tramite
+// Invoke()/messaggio). Stessa soluzione, applicata allo stesso modo
+// di Escape: invece di dipendere dal comportamento predefinito del
+// Interface Kit, si intercetta la pressione e si manda il messaggio
+// di commit esplicitamente.
+class CellEditKeyFilter : public BMessageFilter {
 public:
-	CellEditEscapeFilter(BHandler* target)
+	CellEditKeyFilter(BHandler* target)
 		: BMessageFilter(B_KEY_DOWN), fTarget(target) {}
 
 	virtual filter_result Filter(BMessage* message, BHandler** target)
 	{
 		int32 rawChar;
-		if (message->FindInt32("raw_char", &rawChar) == B_OK
-			&& rawChar == B_ESCAPE)
+		if (message->FindInt32("raw_char", &rawChar) != B_OK)
+			return B_DISPATCH_MESSAGE;
+
+		if (rawChar == B_ESCAPE)
 		{
 			BMessenger(fTarget).SendMessage(kMsgCellEditCancel);
+			return B_SKIP_MESSAGE;
+		}
+		if (rawChar == B_RETURN)
+		{
+			BMessenger(fTarget).SendMessage(kMsgCellEditCommit);
 			return B_SKIP_MESSAGE;
 		}
 		return B_DISPATCH_MESSAGE;
@@ -457,27 +475,103 @@ void SheetView::KeyDown(const char* bytes, int32 numBytes)
 		return;
 	}
 
+	// Ctrl/Shift non sono nel byte stesso (bytes[0] resta lo stesso
+	// tasto, es. B_HOME, indipendentemente dai modificatori): vanno
+	// letti dal messaggio B_KEY_DOWN corrente, stesso meccanismo gia'
+	// usato in MouseDown per "clicks".
+	int32 mods = 0;
+	BMessage* msg = Window() ? Window()->CurrentMessage() : NULL;
+	if (msg)
+		msg->FindInt32("modifiers", &mods);
+
+	if (!HandleKey(bytes[0], (mods & B_CONTROL_KEY) != 0, (mods & B_SHIFT_KEY) != 0))
+		BView::KeyDown(bytes, numBytes);
+}
+
+bool SheetView::HandleKey(char key, bool ctrl, bool shift)
+{
 	cell c = fSelection;
-	switch (bytes[0])
+	switch (key)
 	{
 		case B_UP_ARROW:
 			c.v--;
 			SetSelection(c);
-			break;
+			return true;
 		case B_DOWN_ARROW:
-		case B_RETURN:
 			c.v++;
 			SetSelection(c);
-			break;
+			return true;
+		case B_RETURN:
+			// Come Excel/LibreOffice Calc: Invio da soli (fuori
+			// dall'editing in-cella, gia' gestito a parte da
+			// CommitEditing) sposta comunque la selezione in basso;
+			// Maiusc+Invio la sposta in alto.
+			if (shift)
+				c.v--;
+			else
+				c.v++;
+			SetSelection(c);
+			return true;
 		case B_LEFT_ARROW:
 			c.h--;
 			SetSelection(c);
-			break;
+			return true;
 		case B_RIGHT_ARROW:
-		case B_TAB:
 			c.h++;
 			SetSelection(c);
-			break;
+			return true;
+		case B_TAB:
+			// Maiusc+Tab sposta a sinistra invece che a destra, come
+			// in Excel/LibreOffice Calc.
+			if (shift)
+				c.h--;
+			else
+				c.h++;
+			SetSelection(c);
+			return true;
+		case B_HOME:
+			// Come Excel: Inizio da solo va alla colonna A della riga
+			// corrente; Ctrl+Inizio va sempre ad A1.
+			if (ctrl)
+				c.Set(1, 1);
+			else
+				c.h = 1;
+			SetSelection(c);
+			return true;
+		case B_END:
+			// Come Excel: Ctrl+Fine va all'ultima cella con contenuto
+			// (angolo in basso a destra dei dati). Senza Ctrl non ha
+			// un comportamento utile in questa griglia (in Excel
+			// dipende dalla modalita' "scroll lock", non applicabile
+			// qui) -- nessuna azione, ma il tasto e' comunque
+			// "gestito" (non passa a BView::KeyDown).
+			if (ctrl && fDoc)
+			{
+				range bounds;
+				fDoc->GetBounds(bounds);
+				if (bounds.right >= 1 && bounds.bottom >= 1)
+				{
+					c.Set(bounds.right, bounds.bottom);
+					SetSelection(c);
+				}
+			}
+			return true;
+		case B_PAGE_UP:
+		case B_PAGE_DOWN:
+		{
+			// Una "pagina" e' alta quanto l'area visibile della
+			// BScrollView (stessa fonte di verita' di
+			// ScrollToShowSelection/FixupScrollBars), non un numero
+			// fisso di righe: coerente con quante righe scompaiono
+			// davvero scorrendo di una schermata.
+			BRect viewport = Parent() ? Parent()->Bounds() : Bounds();
+			int pageRows = (int)(viewport.Height() / kRowHeight);
+			if (pageRows < 1)
+				pageRows = 1;
+			c.v += (key == B_PAGE_DOWN) ? pageRows : -pageRows;
+			SetSelection(c);
+			return true;
+		}
 		case B_BACKSPACE:
 		case B_DELETE:
 			if (fDoc)
@@ -486,19 +580,18 @@ void SheetView::KeyDown(const char* bytes, int32 numBytes)
 				Invalidate(CellRect(fSelection));
 				NotifySelectionChanged();
 			}
-			break;
+			return true;
 		default:
 			// Digitare direttamente su una cella selezionata sostituisce
 			// il contenuto (come Excel/LibreOffice Calc): si apre
 			// l'editor in-cella gia' con il carattere digitato.
-			if ((unsigned char)bytes[0] >= 0x20 && (unsigned char)bytes[0] < 0x7f)
+			if ((unsigned char)key >= 0x20 && (unsigned char)key < 0x7f)
 			{
-				char initial[2] = { bytes[0], 0 };
+				char initial[2] = { key, 0 };
 				StartEditing(fSelection, initial);
+				return true;
 			}
-			else
-				BView::KeyDown(bytes, numBytes);
-			break;
+			return false;
 	}
 }
 
@@ -546,7 +639,7 @@ void SheetView::StartEditing(cell c, const char* initialText)
 
 	if (fEditor->TextView())
 	{
-		fEditor->TextView()->AddFilter(new CellEditEscapeFilter(this));
+		fEditor->TextView()->AddFilter(new CellEditKeyFilter(this));
 		int32 len = (int32)strlen(fEditor->Text());
 		fEditor->TextView()->Select(len, len);
 	}
@@ -579,8 +672,26 @@ void SheetView::CommitEditing(bool cancel)
 	delete editor;
 
 	MakeFocus(true);
-	Invalidate(CellRect(editedCell));
-	NotifySelectionChanged();
+
+	if (!cancel)
+	{
+		// Come Excel/LibreOffice Calc: confermando con Invio la
+		// selezione avanza alla cella sotto, invece di restare ferma
+		// -- altrimenti, dopo aver scritto un valore, sembra che non
+		// sia successo nulla (segnalato dall'utente) anche se il
+		// valore e' stato scritto correttamente. fSelection e'
+		// ancora editedCell a questo punto (mai cambiata durante
+		// l'editing), quindi SetSelection si occupa gia' da sola di
+		// invalidare/notificare/scorrere se la riga sotto e' fuori
+		// dall'area visibile -- non serve piu' farlo qui a mano.
+		cell next(editedCell.h, editedCell.v + 1);
+		SetSelection(next);
+	}
+	else
+	{
+		Invalidate(CellRect(editedCell));
+		NotifySelectionChanged();
+	}
 }
 
 void SheetView::NotifySelectionChanged()
