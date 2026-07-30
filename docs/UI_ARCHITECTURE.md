@@ -696,6 +696,92 @@ modifica. Verifica dal vivo: menu "Inserisci" invocato con `hey
 sottostante si chiami `B_EXECUTE_PROPERTY`), `ChartWindow` confermata
 aperta senza crash via `list_windows`.
 
+## Bug scoperto (parte 3): lo scroll automatico smetteva di funzionare dopo il primo ricalcolo del layout
+
+Dopo il fix della parte 2 (sopra), l'utente ha rifatto una prova reale
+e ha segnalato di nuovo lo stesso sintomo: navigando con le frecce
+fino a K3, l'etichetta di riferimento in alto a sinistra mostrava
+correttamente "K3" (prova che `SetSelection`/`NotifySelectionChanged`
+erano stati chiamati), ma la griglia continuava a mostrare solo le
+colonne A-J, senza scorrere. Il test `test_scroll.cpp` esistente
+(incluso il controllo aggiunto nella parte 2) continuava a passare,
+segno che il bug non era più riproducibile con quel harness sintetico.
+
+**Diagnosi dal vivo**: iniezione di tasti freccia via Pippo/`hey` si è
+rivelata di nuovo inaffidabile (`key_stroke` con il byte grezzo di
+`B_RIGHT_ARROW`, 0x1d, non muoveva la selezione; lo stesso con
+`key_down`/`key_up` passando 0x1d invece dello scancode fisico) —
+niente di nuovo rispetto ai problemi già documentati sopra. La svolta
+è stata interrogare direttamente la geometria reale della finestra in
+esecuzione con la scripting suite nativa di `BView`, mai usata prima
+in questo progetto:
+
+```
+hey Atomo123 get Frame of View "scroll" of Window 0
+```
+
+Risultato **senza** il fix: `BRect(0, 94, 56217, 327811)` — la
+`BScrollView` aveva davvero la dimensione enorme ereditata dal
+target, esattamente il bug della parte 2, ma tornato indietro. Causa:
+il `scroll->ResizeTo(400, 300)` della parte 2 "sgancia" la
+`BScrollView` dalla dimensione ereditata solo per la primissima
+passata di layout — senza un limite esplicito impostato sulla
+*view target* stessa (`SheetView`), ogni ricalcolo successivo del
+layout (nell'app vera, con più righe sopra la griglia — menu,
+barra strumenti, barra formula — a differenza del test sintetico
+con la sola `BScrollView`) torna a interrogare `SheetView::Frame()`
+(il canvas virtuale intero, ~56000×328000 pixel) per decidere quanto
+spazio offrire, riportando la `BScrollView` alla dimensione ereditata.
+`Parent()->Bounds()`, che `ScrollToShowSelection` usa per sapere
+quanto è davvero visibile, tornava quindi a riflettere quella
+dimensione enorme: qualunque cella sembrava sempre già visibile, lo
+scroll non scattava mai.
+
+**Fix**: limiti espliciti di dimensione impostati direttamente su
+`SheetView` (non solo sulla `BScrollView`, che non basta da sola),
+nel costruttore (`SheetView.cpp`):
+
+```cpp
+SetExplicitMinSize(BSize(100, 100));
+SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
+SetExplicitPreferredSize(BSize(400, 300));
+```
+
+`MaxSize` resta illimitata (la `BScrollView` deve poter crescere
+liberamente quando la finestra si ingrandisce — verificato anche
+questo dal vivo, vedi sotto), ma `MinSize`/`PreferredSize` piccoli
+impediscono al layout di dedurre le proprie richieste di spazio dal
+`Frame()` enorme del target a ogni ricalcolo, non solo al primo.
+
+**Verificato dal vivo** (non riprodotto da `test_scroll.cpp`
+nonostante un tentativo di arricchire il layout del test con menu/
+barra strumenti/barra formula per imitare l'app vera — resta una
+lacuna nota, vedi sotto): stessa query `hey ... get Frame of View
+"scroll" of Window 0` prima e dopo il fix, e anche dopo un
+ridimensionamento forzato della finestra (`hey ... set Frame of
+Window 0 to "BRect(...)"`, per verificare che un secondo/terzo
+ricalcolo del layout non facesse ripresentare il bug):
+
+| Momento | `Frame of View "scroll"` |
+|---|---|
+| Senza il fix, all'avvio | `BRect(0, 94, 56217, 327811)` (bug) |
+| Con il fix, all'avvio | `BRect(0, 94, 820, 620)` (corretto) |
+| Con il fix, dopo un ridimensionamento a `BRect(5,89,1000,750)` | `BRect(0, 94, 995, 661)` (corretto, segue la finestra) |
+
+**Lacuna nota**: `test_scroll.cpp` non riproduce questo bug specifico
+(passa identico con e senza il fix, anche dopo aver arricchito il
+layout della finestra di test con menu/barra strumenti/barra formula
+per assomigliare a `MainWindow`) — la differenza esatta rispetto
+all'app vera non è stata individuata con certezza nel tempo
+disponibile in questa sessione (ipotesi: differenze nella
+sincronizzazione del ciclo dei messaggi/negoziazione del layout fra
+un `BWindow` isolato in un piccolo harness e la finestra reale
+dentro il ciclo completo di `BApplication::Run()`). Il controllo
+aggiunto in `test_scroll.cpp` (ridimensionamento della finestra dopo
+la prima verifica) resta comunque come guardia onesta e ragionevole,
+ma la garanzia di non-regressione per *questo specifico* bug è oggi
+solo la verifica dal vivo documentata sopra, non un test automatico.
+
 ## Test
 
 `ui/tests/test_ascd_io.cpp` (`cd ui && make test`, non richiede una

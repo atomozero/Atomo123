@@ -649,6 +649,43 @@ via HTTP+SSE su `localhost:2607` — vedi la nota dedicata più sotto
 ("Integrazione con hey e Pippo") con i dettagli su cosa ha funzionato
 e cosa no in questo tentativo.
 
+### Bug scoperto (parte 3, sessione successiva): lo scroll tornava a rompersi dopo il primo ricalcolo del layout
+
+L'utente ha rifatto una prova reale dopo il fix della parte 2 e ha
+segnalato di nuovo lo stesso identico sintomo (frecce fino a K3,
+l'etichetta di riferimento mostra "K3" ma la griglia non scorre) —
+nonostante `test_scroll.cpp` continuasse a passare tutti i controlli.
+Iniezione di tasti freccia via Pippo/`hey` di nuovo inaffidabile
+(niente di nuovo rispetto a quanto già documentato); la diagnosi è
+stata fatta interrogando la geometria reale della finestra in
+esecuzione con `hey <app> get Frame of View "scroll" of Window 0`
+(mai usato prima in questo progetto): risultato `BRect(0, 94, 56217,
+327811)` — la `BScrollView` aveva di nuovo la dimensione enorme
+ereditata dal target, lo stesso bug della parte 2, ma tornato
+indietro.
+
+**Causa**: il `ResizeTo()` della parte 2 sgancia la `BScrollView`
+dalla dimensione ereditata solo alla primissima passata di layout;
+senza un limite esplicito sulla *view target* (`SheetView`) stessa,
+ogni ricalcolo successivo del layout (che nell'app vera, con più
+righe sopra la griglia, avviene diversamente che nel test sintetico
+con la sola `BScrollView`) torna a interrogare il `Frame()` enorme
+del target.
+
+**Fix**: `SetExplicitMinSize`/`MaxSize`/`PreferredSize` su
+`SheetView` stessa (`SheetView.cpp`, costruttore) — non solo sulla
+`BScrollView`. Verificato dal vivo con la stessa query prima/dopo il
+fix, e anche dopo un ridimensionamento forzato della finestra (per
+escludere che il bug si ripresentasse a un *terzo* ricalcolo).
+Dettaglio tecnico completo, inclusa la tabella con i valori esatti
+osservati, in `docs/UI_ARCHITECTURE.md`.
+
+**Lacuna nota**: `test_scroll.cpp` non riproduce questo bug specifico
+nonostante un tentativo di arricchire il layout del test per
+somigliare a `MainWindow` — resta una verifica solo dal vivo, non
+automatica. Onestamente documentato invece di lasciare un'asserzione
+fuorviante che passerebbe comunque.
+
 ### Nota per il futuro: integrazione con `hey` e con Pippo (MCP)
 
 Richiesta esplicita dell'utente: valutare un'integrazione più a fondo
