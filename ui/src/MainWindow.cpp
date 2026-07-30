@@ -159,6 +159,17 @@ MainWindow::MainWindow()
 	BScrollView* scroll = new BScrollView("scroll", fSheetView,
 		B_FOLLOW_ALL, 0, true, true);
 
+	// BScrollView, costruita con questa forma classica, eredita di
+	// default la dimensione (enorme: il canvas virtuale del foglio,
+	// vedi SheetView::FullCanvasFrame) del suo target, invece di farsi
+	// vincolare dal layout -- un ResizeTo() esplicito subito dopo la
+	// costruzione la "sgancia" da quella dimensione ereditata, cosi'
+	// il layout puo' poi ridimensionarla liberamente in base allo
+	// spazio disponibile nella finestra. La dimensione qui non conta
+	// molto (il layout la corregge subito al primo giro), serve solo
+	// a rompere l'eredita' iniziale dal target.
+	scroll->ResizeTo(400, 300);
+
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.AddGroup(B_HORIZONTAL, 4)

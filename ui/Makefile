@@ -69,8 +69,22 @@ test-clipboard: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -lbe
 	./tests/test_clipboard
 
+# Test dello scroll automatico verso la cella selezionata: richiede
+# una vera sessione grafica (Layout Kit/app_server) e le stesse
+# classi dell'app (SheetView usa dynamic_cast<MainWindow*>, quindi
+# serve linkare anche MainWindow/AscdIO/FindWindow, non solo
+# SheetView) — target separato come test-clipboard.
+test-scroll: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_scroll.cpp -o tests/test_scroll.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_scroll tests/test_scroll.o \
+		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_scroll
+
 clean:
 	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
-		tests/roundtrip.ascd tests/test_clipboard tests/test_clipboard.o
+		tests/roundtrip.ascd tests/test_clipboard tests/test_clipboard.o \
+		tests/test_scroll tests/test_scroll.o
 
-.PHONY: all run test test-clipboard clean
+.PHONY: all run test test-clipboard test-scroll clean
