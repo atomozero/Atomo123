@@ -24,7 +24,7 @@ class MainWindow;
 
 class SheetView : public BView {
 public:
-	SheetView(BRect frame, CContainer* doc);
+	SheetView(CContainer* doc);
 	virtual ~SheetView();
 
 	virtual void Draw(BRect updateRect);
@@ -69,6 +69,18 @@ private:
 	void ScrollToShowSelection();
 	void NotifySelectionChanged();
 	void FixupScrollBars();
+
+	// Il Frame() della view copre l'intero intervallo virtuale del
+	// motore (kColCount x kRowCount celle), non solo l'area visibile a
+	// schermo: e' il pattern classico BeOS/Haiku per una vista
+	// scorrevole (la BScrollView ritaglia e scorre questa vista
+	// grande, non viceversa -- altrimenti Draw() non riceverebbe mai
+	// un updateRect piu' grande della vista stessa). Bounds() riflette
+	// quindi sempre questa dimensione piena, mai la porzione visibile:
+	// per questo FixupScrollBars usa Parent()->Bounds() (la vera area
+	// visibile della BScrollView), non Bounds() proprio, per calcolare
+	// l'intervallo delle scrollbar.
+	static BRect FullCanvasFrame();
 
 	void StartEditing(cell c, const char* initialText = NULL);
 	void CommitEditing(bool cancel);

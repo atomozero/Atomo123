@@ -155,7 +155,7 @@ MainWindow::MainWindow()
 	fFormulaBar = new BTextControl("formula", NULL, "", new BMessage(kMsgFormulaCommit));
 	fFormulaBar->SetTarget(this);
 
-	fSheetView = new SheetView(BRect(0, 0, 100, 100), fDoc);
+	fSheetView = new SheetView(fDoc);
 	BScrollView* scroll = new BScrollView("scroll", fSheetView,
 		B_FOLLOW_ALL, 0, true, true);
 

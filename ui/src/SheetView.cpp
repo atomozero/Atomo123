@@ -55,9 +55,10 @@ private:
 	BHandler* fTarget;
 };
 
-SheetView::SheetView(BRect frame, CContainer* doc)
+SheetView::SheetView(CContainer* doc)
 	:
-	BView(frame, "SheetView", B_FOLLOW_NONE, B_WILL_DRAW | B_FRAME_EVENTS),
+	BView(FullCanvasFrame(), "SheetView", B_FOLLOW_NONE,
+		B_WILL_DRAW | B_FRAME_EVENTS),
 	fDoc(doc),
 	fSelection(1, 1),
 	fEditor(NULL),
@@ -83,12 +84,18 @@ void SheetView::FrameResized(float width, float height)
 	FixupScrollBars();
 }
 
-// Il contenuto del foglio non ha una vera dimensione di frame (le
-// celle sono sparse in una mappa, non un array fisso): i limiti
-// virtuali per lo scroll sono quelli massimi del motore
-// (kColCount/kRowCount in Config/Constants.h), non i limiti reali
-// dei dati inseriti -- coerente con un foglio di calcolo vero, dove
-// si puo' sempre scorrere oltre l'ultima cella con contenuto.
+// Frame() copre l'intero intervallo virtuale del motore
+// (kColCount/kRowCount in Config/Constants.h) fin dalla costruzione
+// (vedi FullCanvasFrame()), non i limiti reali dei dati inseriti --
+// coerente con un foglio di calcolo vero, dove si puo' sempre
+// scorrere oltre l'ultima cella con contenuto.
+BRect SheetView::FullCanvasFrame()
+{
+	return BRect(0, 0,
+		kHeaderWidth + kColCount * kColWidth - 1,
+		kHeaderHeight + kRowCount * kRowHeight - 1);
+}
+
 void SheetView::FixupScrollBars()
 {
 	BScrollBar* hsb = ScrollBar(B_HORIZONTAL);
@@ -98,21 +105,25 @@ void SheetView::FixupScrollBars()
 
 	float totalWidth = kHeaderWidth + kColCount * kColWidth;
 	float totalHeight = kHeaderHeight + kRowCount * kRowHeight;
-	BRect b = Bounds();
 
-	float maxH = totalWidth - b.Width();
+	// Bounds() riflette sempre la dimensione piena del Frame() (vedi
+	// sopra), non la porzione effettivamente visibile: la vera area
+	// visibile e' quella del genitore (la BScrollView stessa).
+	BRect viewport = Parent() ? Parent()->Bounds() : Bounds();
+
+	float maxH = totalWidth - viewport.Width();
 	if (maxH < 0)
 		maxH = 0;
 	hsb->SetRange(0, maxH);
-	hsb->SetProportion(b.Width() / totalWidth);
-	hsb->SetSteps(kColWidth, b.Width());
+	hsb->SetProportion(viewport.Width() / totalWidth);
+	hsb->SetSteps(kColWidth, viewport.Width());
 
-	float maxV = totalHeight - b.Height();
+	float maxV = totalHeight - viewport.Height();
 	if (maxV < 0)
 		maxV = 0;
 	vsb->SetRange(0, maxV);
-	vsb->SetProportion(b.Height() / totalHeight);
-	vsb->SetSteps(kRowHeight, b.Height());
+	vsb->SetProportion(viewport.Height() / totalHeight);
+	vsb->SetSteps(kRowHeight, viewport.Height());
 }
 
 void SheetView::SetDocument(CContainer* doc)
@@ -164,7 +175,16 @@ BRect SheetView::ContentRect() const
 void SheetView::ScrollToShowSelection()
 {
 	BRect r = CellRect(fSelection);
-	BRect visible = Bounds();
+
+	// Bounds() riflette sempre la dimensione piena del Frame() (vedi
+	// FullCanvasFrame()), non la porzione effettivamente visibile:
+	// origine dello scroll da Bounds() (l'unica parte che ScrollBy
+	// aggiorna davvero), dimensioni dalla vera area visibile del
+	// genitore (la BScrollView).
+	BRect b = Bounds();
+	BRect viewportSize = Parent() ? Parent()->Bounds() : b;
+	BRect visible(b.left, b.top, b.left + viewportSize.Width(),
+		b.top + viewportSize.Height());
 
 	float dx = 0, dy = 0;
 	if (r.left < visible.left + kHeaderWidth)
