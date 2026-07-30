@@ -84,3 +84,6 @@ Number raised to a power
 Decimal to hexadecimal
 Principal arctangent of y/x
 Number of cells that are not empty also number of arguments that contain values
+Sum of cells matching a criteria
+Count of cells matching a criteria
+Average of cells matching a criteria

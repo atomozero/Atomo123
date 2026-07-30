@@ -120,7 +120,17 @@ int GetFunctionNr(const char *name)
 	int d;
 
 	sLen = strlen(name);
-	if (sLen >= 9)
+
+	// myFunc[10] ospita fino a 9 caratteri piu' il terminatore: il
+	// controllo era "sLen >= 9", che scartava per errore anche i nomi
+	// di esattamente 9 caratteri (che entrano nel buffer esattamente,
+	// vedi il ciclo sotto: myFunc[0..8] + myFunc[sLen]=0, 10 byte in
+	// tutto, nessun overflow) -- scoperto aggiungendo AVERAGEIF (9
+	// caratteri), trattato come identificatore sconosciuto invece che
+	// come funzione nonostante fosse nella tabella. Nessuno degli 86
+	// nomi originali di Sum-It arrivava a 9 caratteri, quindi il bug
+	// non si era mai manifestato prima.
+	if (sLen >= (long)sizeof(myFunc))
 		return -1;
 
 	/* Se la tabella delle funzioni non e' mai stata caricata (nessuno

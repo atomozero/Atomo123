@@ -128,6 +128,9 @@ resource 'Func' (128, "Functions")
 		"POWER", 2, 82, 4,
 		"DEC2HEX", 2, 83, 8,
 		"ATAN2", 2, 84, 4,
-		"COUNTA", 65535, 85, 5 //check max argument quantity !!!
+		"COUNTA", 65535, 85, 5, //check max argument quantity !!!
+		"SUMIF", 65535, 86, 5,
+		"COUNTIF", 2, 87, 5,
+		"AVERAGEIF", 65535, 88, 5
 	}
 };

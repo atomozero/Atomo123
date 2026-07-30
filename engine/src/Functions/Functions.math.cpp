@@ -38,6 +38,9 @@
 
 */
 
+#include <cstdlib>
+#include <cstring>
+
 #include "Container.h"
 #include "CellIterator.h"
 #include "FunctionUtils.h"
@@ -521,4 +524,182 @@ void ROUNDFunction(Value *stack, int argCnt, CContainer *cells)
 	else
 		stack[0] = gValueNan;
 }
+
+// SUMIF/COUNTIF/AVERAGEIF: assenti dalle funzioni originali di
+// Sum-It (le 86 della risorsa 'Func' storica), aggiunte perche'
+// mancava proprio l'aggregazione condizionata, fra le piu' usate in
+// un foglio di calcolo moderno. "criteria" accetta un numero (o del
+// testo numerico) per un confronto esatto, del testo per un
+// confronto letterale (senza distinguere maiuscole/minuscole, come
+// Excel), oppure un operatore di confronto stile Excel in testa
+// (">10", "<=5", "<>0", "=10") seguito da un numero.
+static bool MatchesCriteria(const Value &val, const Value &criteria)
+{
+	if (criteria.fType == eNumData)
+		return val.fType == eNumData && val.fDouble == criteria.fDouble;
+
+	if (criteria.fType != eTextData)
+		return false;
+
+	const char *crit = criteria.fText;
+	enum { eEQ, eNE, eGE, eLE, eGT, eLT } op = eEQ;
+	const char *rest = crit;
+
+	if (strncmp(crit, ">=", 2) == 0) { op = eGE; rest = crit + 2; }
+	else if (strncmp(crit, "<=", 2) == 0) { op = eLE; rest = crit + 2; }
+	else if (strncmp(crit, "<>", 2) == 0) { op = eNE; rest = crit + 2; }
+	else if (crit[0] == '>') { op = eGT; rest = crit + 1; }
+	else if (crit[0] == '<') { op = eLT; rest = crit + 1; }
+	else if (crit[0] == '=') { op = eEQ; rest = crit + 1; }
+
+	if (rest != crit)
+	{
+		// Un operatore e' stato riconosciuto: il resto deve essere un
+		// numero valido, altrimenti il criterio non seleziona nessuna
+		// cella (comportamento sicuro, non un errore bloccante).
+		char *end = NULL;
+		double num = strtod(rest, &end);
+		if (end == rest || val.fType != eNumData)
+			return false;
+
+		switch (op)
+		{
+			case eGE: return val.fDouble >= num;
+			case eLE: return val.fDouble <= num;
+			case eGT: return val.fDouble > num;
+			case eLT: return val.fDouble < num;
+			case eNE: return val.fDouble != num;
+			default: return val.fDouble == num;
+		}
+	}
+
+	// Nessun operatore: se il criterio si legge per intero come
+	// numero, confronto numerico esatto (accetta sia SUMIF(A:A,10,..)
+	// che SUMIF(A:A,"10",..), come Excel); altrimenti confronto
+	// testuale esatto.
+	char *end = NULL;
+	double critNum = strtod(crit, &end);
+	if (end != crit && *end == 0)
+		return val.fType == eNumData && val.fDouble == critNum;
+
+	return val.fType == eTextData && strcasecmp(val.fText, crit) == 0;
+} /* MatchesCriteria */
+
+void SUMIFFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range criteriaRange, sumRange;
+
+	if (argCnt < 2 || !GetRangeArgument(stack, argCnt, 1, &criteriaRange)
+		|| !criteriaRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	// L'intervallo da sommare e' il terzo argomento, se presente;
+	// altrimenti lo stesso intervallo dei criteri (come in Excel).
+	if (argCnt >= 3)
+	{
+		if (!GetRangeArgument(stack, argCnt, 3, &sumRange) || !sumRange.IsValid())
+		{
+			stack[0] = gRefNan;
+			return;
+		}
+	}
+	else
+		sumRange = criteriaRange;
+
+	double result = 0.0;
+	CCellIterator iter(cells, &criteriaRange);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		Value val;
+		cells->GetValue(c, val);
+		if (!MatchesCriteria(val, stack[1]))
+			continue;
+
+		// stessa posizione relativa dentro l'intervallo da sommare
+		cell target(sumRange.left + (c.h - criteriaRange.left),
+			sumRange.top + (c.v - criteriaRange.top));
+		Value sumVal;
+		cells->GetValue(target, sumVal);
+		if (sumVal.fType == eNumData)
+			result += sumVal.fDouble;
+	}
+
+	stack[0] = result;
+} /* SUMIFFunction */
+
+void COUNTIFFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range criteriaRange;
+
+	if (argCnt < 2 || !GetRangeArgument(stack, argCnt, 1, &criteriaRange)
+		|| !criteriaRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	long count = 0;
+	CCellIterator iter(cells, &criteriaRange);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		Value val;
+		cells->GetValue(c, val);
+		if (MatchesCriteria(val, stack[1]))
+			count++;
+	}
+
+	stack[0] = (double)count;
+} /* COUNTIFFunction */
+
+void AVERAGEIFFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range criteriaRange, sumRange;
+
+	if (argCnt < 2 || !GetRangeArgument(stack, argCnt, 1, &criteriaRange)
+		|| !criteriaRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	if (argCnt >= 3)
+	{
+		if (!GetRangeArgument(stack, argCnt, 3, &sumRange) || !sumRange.IsValid())
+		{
+			stack[0] = gRefNan;
+			return;
+		}
+	}
+	else
+		sumRange = criteriaRange;
+
+	double sum = 0.0;
+	long count = 0;
+	CCellIterator iter(cells, &criteriaRange);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		Value val;
+		cells->GetValue(c, val);
+		if (!MatchesCriteria(val, stack[1]))
+			continue;
+
+		cell target(sumRange.left + (c.h - criteriaRange.left),
+			sumRange.top + (c.v - criteriaRange.top));
+		Value sumVal;
+		cells->GetValue(target, sumVal);
+		if (sumVal.fType == eNumData)
+		{
+			sum += sumVal.fDouble;
+			count++;
+		}
+	}
+
+	stack[0] = count > 0 ? sum / count : gRefNan;
+} /* AVERAGEIFFunction */
 

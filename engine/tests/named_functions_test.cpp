@@ -65,7 +65,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 86, "InitFunctions carica tutte le 86 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 89, "InitFunctions carica tutte le 89 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -113,6 +113,71 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =MAX(A1:A3): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// SUMIF/COUNTIF/AVERAGEIF: assenti dalle 86 funzioni originali di
+	// Sum-It, aggiunte in questa sessione perche' mancava proprio
+	// l'aggregazione condizionata. D1:D4 = categoria, E1:E4 = valore.
+	TryToParseString("Mela", cell(4, 1), &doc, true);
+	TryToParseString("10", cell(5, 1), &doc, true);
+	TryToParseString("Pera", cell(4, 2), &doc, true);
+	TryToParseString("5", cell(5, 2), &doc, true);
+	TryToParseString("Mela", cell(4, 3), &doc, true);
+	TryToParseString("20", cell(5, 3), &doc, true);
+	TryToParseString("Banana", cell(4, 4), &doc, true);
+	TryToParseString("7", cell(5, 4), &doc, true);
+
+	try
+	{
+		TryToParseString("=SUMIF(D1:D4;\"Mela\";E1:E4)", cell(6, 1), &doc, true);
+		doc.CalcCell(cell(6, 1));
+		doc.GetValue(cell(6, 1), v);
+		Check((double)v == 30.0, "=SUMIF(D1:D4;\"Mela\";E1:E4) calcola 30 (10+20)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SUMIF: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=COUNTIF(D1:D4;\"Mela\")", cell(6, 2), &doc, true);
+		doc.CalcCell(cell(6, 2));
+		doc.GetValue(cell(6, 2), v);
+		Check((double)v == 2.0, "=COUNTIF(D1:D4;\"Mela\") calcola 2");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =COUNTIF: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=AVERAGEIF(D1:D4;\"Mela\";E1:E4)", cell(6, 3), &doc, true);
+		doc.CalcCell(cell(6, 3));
+		doc.GetValue(cell(6, 3), v);
+		Check((double)v == 15.0, "=AVERAGEIF(D1:D4;\"Mela\";E1:E4) calcola 15 (media di 10 e 20)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =AVERAGEIF: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=SUMIF(E1:E4;\">8\")", cell(6, 4), &doc, true);
+		doc.CalcCell(cell(6, 4));
+		doc.GetValue(cell(6, 4), v);
+		Check((double)v == 30.0,
+			"=SUMIF(E1:E4;\">8\") con operatore di confronto calcola 30 (10+20, esclusi 5 e 7)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SUMIF con operatore: %s\n", (char *)e);
 		gFailures++;
 	}
 

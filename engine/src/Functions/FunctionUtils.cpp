@@ -230,6 +230,9 @@ void SetupDefaultFuncs()
 	gFuncs[kDEC2HEXFuncNr] = DEC2HEXFunction;
 	gFuncs[kATAN2FuncNr] = ATAN2Function;
 	gFuncs[kCOUNTAFuncNr] = COUNTAFunction;
+	gFuncs[kSUMIFFuncNr] = SUMIFFunction;
+	gFuncs[kCOUNTIFFuncNr] = COUNTIFFunction;
+	gFuncs[kAVERAGEIFFuncNr] = AVERAGEIFFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()
