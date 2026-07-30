@@ -32,6 +32,7 @@
 #include <cstdio>
 
 #include <Application.h>
+#include <InterfaceDefs.h>
 #include <LayoutBuilder.h>
 #include <ScrollView.h>
 #include <Window.h>
@@ -41,6 +42,8 @@
 #include "SheetView.h"
 
 static int gFailures = 0;
+static const char kRightArrow = B_RIGHT_ARROW;
+static const char kDownArrow = B_DOWN_ARROW;
 
 static void Check(bool condition, const char* what)
 {
@@ -103,6 +106,35 @@ int main()
 	BRect boundsBack = view->Bounds();
 	Check(boundsBack.left == 0 && boundsBack.top == 0,
 		"la vista torna all'origine selezionando di nuovo A1");
+
+	// La segnalazione originale dell'utente era sulla navigazione con
+	// le frecce, non su un salto diretto a una cella lontana (il caso
+	// gia' testato sopra con SetSelection): SheetView::KeyDown chiama
+	// SetSelection internamente per ogni pressione, quindi in teoria
+	// e' esattamente lo stesso percorso di codice -- ma qui lo si
+	// verifica con incrementi di una cella alla volta (com'e' la
+	// tastiera vera), non con un solo salto, per escludere bug legati
+	// a passi ripetuti (es. arrotondamenti, stato che non si aggiorna
+	// tra una pressione e la successiva).
+	bool scrolledRight = false;
+	for (int i = 0; i < 40 && !scrolledRight; i++)
+	{
+		view->KeyDown(&kRightArrow, 1);
+		if (view->Bounds().left > 0)
+			scrolledRight = true;
+	}
+	Check(scrolledRight,
+		"premendo Right ripetutamente la vista scorre orizzontalmente");
+
+	bool scrolledDown = false;
+	for (int i = 0; i < 320 && !scrolledDown; i++)
+	{
+		view->KeyDown(&kDownArrow, 1);
+		if (view->Bounds().top > 0)
+			scrolledDown = true;
+	}
+	Check(scrolledDown,
+		"premendo Down ripetutamente la vista scorre verticalmente");
 
 	win->Unlock();
 

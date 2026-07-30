@@ -11,6 +11,7 @@ lib.*/
 engine/obj/
 engine/libengine.a
 engine/tests/smoke_test
+engine/tests/named_functions_test
 
 # Build artifacts (translators/*/ Makefiles)
 translators/*/CsvTranslator

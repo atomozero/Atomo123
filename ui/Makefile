@@ -27,16 +27,45 @@ OBJECTS := $(SOURCES:.cpp=.o)
 RDEF := Atomo123.rdef
 RSRC := Atomo123.rsrc
 
+# Strumenti storici di compilazione risorse (rez/bsl, dalla stessa
+# Sum-It da cui deriva l'engine), ricompilati per questo sistema in
+# Fase 1 (vedi legacy/opensumit/PORTING_STATUS.md) ma finora mai
+# davvero usati: servono per generare la risorsa 'Func' (tabella
+# delle funzioni con nome nelle formule) da
+# engine/resources/funcs_by_nr.r, vedi $(RSRC) sotto e
+# docs/ENGINE_API.md.
+LEGACY_DIR := ../legacy/opensumit
+REZ := $(LEGACY_DIR)/rez/rez
+BSL := $(LEGACY_DIR)/bsl/bsl
+FUNC_RESOURCES := ../engine/resources
+
 all: $(APP)
 
 $(ENGINE_DIR)/libengine.a:
 	$(MAKE) -C $(ENGINE_DIR)
 
+$(REZ):
+	$(MAKE) -C $(LEGACY_DIR)/rez
+
+$(BSL):
+	$(MAKE) -C $(LEGACY_DIR)/bsl
+
 %.o: %.cpp
 	$(CXX) -c $< -o $@ $(INCLUDES) $(CXXFLAGS)
 
-$(RSRC): $(RDEF)
+# rc compila l'icona/firma/versione da Atomo123.rdef; rez e bsl
+# aggiungono (per fusione nello stesso file, non sovrascrivendolo --
+# comportamento verificato a mano invocandoli in sequenza su un file
+# di prova) la risorsa 'Func' (tabella delle funzioni) e due risorse
+# 'StrL' (nomi/descrizioni delle funzioni, usate da InitFunctions()
+# in App.cpp) allo stesso Atomo123.rsrc, cosi' xres le allega tutte
+# insieme in un solo passaggio.
+$(RSRC): $(RDEF) $(REZ) $(BSL) $(FUNC_RESOURCES)/funcs_by_nr.r \
+		$(FUNC_RESOURCES)/FuncNames.txt $(FUNC_RESOURCES)/FuncDescs.txt
 	rc -o $(RSRC) $(RDEF)
+	$(REZ) -o $(RSRC) $(FUNC_RESOURCES)/funcs_by_nr.r
+	$(BSL) -o $(RSRC) -id 7 -name "FunctionNames" $(FUNC_RESOURCES)/FuncNames.txt
+	$(BSL) -o $(RSRC) -id 8 -name "FuncDescs" $(FUNC_RESOURCES)/FuncDescs.txt
 
 # L'icona (risorsa VICN/BEOS:ICON, disegnata in icons/atomo123.svg e
 # convertita in HVIF con Icon-O-Matic, incorporata in Atomo123.rdef)
