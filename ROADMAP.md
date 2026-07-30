@@ -11,9 +11,9 @@ in corso** — ricetta HaikuDepot pronta ma non ancora buildabile
 (nessun repository pubblico); licenza **MIT** decisa per il codice
 nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
 la sua licenza BSD originale); resta il test di compatibilità su un
-corpus di file reali. **Fase 6 avviata** (guida utente fatta;
-grafici/pivot/funzioni con nome/ottimizzazione ancora da fare).
-Aggiornato ad ogni fase completata.
+corpus di file reali. **Fase 6 avviata** (guida utente e funzioni con
+nome nelle formule fatte; grafici/pivot/ottimizzazione ancora da
+fare). Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -247,14 +247,12 @@ Elenco completo, in ordine di scoperta (dettaglio tecnico completo in
    legato all'assenza di app_server/UI — è un problema di correttezza
    C++ puro, preesistente nel codice storico.
 
-**Nota aperta importante**: i fix 3-6 rendono il codice sicuro (nessun
-crash/blocco), ma la causa di fondo dei bug 5-6 (tabella funzioni mai
-caricata) resta: **le formule con funzioni con nome (SOMMA, SE, ecc.)
-non sono ancora realmente utilizzabili**. Serve generare/allegare la
-risorsa `'Func'` (con `bsl`/`rez`, già pronti dalla Fase 1) e chiamare
-`InitFunctions()` all'avvio dell'engine. Da risolvere prima che le
-formule con funzioni possano funzionare — per ora funzionano solo
-formule con operatori aritmetici e riferimenti a cella.
+**Nota** (aggiornata in Fase 6): i fix 3-6 rendevano il codice sicuro
+(nessun crash/blocco), ma la causa di fondo dei bug 5-6 (tabella
+funzioni mai caricata) restava: le formule con funzioni con nome non
+erano ancora realmente utilizzabili. Risolto generando/allegando la
+risorsa `'Func'` (con `bsl`/`rez`) e chiamando `InitFunctions()`
+all'avvio dell'app — vedi Fase 6 sotto per il dettaglio.
 
 **Perché sembravano blocchi infiniti invece di crash**: molti di
 questi bug sono dereferenziazioni di puntatori nulli, che normalmente
@@ -760,6 +758,30 @@ logica, non l'esperienza utente end-to-end.
 
 ## Fase 6 — Polish e funzionalità avanzate (IN CORSO)
 
+- [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
+      gap più importante rimasto dalla Fase 3 (l'engine non chiamava
+      mai `InitFunctions()`, quindi ogni nome di funzione era trattato
+      come identificatore sconosciuto). Risolto costruendo `rez`/`bsl`
+      (strumenti storici di Sum-It, ricompilati in Fase 1 ma mai usati
+      finora) e usandoli per compilare `engine/resources/funcs_by_nr.r`
+      + `FuncNames.txt`/`FuncDescs.txt` (copie immutate dei file
+      storici in `legacy/opensumit/sum-it/Resources/`) in una risorsa
+      `'Func'`/due `'StrL'` allegate al binario `Atomo123` con `xres`
+      (`ui/Makefile`, target `$(RSRC)`, si fondono con la risorsa
+      icona già esistente). `App::ReadyToRun()` lega
+      `gResourceManager`/`gAppName` al binario e chiama
+      `InitFunctions()` prima di creare la finestra, dentro un
+      `try`/`catch` che degrada senza crash se le risorse mancassero.
+      Un dettaglio non ovvio scoperto scrivendo il test: il separatore
+      fra argomenti è `;` (`gListSeparator`), non `,` — `=IF(A1>5,100,200)`
+      dà errore di formula, `=IF(A1>5;100;200)` funziona; documentato
+      in `docs/USER_GUIDE.md`. Verificato con un nuovo test in
+      processo, `engine/tests/named_functions_test.cpp` (`make
+      test-functions`): `=SUM(A1:A3)`, `=IF(...)`, `=MAX(...)`
+      calcolano il risultato corretto; build completa (`make -C ui
+      clean && make -C ui all`) e `make -C ui test`/`test-scroll`
+      confermati senza regressioni. Dettaglio tecnico completo in
+      `docs/ENGINE_API.md`.
 - [ ] Grafici, tabelle pivot base, funzioni aggiuntive
 - [ ] Ottimizzazione ricalcolo su fogli grandi
 - [x] Documentazione utente: `docs/USER_GUIDE.md` — avvio, editing

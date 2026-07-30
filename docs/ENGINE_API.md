@@ -19,14 +19,21 @@ che riporta solo classi Application/Storage/Support Kit (`BList`,
 
 ```
 cd engine
-make          # produce libengine.a
-make test     # compila ed esegue tests/smoke_test.cpp
+make               # produce libengine.a
+make test          # compila ed esegue tests/smoke_test.cpp
+make test-functions # compila ed esegue tests/named_functions_test.cpp
 ```
 
 `tests/smoke_test.cpp` crea un documento (`CContainer`) senza alcuna
 view collegata, inserisce valori e formule (`=A1+A2+A3`, `=A1*3`) e
 verifica che i risultati calcolati siano corretti — dimostra che il
 motore funziona headless.
+
+`tests/named_functions_test.cpp` verifica in aggiunta le formule con
+funzioni con nome (`=SUM(A1:A3)`, `=IF(...)`, `=MAX(...)`), che
+richiedono `InitFunctions()` e quindi una risorsa `'Func'` reale
+(compilata al volo da questo stesso target con gli strumenti storici
+`rez`/`bsl` — vedi sezione dedicata più sotto).
 
 ## Mappa dei file
 
@@ -155,17 +162,75 @@ collegati":
    (valore sentinella già usato altrove nel codice per "numero di
    argomenti sconosciuto").
 
-**Nota aperta importante**: i fix 6-7 eliminano il crash/blocco, ma
-non risolvono il problema di fondo — **la libreria engine non carica
-mai la tabella delle funzioni**, quindi le formule con funzioni con
-nome (`SOMMA`, `SE`, `MEDIA`, ecc.) non sono ancora realmente
-utilizzabili: vengono correttamente trattate come "identificatore
-sconosciuto" (e quindi come testo letterale se non c'è un `=` iniziale,
-o come errore di formula se c'è). Serve, in una fase futura: generare
-la risorsa `'Func'` con gli strumenti già pronti dalla Fase 1
-(`bsl`/`rez` su `Resources/funcs_by_nr.txt`), allegarla al binario che
-usa l'engine (o caricarla da un percorso noto), e chiamare
-`InitFunctions()` una volta all'avvio.
+I fix 6-7 eliminavano il crash/blocco, ma non risolvevano il problema
+di fondo: **la libreria engine non caricava mai la tabella delle
+funzioni**, quindi le formule con funzioni con nome (`SUM`, `IF`,
+`MAX`, ecc. — l'utente italiano le conosce come `SOMMA`, `SE`, ma
+l'engine usa i nomi inglesi originali di Sum-It) non erano realmente
+utilizzabili: venivano trattate come "identificatore sconosciuto"
+(testo letterale se non c'è un `=` iniziale, errore di formula se
+c'è). Risolto in Fase 6 (vedi sezione "Funzioni con nome nelle
+formule" più sotto).
+
+## Funzioni con nome nelle formule (Fase 6)
+
+`InitFunctions()` (`src/Functions/FunctionUtils.cpp`) popola le
+tabelle globali usate da `GetFunctionNr` (`src/Utils/Utils.cpp`) per
+riconoscere `SUM`, `IF`, ecc. nelle formule, leggendo tre risorse
+legate al binario in esecuzione tramite `gResourceManager`
+(`src/Misc-Classes/ResourceManager.h`, un thin wrapper su
+`BResources`):
+
+- `'Func'` (ID 128): array di `FuncRec { char funcName[10]; short
+  argCnt, funcNr, groupNr; }`, una entry per funzione (86 in totale) —
+  compilata da `resources/funcs_by_nr.r` con `rez`.
+- `'StrL'` ID 7 e 8: stringhe di paste/descrizione per ciascuna
+  funzione (usate solo per un'eventuale finestra "Incolla funzione",
+  non ancora presente nella UI nativa) — compilate da
+  `resources/FuncNames.txt`/`FuncDescs.txt` con `bsl`.
+
+`resources/funcs_by_nr.r`, `FuncNames.txt` e `FuncDescs.txt` sono
+copie immutate dei file storici in
+`legacy/opensumit/sum-it/Resources/` (stessa licenza BSD a 4
+clausole di Sum-It, coerente con il resto di `engine/`): il loro
+contenuto è indicizzato per posizione contro l'enum in
+`src/Functions/Functions.h` (`kABSFuncNr`, ecc., usato da
+`SetupDefaultFuncs()` per legare ogni entry al vero puntatore a
+funzione C++), quindi non va modificato senza aggiornare anche
+quell'enum.
+
+`rez` e `bsl` (`legacy/opensumit/rez/`, `legacy/opensumit/bsl/`) sono
+gli stessi strumenti storici di compilazione risorse di Sum-It,
+ricompilati per questo sistema in Fase 1 ma rimasti inutilizzati fino
+a questa fase. Producono file `.rsrc` in formato Be/Haiku standard
+(verificato con `listres`): invocati più volte sullo stesso file di
+output, **si fondono** (non lo sovrascrivono), permettendo di
+accumulare più risorse in un solo `.rsrc` prima di allegarlo al
+binario finale con `xres` — esattamente come l'icona (vedi
+`ui/Makefile`, target `$(RSRC)`).
+
+**Chi chiama `InitFunctions()`**: `ui/src/App.cpp`, in
+`App::ReadyToRun()`, prima di creare la finestra principale — lega
+`gResourceManager` al binario `Atomo123` stesso (via
+`BApplication::GetAppInfo()` + `BPath`), poi chiama `InitFunctions()`
+dentro un `try`/`catch (CErr&)`: un fallimento (binario senza risorse,
+percorso inatteso) non impedisce l'avvio dell'app, degrada solo allo
+stesso comportamento di prima (nessuna funzione con nome disponibile).
+`gAppName` (`src/Config/EngineGlobals.cpp`) va impostato allo stesso
+percorso **prima** di chiamare `InitFunctions()`: viene usato
+internamente da `LoadPlugIns()` per cercare add-on opzionali in
+`Functions/` accanto al binario — se lasciato non inizializzato
+(`BPath` di default, `Path()` restituisce `NULL`), `LoadPlugIns()` fa
+`strcpy` su un puntatore nullo e crasha.
+
+**Separatore degli argomenti**: il parser usa `gListSeparator`
+(`src/Config/EngineGlobals.cpp`, default `;`), non `,` — scoperto
+scrivendo `tests/named_functions_test.cpp`, il primo test a esercitare
+davvero una formula con più argomenti (`=IF(A1>5,100,200)` falliva con
+un `CParseErr`; `=IF(A1>5;100;200)` funziona). Nessuna chiamata UI
+(`SheetView`, `MainWindow`, `AscdIO`) passa un separatore esplicito a
+`TryToParseString`, quindi vale ovunque nell'app — documentato anche in
+`docs/USER_GUIDE.md`.
 
 **Perché sembravano blocchi infiniti invece di crash**: i bug 6-7 (e
 altri di questa sessione) sono dereferenziazioni di puntatori nulli,

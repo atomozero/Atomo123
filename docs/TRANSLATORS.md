@@ -80,19 +80,16 @@ in `docs/ENGINE_API.md`. In sintesi, in ordine di scoperta:
    comunque usato per indicizzare `gFuncArrayByNr` **prima** di
    controllare se fosse valido — indice negativo su un array C.
 
-**Nota importante**: i fix (2-4) rendono il codice sicuro (nessun
-crash/blocco), ma **le funzioni con nome nelle formule (SOMMA, SE,
-ecc.) non sono ancora realmente utilizzabili**, perché la tabella
-delle funzioni non viene mai popolata: manca ancora la generazione e
-il caricamento della risorsa `'Func'` (compilabile con `bsl`/`rez`,
-già sistemati in Fase 1) più una chiamata a `InitFunctions()` in fase
-di inizializzazione dell'engine. Questo è un gap noto, da colmare in
-una fase futura prima che le formule con funzioni possano funzionare
-davvero. Fino ad allora, formule con soli operatori aritmetici e
-riferimenti a cella (`=A1+A2*3`) funzionano correttamente; nomi non
-riconosciuti come identificatori (funzione sconosciuta o intervallo
-con nome) vengono correttamente trattati come testo letterale, non
-più con un blocco.
+**Nota**: i fix (2-4) rendevano il codice sicuro (nessun
+crash/blocco), ma a quel tempo le funzioni con nome nelle formule
+(`SUM`, `IF`, ecc.) non erano ancora realmente utilizzabili, perché la
+tabella delle funzioni non veniva mai popolata. Risolto in Fase 6
+generando e caricando la risorsa `'Func'` con `bsl`/`rez` (vedi
+`docs/ENGINE_API.md`, sezione "Funzioni con nome nelle formule") —
+formule come `=SUM(A1:A3)` o `=IF(A1>5;100;200)` funzionano ora
+correttamente. Un identificatore ancora non riconosciuto (funzione
+sconosciuta o intervallo con nome) continua a essere trattato come
+testo letterale, non con un blocco.
 
 ### Perché sembrava un blocco infinito invece di un crash
 

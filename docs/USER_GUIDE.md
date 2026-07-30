@@ -52,12 +52,17 @@ Sotto, la griglia del foglio.
 ## Formule
 
 Si scrivono cominciando con `=`, ad esempio `=A1+B1*2`. Sono
-supportati gli operatori aritmetici e i riferimenti a cella/intervallo.
+supportati gli operatori aritmetici, i riferimenti a cella/intervallo
+(`A1:A3`) e le funzioni con nome, ad esempio `=SUM(A1:A3)` o
+`=IF(A1>5;100;200)` — i nomi delle funzioni sono in inglese (`SUM`,
+`IF`, `MAX`, `AVG`, ecc., non `SOMMA`/`SE`/`MEDIA`), eredità diretta
+del motore di calcolo originale di Sum-It.
 
-**Limite attuale importante**: le funzioni con nome (SOMMA, SE, MEDIA,
-ecc.) non sono ancora utilizzabili — solo formule con operatori
-aritmetici e riferimenti a cella. Vedi la "nota aperta" nella
-`ROADMAP.md` (Fase 3) per il dettaglio tecnico del perché.
+**Attenzione al separatore degli argomenti**: fra più argomenti di
+una funzione si usa il **punto e virgola** (`;`), non la virgola —
+`=IF(A1>5;100;200)`, non `=IF(A1>5,100,200)` (che dà errore di
+formula). La virgola resta il separatore delle migliaia nella
+formattazione numero (Formato → Numero), un dettaglio distinto.
 
 ## File: aprire, salvare, nuovo
 
@@ -144,6 +149,4 @@ Vedi `ROADMAP.md` per l'elenco completo e aggiornato. In sintesi, allo
 stato attuale: nessun export verso XLS/XLSX/ODS (solo CSV e ASCD
 nativo), formattazione cella limitata a Generale/Numero/Valuta/
 Percentuale (niente decimali/font/colore/data), nessun supporto per
-più fogli in un unico documento, nessun grafico o tabella pivot,
-nessuna funzione con nome nelle formule (SOMMA, SE, ecc. — solo
-operatori aritmetici e riferimenti a cella).
+più fogli in un unico documento, nessun grafico o tabella pivot.
