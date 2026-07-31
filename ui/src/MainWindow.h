@@ -13,6 +13,7 @@
 
 #include <vector>
 
+#include <String.h>
 #include <Window.h>
 
 #include "Cell.h"
@@ -51,6 +52,24 @@ public:
 	void PasteSelection();
 	void SetCellFormat(int32 format);
 
+	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
+	// tramite il puntatore che MainWindow gli passa) ogni volta che
+	// una delle sue operazioni muta il documento -- stesso principio
+	// di SelectionChanged/NotifySelectionChanged, per il titolo della
+	// finestra e l'avviso prima di scartare modifiche non salvate
+	// (Nuovo/Apri/Esci).
+	void DocumentChanged();
+
+	// Pubblici per lo stesso motivo di CopySelection/PasteSelection/
+	// SetCellFormat sopra -- vedi tests/test_unsaved_changes.cpp.
+	// ConfirmDiscardChanges() restituisce true senza mostrare nessun
+	// BAlert quando non ci sono modifiche in sospeso (l'unico ramo
+	// testabile in automatico: un vero clic su un BAlert non lo e',
+	// stesso limite gia' documentato altrove in questo progetto per i
+	// dialoghi modali interattivi).
+	bool IsModified() const { return fModified; }
+	bool ConfirmDiscardChanges();
+
 private:
 	SheetView* fSheetView;
 	BTextControl* fFormulaBar;
@@ -62,6 +81,16 @@ private:
 	ChartWindow* fChartWindow;
 	PivotWindow* fPivotWindow;
 	std::vector<ChartObject> fCharts;
+
+	// Nome del file corrente (solo il nome, non il percorso completo:
+	// basta per il titolo -- vedi UpdateTitle) e se il documento ha
+	// modifiche non ancora salvate da quando e' stato aperto/creato/
+	// salvato l'ultima volta. Vuoto = documento nuovo, mai salvato.
+	BString fDocumentName;
+	bool fModified;
+
+	void UpdateTitle();
+	void MarkModified();
 
 	void NewDocument();
 	void CommitFormulaBar();

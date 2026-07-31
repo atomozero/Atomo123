@@ -246,6 +246,10 @@ private:
 	cell CellAt(BPoint where) const;
 	void ScrollToShowSelection();
 	void NotifySelectionChanged();
+	// Avvisa MainWindow (dirty flag/titolo) ogni volta che una
+	// mutazione del documento e' avvenuta qui dentro -- stesso
+	// principio di NotifySelectionChanged.
+	void NotifyDocumentChanged();
 	void FixupScrollBars();
 
 	// Il Frame() della view copre l'intero intervallo virtuale del

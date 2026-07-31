@@ -340,6 +340,7 @@ void SheetView::ClearSelection()
 	RecalculateAll(fDoc);
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 void SheetView::FillDown()
@@ -363,6 +364,7 @@ void SheetView::FillDown()
 	RecalculateAll(fDoc);
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 void SheetView::FillRight()
@@ -386,6 +388,7 @@ void SheetView::FillRight()
 	RecalculateAll(fDoc);
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 namespace {
@@ -498,6 +501,7 @@ void SheetView::SortSelection(bool ascending)
 	RecalculateAll(fDoc);
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 void SheetView::InsertRows()
@@ -552,6 +556,7 @@ void SheetView::InsertRows()
 	RecalculateAll(fDoc);
 	Invalidate();
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 void SheetView::InsertColumns()
@@ -600,6 +605,7 @@ void SheetView::InsertColumns()
 	RecalculateAll(fDoc);
 	Invalidate();
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 void SheetView::DeleteRows()
@@ -649,6 +655,7 @@ void SheetView::DeleteRows()
 	RecalculateAll(fDoc);
 	Invalidate();
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 void SheetView::DeleteColumns()
@@ -691,6 +698,7 @@ void SheetView::DeleteColumns()
 	RecalculateAll(fDoc);
 	Invalidate();
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 SheetView::UndoSnapshot SheetView::CaptureSnapshot(range r) const
@@ -774,6 +782,7 @@ void SheetView::Undo()
 	ExtendSelection(toRestore.r.BotRight());
 	Invalidate(CellRect(toRestore.r.TopLeft()) | CellRect(toRestore.r.BotRight()));
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 void SheetView::Redo()
@@ -791,6 +800,7 @@ void SheetView::Redo()
 	ExtendSelection(toRestore.r.BotRight());
 	Invalidate(CellRect(toRestore.r.TopLeft()) | CellRect(toRestore.r.BotRight()));
 	NotifySelectionChanged();
+	NotifyDocumentChanged();
 }
 
 BRect SheetView::CellRect(cell c) const
@@ -1307,6 +1317,7 @@ void SheetView::CommitEditing(bool cancel)
 		{
 		}
 		RecalculateAll(fDoc);
+		NotifyDocumentChanged();
 	}
 
 	editor->RemoveSelf();
@@ -1340,4 +1351,11 @@ void SheetView::NotifySelectionChanged()
 	MainWindow* win = dynamic_cast<MainWindow*>(Window());
 	if (win)
 		win->SelectionChanged(fSelection);
+}
+
+void SheetView::NotifyDocumentChanged()
+{
+	MainWindow* win = dynamic_cast<MainWindow*>(Window());
+	if (win)
+		win->DocumentChanged();
 }

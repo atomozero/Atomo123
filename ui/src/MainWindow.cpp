@@ -97,6 +97,7 @@ MainWindow::MainWindow()
 		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
 {
 	fDoc = new CContainer(NULL, NULL);
+	fModified = false;
 
 	BMenuBar* menuBar = new BMenuBar("menu");
 	BMenu* fileMenu = new BMenu("File");
@@ -279,6 +280,8 @@ MainWindow::MainWindow()
 	fFindWindow = NULL;
 	fChartWindow = NULL;
 	fPivotWindow = NULL;
+
+	UpdateTitle();
 }
 
 MainWindow::~MainWindow()
@@ -309,8 +312,48 @@ MainWindow::~MainWindow()
 		fDoc->Release();
 }
 
+void MainWindow::UpdateTitle()
+{
+	BString title;
+	if (fModified)
+		title << "* ";
+	title << (fDocumentName.Length() > 0 ? fDocumentName : BString("Nuovo documento"));
+	title << " \xE2\x80\x94 Atomo123"; // em dash (U+2014) in UTF-8
+	SetTitle(title.String());
+}
+
+void MainWindow::MarkModified()
+{
+	if (!fModified)
+	{
+		fModified = true;
+		UpdateTitle();
+	}
+}
+
+void MainWindow::DocumentChanged()
+{
+	MarkModified();
+}
+
+bool MainWindow::ConfirmDiscardChanges()
+{
+	if (!fModified)
+		return true;
+
+	BAlert* alert = new BAlert("Modifiche non salvate",
+		"Le modifiche non salvate andranno perse. Continuare?",
+		"Annulla", "Continua senza salvare", NULL,
+		B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+	alert->SetShortcut(0, B_ESCAPE);
+	return alert->Go() == 1;
+}
+
 void MainWindow::NewDocument()
 {
+	if (!ConfirmDiscardChanges())
+		return;
+
 	CContainer* newDoc = new CContainer(NULL, NULL);
 	if (fDoc)
 		fDoc->Release();
@@ -318,10 +361,17 @@ void MainWindow::NewDocument()
 	fCharts.clear();
 	fSheetView->SetDocument(fDoc);
 	fFormulaBar->SetText("");
+
+	fDocumentName = "";
+	fModified = false;
+	UpdateTitle();
 }
 
 void MainWindow::OpenFile(const entry_ref& ref)
 {
+	if (!ConfirmDiscardChanges())
+		return;
+
 	BFile file(&ref, B_READ_ONLY);
 	if (file.InitCheck() != B_OK)
 	{
@@ -384,6 +434,10 @@ void MainWindow::OpenFile(const entry_ref& ref)
 		fDoc->Release();
 	fDoc = newDoc;
 	fSheetView->SetDocument(fDoc);
+
+	fDocumentName = ref.name;
+	fModified = false;
+	UpdateTitle();
 }
 
 void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
@@ -414,7 +468,11 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		{
 			BAlert* alert = new BAlert("Errore", "Scrittura del file fallita.", "OK");
 			alert->Go();
+			return;
 		}
+		fDocumentName = name;
+		fModified = false;
+		UpdateTitle();
 		return;
 	}
 
@@ -441,7 +499,12 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		BAlert* alert = new BAlert("Errore",
 			"Nessun translator installato sa esportare in questo formato.", "OK");
 		alert->Go();
+		return;
 	}
+
+	fDocumentName = name;
+	fModified = false;
+	UpdateTitle();
 }
 
 void MainWindow::CopySelection(bool cut)
@@ -494,6 +557,7 @@ void MainWindow::CopySelection(bool cut)
 		RecalculateAll(fDoc);
 		fSheetView->Invalidate();
 		SelectionChanged(fSheetView->Selection());
+		MarkModified();
 	}
 }
 
@@ -610,6 +674,7 @@ void MainWindow::PasteSelection()
 		fSheetView->Invalidate();
 		fSheetView->SetSelection(destRange.TopLeft());
 		fSheetView->ExtendSelection(destRange.BotRight());
+		MarkModified();
 	}
 
 	be_clipboard->Unlock();
@@ -721,6 +786,7 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText)
 	fCharts.push_back(obj);
 
 	fSheetView->Invalidate();
+	MarkModified();
 }
 
 // Come sopra: legge/scrive fDoc sul thread di MainWindow, poi
@@ -767,6 +833,7 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 
 	WritePivotTable(fDoc, dest, rows, (PivotAggFunc)agg);
 	fSheetView->Invalidate();
+	MarkModified();
 
 	BString msg;
 	msg << (int32)rows.size() << " categoria/e trovate.";
@@ -884,6 +951,7 @@ void MainWindow::ReplaceCurrent(const char* searchText, const char* replaceText)
 	RecalculateAll(fDoc);
 	fSheetView->Invalidate();
 	SelectionChanged(sel);
+	MarkModified();
 
 	FindNext(searchText);
 }
@@ -952,6 +1020,7 @@ void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
 	RecalculateAll(fDoc);
 	fSheetView->Invalidate();
 	SelectionChanged(fSheetView->Selection());
+	MarkModified();
 
 	BString msg;
 	msg << (int32)matches.size() << " cella/e sostituita/e.";
@@ -980,6 +1049,7 @@ void MainWindow::SetCellFormat(int32 format)
 			fDoc->SetCellStyle(c, cs);
 		}
 	fSheetView->Invalidate();
+	MarkModified();
 }
 
 void MainWindow::PrintDocument()
@@ -1273,6 +1343,9 @@ void MainWindow::MessageReceived(BMessage* message)
 
 bool MainWindow::QuitRequested()
 {
+	if (!ConfirmDiscardChanges())
+		return false;
+
 	be_app->PostMessage(B_QUIT_REQUESTED);
 	return true;
 }
