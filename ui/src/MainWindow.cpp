@@ -14,7 +14,7 @@
 #include "Chart.h"
 #include "Pivot.h"
 #include "RangeRef.h"
-#include "ToolbarIcons.h"
+#include "IconCatalog.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -29,12 +29,15 @@
 #include <Directory.h>
 #include <File.h>
 #include <FilePanel.h>
+#include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
 #include <Path.h>
 #include <PrintJob.h>
 #include <ScrollView.h>
+#include <SeparatorView.h>
+#include <SpaceLayoutItem.h>
 #include <String.h>
 #include <StringView.h>
 #include <TextControl.h>
@@ -77,13 +80,114 @@ static const uint32 kMsgShowPivot = 'shpv';
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
 
-// SetIcon copia i bit del BBitmap al suo interno (non ne prende
-// possesso): l'icona temporanea va eliminata subito dopo, altrimenti
-// perde solo memoria senza alcun beneficio.
-static void SetToolbarIcon(BButton* button, BBitmap* icon)
+// Toolbar dinamica: i pulsanti vengono generati da questa tabella
+// invece che scritti uno per uno a mano (com'era prima di questo
+// gruppo di modifiche, quando l'unica fonte di icone erano gli otto
+// glifi disegnati a codice in ToolbarIcons.h/.cpp -- rimossi ora che
+// il sito autorizzato per le icone del progetto, www.hvif-store.art,
+// e' finalmente popolato, vedi Atomo123_icons/ATOMO123.md per la
+// selezione ragionata e IconCatalog.h/IconData.cpp per i byte HVIF
+// incorporati). Un gruppo per voce di menu principale a cui i pulsanti
+// corrispondono (File/Modifica/Dati/Inserisci), con un separatore
+// verticale fra un gruppo e il successivo in un'unica riga -- una
+// vera BToolBar per riga/categoria non e' possibile (quella classe
+// vive solo sotto develop/headers/private/shared/ su questo sistema,
+// vedi il commento gia' presente piu' sotto sui BButton), ma questo
+// raggruppamento visivo riprende lo stesso principio della barra
+// Standard di Excel classico (icone imparentate raggruppate, separate
+// da un divisore sottile) chiesto dall'utente. Solo funzioni gia'
+// implementate da un comando vero (menu o scorciatoia): niente
+// pulsanti per funzioni ancora "da disegnare" nel catalogo o non
+// ancora presenti in Atomo123 (formattazione testo, filtro, zoom...).
+struct ToolbarButtonDef {
+	const char* name;
+	const char* label;
+	uint32 message;
+	const IconData* icon;
+};
+
+struct ToolbarGroupDef {
+	const ToolbarButtonDef* buttons;
+	size_t count;
+};
+
+static const ToolbarButtonDef kFileToolbarButtons[] = {
+	{ "toolNew", "Nuovo", kMsgNew, &kIconNew },
+	{ "toolOpen", "Apri", kMsgOpen, &kIconOpen },
+	{ "toolSave", "Salva", kMsgSaveAs, &kIconSave },
+	{ "toolPrint", "Stampa", kMsgPrint, &kIconPrint },
+};
+
+static const ToolbarButtonDef kEditToolbarButtons[] = {
+	{ "toolUndo", "Annulla", kMsgUndo, &kIconUndo },
+	{ "toolRedo", "Ripeti", kMsgRedo, &kIconRedo },
+	{ "toolCut", "Taglia", kMsgCut, &kIconCut },
+	{ "toolCopy", "Copia", kMsgCopy, &kIconCopy },
+	{ "toolPaste", "Incolla", kMsgPaste, &kIconPaste },
+	{ "toolDelete", "Elimina", kMsgClear, &kIconDelete },
+	{ "toolFind", "Trova", kMsgFind, &kIconFind },
+};
+
+static const ToolbarButtonDef kDataToolbarButtons[] = {
+	{ "toolSortAsc", "Ordina A-Z", kMsgSortAscending, &kIconSortAscending },
+	{ "toolSortDesc", "Ordina Z-A", kMsgSortDescending, &kIconSortDescending },
+};
+
+static const ToolbarButtonDef kInsertToolbarButtons[] = {
+	{ "toolChart", "Grafico", kMsgShowChart, &kIconChart },
+	{ "toolPivot", "Pivot", kMsgShowPivot, &kIconTable },
+};
+
+#define TOOLBAR_GROUP(buttons) { buttons, sizeof(buttons) / sizeof((buttons)[0]) }
+
+static const ToolbarGroupDef kToolbarGroups[] = {
+	TOOLBAR_GROUP(kFileToolbarButtons),
+	TOOLBAR_GROUP(kEditToolbarButtons),
+	TOOLBAR_GROUP(kDataToolbarButtons),
+	TOOLBAR_GROUP(kInsertToolbarButtons),
+};
+
+#undef TOOLBAR_GROUP
+
+// Costruisce l'intera riga della toolbar dalla tabella sopra: un
+// BButton per voce, con la sua icona HVIF (IconCatalog::Render --
+// SetIcon ne copia i bit al suo interno, quindi il BBitmap temporaneo
+// va eliminato subito dopo, altrimenti perde solo memoria senza
+// benefici), e un separatore verticale fra un gruppo e il successivo.
+// "target" riceve i messaggi di tutti i pulsanti (sempre "this" per
+// MainWindow, passato esplicitamente solo per non legare questa
+// funzione libera a una particolare istanza).
+static BView* BuildToolbar(BHandler* target)
 {
-	button->SetIcon(icon);
-	delete icon;
+	BGroupView* row = new BGroupView(B_HORIZONTAL, 4);
+	row->GroupLayout()->SetInsets(4, 4, 4, 4);
+
+	size_t groupCount = sizeof(kToolbarGroups) / sizeof(kToolbarGroups[0]);
+	for (size_t g = 0; g < groupCount; g++)
+	{
+		if (g > 0)
+			row->AddChild(new BSeparatorView(B_VERTICAL));
+
+		const ToolbarGroupDef& group = kToolbarGroups[g];
+		for (size_t i = 0; i < group.count; i++)
+		{
+			const ToolbarButtonDef& def = group.buttons[i];
+			BButton* button = new BButton(def.name, def.label, new BMessage(def.message));
+			button->SetTarget(target);
+
+			BBitmap* icon = IconCatalog::Render(*def.icon);
+			if (icon)
+			{
+				button->SetIcon(icon);
+				delete icon;
+			}
+
+			row->AddChild(button);
+		}
+	}
+
+	row->GroupLayout()->AddItem(BSpaceLayoutItem::CreateGlue());
+	return row;
 }
 
 // Stessa logica di SheetView::ColumnName (vedi li' per il perche'
@@ -244,37 +348,9 @@ MainWindow::MainWindow()
 	// private/shared/ su questo sistema, non nell'SDK pubblico
 	// stabile, e il progetto usa solo API pubbliche. I pulsanti
 	// inviano semplicemente gli stessi messaggi gia' gestiti dai
-	// menu, nessuna logica nuova.
-	BButton* newButton = new BButton("toolNew", "Nuovo", new BMessage(kMsgNew));
-	BButton* openButton = new BButton("toolOpen", "Apri", new BMessage(kMsgOpen));
-	BButton* saveButton = new BButton("toolSave", "Salva", new BMessage(kMsgSaveAs));
-	BButton* printButton = new BButton("toolPrint", "Stampa", new BMessage(kMsgPrint));
-	BButton* cutButton = new BButton("toolCut", "Taglia", new BMessage(kMsgCut));
-	BButton* copyButton = new BButton("toolCopy", "Copia", new BMessage(kMsgCopy));
-	BButton* pasteButton = new BButton("toolPaste", "Incolla", new BMessage(kMsgPaste));
-	BButton* findButton = new BButton("toolFind", "Trova", new BMessage(kMsgFind));
-	newButton->SetTarget(this);
-	openButton->SetTarget(this);
-	saveButton->SetTarget(this);
-	printButton->SetTarget(this);
-	cutButton->SetTarget(this);
-	copyButton->SetTarget(this);
-	pasteButton->SetTarget(this);
-	findButton->SetTarget(this);
-
-	// Icone disegnate a codice (ToolbarIcons.h), non da HVIF -- il
-	// sito autorizzato per le icone del progetto (www.hvif-store.art)
-	// risultava ancora vuoto al momento in cui sono state aggiunte.
-	// SetIcon copia i bit al suo interno, quindi i BBitmap temporanei
-	// vanno eliminati subito dopo, non tenuti in vita.
-	SetToolbarIcon(newButton, ToolbarIcons::New());
-	SetToolbarIcon(openButton, ToolbarIcons::Open());
-	SetToolbarIcon(saveButton, ToolbarIcons::Save());
-	SetToolbarIcon(printButton, ToolbarIcons::Print());
-	SetToolbarIcon(cutButton, ToolbarIcons::Cut());
-	SetToolbarIcon(copyButton, ToolbarIcons::Copy());
-	SetToolbarIcon(pasteButton, ToolbarIcons::Paste());
-	SetToolbarIcon(findButton, ToolbarIcons::Find());
+	// menu, nessuna logica nuova -- costruiti da BuildToolbar() sopra
+	// a partire da kToolbarGroups invece che uno per uno a mano.
+	BView* toolbar = BuildToolbar(this);
 
 	fCellLabel = new BStringView("cellLabel", "A1");
 	fCellLabel->SetExplicitMinSize(BSize(50, B_SIZE_UNSET));
@@ -313,18 +389,7 @@ MainWindow::MainWindow()
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
-		.AddGroup(B_HORIZONTAL, 4)
-			.SetInsets(4, 4, 4, 4)
-			.Add(newButton)
-			.Add(openButton)
-			.Add(saveButton)
-			.Add(printButton)
-			.Add(cutButton)
-			.Add(copyButton)
-			.Add(pasteButton)
-			.Add(findButton)
-			.AddGlue()
-		.End()
+		.Add(toolbar)
 		.AddGroup(B_HORIZONTAL, 4)
 			.SetInsets(4, 4, 4, 4)
 			.Add(fCellLabel)
