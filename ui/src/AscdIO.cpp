@@ -10,6 +10,8 @@
 #include <fcntl.h>
 
 #include "Cell.h"
+#include "CellStyle.h"
+#include "Constants.h"
 #include "Container.h"
 #include "CellIterator.h"
 #include "CellParser.h"
@@ -27,6 +29,27 @@ bool IsASCDFile(BPositionIO* source)
 
 	source->Seek(pos, SEEK_SET);
 	return isAscd;
+}
+
+static status_t WriteColorEntry(BPositionIO* dest, rgb_color bg, rgb_color fg)
+{
+	uint8 buf[8] = { bg.red, bg.green, bg.blue, bg.alpha, fg.red, fg.green, fg.blue, fg.alpha };
+	return dest->Write(buf, sizeof(buf)) == (ssize_t)sizeof(buf) ? B_OK : B_IO_ERROR;
+}
+
+static bool ReadColorEntry(BPositionIO* source, rgb_color* bg, rgb_color* fg)
+{
+	uint8 buf[8];
+	if (source->Read(buf, sizeof(buf)) != (ssize_t)sizeof(buf))
+		return false;
+	bg->red = buf[0]; bg->green = buf[1]; bg->blue = buf[2]; bg->alpha = buf[3];
+	fg->red = buf[4]; fg->green = buf[5]; fg->blue = buf[6]; fg->alpha = buf[7];
+	return true;
+}
+
+static bool ColorsEqual(rgb_color a, rgb_color b)
+{
+	return a.red == b.red && a.green == b.green && a.blue == b.blue && a.alpha == b.alpha;
 }
 
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
@@ -111,6 +134,74 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
 			|| dest->Write(&width, sizeof(width)) != (ssize_t)sizeof(width))
 			return B_IO_ERROR;
+	}
+
+	// Sezione colori di cella, in coda: letta direttamente da "doc"
+	// (CContainer::GetCellStyle, gia' usata per il formato numerico),
+	// non da un parametro a parte -- il colore vive gia' dentro il
+	// documento, non serve un canale esterno come per colWidths sopra
+	// (che invece vive solo in SheetView). Solo le celle esistenti la
+	// cui coppia di colori differisce da quella predefinita (bianco/
+	// nero) finiscono nel file, non tutte le celle con contenuto.
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, CellStyle> > toWrite;
+		CCellIterator styleIter(doc, NULL);
+		cell sc;
+		while (styleIter.NextExisting(sc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(sc, cs);
+			if (!ColorsEqual(cs.fLowColor, defaultStyle.fLowColor)
+				|| !ColorsEqual(cs.fHighColor, defaultStyle.fHighColor))
+				toWrite.push_back(std::make_pair(sc, cs));
+		}
+
+		int32 cellColorCount = (int32)toWrite.size();
+		if (dest->Write(&cellColorCount, sizeof(cellColorCount))
+				!= (ssize_t)sizeof(cellColorCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < cellColorCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			const CellStyle& cs = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| WriteColorEntry(dest, cs.fLowColor, cs.fHighColor) != B_OK)
+				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione colori di colonna, in coda: stesso principio, letta da
+	// CContainer::GetColumnStyle per ciascuna delle kColCount colonne
+	// (una colonna mai impostata torna comunque il predefinito, quindi
+	// non finisce nel file: nessun falso positivo).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<int, CellStyle> > toWrite;
+		for (int col = 1; col <= kColCount; col++)
+		{
+			CellStyle cs;
+			doc->GetColumnStyle(col, cs);
+			if (!ColorsEqual(cs.fLowColor, defaultStyle.fLowColor)
+				|| !ColorsEqual(cs.fHighColor, defaultStyle.fHighColor))
+				toWrite.push_back(std::make_pair(col, cs));
+		}
+
+		int32 columnColorCount = (int32)toWrite.size();
+		if (dest->Write(&columnColorCount, sizeof(columnColorCount))
+				!= (ssize_t)sizeof(columnColorCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < columnColorCount; i++)
+		{
+			int16 col = (int16)toWrite[i].first;
+			const CellStyle& cs = toWrite[i].second;
+			if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| WriteColorEntry(dest, cs.fLowColor, cs.fHighColor) != B_OK)
+				return B_IO_ERROR;
+		}
 	}
 
 	return B_OK;
@@ -238,6 +329,67 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					return B_BAD_DATA;
 
 				out->push_back(std::make_pair((int)col, width));
+			}
+		}
+	}
+
+	// Sezione colori di cella, in coda: applicata direttamente a "doc"
+	// tramite CContainer::SetCellStyle (i byte vanno comunque sempre
+	// consumati se presenti, stessa cautela delle sezioni sopra --
+	// qui pero' non serve un "out" alternativo: applicarla anche
+	// quando il chiamante non ha chiesto nessun parametro dedicato non
+	// ha controindicazioni, dato che il colore fa gia' parte del
+	// documento stesso).
+	{
+		int32 cellColorCount = 0;
+		ssize_t got = source->Read(&cellColorCount, sizeof(cellColorCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(cellColorCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < cellColorCount; i++)
+			{
+				int16 row, col;
+				rgb_color bg, fg;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| !ReadColorEntry(source, &bg, &fg))
+					return B_BAD_DATA;
+
+				CellStyle cs;
+				cell loc(col, row);
+				doc->GetCellStyle(loc, cs);
+				cs.fLowColor = bg;
+				cs.fHighColor = fg;
+				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione colori di colonna, in coda: stesso principio, applicata
+	// tramite CContainer::SetColumnStyle.
+	{
+		int32 columnColorCount = 0;
+		ssize_t got = source->Read(&columnColorCount, sizeof(columnColorCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(columnColorCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < columnColorCount; i++)
+			{
+				int16 col;
+				rgb_color bg, fg;
+				if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| !ReadColorEntry(source, &bg, &fg))
+					return B_BAD_DATA;
+
+				CellStyle cs;
+				doc->GetColumnStyle(col, cs);
+				cs.fLowColor = bg;
+				cs.fHighColor = fg;
+				doc->SetColumnStyle(col, cs);
 			}
 		}
 	}

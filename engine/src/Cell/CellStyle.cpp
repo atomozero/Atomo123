@@ -61,6 +61,9 @@ CellStyle::CellStyle()
 	fFormat = CFormatter(eGeneral, 2, false).OldFormatID();
 	fLowColor.red = fLowColor.green = fLowColor.blue = 255;
 	fLowColor.alpha = 255;
+	// fHighColor resta nero (0,0,0) dal memset sopra: solo l'alpha va
+	// impostato esplicitamente.
+	fHighColor.alpha = 255;
 } // CellStyle::CellStyle
 
 bool CellStyle::operator==(const CellStyle& cs) const
