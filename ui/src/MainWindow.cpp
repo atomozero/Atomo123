@@ -13,6 +13,7 @@
 #include "Chart.h"
 #include "Pivot.h"
 #include "RangeRef.h"
+#include "ToolbarIcons.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -21,6 +22,7 @@
 
 #include <Alert.h>
 #include <Application.h>
+#include <Bitmap.h>
 #include <Button.h>
 #include <Clipboard.h>
 #include <Directory.h>
@@ -72,6 +74,15 @@ static const uint32 kMsgShowPivot = 'shpv';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
+
+// SetIcon copia i bit del BBitmap al suo interno (non ne prende
+// possesso): l'icona temporanea va eliminata subito dopo, altrimenti
+// perde solo memoria senza alcun beneficio.
+static void SetToolbarIcon(BButton* button, BBitmap* icon)
+{
+	button->SetIcon(icon);
+	delete icon;
+}
 
 // Stessa logica di SheetView::ColumnName (vedi li' per il perche'
 // della duplicazione: e' una manciata di righe, non vale la pena
@@ -229,6 +240,20 @@ MainWindow::MainWindow()
 	copyButton->SetTarget(this);
 	pasteButton->SetTarget(this);
 	findButton->SetTarget(this);
+
+	// Icone disegnate a codice (ToolbarIcons.h), non da HVIF -- il
+	// sito autorizzato per le icone del progetto (www.hvif-store.art)
+	// risultava ancora vuoto al momento in cui sono state aggiunte.
+	// SetIcon copia i bit al suo interno, quindi i BBitmap temporanei
+	// vanno eliminati subito dopo, non tenuti in vita.
+	SetToolbarIcon(newButton, ToolbarIcons::New());
+	SetToolbarIcon(openButton, ToolbarIcons::Open());
+	SetToolbarIcon(saveButton, ToolbarIcons::Save());
+	SetToolbarIcon(printButton, ToolbarIcons::Print());
+	SetToolbarIcon(cutButton, ToolbarIcons::Cut());
+	SetToolbarIcon(copyButton, ToolbarIcons::Copy());
+	SetToolbarIcon(pasteButton, ToolbarIcons::Paste());
+	SetToolbarIcon(findButton, ToolbarIcons::Find());
 
 	fCellLabel = new BStringView("cellLabel", "A1");
 	fCellLabel->SetExplicitMinSize(BSize(50, B_SIZE_UNSET));
