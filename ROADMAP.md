@@ -33,9 +33,13 @@ Modifica, Ctrl+Z/Ctrl+Y, una sola pila di istantanee per intervallo
 condivisa da tutte le operazioni che mutano il documento), Taglia/
 Copia/Incolla e Formato numerico estesi dalla sola cella attiva
 all'intero intervallo selezionato (formato TSV sugli appunti,
-compatibile con Excel/LibreOffice Calc); restano inserimento/
-eliminazione riga e colonna, formattazione font/colore/allineamento e
-altro (dettaglio nella sezione Fase 7). Aggiornato ad ogni fase
+compatibile con Excel/LibreOffice Calc), Inserisci/Elimina riga e
+colonna fatto (menu Dati, riusa `CContainer::MoveCell` gia' presente
+nel motore ereditato ma mai esposto dalla UI nuova, aggiorna i
+riferimenti anche nelle celle che non si spostano fisicamente);
+restano formattazione font/colore/allineamento, Incolla speciale,
+intervalli con nome, Vai a, un vero Blocca riquadri, una finestra
+Preferenze e altro (dettaglio nella sezione Fase 7). Aggiornato ad ogni fase
 completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
@@ -1460,6 +1464,82 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       annulla), formato esteso a tutte le celle di un intervallo.
       Nessuna regressione nella suite esistente (verificato anche con
       esecuzioni ripetute).
+
+- [x] **Inserisci/Elimina riga e colonna**: ultimo punto rimasto della
+      lista dei "mancanti" in cima a questa fase. A differenza di
+      tutto il resto fatto finora, il motore ereditato da Sum-It
+      storico aveva già tutto il necessario, mai portato in superficie
+      dalla UI nuova: `CContainer::MoveCell(dest, src, destLoc, split,
+      first, count)` (con `SplitType` `hSplit`/`vSplit`) e
+      `GetNextCellInRow`/`GetPreviousCellInRow` — nessuna riga di
+      motore nuova, solo la stessa logica di
+      `legacy/opensumit/sum-it/Source/main/Commands/InsertCommands.cpp`
+      riportata in `SheetView::InsertRows`/`InsertColumns`/
+      `DeleteRows`/`DeleteColumns`, senza il livello `CCellView`/
+      `NameTable`/larghezze-colonna-variabili che Atomo123 non ha (usa
+      `kColWidth`/`kRowHeight` fissi, non colonne ridimensionabili).
+
+      Il punto delicato non è spostare le celle che stanno *dentro* la
+      zona interessata, ma **anche** quelle che restano ferme: una
+      formula sopra il punto di inserimento può comunque riferirsi a
+      una cella sotto che si sposta, quindi il suo *testo* cambia pur
+      restando lei stessa ferma. `MoveCell` con uno `split` diverso da
+      `noSplit` aggiorna i riferimenti della formula anche quando
+      `destLoc == srcLoc`, quindi la scansione tocca ogni cella
+      dell'intero documento, non solo quelle nella zona spostata.
+      L'ordine di scansione conta ed è lo stesso di Sum-It storico:
+      dal basso verso l'alto per inserire righe (la destinazione ha
+      sempre riga maggiore o uguale alla sorgente, quindi si evita di
+      sovrascrivere celle non ancora spostate), dall'alto verso il
+      basso per eliminarle (speculare); da destra a sinistra dentro
+      ogni riga per inserire colonne, da sinistra a destra per
+      eliminarle. Le celle strettamente dentro la zona eliminata
+      spariscono (nessuna destinazione valida per loro). Rifiuta
+      l'inserimento, senza modificare nulla, se spingerebbe fuori dal
+      limite fisso del foglio (`kColCount`/`kRowCount`) celle che
+      contengono già dati — stesso controllo `errCellsWouldFallOf` di
+      Sum-It storico, con un `BAlert` al posto della sua eccezione.
+
+      Quattro voci di menu esplicite ("Inserisci riga"/"Inserisci
+      colonna"/"Elimina riga"/"Elimina colonna" nel menu Dati) invece
+      dell'unico comando "Inserisci"/"Elimina" di Sum-It storico, che
+      inferiva riga o colonna dal fatto che la selezione coprisse
+      un'intera riga/colonna (click sull'intestazione): Atomo123 non
+      ha ancora quel gesto, quindi l'inferenza sarebbe ambigua qui —
+      il numero di righe/colonne e il punto vengono semplicemente da
+      `SelectionRange()` (selezionare 2 righe qualunque inserisce 2
+      righe vuote a partire da lì).
+
+      **Limite noto**: non sposta né ridimensiona i grafici
+      incorporati (`ChartObject` vive in `MainWindow`, non in
+      `SheetView`) — un grafico la cui area dati era nelle righe/
+      colonne spostate resta dov'era, con l'intervallo dati vecchio,
+      finché non lo si ricrea a mano.
+
+      **Refactor collaterale nell'istantanea di Annulla/Ripeti**:
+      `SaveUndoState`/`CaptureSnapshot`/`ApplySnapshot` passano da un
+      blocco denso (una voce anche per ogni cella vuota
+      dell'intervallo) a una lista delle sole celle che esistono
+      davvero, catturate con `CCellIterator` — necessario perché
+      Inserisci/Elimina riga o colonna deve poter catturare l'INTERO
+      documento (qualunque formula altrove potrebbe riferirsi a una
+      cella che si sposta), e un blocco denso su tutto il foglio
+      virtuale (`kColCount` x `kRowCount`, fino a undici milioni di
+      posizioni) sarebbe troppo lento anche per un foglio quasi vuoto.
+      Il comportamento esterno (`SaveUndoState`/`Undo`/`Redo`) resta
+      identico — verificato dalla suite già esistente per Annulla/
+      Ripeti e Taglia/Copia/Incolla, che non ha richiesto modifiche.
+
+      Test dedicato `ui/tests/test_insert_delete.cpp` (nuovo target
+      `make test-insert-delete`, 21 verifiche): inserimento/
+      cancellazione di una o più righe/colonne, celle sopra/a sinistra
+      del punto che restano ferme, il caso delicato del riferimento di
+      una cella ferma che segue una cella spostata altrove nel
+      documento, annulla per entrambe le operazioni, rifiuto
+      dell'inserimento quando spingerebbe dati fuori dal foglio.
+      Nessuna regressione nella suite esistente (compresi Annulla/
+      Ripeti e Taglia/Copia/Incolla, per via del refactor
+      dell'istantanea; verificato anche con esecuzioni ripetute).
 
 ---
 
