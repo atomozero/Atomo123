@@ -32,6 +32,11 @@ static const translation_format sOutputFormats[] = {
 	{
 		kAtomoNativeFormat, kAtomoSheetGroup, 1.0f, 1.0f,
 		"application/x-vnd.atomo-sheet-data", "Atomo Sheet Cell Data (ASCD)"
+	},
+	{
+		kAtomoOdsFormat, kAtomoSheetGroup, 0.7f, 0.7f,
+		"application/vnd.oasis.opendocument.spreadsheet",
+		"OpenDocument Spreadsheet (ODS)"
 	}
 };
 
@@ -42,11 +47,13 @@ static const int32 kASCDVersion = 1;
 // translators/csv/CsvTranslator.cpp per la descrizione completa).
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 {
-	range bounds;
-	doc->GetBounds(bounds);
-
+	// Range completo invece dei limiti di GetBounds: una cella con
+	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
+	// dai limiti calcolati da GetBounds, e se e' anche la cella piu' a
+	// destra/in basso del foglio sparirebbe del tutto dal file
+	// prodotto (stesso ragionamento del ciclo di ricalcolo sotto).
 	int32 count = 0;
-	CCellIterator counter(doc, &bounds);
+	CCellIterator counter(doc, NULL);
 	cell c;
 	while (counter.NextExisting(c))
 		count++;
@@ -58,7 +65,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 	if (dest->Write(&count, sizeof(count)) != (ssize_t)sizeof(count))
 		return B_IO_ERROR;
 
-	CCellIterator iter(doc, &bounds);
+	CCellIterator iter(doc, NULL);
 	while (iter.NextExisting(c))
 	{
 		char text[512];
@@ -78,6 +85,197 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 	}
 
 	return B_OK;
+}
+
+// Legge un flusso ASCD e ricostruisce le celle in "doc" (vuoto in
+// ingresso) -- stessa logica di CsvTranslator.cpp, usata qui per
+// l'esportazione (ASCD -> ODS, la direzione opposta della normale
+// importazione ODS -> ASCD gestita da ParseContent/WriteASCD sotto).
+static status_t ReadASCD(BPositionIO* source, CContainer* doc)
+{
+	char magic[4];
+	if (source->Read(magic, 4) != 4)
+		return B_BAD_DATA;
+	if (memcmp(magic, kASCDMagic, 4) != 0)
+		return B_BAD_DATA;
+
+	int32 version;
+	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
+		return B_BAD_DATA;
+	if (version != kASCDVersion)
+		return B_MISMATCHED_VALUES;
+
+	int32 count;
+	if (source->Read(&count, sizeof(count)) != (ssize_t)sizeof(count))
+		return B_BAD_DATA;
+
+	for (int32 i = 0; i < count; i++)
+	{
+		int16 row, col;
+		int32 len;
+
+		if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row))
+			return B_BAD_DATA;
+		if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
+			return B_BAD_DATA;
+		if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_BAD_DATA;
+
+		char text[512];
+		if (len < 0 || len >= (int32)sizeof(text))
+			return B_BAD_DATA;
+		if (len > 0 && source->Read(text, len) != len)
+			return B_BAD_DATA;
+		text[len] = 0;
+
+		cell c(col, row);
+		try
+		{
+			TryToParseString(text, c, doc, true);
+		}
+		catch (...)
+		{
+			return B_BAD_DATA;
+		}
+	}
+
+	// Le formule vanno calcolate prima di esportare (l'export ODS
+	// scrive solo valori, non formule -- vedi BuildContentXml sotto),
+	// altrimenti una cella con formula risulterebbe vuota. Stesso
+	// meccanismo "piu' passate fino a convergenza" gia' usato altrove
+	// in questo progetto (vedi ui/src/AscdIO.cpp).
+	//
+	// L'iteratore usa il range completo del foglio (non i limiti
+	// restituiti da GetBounds) perche' GetBounds esclude le celle con
+	// mType eNoData -- esattamente lo stato di una formula appena
+	// analizzata da TryToParseString e non ancora calcolata. Se quella
+	// cella e' anche la piu' a destra/in basso del foglio, i limiti
+	// calcolati la escluderebbero e non verrebbe mai visitata,
+	// restando vuota per sempre. NextExisting resta comunque
+	// efficiente su un range pieno: salta direttamente da una cella
+	// esistente alla successiva tramite la mappa.
+	{
+		bool changed = true;
+		int guard = 0;
+		while (changed && guard < 50)
+		{
+			changed = false;
+			CCellIterator recalcIter(doc, NULL);
+			cell rc;
+			while (recalcIter.NextExisting(rc))
+			{
+				if (doc->CalcCell(rc))
+					changed = true;
+			}
+			guard++;
+		}
+	}
+
+	return B_OK;
+}
+
+static void AppendXmlEscaped(std::string& out, const char* text)
+{
+	for (const char* p = text; *p; p++)
+	{
+		switch (*p)
+		{
+			case '&': out += "&amp;"; break;
+			case '<': out += "&lt;"; break;
+			case '>': out += "&gt;"; break;
+			default: out += *p;
+		}
+	}
+}
+
+// Genera content.xml a partire dal documento: solo i valori
+// calcolati (numeri/testo), non le formule -- stessa scelta gia'
+// fatta per l'export CSV (vedi CsvTranslator.cpp), per non generare
+// una sintassi di formula ODF potenzialmente non valida per casi non
+// gestiti (l'inverso di ConvertODFFormula sotto non e' banale per
+// formule arbitrarie). Limite noto, documentato in
+// docs/TRANSLATORS.md.
+static std::string BuildContentXml(CContainer* doc)
+{
+	range bounds;
+	doc->GetBounds(bounds);
+
+	std::string xml;
+	xml += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+	xml += "<office:document-content "
+		"xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+		"xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\" "
+		"xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\" "
+		"office:version=\"1.2\">"
+		"<office:body><office:spreadsheet>"
+		"<table:table table:name=\"Foglio1\">";
+
+	if (bounds.right >= 1 && bounds.bottom >= 1)
+	{
+		char numBuf[64];
+		for (int row = 1; row <= bounds.bottom; row++)
+		{
+			xml += "<table:table-row>";
+			for (int col = 1; col <= bounds.right; col++)
+			{
+				Value v;
+				doc->GetValue(cell(col, row), v);
+
+				if (v.fType == eNumData && !v.IsNan())
+				{
+					snprintf(numBuf, sizeof(numBuf), "%.15g", (double)v);
+					xml += "<table:table-cell office:value-type=\"float\" office:value=\"";
+					xml += numBuf;
+					xml += "\"><text:p>";
+					xml += numBuf;
+					xml += "</text:p></table:table-cell>";
+				}
+				else if (v.fType == eTextData)
+				{
+					xml += "<table:table-cell office:value-type=\"string\"><text:p>";
+					AppendXmlEscaped(xml, (const char*)v);
+					xml += "</text:p></table:table-cell>";
+				}
+				else
+					xml += "<table:table-cell/>";
+			}
+			xml += "</table:table-row>";
+		}
+	}
+
+	xml += "</table:table></office:spreadsheet></office:body></office:document-content>";
+	return xml;
+}
+
+static status_t WriteODS(CContainer* doc, BPositionIO* dest)
+{
+	static const char kMimeType[] = "application/vnd.oasis.opendocument.spreadsheet";
+	static const char kManifest[] =
+		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+		"<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" "
+		"manifest:version=\"1.2\">\n"
+		" <manifest:file-entry manifest:full-path=\"/\" manifest:version=\"1.2\" "
+		"manifest:media-type=\"application/vnd.oasis.opendocument.spreadsheet\"/>\n"
+		" <manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\"/>\n"
+		"</manifest:manifest>\n";
+
+	std::string content = BuildContentXml(doc);
+
+	CZipWriter zip;
+	zip.Begin(dest);
+
+	// "mimetype" deve essere la prima voce dell'archivio (convenzione
+	// OpenDocument, non solo un dettaglio implementativo: un lettore
+	// ODF la usa per riconoscere il formato senza dover analizzare
+	// l'intera central directory).
+	if (!zip.AddEntry("mimetype", kMimeType, strlen(kMimeType)))
+		return B_IO_ERROR;
+	if (!zip.AddEntry("META-INF/manifest.xml", kManifest, strlen(kManifest)))
+		return B_IO_ERROR;
+	if (!zip.AddEntry("content.xml", content.data(), content.size()))
+		return B_IO_ERROR;
+
+	return zip.Close() ? B_OK : B_IO_ERROR;
 }
 
 // Converte una formula ODF ("of:=[.A1]+[.B2]") nel testo di formula
@@ -341,7 +539,8 @@ const char* COdsTranslator::TranslatorName() const
 
 const char* COdsTranslator::TranslatorInfo() const
 {
-	return "Importa fogli di calcolo dal formato OpenDocument (ODS)";
+	return "Importa/esporta fogli di calcolo dal/al formato OpenDocument (ODS) "
+		"-- l'esportazione scrive solo i valori calcolati, non le formule";
 }
 
 int32 COdsTranslator::TranslatorVersion() const
@@ -357,7 +556,7 @@ const translation_format* COdsTranslator::InputFormats(int32* _count) const
 
 const translation_format* COdsTranslator::OutputFormats(int32* _count) const
 {
-	*_count = 1;
+	*_count = 2;
 	return sOutputFormats;
 }
 
@@ -369,6 +568,20 @@ status_t COdsTranslator::Identify(BPositionIO* source,
 	unsigned char header[4];
 	ssize_t read = source->Read(header, 4);
 	source->Seek(pos, SEEK_SET);
+
+	// Riconosce anche un sorgente ASCD nativo: serve per l'esportazione
+	// (ASCD -> ODS), la direzione opposta della normale importazione
+	// gestita sotto -- stesso approccio di CsvTranslator::Identify.
+	if (read == 4 && memcmp(header, kASCDMagic, 4) == 0)
+	{
+		info->type = kAtomoNativeFormat;
+		info->group = kAtomoSheetGroup;
+		info->quality = 1.0f;
+		info->capability = 1.0f;
+		strlcpy(info->name, "Atomo Sheet Cell Data (ASCD)", sizeof(info->name));
+		strlcpy(info->MIME, "application/x-vnd.atomo-sheet-data", sizeof(info->MIME));
+		return B_OK;
+	}
 
 	// Firma ZIP locale ("PK\x03\x04"): necessaria ma non sufficiente
 	// -- si verifica anche la presenza di content.xml e del
@@ -402,27 +615,39 @@ status_t COdsTranslator::Translate(BPositionIO* source,
 	const translator_info* info, BMessage* extension, uint32 outType,
 	BPositionIO* destination)
 {
-	if (info->type != kAtomoOdsFormat)
+	if (info->type != kAtomoOdsFormat && info->type != kAtomoNativeFormat)
 		return B_NO_TRANSLATOR;
-	if (outType != 0 && outType != kAtomoNativeFormat)
+	if (outType == 0)
+		outType = kAtomoNativeFormat;
+	if (outType != kAtomoNativeFormat && outType != kAtomoOdsFormat)
 		return B_NO_TRANSLATOR;
-
-	CZipReader zip;
-	if (!zip.Open(source))
-		return B_BAD_DATA;
-
-	std::vector<unsigned char> contentXml;
-	if (!zip.ReadEntry("content.xml", contentXml))
-		return B_BAD_DATA;
 
 	CContainer* doc = new CContainer(NULL, NULL);
 	status_t err = B_OK;
 
-	if (!ParseContent(contentXml, doc))
-		err = B_BAD_DATA;
+	if (info->type == kAtomoNativeFormat)
+		err = ReadASCD(source, doc);
+	else
+	{
+		CZipReader zip;
+		if (!zip.Open(source))
+			err = B_BAD_DATA;
+
+		std::vector<unsigned char> contentXml;
+		if (err == B_OK && !zip.ReadEntry("content.xml", contentXml))
+			err = B_BAD_DATA;
+
+		if (err == B_OK && !ParseContent(contentXml, doc))
+			err = B_BAD_DATA;
+	}
 
 	if (err == B_OK)
-		err = WriteASCD(doc, destination);
+	{
+		if (outType == kAtomoNativeFormat)
+			err = WriteASCD(doc, destination);
+		else
+			err = WriteODS(doc, destination);
+	}
 
 	doc->Release();
 	return err;

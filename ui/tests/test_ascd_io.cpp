@@ -6,11 +6,22 @@
 	Non passa dalla vera finestra (BFilePanel, menu) -- verifica solo
 	che le funzioni di lettura/scrittura siano l'una l'inversa
 	dell'altra, con formule, numeri e testo.
+
+	Serve comunque un BApplication (senza mostrare nessuna finestra):
+	GetCellFormula su una formula con una costante numerica passa da
+	CFormatter::FormatValue, che per l'allineamento decimale chiede la
+	larghezza in pixel del testo al font (BFont::StringWidth) -- una
+	chiamata che senza un BApplication registrato resta bloccata in
+	attesa di una risposta dall'app_server che non arrivera' mai. Bug
+	scoperto durante lo sviluppo dell'export ODS: un test con una
+	formula tipo "=A1+10" restava appeso qui, non nella logica di
+	salvataggio/ricalcolo che si stava effettivamente verificando.
 */
 
 #include <cstdio>
 #include <cstring>
 
+#include <Application.h>
 #include <File.h>
 
 #include "AscdIO.h"
@@ -35,6 +46,8 @@ static void Check(bool condition, const char* what)
 
 int main()
 {
+	BApplication app("application/x-vnd.Atomo-TestAscdIO");
+
 	CContainer& doc = *new CContainer(NULL, NULL);
 
 	cell a1(1, 1), b1(2, 1), c1(3, 1), d1(4, 1);
@@ -87,6 +100,40 @@ int main()
 		"LoadASCD ricalcola gia' da solo C1 a 30, senza bisogno di un CalcCell esplicito");
 
 	reloaded.Release();
+
+	// Caso limite scoperto durante lo sviluppo dell'export ODS: una
+	// formula che e' anche la cella piu' a destra/in basso del foglio
+	// (nessun'altra cella "reale" oltre di lei) deve comunque essere
+	// ricalcolata da RecalculateAll. GetBounds esclude le celle con
+	// mType eNoData -- lo stato di una formula appena analizzata da
+	// TryToParseString e non ancora calcolata -- quindi calcolare i
+	// limiti del foglio PRIMA di ricalcolare escludeva proprio quella
+	// cella dall'iterazione, lasciandola vuota per sempre (bug fisso
+	// in RecalculateAll: ora itera l'intero range del foglio invece
+	// dei limiti di GetBounds).
+	{
+		CContainer& edgeDoc = *new CContainer(NULL, NULL);
+		cell e1(1, 1), e2(2, 1);
+		TryToParseString("5", e1, &edgeDoc, true);
+		TryToParseString("=A1+10", e2, &edgeDoc, true); // B1: cella piu' a destra del foglio
+
+		BFile edgeFile("tests/edge.ascd", B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		err = SaveASCD(&edgeDoc, &edgeFile);
+		Check(err == B_OK, "SaveASCD riesce con una formula come cella piu' a destra del foglio");
+		edgeDoc.Release();
+
+		BFile edgeReopened("tests/edge.ascd", B_READ_ONLY);
+		CContainer& edgeReloaded = *new CContainer(NULL, NULL);
+		err = LoadASCD(&edgeReopened, &edgeReloaded);
+		Check(err == B_OK, "LoadASCD riesce con una formula come cella piu' a destra del foglio");
+
+		Value edgeValue;
+		edgeReloaded.GetValue(e2, edgeValue);
+		Check(edgeValue.fType == eNumData && (double)edgeValue == 15.0,
+			"la formula nell'angolo del foglio viene ricalcolata (non resta vuota)");
+
+		edgeReloaded.Release();
+	}
 
 	// Sezione grafici incorporati (Chart.h): un file scritto senza
 	// (SaveASCD/LoadASCD sopra, chiamati senza il parametro "charts")

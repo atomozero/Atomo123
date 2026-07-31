@@ -25,6 +25,41 @@
 #include <DataIO.h>
 #include <SupportDefs.h>
 
+// Scrittore ZIP minimale, simmetrico a CZipReader: solo voci
+// "stored" (senza compressione, metodo 0). Piu' semplice e robusto
+// di "deflate" per le dimensioni tipiche di un foglio di calcolo
+// esportato, a costo di una dimensione file leggermente maggiore --
+// stesso approccio di dipendenze minime del lettore.
+class CZipWriter {
+public:
+	CZipWriter();
+
+	// "dest" deve restare valido fino a Close().
+	void Begin(BPositionIO* dest);
+
+	// Aggiunge una voce (nome + contenuto), scrivendola subito nello
+	// stream. Le voci vanno aggiunte nell'ordine in cui devono
+	// comparire nell'archivio. Restituisce false in caso di errore
+	// di scrittura.
+	bool AddEntry(const char* name, const void* data, size_t size);
+
+	// Scrive la central directory e l'End Of Central Directory,
+	// completando l'archivio. Va chiamato una sola volta, dopo
+	// l'ultimo AddEntry().
+	bool Close();
+
+private:
+	struct WrittenEntry {
+		std::string name;
+		uint32 crc;
+		uint32 size;
+		uint32 localHeaderOffset;
+	};
+
+	BPositionIO* fDest;
+	std::vector<WrittenEntry> fEntries;
+};
+
 class CZipReader {
 public:
 	CZipReader();

@@ -19,6 +19,105 @@ static const uint32 kLocalHeaderSignature = 0x04034b50;
 static const int kEOCDMinSize = 22;
 static const int kEOCDSearchWindow = 65536 + kEOCDMinSize; // + commento max
 
+CZipWriter::CZipWriter()
+	: fDest(NULL)
+{
+}
+
+void CZipWriter::Begin(BPositionIO* dest)
+{
+	fDest = dest;
+	fEntries.clear();
+}
+
+bool CZipWriter::AddEntry(const char* name, const void* data, size_t size)
+{
+	off_t offset = fDest->Position();
+	uint32 crc = (uint32)crc32(0, (const Bytef*)data, (uInt)size);
+	uint16 nameLen = (uint16)strlen(name);
+	uint32 sizeField = (uint32)size;
+
+	unsigned char header[30];
+	memset(header, 0, sizeof(header));
+	memcpy(&header[0], &kLocalHeaderSignature, 4);
+	uint16 versionNeeded = 20;
+	memcpy(&header[4], &versionNeeded, 2);
+	// bit generico(2)=0, metodo compressione(2)=0 ("stored"), lasciati
+	// a zero dal memset iniziale.
+	uint16 modTime = 0, modDate = 0x21; // 1 gennaio 1980, mezzanotte:
+	// data/ora fissa e valida per qualunque lettore ZIP, i timestamp
+	// delle singole voci non hanno alcun significato per un foglio di
+	// calcolo esportato.
+	memcpy(&header[10], &modTime, 2);
+	memcpy(&header[12], &modDate, 2);
+	memcpy(&header[14], &crc, 4);
+	memcpy(&header[18], &sizeField, 4); // dimensione compressa == non compressa ("stored")
+	memcpy(&header[22], &sizeField, 4); // dimensione non compressa
+	memcpy(&header[26], &nameLen, 2);
+
+	if (fDest->Write(header, sizeof(header)) != (ssize_t)sizeof(header))
+		return false;
+	if (fDest->Write(name, nameLen) != nameLen)
+		return false;
+	if (size > 0 && fDest->Write(data, size) != (ssize_t)size)
+		return false;
+
+	WrittenEntry entry;
+	entry.name = name;
+	entry.crc = crc;
+	entry.size = sizeField;
+	entry.localHeaderOffset = (uint32)offset;
+	fEntries.push_back(entry);
+
+	return true;
+}
+
+bool CZipWriter::Close()
+{
+	off_t cdStart = fDest->Position();
+
+	for (size_t i = 0; i < fEntries.size(); i++)
+	{
+		const WrittenEntry& e = fEntries[i];
+		uint16 nameLen = (uint16)e.name.size();
+
+		unsigned char header[46];
+		memset(header, 0, sizeof(header));
+		memcpy(&header[0], &kCentralDirSignature, 4);
+		uint16 versionMadeBy = 20, versionNeeded = 20;
+		memcpy(&header[4], &versionMadeBy, 2);
+		memcpy(&header[6], &versionNeeded, 2);
+		uint16 modTime = 0, modDate = 0x21;
+		memcpy(&header[12], &modTime, 2);
+		memcpy(&header[14], &modDate, 2);
+		memcpy(&header[16], &e.crc, 4);
+		memcpy(&header[20], &e.size, 4);
+		memcpy(&header[24], &e.size, 4);
+		memcpy(&header[28], &nameLen, 2);
+		memcpy(&header[42], &e.localHeaderOffset, 4);
+
+		if (fDest->Write(header, sizeof(header)) != (ssize_t)sizeof(header))
+			return false;
+		if (fDest->Write(e.name.data(), nameLen) != nameLen)
+			return false;
+	}
+
+	off_t cdEnd = fDest->Position();
+
+	unsigned char eocd[22];
+	memset(eocd, 0, sizeof(eocd));
+	memcpy(&eocd[0], &kEOCDSignature, 4);
+	uint16 entryCount = (uint16)fEntries.size();
+	memcpy(&eocd[8], &entryCount, 2);
+	memcpy(&eocd[10], &entryCount, 2);
+	uint32 cdSize = (uint32)(cdEnd - cdStart);
+	memcpy(&eocd[12], &cdSize, 4);
+	uint32 cdOffset32 = (uint32)cdStart;
+	memcpy(&eocd[16], &cdOffset32, 4);
+
+	return fDest->Write(eocd, sizeof(eocd)) == (ssize_t)sizeof(eocd);
+}
+
 CZipReader::CZipReader()
 	: fSource(NULL)
 {
