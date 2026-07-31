@@ -16,6 +16,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <utility>
+#include <vector>
 
 #include <Application.h>
 #include <Entry.h>
@@ -61,8 +63,10 @@ int main()
 	TryToParseString("Terzo foglio", cell(1, 1), doc3, true);
 
 	std::vector<AscdSheet> sheets;
-	AscdSheet s1; s1.name = "Alfa"; s1.doc = doc1; sheets.push_back(s1);
-	AscdSheet s2; s2.name = "Beta"; s2.doc = doc2; sheets.push_back(s2);
+	AscdSheet s1; s1.name = "Alfa"; s1.doc = doc1;
+	s1.colWidths.push_back(std::make_pair(1, 200.0f)); // larghezza personalizzata per A
+	sheets.push_back(s1);
+	AscdSheet s2; s2.name = "Beta"; s2.doc = doc2; sheets.push_back(s2); // nessuna larghezza personalizzata
 	AscdSheet s3; s3.name = "Gamma"; s3.doc = doc3; sheets.push_back(s3);
 
 	{
@@ -103,17 +107,47 @@ int main()
 	Check(strcmp(text, "Primo foglio") == 0,
 		"SheetView mostra il contenuto del primo foglio subito dopo l'apertura");
 
+	// La larghezza personalizzata del foglio "Alfa" (letta dal file di
+	// prova) e' gia' applicata subito dopo l'apertura, non solo dopo un
+	// cambio di foglio.
+	Check(view->CellRect(cell(1, 1)).Width() == 200,
+		"la larghezza di colonna personalizzata di Alfa e' applicata subito dopo l'apertura");
+
 	win->SwitchToSheet(1);
 	Check(win->ActiveSheetIndex() == 1, "SwitchToSheet(1) aggiorna l'indice del foglio attivo");
 	Value v;
 	win->GetSheetView()->Document()->GetValue(cell(1, 1), v);
 	Check(v.fType == eNumData && (double)v == 100.0,
 		"dopo il cambio SheetView mostra il contenuto del secondo foglio (100), non piu' del primo");
+	Check(view->CellRect(cell(1, 1)).Width() == 80,
+		"Beta (senza larghezze personalizzate) mostra la larghezza predefinita, "
+		"non quella di Alfa");
+
+	// Ridimensiona una colonna mentre Beta e' attivo, poi passa a Gamma
+	// e torna a Beta: la larghezza scelta a mano deve sopravvivere al
+	// cambio foglio avanti e indietro, non solo alla singola apertura.
+	std::vector<std::pair<int, float> > betaWidth;
+	betaWidth.push_back(std::make_pair(3, 55.0f));
+	view->SetColumnWidths(betaWidth);
+	Check(view->CellRect(cell(3, 1)).Width() == 55,
+		"la larghezza di colonna 3 di Beta e' applicata subito dopo SetColumnWidths");
 
 	win->SwitchToSheet(2);
 	win->GetSheetView()->Document()->GetCellFormula(cell(1, 1), text, sizeof(text), false);
 	Check(strcmp(text, "Terzo foglio") == 0,
 		"dopo un secondo cambio SheetView mostra il contenuto del terzo foglio");
+	Check(view->CellRect(cell(3, 1)).Width() == 80,
+		"Gamma non eredita la larghezza personalizzata appena impostata su Beta");
+
+	win->SwitchToSheet(1);
+	Check(view->CellRect(cell(3, 1)).Width() == 55,
+		"tornando su Beta la larghezza di colonna scelta a mano e' ancora quella (55), "
+		"non e' andata persa nel cambio foglio avanti e indietro");
+
+	// Torna su Gamma (indice 2) prima dei controlli sotto, che
+	// verificano che un indice fuori dai limiti non sposti il foglio
+	// attivo -- devono ripartire da uno stato noto.
+	win->SwitchToSheet(2);
 
 	// Indici fuori dai limiti non fanno nulla (ne' un crash ne' un
 	// cambio di foglio silenzioso e sbagliato).

@@ -8,8 +8,12 @@
 	(kColWidth/kRowHeight per tutte), ora e' un array per colonna/riga
 	modificabile trascinando il confine fra due intestazioni.
 
-	Limite noto (documentato anche in SheetView.h): il ridimensionamento
-	vale solo per la sessione corrente, non e' salvato nel file .ascd.
+	Verifica anche SetColumnWidths/CustomColumnWidths, l'API con cui
+	MainWindow applica/cattura le larghezze di colonna al cambio di
+	foglio/documento e al salvataggio nel formato nativo (Fase 9): il
+	ridimensionamento trascinando un confine, sopra, e l'applicazione
+	programmatica di una larghezza letta da un file, qui, condividono
+	lo stesso array fColWidths.
 
 	Coordinate della griglia usate qui (stesse gia' note e verificate
 	nel resto della suite, es. test_selection.cpp): intestazioni a
@@ -21,6 +25,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <utility>
+#include <vector>
 
 #include <Application.h>
 #include <LayoutBuilder.h>
@@ -134,6 +140,48 @@ int main()
 	BRect row2After = view->CellRect(cell(1, 2));
 	Check(row2After.top == row1After.bottom,
 		"la riga 2 resta contigua alla riga 1 anche dopo l'allargamento");
+
+	// SetColumnWidths/CustomColumnWidths (Fase 9): l'API con cui
+	// MainWindow applica le larghezze lette da un file importato (o dal
+	// foglio precedentemente attivo) e cattura quelle correnti prima di
+	// cambiare foglio/documento o salvare.
+	std::vector<std::pair<int, float> > custom;
+	custom.push_back(std::make_pair(2, 150.0f));
+	custom.push_back(std::make_pair(5, 40.0f));
+	view->SetColumnWidths(custom);
+
+	Check(view->CellRect(cell(2, 1)).Width() == 150,
+		"SetColumnWidths applica la larghezza indicata per la colonna 2");
+	Check(view->CellRect(cell(5, 1)).Width() == 40,
+		"SetColumnWidths applica la larghezza indicata per la colonna 5");
+	Check(view->CellRect(cell(1, 1)).Width() == 80,
+		"SetColumnWidths riporta alla larghezza predefinita le colonne non indicate "
+		"(A1, allargata in precedenza trascinando, torna a 80)");
+
+	std::vector<std::pair<int, float> > captured = view->CustomColumnWidths();
+	Check(captured.size() == 2, "CustomColumnWidths restituisce solo le colonne non predefinite");
+	if (captured.size() == 2)
+	{
+		Check(captured[0].first == 2 && captured[0].second == 150.0f,
+			"CustomColumnWidths riporta la colonna 2 con la larghezza applicata");
+		Check(captured[1].first == 5 && captured[1].second == 40.0f,
+			"CustomColumnWidths riporta la colonna 5 con la larghezza applicata");
+	}
+
+	// Una larghezza sotto il minimo viene comunque bloccata al minimo,
+	// come per il trascinamento diretto verificato sopra.
+	std::vector<std::pair<int, float> > tooSmall;
+	tooSmall.push_back(std::make_pair(1, 2.0f));
+	view->SetColumnWidths(tooSmall);
+	Check(view->CellRect(cell(1, 1)).Width() == 20,
+		"SetColumnWidths blocca comunque una larghezza troppo piccola al minimo (20)");
+
+	// Un vettore vuoto riporta tutte le colonne alla larghezza
+	// predefinita -- il caso di un documento nuovo o di un foglio senza
+	// nessuna colonna personalizzata.
+	view->SetColumnWidths(std::vector<std::pair<int, float> >());
+	Check(view->CellRect(cell(1, 1)).Width() == 80 && view->CustomColumnWidths().empty(),
+		"un vettore vuoto riporta tutte le colonne alla larghezza predefinita");
 
 	win->Unlock();
 

@@ -430,6 +430,7 @@ void MainWindow::ResetWorkbook(const char* name)
 	{
 		fSheetView->SetDocument(fDoc);
 		fSheetView->SetCharts(&fCharts);
+		fSheetView->SetColumnWidths(fSheets[0].colWidths);
 	}
 	if (fSheetTabView)
 		RebuildSheetTabs();
@@ -443,17 +444,20 @@ void MainWindow::SwitchToSheet(int index)
 	// fDoc e' gia' lo stesso puntatore di fSheets[fActiveSheetIndex].doc
 	// (mai copiato: le mutazioni fatte finora sono gia' scritte
 	// direttamente li'), quindi non c'e' nulla da salvare per il
-	// documento -- solo fCharts, un vector per valore invece che un
-	// puntatore (SheetView ne tiene solo l'indirizzo, che deve restare
-	// stabile: vedi il commento sui campi in MainWindow.h), va
-	// risincronizzato esplicitamente in entrambe le direzioni.
+	// documento -- solo fCharts e le larghezze di colonna, entrambi un
+	// vector per valore invece che un puntatore (SheetView ne tiene
+	// solo l'indirizzo/li tiene internamente, non un riferimento al
+	// foglio: vedi il commento sui campi in MainWindow.h), vanno
+	// risincronizzati esplicitamente in entrambe le direzioni.
 	fSheets[fActiveSheetIndex].charts = fCharts;
+	fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 
 	fActiveSheetIndex = index;
 	fDoc = fSheets[index].doc;
 	fCharts = fSheets[index].charts;
 
 	fSheetView->SetDocument(fDoc);
+	fSheetView->SetColumnWidths(fSheets[index].colWidths);
 	fFormulaBar->SetText("");
 	RebuildSheetTabs();
 }
@@ -494,7 +498,7 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 {
 	outSheet->name = "Foglio1";
 	outSheet->doc = new CContainer(NULL, NULL);
-	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts);
+	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts, &outSheet->colWidths);
 	if (err != B_OK)
 	{
 		outSheet->doc->Release();
@@ -590,6 +594,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fCharts = fSheets[0].charts;
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
+	fSheetView->SetColumnWidths(fSheets[0].colWidths);
 	RebuildSheetTabs();
 
 	fDocumentName = ref.name;
@@ -624,9 +629,10 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		// quello attivo) nel formato "ASCB" -- fCharts e' la copia di
 		// lavoro del foglio attivo (vedi il commento sui campi in
 		// MainWindow.h), va risincronizzata su fSheets prima di
-		// scrivere, altrimenti l'ultima modifica ai grafici del foglio
-		// attivo non verrebbe salvata.
+		// scrivere, altrimenti l'ultima modifica ai grafici/alle
+		// larghezze di colonna del foglio attivo non verrebbe salvata.
 		fSheets[fActiveSheetIndex].charts = fCharts;
+		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 
 		status_t err = SaveASCDBook(fSheets, &file);
 		if (err != B_OK)

@@ -237,6 +237,35 @@ void SheetView::RebuildColumnOffsets()
 		fColOffsets[i + 1] = fColOffsets[i] + fColWidths[i];
 }
 
+void SheetView::SetColumnWidths(const std::vector<std::pair<int, float> >& widths)
+{
+	fColWidths.assign(kColCount, kColWidth);
+	for (size_t i = 0; i < widths.size(); i++)
+	{
+		int col = widths[i].first;
+		if (col < 1 || col > kColCount)
+			continue;
+		float w = widths[i].second;
+		if (w < kMinColWidth)
+			w = kMinColWidth;
+		fColWidths[col - 1] = w;
+	}
+	RebuildColumnOffsets();
+	UpdateCanvasSize();
+	Invalidate();
+}
+
+std::vector<std::pair<int, float> > SheetView::CustomColumnWidths() const
+{
+	std::vector<std::pair<int, float> > result;
+	for (int i = 0; i < kColCount; i++)
+	{
+		if (fColWidths[i] != kColWidth)
+			result.push_back(std::make_pair(i + 1, fColWidths[i]));
+	}
+	return result;
+}
+
 void SheetView::RebuildRowOffsets()
 {
 	fRowOffsets.resize(kRowCount + 1);

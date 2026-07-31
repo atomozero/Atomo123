@@ -16,6 +16,7 @@
 		D1 = stringa condivisa "Ciao XLSX"
 */
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -227,6 +228,48 @@ int main()
 		doc.GetValue(c1, v);
 		Check((double)v == 40.0,
 			"il motore ricalcola la formula importata e ottiene 40");
+
+		// Larghezze di colonna lette da <cols> in tests/sample.xlsx:
+		// colonna 1 a larghezza 20 caratteri, colonne 3-4 a larghezza 8
+		// -- convertite in pixel con la stessa approssimazione di
+		// ExcelColWidthToPixels (XlsxTranslator.cpp): pixel = char*7+5.
+		// "pos" punta gia' subito dopo l'ultima cella, cioe' all'inizio
+		// della sezione grafici (sempre scritta, vuota qui) seguita
+		// dalla sezione larghezze di colonna.
+		if (pos + 4 <= ascdLen)
+		{
+			int32 chartCount;
+			memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+			Check(chartCount == 0, "nessun grafico incorporato (il translator XLSX non li gestisce)");
+			pos += chartCount * (2 * 4 + 4 * 4); // salta eventuali record grafico (non attesi qui)
+
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				Check(colWidthCount == 3,
+					"tre colonne con larghezza esplicita (1, 3, 4 -- da min=3 max=4)");
+
+				bool foundCol1 = false, foundCol3 = false, foundCol4 = false;
+				for (int32 i = 0; i < colWidthCount && pos + 6 <= ascdLen; i++)
+				{
+					int16 col;
+					float width;
+					memcpy(&col, ascdData + pos, 2); pos += 2;
+					memcpy(&width, ascdData + pos, 4); pos += 4;
+
+					if (col == 1 && fabs(width - (20.0f * 7 + 5)) < 0.01f)
+						foundCol1 = true;
+					if (col == 3 && fabs(width - (8.0f * 7 + 5)) < 0.01f)
+						foundCol3 = true;
+					if (col == 4 && fabs(width - (8.0f * 7 + 5)) < 0.01f)
+						foundCol4 = true;
+				}
+				Check(foundCol1, "la larghezza della colonna 1 (20 caratteri -> 145 pixel) e' importata");
+				Check(foundCol3, "la larghezza della colonna 3 (8 caratteri -> 61 pixel, da min=3) e' importata");
+				Check(foundCol4, "la larghezza della colonna 4 (8 caratteri -> 61 pixel, da max=4) e' importata");
+			}
+		}
 
 		doc.Release();
 	}

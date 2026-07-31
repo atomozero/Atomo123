@@ -20,6 +20,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <utility>
+#include <vector>
 
 #include <Application.h>
 #include <File.h>
@@ -184,6 +186,48 @@ int main()
 	Check(err == B_OK && noCharts.empty(),
 		"un file senza sezione grafici si rilegge senza errori e senza grafici");
 	oldDoc.Release();
+
+	// Sezione larghezze di colonna personalizzate: stesso principio dei
+	// grafici sopra, verificata qui separatamente perche' e' un
+	// parametro indipendente di SaveASCD/LoadASCD (un file puo' avere
+	// grafici senza colonne ridimensionate, o viceversa).
+	CContainer& widthDoc = *new CContainer(NULL, NULL);
+	TryToParseString("10", cell(1, 1), &widthDoc, true);
+
+	std::vector<std::pair<int, float> > savedWidths;
+	savedWidths.push_back(std::make_pair(1, 120.0f));
+	savedWidths.push_back(std::make_pair(3, 45.0f));
+
+	BFile widthFile("tests/roundtrip_widths.ascd", B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	err = SaveASCD(&widthDoc, &widthFile, NULL, &savedWidths);
+	Check(err == B_OK, "SaveASCD con larghezze di colonna personalizzate riesce");
+	widthDoc.Release();
+
+	BFile widthReopened("tests/roundtrip_widths.ascd", B_READ_ONLY);
+	CContainer& widthReloaded = *new CContainer(NULL, NULL);
+	std::vector<std::pair<int, float> > loadedWidths;
+	err = LoadASCD(&widthReopened, &widthReloaded, NULL, &loadedWidths);
+	Check(err == B_OK, "LoadASCD con larghezze di colonna personalizzate riesce");
+	Check(loadedWidths.size() == 2, "le due larghezze personalizzate sopravvivono al giro salva->ricarica");
+	if (loadedWidths.size() == 2)
+	{
+		Check(loadedWidths[0].first == 1 && loadedWidths[0].second == 120.0f,
+			"la larghezza della colonna 1 e' preservata");
+		Check(loadedWidths[1].first == 3 && loadedWidths[1].second == 45.0f,
+			"la larghezza della colonna 3 e' preservata");
+	}
+	widthReloaded.Release();
+
+	// Un file scritto senza larghezze personalizzate deve restituire un
+	// vettore vuoto quando riletto CON colWidths richiesto -- stessa
+	// compatibilita' all'indietro dei grafici sopra.
+	BFile oldFormat2("tests/roundtrip.ascd", B_READ_ONLY);
+	CContainer& oldDoc2 = *new CContainer(NULL, NULL);
+	std::vector<std::pair<int, float> > noWidths;
+	err = LoadASCD(&oldFormat2, &oldDoc2, NULL, &noWidths);
+	Check(err == B_OK && noWidths.empty(),
+		"un file senza sezione larghezze si rilegge senza errori e senza larghezze personalizzate");
+	oldDoc2.Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;

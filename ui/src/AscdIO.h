@@ -14,6 +14,7 @@
 #ifndef ASCD_IO_H
 #define ASCD_IO_H
 
+#include <utility>
 #include <vector>
 
 #include <DataIO.h>
@@ -24,17 +25,31 @@
 
 class CContainer;
 
-// "charts" e' opzionale (NULL = non legge/scrive nessun grafico
-// incorporato, comportamento invariato per chi non ne ha bisogno,
-// es. i test di round-trip gia' esistenti). Il blocco dei grafici e'
-// una sezione aggiunta in coda al formato: un file ASCD scritto prima
-// di questa modifica non ce l'ha affatto, e LoadASCD lo riconosce
-// distinguendo "fine del file" (nessun grafico, non un errore) da un
-// file davvero troncato/corrotto -- vedi il commento in AscdIO.cpp.
+// "charts"/"colWidths" sono opzionali (NULL = non legge/scrive nulla
+// di quella sezione, comportamento invariato per chi non ne ha
+// bisogno, es. i test di round-trip gia' esistenti) -- entrambe
+// sezioni aggiunte in coda al formato: un file ASCD scritto prima di
+// una di queste modifiche semplicemente non ce l'ha, e LoadASCD lo
+// riconosce distinguendo "fine del file" (sezione assente, non un
+// errore) da un file davvero troncato/corrotto -- vedi il commento in
+// AscdIO.cpp. I byte di ciascuna sezione vengono comunque sempre
+// consumati dallo stream se presenti, anche passando NULL: altrimenti
+// una chiamata con NULL lascerebbe la posizione di lettura sbagliata
+// per chi legge subito dopo (es. LoadASCDBook, che concatena piu'
+// blocchi ASCD sullo stesso flusso).
+//
+// "colWidths" e' l'elenco (colonna 1-based, larghezza in pixel) delle
+// SOLE colonne con una larghezza diversa da quella predefinita
+// (SheetView::kColWidth) -- letta da un file importato (vedi
+// XlsxTranslator) o da un ridimensionamento fatto a mano
+// (SheetView::CustomColumnWidths), non un array denso su tutte le
+// kColCount colonne.
 status_t LoadASCD(BPositionIO* source, CContainer* doc,
-	std::vector<ChartObject>* charts = NULL);
+	std::vector<ChartObject>* charts = NULL,
+	std::vector<std::pair<int, float> >* colWidths = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
-	const std::vector<ChartObject>* charts = NULL);
+	const std::vector<ChartObject>* charts = NULL,
+	const std::vector<std::pair<int, float> >* colWidths = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -50,12 +65,13 @@ bool IsASCDFile(BPositionIO* source);
 // Un foglio di una cartella di lavoro multi-foglio: nome piu'
 // documento (creato da LoadASCDBook, di proprieta' del chiamante --
 // va rilasciato con Release() quando non serve piu', stesso discorso
-// gia' valido per qualunque CContainer). "charts" segue lo stesso
-// significato opzionale di LoadASCD/SaveASCD sopra.
+// gia' valido per qualunque CContainer). "charts"/"colWidths"
+// seguono lo stesso significato di LoadASCD/SaveASCD sopra.
 struct AscdSheet {
 	BString name;
 	CContainer* doc;
 	std::vector<ChartObject> charts;
+	std::vector<std::pair<int, float> > colWidths;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

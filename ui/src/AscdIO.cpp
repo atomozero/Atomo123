@@ -30,7 +30,8 @@ bool IsASCDFile(BPositionIO* source)
 }
 
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
-	const std::vector<ChartObject>* charts)
+	const std::vector<ChartObject>* charts,
+	const std::vector<std::pair<int, float> >* colWidths)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -94,11 +95,30 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione larghezze di colonna personalizzate, in coda: stesso
+	// principio dei grafici sopra -- opzionale, un file scritto prima
+	// di questa modifica (o senza nessuna colonna ridimensionata) non
+	// ce l'ha. Il campo colonna e' int16: il numero di colonne del
+	// motore (kColCount) sta ampiamente entro i suoi limiti.
+	int32 colWidthCount = colWidths ? (int32)colWidths->size() : 0;
+	if (dest->Write(&colWidthCount, sizeof(colWidthCount)) != (ssize_t)sizeof(colWidthCount))
+		return B_IO_ERROR;
+
+	for (int32 i = 0; i < colWidthCount; i++)
+	{
+		int16 col = (int16)(*colWidths)[i].first;
+		float width = (*colWidths)[i].second;
+		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+			|| dest->Write(&width, sizeof(width)) != (ssize_t)sizeof(width))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
 status_t LoadASCD(BPositionIO* source, CContainer* doc,
-	std::vector<ChartObject>* charts)
+	std::vector<ChartObject>* charts,
+	std::vector<std::pair<int, float> >* colWidths)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -149,15 +169,24 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 	RecalculateAll(doc);
 
-	// Sezione grafici incorporati, in coda al formato: puo' non
-	// esserci affatto (file scritto prima che questa sezione
-	// esistesse). Read() restituisce 0 se lo stream e' gia' finito
-	// esattamente li' (formato vecchio, nessun grafico: non un
-	// errore); un valore diverso da 0 ma minore di sizeof(chartCount)
-	// e' invece un file davvero troncato/corrotto.
-	if (charts)
+	// Sezione grafici incorporati, in coda al formato: puo' non esserci
+	// affatto (file scritto prima che questa sezione esistesse). Read()
+	// restituisce 0 se lo stream e' gia' finito esattamente li' (formato
+	// vecchio, nessun grafico: non un errore); un valore diverso da 0 ma
+	// minore di sizeof(chartCount) e' invece un file davvero troncato/
+	// corrotto. I byte vanno SEMPRE consumati se presenti, anche se il
+	// chiamante passa charts=NULL (non gli interessano i grafici): resta
+	// dopo questa sezione la sezione larghezze di colonna (sotto), e se
+	// questa chiamata fa parte di una cartella di lavoro multi-foglio
+	// (LoadASCDBook, che legge piu' blocchi ASCD in sequenza sullo
+	// stesso flusso) lasciare byte non consumati qui disallineerebbe la
+	// lettura di ogni foglio successivo -- bug reale gia' scoperto per
+	// XlsxTranslator::WriteASCD, vedi ROADMAP.md Fase 9.
 	{
-		charts->clear();
+		std::vector<ChartObject> discardedCharts;
+		std::vector<ChartObject>* out = charts ? charts : &discardedCharts;
+		out->clear();
+
 		int32 chartCount = 0;
 		ssize_t got = source->Read(&chartCount, sizeof(chartCount));
 		if (got != 0)
@@ -180,7 +209,35 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				ChartObject obj;
 				obj.dataRange.Set(left, top, right, bottom);
 				obj.frame.Set(frame[0], frame[1], frame[2], frame[3]);
-				charts->push_back(obj);
+				out->push_back(obj);
+			}
+		}
+	}
+
+	// Sezione larghezze di colonna personalizzate, in coda: stesso
+	// principio della sezione grafici sopra, stessa cautela sul
+	// consumare sempre i byte anche con colWidths=NULL.
+	{
+		std::vector<std::pair<int, float> > discardedWidths;
+		std::vector<std::pair<int, float> >* out = colWidths ? colWidths : &discardedWidths;
+		out->clear();
+
+		int32 colWidthCount = 0;
+		ssize_t got = source->Read(&colWidthCount, sizeof(colWidthCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(colWidthCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < colWidthCount; i++)
+			{
+				int16 col;
+				float width;
+				if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&width, sizeof(width)) != (ssize_t)sizeof(width))
+					return B_BAD_DATA;
+
+				out->push_back(std::make_pair((int)col, width));
 			}
 		}
 	}
@@ -260,7 +317,7 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 		if (nameLen > 0 && dest->Write(sheet.name.String(), nameLen) != nameLen)
 			return B_IO_ERROR;
 
-		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts);
+		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts, &sheet.colWidths);
 		if (err != B_OK)
 			return err;
 	}
@@ -301,7 +358,7 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
 		sheet.name = nameBuf;
 		sheet.doc = new CContainer(NULL, NULL);
 
-		status_t err = LoadASCD(source, sheet.doc, &sheet.charts);
+		status_t err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();
