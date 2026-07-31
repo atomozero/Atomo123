@@ -332,6 +332,48 @@ void SheetView::ClearSelection()
 	NotifySelectionChanged();
 }
 
+void SheetView::FillDown()
+{
+	if (!fDoc)
+		return;
+
+	range sel = SelectionRange();
+	if (sel.top == sel.bottom)
+		return; // una sola riga: niente da riempire
+
+	for (int col = sel.left; col <= sel.right; col++)
+	{
+		cell src(col, sel.top);
+		for (int row = sel.top + 1; row <= sel.bottom; row++)
+			fDoc->CopyCell(fDoc, src, cell(col, row));
+	}
+
+	RecalculateAll(fDoc);
+	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
+	NotifySelectionChanged();
+}
+
+void SheetView::FillRight()
+{
+	if (!fDoc)
+		return;
+
+	range sel = SelectionRange();
+	if (sel.left == sel.right)
+		return; // una sola colonna: niente da riempire
+
+	for (int row = sel.top; row <= sel.bottom; row++)
+	{
+		cell src(sel.left, row);
+		for (int col = sel.left + 1; col <= sel.right; col++)
+			fDoc->CopyCell(fDoc, src, cell(col, row));
+	}
+
+	RecalculateAll(fDoc);
+	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
+	NotifySelectionChanged();
+}
+
 BRect SheetView::CellRect(cell c) const
 {
 	float x = kHeaderWidth + (c.h - 1) * kColWidth;

@@ -53,6 +53,8 @@ static const uint32 kMsgCopy = 'acpy';
 static const uint32 kMsgPaste = 'apst';
 static const uint32 kMsgClear = 'aclr';
 static const uint32 kMsgSelectAll = 'asla';
+static const uint32 kMsgFillDown = 'afdn';
+static const uint32 kMsgFillRight = 'afrt';
 static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
 static const uint32 kMsgSetFormat = 'stfm';
@@ -138,6 +140,22 @@ MainWindow::MainWindow()
 	percentMsg->AddInt32("format", ePercent);
 	formatMenu->AddItem(new BMenuItem("Percentuale", percentMsg));
 	menuBar->AddItem(formatMenu);
+
+	// Riempi in basso/a destra: copia la prima riga/colonna
+	// dell'intervallo selezionato nel resto dell'intervallo,
+	// aggiornando i riferimenti relativi nelle formule (vedi
+	// SheetView::FillDown/FillRight). Ctrl+D/Ctrl+R come scorciatoie
+	// di voce di menu (BMenuItem::SetShortcut, risolte dal BWindow
+	// prima di arrivare a SheetView::KeyDown), non come casi in
+	// SheetView::HandleKey: su Haiku B_END vale lo stesso byte (0x04)
+	// generato da Ctrl+D (stesso problema gia' visto con Ctrl+A/
+	// B_HOME per "Seleziona tutto"), quindi solo la scorciatoia di
+	// menu -- risolta a un livello diverso, prima che KeyDown veda un
+	// singolo byte ambiguo -- funziona in modo affidabile.
+	BMenu* dataMenu = new BMenu("Dati");
+	dataMenu->AddItem(new BMenuItem("Riempi in basso", new BMessage(kMsgFillDown), 'D'));
+	dataMenu->AddItem(new BMenuItem("Riempi a destra", new BMessage(kMsgFillRight), 'R'));
+	menuBar->AddItem(dataMenu);
 
 	// Grafico e tabella pivot leggono un intervallo di due colonne
 	// scelto dall'utente (non la sola cella selezionata, che oggi e'
@@ -952,6 +970,14 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgSelectAll:
 			fSheetView->SelectAll();
+			break;
+
+		case kMsgFillDown:
+			fSheetView->FillDown();
+			break;
+
+		case kMsgFillRight:
+			fSheetView->FillRight();
 			break;
 
 		case kMsgPrint:

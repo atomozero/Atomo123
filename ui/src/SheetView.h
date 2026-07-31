@@ -78,6 +78,22 @@ public:
 	// Calc invece di svuotare solo la cella attiva.
 	void ClearSelection();
 
+	// Riempi in basso/a destra (menu Dati, Ctrl+D/Ctrl+R): copia il
+	// contenuto della prima riga/colonna di SelectionRange() nelle
+	// altre righe/colonne dell'intervallo, tramite CContainer::CopyCell
+	// senza isDragMove -- un riferimento relativo in una formula e'
+	// sempre interpretato rispetto alla posizione della cella che lo
+	// contiene, quindi copiare lo stesso testo di formula in una nuova
+	// posizione lo fa gia' puntare alla cella "spostata" corrispondente
+	// da solo (=B1*2 in C1 copiato in C2 diventa =B2*2 senza bisogno di
+	// toccare i riferimenti a mano). isDragMove=true farebbe l'esatto
+	// opposto: compensa uno spostamento in modo che la formula continui
+	// a puntare alle STESSE celle di prima (comportamento corretto per
+	// spostare/tagliare una cella, sbagliato per riempire). Non fanno
+	// nulla se la selezione e' una sola cella (niente da cui copiare).
+	void FillDown();
+	void FillRight();
+
 	// Logica di navigazione/modifica da tastiera, con i modificatori
 	// (Ctrl/Maiusc) gia' risolti -- KeyDown() li legge dal vero
 	// messaggio B_KEY_DOWN e poi chiama questa, che e' pubblica
