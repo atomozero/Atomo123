@@ -183,6 +183,27 @@ public:
 	// lo fanno gia' a parte, dove serve.
 	cell CellAt(BPoint where) const;
 
+	// Applica larghezze di colonna personalizzate (coppie colonna
+	// 1-based/larghezza in pixel), sostituendo quelle correnti:
+	// ripristina prima ogni colonna alla larghezza predefinita
+	// (kColWidth), poi applica solo quelle indicate in "widths" -- un
+	// vettore vuoto riporta quindi tutte le colonne alla larghezza
+	// predefinita. Usata da MainWindow dopo Nuovo/Apri e a ogni cambio
+	// di foglio attivo (SwitchToSheet), cosi' un ridimensionamento
+	// fatto su un foglio non "sopravvive" mostrandosi su un altro.
+	// Non e' annullabile ne' marca il documento come modificato: fa
+	// parte del cambio di documento/foglio, non e' una modifica
+	// dell'utente. Pubblico apposta per essere testabile direttamente,
+	// stesso principio di CellRect/CellAt sopra.
+	void SetColumnWidths(const std::vector<std::pair<int, float> >& widths);
+
+	// Le sole colonne la cui larghezza attuale differisce dalla
+	// predefinita -- usata da MainWindow per catturare lo stato
+	// corrente prima di cambiare foglio/documento o salvare, cosi' un
+	// ridimensionamento fatto a mano sopravvive al cambio foglio e al
+	// salvataggio nel formato nativo.
+	std::vector<std::pair<int, float> > CustomColumnWidths() const;
+
 	// Elenco dei grafici incorporati da disegnare sopra la griglia
 	// (di proprieta' di MainWindow, che lo passa qui solo per
 	// disegnarlo: SheetView non lo possiede ne' lo modifica mai).
@@ -211,11 +232,12 @@ private:
 	// una larghezza/altezza cambia davvero (RebuildColumnOffsets/
 	// RebuildRowOffsets), non a ogni Draw().
 	//
-	// Limite noto: solo per la sessione corrente, non salvata nel
-	// file .ascd -- riaprendo un foglio le colonne/righe ridimensionate
-	// tornano alla larghezza/altezza predefinita. Persisterle
-	// richiederebbe una nuova sezione nel formato file (AscdIO), non
-	// fatta in questo incremento.
+	// Le larghezze di colonna sopravvivono al salvataggio/riapertura
+	// (Fase 9: vedi SetColumnWidths/CustomColumnWidths sopra e la
+	// sezione dedicata in AscdIO.h/XlsxTranslator.cpp) -- le altezze di
+	// riga no, restano un limite noto: solo per la sessione corrente,
+	// tornano all'altezza predefinita riaprendo un foglio. Stessa
+	// estensione del formato applicabile in futuro se servisse.
 	std::vector<float> fColWidths;
 	std::vector<float> fRowHeights;
 	std::vector<float> fColOffsets;

@@ -7,6 +7,7 @@
 #include "XlsxTranslator.h"
 #include "MiniZip.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -22,6 +23,7 @@
 #include "Container.h"
 #include "CellIterator.h"
 #include "CellParser.h"
+#include "Constants.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -55,7 +57,8 @@ static const char kASCDBookMagic[4] = { 'A', 'S', 'C', 'B' };
 
 // Stessa serializzazione ASCD degli altri translator (vedi
 // translators/csv/CsvTranslator.cpp per la descrizione completa).
-static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
+static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
+	const std::vector<std::pair<int, float> >* colWidths = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -113,6 +116,25 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 	int32 chartCount = 0;
 	if (dest->Write(&chartCount, sizeof(chartCount)) != (ssize_t)sizeof(chartCount))
 		return B_IO_ERROR;
+
+	// Sezione larghezze di colonna personalizzate, in coda: stesso
+	// principio della sezione grafici sopra (sempre scritta anche se
+	// vuota, mai NULL a questo livello) -- lette da <cols> nel foglio
+	// XLSX originale (vedi ParseSheet/SheetStart), un elenco (colonna
+	// 1-based, larghezza in pixel) delle sole colonne con una
+	// larghezza esplicita diversa da quella predefinita.
+	int32 colWidthCount = colWidths ? (int32)colWidths->size() : 0;
+	if (dest->Write(&colWidthCount, sizeof(colWidthCount)) != (ssize_t)sizeof(colWidthCount))
+		return B_IO_ERROR;
+
+	for (int32 i = 0; i < colWidthCount; i++)
+	{
+		int16 col = (int16)(*colWidths)[i].first;
+		float width = (*colWidths)[i].second;
+		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+			|| dest->Write(&width, sizeof(width)) != (ssize_t)sizeof(width))
+			return B_IO_ERROR;
+	}
 
 	return B_OK;
 }
@@ -435,6 +457,7 @@ static bool ParseSharedStrings(const std::vector<unsigned char>& xml,
 struct SheetContext {
 	CContainer* doc;
 	const std::vector<std::string>* sharedStrings;
+	std::vector<std::pair<int, float> >* colWidths; // opzionale (NULL = non raccolte)
 
 	std::string cellRef;
 	std::string cellType; // valore dell'attributo t="..." (puo' essere vuoto)
@@ -443,6 +466,20 @@ struct SheetContext {
 	bool inValue;
 	bool inFormula;
 };
+
+// La larghezza in <col width="..."> e' nell'unita' di misura di Excel
+// ("numero di caratteri '0' del carattere piu' largo del font
+// predefinito", non pixel): la formula esatta dipende dal font/DPI del
+// documento originale (vedi lo standard ECMA-376, 18.3.1.13), che
+// questo progetto non replica. Approssimazione ampiamente usata da
+// importatori piu' semplici (basata su un carattere largo circa 7
+// pixel per il font predefinito Calibri 11, piu' un margine fisso di
+// 5 pixel) -- visivamente ragionevole, non un valore esatto pixel per
+// pixel come lo mostrerebbe Excel stesso.
+static float ExcelColWidthToPixels(double charWidth)
+{
+	return (float)(charWidth * 7.0 + 5.0);
+}
 
 static void XMLCALL SheetStart(void* userData, const char* name, const char** atts)
 {
@@ -473,6 +510,44 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 	// "t" nella cella diverso da "s" finisce li').
 	else if (strcmp(name, "t") == 0)
 		ctx->inValue = true;
+	// <col min="1" max="3" width="12.5" customWidth="1"/>, prima di
+	// <sheetData>: min/max sono un intervallo di colonne 1-based
+	// INCLUSIVO (spesso min==max, ma non sempre -- una sola voce puo'
+	// coprire piu' colonne contigue con la stessa larghezza). Ignora
+	// le voci senza width esplicito (bestFit da solo, senza
+	// customWidth, e' solo un suggerimento per l'autofit di Excel, non
+	// una larghezza scelta dall'utente).
+	else if (strcmp(name, "col") == 0 && ctx->colWidths)
+	{
+		int min = 0, max = 0;
+		bool hasWidth = false;
+		double width = 0;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "min") == 0)
+				min = atoi(atts[i + 1]);
+			else if (strcmp(atts[i], "max") == 0)
+				max = atoi(atts[i + 1]);
+			else if (strcmp(atts[i], "width") == 0)
+			{
+				width = atof(atts[i + 1]);
+				hasWidth = true;
+			}
+		}
+		// max puo' arrivare a 16384 (il limite reale di Excel) per
+		// indicare "tutte le colonne restanti hanno questa larghezza":
+		// tagliato a kColCount, il limite di questo motore, per non
+		// riempire colWidths di migliaia di voci che verrebbero comunque
+		// scartate piu' avanti (SheetView::SetColumnWidths ignora le
+		// colonne oltre kColCount).
+		if (hasWidth && min > 0 && max >= min)
+		{
+			float pixels = ExcelColWidthToPixels(width);
+			int clampedMax = std::min(max, (int)kColCount);
+			for (int col = min; col <= clampedMax; col++)
+				ctx->colWidths->push_back(std::make_pair(col, pixels));
+		}
+	}
 }
 
 static void XMLCALL SheetEnd(void* userData, const char* name)
@@ -533,11 +608,13 @@ static void XMLCALL SheetChars(void* userData, const char* s, int len)
 }
 
 static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
-	const std::vector<std::string>& sharedStrings)
+	const std::vector<std::string>& sharedStrings,
+	std::vector<std::pair<int, float> >* colWidths)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
 	ctx.sharedStrings = &sharedStrings;
+	ctx.colWidths = colWidths;
 	ctx.inValue = false;
 	ctx.inFormula = false;
 
@@ -695,13 +772,20 @@ static bool ParseRelationships(const std::vector<unsigned char>& xml,
 	return status == XML_STATUS_OK;
 }
 
+// Un foglio gia' analizzato, pronto per essere scritto in formato
+// ASCD/ASCB: nome, documento, e le sole colonne con una larghezza
+// esplicita nel file XLSX originale (vedi ParseSheet/SheetStart).
+struct ParsedSheet {
+	std::string name;
+	CContainer* doc;
+	std::vector<std::pair<int, float> > colWidths;
+};
+
 // Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
 // il commento su kASCDBookMagic sopra): riusa WriteASCD cosi' com'e'
 // per ogni foglio, nessuna duplicazione della serializzazione per
 // cella.
-static status_t WriteASCDBook(
-	const std::vector<std::pair<std::string, CContainer*> >& sheets,
-	BPositionIO* dest)
+static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionIO* dest)
 {
 	if (dest->Write(kASCDBookMagic, 4) != 4)
 		return B_IO_ERROR;
@@ -712,14 +796,14 @@ static status_t WriteASCDBook(
 
 	for (int32 i = 0; i < sheetCount; i++)
 	{
-		const std::string& name = sheets[i].first;
+		const std::string& name = sheets[i].name;
 		int32 nameLen = (int32)name.size();
 		if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
 			return B_IO_ERROR;
 		if (nameLen > 0 && dest->Write(name.data(), nameLen) != nameLen)
 			return B_IO_ERROR;
 
-		status_t err = WriteASCD(sheets[i].second, dest);
+		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths);
 		if (err != B_OK)
 			return err;
 	}
@@ -854,7 +938,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			std::string("xl/worksheets/sheet1.xml")));
 	}
 
-	std::vector<std::pair<std::string, CContainer*> > sheets;
+	std::vector<ParsedSheet> sheets;
 	status_t err = B_OK;
 
 	for (size_t i = 0; i < sheetsToRead.size() && err == B_OK; i++)
@@ -866,15 +950,17 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			break;
 		}
 
-		CContainer* doc = new CContainer(NULL, NULL);
-		if (!ParseSheet(sheetXml, doc, sharedStrings))
+		ParsedSheet parsed;
+		parsed.name = sheetsToRead[i].first;
+		parsed.doc = new CContainer(NULL, NULL);
+		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths))
 		{
-			doc->Release();
+			parsed.doc->Release();
 			err = B_BAD_DATA;
 			break;
 		}
 
-		sheets.push_back(std::make_pair(sheetsToRead[i].first, doc));
+		sheets.push_back(parsed);
 	}
 
 	if (err == B_OK)
@@ -885,11 +971,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			// L'esportazione XLSX resta a un solo foglio (quello
 			// attivo, il primo qui): i writer non nativi non
 			// supportano ancora piu' fogli, vedi WriteXLSX.
-			err = WriteXLSX(sheets[0].second, destination);
+			err = WriteXLSX(sheets[0].doc, destination);
 	}
 
 	for (size_t i = 0; i < sheets.size(); i++)
-		sheets[i].second->Release();
+		sheets[i].doc->Release();
 
 	return err;
 }
