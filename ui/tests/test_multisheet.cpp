@@ -99,7 +99,7 @@ int main()
 
 	SheetView* view = win->GetSheetView();
 	char text[512];
-	view->Document()->GetCellFormula(cell(1, 1), text, false);
+	view->Document()->GetCellFormula(cell(1, 1), text, sizeof(text), false);
 	Check(strcmp(text, "Primo foglio") == 0,
 		"SheetView mostra il contenuto del primo foglio subito dopo l'apertura");
 
@@ -111,7 +111,7 @@ int main()
 		"dopo il cambio SheetView mostra il contenuto del secondo foglio (100), non piu' del primo");
 
 	win->SwitchToSheet(2);
-	win->GetSheetView()->Document()->GetCellFormula(cell(1, 1), text, false);
+	win->GetSheetView()->Document()->GetCellFormula(cell(1, 1), text, sizeof(text), false);
 	Check(strcmp(text, "Terzo foglio") == 0,
 		"dopo un secondo cambio SheetView mostra il contenuto del terzo foglio");
 

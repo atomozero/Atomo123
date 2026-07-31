@@ -93,9 +93,9 @@ int main()
 		"Ordina crescente riordina la colonna chiave (10, 20, 30)");
 
 	char b1[512], b2[512], b3[512];
-	doc->GetCellFormula(cell(2, 1), b1, false);
-	doc->GetCellFormula(cell(2, 2), b2, false);
-	doc->GetCellFormula(cell(2, 3), b3, false);
+	doc->GetCellFormula(cell(2, 1), b1, sizeof(b1), false);
+	doc->GetCellFormula(cell(2, 2), b2, sizeof(b2), false);
+	doc->GetCellFormula(cell(2, 3), b3, sizeof(b3), false);
 	Check(strcmp(b1, "a") == 0 && strcmp(b2, "b") == 0 && strcmp(b3, "c") == 0,
 		"la colonna passeggero (B) segue la riga durante il riordino (a, b, c)");
 
@@ -127,8 +127,8 @@ int main()
 	view->SortSelection(true);
 
 	char stableB1[512], stableB2[512];
-	doc2->GetCellFormula(cell(2, 1), stableB1, false); // dovrebbe restare "terzo" (chiave 1)
-	doc2->GetCellFormula(cell(2, 2), stableB2, false); // poi "primo" (chiave 5, era prima di "secondo")
+	doc2->GetCellFormula(cell(2, 1), stableB1, sizeof(stableB1), false); // dovrebbe restare "terzo" (chiave 1)
+	doc2->GetCellFormula(cell(2, 2), stableB2, sizeof(stableB2), false); // poi "primo" (chiave 5, era prima di "secondo")
 	Check(strcmp(stableB1, "terzo") == 0,
 		"la chiave piu' piccola (1) va prima anche se e' l'ultima riga originale");
 	Check(strcmp(stableB2, "primo") == 0,

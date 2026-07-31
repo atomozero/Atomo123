@@ -73,7 +73,7 @@ static status_t WriteASCDForTest(CContainer* doc, BPositionIO* dest)
 	while (iter.NextExisting(c))
 	{
 		char text[512];
-		doc->GetCellFormula(c, text, false);
+		doc->GetCellFormula(c, text, sizeof(text), false);
 
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);
@@ -89,6 +89,52 @@ static status_t WriteASCDForTest(CContainer* doc, BPositionIO* dest)
 	}
 
 	return B_OK;
+}
+
+// Translate(XLSX -> nativo) produce ora sempre una cartella di lavoro
+// multi-foglio ("ASCB", Fase 9), anche per un file XLSX con un solo
+// foglio come tests/sample.xlsx: salta l'header e il nome del primo
+// foglio per arrivare al blocco "ASCD" vero e proprio -- i controlli
+// qui sotto verificano solo il contenuto delle celle del primo foglio,
+// non l'incapsulamento multi-foglio in se' (gia' verificato a parte in
+// ui/tests/test_ascd_book.cpp/test_multisheet.cpp). Riconosce anche un
+// vecchio "ASCD" nudo, per restare valido se il formato dovesse mai
+// tornare a produrne uno (difensivo, non il caso atteso oggi).
+static bool UnwrapFirstSheet(const unsigned char* data, size_t len,
+	const unsigned char** outAscd, size_t* outLen)
+{
+	if (len >= 4 && memcmp(data, "ASCB", 4) == 0)
+	{
+		if (len < 8)
+			return false;
+		int32 sheetCount;
+		memcpy(&sheetCount, data + 4, 4);
+		if (sheetCount < 1)
+			return false;
+
+		size_t pos = 8;
+		if (pos + 4 > len)
+			return false;
+		int32 nameLen;
+		memcpy(&nameLen, data + pos, 4);
+		pos += 4;
+		if (nameLen < 0 || pos + (size_t)nameLen > len)
+			return false;
+		pos += nameLen;
+
+		*outAscd = data + pos;
+		*outLen = len - pos;
+		return true;
+	}
+
+	if (len >= 4 && memcmp(data, "ASCD", 4) == 0)
+	{
+		*outAscd = data;
+		*outLen = len;
+		return true;
+	}
+
+	return false;
 }
 
 int main()
@@ -113,11 +159,16 @@ int main()
 	// riusa lo stesso formato del translator CSV, quindi basta
 	// controllare che il testo delle celle (formula o valore
 	// formattato) contenga quanto atteso.
-	const unsigned char *ascdData = (const unsigned char *)ascdOut.Buffer();
-	size_t ascdLen = ascdOut.BufferLength();
+	const unsigned char *rawData = (const unsigned char *)ascdOut.Buffer();
+	size_t rawLen = ascdOut.BufferLength();
+
+	const unsigned char *ascdData = NULL;
+	size_t ascdLen = 0;
+	bool unwrapped = UnwrapFirstSheet(rawData, rawLen, &ascdData, &ascdLen);
+	Check(unwrapped, "l'output di Translate e' una cartella ASCB valida o un ASCD nudo");
 
 	Check(ascdLen > 12 && memcmp(ascdData, "ASCD", 4) == 0,
-		"l'ASCD prodotto ha l'intestazione attesa");
+		"il primo foglio ha l'intestazione ASCD attesa");
 
 	if (ascdLen > 12)
 	{
@@ -223,8 +274,12 @@ int main()
 
 		if (err == B_OK)
 		{
-			const unsigned char *data = (const unsigned char *)ascdOut2.Buffer();
-			size_t len = ascdOut2.BufferLength();
+			const unsigned char *rawData2 = (const unsigned char *)ascdOut2.Buffer();
+			size_t rawLen2 = ascdOut2.BufferLength();
+			const unsigned char *data = NULL;
+			size_t len = 0;
+			Check(UnwrapFirstSheet(rawData2, rawLen2, &data, &len),
+				"il round-trip produce anch'esso una cartella ASCB valida o un ASCD nudo");
 			size_t pos = 12;
 			int32 cnt;
 			memcpy(&cnt, data + 8, 4);

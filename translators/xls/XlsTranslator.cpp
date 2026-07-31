@@ -67,8 +67,8 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 	CCellIterator iter(doc, NULL);
 	while (iter.NextExisting(c))
 	{
-		char text[512];
-		doc->GetCellFormula(c, text, false);
+		char text[4096];
+		doc->GetCellFormula(c, text, sizeof(text), false);
 
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);

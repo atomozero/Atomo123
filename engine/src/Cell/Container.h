@@ -124,8 +124,8 @@ public:
 /* cell inhoud manipulaties */
 
 	bool CalcCell(const cell&);
-	int GetCellResult(const cell&, char *, bool);
-	void GetCellFormula(const cell&, char *, bool rcStyle = false);
+	int GetCellResult(const cell&, char *, size_t bufSize, bool);
+	void GetCellFormula(const cell&, char *, size_t bufSize, bool rcStyle = false);
 	void* GetCellFormula(const cell&);
 	void SetCellFormula(const cell& inLoc, void *inFormula);
 	

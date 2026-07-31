@@ -60,7 +60,7 @@ static double NumAt(CContainer* doc, int col, int row)
 static bool IsEmpty(CContainer* doc, int col, int row)
 {
 	char text[512];
-	doc->GetCellFormula(cell(col, row), text, false);
+	doc->GetCellFormula(cell(col, row), text, sizeof(text), false);
 	return text[0] == 0;
 }
 

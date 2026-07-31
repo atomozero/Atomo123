@@ -76,17 +76,17 @@ int main()
 	Check(err == B_OK, "LoadASCD riesce");
 
 	char text[512];
-	reloaded.GetCellFormula(a1, text, false);
+	reloaded.GetCellFormula(a1, text, sizeof(text), false);
 	Check(strcmp(text, "10") == 0, "A1 e' 10 dopo il giro completo");
 
-	reloaded.GetCellFormula(b1, text, false);
+	reloaded.GetCellFormula(b1, text, sizeof(text), false);
 	Check(strcmp(text, "20") == 0, "B1 e' 20 dopo il giro completo");
 
-	reloaded.GetCellFormula(c1, text, false);
+	reloaded.GetCellFormula(c1, text, sizeof(text), false);
 	Check(strstr(text, "A1") != NULL && strstr(text, "B1") != NULL,
 		"C1 mantiene la formula (non il valore gia' calcolato) dopo il giro completo");
 
-	reloaded.GetCellFormula(d1, text, false);
+	reloaded.GetCellFormula(d1, text, sizeof(text), false);
 	Check(strcmp(text, "Ciao Atomo123") == 0, "D1 mantiene il testo dopo il giro completo");
 
 	// LoadASCD deve aver gia' ricalcolato da solo (RecalculateAll): a

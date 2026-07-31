@@ -98,8 +98,8 @@ int main()
 	view->FillDown();
 
 	char c2Formula[512], c3Formula[512];
-	doc->GetCellFormula(cell(3, 2), c2Formula, false);
-	doc->GetCellFormula(cell(3, 3), c3Formula, false);
+	doc->GetCellFormula(cell(3, 2), c2Formula, sizeof(c2Formula), false);
+	doc->GetCellFormula(cell(3, 3), c3Formula, sizeof(c3Formula), false);
 	Check(strstr(c2Formula, "B2") != NULL,
 		"Riempi in basso sposta il riferimento relativo (C2 diventa =B2*2, non =B1*2)");
 	Check(strstr(c3Formula, "B3") != NULL,
@@ -130,7 +130,7 @@ int main()
 	view->FillRight();
 
 	char g1Formula[512];
-	doc->GetCellFormula(cell(7, 1), g1Formula, false);
+	doc->GetCellFormula(cell(7, 1), g1Formula, sizeof(g1Formula), false);
 	Check(strstr(g1Formula, "E1") != NULL && strstr(g1Formula, "F1") != NULL,
 		"Riempi a destra sposta entrambi i riferimenti relativi (G1 diventa =E1+F1)");
 

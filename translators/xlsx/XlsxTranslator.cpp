@@ -7,9 +7,12 @@
 #include "XlsxTranslator.h"
 #include "MiniZip.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <expat.h>
@@ -42,6 +45,13 @@ static const translation_format sOutputFormats[] = {
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 static const int32 kASCDVersion = 1;
+// Formato "cartella di lavoro" multi-foglio (Fase 9): duplicato da
+// ui/src/AscdIO.h/.cpp (magic "ASCB", conteggio fogli, poi per
+// ciascuno nome + un blocco ASCD completo), stesso motivo della
+// duplicazione gia' esistente di WriteASCD/ReadASCD sopra -- i
+// translator non linkano contro ui/src/, per non introdurre una
+// dipendenza di link fra loro e l'app.
+static const char kASCDBookMagic[4] = { 'A', 'S', 'C', 'B' };
 
 // Stessa serializzazione ASCD degli altri translator (vedi
 // translators/csv/CsvTranslator.cpp per la descrizione completa).
@@ -70,8 +80,8 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 	CCellIterator iter(doc, NULL);
 	while (iter.NextExisting(c))
 	{
-		char text[512];
-		doc->GetCellFormula(c, text, false);
+		char text[4096];
+		doc->GetCellFormula(c, text, sizeof(text), false);
 
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);
@@ -85,6 +95,24 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 		if (len > 0 && dest->Write(text, len) != len)
 			return B_IO_ERROR;
 	}
+
+	// Sezione grafici incorporati, in coda: sempre vuota qui (questo
+	// translator non legge/scrive grafici), ma il campo va scritto
+	// comunque per compatibilita' col formato di ui/src/AscdIO.cpp
+	// (SaveASCD/LoadASCD), che lo prevede sempre. Senza questo campo
+	// esplicito, quando WriteASCDBook incapsula piu' fogli in
+	// sequenza nello stesso flusso, LoadASCD (chiamato da
+	// LoadASCDBook una volta per foglio) non puo' distinguere "fine
+	// del flusso, nessun grafico" (fine vera) da "qui non c'e' la
+	// sezione grafici" (fine del SOLO blocco di questo foglio, con
+	// altri fogli a seguire): interpreterebbe i primi 4 byte del
+	// foglio successivo (la lunghezza del suo nome) come un numero di
+	// grafici, disallineando la lettura di ogni foglio dopo il primo.
+	// Bug reale scoperto aprendo un file .xlsm con 38 fogli: solo il
+	// primo veniva letto correttamente.
+	int32 chartCount = 0;
+	if (dest->Write(&chartCount, sizeof(chartCount)) != (ssize_t)sizeof(chartCount))
+		return B_IO_ERROR;
 
 	return B_OK;
 }
@@ -124,7 +152,7 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 			return B_BAD_DATA;
 
-		char text[512];
+		char text[4096];
 		if (len < 0 || len >= (int32)sizeof(text))
 			return B_BAD_DATA;
 		if (len > 0 && source->Read(text, len) != len)
@@ -561,6 +589,144 @@ const translation_format* CXlsxTranslator::OutputFormats(int32* _count) const
 	return sOutputFormats;
 }
 
+// --- Parsing di xl/workbook.xml (elenco fogli) e xl/_rels/
+// workbook.xml.rels (nome parte fisica di ciascun foglio) -------------
+//
+// xl/workbook.xml elenca i fogli nell'ordine delle schede, con nome e
+// r:id (es. <sheet name="P-MDO_Manodopera" sheetId="10" r:id="rId9"/>),
+// ma NON il nome del file XML che contiene i dati di quel foglio:
+// quello sta in xl/_rels/workbook.xml.rels, che fa corrispondere ogni
+// r:id al percorso reale (es. rId9 -> worksheets/sheet9.xml) -- i due
+// non sono necessariamente nello stesso ordine numerico (dipende da
+// come lo strumento che ha generato il file assegna gli ID interni),
+// quindi vanno letti entrambi e incrociati.
+
+struct WorkbookSheetInfo {
+	std::string name;
+	std::string rId;
+};
+
+struct WorkbookContext {
+	std::vector<WorkbookSheetInfo> sheets;
+	bool inSheets;
+};
+
+static void XMLCALL WorkbookStart(void* userData, const char* name, const char** atts)
+{
+	WorkbookContext* ctx = (WorkbookContext*)userData;
+	if (strcmp(name, "sheets") == 0)
+		ctx->inSheets = true;
+	else if (ctx->inSheets && strcmp(name, "sheet") == 0)
+	{
+		WorkbookSheetInfo info;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "name") == 0)
+				info.name = atts[i + 1];
+			else if (strcmp(atts[i], "r:id") == 0)
+				info.rId = atts[i + 1];
+		}
+		if (!info.rId.empty())
+			ctx->sheets.push_back(info);
+	}
+}
+
+static void XMLCALL WorkbookEnd(void* userData, const char* name)
+{
+	WorkbookContext* ctx = (WorkbookContext*)userData;
+	if (strcmp(name, "sheets") == 0)
+		ctx->inSheets = false;
+}
+
+static bool ParseWorkbookSheetList(const std::vector<unsigned char>& xml,
+	std::vector<WorkbookSheetInfo>& out)
+{
+	if (xml.empty())
+		return false;
+
+	WorkbookContext ctx;
+	ctx.inSheets = false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, WorkbookStart, WorkbookEnd);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK || ctx.sheets.empty())
+		return false;
+
+	out = ctx.sheets;
+	return true;
+}
+
+static void XMLCALL RelationshipsStart(void* userData, const char* name, const char** atts)
+{
+	std::map<std::string, std::string>* map = (std::map<std::string, std::string>*)userData;
+	if (strcmp(name, "Relationship") != 0)
+		return;
+
+	std::string id, target;
+	for (int i = 0; atts[i]; i += 2)
+	{
+		if (strcmp(atts[i], "Id") == 0)
+			id = atts[i + 1];
+		else if (strcmp(atts[i], "Target") == 0)
+			target = atts[i + 1];
+	}
+	if (!id.empty() && !target.empty())
+		(*map)[id] = target;
+}
+
+static bool ParseRelationships(const std::vector<unsigned char>& xml,
+	std::map<std::string, std::string>& out)
+{
+	if (xml.empty())
+		return false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &out);
+	XML_SetElementHandler(parser, RelationshipsStart, NULL);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
+	XML_ParserFree(parser);
+
+	return status == XML_STATUS_OK;
+}
+
+// Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
+// il commento su kASCDBookMagic sopra): riusa WriteASCD cosi' com'e'
+// per ogni foglio, nessuna duplicazione della serializzazione per
+// cella.
+static status_t WriteASCDBook(
+	const std::vector<std::pair<std::string, CContainer*> >& sheets,
+	BPositionIO* dest)
+{
+	if (dest->Write(kASCDBookMagic, 4) != 4)
+		return B_IO_ERROR;
+
+	int32 sheetCount = (int32)sheets.size();
+	if (dest->Write(&sheetCount, sizeof(sheetCount)) != (ssize_t)sizeof(sheetCount))
+		return B_IO_ERROR;
+
+	for (int32 i = 0; i < sheetCount; i++)
+	{
+		const std::string& name = sheets[i].first;
+		int32 nameLen = (int32)name.size();
+		if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+			return B_IO_ERROR;
+		if (nameLen > 0 && dest->Write(name.data(), nameLen) != nameLen)
+			return B_IO_ERROR;
+
+		status_t err = WriteASCD(sheets[i].second, dest);
+		if (err != B_OK)
+			return err;
+	}
+
+	return B_OK;
+}
+
 status_t CXlsxTranslator::Identify(BPositionIO* source,
 	const translation_format* format, BMessage* extension,
 	translator_info* info, uint32 outType)
@@ -622,50 +788,109 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 	if (outType != kAtomoNativeFormat && outType != kAtomoXlsxFormat)
 		return B_NO_TRANSLATOR;
 
-	CContainer* doc = new CContainer(NULL, NULL);
+	if (info->type == kAtomoNativeFormat)
+	{
+		// ASCD -> XLSX (esportazione, vedi WriteXLSX sotto): un solo
+		// foglio, come da sempre -- non cambia con il supporto
+		// multi-foglio, che riguarda solo l'IMPORTAZIONE (vedi sotto).
+		CContainer* doc = new CContainer(NULL, NULL);
+		status_t err = ReadASCD(source, doc);
+		if (err == B_OK)
+			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
+				: WriteXLSX(doc, destination);
+		doc->Release();
+		return err;
+	}
+
+	// XLSX -> ASCD/ASCB (importazione): legge TUTTI i fogli della
+	// cartella di lavoro (Fase 9), non solo il primo -- xl/workbook.xml
+	// elenca nome e r:id di ciascun foglio nell'ordine delle schede,
+	// xl/_rels/workbook.xml.rels fa corrispondere ogni r:id al file XML
+	// fisico che contiene i dati. Se manca anche solo uno di questi due
+	// pezzi (pacchetto malformato, o generato da uno strumento che non
+	// li scrive nel modo atteso) si torna al comportamento precedente
+	// -- un solo foglio, xl/worksheets/sheet1.xml -- invece di fallire
+	// del tutto: un foglio solo e' comunque meglio di niente.
+	CZipReader zip;
+	if (!zip.Open(source))
+		return B_BAD_DATA;
+
+	std::vector<unsigned char> sharedStringsXml;
+	zip.ReadEntry("xl/sharedStrings.xml", sharedStringsXml); // opzionale
+
+	std::vector<std::string> sharedStrings;
+	if (!ParseSharedStrings(sharedStringsXml, sharedStrings))
+		return B_BAD_DATA;
+
+	std::vector<std::pair<std::string, std::string> > sheetsToRead; // (nome, percorso XML)
+
+	std::vector<unsigned char> workbookXml, relsXml;
+	std::vector<WorkbookSheetInfo> sheetList;
+	std::map<std::string, std::string> relTargets;
+	if (zip.ReadEntry("xl/workbook.xml", workbookXml)
+		&& ParseWorkbookSheetList(workbookXml, sheetList)
+		&& zip.ReadEntry("xl/_rels/workbook.xml.rels", relsXml)
+		&& ParseRelationships(relsXml, relTargets))
+	{
+		for (size_t i = 0; i < sheetList.size(); i++)
+		{
+			std::map<std::string, std::string>::iterator it =
+				relTargets.find(sheetList[i].rId);
+			if (it == relTargets.end())
+				continue; // r:id senza una voce corrispondente nei _rels: salta questo foglio
+
+			std::string path = "xl/" + it->second; // i _rels sono relativi a xl/
+			if (zip.HasEntry(path.c_str()))
+				sheetsToRead.push_back(std::make_pair(sheetList[i].name, path));
+		}
+	}
+
+	if (sheetsToRead.empty())
+	{
+		// Ripiego: un solo foglio, come prima del supporto multi-foglio.
+		if (!zip.HasEntry("xl/worksheets/sheet1.xml"))
+			return B_BAD_DATA;
+		sheetsToRead.push_back(std::make_pair(std::string("Foglio1"),
+			std::string("xl/worksheets/sheet1.xml")));
+	}
+
+	std::vector<std::pair<std::string, CContainer*> > sheets;
 	status_t err = B_OK;
 
-	if (info->type == kAtomoNativeFormat)
-		err = ReadASCD(source, doc);
-	else
+	for (size_t i = 0; i < sheetsToRead.size() && err == B_OK; i++)
 	{
-		CZipReader zip;
-		if (!zip.Open(source))
-			err = B_BAD_DATA;
-
-		// Il primo foglio e' sempre xl/worksheets/sheet1.xml nei
-		// pacchetti generati da strumenti standard (l'ordine reale dei
-		// fogli e' tecnicamente definito da xl/workbook.xml + i _rels,
-		// ma per un documento con un solo foglio -- il caso comune --
-		// sheet1.xml e' sempre quello giusto).
-		if (err == B_OK && !zip.HasEntry("xl/worksheets/sheet1.xml"))
-			err = B_BAD_DATA;
-
-		std::vector<unsigned char> sharedStringsXml;
-		if (err == B_OK)
-			zip.ReadEntry("xl/sharedStrings.xml", sharedStringsXml); // opzionale
-
-		std::vector<std::string> sharedStrings;
-		if (err == B_OK && !ParseSharedStrings(sharedStringsXml, sharedStrings))
-			err = B_BAD_DATA;
-
 		std::vector<unsigned char> sheetXml;
-		if (err == B_OK && !zip.ReadEntry("xl/worksheets/sheet1.xml", sheetXml))
+		if (!zip.ReadEntry(sheetsToRead[i].second.c_str(), sheetXml))
+		{
 			err = B_BAD_DATA;
+			break;
+		}
 
-		if (err == B_OK && !ParseSheet(sheetXml, doc, sharedStrings))
+		CContainer* doc = new CContainer(NULL, NULL);
+		if (!ParseSheet(sheetXml, doc, sharedStrings))
+		{
+			doc->Release();
 			err = B_BAD_DATA;
+			break;
+		}
+
+		sheets.push_back(std::make_pair(sheetsToRead[i].first, doc));
 	}
 
 	if (err == B_OK)
 	{
 		if (outType == kAtomoNativeFormat)
-			err = WriteASCD(doc, destination);
+			err = WriteASCDBook(sheets, destination);
 		else
-			err = WriteXLSX(doc, destination);
+			// L'esportazione XLSX resta a un solo foglio (quello
+			// attivo, il primo qui): i writer non nativi non
+			// supportano ancora piu' fogli, vedi WriteXLSX.
+			err = WriteXLSX(sheets[0].second, destination);
 	}
 
-	doc->Release();
+	for (size_t i = 0; i < sheets.size(); i++)
+		sheets[i].second->Release();
+
 	return err;
 }
 

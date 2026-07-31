@@ -370,7 +370,7 @@ void CTextConverter::ConvertToText(range *sRange, CCellView *inView)
 		bp = buffer;
 		fContainer->Lock();
 		fContainer->GetValue(c, v);
-		fContainer->GetCellResult(c, s, true);
+		fContainer->GetCellResult(c, s, sizeof(s), true);
 		fContainer->Unlock();
 
 		if (prevLoc.v < c.v)

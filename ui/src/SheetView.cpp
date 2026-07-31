@@ -538,8 +538,8 @@ void SheetView::SortSelection(bool ascending)
 
 		for (int j = 0; j < numCols; j++)
 		{
-			char text[512];
-			fDoc->GetCellFormula(cell(sel.left + j, row), text, false);
+			char text[4096];
+			fDoc->GetCellFormula(cell(sel.left + j, row), text, sizeof(text), false);
 			rows[i].cellText[j] = text;
 		}
 
@@ -796,8 +796,8 @@ SheetView::UndoSnapshot SheetView::CaptureSnapshot(range r) const
 	cell c;
 	while (iter.NextExisting(c))
 	{
-		char text[512];
-		fDoc->GetCellFormula(c, text, false);
+		char text[4096];
+		fDoc->GetCellFormula(c, text, sizeof(text), false);
 		snap.cells.push_back(std::make_pair(c, std::string(text)));
 	}
 
@@ -998,8 +998,8 @@ void SheetView::Draw(BRect updateRect)
 			for (int col = firstCol; col <= lastCol; col++)
 			{
 				cell c(col, row);
-				char text[512];
-				fDoc->GetCellResult(c, text, true);
+				char text[4096];
+				fDoc->GetCellResult(c, text, sizeof(text), true);
 				if (text[0] == 0)
 					continue;
 
@@ -1512,8 +1512,8 @@ void SheetView::StartEditing(cell c, const char* initialText)
 		fEditor->SetText(initialText);
 	else
 	{
-		char text[512];
-		fDoc->GetCellFormula(c, text, false);
+		char text[4096];
+		fDoc->GetCellFormula(c, text, sizeof(text), false);
 		fEditor->SetText(text);
 	}
 

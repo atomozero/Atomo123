@@ -96,7 +96,7 @@ int main()
 			"B1 (=A1*2) del primo foglio ricalcola a 20 dopo il giro completo");
 
 		char text2[512];
-		loaded[1].doc->GetCellFormula(cell(1, 1), text2, false);
+		loaded[1].doc->GetCellFormula(cell(1, 1), text2, sizeof(text2), false);
 		Check(strcmp(text2, "Ciao dal secondo foglio") == 0,
 			"il testo del secondo foglio e' preservato");
 

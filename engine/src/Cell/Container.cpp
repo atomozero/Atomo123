@@ -40,6 +40,9 @@
 
 #include <support/Debug.h>
 
+#include <cstring>
+#include <vector>
+
 #include "Cell.h"
 #include "Formula.h"
 #include "Value.h"
@@ -397,7 +400,31 @@ bool CContainer::GetPreviousCell(cell& c, bool mayBeEmpty)
 
 /* cell inhoud manipulaties */
 
-int CContainer::GetCellResult(const cell& inLoc, char *s, bool ignoreWidth)
+// FormatValue e CFormula::UnMangle scrivono nel buffer che ricevono
+// senza controllarne la dimensione (Formatter.cpp, caso eTextData:
+// strcpy diretto del testo della cella; Formula.cpp: concatenazioni
+// dirette in fase di ricostruzione della formula) -- vanno sempre
+// invocate su un buffer di appoggio abbastanza grande, MAI sul buffer
+// del chiamante, il cui contenuto va poi copiato con un limite tramite
+// strlcpy. Bug scoperto aprendo un file .xlsm reale con una cella di
+// testo di circa 2900 caratteri (una nota introduttiva), che mandava
+// in fondo allo stack un "char text[512]" tipico dei chiamanti
+// (traduttori, SheetView, ecc.) e corrompeva lo stack -- non un
+// crash pulito ma un blocco apparente (stesso pattern, gia' visto in
+// questa sessione, per cui debug_server intercetta la corruzione).
+static size_t TextBufferSizeFor(const Value& v)
+{
+	return (v.fType == eTextData && v.fText) ? strlen(v.fText) + 4 : 128;
+}
+
+// Limite del buffer di appoggio per la formula "smanglata": generoso
+// rispetto a qualunque formula reale (le piu' lunghe viste finora,
+// import XLSX con XLOOKUP/riferimenti tra fogli, restano sotto i 100
+// caratteri), ma comunque un limite esplicito invece di scrivere
+// senza controllo nel buffer del chiamante.
+static const size_t kMaxUnmangledFormulaLength = 16384;
+
+int CContainer::GetCellResult(const cell& inLoc, char *s, size_t bufSize, bool ignoreWidth)
 {	/*CHECKLOCK*/
 	cellmap::iterator i;
 
@@ -405,35 +432,48 @@ int CContainer::GetCellResult(const cell& inLoc, char *s, bool ignoreWidth)
 	{
 		float w;
 		w = (ignoreWidth || !fInView) ? 1e6 : fInView->GetColumnWidth(inLoc.h);
-		
+
 		CellStyle cs = gStyleTable[(*i).second.mStyle];
 
-		return static_cast<int>(gFormatTable.FormatValue(cs.fFormat, Value((*i).second), s, 
-			cs.fFont, w) );
+		Value v((*i).second);
+		std::vector<char> buf(TextBufferSizeFor(v));
+		int result = static_cast<int>(gFormatTable.FormatValue(cs.fFormat, v, buf.data(),
+			cs.fFont, w));
+		strlcpy(s, buf.data(), bufSize);
+		return result;
 	}
 	else
 	{
 		s[0] = 0;
 		return 0;
 	}
-} 
+}
 
-void CContainer::GetCellFormula(const cell& inLoc, char *s, bool rcStyle)
+void CContainer::GetCellFormula(const cell& inLoc, char *s, size_t bufSize, bool rcStyle)
 {	/*CHECKLOCK*/
 	cellmap::iterator i;
 
 	if ((i = fCellData.find(inLoc)) != fCellData.end())
 	{
 		CFormula form((*i).second.mFormula);
-		
+
 		if (form.IsFormula())
-			form.UnMangle(s, inLoc, this, rcStyle);
+		{
+			char buf[kMaxUnmangledFormulaLength];
+			form.UnMangle(buf, inLoc, this, rcStyle);
+			strlcpy(s, buf, bufSize);
+		}
 		else
-			gFormatTable.FormatValue(eGeneral, Value((*i).second), s);
+		{
+			Value v((*i).second);
+			std::vector<char> buf(TextBufferSizeFor(v));
+			gFormatTable.FormatValue(eGeneral, v, buf.data());
+			strlcpy(s, buf.data(), bufSize);
+		}
 	}
 	else
 		s[0] = 0;
-} 
+}
 
 void* CContainer::GetCellFormula(const cell& inLoc)
 {	/*CHECKLOCK*/

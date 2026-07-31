@@ -68,8 +68,8 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 	CCellIterator iter(doc, NULL);
 	while (iter.NextExisting(c))
 	{
-		char text[512];
-		doc->GetCellFormula(c, text, false);
+		char text[4096];
+		doc->GetCellFormula(c, text, sizeof(text), false);
 
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);
@@ -121,7 +121,7 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 			return B_BAD_DATA;
 
-		char text[512];
+		char text[4096];
 		if (len < 0 || len >= (int32)sizeof(text))
 			return B_BAD_DATA;
 		if (len > 0 && source->Read(text, len) != len)

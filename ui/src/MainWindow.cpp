@@ -4,6 +4,8 @@
 	Vedi MainWindow.h.
 */
 
+#include <cstdio>
+
 #include "MainWindow.h"
 #include "SheetView.h"
 #include "AscdIO.h"
@@ -710,8 +712,8 @@ void MainWindow::CopySelection(bool cut)
 		{
 			if (j > 0)
 				clipText << "\t";
-			char text[512];
-			fDoc->GetCellFormula(cell(sel.left + j, sel.top + i), text, false);
+			char text[4096];
+			fDoc->GetCellFormula(cell(sel.left + j, sel.top + i), text, sizeof(text), false);
 			clipText << text;
 		}
 	}
@@ -1048,8 +1050,8 @@ void MainWindow::FindNext(const char* searchText)
 
 	while (iter.NextExisting(c))
 	{
-		char text[512];
-		fDoc->GetCellFormula(c, text, false);
+		char text[4096];
+		fDoc->GetCellFormula(c, text, sizeof(text), false);
 
 		BString hay(text);
 		hay.ToLower();
@@ -1109,8 +1111,8 @@ void MainWindow::ReplaceCurrent(const char* searchText, const char* replaceText)
 		return;
 
 	cell sel = fSheetView->Selection();
-	char text[512];
-	fDoc->GetCellFormula(sel, text, false);
+	char text[4096];
+	fDoc->GetCellFormula(sel, text, sizeof(text), false);
 
 	BString original(text);
 	if (original.IFindFirst(searchText) < 0)
@@ -1153,8 +1155,8 @@ void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
 	cell c;
 	while (iter.NextExisting(c))
 	{
-		char text[512];
-		fDoc->GetCellFormula(c, text, false);
+		char text[4096];
+		fDoc->GetCellFormula(c, text, sizeof(text), false);
 		if (BString(text).IFindFirst(searchText) >= 0)
 			matches.push_back(c);
 	}
@@ -1179,8 +1181,8 @@ void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
 
 	for (size_t i = 0; i < matches.size(); i++)
 	{
-		char text[512];
-		fDoc->GetCellFormula(matches[i], text, false);
+		char text[4096];
+		fDoc->GetCellFormula(matches[i], text, sizeof(text), false);
 		BString replaced = ReplaceAllCaseInsensitive(text, searchText, replaceText);
 		try
 		{
@@ -1329,9 +1331,9 @@ void MainWindow::SelectionChanged(cell c)
 	}
 	fCellLabel->SetText(name);
 
-	char formula[512];
+	char formula[4096];
 	if (fDoc)
-		fDoc->GetCellFormula(c, formula, false);
+		fDoc->GetCellFormula(c, formula, sizeof(formula), false);
 	else
 		formula[0] = 0;
 	fFormulaBar->SetText(formula);

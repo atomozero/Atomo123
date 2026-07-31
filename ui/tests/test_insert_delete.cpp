@@ -65,7 +65,7 @@ static double NumAt(CContainer* doc, int col, int row)
 static bool IsEmpty(CContainer* doc, int col, int row)
 {
 	char text[512];
-	doc->GetCellFormula(cell(col, row), text, false);
+	doc->GetCellFormula(cell(col, row), text, sizeof(text), false);
 	return text[0] == 0;
 }
 
@@ -134,7 +134,7 @@ int main()
 	view->InsertRows();
 
 	char c1Formula[512];
-	doc->GetCellFormula(cell(3, 1), c1Formula, false);
+	doc->GetCellFormula(cell(3, 1), c1Formula, sizeof(c1Formula), false);
 	Check(strstr(c1Formula, "C4") != NULL,
 		"il riferimento di una cella FERMA (C1) segue la cella spostata (diventa =C4)");
 	Check(NumAt(doc, 3, 1) == 30.0,

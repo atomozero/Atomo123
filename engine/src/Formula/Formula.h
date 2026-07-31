@@ -79,7 +79,14 @@ enum PFToken {
 
 const long
 	kMaxStackHeight = 25,
-	kMaxStringLength = 256,
+	// Buffer per ogni livello dello stack di CFormula::UnMangle: le
+	// concatenazioni intermedie (Formula.cpp) scrivono qui senza
+	// controllare la lunghezza, quindi un termine (o un risultato
+	// parziale) piu' lungo del limite corrompe l'area allocata --
+	// 256 (il valore storico di Sum-It) e' risultato troppo stretto
+	// per formule Excel moderne con riferimenti a tabelle strutturate
+	// e funzioni lunghe (es. XLOOKUP); alzato con ampio margine.
+	kMaxStringLength = 4096,
 	kPFWordSize = sizeof(int32),
 	kPFAlignBits = kPFWordSize - 1;
 
