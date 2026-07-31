@@ -10,9 +10,9 @@ vivo in una sessione grafica reale. **Fase 5 (packaging/compatibilità)
 in corso** — ricetta HaikuDepot pronta ma non ancora buildabile
 (nessun repository pubblico); licenza **MIT** decisa per il codice
 nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
-la sua licenza BSD originale); export ODS aggiunto (oltre a CSV);
-restano l'export XLS/XLSX e il test di compatibilità su un corpus di
-file reali. **Fase 6 chiusa**: guida utente, funzioni con
+la sua licenza BSD originale); export ODS e XLSX aggiunti (oltre a
+CSV); restano l'export XLS legacy e il test di compatibilità su un
+corpus di file reali. **Fase 6 chiusa**: guida utente, funzioni con
 nome nelle formule, grafici a barre e tabelle pivot di base, editing
 in-cella e navigazione da tastiera in stile Excel, SUMIF/COUNTIF/
 AVERAGEIF, correzione della propagazione del ricalcolo alle celle
@@ -374,7 +374,7 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       Costruito per essere direttamente riusabile quando XLS/XLSX/ODS
       avranno anche loro un writer, non solo per CSV. **Bug scoperto e
       corretto costruendo questa funzione**: vedi sotto.
-- [ ] Export XLS/XLSX/ODS: **ODS fatto**, XLS/XLSX ancora solo import.
+- [ ] Export XLS/XLSX/ODS: **ODS e XLSX fatti**, resta solo XLS legacy.
       `OdsTranslator` ora scrive anche verso ODS (`Identify()`
       riconosce un sorgente ASCD nativo in ingresso, `Translate()`
       instrada nelle due direzioni), riusando lo stesso `CZipReader` in
@@ -386,10 +386,24 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       formule (stessa scelta, stesso motivo: niente sintassi ODF
       arbitraria da ricostruire). Test di round-trip completo
       (ASCD → ODS → ASCD, incluso una cella con formula) in
-      `translators/ods/tests/test_ods_translator.cpp`. Restano XLS
-      (servirebbe generare BIFF/OLE2) e XLSX (ZIP+XML in scrittura,
-      stesso approccio di ODS ma schema OOXML) — non ancora affrontati.
-      **Due bug reali del motore scoperti costruendo l'export ODS**,
+      `translators/ods/tests/test_ods_translator.cpp`. Stesso approccio
+      applicato a `XlsxTranslator` (`translators/xlsx/`): `CZipWriter`
+      duplicato nella propria copia di `MiniZip.h`/`.cpp` (stessa scelta
+      di non condividere codice tra translator), formato OOXML minimo
+      ([Content_Types].xml, _rels/.rels, xl/workbook.xml,
+      xl/_rels/workbook.xml.rels, xl/worksheets/sheet1.xml), stringhe
+      scritte inline (`t="inlineStr"`, `<is><t>...</t></is>`) invece di
+      costruire una tabella di stringhe condivise separata — più
+      semplice, richiede pero' di aver esteso anche il parser XLSX in
+      lettura per riconoscerle (prima gestiva solo `t="s"` verso
+      `sharedStrings.xml`). Anche qui verificato con `unzip` di sistema
+      oltre che col proprio `CZipReader`. Test di round-trip completo
+      in `translators/xlsx/tests/test_xlsx_translator.cpp`. Resta XLS
+      legacy (servirebbe generare BIFF/OLE2, formato binario molto più
+      complesso di ZIP+XML — non ancora affrontato).
+      **Due bug reali del motore scoperti costruendo l'export ODS**
+      (lo stesso fix è stato applicato preventivamente a XLSX, che non
+      ha quindi mai manifestato questi bug in prima persona),
       entrambi indipendenti dal formato ODS in sé (si manifestano
       identicamente in CSV/ASCD): vedi sotto.
 - [x] Locale Kit: i valori numerici nella griglia (non nella barra
