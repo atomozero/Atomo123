@@ -1673,6 +1673,19 @@ toolbar, ridimensionamento riga/colonna.
       anche con esecuzioni ripetute e con un avvio dal vivo
       dell'applicazione).
 
+      **Indizi visivi aggiunti in un secondo momento**, segnalati
+      dall'utente dopo aver provato la funzionalità dal vivo: senza
+      nessun riferimento a schermo, il ridimensionamento si poteva
+      scoprire solo trascinando alla cieca vicino a un'intestazione.
+      Aggiunti due indizi (entrambi richiesti): tre puntini disegnati
+      su ogni confine ridimensionabile fra due colonne/righe
+      nell'intestazione, e un cursore a doppia freccia
+      (`B_CURSOR_ID_RESIZE_EAST_WEST`/`NORTH_SOUTH`) quando il mouse
+      passa sopra un confine, anche senza trascinare — stessa idea del
+      cursore di Excel/LibreOffice Calc. Il confronto per riconoscerli
+      usa `Bounds()`, non coordinate assolute fisse, per restare
+      corretto anche a foglio scorso.
+
       Con questo, tre dei quattro punti scelti dall'utente per la
       Fase 8 sono completi; resta solo icone sulla toolbar.
 
