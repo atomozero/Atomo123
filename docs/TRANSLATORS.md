@@ -229,21 +229,31 @@ codice XLSX è tutto nuovo (non riusa codice storico non ancora
 testato come `CExcel5Filter`), quindi non ha ereditato le stesse
 categorie di problemi.
 
-## translators/ods — import ODS (OpenDocument Spreadsheet)
+## translators/ods — import/export ODS (OpenDocument Spreadsheet)
 
-Importa il formato di LibreOffice/OpenOffice Calc (`kAtomoOdsFormat`,
-MIME `application/vnd.oasis.opendocument.spreadsheet`) verso ASCD. Un
+Importa **e ora anche esporta** il formato di LibreOffice/OpenOffice
+Calc (`kAtomoOdsFormat`, MIME
+`application/vnd.oasis.opendocument.spreadsheet`) da/verso ASCD. Un
 file ODS è, come XLSX, un archivio ZIP contenente XML — ma con schema
 OpenDocument invece di OOXML: un unico `content.xml` con tutti i fogli
 (non un file XML per foglio), più `META-INF/manifest.xml` come
 marcatore del formato e un file `mimetype` (non compresso, primo
-elemento dell'archivio nello standard, ma non necessario da leggere
-per questo translator).
+elemento dell'archivio nello standard).
 
 **Riuso diretto di `MiniZip.h`/`.cpp`** (stessa copia del translator
-XLSX, nessuna modifica necessaria: il contenitore ZIP è identico) ed
-**expat** per il parsing di `content.xml`, con un parser dedicato allo
-schema OpenDocument (`OdsTranslator.cpp`).
+XLSX per la parte di lettura, nessuna modifica necessaria: il
+contenitore ZIP è identico) ed **expat** per il parsing di
+`content.xml`, con un parser dedicato allo schema OpenDocument
+(`OdsTranslator.cpp`). Per l'export si è aggiunto **`CZipWriter`** allo
+stesso `MiniZip.h`/`.cpp` (simmetrico a `CZipReader`, sola scrittura,
+solo voci "stored" senza compressione — più semplice e robusto del
+"deflate" per le dimensioni tipiche di un foglio esportato, a costo di
+un file leggermente più grande): scrive gli header locali, calcola il
+CRC32 con `crc32()` di zlib, poi al `Close()` scrive la central
+directory e l'End Of Central Directory. Verificato non solo contro il
+proprio `CZipReader` ma anche contro `unzip` di sistema (`unzip -l`/
+`unzip -p`), per escludere che l'archivio fosse valido solo per
+coincidenza con il proprio lettore.
 
 ### Differenza strutturale importante rispetto a XLSX
 
@@ -286,12 +296,26 @@ Si importa solo il primo `<table:table>` (primo foglio): un documento
 multi-foglio richiederebbe iterare tutte le tabelle e decidere quale
 esporre — stesso tipo di limite già accettato per XLSX/sheet1.
 
+### Export ODS: solo valori calcolati, non formule
+
+Come per l'export CSV (vedi sopra), `WriteODS`/`BuildContentXml`
+scrivono solo i **valori calcolati** di ogni cella (`office:value-type`
+`"float"`/`"string"`), non le formule — stessa scelta, stesso motivo:
+niente sintassi ODF arbitraria da ricostruire per casi non gestiti
+(l'inverso di `ConvertODFFormula` non è banale per formule qualsiasi).
+`Identify()` riconosce anche un sorgente ASCD nativo in ingresso (oltre
+al vero ODS) in modo da poter instradare `BTranslatorRoster` nella
+direzione ASCD → ODS; `Translate()` decide la direzione in base a
+`info->type`/`outType`, con un `ReadASCD`/`WriteASCD` che rispecchiano
+quelli degli altri translator (stessa duplicazione deliberata invece di
+condividerli, per non introdurre dipendenze tra translator).
+
 ### Build, test, installazione
 
 ```
 cd translators/ods
 make            # compila l'add-on OdsTranslator
-make test       # compila ed esegue il test end-to-end
+make test       # compila ed esegue il test end-to-end (import + export)
 make install    # copia l'add-on in ~/config/non-packaged/add-ons/Translators
 ```
 
@@ -305,8 +329,17 @@ fantasma). Il test importa il file, verifica che i valori e la formula
 (convertita in sintassi nativa, non il suo valore già calcolato) siano
 stati importati correttamente, poi **ricostruisce un documento dai
 dati ASCD prodotti e verifica che il motore ricalcoli autonomamente la
-formula ottenendo il risultato corretto**.
+formula ottenendo il risultato corretto**. Un secondo blocco verifica
+l'export: un documento ASCD con un numero, una stringa e una formula
+viene tradotto in ODS, poi il file ODS appena scritto viene riletto
+dallo stesso translator (round-trip completo ASCD → ODS → ASCD),
+verificando che i valori sopravvivano e che la formula sia diventata il
+suo valore calcolato (non appiattita per errore alle altre celle, né
+sparita).
 
-Nessun bug nuovo del motore scoperto costruendo questo translator:
-come XLSX, il codice è tutto nuovo e non riusa percorsi del motore già
-noti come fragili.
+Due bug reali del motore scoperti costruendo l'export ODS — nessuno
+specifico del formato ODS (si manifestano identicamente in CSV/ASCD):
+vedi in `ROADMAP.md`, Fase 5, "Bug scoperto: `GetBounds` esclude le
+celle non ancora calcolate..." e "Bug scoperto (falso allarme, ma
+test-harness da correggere): `GetCellFormula` di una formula con una
+costante numerica si blocca senza un `BApplication`".

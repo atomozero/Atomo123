@@ -10,8 +10,9 @@ vivo in una sessione grafica reale. **Fase 5 (packaging/compatibilità)
 in corso** — ricetta HaikuDepot pronta ma non ancora buildabile
 (nessun repository pubblico); licenza **MIT** decisa per il codice
 nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
-la sua licenza BSD originale); resta il test di compatibilità su un
-corpus di file reali. **Fase 6 chiusa**: guida utente, funzioni con
+la sua licenza BSD originale); export ODS aggiunto (oltre a CSV);
+restano l'export XLS/XLSX e il test di compatibilità su un corpus di
+file reali. **Fase 6 chiusa**: guida utente, funzioni con
 nome nelle formule, grafici a barre e tabelle pivot di base, editing
 in-cella e navigazione da tastiera in stile Excel, SUMIF/COUNTIF/
 AVERAGEIF, correzione della propagazione del ricalcolo alle celle
@@ -373,9 +374,24 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       Costruito per essere direttamente riusabile quando XLS/XLSX/ODS
       avranno anche loro un writer, non solo per CSV. **Bug scoperto e
       corretto costruendo questa funzione**: vedi sotto.
-- [ ] Export XLS/XLSX/ODS: nessuno dei tre translator ha ancora un
-      writer (solo import) — servirebbe generare BIFF/OLE2 per XLS,
-      ZIP+XML per XLSX/ODS in scrittura, non solo in lettura
+- [ ] Export XLS/XLSX/ODS: **ODS fatto**, XLS/XLSX ancora solo import.
+      `OdsTranslator` ora scrive anche verso ODS (`Identify()`
+      riconosce un sorgente ASCD nativo in ingresso, `Translate()`
+      instrada nelle due direzioni), riusando lo stesso `CZipReader` in
+      lettura e un nuovo `CZipWriter` (voci "stored", non compresse,
+      CRC32 via zlib) in `MiniZip.h`/`.cpp` — verificato non solo
+      contro il proprio `CZipReader` ma anche contro `unzip` di sistema
+      per escludere che l'archivio fosse valido solo per coincidenza.
+      Come per l'export CSV, scrive solo i **valori calcolati**, non le
+      formule (stessa scelta, stesso motivo: niente sintassi ODF
+      arbitraria da ricostruire). Test di round-trip completo
+      (ASCD → ODS → ASCD, incluso una cella con formula) in
+      `translators/ods/tests/test_ods_translator.cpp`. Restano XLS
+      (servirebbe generare BIFF/OLE2) e XLSX (ZIP+XML in scrittura,
+      stesso approccio di ODS ma schema OOXML) — non ancora affrontati.
+      **Due bug reali del motore scoperti costruendo l'export ODS**,
+      entrambi indipendenti dal formato ODS in sé (si manifestano
+      identicamente in CSV/ASCD): vedi sotto.
 - [x] Locale Kit: i valori numerici nella griglia (non nella barra
       formule, che mostra sempre il testo grezzo modificabile) sono
       formattati con `BNumberFormat` secondo le preferenze di sistema
@@ -796,6 +812,77 @@ logica, non l'esperienza utente end-to-end.
       progetto (vedi `translators/*/tests/`), non un vero corpus
       eterogeneo generato da applicazioni reali in condizioni non
       controllate
+
+### Bug scoperto: `GetBounds` esclude le celle non ancora calcolate, rompendo il ricalcolo/salvataggio quando sono ai margini del foglio
+
+Costruendo il test di round-trip dell'export ODS (una formula come
+cella più a destra di un foglio, senza nessun'altra cella "reale" oltre
+di lei) `RecalculateAll`/`SaveASCD` (`ui/src/AscdIO.cpp`) e le funzioni
+gemelle nei translator (`ReadASCD`/`WriteASCD` in
+`CsvTranslator.cpp`/`OdsTranslator.cpp`) restavano tutte silenziosamente
+mute su quella cella: la formula non veniva mai calcolata, e se il
+documento veniva risalvato la cella spariva del tutto dal file.
+
+Causa: `CContainer::GetBounds` esclude dal rettangolo calcolato le
+celle con `mType == eNoData` — esattamente lo stato di una formula
+appena impostata da `TryToParseString` e non ancora passata da
+`CalcCell` (che le assegna un tipo reale). Tutte queste funzioni
+calcolavano i limiti del foglio con `GetBounds` **prima** di iterare
+per ricalcolare/scrivere, quindi se la cella "ancora da calcolare" era
+anche quella più a destra o in basso, restava fuori dal rettangolo e
+`CCellIterator` non la visitava mai — né in quella passata né in quelle
+successive, perché i limiti non venivano più ricalcolati.
+
+Bug reale anche nell'uso dal vivo, non solo nei translator:
+`CommitEditing` chiama `RecalculateAll` dopo ogni conferma (fix di Fase
+6, vedi sotto), quindi digitare una nuova formula proprio nell'angolo
+in basso a destra del foglio la lascerebbe vuota finché non si tocca
+un'altra cella che sposti i limiti oltre quel punto.
+
+**Fix**: le quattro funzioni (`RecalculateAll`, `SaveASCD` in
+`AscdIO.cpp`, `ReadASCD`/`WriteASCD` in `CsvTranslator.cpp` e
+`OdsTranslator.cpp`) ora iterano con `CCellIterator(doc, NULL)` — il
+range completo del foglio invece dei limiti di `GetBounds` — anziché
+un rettangolo che può escludere proprio la cella che serve raggiungere.
+Resta comunque efficiente: `NextExisting` salta direttamente da una
+cella esistente alla successiva tramite la mappa ordinata, senza
+scandire le celle vuote in mezzo, quindi il costo dipende dal numero di
+celle realmente presenti, non dalla dimensione del rettangolo. Test di
+non regressione in `ui/tests/test_ascd_io.cpp` (una formula come cella
+più a destra del foglio, salvata e ricaricata senza essere mai
+calcolata a mano prima del salvataggio).
+
+### Bug scoperto (falso allarme, ma test-harness da correggere): `GetCellFormula` di una formula con una costante numerica si blocca senza un `BApplication`
+
+Scrivendo il test di cui sopra, `SaveASCD` si bloccava indefinitamente
+— non nella logica appena descritta, ma dentro `GetCellFormula` per una
+formula come `=A1+10` (riferimento a cella più costante numerica).
+Isolato con un mini programma a sé stante e tracciando gli opcode
+attraversati da `CFormula::UnMangle` (`engine/src/Formula/Formula.cpp`):
+il blocco non è nella macchina a pila che ricostruisce il testo della
+formula, ma dentro `ftoa()` (`engine/src/Cell/Formatter.cpp`), chiamata
+per convertire la costante numerica in testo, che a sua volta chiama
+`gFontSizeTable[0].Font().StringWidth("0.000000")` per l'allineamento
+decimale. Senza un `BApplication` registrato, quella chiamata resta
+bloccata in attesa di una risposta dall'app_server che non arriverà
+mai — confermato costruendo due varianti dello stesso mini test,
+identiche a parte l'aggiunta di un `BApplication`, che risolve il
+blocco all'istante.
+
+A differenza dei bug headless già documentati in
+`docs/TRANSLATORS.md` (dereferenziazioni di puntatore nullo che
+il debug_server intercetta e sospende in attesa di un'interazione
+grafica mai arrivata, facendo *sembrare* un blocco quello che in
+realtà sarebbe stato un crash), questo è un vero blocco IPC: una
+chiamata legittima all'app_server che semplicemente non ha nessuno
+dall'altra parte a rispondere. Non è quindi un bug del motore di
+calcolo (nell'app vera un `BApplication` è sempre presente), ma un
+buco nell'infrastruttura di test: `ui/tests/test_ascd_io.cpp`
+dichiarava di "non richiedere una sessione grafica" ma in realtà può
+attraversare codice che ha bisogno di un `BApplication` per le
+metriche del font, appena una formula contiene una costante numerica.
+**Fix**: aggiunto un `BApplication` (senza mostrare nessuna finestra)
+all'inizio del test.
 
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
