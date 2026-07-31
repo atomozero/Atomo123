@@ -43,9 +43,9 @@ Preferenze e altro (dettaglio nella sezione Fase 7). **Fase 8
 (qualità UI/UX) in corso**: protezione dalle modifiche non salvate
 fatta (Nuovo/Apri/Esci chiedono conferma solo se ci sono modifiche in
 sospeso) insieme al titolo finestra con nome file e indicatore di
-modifica; restano icone sulla toolbar e ridimensionamento riga/
-colonna. Aggiornato ad ogni fase
-completata.
+modifica, ridimensionamento di righe e colonne fatto (trascinando il
+confine fra due intestazioni); resta solo icone sulla toolbar.
+Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -1618,6 +1618,63 @@ toolbar, ridimensionamento riga/colonna.
       lavoro separato); restano icone sulla toolbar e ridimensionamento
       riga/colonna, entrambi scelti dall'utente ma non ancora
       cominciati.
+
+- [x] **Ridimensionamento di righe e colonne**: larghezza/altezza,
+      finora fisse per tutte (`kColWidth`/`kRowHeight`), diventano un
+      array per colonna/riga (`fColWidths`/`fRowHeights`), modificabile
+      trascinando il confine fra due intestazioni — verticale in cima
+      per le colonne, orizzontale a sinistra per le righe — riconosciuto
+      entro pochi pixel dal confine stesso (`kResizeGrip`). Non si può
+      stringere sotto un minimo (`kMinColWidth`/`kMinRowHeight`), per
+      non far sparire la colonna/riga insieme alla maniglia per
+      riallargarla.
+
+      `fColOffsets`/`fRowOffsets` tengono la somma cumulativa delle
+      larghezze/altezze, ricostruita solo quando qualcosa cambia
+      davvero (`RebuildColumnOffsets`/`RebuildRowOffsets`): `CellRect()`
+      resta O(1) e la ricerca "che colonna/riga c'è sotto questa
+      coordinata" (`ColumnAtX`/`RowAtY`, usata da `CellAt` e dalle
+      maniglie di ridimensionamento) diventa O(log n) con una ricerca
+      binaria, invece di risommare da zero a ogni chiamata — importante
+      perché `Draw()` ne fa diverse per ogni ridisegno. Dopo un
+      ridimensionamento la vista si ridimensiona a sua volta
+      (`UpdateCanvasSize`, un `ResizeTo` alla nuova dimensione totale
+      del foglio) così `FixupScrollBars` (richiamato automaticamente da
+      `FrameResized`) riflette il nuovo spazio scorrevole.
+
+      Un dettaglio delicato non ovvio dal solo codice nuovo: le due
+      intestazioni sono "congelate" durante lo scroll (l'intestazione
+      di colonna segue `Bounds().top`, quella di riga `Bounds().left`
+      — vedi `Draw()`), quindi il confronto per riconoscere la
+      maniglia di ridimensionamento in `MouseDown` usa `Bounds()`, non
+      coordinate assolute fisse: altrimenti il ridimensionamento
+      avrebbe smesso di funzionare correttamente una volta scorso il
+      foglio.
+
+      **Limiti noti, documentati in `SheetView.h`**: vale solo per la
+      sessione corrente, non è salvato nel file `.ascd` (richiederebbe
+      una nuova sezione nel formato file, non fatta in questo
+      incremento — si torna alla larghezza/altezza predefinita
+      riaprendo il foglio); non è annullabile né marcato come
+      "documento modificato", essendo una preferenza di sola
+      visualizzazione, non parte del contenuto persistito.
+
+      `CellRect`/`CellAt` diventano pubblici, esposti apposta per
+      essere testabili direttamente — stesso principio già usato per
+      Ordina/Riempi/Seleziona tutto.
+
+      Test dedicato `ui/tests/test_resize.cpp` (nuovo target
+      `make test-resize`, 9 verifiche): allargare una colonna sposta
+      le colonne successive senza toccarne la larghezza, le celle
+      restano contigue (nessun buco né sovrapposizione), il limite
+      minimo di larghezza, `CellAt` resta coerente con `CellRect` dopo
+      un ridimensionamento, lo stesso per il ridimensionamento di
+      riga. Nessuna regressione nella suite esistente (verificato
+      anche con esecuzioni ripetute e con un avvio dal vivo
+      dell'applicazione).
+
+      Con questo, tre dei quattro punti scelti dall'utente per la
+      Fase 8 sono completi; resta solo icone sulla toolbar.
 
 ---
 
