@@ -110,9 +110,10 @@ indispensabile per non restare bloccati indefinitamente in questi casi.
 Importa il formato binario storico di Excel 97-2003 (`kAtomoXlsFormat`,
 MIME `application/vnd.ms-excel`) verso ASCD, riusando l'importer
 BIFF/OLE2 già portato ed estratto nel motore (`CExcel5Filter`,
-`engine/src/Excel/`). Solo import per ora: il motore non include un
-writer per il formato binario legacy (l'export verso Excel moderno
-passerà dal futuro translator XLSX).
+`engine/src/Excel/`). Solo import, deliberatamente: l'export verso
+l'ecosistema Excel passa da `translators/xlsx/` (Excel 2007+, formato
+ZIP+XML molto più semplice da scrivere di BIFF/OLE2) — vedi ROADMAP.md,
+Fase 5, per il ragionamento completo su questa scelta.
 
 `Identify()` riconosce il formato tramite la firma standard degli OLE2
 Compound File Binary (8 byte fissi: `D0 CF 11 E0 A1 B1 1A E1`), usata
@@ -127,16 +128,72 @@ make test       # compila ed esegue il test
 make install    # copia l'add-on in ~/config/non-packaged/add-ons/Translators
 ```
 
-**Test incompleto**: il test attuale (`tests/test_xls_translator.cpp`)
-verifica solo che `Identify()` riconosca/rifiuti correttamente la
-firma OLE2, e che `Translate()` su un OLE2 con contenuto BIFF non
-valido fallisca in modo pulito (senza bloccarsi). **Manca un test di
-importazione end-to-end** con un file `.xls` reale generato da Excel o
-LibreOffice Calc, che verifichi che valori e formule vengano importati
-correttamente — costruire a mano un flusso BIFF valido non è
-praticabile, serve un file di esempio autentico. Da aggiungere quando
-disponibile (vedi nota "Test di congruità" nella Fase 3 di
-`ROADMAP.md`).
+**Test automatizzato ancora limitato**: il test committato
+(`tests/test_xls_translator.cpp`) verifica solo che `Identify()`
+riconosca/rifiuti correttamente la firma OLE2, e che `Translate()` su
+un OLE2 con contenuto BIFF non valido fallisca in modo pulito (senza
+bloccarsi) — costruire a mano un flusso BIFF valido non è praticabile
+per un test committato. **Verificato pero' manualmente con un file
+`.xls` reale** (scaricato da un sito di file di esempio per test,
+licenza non chiara per la ridistribuzione: non incluso nel
+repository), sia a livello di translator sia aprendolo dal vivo
+nell'app vera — vedi i tre bug reali scoperti e corretti sotto. Un
+file di esempio con licenza libera da poter committare come fixture
+di test resta da trovare (vedi nota "Test di congruità" nella Fase 3
+di `ROADMAP.md`).
+
+### Tre bug reali scoperti aprendo un file `.xls` autentico
+
+Fino a questa sessione, `translators/xls` era stato testato solo con
+file OLE2 costruiti a mano o deliberatamente malformati (vedi sopra):
+mai un vero file `.xls` prodotto da Excel/LibreOffice, che ha una
+struttura interna molto più ricca (più stream nella directory OLE2,
+più tipi di record BIFF8, nomi di font in formato Unicode). Aprendo un
+file scaricato del genere sono emersi tre bug distinti, tutti
+preesistenti nel codice storico e mai manifestati prima:
+
+1. **`long`/`unsigned long` a 64 bit invece di 32** in
+   `Excel.OLE2.cpp` (`GetBookStream` e la struct `oleEntry`): stessa
+   famiglia di bug già corretta altrove nel progetto (vedi il
+   commento su `cell::operator<` in `Cell.h`) — su BeOS/PPC, per cui
+   questo codice fu scritto, `long` era a 32 bit; su Haiku x86_64 è a
+   64 bit. Con `oleEntry` a 64 bit i suoi campi non corrispondevano
+   più ai 128 byte reali di una voce di directory OLE2, e l'array
+   della FAT (`l[]`) veniva letto/indicizzato a passi sbagliati.
+   **Fix**: sostituiti con `int32`/`uint32` (`SupportDefs.h`), fissi
+   a 32 bit indipendentemente dalla piattaforma.
+2. **La directory OLE2 non seguiva la propria catena di settori**:
+   `GetBookStream` assumeva che tutte le voci della directory
+   (`Root Entry`, `Workbook`, eventuali `\5SummaryInformation` ecc.)
+   stessero in un singolo settore da 512 byte (4 voci da 128 byte) —
+   vero solo per i file OLE2 più semplici. Un file reale, con anche
+   solo qualche stream in più oltre a `Workbook`, richiede più
+   settori. **Fix**: la ricerca della voce `Book`/`Workbook` ora segue
+   la catena nella FAT quando il settore corrente è esaurito, esattamente
+   come già faceva il codice per i settori dello stream `Workbook`
+   stesso.
+3. **`fCellView` nullo non controllato in `HandleXLRecordForPass1`**:
+   `XlsTranslator.cpp` istanzia sempre `CExcel5Filter` con
+   `cellView=NULL` (translator headless, nessuna UI collegata — commento
+   già presente nel codice), ma diversi rami di
+   `HandleXLRecordForPass1`/`Selection`/`Name` (record `DEFAULTROWHEIGHT`,
+   `ROW`, `WINDOW2`, `DEFCOLWIDTH`, `COLINFO`, la selezione corrente, i
+   nomi definiti) dereferenziavano `fCellView` senza controllarlo prima:
+   dereferenziazione di puntatore nullo, che su questa Haiku si manifesta
+   come blocco (debug_server intercetta il crash e resta in attesa di
+   un'interazione grafica mai arrivata in un'esecuzione headless — stesso
+   fenomeno già documentato sopra), non un crash immediato. Questi record
+   sono comuni in qualunque foglio reale (altezza righe, larghezza
+   colonne, impostazioni finestra), quindi il bug si manifestava con
+   quasi ogni file `.xls` autentico, non solo con questo. **Fix**:
+   aggiunto un controllo `if (fCellView)` prima di ogni uso, coerente con
+   il commento già presente in `XlsTranslator.cpp` ("questi metadati
+   vengono scartati in questa modalità" — l'intento era già documentato,
+   mancava solo il controllo che lo rispettasse davvero).
+
+Nessuno di questi bug ha a che fare con l'export (`translators/xls` resta
+solo import): sono tutti nel percorso di lettura BIFF/OLE2 condiviso,
+`engine/src/Excel/`.
 
 ### Bug scoperto: `throw()` che non manteneva la promessa
 

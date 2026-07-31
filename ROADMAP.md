@@ -844,12 +844,19 @@ logica, non l'esperienza utente end-to-end.
       resta ovviamente sotto la sua licenza originale invariata.
       `README.md` e il campo `LICENSE` di `packaging/atomo123-0.1.0.recipe`
       aggiornati di conseguenza.
-- [ ] Test di compatibilità con corpus di file reali: Excel (xls/xlsx
-      di varie versioni), LibreOffice Calc (ods), OpenOffice legacy —
-      finora testato solo con file costruiti a mano per questo
-      progetto (vedi `translators/*/tests/`), non un vero corpus
-      eterogeneo generato da applicazioni reali in condizioni non
-      controllate
+- [ ] Test di compatibilità con corpus di file reali: **primo file XLS
+      reale verificato** (scaricato per un test estemporaneo, non un
+      vero corpus sistematico), aprendolo sia a livello di translator
+      sia dal vivo nell'app vera — ha fatto emergere tre bug reali nel
+      lettore BIFF/OLE2 legacy (vedi sezione dedicata in
+      `docs/TRANSLATORS.md`), tutti corretti. Resta un vero corpus
+      eterogeneo di file XLS/XLSX/ODS di varie versioni generati da
+      Excel/LibreOffice/OpenOffice in condizioni non controllate — un
+      solo file XLS non basta a dire il formato pienamente compatibile,
+      solo che il caso comune (righe/colonne/font/valori) ora funziona.
+      Il file di test usato non è stato incluso nel repository (licenza
+      di ridistribuzione non chiara): servirebbe un file campione con
+      licenza libera per fissarlo come fixture di test automatizzato.
 
 ### Bug scoperto: `GetBounds` esclude le celle non ancora calcolate, rompendo il ricalcolo/salvataggio quando sono ai margini del foglio
 
@@ -921,6 +928,47 @@ attraversare codice che ha bisogno di un `BApplication` per le
 metriche del font, appena una formula contiene una costante numerica.
 **Fix**: aggiunto un `BApplication` (senza mostrare nessuna finestra)
 all'inizio del test.
+
+### Tre bug reali scoperti aprendo un vero file XLS legacy
+
+Con l'export ODS/XLSX chiuso, si è colta l'occasione per verificare per
+la prima volta `translators/xls` (import BIFF/OLE2 legacy) con un file
+`.xls` realmente generato da uno strumento esterno, non costruito a
+mano — finora testato solo con OLE2 malformati (Fase 3). Aprirlo, prima
+a livello di translator e poi dal vivo nell'app vera, ha fatto emergere
+tre bug reali distinti, tutti preesistenti nel codice storico e mai
+manifestati prima perché mai esercitati da dati reali:
+
+1. `long`/`unsigned long` a 64 bit su Haiku x86_64 invece dei 32 bit
+   per cui il codice storico (BeOS/PPC) era stato scritto, in
+   `Excel.OLE2.cpp` — stessa famiglia di bug già corretta altrove nel
+   progetto (`cell::operator<` in `Cell.h`), qui rimasta perché mai
+   esercitata da un file reale. Corretto sostituendo con `int32`/
+   `uint32` fissi.
+2. La directory OLE2 non seguiva la propria catena di settori nella
+   FAT, assumendo (a torto, per un file con più di quattro voci nella
+   directory) che stesse tutta in un solo settore da 512 byte.
+   Corretto seguendo la catena, come già faceva il codice per lo
+   stream `Workbook` stesso.
+3. `fCellView` (sempre `NULL` nei translator headless, per design)
+   dereferenziato senza controllo in diversi punti di
+   `HandleXLRecordForPass1`/`Selection`/`Name` (altezza righe,
+   larghezza colonne, impostazioni finestra, selezione, nomi
+   definiti) — record comuni in qualunque foglio reale, quindi il bug
+   si manifestava con quasi ogni file `.xls` autentico. Corretto con
+   controlli `if (fCellView)`, coerenti con un commento già presente
+   nel codice che ne documentava l'intento ("questi metadati vengono
+   scartati in questa modalità") senza che il codice lo rispettasse
+   davvero.
+
+Dettaglio tecnico completo in `docs/TRANSLATORS.md`, sezione
+`translators/xls`. Verificato non solo a livello di translator ma
+aprendo davvero il file nell'app (`Atomo123 file.xls`), confermando
+che l'intera catena BTranslatorRoster → ASCD → `SheetView` regge senza
+crash. Il file usato per il test non è nel repository (licenza di
+ridistribuzione non chiara) — resta un gap per un vero test
+automatizzato end-to-end con fixture reale, annotato nell'item
+"Test di compatibilità con corpus di file reali" qui sopra.
 
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
