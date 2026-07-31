@@ -55,6 +55,8 @@ static const uint32 kMsgClear = 'aclr';
 static const uint32 kMsgSelectAll = 'asla';
 static const uint32 kMsgFillDown = 'afdn';
 static const uint32 kMsgFillRight = 'afrt';
+static const uint32 kMsgSortAscending = 'asta';
+static const uint32 kMsgSortDescending = 'astd';
 static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
 static const uint32 kMsgSetFormat = 'stfm';
@@ -155,6 +157,11 @@ MainWindow::MainWindow()
 	BMenu* dataMenu = new BMenu("Dati");
 	dataMenu->AddItem(new BMenuItem("Riempi in basso", new BMessage(kMsgFillDown), 'D'));
 	dataMenu->AddItem(new BMenuItem("Riempi a destra", new BMessage(kMsgFillRight), 'R'));
+	dataMenu->AddSeparatorItem();
+	// Ordina per righe intere, confrontando la colonna piu' a sinistra
+	// dell'intervallo selezionato (vedi SheetView::SortSelection).
+	dataMenu->AddItem(new BMenuItem("Ordina crescente", new BMessage(kMsgSortAscending)));
+	dataMenu->AddItem(new BMenuItem("Ordina decrescente", new BMessage(kMsgSortDescending)));
 	menuBar->AddItem(dataMenu);
 
 	// Grafico e tabella pivot leggono un intervallo di due colonne
@@ -978,6 +985,14 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgFillRight:
 			fSheetView->FillRight();
+			break;
+
+		case kMsgSortAscending:
+			fSheetView->SortSelection(true);
+			break;
+
+		case kMsgSortDescending:
+			fSheetView->SortSelection(false);
 			break;
 
 		case kMsgPrint:

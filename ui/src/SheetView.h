@@ -94,6 +94,22 @@ public:
 	void FillDown();
 	void FillRight();
 
+	// Ordina l'intervallo selezionato per righe intere, confrontando
+	// il valore nella colonna piu' a sinistra dell'intervallo (come
+	// il pulsante "Ordina crescente/decrescente" di Excel quando non
+	// si sceglie una chiave esplicita). Confronto numerico se entrambi
+	// i valori sono numeri, altrimenti testuale case-insensitive;
+	// ordinamento stabile (righe con lo stesso valore chiave
+	// mantengono l'ordine relativo originale). Sposta ogni cella come
+	// testo opaco (stessa rappresentazione di GetCellFormula/
+	// TryToParseString, non tocca i riferimenti nelle formule) --
+	// scelta deliberata: una formula che fa riferimento a un'altra
+	// cella nello stesso intervallo ordinato avrebbe un significato
+	// ambiguo dopo il riordino delle righe (limite noto, condiviso
+	// anche dai fogli di calcolo reali in casi simili). Non fa nulla
+	// se la selezione e' una sola riga (niente da ordinare).
+	void SortSelection(bool ascending);
+
 	// Logica di navigazione/modifica da tastiera, con i modificatori
 	// (Ctrl/Maiusc) gia' risolti -- KeyDown() li legge dal vero
 	// messaggio B_KEY_DOWN e poi chiama questa, che e' pubblica

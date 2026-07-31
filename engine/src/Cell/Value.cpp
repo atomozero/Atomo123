@@ -107,6 +107,7 @@ Value::Value(bool b)
 
 Value::Value(CellData& cd)
 {
+	fType = eNoData;
 	*this = cd;
 }
 

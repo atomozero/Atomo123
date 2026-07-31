@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include <MessageFilter.h>
 #include <Messenger.h>
@@ -367,6 +369,116 @@ void SheetView::FillRight()
 		cell src(sel.left, row);
 		for (int col = sel.left + 1; col <= sel.right; col++)
 			fDoc->CopyCell(fDoc, src, cell(col, row));
+	}
+
+	RecalculateAll(fDoc);
+	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
+	NotifySelectionChanged();
+}
+
+namespace {
+	// Una riga dell'intervallo da ordinare: il testo grezzo di ogni
+	// cella (stesso formato di GetCellFormula/TryToParseString, cosi'
+	// spostare una riga non tocca ne' appiattisce le formule che
+	// contiene) piu' il valore della colonna chiave, gia' estratto una
+	// volta sola per non dover rileggere il documento a ogni confronto
+	// durante l'ordinamento.
+	struct SortRow {
+		std::vector<std::string> cellText;
+		bool keyIsNum;
+		double keyNum;
+		std::string keyText;
+		int originalIndex; // per l'ordinamento stabile
+	};
+
+	bool CompareSortRows(const SortRow& a, const SortRow& b, bool ascending)
+	{
+		int cmp;
+		if (a.keyIsNum && b.keyIsNum)
+			cmp = (a.keyNum < b.keyNum) ? -1 : (a.keyNum > b.keyNum) ? 1 : 0;
+		else if (a.keyIsNum != b.keyIsNum)
+			// I numeri vengono sempre prima del testo, indipendentemente
+			// dalla direzione -- stessa convenzione di Excel/LibreOffice
+			// Calc per un confronto tra tipi diversi.
+			cmp = a.keyIsNum ? -1 : 1;
+		else
+			cmp = strcasecmp(a.keyText.c_str(), b.keyText.c_str());
+
+		if (cmp == 0)
+			// Ordinamento stabile: a parita' di chiave, mantiene
+			// l'ordine originale invece di uno arbitrario (std::sort
+			// non e' stabile di suo).
+			return a.originalIndex < b.originalIndex;
+
+		return ascending ? (cmp < 0) : (cmp > 0);
+	}
+}
+
+void SheetView::SortSelection(bool ascending)
+{
+	if (!fDoc)
+		return;
+
+	range sel = SelectionRange();
+	if (sel.top == sel.bottom)
+		return; // una sola riga: niente da ordinare
+
+	int numRows = sel.bottom - sel.top + 1;
+	int numCols = sel.right - sel.left + 1;
+
+	std::vector<SortRow> rows(numRows);
+	for (int i = 0; i < numRows; i++)
+	{
+		int row = sel.top + i;
+		rows[i].cellText.resize(numCols);
+		rows[i].originalIndex = i;
+
+		for (int j = 0; j < numCols; j++)
+		{
+			char text[512];
+			fDoc->GetCellFormula(cell(sel.left + j, row), text, false);
+			rows[i].cellText[j] = text;
+		}
+
+		Value keyVal;
+		fDoc->GetValue(cell(sel.left, row), keyVal);
+		if (keyVal.fType == eNumData && !keyVal.IsNan())
+		{
+			rows[i].keyIsNum = true;
+			rows[i].keyNum = (double)keyVal;
+		}
+		else
+		{
+			rows[i].keyIsNum = false;
+			rows[i].keyText = rows[i].cellText[0];
+		}
+	}
+
+	std::stable_sort(rows.begin(), rows.end(),
+		[ascending](const SortRow& a, const SortRow& b) {
+			return CompareSortRows(a, b, ascending);
+		});
+
+	for (int i = 0; i < numRows; i++)
+	{
+		int row = sel.top + i;
+		for (int j = 0; j < numCols; j++)
+		{
+			cell c(sel.left + j, row);
+			const std::string& text = rows[i].cellText[j];
+			if (text.empty())
+				fDoc->DisposeCell(c);
+			else
+			{
+				try
+				{
+					TryToParseString(text.c_str(), c, fDoc, true);
+				}
+				catch (...)
+				{
+				}
+			}
+		}
 	}
 
 	RecalculateAll(fDoc);
