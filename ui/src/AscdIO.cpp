@@ -16,6 +16,7 @@
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 static const int32 kASCDVersion = 1;
+static const char kASCDBookMagic[4] = { 'A', 'S', 'C', 'B' };
 
 bool IsASCDFile(BPositionIO* source)
 {
@@ -227,4 +228,93 @@ void RecalculateAll(CContainer* doc)
 		}
 		guard++;
 	}
+}
+
+bool IsASCDBookFile(BPositionIO* source)
+{
+	off_t pos = source->Position();
+
+	char magic[4];
+	bool isBook = source->Read(magic, 4) == 4 && memcmp(magic, kASCDBookMagic, 4) == 0;
+
+	source->Seek(pos, SEEK_SET);
+	return isBook;
+}
+
+status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
+{
+	if (dest->Write(kASCDBookMagic, 4) != 4)
+		return B_IO_ERROR;
+
+	int32 sheetCount = (int32)sheets.size();
+	if (dest->Write(&sheetCount, sizeof(sheetCount)) != (ssize_t)sizeof(sheetCount))
+		return B_IO_ERROR;
+
+	for (int32 i = 0; i < sheetCount; i++)
+	{
+		const AscdSheet& sheet = sheets[i];
+
+		int32 nameLen = sheet.name.Length();
+		if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+			return B_IO_ERROR;
+		if (nameLen > 0 && dest->Write(sheet.name.String(), nameLen) != nameLen)
+			return B_IO_ERROR;
+
+		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts);
+		if (err != B_OK)
+			return err;
+	}
+
+	return B_OK;
+}
+
+status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
+{
+	outSheets->clear();
+
+	char magic[4];
+	if (source->Read(magic, 4) != 4)
+		return B_BAD_DATA;
+	if (memcmp(magic, kASCDBookMagic, 4) != 0)
+		return B_BAD_DATA;
+
+	int32 sheetCount;
+	if (source->Read(&sheetCount, sizeof(sheetCount)) != (ssize_t)sizeof(sheetCount))
+		return B_BAD_DATA;
+	if (sheetCount < 0)
+		return B_BAD_DATA;
+
+	for (int32 i = 0; i < sheetCount; i++)
+	{
+		int32 nameLen;
+		if (source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+			return B_BAD_DATA;
+
+		char nameBuf[256];
+		if (nameLen < 0 || nameLen >= (int32)sizeof(nameBuf))
+			return B_BAD_DATA;
+		if (nameLen > 0 && source->Read(nameBuf, nameLen) != nameLen)
+			return B_BAD_DATA;
+		nameBuf[nameLen] = 0;
+
+		AscdSheet sheet;
+		sheet.name = nameBuf;
+		sheet.doc = new CContainer(NULL, NULL);
+
+		status_t err = LoadASCD(source, sheet.doc, &sheet.charts);
+		if (err != B_OK)
+		{
+			sheet.doc->Release();
+			// Rilascia anche i fogli gia' letti prima di questo, per non
+			// perdere memoria restituendo un errore a meta' lettura.
+			for (size_t j = 0; j < outSheets->size(); j++)
+				(*outSheets)[j].doc->Release();
+			outSheets->clear();
+			return err;
+		}
+
+		outSheets->push_back(sheet);
+	}
+
+	return B_OK;
 }

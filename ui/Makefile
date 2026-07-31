@@ -90,6 +90,17 @@ test: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
 	./tests/test_ascd_io
 
+# Test del formato "cartella di lavoro" multi-foglio (Fase 9): stessa
+# ragione headless di "test" sopra (serve solo BApplication, non una
+# finestra).
+test-ascd-book: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_ascd_book.cpp -o tests/test_ascd_book.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/AscdIO.cpp -o tests/AscdIO_book.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_ascd_book tests/test_ascd_book.o tests/AscdIO_book.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
+	./tests/test_ascd_book
+
 # Test della logica del grafico a barre (Chart.cpp): headless come
 # "test" sopra, non tocca mai BView/BWindow (quello e' ChartView, non
 # testato qui).
@@ -276,6 +287,7 @@ clean:
 		tests/test_paste_range tests/test_paste_range.o \
 		tests/test_insert_delete tests/test_insert_delete.o \
 		tests/test_unsaved_changes tests/test_unsaved_changes.o \
-		tests/test_resize tests/test_resize.o
+		tests/test_resize tests/test_resize.o \
+		tests/test_ascd_book tests/test_ascd_book.o tests/AscdIO_book.o
 
-.PHONY: all run test test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize clean

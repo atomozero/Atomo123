@@ -17,6 +17,7 @@
 #include <vector>
 
 #include <DataIO.h>
+#include <String.h>
 #include <SupportDefs.h>
 
 #include "Chart.h"
@@ -45,6 +46,37 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 // qualunque (vedi translators/csv/CsvTranslator.cpp), che non
 // conosce quella sezione.
 bool IsASCDFile(BPositionIO* source);
+
+// Un foglio di una cartella di lavoro multi-foglio: nome piu'
+// documento (creato da LoadASCDBook, di proprieta' del chiamante --
+// va rilasciato con Release() quando non serve piu', stesso discorso
+// gia' valido per qualunque CContainer). "charts" segue lo stesso
+// significato opzionale di LoadASCD/SaveASCD sopra.
+struct AscdSheet {
+	BString name;
+	CContainer* doc;
+	std::vector<ChartObject> charts;
+};
+
+// Vero solo se "source" comincia con la firma di una cartella di
+// lavoro multi-foglio (riporta la posizione di lettura a dove si
+// trovava prima di controllare) -- distingue un file "ASCB" da un
+// vecchio ".ascd" a un solo foglio ("ASCD", senza wrapper), che resta
+// leggibile con IsASCDFile/LoadASCD come prima.
+bool IsASCDBookFile(BPositionIO* source);
+
+// Formato "cartella di lavoro" (piu' fogli): firma "ASCB" piu' il
+// numero di fogli, seguiti per ciascuno dal nome e da un blocco ASCD
+// completo -- la stessa identica cosa che scrivono/leggono
+// SaveASCD/LoadASCD sopra, riusate cosi' come sono (nessuna
+// duplicazione del formato per cella) invece di reinventare la
+// serializzazione: ogni blocco ASCD e' gia' auto-delimitante tramite
+// i propri conteggi interni, quindi concatenarne N in sequenza sullo
+// stesso stream e rileggerli con lo stesso numero di chiamate a
+// LoadASCD funziona senza bisogno di offset o lunghezze esplicite fra
+// un foglio e il successivo.
+status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest);
+status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets);
 
 // Ricalcola tutte le celle con formula del documento fino a
 // convergenza (o a un limite di passate). Usata da LoadASCD dopo aver
