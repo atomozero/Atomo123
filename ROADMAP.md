@@ -2120,6 +2120,18 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
       composizione diretta di `BButton`/`BBitmap` già esercitata
       indirettamente da ogni test che crea una `MainWindow` reale).
 
+      **Rifinitura, stesso giorno**: con l'etichetta di testo sempre
+      visibile accanto a ogni icona, i soli quattro pulsanti File
+      arrivavano quasi al limite della larghezza predefinita della
+      finestra — l'utente ha fatto notare che nascondendo il testo (e
+      mostrandolo solo al passaggio del mouse) si risparmia spazio.
+      `BuildToolbar()` ora crea ogni `BButton` senza etichetta
+      (`NULL`) e imposta il testo con `BView::SetToolTip()` invece —
+      pulsanti solo icona, come la barra Standard di Excel vera.
+      Verificato di nuovo dal vivo: la toolbar occupa una riga
+      sensibilmente più stretta a parità di pulsanti. Nessuna
+      regressione nelle 19 suite.
+
 **Limiti noti, non ancora affrontati in questo incremento**:
 formule che attraversano i fogli (es. `+MT_CM_Installazione!I56`,
 presenti 166 volte in "RIEPILOGO COMPLETO" in questo file) vengono
