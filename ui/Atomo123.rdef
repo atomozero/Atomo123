@@ -1,15 +1,36 @@
 /*
 	Atomo123.rdef
 
-	Risorse dell'applicazione: firma, versione, icona. L'icona
-	(formato HVIF/VICN, disegnata in ui/icons/atomo123.svg e
-	convertita con Icon-O-Matic) e' incorporata come risorsa
-	"BEOS:ICON", lo stesso meccanismo usato da qualunque app nativa
-	Haiku moderna -- non un file .hvif separato da distribuire a
-	parte.
+	Risorse dell'applicazione: firma, versione, icona, tipi di file
+	supportati. L'icona (formato HVIF/VICN, disegnata in
+	ui/icons/atomo123.svg e convertita con Icon-O-Matic) e'
+	incorporata come risorsa "BEOS:ICON", lo stesso meccanismo usato
+	da qualunque app nativa Haiku moderna -- non un file .hvif
+	separato da distribuire a parte.
+
+	"BEOS:FILE_TYPES" elenca i tipi MIME che Tracker offre di aprire
+	con questa applicazione (doppio clic, "Apri con...") -- devono
+	corrispondere ai formati che il Translation Kit sa davvero
+	importare, vedi docs/TRANSLATORS.md: nativo (.ascd), XLSX/XLSM,
+	XLS legacy, ODS, CSV. Elencarli qui non basta perche' Tracker apra
+	un file con Atomo123 SENZA chiedere quale applicazione usare:
+	serve anche che il tipo non abbia gia' un'altra applicazione
+	preferita nel database MIME di sistema (vedi il commento in
+	App.cpp su RegisterFileTypes).
 */
 
 resource app_signature "application/x-vnd.Atomo-Atomo123";
+
+resource app_flags B_SINGLE_LAUNCH;
+
+resource file_types message {
+	"types" = "application/x-vnd.atomo-sheet-data",
+	"types" = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"types" = "application/vnd.ms-excel.sheet.macroenabled.12",
+	"types" = "application/vnd.ms-excel",
+	"types" = "application/vnd.oasis.opendocument.spreadsheet",
+	"types" = "text/csv"
+};
 
 resource app_version {
 	major  = 0,

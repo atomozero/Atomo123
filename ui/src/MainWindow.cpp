@@ -106,8 +106,12 @@ static void ColumnName(int col, char* out)
 
 MainWindow::MainWindow()
 	:
+	// Niente B_QUIT_ON_WINDOW_CLOSE: con piu' finestre possibili (vedi
+	// App.h/App.cpp) chiudere QUESTA finestra non deve terminare l'intera
+	// applicazione se ce ne sono altre aperte -- ci pensa esplicitamente
+	// QuitRequested() sotto, solo quando e' rimasta l'ultima.
 	BWindow(BRect(80, 80, 900, 700), "Atomo123", B_TITLED_WINDOW,
-		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
+		B_ASYNCHRONOUS_CONTROLS)
 {
 	// fSheetView/fSheetTabView vanno azzerati ESPLICITAMENTE prima di
 	// ResetWorkbook() qui sotto: sono puntatori membro senza un
@@ -1525,6 +1529,21 @@ bool MainWindow::QuitRequested()
 	if (!ConfirmDiscardChanges())
 		return false;
 
-	be_app->PostMessage(B_QUIT_REQUESTED);
+	// Senza B_QUIT_ON_WINDOW_CLOSE (rimosso dal costruttore, vedi sopra)
+	// chiudere questa finestra non chiude piu' l'app da solo: tocca a
+	// questo hook farlo, ma SOLO quando e' rimasta l'ultima MainWindow.
+	// be_app->CountWindows() da solo non basta: conta anche fOpenPanel/
+	// fSavePanel (i BFilePanel di Apri/Salva, BWindow a loro volta),
+	// quindi resterebbe sempre sopra 1 anche con una sola MainWindow
+	// aperta, e l'app non terminerebbe mai chiudendo l'ultima -- bug
+	// scoperto scrivendo tests/test_multiwindow.cpp.
+	int mainWindows = 0;
+	for (int32 i = 0; i < be_app->CountWindows(); i++)
+	{
+		if (dynamic_cast<MainWindow*>(be_app->WindowAt(i)))
+			mainWindows++;
+	}
+	if (mainWindows <= 1)
+		be_app->PostMessage(B_QUIT_REQUESTED);
 	return true;
 }

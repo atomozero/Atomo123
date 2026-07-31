@@ -297,6 +297,24 @@ test-sheet-tabs: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -lbe
 	./tests/test_sheet_tabs
 
+# Test dell'apertura di un secondo file mentre Atomo123 e' gia' in
+# esecuzione con un documento (richiesto dall'utente dopo la Fase 9):
+# deve aprire una finestra nuova, non rimpiazzare quella esistente.
+# Ricompila App.cpp a parte con -DATOMO123_TEST_BUILD per escluderne il
+# main() (vedi il commento in App.cpp), cosi' il test esercita la vera
+# App::RefsReceived/FindReusableWindow invece di una reimplementazione.
+test-multiwindow: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_multiwindow.cpp -o tests/test_multiwindow.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/App.cpp -o tests/App_test.o -DATOMO123_TEST_BUILD \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_multiwindow tests/test_multiwindow.o tests/App_test.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_multiwindow
+
 clean:
 	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
 		tests/roundtrip.ascd tests/roundtrip_charts.ascd tests/roundtrip_widths.ascd \
@@ -317,6 +335,8 @@ clean:
 		tests/test_resize tests/test_resize.o \
 		tests/test_ascd_book tests/test_ascd_book.o tests/AscdIO_book.o \
 		tests/test_multisheet tests/test_multisheet.o \
-		tests/test_sheet_tabs tests/test_sheet_tabs.o
+		tests/test_sheet_tabs tests/test_sheet_tabs.o \
+		tests/test_multiwindow tests/test_multiwindow.o tests/App_test.o \
+		/tmp/test_multiwindow_1.ascd /tmp/test_multiwindow_2.ascd
 
-.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-sheet-tabs clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-sheet-tabs test-multiwindow clean
