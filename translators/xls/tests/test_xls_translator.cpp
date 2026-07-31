@@ -6,8 +6,17 @@
 	l'hanno. Un test di importazione end-to-end (Translate() su un
 	file .xls reale, verifica dei valori/formule importati) richiede
 	un file di esempio autentico generato da Excel o LibreOffice: non
-	incluso qui, va aggiunto quando se ne ha uno a disposizione (vedi
-	nota "Test di congruita'" nella Fase 3 di ROADMAP.md).
+	incluso qui come fixture committata (il file usato per la verifica
+	manuale aveva una licenza di ridistribuzione non chiara), va
+	aggiunto quando se ne ha uno con licenza libera a disposizione
+	(vedi nota "Test di congruita'" nella Fase 3 di ROADMAP.md).
+
+	Verificato pero' manualmente con un file .xls reale: sia a
+	livello di translator (Identify/Translate) sia aprendolo dal vivo
+	nell'app vera (Atomo123 file.xls) -- ha fatto emergere tre bug
+	reali nel lettore BIFF/OLE2 legacy (engine/src/Excel/), tutti
+	corretti. Dettaglio completo in docs/TRANSLATORS.md e ROADMAP.md,
+	Fase 5.
 */
 
 #include <cstdio>
@@ -67,7 +76,9 @@ int main()
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
-	printf("NOTA: questo test copre solo il riconoscimento del formato (Identify).\n");
-	printf("Manca ancora un test di importazione end-to-end con un file .xls reale.\n");
+	printf("NOTA: questo test automatizzato copre solo il riconoscimento del formato\n");
+	printf("(Identify). L'importazione end-to-end e' stata verificata manualmente con\n");
+	printf("un file .xls reale (non incluso come fixture per licenza non chiara) --\n");
+	printf("vedi docs/TRANSLATORS.md e ROADMAP.md, Fase 5.\n");
 	return gFailures == 0 ? 0 : 1;
 }

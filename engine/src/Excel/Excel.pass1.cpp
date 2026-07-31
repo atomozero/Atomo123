@@ -92,13 +92,13 @@ void CExcel5Filter::Pass1()
 	fBook.Seek(offset, SEEK_SET);
 	es >> code >> len;
 	offset += 4 + len;
-		
+
 	if (code != 0x0809)
 		throw CErr("Expected new substream");
 
 	es >> bofrec >> bofrec;
 	if (bofrec != 0x0010) throw CErr("Expected beginning of data for sheet 1");
-	
+
 	while (offset < fBook.BufferLength())
 	{
 		fBook.Seek(offset, SEEK_SET);
@@ -144,7 +144,12 @@ void CExcel5Filter::Selection()
 		es >> c;
 		r.right = c + 1;
 
-		fCellView->SetSelection(r);
+		// fCellView e' NULL nei translator headless (nessuna UI
+		// collegata, vedi il commento in XlsTranslator.cpp): questi
+		// metadati di sola presentazione vengono scartati in quel
+		// caso, non e' un errore.
+		if (fCellView)
+			fCellView->SetSelection(r);
 	}
 }
 
@@ -195,7 +200,12 @@ void CExcel5Filter::Name()
 				return;
 		}
 		
-		fCellView->AddNamedRange(name, r);
+		// fCellView e' NULL nei translator headless: il nome resta
+		// comunque utilizzabile per risolvere i riferimenti nelle
+		// formule (fNames sotto), solo la visualizzazione nella UI
+		// viene scartata.
+		if (fCellView)
+			fCellView->AddNamedRange(name, r);
 		fNames.push_back(name);
 	}
 } 
@@ -231,10 +241,10 @@ void CExcel5Filter::Font()
 	es >> x;
 	es >> x;
 	es >> x;
-	
+
 	font_family fn;
 	es >> (unsigned char *)fn;
-	
+
 	rgb_color c = { 0, 0, 0, 0};
 	if (color >= 8 && color < 64)
 		c = kExcelColorTable[color - 8];
@@ -339,8 +349,12 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 			if (!(x & 0x01))
 			{
 				es >> x;
-				fCellView->GetHeights().SetValue(1, kRowCount,
-					ceil(x / 20.0) + 1);
+				// fCellView e' NULL nei translator headless: questi
+				// metadati di sola presentazione vengono scartati in
+				// quel caso (vedi il commento in XlsTranslator.cpp).
+				if (fCellView)
+					fCellView->GetHeights().SetValue(1, kRowCount,
+						ceil(x / 20.0) + 1);
 			}
 			break;
 		}
@@ -348,7 +362,8 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 		{
 			short h;
 			es >> x >> h >> h >> h;
-			fCellView->GetHeights().SetValue(x + 1, ceil(h / 20) + 1);
+			if (fCellView)
+				fCellView->GetHeights().SetValue(x + 1, ceil(h / 20) + 1);
 			break;
 		}
 		case FONT:
@@ -357,9 +372,12 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 		case WINDOW2:
 		{
 			es >> x;
-			fCellView->SetShowGrid(x & 0x02);
-			fCellView->SetShowBorders(x & 0x04);
-			
+			if (fCellView)
+			{
+				fCellView->SetShowGrid(x & 0x02);
+				fCellView->SetShowBorders(x & 0x04);
+			}
+
 			es >> x;
 //			fViewInfo.position.v = x + 1;
 			es >> x;
@@ -387,25 +405,35 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 		case DEFCOLWIDTH:
 		{
 			es >> x;
-			
-			fCellView->GetWidths().SetValue(1, kColCount,
-				ceil(x * be_plain_font->StringWidth("x")) + 1);
+
+			// fCellView e' NULL nei translator headless: questi
+			// metadati di sola presentazione vengono scartati in quel
+			// caso -- anche perche' be_plain_font->StringWidth
+			// richiede una vera connessione all'app_server, che un
+			// translator headless non ha (vedi il commento in
+			// XlsTranslator.cpp).
+			if (fCellView)
+				fCellView->GetWidths().SetValue(1, kColCount,
+					ceil(x * be_plain_font->StringWidth("x")) + 1);
 			break;
 		}
 		case COLINFO:
 		{
 			short first, last, wi, f;
-			
+
 			es >> first >> last >> wi >> x >> f;
-			
-			if (f & 0x11)
-				fCellView->GetWidths().SetValue(first + 1,last + 1,0);
-			else
+
+			if (fCellView)
 			{
-				fCellView->GetWidths().SetValue(first + 1, last + 1,
-					floor(be_plain_font->StringWidth("x") * wi / 256));
+				if (f & 0x11)
+					fCellView->GetWidths().SetValue(first + 1,last + 1,0);
+				else
+				{
+					fCellView->GetWidths().SetValue(first + 1, last + 1,
+						floor(be_plain_font->StringWidth("x") * wi / 256));
+				}
 			}
-			
+
 			fContainer->GetColumnStyles().SetValue(first + 1, last + 1, x);
 			break;
 		}

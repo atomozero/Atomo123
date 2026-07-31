@@ -45,11 +45,14 @@ static const int32 kASCDVersion = 1;
 // estrarla in una libreria condivisa.
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 {
-	range bounds;
-	doc->GetBounds(bounds);
-
+	// Range completo invece dei limiti di GetBounds: una cella con
+	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
+	// dai limiti calcolati da GetBounds, e se e' anche la cella piu' a
+	// destra/in basso del foglio sparirebbe del tutto dal file
+	// prodotto -- bug scoperto e corretto costruendo l'export ODS
+	// (vedi ROADMAP.md, Fase 5).
 	int32 count = 0;
-	CCellIterator counter(doc, &bounds);
+	CCellIterator counter(doc, NULL);
 	cell c;
 	while (counter.NextExisting(c))
 		count++;
@@ -61,7 +64,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 	if (dest->Write(&count, sizeof(count)) != (ssize_t)sizeof(count))
 		return B_IO_ERROR;
 
-	CCellIterator iter(doc, &bounds);
+	CCellIterator iter(doc, NULL);
 	while (iter.NextExisting(c))
 	{
 		char text[512];
