@@ -432,16 +432,38 @@ void MainWindow::CopySelection(bool cut)
 	if (!fDoc)
 		return;
 
-	cell sel = fSheetView->Selection();
-	char text[512];
-	fDoc->GetCellFormula(sel, text, false);
+	range sel = fSheetView->SelectionRange();
+	int numRows = sel.bottom - sel.top + 1;
+	int numCols = sel.right - sel.left + 1;
+
+	// Una sola cella resta testo semplice (compatibile con qualunque
+	// altra applicazione Haiku). Un intervallo piu' grande usa il
+	// formato TSV classico -- colonne separate da tabulazione, righe
+	// da ritorno a capo -- lo stesso capito da Excel/LibreOffice
+	// Calc, cosi' copiare/incollare fra Atomo123 e loro tramite gli
+	// appunti di sistema funziona gia' da solo, senza bisogno di un
+	// formato proprietario.
+	BString clipText;
+	for (int i = 0; i < numRows; i++)
+	{
+		if (i > 0)
+			clipText << "\n";
+		for (int j = 0; j < numCols; j++)
+		{
+			if (j > 0)
+				clipText << "\t";
+			char text[512];
+			fDoc->GetCellFormula(cell(sel.left + j, sel.top + i), text, false);
+			clipText << text;
+		}
+	}
 
 	if (be_clipboard->Lock())
 	{
 		be_clipboard->Clear();
 		BMessage* clip = be_clipboard->Data();
 		if (clip)
-			clip->AddData("text/plain", B_MIME_TYPE, text, strlen(text));
+			clip->AddData("text/plain", B_MIME_TYPE, clipText.String(), clipText.Length());
 		be_clipboard->Commit();
 		be_clipboard->Unlock();
 	}
@@ -449,10 +471,12 @@ void MainWindow::CopySelection(bool cut)
 	if (cut)
 	{
 		fSheetView->SaveUndoState(sel);
-		fDoc->DisposeCell(sel);
+		for (int i = 0; i < numRows; i++)
+			for (int j = 0; j < numCols; j++)
+				fDoc->DisposeCell(cell(sel.left + j, sel.top + i));
 		RecalculateAll(fDoc);
 		fSheetView->Invalidate();
-		SelectionChanged(sel);
+		SelectionChanged(fSheetView->Selection());
 	}
 }
 
@@ -460,8 +484,6 @@ void MainWindow::PasteSelection()
 {
 	if (!fDoc)
 		return;
-
-	cell sel = fSheetView->Selection();
 
 	if (!be_clipboard->Lock())
 		return;
@@ -474,18 +496,103 @@ void MainWindow::PasteSelection()
 
 	if (found)
 	{
-		fSheetView->SaveUndoState(sel);
 		BString pasted(text, len);
-		try
+
+		// Divide il testo incollato in righe (ritorno a capo) e
+		// colonne (tabulazione) -- stesso formato scritto da
+		// CopySelection sopra, capito anche da Excel/LibreOffice Calc,
+		// cosi' incollare un intervallo copiato da li' funziona anche
+		// qui senza bisogno di un formato dedicato.
+		std::vector<std::vector<BString> > grid;
+		int32 rowStart = 0;
+		while (rowStart <= pasted.Length())
 		{
-			TryToParseString(pasted.String(), sel, fDoc, true);
+			int32 rowEnd = pasted.FindFirst('\n', rowStart);
+			if (rowEnd < 0)
+				rowEnd = pasted.Length();
+			BString rowText;
+			pasted.CopyInto(rowText, rowStart, rowEnd - rowStart);
+
+			std::vector<BString> cols;
+			int32 colStart = 0;
+			while (colStart <= rowText.Length())
+			{
+				int32 colEnd = rowText.FindFirst('\t', colStart);
+				if (colEnd < 0)
+					colEnd = rowText.Length();
+				BString cellText;
+				rowText.CopyInto(cellText, colStart, colEnd - colStart);
+				cols.push_back(cellText);
+				if (colEnd == rowText.Length())
+					break;
+				colStart = colEnd + 1;
+			}
+			grid.push_back(cols);
+
+			if (rowEnd == pasted.Length())
+				break;
+			rowStart = rowEnd + 1;
 		}
-		catch (...)
+
+		int numRows = (int)grid.size();
+		int numCols = 0;
+		for (size_t i = 0; i < grid.size(); i++)
+			numCols = std::max(numCols, (int)grid[i].size());
+
+		range sel = fSheetView->SelectionRange();
+		cell anchor = sel.TopLeft();
+
+		range destRange;
+		if (numRows == 1 && numCols == 1 &&
+			(sel.right > sel.left || sel.bottom > sel.top))
 		{
+			// Un solo valore incollato su un intervallo piu' grande di
+			// una cella: riempie tutto l'intervallo selezionato (come
+			// Excel/LibreOffice Calc), non solo la cella attiva.
+			destRange = sel;
 		}
+		else
+		{
+			// Incollato ancorato all'angolo in alto a sinistra della
+			// selezione corrente, esteso alla dimensione del blocco
+			// incollato (non a quella della selezione corrente, che
+			// puo' anche essere una sola cella).
+			destRange = range(anchor.h, anchor.v,
+				anchor.h + numCols - 1, anchor.v + numRows - 1);
+		}
+
+		fSheetView->SaveUndoState(destRange);
+
+		for (int row = destRange.top; row <= destRange.bottom; row++)
+		{
+			int srcRow = std::min(row - destRange.top, numRows - 1);
+			for (int col = destRange.left; col <= destRange.right; col++)
+			{
+				int srcCol = std::min(col - destRange.left, numCols - 1);
+				const char* fieldText = "";
+				if (srcRow < (int)grid.size() && srcCol < (int)grid[srcRow].size())
+					fieldText = grid[srcRow][srcCol].String();
+
+				cell dest(col, row);
+				if (fieldText[0] == 0)
+					fDoc->DisposeCell(dest);
+				else
+				{
+					try
+					{
+						TryToParseString(fieldText, dest, fDoc, true);
+					}
+					catch (...)
+					{
+					}
+				}
+			}
+		}
+
 		RecalculateAll(fDoc);
 		fSheetView->Invalidate();
-		SelectionChanged(sel);
+		fSheetView->SetSelection(destRange.TopLeft());
+		fSheetView->ExtendSelection(destRange.BotRight());
 	}
 
 	be_clipboard->Unlock();
@@ -840,11 +947,21 @@ void MainWindow::SetCellFormat(int32 format)
 	if (!fDoc)
 		return;
 
-	cell sel = fSheetView->Selection();
-	CellStyle cs;
-	fDoc->GetCellStyle(sel, cs);
-	cs.fFormat = format;
-	fDoc->SetCellStyle(sel, cs);
+	// Applica a tutte le celle di SelectionRange(), non solo alla
+	// cella attiva -- SetCellStyle crea la voce nella mappa interna
+	// del documento solo se serve davvero (stile diverso da quello di
+	// colonna/predefinito), quindi non "sporca" con voci vuote le
+	// celle dell'intervallo che restano senza contenuto.
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fFormat = format;
+			fDoc->SetCellStyle(c, cs);
+		}
 	fSheetView->Invalidate();
 }
 

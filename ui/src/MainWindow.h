@@ -38,6 +38,19 @@ public:
 	void OpenFile(const entry_ref& ref);
 	void SelectionChanged(cell c);
 
+	// Esposti pubblicamente apposta per essere testabili direttamente
+	// (stesso principio di SheetView::SortSelection ecc. -- vedi
+	// tests/test_paste_range.cpp): Taglia/Copia/Incolla e il formato
+	// numerico operano su SheetView::SelectionRange(), non solo sulla
+	// cella attiva, quindi la logica di conversione a/da griglia TSV e
+	// di dimensionamento dell'intervallo di destinazione merita una
+	// verifica diretta senza passare da un vero ciclo di dispatch dei
+	// messaggi di menu.
+	SheetView* GetSheetView() const { return fSheetView; }
+	void CopySelection(bool cut);
+	void PasteSelection();
+	void SetCellFormat(int32 format);
+
 private:
 	SheetView* fSheetView;
 	BTextControl* fFormulaBar;
@@ -53,15 +66,12 @@ private:
 	void NewDocument();
 	void CommitFormulaBar();
 	void SaveToFile(const entry_ref& dir, const char* name);
-	void CopySelection(bool cut);
-	void PasteSelection();
 	void DeleteSelection();
 	void PrintDocument();
 	void ShowFindWindow();
 	void FindNext(const char* searchText);
 	void ReplaceCurrent(const char* searchText, const char* replaceText);
 	void ReplaceAll(const char* searchText, const char* replaceText);
-	void SetCellFormat(int32 format);
 	void ShowChartWindow();
 	void ShowPivotWindow();
 	void HandleChartRequest(const char* rangeText);
