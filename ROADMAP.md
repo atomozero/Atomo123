@@ -28,7 +28,9 @@ Seleziona tutto, Canc su un intervallo intero), Riempi in basso/a destra
 fatto (menu Dati, sposta i riferimenti relativi nelle formule), Ordina
 crescente/decrescente fatto (menu Dati, ordinamento stabile per righe
 intere; nel verificarlo è emerso e risolto un bug generico di doppio
-free in `Value::Value(CellData&)`); restano Annulla/Ripeti,
+free in `Value::Value(CellData&)`), Annulla/Ripeti fatto (menu
+Modifica, Ctrl+Z/Ctrl+Y, una sola pila di istantanee per intervallo
+condivisa da tutte le operazioni che mutano il documento); restano
 inserimento/eliminazione riga e colonna, formattazione
 font/colore/allineamento e altro (dettaglio nella sezione Fase 7).
 Aggiornato ad ogni fase completata.
@@ -1173,8 +1175,9 @@ ma incorporati e aggiornati dal vivo), stampa, import Excel legacy.
 
 **Mancante rispetto a Sum-It** (in ordine di impatto stimato, non
 tutto necessariamente da recuperare): Annulla/Ripeti (assente del
-tutto), selezione multi-cella (assente fino a questa fase), Ordina,
-Riempi (in basso/a destra/serie), inserisci/elimina riga e colonna,
+tutto fino a questa fase, ora aggiunto, vedi sotto), selezione
+multi-cella (assente fino a questa fase), Ordina, Riempi (in
+basso/a destra/serie), inserisci/elimina riga e colonna,
 ridimensionamento riga/colonna, formattazione font/colore/allineamento,
 Incolla speciale, intervalli con nome, Vai a, un vero Blocca riquadri
 (quello attuale è solo un effetto grafico di rendering, non
@@ -1336,6 +1339,71 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       una sola riga. Nessuna regressione nella suite esistente
       (verificato anche con esecuzioni ripetute, dato che il bug del
       motore era dipendente dallo stato dello stack).
+
+- [x] **Annulla/Ripeti**: assente del tutto in Atomo123 prima di
+      questo incremento (il motore ereditato da Sum-It non ha mai
+      avuto un concetto di comando/transazione reversibile — solo
+      lettura/scrittura diretta delle celle), quindi niente da
+      recuperare a livello di motore: implementato interamente nella
+      UI, in `SheetView`. Una sola pila di "istantanee" copre tutte
+      le operazioni che mutano il documento, invece di un comando
+      dedicato per ognuna (Cancella, Riempi, Ordina, Taglia/Incolla,
+      Trova e sostituisci, editing in-cella): ogni istantanea è un
+      `range` più il testo grezzo di ogni cella al suo interno (lo
+      stesso formato usato da Ordina — `GetCellFormula` in lettura,
+      `TryToParseString` in scrittura), catturato **prima** della
+      mutazione da `SaveUndoState()`. `Undo()` cattura lo stato
+      attuale (per poter ripetere), applica l'istantanea salvata,
+      seleziona l'intervallo coinvolto. `Redo()` è simmetrico sulla
+      pila opposta. Una nuova modifica dopo un annulla svuota la pila
+      del ripeti (come in Excel/LibreOffice Calc: non avrebbe senso
+      "ripetere" qualcosa che la nuova modifica ha già reso
+      incoerente col documento).
+
+      Scelta deliberata (istantanea per intervallo invece di un
+      comando/parametri per tipo di operazione): un solo meccanismo
+      generico, già usato e verificato da Ordina, riduce la
+      superficie di bug rispetto a N implementazioni diverse — un
+      costo accettato è che un'istantanea può coprire più celle di
+      quelle davvero toccate (es. "Trova e sostituisci tutto" cattura
+      il rettangolo che racchiude tutte le celle trovate, non solo
+      quelle sparse che contenevano il testo cercato); le celle non
+      toccate vengono comunque riscritte con lo stesso testo che
+      avevano già, quindi il risultato resta corretto, solo non
+      minimale.
+
+      I metodi di `SheetView` che mutano il documento (`ClearSelection`,
+      `FillDown`/`FillRight`, `SortSelection`, l'editing in-cella in
+      `CommitEditing`) chiamano `SaveUndoState()` da soli. Le mutazioni
+      che vivono in `MainWindow` (`CopySelection` con `cut=true`,
+      `PasteSelection`, `ReplaceCurrent`, `ReplaceAll`) non hanno
+      accesso alle pile private, quindi chiamano lo stesso
+      `SaveUndoState()` dall'esterno, pubblico apposta per questo,
+      prima di toccare `fDoc` — nessuna duplicazione della logica di
+      cattura/ripristino fuori da `SheetView`.
+
+      `SetDocument()` (apertura di un nuovo file, "Nuovo") svuota
+      entrambe le pile: le istantanee catturate si riferiscono al
+      `CContainer` precedente, applicarle al documento appena aperto
+      scambierebbe il contenuto di celle senza nessuna relazione.
+
+      Esposto dal menu Modifica ("Annulla"/"Ripeti", Ctrl+Z/Ctrl+Y) —
+      a differenza di Seleziona tutto/Riempi in basso/Riempi a destra,
+      qui la scorciatoia di menu **non** serve ad aggirare
+      un'ambiguità: su Haiku Ctrl+Z genera `B_SUBSTITUTE` (`0x1a`) e
+      Ctrl+Y non ha nemmeno un nome dedicato in `InterfaceDefs.h` —
+      nessuno dei due byte corrisponde a un altro tasto già gestito
+      da `SheetView::HandleKey`, diversamente dal caso B_HOME/Ctrl+A
+      e B_END/Ctrl+D documentato sopra.
+
+      Test dedicato `ui/tests/test_undo.cpp` (nuovo target
+      `make test-undo`, 18 verifiche): singola modifica, Cancella,
+      Riempi in basso, Ordina, `CanUndo()`/`CanRedo()` a ogni passo,
+      invalidazione del ripeti dopo una nuova modifica successiva a
+      un annulla, nessun crash annullando/ripetendo oltre i limiti
+      della pila, reset di entrambe le pile alla apertura di un nuovo
+      documento. Nessuna regressione nella suite esistente (verificato
+      anche con esecuzioni ripetute).
 
 ---
 
