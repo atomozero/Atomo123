@@ -11,11 +11,13 @@ in corso** — ricetta HaikuDepot pronta ma non ancora buildabile
 (nessun repository pubblico); licenza **MIT** decisa per il codice
 nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
 la sua licenza BSD originale); resta il test di compatibilità su un
-corpus di file reali. **Fase 6 avviata** (guida utente, funzioni con
+corpus di file reali. **Fase 6 chiusa**: guida utente, funzioni con
 nome nelle formule, grafici a barre e tabelle pivot di base, editing
 in-cella e navigazione da tastiera in stile Excel, SUMIF/COUNTIF/
-AVERAGEIF fatti; resta solo l'ottimizzazione ricalcolo su fogli
-grandi). Aggiornato ad ogni fase completata.
+AVERAGEIF, correzione della propagazione del ricalcolo alle celle
+dipendenti — tutti i punti pianificati fatti (nuovi bug/richieste
+dell'utente possono comunque emergere e aggiungersi). Aggiornato ad
+ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -795,7 +797,7 @@ logica, non l'esperienza utente end-to-end.
       eterogeneo generato da applicazioni reali in condizioni non
       controllate
 
-## Fase 6 — Polish e funzionalità avanzate (IN CORSO)
+## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
       gap più importante rimasto dalla Fase 3 (l'engine non chiamava
@@ -935,7 +937,31 @@ logica, non l'esperienza utente end-to-end.
       `=SUMIF(E1:E4;">8")` calcolano tutti il risultato corretto;
       nessuna regressione nella suite completa (engine + tutti i test
       `ui/`).
-- [ ] Ottimizzazione ricalcolo su fogli grandi
+- [x] Ricalcolo: non era un problema di velocità su fogli grandi come
+      il titolo originale di questa voce ipotizzava, ma un **bug di
+      correttezza** più fondamentale, scoperto indagando prima di
+      ottimizzare qualunque cosa — `CContainer` non tiene un grafo
+      delle dipendenze, e ogni punto di modifica (editing in-cella,
+      barra formule, taglia/incolla/cancella, trova e sostituisci)
+      chiamava `CalcCell()` **solo sulla cella appena modificata**,
+      mai su altre celle che la referenziano in formula altrove.
+      Verificato concretamente: `A1=10`, `B1="=A1+5"` (→10 corretto),
+      poi `A1` modificato a `20` **senza toccare B1** — `B1` restava
+      fermo a `15` invece di aggiornarsi a `25`. Un caso d'uso
+      comunissimo (una cella "totale" che referenzia altre celle)
+      rotto silenziosamente. **Fix**: tutti i punti di modifica
+      chiamano ora `RecalculateAll(fDoc)` (già esistente e testata,
+      usata finora solo al caricamento file) invece del solo
+      `CalcCell()` sulla cella toccata — anche in `DeleteSelection`/
+      Backspace-Canc, che prima non ricalcolava proprio nulla, nemmeno
+      la cella cancellata. Il costo (più passate, ma solo sulle celle
+      **con contenuto**, non sull'intero foglio virtuale — vedi
+      `GetBounds()`) resta accettabile anche su fogli grandi: stesso
+      meccanismo già verificato al caricamento file, ora usato anche
+      a ogni modifica. Verificato estendendo `ui/tests/test_editing.cpp`
+      con un test esplicito di propagazione (B4 si aggiorna da solo
+      quando si modifica A4 altrove); nessuna regressione nella suite
+      completa. Dettaglio tecnico in `ui/src/AscdIO.h`.
 - [x] Documentazione utente: `docs/USER_GUIDE.md` — avvio, editing
       (barra formule e in-cella), formule (con il limite delle
       funzioni con nome ancora non implementate), apertura/salvataggio
