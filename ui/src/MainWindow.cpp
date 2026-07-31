@@ -172,7 +172,15 @@ static BView* BuildToolbar(BHandler* target)
 		for (size_t i = 0; i < group.count; i++)
 		{
 			const ToolbarButtonDef& def = group.buttons[i];
-			BButton* button = new BButton(def.name, def.label, new BMessage(def.message));
+			// Nessuna etichetta visibile sul pulsante (solo l'icona):
+			// il testo compare come tooltip al passaggio del mouse
+			// (SetToolTip), risparmiando spazio orizzontale invece di
+			// tenerlo sempre disegnato accanto a ogni icona -- chiesto
+			// dall'utente dopo aver visto la toolbar coi soli quattro
+			// pulsanti File gia' quasi al limite della larghezza
+			// predefinita della finestra.
+			BButton* button = new BButton(def.name, NULL, new BMessage(def.message));
+			button->SetToolTip(def.label);
 			button->SetTarget(target);
 
 			BBitmap* icon = IconCatalog::Render(*def.icon);
