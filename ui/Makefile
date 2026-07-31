@@ -22,8 +22,8 @@ INCLUDES := $(addprefix -I, $(ENGINE_SRCDIRS)) -Isrc
 LIBS := -L$(ENGINE_DIR) -lengine -lbe -ltranslation -ltracker
 
 APP := Atomo123
-SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/AscdIO.cpp \
-	src/FindWindow.cpp src/ChartWindow.cpp src/ChartView.cpp src/Chart.cpp \
+SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/SheetTabView.cpp \
+	src/AscdIO.cpp src/FindWindow.cpp src/ChartWindow.cpp src/ChartView.cpp src/Chart.cpp \
 	src/PivotWindow.cpp src/Pivot.cpp src/RangeRef.cpp src/ToolbarIcons.cpp
 OBJECTS := $(SOURCES:.cpp=.o)
 RDEF := Atomo123.rdef
@@ -139,7 +139,7 @@ test-scroll: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_scroll.cpp -o tests/test_scroll.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_scroll tests/test_scroll.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -152,7 +152,7 @@ test-editing: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_editing.cpp -o tests/test_editing.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_editing tests/test_editing.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -166,7 +166,7 @@ test-navigation: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_navigation.cpp -o tests/test_navigation.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_navigation tests/test_navigation.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -179,7 +179,7 @@ test-selection: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_selection.cpp -o tests/test_selection.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_selection tests/test_selection.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -191,7 +191,7 @@ test-fill: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_fill.cpp -o tests/test_fill.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_fill tests/test_fill.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -203,7 +203,7 @@ test-sort: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_sort.cpp -o tests/test_sort.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_sort tests/test_sort.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -215,7 +215,7 @@ test-undo: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_undo.cpp -o tests/test_undo.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_undo tests/test_undo.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -228,7 +228,7 @@ test-paste-range: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_paste_range.cpp -o tests/test_paste_range.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_paste_range tests/test_paste_range.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -240,7 +240,7 @@ test-insert-delete: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_insert_delete.cpp -o tests/test_insert_delete.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_insert_delete tests/test_insert_delete.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -253,7 +253,7 @@ test-unsaved-changes: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_unsaved_changes.cpp -o tests/test_unsaved_changes.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_unsaved_changes tests/test_unsaved_changes.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -265,7 +265,7 @@ test-resize: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_resize.cpp -o tests/test_resize.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_resize tests/test_resize.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -279,11 +279,23 @@ test-multisheet: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_multisheet.cpp -o tests/test_multisheet.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_multisheet tests/test_multisheet.o \
-		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/ToolbarIcons.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_multisheet
+
+# Test della striscia di schede del foglio attivo (Fase 9): nessuna
+# vera MainWindow, solo SheetTabView dentro una finestra di prova --
+# stessa ragione di test-clipboard (richiede una vera sessione
+# grafica, non tocca l'engine).
+test-sheet-tabs: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_sheet_tabs.cpp -o tests/test_sheet_tabs.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_sheet_tabs tests/test_sheet_tabs.o \
+		src/SheetTabView.o \
+		$(INCLUDES) $(CXXFLAGS) -lbe
+	./tests/test_sheet_tabs
 
 clean:
 	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
@@ -303,6 +315,7 @@ clean:
 		tests/test_unsaved_changes tests/test_unsaved_changes.o \
 		tests/test_resize tests/test_resize.o \
 		tests/test_ascd_book tests/test_ascd_book.o tests/AscdIO_book.o \
-		tests/test_multisheet tests/test_multisheet.o
+		tests/test_multisheet tests/test_multisheet.o \
+		tests/test_sheet_tabs tests/test_sheet_tabs.o
 
-.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-sheet-tabs clean
