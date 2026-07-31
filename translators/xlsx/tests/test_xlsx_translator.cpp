@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -268,6 +269,51 @@ int main()
 				Check(foundCol1, "la larghezza della colonna 1 (20 caratteri -> 145 pixel) e' importata");
 				Check(foundCol3, "la larghezza della colonna 3 (8 caratteri -> 61 pixel, da min=3) e' importata");
 				Check(foundCol4, "la larghezza della colonna 4 (8 caratteri -> 61 pixel, da max=4) e' importata");
+
+				// Colori di cella: A1 (s="1" in sample.xlsx) usa fontId=1
+				// (testo blu, rgb="FF0000FF") e fillId=2 (sfondo dal tema
+				// -- theme="4" con tint="0.4", cioe' accent1 "4472C4"
+				// schiarito con la stessa formula approssimata di
+				// ApplyTint in XlsxTranslator.cpp). B1 (s="2") usa lo
+				// stesso sfondo ma fontId=0 (nessun <color>, testo
+				// predefinito nero) -- verifica sia la risoluzione del
+				// tema con tint sia quella diretta rgb=, e che uno stile
+				// senza colore testo non forzi comunque un nero
+				// esplicito diverso dal predefinito.
+				if (pos + 4 <= ascdLen)
+				{
+					int32 cellColorCount;
+					memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+					Check(cellColorCount == 2,
+						"due celle (A1, B1) hanno un colore esplicito (s=\"1\"/\"2\")");
+
+					bool foundA1Color = false, foundB1Color = false;
+					for (int32 i = 0; i < cellColorCount && pos + 12 <= ascdLen; i++)
+					{
+						int16 row, col;
+						uint8 bg[4], fg[4];
+						memcpy(&row, ascdData + pos, 2); pos += 2;
+						memcpy(&col, ascdData + pos, 2); pos += 2;
+						memcpy(bg, ascdData + pos, 4); pos += 4;
+						memcpy(fg, ascdData + pos, 4); pos += 4;
+
+						// ApplyTint(0x4472C4, 0.4) canale per canale:
+						// v*0.6 + 102, arrotondato -- vedi ApplyTintToChannel.
+						bool bgMatches = abs((int)bg[0] - 143) <= 1
+							&& abs((int)bg[1] - 170) <= 1 && abs((int)bg[2] - 220) <= 1;
+
+						if (row == 1 && col == 1 && bgMatches
+							&& fg[0] == 0 && fg[1] == 0 && fg[2] == 255)
+							foundA1Color = true;
+						if (row == 1 && col == 2 && bgMatches
+							&& fg[0] == 0 && fg[1] == 0 && fg[2] == 0)
+							foundB1Color = true;
+					}
+					Check(foundA1Color,
+						"A1: sfondo dal tema (accent1 schiarito) e testo blu (rgb diretto) importati");
+					Check(foundB1Color,
+						"B1: stesso sfondo dal tema, testo predefinito nero (il font non ne specifica uno)");
+				}
 			}
 		}
 

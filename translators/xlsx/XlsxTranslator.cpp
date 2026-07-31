@@ -23,6 +23,7 @@
 #include "Container.h"
 #include "CellIterator.h"
 #include "CellParser.h"
+#include "CellStyle.h"
 #include "Constants.h"
 
 static const translation_format sInputFormats[] = {
@@ -54,6 +55,19 @@ static const int32 kASCDVersion = 1;
 // translator non linkano contro ui/src/, per non introdurre una
 // dipendenza di link fra loro e l'app.
 static const char kASCDBookMagic[4] = { 'A', 'S', 'C', 'B' };
+
+// Duplicati da ui/src/AscdIO.cpp (stesso formato binario per la
+// sezione colori, vedi il commento su WriteASCD sotto).
+static status_t WriteColorEntry(BPositionIO* dest, rgb_color bg, rgb_color fg)
+{
+	uint8 buf[8] = { bg.red, bg.green, bg.blue, bg.alpha, fg.red, fg.green, fg.blue, fg.alpha };
+	return dest->Write(buf, sizeof(buf)) == (ssize_t)sizeof(buf) ? B_OK : B_IO_ERROR;
+}
+
+static bool ColorsEqual(rgb_color a, rgb_color b)
+{
+	return a.red == b.red && a.green == b.green && a.blue == b.blue && a.alpha == b.alpha;
+}
 
 // Stessa serializzazione ASCD degli altri translator (vedi
 // translators/csv/CsvTranslator.cpp per la descrizione completa).
@@ -134,6 +148,68 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
 			|| dest->Write(&width, sizeof(width)) != (ssize_t)sizeof(width))
 			return B_IO_ERROR;
+	}
+
+	// Sezione colori di cella/colonna, in coda: stesso principio delle
+	// due sezioni sopra -- lette da "doc" tramite CContainer::
+	// GetCellStyle/GetColumnStyle (gia' popolate durante ParseSheet/
+	// SheetStart per le celle/colonne con un colore esplicito nel file
+	// XLSX originale), non un parametro a parte: il colore vive gia'
+	// dentro il documento, esattamente come per ui/src/AscdIO.cpp
+	// (duplicato qui, stesso motivo di WriteASCD in generale -- questo
+	// translator non linka contro ui/src/).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, CellStyle> > cellStyles;
+		CCellIterator styleIter(doc, NULL);
+		cell sc;
+		while (styleIter.NextExisting(sc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(sc, cs);
+			if (!ColorsEqual(cs.fLowColor, defaultStyle.fLowColor)
+				|| !ColorsEqual(cs.fHighColor, defaultStyle.fHighColor))
+				cellStyles.push_back(std::make_pair(sc, cs));
+		}
+
+		int32 cellColorCount = (int32)cellStyles.size();
+		if (dest->Write(&cellColorCount, sizeof(cellColorCount))
+				!= (ssize_t)sizeof(cellColorCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < cellColorCount; i++)
+		{
+			int16 row = cellStyles[i].first.v, col = cellStyles[i].first.h;
+			const CellStyle& cs = cellStyles[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| WriteColorEntry(dest, cs.fLowColor, cs.fHighColor) != B_OK)
+				return B_IO_ERROR;
+		}
+
+		std::vector<std::pair<int, CellStyle> > columnStyles;
+		for (int col = 1; col <= kColCount; col++)
+		{
+			CellStyle cs;
+			doc->GetColumnStyle(col, cs);
+			if (!ColorsEqual(cs.fLowColor, defaultStyle.fLowColor)
+				|| !ColorsEqual(cs.fHighColor, defaultStyle.fHighColor))
+				columnStyles.push_back(std::make_pair(col, cs));
+		}
+
+		int32 columnColorCount = (int32)columnStyles.size();
+		if (dest->Write(&columnColorCount, sizeof(columnColorCount))
+				!= (ssize_t)sizeof(columnColorCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < columnColorCount; i++)
+		{
+			int16 col = (int16)columnStyles[i].first;
+			const CellStyle& cs = columnStyles[i].second;
+			if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| WriteColorEntry(dest, cs.fLowColor, cs.fHighColor) != B_OK)
+				return B_IO_ERROR;
+		}
 	}
 
 	return B_OK;
@@ -435,6 +511,352 @@ static bool ParseSharedStrings(const std::vector<unsigned char>& xml,
 	return true;
 }
 
+// --- Parsing di xl/theme/theme1.xml e xl/styles.xml (colori) -----------
+//
+// Un colore in XLSX si specifica in tre modi alternativi (attributi su
+// <fgColor>/<color>): "rgb" (esadecimale diretto, es. "FFFFC9C9" --
+// alpha+RRGGBB), "theme" (indice 0-11 nella tavolozza del documento,
+// spesso con "tint" per schiarire/scurire), o "indexed" (la vecchia
+// tavolozza fissa a 56 colori di Excel 97-2003, non gestita qui: rara
+// nei file moderni, non documentata nello standard OOXML stesso --
+// le celle che la usano restano al colore predefinito del motore).
+//
+// L'indice della tavolozza del tema (attributo theme="N") NON segue
+// l'ordine degli elementi in <a:clrScheme> di theme1.xml (dk1/lt1/dk2/
+// lt2/accent1-6/hlink/folHlink): scambia i primi quattro, una
+// stranezza nota dello standard OOXML --
+// 0=lt1, 1=dk1, 2=lt2, 3=dk2, 4-9=accent1-6, 10=hlink, 11=folHlink.
+
+static bool HexToColor(const std::string& hex, rgb_color* out)
+{
+	if (hex.size() < 6)
+		return false;
+	unsigned int value = (unsigned int)strtoul(hex.substr(hex.size() - 6).c_str(), NULL, 16);
+	out->red = (uint8)((value >> 16) & 0xFF);
+	out->green = (uint8)((value >> 8) & 0xFF);
+	out->blue = (uint8)(value & 0xFF);
+	out->alpha = 255;
+	return true;
+}
+
+// Formula approssimata (non l'esatta conversione RGB<->HSL luminosita'
+// dello standard ECMA-376, 18.8.3): ampiamente usata da importatori piu'
+// semplici, visivamente ragionevole -- stesso principio gia' scelto per
+// ExcelColWidthToPixels sopra.
+static uint8 ApplyTintToChannel(uint8 value, double tint)
+{
+	double v = value;
+	if (tint < 0)
+		v = v * (1.0 + tint);
+	else
+		v = v * (1.0 - tint) + (255.0 - 255.0 * (1.0 - tint));
+	if (v < 0) v = 0;
+	if (v > 255) v = 255;
+	return (uint8)(v + 0.5);
+}
+
+static rgb_color ApplyTint(rgb_color c, double tint)
+{
+	if (tint == 0)
+		return c;
+	rgb_color out = c;
+	out.red = ApplyTintToChannel(c.red, tint);
+	out.green = ApplyTintToChannel(c.green, tint);
+	out.blue = ApplyTintToChannel(c.blue, tint);
+	return out;
+}
+
+struct XlsxTheme {
+	rgb_color colors[12];
+	bool valid[12];
+};
+
+static int ThemeSlotForElement(const char* name)
+{
+	if (strcmp(name, "a:lt1") == 0) return 0;
+	if (strcmp(name, "a:dk1") == 0) return 1;
+	if (strcmp(name, "a:lt2") == 0) return 2;
+	if (strcmp(name, "a:dk2") == 0) return 3;
+	if (strcmp(name, "a:accent1") == 0) return 4;
+	if (strcmp(name, "a:accent2") == 0) return 5;
+	if (strcmp(name, "a:accent3") == 0) return 6;
+	if (strcmp(name, "a:accent4") == 0) return 7;
+	if (strcmp(name, "a:accent5") == 0) return 8;
+	if (strcmp(name, "a:accent6") == 0) return 9;
+	if (strcmp(name, "a:hlink") == 0) return 10;
+	if (strcmp(name, "a:folHlink") == 0) return 11;
+	return -1;
+}
+
+struct ThemeContext {
+	bool inClrScheme;
+	int currentSlot;
+	std::string hex[12];
+};
+
+static void XMLCALL ThemeStart(void* userData, const char* name, const char** atts)
+{
+	ThemeContext* ctx = (ThemeContext*)userData;
+
+	if (strcmp(name, "a:clrScheme") == 0)
+	{
+		ctx->inClrScheme = true;
+		return;
+	}
+	if (!ctx->inClrScheme)
+		return;
+
+	int slot = ThemeSlotForElement(name);
+	if (slot >= 0)
+	{
+		ctx->currentSlot = slot;
+		return;
+	}
+
+	// <a:srgbClr val="RRGGBB"/> oppure <a:sysClr val="windowText"
+	// lastClr="RRGGBB"/> (un colore di sistema, col valore RGB
+	// effettivo nell'attributo lastClr).
+	if (ctx->currentSlot >= 0
+		&& (strcmp(name, "a:srgbClr") == 0 || strcmp(name, "a:sysClr") == 0))
+	{
+		const char* wantAttr = strcmp(name, "a:srgbClr") == 0 ? "val" : "lastClr";
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], wantAttr) == 0)
+			{
+				ctx->hex[ctx->currentSlot] = atts[i + 1];
+				break;
+			}
+		}
+	}
+}
+
+static void XMLCALL ThemeEnd(void* userData, const char* name)
+{
+	ThemeContext* ctx = (ThemeContext*)userData;
+	if (strcmp(name, "a:clrScheme") == 0)
+		ctx->inClrScheme = false;
+	else if (ThemeSlotForElement(name) >= 0)
+		ctx->currentSlot = -1;
+}
+
+// "theme1.xml" e' opzionale: un pacchetto malformato o senza tema
+// lascia semplicemente "theme" con ogni voce non valida (valid[i] ==
+// false), cosi' i colori theme="N" restano irrisolti piu' avanti
+// (nessun colore applicato, non un errore).
+static void ParseTheme(const std::vector<unsigned char>& xml, XlsxTheme* out)
+{
+	for (int i = 0; i < 12; i++)
+		out->valid[i] = false;
+	if (xml.empty())
+		return;
+
+	ThemeContext ctx;
+	ctx.inClrScheme = false;
+	ctx.currentSlot = -1;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, ThemeStart, ThemeEnd);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK)
+		return;
+
+	for (int i = 0; i < 12; i++)
+	{
+		if (!ctx.hex[i].empty() && HexToColor(ctx.hex[i], &out->colors[i]))
+			out->valid[i] = true;
+	}
+}
+
+// Risolve gli attributi di un elemento <fgColor>/<bgColor>/<color> in
+// un rgb_color, in ordine di preferenza rgb > theme (indexed non
+// gestito, vedi sopra). Restituisce false se l'elemento non specifica
+// nessun colore risolvibile.
+static bool ResolveColorAttrs(const char** atts, const XlsxTheme& theme, rgb_color* out)
+{
+	int themeIdx = -1;
+	double tint = 0;
+	std::string rgbHex;
+	bool hasRgb = false;
+
+	for (int i = 0; atts[i]; i += 2)
+	{
+		if (strcmp(atts[i], "rgb") == 0)
+		{
+			rgbHex = atts[i + 1];
+			hasRgb = true;
+		}
+		else if (strcmp(atts[i], "theme") == 0)
+			themeIdx = atoi(atts[i + 1]);
+		else if (strcmp(atts[i], "tint") == 0)
+			tint = atof(atts[i + 1]);
+	}
+
+	if (hasRgb)
+		return HexToColor(rgbHex, out);
+
+	if (themeIdx >= 0 && themeIdx < 12 && theme.valid[themeIdx])
+	{
+		*out = ApplyTint(theme.colors[themeIdx], tint);
+		return true;
+	}
+
+	return false;
+}
+
+// Colore di sfondo/testo risolti per una singola voce di <cellXfs>
+// (l'indice usato dall'attributo s="..." sulle celle e dall'attributo
+// style="..." su <col>): "has*" false = quella voce di stile non
+// specifica un colore per quel canale, il motore resta al suo
+// predefinito.
+struct ResolvedStyle {
+	bool hasBg;
+	rgb_color bg;
+	bool hasFg;
+	rgb_color fg;
+};
+
+enum StylesSection { kStylesNone, kStylesFills, kStylesFonts, kStylesCellXfs };
+
+struct StylesContext {
+	const XlsxTheme* theme;
+	StylesSection section;
+
+	std::vector<rgb_color> fillColors;
+	std::vector<bool> fillColorValid;
+	std::string currentPatternType;
+
+	std::vector<rgb_color> fontColors;
+	std::vector<bool> fontColorValid;
+
+	std::vector<std::pair<int, int> > cellXfs; // (fontId, fillId) per indice s=
+};
+
+static void XMLCALL StylesStart(void* userData, const char* name, const char** atts)
+{
+	StylesContext* ctx = (StylesContext*)userData;
+
+	if (strcmp(name, "fills") == 0) { ctx->section = kStylesFills; return; }
+	if (strcmp(name, "fonts") == 0) { ctx->section = kStylesFonts; return; }
+	if (strcmp(name, "cellXfs") == 0) { ctx->section = kStylesCellXfs; return; }
+
+	if (ctx->section == kStylesFills)
+	{
+		if (strcmp(name, "fill") == 0)
+		{
+			ctx->fillColors.push_back(rgb_color());
+			ctx->fillColorValid.push_back(false);
+			ctx->currentPatternType.clear();
+		}
+		else if (strcmp(name, "patternFill") == 0)
+		{
+			for (int i = 0; atts[i]; i += 2)
+				if (strcmp(atts[i], "patternType") == 0)
+					ctx->currentPatternType = atts[i + 1];
+		}
+		// Per un riempimento a tinta unita (patternType="solid") e'
+		// fgColor a determinare il colore visibile in Excel, non
+		// bgColor (usato invece come sfondo di un pattern tratteggiato/
+		// zebrato con patternType diverso da "solid") -- altra
+		// stranezza nota del formato.
+		else if (strcmp(name, "fgColor") == 0 && ctx->currentPatternType == "solid"
+			&& !ctx->fillColors.empty())
+		{
+			rgb_color c;
+			if (ResolveColorAttrs(atts, *ctx->theme, &c))
+			{
+				ctx->fillColors.back() = c;
+				ctx->fillColorValid.back() = true;
+			}
+		}
+	}
+	else if (ctx->section == kStylesFonts)
+	{
+		if (strcmp(name, "font") == 0)
+		{
+			ctx->fontColors.push_back(rgb_color());
+			ctx->fontColorValid.push_back(false);
+		}
+		else if (strcmp(name, "color") == 0 && !ctx->fontColors.empty())
+		{
+			rgb_color c;
+			if (ResolveColorAttrs(atts, *ctx->theme, &c))
+			{
+				ctx->fontColors.back() = c;
+				ctx->fontColorValid.back() = true;
+			}
+		}
+	}
+	else if (ctx->section == kStylesCellXfs)
+	{
+		if (strcmp(name, "xf") == 0)
+		{
+			int fontId = 0, fillId = 0;
+			for (int i = 0; atts[i]; i += 2)
+			{
+				if (strcmp(atts[i], "fontId") == 0)
+					fontId = atoi(atts[i + 1]);
+				else if (strcmp(atts[i], "fillId") == 0)
+					fillId = atoi(atts[i + 1]);
+			}
+			ctx->cellXfs.push_back(std::make_pair(fontId, fillId));
+		}
+	}
+}
+
+static void XMLCALL StylesEnd(void* userData, const char* name)
+{
+	StylesContext* ctx = (StylesContext*)userData;
+	if (strcmp(name, "fills") == 0 || strcmp(name, "fonts") == 0 || strcmp(name, "cellXfs") == 0)
+		ctx->section = kStylesNone;
+}
+
+// "styles.xml" e' opzionale (un pacchetto senza stili espliciti lascia
+// "out" vuoto: nessun colore applicato, non un errore).
+static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& theme,
+	std::vector<ResolvedStyle>* out)
+{
+	out->clear();
+	if (xml.empty())
+		return;
+
+	StylesContext ctx;
+	ctx.theme = &theme;
+	ctx.section = kStylesNone;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, StylesStart, StylesEnd);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK)
+		return;
+
+	out->resize(ctx.cellXfs.size());
+	for (size_t i = 0; i < ctx.cellXfs.size(); i++)
+	{
+		int fontId = ctx.cellXfs[i].first;
+		int fillId = ctx.cellXfs[i].second;
+
+		ResolvedStyle rs;
+		rs.hasBg = fillId >= 0 && (size_t)fillId < ctx.fillColorValid.size()
+			&& ctx.fillColorValid[fillId];
+		if (rs.hasBg)
+			rs.bg = ctx.fillColors[fillId];
+		rs.hasFg = fontId >= 0 && (size_t)fontId < ctx.fontColorValid.size()
+			&& ctx.fontColorValid[fontId];
+		if (rs.hasFg)
+			rs.fg = ctx.fontColors[fontId];
+		(*out)[i] = rs;
+	}
+}
+
 // --- Parsing di xl/worksheets/sheetN.xml --------------------------------
 //
 // Struttura minima gestita:
@@ -458,11 +880,13 @@ struct SheetContext {
 	CContainer* doc;
 	const std::vector<std::string>* sharedStrings;
 	std::vector<std::pair<int, float> >* colWidths; // opzionale (NULL = non raccolte)
+	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 
 	std::string cellRef;
 	std::string cellType; // valore dell'attributo t="..." (puo' essere vuoto)
 	std::string value;    // testo dentro <v>
 	std::string formula;  // testo dentro <f>
+	int cellStyleIndex;   // valore di s="..." sulla cella corrente, -1 se assente
 	bool inValue;
 	bool inFormula;
 };
@@ -491,12 +915,15 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 		ctx->cellType.clear();
 		ctx->value.clear();
 		ctx->formula.clear();
+		ctx->cellStyleIndex = -1;
 		for (int i = 0; atts[i]; i += 2)
 		{
 			if (strcmp(atts[i], "r") == 0)
 				ctx->cellRef = atts[i + 1];
 			else if (strcmp(atts[i], "t") == 0)
 				ctx->cellType = atts[i + 1];
+			else if (strcmp(atts[i], "s") == 0)
+				ctx->cellStyleIndex = atoi(atts[i + 1]);
 		}
 	}
 	else if (strcmp(name, "v") == 0)
@@ -517,11 +944,12 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 	// le voci senza width esplicito (bestFit da solo, senza
 	// customWidth, e' solo un suggerimento per l'autofit di Excel, non
 	// una larghezza scelta dall'utente).
-	else if (strcmp(name, "col") == 0 && ctx->colWidths)
+	else if (strcmp(name, "col") == 0 && (ctx->colWidths || (ctx->styles && ctx->doc)))
 	{
 		int min = 0, max = 0;
 		bool hasWidth = false;
 		double width = 0;
+		int styleIndex = -1;
 		for (int i = 0; atts[i]; i += 2)
 		{
 			if (strcmp(atts[i], "min") == 0)
@@ -533,6 +961,8 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				width = atof(atts[i + 1]);
 				hasWidth = true;
 			}
+			else if (strcmp(atts[i], "style") == 0)
+				styleIndex = atoi(atts[i + 1]);
 		}
 		// max puo' arrivare a 16384 (il limite reale di Excel) per
 		// indicare "tutte le colonne restanti hanno questa larghezza":
@@ -540,12 +970,38 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 		// riempire colWidths di migliaia di voci che verrebbero comunque
 		// scartate piu' avanti (SheetView::SetColumnWidths ignora le
 		// colonne oltre kColCount).
-		if (hasWidth && min > 0 && max >= min)
+		if (min > 0 && max >= min)
 		{
-			float pixels = ExcelColWidthToPixels(width);
 			int clampedMax = std::min(max, (int)kColCount);
-			for (int col = min; col <= clampedMax; col++)
-				ctx->colWidths->push_back(std::make_pair(col, pixels));
+
+			if (hasWidth && ctx->colWidths)
+			{
+				float pixels = ExcelColWidthToPixels(width);
+				for (int col = min; col <= clampedMax; col++)
+					ctx->colWidths->push_back(std::make_pair(col, pixels));
+			}
+
+			// style="..." su <col> imposta il colore predefinito
+			// dell'intera colonna (CContainer::SetColumnStyle, gia'
+			// usato da GetCellStyleNr come fallback per le celle senza
+			// una voce propria): le celle vuote di una colonna colorata
+			// mostrano cosi' lo sfondo giusto anche senza un contenuto.
+			if (ctx->styles && ctx->doc && styleIndex >= 0
+				&& (size_t)styleIndex < ctx->styles->size())
+			{
+				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
+				if (rs.hasBg || rs.hasFg)
+				{
+					for (int col = min; col <= clampedMax; col++)
+					{
+						CellStyle cs;
+						ctx->doc->GetColumnStyle(col, cs);
+						if (rs.hasBg) cs.fLowColor = rs.bg;
+						if (rs.hasFg) cs.fHighColor = rs.fg;
+						ctx->doc->SetColumnStyle(col, cs);
+					}
+				}
+			}
 		}
 	}
 }
@@ -569,6 +1025,8 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		if (!CellRefToColRow(ctx->cellRef, col, row))
 			return;
 
+		cell loc(col, row);
+
 		std::string text;
 		if (!ctx->formula.empty())
 			text = "=" + ctx->formula;
@@ -582,18 +1040,45 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		else
 			text = ctx->value;
 
-		if (text.empty())
-			return;
-
-		cell loc(col, row);
-		try
+		if (!text.empty())
 		{
-			TryToParseString(text.c_str(), loc, ctx->doc, false);
+			try
+			{
+				TryToParseString(text.c_str(), loc, ctx->doc, false);
+			}
+			catch (...)
+			{
+				// Una singola cella non importabile non deve far fallire
+				// l'intero documento: viene semplicemente saltata.
+			}
 		}
-		catch (...)
+
+		// Il colore va applicato DOPO TryToParseString sopra, mai prima:
+		// CContainer::NewCell (chiamata anche da TryToParseString per
+		// scrivere il contenuto) sovrascrive SEMPRE l'intero CellData
+		// della cella, stile compreso, azzerandolo al predefinito --
+		// applicarlo prima verrebbe quindi perso non appena la cella
+		// riceve un contenuto. Si applica comunque ANCHE a una cella
+		// senza contenuto (es. un'intestazione colorata ma vuota, o
+		// uno sfondo decorativo), per questo fuori dal blocco
+		// "!text.empty()" sopra: qui SetCellStyle crea la cella da
+		// zero (nessun NewCell precedente su cui inciampare). Bug
+		// reale scoperto scrivendo tests/test_xlsx_translator.cpp: le
+		// celle con un contenuto risultavano sempre al colore
+		// predefinito nonostante s="..." fosse letto e risolto
+		// correttamente.
+		if (ctx->styles && ctx->cellStyleIndex >= 0
+			&& (size_t)ctx->cellStyleIndex < ctx->styles->size())
 		{
-			// Una singola cella non importabile non deve far fallire
-			// l'intero documento: viene semplicemente saltata.
+			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
+			if (rs.hasBg || rs.hasFg)
+			{
+				CellStyle cs;
+				ctx->doc->GetCellStyle(loc, cs);
+				if (rs.hasBg) cs.fLowColor = rs.bg;
+				if (rs.hasFg) cs.fHighColor = rs.fg;
+				ctx->doc->SetCellStyle(loc, cs);
+			}
 		}
 	}
 }
@@ -609,12 +1094,15 @@ static void XMLCALL SheetChars(void* userData, const char* s, int len)
 
 static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	const std::vector<std::string>& sharedStrings,
-	std::vector<std::pair<int, float> >* colWidths)
+	std::vector<std::pair<int, float> >* colWidths,
+	const std::vector<ResolvedStyle>* styles)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
 	ctx.sharedStrings = &sharedStrings;
 	ctx.colWidths = colWidths;
+	ctx.styles = styles;
+	ctx.cellStyleIndex = -1;
 	ctx.inValue = false;
 	ctx.inFormula = false;
 
@@ -906,6 +1394,20 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 	if (!ParseSharedStrings(sharedStringsXml, sharedStrings))
 		return B_BAD_DATA;
 
+	// Tema e stili (colori di sfondo/testo): entrambi opzionali, un
+	// pacchetto senza xl/theme/theme1.xml o xl/styles.xml importa
+	// semplicemente senza colori invece di fallire (vedi ParseTheme/
+	// ParseStyles sopra).
+	std::vector<unsigned char> themeXml;
+	zip.ReadEntry("xl/theme/theme1.xml", themeXml);
+	XlsxTheme theme;
+	ParseTheme(themeXml, &theme);
+
+	std::vector<unsigned char> stylesXml;
+	zip.ReadEntry("xl/styles.xml", stylesXml);
+	std::vector<ResolvedStyle> resolvedStyles;
+	ParseStyles(stylesXml, theme, &resolvedStyles);
+
 	std::vector<std::pair<std::string, std::string> > sheetsToRead; // (nome, percorso XML)
 
 	std::vector<unsigned char> workbookXml, relsXml;
@@ -953,7 +1455,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		ParsedSheet parsed;
 		parsed.name = sheetsToRead[i].first;
 		parsed.doc = new CContainer(NULL, NULL);
-		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths))
+		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;

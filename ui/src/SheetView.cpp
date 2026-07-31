@@ -1000,6 +1000,16 @@ static void ColumnName(int col, char* out)
 	out[n] = 0;
 }
 
+// Bianco/nero, gli stessi valori del costruttore predefinito di
+// CellStyle (CellStyle.cpp): confrontarli qui invece di costruire un
+// CellStyle solo per questo evita l'overhead per ogni cella visibile,
+// il caso comune (la stragrande maggioranza delle celle non ha un
+// colore personalizzato).
+static bool IsDefaultBg(rgb_color c)
+{
+	return c.red == 255 && c.green == 255 && c.blue == 255;
+}
+
 void SheetView::Draw(BRect updateRect)
 {
 	SetHighColor(255, 255, 255);
@@ -1009,6 +1019,28 @@ void SheetView::Draw(BRect updateRect)
 	int lastCol = std::min((int)kColCount, ColumnAtX(updateRect.right - kHeaderWidth) + 1);
 	int firstRow = RowAtY(updateRect.top - kHeaderHeight);
 	int lastRow = std::min((int)kRowCount, RowAtY(updateRect.bottom - kHeaderHeight) + 1);
+
+	// Sfondo colorato per cella (letto dal file importato o impostato
+	// a mano -- vedi CellStyle::fLowColor), disegnato PRIMA delle righe
+	// della griglia cosi' restano visibili sopra, come in Excel/
+	// LibreOffice Calc invece di sparire sotto un blocco di colore.
+	if (fDoc)
+	{
+		for (int row = firstRow; row <= lastRow; row++)
+		{
+			for (int col = firstCol; col <= lastCol; col++)
+			{
+				cell c(col, row);
+				CellStyle cs;
+				fDoc->GetCellStyle(c, cs);
+				if (!IsDefaultBg(cs.fLowColor))
+				{
+					SetHighColor(cs.fLowColor);
+					FillRect(CellRect(c));
+				}
+			}
+		}
+	}
 
 	SetHighColor(220, 220, 220);
 	for (int col = firstCol; col <= lastCol; col++)
@@ -1020,8 +1052,6 @@ void SheetView::Draw(BRect updateRect)
 
 	if (fDoc)
 	{
-		SetHighColor(0, 0, 0);
-		SetLowColor(255, 255, 255);
 		for (int row = firstRow; row <= lastRow; row++)
 		{
 			for (int col = firstCol; col <= lastCol; col++)
@@ -1031,6 +1061,9 @@ void SheetView::Draw(BRect updateRect)
 				fDoc->GetCellResult(c, text, sizeof(text), true);
 				if (text[0] == 0)
 					continue;
+
+				CellStyle cs;
+				fDoc->GetCellStyle(c, cs);
 
 				// Il motore formatta i numeri in modo generico
 				// (CFormatter/eGeneral): per un valore puramente
@@ -1046,9 +1079,6 @@ void SheetView::Draw(BRect updateRect)
 				Value val;
 				if (fDoc->GetValue(c, val) && val.fType == eNumData && !val.IsNan())
 				{
-					CellStyle cs;
-					fDoc->GetCellStyle(c, cs);
-
 					BString formatted;
 					status_t fmtErr;
 					if (cs.fFormat == eCurrency)
@@ -1061,6 +1091,17 @@ void SheetView::Draw(BRect updateRect)
 					if (fmtErr == B_OK && formatted.Length() > 0)
 						strlcpy(text, formatted.String(), sizeof(text));
 				}
+
+				// Il colore passato a SetLowColor deve combaciare con
+				// quello davvero disegnato sotto (sopra): DrawString lo
+				// usa per l'antialiasing dei glifi, un valore sbagliato
+				// lascerebbe un alone bianco intorno al testo su una
+				// cella colorata. cs.fLowColor e' gia' bianco puro
+				// (255,255,255) per una cella senza colore personalizzato
+				// (il valore predefinito di CellStyle), quindi si puo'
+				// usare direttamente senza distinguere i due casi.
+				SetHighColor(cs.fHighColor);
+				SetLowColor(cs.fLowColor);
 
 				BRect r = CellRect(c);
 				BPoint pos(r.left + 3, r.bottom - 5);

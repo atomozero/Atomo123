@@ -18,6 +18,7 @@
 #include <vector>
 
 #include <DataIO.h>
+#include <GraphicsDefs.h>
 #include <String.h>
 #include <SupportDefs.h>
 
@@ -44,6 +45,15 @@ class CContainer;
 // XlsxTranslator) o da un ridimensionamento fatto a mano
 // (SheetView::CustomColumnWidths), non un array denso su tutte le
 // kColCount colonne.
+//
+// I colori di sfondo/testo (CellStyle::fLowColor/fHighColor, per cella
+// e per colonna) NON hanno un parametro dedicato come charts/colWidths
+// sopra: a differenza della larghezza di colonna (che vive solo in
+// SheetView, mai nel motore), il colore vive gia' dentro CContainer
+// stesso tramite CContainer::GetCellStyle/SetCellStyle/GetColumnStyle/
+// SetColumnStyle (gia' usate per il formato numerico) -- SaveASCD lo
+// legge direttamente da "doc" e LoadASCD lo scrive direttamente li',
+// esattamente come gia' avviene per il testo/formula di ogni cella.
 status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<ChartObject>* charts = NULL,
 	std::vector<std::pair<int, float> >* colWidths = NULL);
@@ -66,7 +76,8 @@ bool IsASCDFile(BPositionIO* source);
 // documento (creato da LoadASCDBook, di proprieta' del chiamante --
 // va rilasciato con Release() quando non serve piu', stesso discorso
 // gia' valido per qualunque CContainer). "charts"/"colWidths"
-// seguono lo stesso significato di LoadASCD/SaveASCD sopra.
+// seguono lo stesso significato di LoadASCD/SaveASCD sopra -- i
+// colori invece non compaiono qui: vivono gia' dentro "doc".
 struct AscdSheet {
 	BString name;
 	CContainer* doc;

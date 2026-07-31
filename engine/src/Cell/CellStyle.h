@@ -65,7 +65,8 @@ struct CellStyle {
 	bool fLocked;
 	bool fHidden;
 	char fAlignment;
-	rgb_color fLowColor;
+	rgb_color fLowColor;  // colore di sfondo della cella
+	rgb_color fHighColor; // colore del testo della cella
 	uchar fTBorderColor;
 	uchar fLBorderColor;
 	uchar fBBorderColor;
