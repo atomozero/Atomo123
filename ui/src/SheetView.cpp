@@ -8,6 +8,7 @@
 #include "MainWindow.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -84,6 +85,10 @@ SheetView::SheetView(CContainer* doc)
 	:
 	BView(FullCanvasFrame(), "SheetView", B_FOLLOW_NONE,
 		B_WILL_DRAW | B_FRAME_EVENTS),
+	fResizingColumn(0),
+	fResizingRow(0),
+	fResizeDragStart(0),
+	fResizeStartSize(0),
 	fDoc(doc),
 	fSelection(1, 1),
 	fAnchor(1, 1),
@@ -93,6 +98,16 @@ SheetView::SheetView(CContainer* doc)
 	fEditingCell(1, 1)
 {
 	SetViewColor(255, 255, 255);
+
+	// Tutte le colonne/righe partono alla larghezza/altezza
+	// predefinita; fColOffsets/fRowOffsets (la somma cumulativa) si
+	// costruiscono una volta sola qui e poi solo quando l'utente
+	// ridimensiona davvero qualcosa (vedi RebuildColumnOffsets/
+	// RebuildRowOffsets).
+	fColWidths.assign(kColCount, kColWidth);
+	fRowHeights.assign(kRowCount, kRowHeight);
+	RebuildColumnOffsets();
+	RebuildRowOffsets();
 
 	// Senza questi limiti espliciti, BView deriva i propri suggerimenti
 	// di dimensione (Min/Max/PreferredSize) dal Frame() della view --
@@ -189,8 +204,8 @@ void SheetView::FixupScrollBars()
 	if (!hsb || !vsb)
 		return;
 
-	float totalWidth = kHeaderWidth + kColCount * kColWidth;
-	float totalHeight = kHeaderHeight + kRowCount * kRowHeight;
+	float totalWidth = kHeaderWidth + fColOffsets[kColCount];
+	float totalHeight = kHeaderHeight + fRowOffsets[kRowCount];
 
 	// Bounds() riflette sempre la dimensione piena del Frame() (vedi
 	// sopra), non la porzione effettivamente visibile: la vera area
@@ -210,6 +225,75 @@ void SheetView::FixupScrollBars()
 	vsb->SetRange(0, maxV);
 	vsb->SetProportion(viewport.Height() / totalHeight);
 	vsb->SetSteps(kRowHeight, viewport.Height());
+}
+
+void SheetView::RebuildColumnOffsets()
+{
+	fColOffsets.resize(kColCount + 1);
+	fColOffsets[0] = 0;
+	for (int i = 0; i < kColCount; i++)
+		fColOffsets[i + 1] = fColOffsets[i] + fColWidths[i];
+}
+
+void SheetView::RebuildRowOffsets()
+{
+	fRowOffsets.resize(kRowCount + 1);
+	fRowOffsets[0] = 0;
+	for (int i = 0; i < kRowCount; i++)
+		fRowOffsets[i + 1] = fRowOffsets[i] + fRowHeights[i];
+}
+
+int SheetView::ColumnAtX(float x) const
+{
+	// upper_bound trova il primo offset STRETTAMENTE maggiore di x:
+	// l'indice prima di quello (meno 1, per passare da "confine" a
+	// "colonna") e' la colonna che contiene x. Bloccato dentro
+	// [1, kColCount] perche' fColOffsets copre solo quell'intervallo
+	// (x negativo o oltre l'ultima colonna non deve uscire dall'array).
+	std::vector<float>::const_iterator it =
+		std::upper_bound(fColOffsets.begin(), fColOffsets.end(), x);
+	int col = (int)(it - fColOffsets.begin());
+	if (col < 1) col = 1;
+	if (col > kColCount) col = kColCount;
+	return col;
+}
+
+int SheetView::RowAtY(float y) const
+{
+	std::vector<float>::const_iterator it =
+		std::upper_bound(fRowOffsets.begin(), fRowOffsets.end(), y);
+	int row = (int)(it - fRowOffsets.begin());
+	if (row < 1) row = 1;
+	if (row > kRowCount) row = kRowCount;
+	return row;
+}
+
+int SheetView::ColumnBoundaryAt(float x) const
+{
+	int col = ColumnAtX(x);
+	// Bordo destro di "col" (che e' anche l'inizio di "col + 1").
+	if (fabs(x - fColOffsets[col]) <= kResizeGrip)
+		return col;
+	// Bordo sinistro di "col" (che e' il bordo destro di "col - 1").
+	if (col > 1 && fabs(x - fColOffsets[col - 1]) <= kResizeGrip)
+		return col - 1;
+	return 0;
+}
+
+int SheetView::RowBoundaryAt(float y) const
+{
+	int row = RowAtY(y);
+	if (fabs(y - fRowOffsets[row]) <= kResizeGrip)
+		return row;
+	if (row > 1 && fabs(y - fRowOffsets[row - 1]) <= kResizeGrip)
+		return row - 1;
+	return 0;
+}
+
+void SheetView::UpdateCanvasSize()
+{
+	ResizeTo(kHeaderWidth + fColOffsets[kColCount] - 1,
+		kHeaderHeight + fRowOffsets[kRowCount] - 1);
 }
 
 void SheetView::SetDocument(CContainer* doc)
@@ -805,17 +889,22 @@ void SheetView::Redo()
 
 BRect SheetView::CellRect(cell c) const
 {
-	float x = kHeaderWidth + (c.h - 1) * kColWidth;
-	float y = kHeaderHeight + (c.v - 1) * kRowHeight;
-	return BRect(x, y, x + kColWidth, y + kRowHeight);
+	int col = c.h;
+	int row = c.v;
+	if (col < 1) col = 1;
+	if (col > kColCount) col = kColCount;
+	if (row < 1) row = 1;
+	if (row > kRowCount) row = kRowCount;
+
+	float x = kHeaderWidth + fColOffsets[col - 1];
+	float y = kHeaderHeight + fRowOffsets[row - 1];
+	return BRect(x, y, x + fColWidths[col - 1], y + fRowHeights[row - 1]);
 }
 
 cell SheetView::CellAt(BPoint where) const
 {
-	int col = (int)((where.x - kHeaderWidth) / kColWidth) + 1;
-	int row = (int)((where.y - kHeaderHeight) / kRowHeight) + 1;
-	if (col < 1) col = 1;
-	if (row < 1) row = 1;
+	int col = ColumnAtX(where.x - kHeaderWidth);
+	int row = RowAtY(where.y - kHeaderHeight);
 	return cell(col, row);
 }
 
@@ -885,23 +974,18 @@ void SheetView::Draw(BRect updateRect)
 	SetHighColor(255, 255, 255);
 	FillRect(updateRect);
 
-	int firstCol = 1, lastCol = 20, firstRow = 1, lastRow = 40;
-	if (updateRect.left > kHeaderWidth)
-		firstCol = (int)((updateRect.left - kHeaderWidth) / kColWidth) + 1;
-	lastCol = (int)((updateRect.right - kHeaderWidth) / kColWidth) + 2;
-	if (updateRect.top > kHeaderHeight)
-		firstRow = (int)((updateRect.top - kHeaderHeight) / kRowHeight) + 1;
-	lastRow = (int)((updateRect.bottom - kHeaderHeight) / kRowHeight) + 2;
-	if (firstCol < 1) firstCol = 1;
-	if (firstRow < 1) firstRow = 1;
+	int firstCol = ColumnAtX(updateRect.left - kHeaderWidth);
+	int lastCol = std::min((int)kColCount, ColumnAtX(updateRect.right - kHeaderWidth) + 1);
+	int firstRow = RowAtY(updateRect.top - kHeaderHeight);
+	int lastRow = std::min((int)kRowCount, RowAtY(updateRect.bottom - kHeaderHeight) + 1);
 
 	SetHighColor(220, 220, 220);
 	for (int col = firstCol; col <= lastCol; col++)
-		StrokeLine(BPoint(kHeaderWidth + (col - 1) * kColWidth, updateRect.top),
-			BPoint(kHeaderWidth + (col - 1) * kColWidth, updateRect.bottom));
+		StrokeLine(BPoint(kHeaderWidth + fColOffsets[col - 1], updateRect.top),
+			BPoint(kHeaderWidth + fColOffsets[col - 1], updateRect.bottom));
 	for (int row = firstRow; row <= lastRow; row++)
-		StrokeLine(BPoint(updateRect.left, kHeaderHeight + (row - 1) * kRowHeight),
-			BPoint(updateRect.right, kHeaderHeight + (row - 1) * kRowHeight));
+		StrokeLine(BPoint(updateRect.left, kHeaderHeight + fRowOffsets[row - 1]),
+			BPoint(updateRect.right, kHeaderHeight + fRowOffsets[row - 1]));
 
 	if (fDoc)
 	{
@@ -999,7 +1083,8 @@ void SheetView::Draw(BRect updateRect)
 	{
 		char name[16];
 		snprintf(name, sizeof(name), "%d", row);
-		BPoint pos(rowHeaderLeft + 4, kHeaderHeight + (row - 1) * kRowHeight + kRowHeight - 6);
+		BPoint pos(rowHeaderLeft + 4,
+			kHeaderHeight + fRowOffsets[row - 1] + fRowHeights[row - 1] - 6);
 		DrawString(name, pos);
 	}
 
@@ -1044,7 +1129,7 @@ void SheetView::Draw(BRect updateRect)
 	{
 		char name[8];
 		ColumnName(col, name);
-		BPoint pos(kHeaderWidth + (col - 1) * kColWidth + 4, headerTop + kHeaderHeight - 6);
+		BPoint pos(kHeaderWidth + fColOffsets[col - 1] + 4, headerTop + kHeaderHeight - 6);
 		DrawString(name, pos);
 	}
 }
@@ -1053,6 +1138,43 @@ void SheetView::MouseDown(BPoint where)
 {
 	if (fEditor)
 		CommitEditing(false);
+
+	// Ridimensionamento riga/colonna: trascinando il confine fra due
+	// intestazioni si allarga/stringe quella colonna/riga. Controllato
+	// PRIMA di tutto il resto (che oggi non fa nulla per un clic
+	// sull'intestazione, vedi sotto), cosi' la maniglia ha sempre la
+	// precedenza sul resto. Le bande delle intestazioni sono
+	// "congelate" durante lo scroll (vedi Draw(): headerTop/
+	// rowHeaderLeft seguono Bounds().top/Bounds().left, non 0 fisso),
+	// quindi il confronto usa Bounds() per restare corretto anche a
+	// foglio scorso, non solo appena aperto.
+	BRect bounds = Bounds();
+	if (where.y >= bounds.top && where.y < bounds.top + kHeaderHeight
+		&& where.x >= kHeaderWidth)
+	{
+		int col = ColumnBoundaryAt(where.x - kHeaderWidth);
+		if (col > 0)
+		{
+			fResizingColumn = col;
+			fResizeDragStart = where.x;
+			fResizeStartSize = fColWidths[col - 1];
+			SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+			return;
+		}
+	}
+	if (where.x >= bounds.left && where.x < bounds.left + kHeaderWidth
+		&& where.y >= bounds.top + kHeaderHeight)
+	{
+		int row = RowBoundaryAt(where.y - kHeaderHeight);
+		if (row > 0)
+		{
+			fResizingRow = row;
+			fResizeDragStart = where.y;
+			fResizeStartSize = fRowHeights[row - 1];
+			SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+			return;
+		}
+	}
 
 	if (where.x < kHeaderWidth || where.y < kHeaderHeight)
 		return;
@@ -1095,11 +1217,44 @@ void SheetView::MouseDown(BPoint where)
 void SheetView::MouseUp(BPoint where)
 {
 	fDragging = false;
+	fResizingColumn = 0;
+	fResizingRow = 0;
 	BView::MouseUp(where);
 }
 
 void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage)
 {
+	// Trascinamento di ridimensionamento in corso (armato da
+	// MouseDown): la nuova larghezza/altezza e' quella di partenza piu'
+	// lo spostamento del mouse dall'inizio del trascinamento, mai sotto
+	// il minimo (altrimenti la colonna/riga sparirebbe insieme alla
+	// maniglia per riallargarla). Non e' annullabile ne' marcata come
+	// "documento modificato": e' una preferenza di sola visualizzazione
+	// per questa sessione, non salvata nel file (vedi il commento sui
+	// campi fColWidths/fRowHeights in SheetView.h).
+	if (fResizingColumn > 0)
+	{
+		float newWidth = fResizeStartSize + (where.x - fResizeDragStart);
+		if (newWidth < kMinColWidth)
+			newWidth = kMinColWidth;
+		fColWidths[fResizingColumn - 1] = newWidth;
+		RebuildColumnOffsets();
+		UpdateCanvasSize();
+		Invalidate();
+		return;
+	}
+	if (fResizingRow > 0)
+	{
+		float newHeight = fResizeStartSize + (where.y - fResizeDragStart);
+		if (newHeight < kMinRowHeight)
+			newHeight = kMinRowHeight;
+		fRowHeights[fResizingRow - 1] = newHeight;
+		RebuildRowOffsets();
+		UpdateCanvasSize();
+		Invalidate();
+		return;
+	}
+
 	if (!fDragging)
 	{
 		BView::MouseMoved(where, code, dragMessage);

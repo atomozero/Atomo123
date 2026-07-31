@@ -172,6 +172,17 @@ public:
 	// (kHeaderWidth/kColWidth/ecc., gia' privati a questa classe).
 	BPoint CellOrigin(cell c) const { return CellRect(c).LeftTop(); }
 
+	// Rettangolo in pixel di una cella (posizione e dimensione:
+	// riflette la larghezza/altezza corrente di quella colonna/riga,
+	// non piu' necessariamente kColWidth/kRowHeight se l'utente l'ha
+	// ridimensionata trascinando un'intestazione). Pubblici apposta
+	// per essere testabili direttamente -- vedi tests/test_resize.cpp.
+	BRect CellRect(cell c) const;
+	// Cella sotto un punto della vista (coordinate locali); non
+	// controlla se il punto ricade sulle intestazioni -- i chiamanti
+	// lo fanno gia' a parte, dove serve.
+	cell CellAt(BPoint where) const;
+
 	// Elenco dei grafici incorporati da disegnare sopra la griglia
 	// (di proprieta' di MainWindow, che lo passa qui solo per
 	// disegnarlo: SheetView non lo possiede ne' lo modifica mai).
@@ -184,6 +195,60 @@ public:
 	BRect ContentRect() const;
 
 private:
+	// Larghezza/altezza di ogni colonna/riga: un array denso (non
+	// sparso) indicizzato da 0 a kColCount-1/kRowCount-1, inizializzato
+	// a kColWidth/kRowHeight per tutti e modificato solo dove l'utente
+	// trascina un bordo di intestazione (vedi MouseDown/MouseMoved).
+	// Occupazione trascurabile (~2,8 KiB/64 KiB) anche per un foglio
+	// completamente vuoto. fColOffsets/fRowOffsets sono la somma
+	// cumulativa corrispondente (fColOffsets[i] = distanza dal bordo
+	// sinistro del foglio all'inizio della colonna i+1esima, in pixel,
+	// fColOffsets[kColCount] = larghezza totale del foglio): tenerla
+	// gia' calcolata rende CellRect() O(1) e la ricerca "che colonna
+	// c'e' sotto x" O(log n) con una ricerca binaria, invece di
+	// ricalcolare una somma da zero a ogni chiamata (Draw() ne fa
+	// diverse per ogni ridisegno). Ricostruita per intero solo quando
+	// una larghezza/altezza cambia davvero (RebuildColumnOffsets/
+	// RebuildRowOffsets), non a ogni Draw().
+	//
+	// Limite noto: solo per la sessione corrente, non salvata nel
+	// file .ascd -- riaprendo un foglio le colonne/righe ridimensionate
+	// tornano alla larghezza/altezza predefinita. Persisterle
+	// richiederebbe una nuova sezione nel formato file (AscdIO), non
+	// fatta in questo incremento.
+	std::vector<float> fColWidths;
+	std::vector<float> fRowHeights;
+	std::vector<float> fColOffsets;
+	std::vector<float> fRowOffsets;
+	void RebuildColumnOffsets();
+	void RebuildRowOffsets();
+	// Indice di colonna/riga (1-based, sempre in [1, kColCount]/
+	// [1, kRowCount]) la cui area copre la coordinata x/y data --
+	// ricerca binaria su fColOffsets/fRowOffsets (std::upper_bound).
+	int ColumnAtX(float x) const;
+	int RowAtY(float y) const;
+	// Se x/y cade entro qualche pixel dal confine fra due colonne/
+	// righe (la "maniglia" per trascinare un ridimensionamento),
+	// l'indice della colonna/riga a SINISTRA/SOPRA quel confine;
+	// altrimenti 0 (nessun confine abbastanza vicino).
+	int ColumnBoundaryAt(float x) const;
+	int RowBoundaryAt(float y) const;
+	// Colonna/riga attualmente in trascinamento per il
+	// ridimensionamento (0 = nessuno), la posizione di partenza del
+	// trascinamento e la larghezza/altezza che aveva all'inizio --
+	// bastano a calcolare la nuova dimensione a ogni MouseMoved senza
+	// dover ricordare l'intera cronologia del trascinamento.
+	int fResizingColumn;
+	int fResizingRow;
+	float fResizeDragStart;
+	float fResizeStartSize;
+	// Ridimensiona la vista stessa (ResizeTo) alla nuova dimensione
+	// totale del foglio dopo che una colonna/riga ha cambiato
+	// larghezza/altezza -- aggiorna Frame()/Bounds() cosi'
+	// FixupScrollBars() (richiamato automaticamente da FrameResized)
+	// riflette il nuovo spazio scorrevole totale.
+	void UpdateCanvasSize();
+
 	CContainer* fDoc;
 	cell fSelection;
 
@@ -238,12 +303,15 @@ private:
 	static const int kRowHeight = 20;
 	static const int kHeaderWidth = 40;
 	static const int kHeaderHeight = 20;
+	// Non si puo' stringere una colonna/riga oltre questo, per non
+	// farla sparire (e con lei la maniglia per riallargarla).
+	static const int kMinColWidth = 20;
+	static const int kMinRowHeight = 10;
+	// Distanza massima (in pixel) da un confine fra due intestazioni
+	// perche' MouseDown lo riconosca come maniglia di ridimensionamento
+	// invece che come un clic ordinario sull'intestazione.
+	static const int kResizeGrip = 4;
 
-	BRect CellRect(cell c) const;
-	// Cella sotto un punto della vista (coordinate locali); non
-	// controlla se il punto ricade sulle intestazioni -- i chiamanti
-	// lo fanno gia' a parte, dove serve.
-	cell CellAt(BPoint where) const;
 	void ScrollToShowSelection();
 	void NotifySelectionChanged();
 	// Avvisa MainWindow (dirty flag/titolo) ogni volta che una
