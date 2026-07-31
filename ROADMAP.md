@@ -39,7 +39,12 @@ nel motore ereditato ma mai esposto dalla UI nuova, aggiorna i
 riferimenti anche nelle celle che non si spostano fisicamente);
 restano formattazione font/colore/allineamento, Incolla speciale,
 intervalli con nome, Vai a, un vero Blocca riquadri, una finestra
-Preferenze e altro (dettaglio nella sezione Fase 7). Aggiornato ad ogni fase
+Preferenze e altro (dettaglio nella sezione Fase 7). **Fase 8
+(qualità UI/UX) in corso**: protezione dalle modifiche non salvate
+fatta (Nuovo/Apri/Esci chiedono conferma solo se ci sono modifiche in
+sospeso) insieme al titolo finestra con nome file e indicatore di
+modifica; restano icone sulla toolbar e ridimensionamento riga/
+colonna. Aggiornato ad ogni fase
 completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
@@ -1540,6 +1545,79 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       Nessuna regressione nella suite esistente (compresi Annulla/
       Ripeti e Taglia/Copia/Incolla, per via del refactor
       dell'istantanea; verificato anche con esecuzioni ripetute).
+
+---
+
+## Fase 8 — Qualità UI/UX (IN CORSO)
+
+Con la Fase 7 sostanzialmente completa (resta solo formattazione
+font/colore/allineamento, Incolla speciale, intervalli con nome, Vai
+a, un vero Blocca riquadri, una finestra Preferenze), l'utente ha
+chiesto un giro dedicato alla qualità dell'interfaccia invece di
+nuove funzionalità di calcolo — punti scelti fra quattro proposti
+dopo un'analisi rapida del codice esistente: protezione dalle
+modifiche non salvate (consigliata, unico rischio concreto di perdita
+dati fra le quattro), titolo finestra con nome file, icone sulla
+toolbar, ridimensionamento riga/colonna.
+
+- [x] **Protezione dalle modifiche non salvate + titolo con nome
+      file**: prima di questo incremento, Nuovo/Apri/Esci scartavano
+      il documento corrente senza alcun avviso — un clic sbagliato
+      poteva far perdere lavoro non salvato, e la finestra mostrava
+      sempre e solo "Atomo123", mai il file aperto. `MainWindow` tiene
+      ora `fModified` (bool) e `fDocumentName` (solo il nome, non il
+      percorso — basta per il titolo), aggiornati da **ogni**
+      mutazione del documento: quelle fatte dentro `SheetView`
+      (editing in-cella, Cancella, Riempi, Ordina, Inserisci/Elimina
+      riga e colonna, Annulla/Ripeti) tramite un nuovo ponte
+      `SheetView::NotifyDocumentChanged()` →
+      `MainWindow::DocumentChanged()` (stesso principio già usato per
+      `NotifySelectionChanged`/`SelectionChanged`), e quelle fatte
+      direttamente in `MainWindow` (Taglia, Incolla, Formato numerico,
+      Trova e sostituisci, grafico e tabella pivot incorporati) con
+      una chiamata diretta a `MarkModified()`. Diciotto punti di
+      mutazione in tutto, uno per uno invece di un unico punto di
+      passaggio "furbo" (es. agganciarsi a `SaveUndoState`, già
+      chiamato da quasi tutti): `SaveUndoState` non copre Formato
+      numerico (le modifiche di stile non sono annullabili, scelta
+      già presa in Fase 7) né i grafici/tabelle pivot incorporati, che
+      avrebbero comunque richiesto un punto di aggancio separato —
+      meglio diciotto chiamate esplicite e verificabili una per una
+      che un aggancio implicito che copre l'80% dei casi e va
+      integrato ad hoc per il resto.
+
+      Nuovo/Apri/Esci chiedono conferma con un `BAlert` prima di
+      scartare, **solo** se ci sono davvero modifiche in sospeso
+      (`ConfirmDiscardChanges()`, che con `fModified == false` torna
+      `true` subito senza mostrare nulla — nessun avviso invadente su
+      un documento già pulito).
+
+      Il titolo mostra il nome del file corrente (o "Nuovo documento"
+      se non ancora salvato) con un asterisco in testa quando ci sono
+      modifiche non salvate, es. `"* foglio.ascd — Atomo123"`.
+
+      `ConfirmDiscardChanges()`/`IsModified()` diventano pubblici in
+      `MainWindow`, esposti apposta per essere testabili direttamente
+      — stesso principio già usato per `CopySelection`/
+      `PasteSelection`/`SetCellFormat` in Fase 7.
+
+      Test dedicato `ui/tests/test_unsaved_changes.cpp` (nuovo target
+      `make test-unsaved-changes`): stato iniziale non modificato,
+      titolo senza indicatore e senza nome file, conferma che non
+      mostra nessun `BAlert` quando non ci sono modifiche in sospeso
+      (l'unico ramo testabile in automatico: un vero clic su un
+      dialogo modale non lo è, stesso limite già documentato altrove
+      in questo progetto per l'interazione diretta — vedi Maiusc+click
+      in `test_selection.cpp`), una mutazione fatta tramite
+      `SheetView` che marca correttamente il documento come
+      modificato tramite il nuovo ponte. Nessuna regressione nella
+      suite esistente.
+
+      **Non ancora fatto in questo incremento**: titolo finestra con
+      nome file era già incluso sopra (stesso meccanismo, nessun
+      lavoro separato); restano icone sulla toolbar e ridimensionamento
+      riga/colonna, entrambi scelti dall'utente ma non ancora
+      cominciati.
 
 ---
 
