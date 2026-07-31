@@ -1,78 +1,124 @@
-# Foglio di calcolo nativo per Haiku OS
+# Atomo123
 
-Applicazione foglio di calcolo (stile Excel) nativa per Haiku OS,
-scritta con le API native (Interface/Layout Kit, Locale Kit, Translation
-Kit), compatibile con i file generati da Microsoft Excel e
-OpenOffice/LibreOffice tramite add-on di conversione basati sul
-Translation Kit.
+Native spreadsheet application (Excel-style) for Haiku OS, built with
+Haiku's own APIs (Interface/Layout Kit, Locale Kit, Translation Kit) —
+compatible with files produced by Microsoft Excel and
+OpenOffice/LibreOffice through Translation Kit conversion add-ons.
 
-## Stato del progetto
+![Atomo123 with two windows open, each on a different XLSX file](screenshots/Atomo123_V0.1.png)
 
-Vedi [ROADMAP.md](ROADMAP.md) per le fasi e lo stato di avanzamento
-aggiornato. In sintesi:
+If Atomo123 saves you time, consider supporting development: [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-atomozero-yellow?logo=buymeacoffee)](https://buymeacoffee.com/atomozero)
 
-- Il progetto riusa e modernizza il motore di calcolo e l'importer
-  Excel legacy del vecchio progetto BeOS **Sum-It** (fork community
-  `OpenSumIt`), portandolo a compilare su Haiku moderno a 64 bit.
-- La UI viene scritta da zero in Interface/Layout Kit (il codice UI
-  storico è BeOS pre-Layout-Kit e non viene riusato).
-- L'interoperabilità con XLSX/ODS/CSV/XLS passa dal **Translation Kit**
-  di Haiku (`BTranslator`/`BTranslatorRoster`), lo stesso meccanismo
-  usato per le immagini, con un add-on per formato.
+## Status
 
-## Struttura del repository
+Still early-stage — see [ROADMAP.md](ROADMAP.md) for the phased plan
+and up-to-date status. In short: the calculation engine and legacy
+Excel importer reuse and modernize the old BeOS **Sum-It** project
+(community fork `OpenSumIt`), ported to build on modern 64-bit Haiku;
+the UI is written from scratch in Interface/Layout Kit (the historical
+pre-Layout-Kit UI code is not reused).
+
+## Features
+
+* Native Haiku GUI — Interface/Layout Kit only, no external toolkit
+* Multi-sheet workbooks with a scrollable tab strip, like Excel/LibreOffice Calc
+* Formulas with named functions (`SUM`, `IF`, `SUMIF`, ...) and cell/range references
+* Cut/copy/paste through the real system clipboard, extended to multi-cell ranges
+* Undo/redo, Find & replace, sort ascending/descending, fill down/right
+* Insert/delete rows and columns
+* Bar charts and pivot tables
+* Opens CSV/XLS/XLSX/ODS through Translation Kit add-ons (`BTranslatorRoster`
+  picks the right one automatically); imports column widths and cell/column
+  background/text colors from XLSX theme and direct styles
+* Native ASCD/ASCB file format round-trips everything above (multiple sheets,
+  charts, colors, column widths), not just cell values
+* Registers itself as Tracker's preferred app for its supported file types, so
+  double-clicking a spreadsheet opens it directly — without overriding a choice
+  already made by the user or another app
+* Opens each new file in its own window instead of replacing the one you
+  already have open
+* Toolbar built from real HVIF vector icons, grouped by category
+  (File/Edit/Data/Insert) with separators, icon-only with tooltips
+* No external dependencies beyond Haiku system libraries
+
+## Quick start
 
 ```
-legacy/opensumit/   sorgente storico Sum-It/OpenSumIt, patchato per
-                     compilare su Haiku 64 bit (vedi PORTING_STATUS.md)
-engine/              motore di calcolo estratto e isolato (Fase 2)
-translators/         add-on Translation Kit per xlsx/ods/csv/xls (Fase 3)
-ui/                  applicazione nativa Interface/Layout Kit (Fase 4)
-docs/                ricerca tecnica, architettura, note di porting
+cd ui
+make
+./Atomo123
 ```
 
-## Licenza
+To open CSV/XLS/XLSX/ODS files (not just the native ASCD format), install
+the corresponding Translation Kit add-ons once:
 
-Il codice nuovo di questo progetto (`translators/`, `ui/`, `docs/`,
-`packaging/`) è distribuito con licenza **MIT** — vedi [LICENSE](LICENSE).
+```
+cd translators/csv && make && make install
+cd translators/xls && make && make install
+cd translators/xlsx && make && make install
+cd translators/ods && make && make install
+```
 
-Il codice in `legacy/opensumit/` proviene dal progetto Sum-It
-(Copyright 1996-2000 Hekkelman Programmatuur B.V.) ed è distribuito
-con licenza BSD a 4 clausole, inclusa la clausola pubblicitaria — vedi
-`legacy/opensumit/sum-it/Docs/Licence`. `engine/` estrae e modifica
-quel codice storico (non è una riscrittura da zero): resta quindi
-sotto la stessa licenza BSD a 4 clausole, non MIT — vedi
-[LICENSE](LICENSE) per il dettaglio completo. Qualunque distribuzione
-binaria che includa il codice di `legacy/opensumit/` o `engine/` deve
-rispettare la clausola pubblicitaria.
+`make install` copies the add-on to
+`~/config/non-packaged/add-ons/Translators/`, where Atomo123's Translation
+Kit finds it automatically.
+
+## Repository layout
+
+```
+legacy/opensumit/   historical Sum-It/OpenSumIt source, patched to build on
+                     64-bit Haiku (see PORTING_STATUS.md)
+engine/              isolated calculation engine
+translators/         Translation Kit add-ons for xlsx/ods/csv/xls
+ui/                  native Interface/Layout Kit application
+docs/                technical research, architecture, porting notes
+```
 
 ## Build
 
-Vedi `legacy/opensumit/README` per le istruzioni di build del codice
-storico (in corso di stabilizzazione, Fase 1).
+Requires Haiku with GCC and standard system libraries (`libbe`,
+`libtranslation`, `libtracker`).
 
 ```
-cd engine && make && make test         # motore di calcolo isolato
-cd translators/<nome> && make && make test && make install  # per csv/xls/xlsx/ods
-cd ui && make && make run              # applicazione (richiede una sessione grafica)
+cd engine && make && make test                              # isolated engine
+cd translators/<name> && make && make test && make install  # csv/xls/xlsx/ods
+cd ui && make && make run                                   # the app (needs a graphical session)
 ```
 
-L'app in `ui/` apre i file tramite il Translation Kit: i translator
-vanno installati (`make install` in ciascuna cartella sotto
-`translators/`) prima di poter aprire CSV/XLS/XLSX/ODS dall'app.
+## Documentation
 
-## Documentazione
-
-- [ROADMAP.md](ROADMAP.md) — fasi del progetto e stato di avanzamento
-- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — guida rapida per chi usa
-  l'app (non per chi sviluppa il codice)
-- [docs/RESEARCH.md](docs/RESEARCH.md) — analisi tecnica di partenza
-  (API Haiku, librerie formati file, valutazione SumIt)
-- [docs/ENGINE_API.md](docs/ENGINE_API.md) — architettura del motore di
-  calcolo isolato (Fase 2), stub, bug trovati
-- [docs/TRANSLATORS.md](docs/TRANSLATORS.md) — architettura dei
-  translator CSV/XLS/XLSX/ODS (Fase 3)
-- [docs/UI_ARCHITECTURE.md](docs/UI_ARCHITECTURE.md) — architettura
-  dell'app nativa (Fase 4), bug trovati
+- [ROADMAP.md](ROADMAP.md) — project phases and current status
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — quick guide for using the app
+  (not for developing the code)
+- [docs/RESEARCH.md](docs/RESEARCH.md) — initial technical research (Haiku
+  APIs, file format libraries, Sum-It evaluation)
+- [docs/ENGINE_API.md](docs/ENGINE_API.md) — isolated calculation engine
+  architecture, stubs, bugs found
+- [docs/TRANSLATORS.md](docs/TRANSLATORS.md) — CSV/XLS/XLSX/ODS translator
+  architecture
+- [docs/UI_ARCHITECTURE.md](docs/UI_ARCHITECTURE.md) — native app
+  architecture, bugs found
 - [legacy/opensumit/PORTING_STATUS.md](legacy/opensumit/PORTING_STATUS.md) —
-  dettaglio tecnico del porting a 64 bit del codice storico
+  technical detail of the 64-bit port of the historical code
+
+## License
+
+New code in this project (`translators/`, `ui/`, `docs/`, `packaging/`) is
+distributed under the **MIT** license — see [LICENSE](LICENSE).
+
+Code under `legacy/opensumit/` comes from the Sum-It project (Copyright
+1996-2000 Hekkelman Programmatuur B.V.) and is distributed under a 4-clause
+BSD license, including the advertising clause — see
+`legacy/opensumit/sum-it/Docs/Licence`. `engine/` extracts and modifies that
+historical code (not a rewrite from scratch), so it stays under that same
+4-clause BSD license, not MIT — see [LICENSE](LICENSE) for full detail. Any
+binary distribution that includes `legacy/opensumit/` or `engine/` code must
+honor the advertising clause.
+
+## Be careful
+> **Developer's Note**: This software may contain traces of peanuts and LLM.
+> It has been developed with passion for the Haiku platform.
+
+## Support
+
+If you find this project useful, you can buy me a coffee: [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-atomozero-yellow?logo=buymeacoffee)](https://buymeacoffee.com/atomozero)
