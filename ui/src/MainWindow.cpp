@@ -52,6 +52,7 @@ static const uint32 kMsgCut = 'acut';
 static const uint32 kMsgCopy = 'acpy';
 static const uint32 kMsgPaste = 'apst';
 static const uint32 kMsgClear = 'aclr';
+static const uint32 kMsgSelectAll = 'asla';
 static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
 static const uint32 kMsgSetFormat = 'stfm';
@@ -108,6 +109,12 @@ MainWindow::MainWindow()
 	editMenu->AddItem(new BMenuItem("Incolla", new BMessage(kMsgPaste), 'V'));
 	editMenu->AddSeparatorItem();
 	editMenu->AddItem(new BMenuItem("Cancella", new BMessage(kMsgClear)));
+	editMenu->AddSeparatorItem();
+	// Niente scorciatoia Ctrl+A: su Haiku collide col byte generato da
+	// Ctrl+Inizio (vedi il commento in SheetView::HandleKey) -- voce
+	// di menu soltanto, come gia' fa Sum-It storico per lo stesso
+	// comando (menu Modifica, "Select All", senza modificatore).
+	editMenu->AddItem(new BMenuItem("Seleziona tutto", new BMessage(kMsgSelectAll)));
 	editMenu->AddSeparatorItem();
 	editMenu->AddItem(new BMenuItem("Trova e sostituisci" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgFind), 'F'));
@@ -449,11 +456,10 @@ void MainWindow::DeleteSelection()
 	if (!fDoc)
 		return;
 
-	cell sel = fSheetView->Selection();
-	fDoc->DisposeCell(sel);
-	RecalculateAll(fDoc);
-	fSheetView->Invalidate();
-	SelectionChanged(sel);
+	// Cancella tutte le celle nell'intervallo selezionato (non solo la
+	// cella attiva) e ricalcola gia' da sola.
+	fSheetView->ClearSelection();
+	SelectionChanged(fSheetView->Selection());
 }
 
 void MainWindow::ShowFindWindow()
@@ -855,10 +861,31 @@ void MainWindow::CommitFormulaBar()
 
 void MainWindow::SelectionChanged(cell c)
 {
-	char name[16];
+	char name[32];
 	ColumnName(c.h, name);
 	int len = strlen(name);
 	snprintf(name + len, sizeof(name) - len, "%d", c.v);
+
+	// Con piu' di una cella selezionata (trascinamento, Maiusc+frecce,
+	// Ctrl+A) l'indirizzo mostrato diventa "A1:B5" (angolo in alto a
+	// sinistra : angolo in basso a destra, sempre in quest'ordine
+	// indipendentemente da quale angolo sia la cella attiva) invece
+	// della sola cella attiva -- come Excel/LibreOffice Calc, cosi' si
+	// vede a colpo d'occhio quante celle sono selezionate.
+	range sel = fSheetView->SelectionRange();
+	if (sel.left != sel.right || sel.top != sel.bottom)
+	{
+		char topLeft[16], botRight[16];
+		ColumnName(sel.left, topLeft);
+		len = strlen(topLeft);
+		snprintf(topLeft + len, sizeof(topLeft) - len, "%d", sel.top);
+
+		ColumnName(sel.right, botRight);
+		len = strlen(botRight);
+		snprintf(botRight + len, sizeof(botRight) - len, "%d", sel.bottom);
+
+		snprintf(name, sizeof(name), "%s:%s", topLeft, botRight);
+	}
 	fCellLabel->SetText(name);
 
 	char formula[512];
@@ -921,6 +948,10 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgClear:
 			DeleteSelection();
+			break;
+
+		case kMsgSelectAll:
+			fSheetView->SelectAll();
 			break;
 
 		case kMsgPrint:

@@ -20,6 +20,7 @@
 
 #include "Cell.h"
 #include "Chart.h"
+#include "Range.h"
 
 class BTextControl;
 class CContainer;
@@ -32,6 +33,8 @@ public:
 
 	virtual void Draw(BRect updateRect);
 	virtual void MouseDown(BPoint where);
+	virtual void MouseUp(BPoint where);
+	virtual void MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage);
 	virtual void KeyDown(const char* bytes, int32 numBytes);
 	virtual void AttachedToWindow();
 	virtual void FrameResized(float width, float height);
@@ -41,8 +44,39 @@ public:
 	void SetDocument(CContainer* doc);
 	CContainer* Document() const { return fDoc; }
 
+	// Cella "attiva": quella su cui agiscono la barra formula e
+	// l'editing in-cella, e da cui ripartono i movimenti da tastiera
+	// senza Maiusc. Coincide sempre con uno dei due angoli di
+	// SelectionRange() (quello dove si trovava il cursore l'ultima
+	// volta che la selezione e' stata estesa/mossa).
 	cell Selection() const { return fSelection; }
 	void SetSelection(cell c);
+
+	// Estende la selezione dalla cella "ancora" (dove e' iniziato il
+	// trascinamento o l'ultimo click senza Maiusc) fino a "c", che
+	// diventa la nuova cella attiva -- usata da Maiusc+click,
+	// Maiusc+frecce e dal trascinamento del mouse. A differenza di
+	// SetSelection, non sposta l'ancora.
+	void ExtendSelection(cell c);
+
+	// Rettangolo pieno della selezione corrente (ancora e cella attiva
+	// come angoli opposti) -- un singolo cliccato senza trascinare
+	// produce un range di una sola cella, indistinguibile per chi
+	// legge da "nessuna selezione multipla in corso".
+	range SelectionRange() const;
+
+	// Seleziona l'intero foglio con dati (menu Modifica > "Seleziona
+	// tutto" in MainWindow, non una scorciatoia da tastiera -- vedi il
+	// commento in HandleKey per il perche' Ctrl+A non e' praticabile
+	// qui): dai limiti del documento, o solo A1 se il foglio e' vuoto.
+	void SelectAll();
+
+	// Cancella il contenuto di tutte le celle in SelectionRange() (non
+	// solo la cella attiva) e ricalcola -- usata sia da Backspace/Canc
+	// sia dal comando "Cancella" del menu Modifica, cosi' selezionare
+	// piu' celle e cancellarle si comporta come in Excel/LibreOffice
+	// Calc invece di svuotare solo la cella attiva.
+	void ClearSelection();
 
 	// Logica di navigazione/modifica da tastiera, con i modificatori
 	// (Ctrl/Maiusc) gia' risolti -- KeyDown() li legge dal vero
@@ -76,6 +110,20 @@ public:
 private:
 	CContainer* fDoc;
 	cell fSelection;
+
+	// Cella dove e' iniziata la selezione corrente (ultimo click senza
+	// Maiusc, o inizio di un trascinamento): insieme a fSelection
+	// definisce il rettangolo restituito da SelectionRange(). Un
+	// singolo click la riporta a coincidere con fSelection (range di
+	// una sola cella).
+	cell fAnchor;
+
+	// Trascinamento del mouse in corso (bottone premuto su una cella
+	// valida): MouseMoved estende la selezione solo mentre e' vero,
+	// per non confondere un trascinamento con un semplice movimento
+	// del mouse a bottone rilasciato.
+	bool fDragging;
+
 	const std::vector<ChartObject>* fCharts;
 
 	BTextControl* fEditor;
@@ -94,6 +142,10 @@ private:
 	static const int kHeaderHeight = 20;
 
 	BRect CellRect(cell c) const;
+	// Cella sotto un punto della vista (coordinate locali); non
+	// controlla se il punto ricade sulle intestazioni -- i chiamanti
+	// lo fanno gia' a parte, dove serve.
+	cell CellAt(BPoint where) const;
 	void ScrollToShowSelection();
 	void NotifySelectionChanged();
 	void FixupScrollBars();

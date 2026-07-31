@@ -7,6 +7,7 @@
 #include "SheetView.h"
 #include "MainWindow.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -19,9 +20,10 @@
 #include <TextView.h>
 
 #include "Value.h"
+#include "Container.h"
+#include "CellIterator.h"
 #include "CellParser.h"
 #include "CellStyle.h"
-#include "Container.h"
 #include "Constants.h"
 #include "Formatter.h"
 
@@ -81,6 +83,8 @@ SheetView::SheetView(CContainer* doc)
 		B_WILL_DRAW | B_FRAME_EVENTS),
 	fDoc(doc),
 	fSelection(1, 1),
+	fAnchor(1, 1),
+	fDragging(false),
 	fCharts(NULL),
 	fEditor(NULL),
 	fEditingCell(1, 1)
@@ -209,8 +213,25 @@ void SheetView::SetDocument(CContainer* doc)
 {
 	fDoc = doc;
 	fSelection.Set(1, 1);
+	fAnchor.Set(1, 1);
 	Invalidate();
 	NotifySelectionChanged();
+}
+
+// Rettangolo (in coordinate cella, non pixel) che contiene sia
+// l'ultima selezione sia quella nuova: e' l'area minima da
+// invalidare quando la selezione cambia -- invalidare le due sole
+// celle (vecchia e nuova) non basta piu' come bastava a selezione
+// singola, perche' un range che si accorcia deve comunque far
+// scomparire l'evidenziazione delle celle che ne uscivano.
+static range UnionRange(const range& a, const range& b)
+{
+	range r;
+	r.left = std::min(a.left, b.left);
+	r.top = std::min(a.top, b.top);
+	r.right = std::max(a.right, b.right);
+	r.bottom = std::max(a.bottom, b.bottom);
+	return r;
 }
 
 void SheetView::SetSelection(cell c)
@@ -219,13 +240,95 @@ void SheetView::SetSelection(cell c)
 		c.h = 1;
 	if (c.v < 1)
 		c.v = 1;
+
+	range oldRange = SelectionRange();
+	if (c == fSelection && c == fAnchor)
+		return;
+
+	fSelection = c;
+	fAnchor = c;
+
+	range newRange = SelectionRange();
+	BRect invalid = CellRect(UnionRange(oldRange, newRange).TopLeft());
+	invalid = invalid | CellRect(UnionRange(oldRange, newRange).BotRight());
+	Invalidate(invalid);
+
+	ScrollToShowSelection();
+	NotifySelectionChanged();
+}
+
+void SheetView::ExtendSelection(cell c)
+{
+	if (c.h < 1)
+		c.h = 1;
+	if (c.v < 1)
+		c.v = 1;
 	if (c == fSelection)
 		return;
 
-	Invalidate(CellRect(fSelection));
+	range oldRange = SelectionRange();
 	fSelection = c;
-	Invalidate(CellRect(fSelection));
+	range newRange = SelectionRange();
+
+	BRect invalid = CellRect(UnionRange(oldRange, newRange).TopLeft());
+	invalid = invalid | CellRect(UnionRange(oldRange, newRange).BotRight());
+	Invalidate(invalid);
+
 	ScrollToShowSelection();
+	NotifySelectionChanged();
+}
+
+range SheetView::SelectionRange() const
+{
+	range r;
+	r.left = std::min(fAnchor.h, fSelection.h);
+	r.right = std::max(fAnchor.h, fSelection.h);
+	r.top = std::min(fAnchor.v, fSelection.v);
+	r.bottom = std::max(fAnchor.v, fSelection.v);
+	return r;
+}
+
+void SheetView::SelectAll()
+{
+	if (!fDoc)
+		return;
+
+	range bounds;
+	fDoc->GetBounds(bounds);
+
+	range oldRange = SelectionRange();
+	if (bounds.right >= 1 && bounds.bottom >= 1)
+	{
+		fAnchor.Set(1, 1);
+		fSelection.Set(bounds.right, bounds.bottom);
+	}
+	else
+	{
+		fAnchor.Set(1, 1);
+		fSelection.Set(1, 1);
+	}
+
+	range newRange = SelectionRange();
+	BRect invalid = CellRect(UnionRange(oldRange, newRange).TopLeft());
+	invalid = invalid | CellRect(UnionRange(oldRange, newRange).BotRight());
+	Invalidate(invalid);
+
+	NotifySelectionChanged();
+}
+
+void SheetView::ClearSelection()
+{
+	if (!fDoc)
+		return;
+
+	range sel = SelectionRange();
+	CCellIterator iter(fDoc, &sel);
+	cell c;
+	while (iter.NextExisting(c))
+		fDoc->DisposeCell(c);
+
+	RecalculateAll(fDoc);
+	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
 }
 
@@ -234,6 +337,15 @@ BRect SheetView::CellRect(cell c) const
 	float x = kHeaderWidth + (c.h - 1) * kColWidth;
 	float y = kHeaderHeight + (c.v - 1) * kRowHeight;
 	return BRect(x, y, x + kColWidth, y + kRowHeight);
+}
+
+cell SheetView::CellAt(BPoint where) const
+{
+	int col = (int)((where.x - kHeaderWidth) / kColWidth) + 1;
+	int row = (int)((where.y - kHeaderHeight) / kRowHeight) + 1;
+	if (col < 1) col = 1;
+	if (row < 1) row = 1;
+	return cell(col, row);
 }
 
 BRect SheetView::ContentRect() const
@@ -374,11 +486,30 @@ void SheetView::Draw(BRect updateRect)
 		}
 	}
 
-	// Selezione corrente.
+	// Selezione corrente: un rettangolo di piu' celle (trascinamento
+	// del mouse, Maiusc+frecce, Ctrl+A) mostra una tinta leggera su
+	// tutto l'intervallo (esclusa la cella attiva, lasciata bianca
+	// cosi' resta leggibile) piu' un bordo attorno al rettangolo
+	// intero; una selezione di una sola cella (il caso comune) resta
+	// visivamente identica a prima -- il rettangolo dell'intervallo
+	// coincide con quello della cella attiva, quindi il riempimento
+	// "esclude se stesso" e non lascia alcuna tinta visibile.
+	range selRange = SelectionRange();
+	BRect selOuter = CellRect(selRange.TopLeft()) | CellRect(selRange.BotRight());
+	BRect activeRect = CellRect(fSelection);
+
+	if (selRange.left != selRange.right || selRange.top != selRange.bottom)
+	{
+		SetHighColor(200, 220, 245);
+		BRegion tint(selOuter);
+		tint.Exclude(activeRect);
+		FillRegion(&tint);
+	}
+
 	SetHighColor(30, 100, 200);
-	BRect sel = CellRect(fSelection);
-	StrokeRect(sel);
-	StrokeRect(sel.InsetByCopy(1, 1));
+	StrokeRect(selOuter);
+	StrokeRect(activeRect);
+	StrokeRect(activeRect.InsetByCopy(1, 1));
 
 	// Intestazione di riga (numeri): "congelata" durante lo scroll
 	// orizzontale -- stessa tecnica e stessa richiesta dell'utente
@@ -455,18 +586,60 @@ void SheetView::MouseDown(BPoint where)
 	if (where.x < kHeaderWidth || where.y < kHeaderHeight)
 		return;
 
-	int col = (int)((where.x - kHeaderWidth) / kColWidth) + 1;
-	int row = (int)((where.y - kHeaderHeight) / kRowHeight) + 1;
-	cell c(col, row);
+	cell c = CellAt(where);
 
 	int32 clicks = 1;
+	int32 mods = 0;
 	BMessage* msg = Window() ? Window()->CurrentMessage() : NULL;
 	if (msg)
+	{
 		msg->FindInt32("clicks", &clicks);
+		msg->FindInt32("modifiers", &mods);
+	}
 
-	SetSelection(c);
+	// Maiusc+click estende la selezione dall'ancora corrente (come
+	// Excel/LibreOffice Calc); un click semplice la fa ripartire da
+	// qui. Il trascinamento successivo (MouseMoved) estende sempre
+	// dall'ancora impostata qui, indipendentemente da Maiusc.
+	if (mods & B_SHIFT_KEY)
+		ExtendSelection(c);
+	else
+		SetSelection(c);
+
+	// SetMouseEventMask, non un ciclo di tracking bloccante: MouseMoved
+	// continua a essere richiamato dal Interface Kit con le coordinate
+	// aggiornate finche' il bottone resta premuto, anche se il mouse
+	// esce dai confini della vista (utile scorrendo la selezione oltre
+	// il bordo visibile).
+	if (clicks < 2)
+	{
+		fDragging = true;
+		SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+	}
+
 	if (clicks >= 2)
 		StartEditing(c);
+}
+
+void SheetView::MouseUp(BPoint where)
+{
+	fDragging = false;
+	BView::MouseUp(where);
+}
+
+void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage)
+{
+	if (!fDragging)
+	{
+		BView::MouseMoved(where, code, dragMessage);
+		return;
+	}
+
+	// A differenza di MouseDown, qui non si scarta un punto sopra le
+	// intestazioni: trascinare fin li' deve comunque estendere la
+	// selezione fino al bordo del foglio (colonna/riga 1), non
+	// interrompere il trascinamento.
+	ExtendSelection(CellAt(where));
 }
 
 void SheetView::KeyDown(const char* bytes, int32 numBytes)
@@ -497,11 +670,11 @@ bool SheetView::HandleKey(char key, bool ctrl, bool shift)
 	{
 		case B_UP_ARROW:
 			c.v--;
-			SetSelection(c);
+			if (shift) ExtendSelection(c); else SetSelection(c);
 			return true;
 		case B_DOWN_ARROW:
 			c.v++;
-			SetSelection(c);
+			if (shift) ExtendSelection(c); else SetSelection(c);
 			return true;
 		case B_RETURN:
 			// Come Excel/LibreOffice Calc: Invio da soli (fuori
@@ -516,11 +689,11 @@ bool SheetView::HandleKey(char key, bool ctrl, bool shift)
 			return true;
 		case B_LEFT_ARROW:
 			c.h--;
-			SetSelection(c);
+			if (shift) ExtendSelection(c); else SetSelection(c);
 			return true;
 		case B_RIGHT_ARROW:
 			c.h++;
-			SetSelection(c);
+			if (shift) ExtendSelection(c); else SetSelection(c);
 			return true;
 		case B_TAB:
 			// Maiusc+Tab sposta a sinistra invece che a destra, come
@@ -576,19 +749,22 @@ bool SheetView::HandleKey(char key, bool ctrl, bool shift)
 		}
 		case B_BACKSPACE:
 		case B_DELETE:
-			if (fDoc)
-			{
-				fDoc->DisposeCell(fSelection);
-				RecalculateAll(fDoc);
-				Invalidate(CellRect(fSelection));
-				NotifySelectionChanged();
-			}
+			ClearSelection();
 			return true;
 		default:
+			// Niente scorciatoia da tastiera per "seleziona tutto" qui:
+			// su Haiku B_HOME vale 0x01, lo stesso byte che Ctrl+A
+			// genera (vedi InterfaceDefs.h: "B_HOME = 0x01, // Ctrl +
+			// A") -- i due sono indistinguibili leggendo solo
+			// bytes[0]/"key" del messaggio B_KEY_DOWN, quindi un tasto
+			// Ctrl+A qui finirebbe per attivare invece Ctrl+Inizio (o
+			// viceversa). SelectAll() resta comunque disponibile
+			// pubblicamente, esposta dal menu Modifica > "Seleziona
+			// tutto" in MainWindow, che non ha questa ambiguita'.
 			// Digitare direttamente su una cella selezionata sostituisce
 			// il contenuto (come Excel/LibreOffice Calc): si apre
 			// l'editor in-cella gia' con il carattere digitato.
-			if ((unsigned char)key >= 0x20 && (unsigned char)key < 0x7f)
+			if (!ctrl && (unsigned char)key >= 0x20 && (unsigned char)key < 0x7f)
 			{
 				char initial[2] = { key, 0 };
 				StartEditing(fSelection, initial);

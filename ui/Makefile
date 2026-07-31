@@ -161,6 +161,19 @@ test-navigation: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_navigation
 
+# Test della selezione multi-cella (Fase 7): Maiusc+frecce,
+# trascinamento del mouse, Ctrl+A, Backspace/Canc su un intervallo
+# intero -- stessa ragione di test-navigation (BScrollView reale).
+test-selection: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_selection.cpp -o tests/test_selection.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_selection tests/test_selection.o \
+		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_selection
+
 clean:
 	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
 		tests/roundtrip.ascd tests/roundtrip_charts.ascd tests/edge.ascd \
@@ -169,6 +182,7 @@ clean:
 		tests/test_chart tests/test_chart.o tests/Chart.o \
 		tests/test_pivot tests/test_pivot.o tests/Pivot.o \
 		tests/test_editing tests/test_editing.o \
-		tests/test_navigation tests/test_navigation.o
+		tests/test_navigation tests/test_navigation.o \
+		tests/test_selection tests/test_selection.o
 
-.PHONY: all run test test-chart test-pivot test-clipboard test-scroll test-editing test-navigation clean
+.PHONY: all run test test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection clean
