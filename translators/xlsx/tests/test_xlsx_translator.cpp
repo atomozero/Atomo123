@@ -28,6 +28,7 @@
 #include "Cell.h"
 #include "Value.h"
 #include "Container.h"
+#include "CellIterator.h"
 #include "CellParser.h"
 
 static int gFailures = 0;
@@ -41,6 +42,53 @@ static void Check(bool condition, const char *what)
 		printf("FAIL %s\n", what);
 		gFailures++;
 	}
+}
+
+static const char kASCDMagicForTest[4] = { 'A', 'S', 'C', 'D' };
+static const int32 kASCDVersionForTest = 1;
+
+// Duplica la logica di WriteASCD (static in XlsxTranslator.cpp, non
+// esportata) solo per costruire qui un flusso ASCD di prova da dare
+// in pasto al translator nella direzione di export (ASCD -> XLSX).
+static status_t WriteASCDForTest(CContainer* doc, BPositionIO* dest)
+{
+	range bounds;
+	doc->GetBounds(bounds);
+
+	int32 count = 0;
+	CCellIterator counter(doc, NULL);
+	cell c;
+	while (counter.NextExisting(c))
+		count++;
+
+	if (dest->Write(kASCDMagicForTest, 4) != 4)
+		return B_IO_ERROR;
+	if (dest->Write(&kASCDVersionForTest, sizeof(kASCDVersionForTest))
+		!= (ssize_t)sizeof(kASCDVersionForTest))
+		return B_IO_ERROR;
+	if (dest->Write(&count, sizeof(count)) != (ssize_t)sizeof(count))
+		return B_IO_ERROR;
+
+	CCellIterator iter(doc, NULL);
+	while (iter.NextExisting(c))
+	{
+		char text[512];
+		doc->GetCellFormula(c, text, false);
+
+		int16 row = c.v, col = c.h;
+		int32 len = strlen(text);
+
+		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
+			return B_IO_ERROR;
+		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+			return B_IO_ERROR;
+		if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (len > 0 && dest->Write(text, len) != len)
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
 }
 
 int main()
@@ -130,6 +178,83 @@ int main()
 			"il motore ricalcola la formula importata e ottiene 40");
 
 		doc.Release();
+	}
+
+	// Esportazione (ASCD -> XLSX): scrive un documento con un numero,
+	// una stringa e una formula, poi rilegge il file XLSX prodotto con
+	// lo stesso translator (round-trip completo) per verificare che i
+	// valori sopravvivano e che la formula sia diventata il suo valore
+	// calcolato (scelta deliberata dell'export, come CSV/ODS).
+	{
+		CContainer &exportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("12", cell(1, 1), &exportDoc, true);       // A1 = 12
+		TryToParseString("8", cell(2, 1), &exportDoc, true);        // B1 = 8
+		TryToParseString("=A1+B1", cell(3, 1), &exportDoc, true);   // C1 = 20
+		TryToParseString("Prova export", cell(1, 2), &exportDoc, true); // A2
+		exportDoc.CalcCell(cell(3, 1));
+
+		BMallocIO ascdIn;
+		status_t saveErr = WriteASCDForTest(&exportDoc, &ascdIn);
+		Check(saveErr == B_OK, "preparazione dell'ASCD di prova per l'export riesce");
+		exportDoc.Release();
+
+		ascdIn.Seek(0, SEEK_SET);
+		translator_info exportInfo;
+		err = translator->Identify(&ascdIn, NULL, NULL, &exportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD come sorgente per l'export");
+		Check(exportInfo.type == kAtomoNativeFormat,
+			"Identify classifica il sorgente come ASCD nativo");
+
+		ascdIn.Seek(0, SEEK_SET);
+		BMallocIO xlsxOut;
+		err = translator->Translate(&ascdIn, &exportInfo, NULL, kAtomoXlsxFormat, &xlsxOut);
+		Check(err == B_OK, "Translate ASCD -> XLSX riesce");
+
+		xlsxOut.Seek(0, SEEK_SET);
+		translator_info reimportInfo;
+		err = translator->Identify(&xlsxOut, NULL, NULL, &reimportInfo, 0);
+		Check(err == B_OK && reimportInfo.type == kAtomoXlsxFormat,
+			"il file XLSX appena scritto viene riconosciuto come XLSX valido rileggendolo");
+
+		xlsxOut.Seek(0, SEEK_SET);
+		BMallocIO ascdOut2;
+		err = translator->Translate(&xlsxOut, &reimportInfo, NULL, kAtomoNativeFormat, &ascdOut2);
+		Check(err == B_OK, "il file XLSX appena scritto si rilegge correttamente (round-trip)");
+
+		if (err == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)ascdOut2.Buffer();
+			size_t len = ascdOut2.BufferLength();
+			size_t pos = 12;
+			int32 cnt;
+			memcpy(&cnt, data + 8, 4);
+
+			bool reA1 = false, reB1 = false, reC1 = false, reA2 = false;
+			for (int32 i = 0; i < cnt && pos + 8 <= len; i++)
+			{
+				int16 row, col;
+				int32 tlen;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&tlen, data + pos, 4); pos += 4;
+				if (pos + tlen > len)
+					break;
+				std::string text((const char *)data + pos, tlen);
+				pos += tlen;
+
+				if (row == 1 && col == 1 && text == "12") reA1 = true;
+				if (row == 1 && col == 2 && text == "8") reB1 = true;
+				if (row == 1 && col == 3 && text == "20") reC1 = true;
+				if (row == 2 && col == 1 && text == "Prova export") reA2 = true;
+			}
+
+			Check(reA1, "dopo il round-trip, A1 vale ancora 12");
+			Check(reB1, "dopo il round-trip, B1 vale ancora 8");
+			Check(reC1,
+				"dopo il round-trip, C1 (era una formula) vale 20 -- il valore calcolato, "
+				"non la formula (scelta deliberata dell'export)");
+			Check(reA2, "dopo il round-trip, A2 vale ancora \"Prova export\"");
+		}
 	}
 
 	translator->Release();
