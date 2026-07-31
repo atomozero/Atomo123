@@ -40,11 +40,14 @@ riferimenti anche nelle celle che non si spostano fisicamente);
 restano formattazione font/colore/allineamento, Incolla speciale,
 intervalli con nome, Vai a, un vero Blocca riquadri, una finestra
 Preferenze e altro (dettaglio nella sezione Fase 7). **Fase 8
-(qualità UI/UX) in corso**: protezione dalle modifiche non salvate
-fatta (Nuovo/Apri/Esci chiedono conferma solo se ci sono modifiche in
-sospeso) insieme al titolo finestra con nome file e indicatore di
-modifica, ridimensionamento di righe e colonne fatto (trascinando il
-confine fra due intestazioni); resta solo icone sulla toolbar.
+(qualità UI/UX) chiusa**: protezione dalle modifiche non salvate
+(Nuovo/Apri/Esci chiedono conferma solo se ci sono modifiche in
+sospeso) con titolo finestra e indicatore di modifica,
+ridimensionamento di righe e colonne (trascinando il confine fra due
+intestazioni, con puntini e cursore come indizio visivo), icone sulla
+toolbar (disegnate a codice, non da HVIF — il sito autorizzato
+risultava ancora vuoto) — tutti e quattro i punti scelti dall'utente
+fatti (nuovi bug/richieste possono comunque emergere e aggiungersi).
 Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
@@ -1548,7 +1551,7 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
 
 ---
 
-## Fase 8 — Qualità UI/UX (IN CORSO)
+## Fase 8 — Qualità UI/UX (CHIUSA)
 
 Con la Fase 7 sostanzialmente completa (resta solo formattazione
 font/colore/allineamento, Incolla speciale, intervalli con nome, Vai
@@ -1688,6 +1691,34 @@ toolbar, ridimensionamento riga/colonna.
 
       Con questo, tre dei quattro punti scelti dall'utente per la
       Fase 8 sono completi; resta solo icone sulla toolbar.
+
+- [x] **Icone sulla toolbar**: quarto e ultimo punto scelto
+      dall'utente per questa fase. Il sito autorizzato per le icone
+      del progetto (www.hvif-store.art) risultava ancora vuoto ("0
+      icons found") al terzo controllo di seguito, stesso esito delle
+      volte precedenti (vedi anche l'icona dell'applicazione in Fase
+      4, bloccata allo stesso modo a suo tempo). Invece di aspettare
+      oltre o passare da Icon-O-Matic, le otto icone (Nuovo/Apri/
+      Salva/Stampa/Taglia/Copia/Incolla/Trova) sono disegnate
+      direttamente in `ui/src/ToolbarIcons.cpp` con le normali
+      funzioni di `BView` (`StrokeRect`/`StrokeLine`/`StrokeEllipse`)
+      su un `BBitmap` 16x16 `B_RGBA32` offscreen a sfondo trasparente,
+      monocromatiche, nello stesso stile minimale dei toolbar nativi
+      Haiku — non HVIF: l'icona dell'applicazione resta l'unica a
+      passare da quel formato/pipeline.
+
+      `BButton::SetIcon` copia i bit al suo interno (non ne prende
+      possesso): il `BBitmap` temporaneo restituito da ogni funzione
+      va eliminato subito dopo (nuovo helper `SetToolbarIcon` in
+      `MainWindow.cpp`), non tenuto in vita.
+
+      Nessun test dedicato: sono bitmap disegnati, non logica di
+      calcolo/stato da verificare — controllato visivamente avviando
+      l'applicazione dal vivo. Nessuna regressione nella suite
+      esistente.
+
+      Con questo, tutti e quattro i punti scelti dall'utente per la
+      Fase 8 sono completi.
 
 ---
 
