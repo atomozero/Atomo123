@@ -20,8 +20,14 @@ nome nelle formule, grafici a barre e tabelle pivot di base, editing
 in-cella e navigazione da tastiera in stile Excel, SUMIF/COUNTIF/
 AVERAGEIF, correzione della propagazione del ricalcolo alle celle
 dipendenti — tutti i punti pianificati fatti (nuovi bug/richieste
-dell'utente possono comunque emergere e aggiungersi). Aggiornato ad
-ogni fase completata.
+dell'utente possono comunque emergere e aggiungersi). **Fase 7 (recupero
+funzionalità rispetto a Sum-It storico) in corso**: confronto puntuale
+completato (menu/comandi/dialoghi di Sum-It vs. Atomo123), selezione
+multi-cella fatta (Maiusc+frecce, trascinamento del mouse, Maiusc+click,
+Seleziona tutto, Canc su un intervallo intero); restano Annulla/Ripeti,
+Ordina, Riempi, inserimento/eliminazione riga e colonna, formattazione
+font/colore/allineamento e altro (dettaglio nella sezione Fase 7).
+Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -1144,6 +1150,103 @@ automatizzato end-to-end con fixture reale, annotato nell'item
       locale-aware. Aggiornata linkata anche da `README.md`, insieme
       ai documenti tecnici di Fase 2/3/4 che non erano ancora
       referenziati lì.
+
+## Fase 7 — Recupero funzionalità rispetto a Sum-It storico (IN CORSO)
+
+La "Decisione architetturale di fondo" (sopra) ha sempre significato
+che la UI riscritta da zero avrebbe coperto solo un sottoinsieme delle
+funzionalità del vecchio Sum-It, non un porting 1:1. Con Fase 4 e Fase
+6 chiuse, si è fatto un confronto puntuale (menu/comandi/dialoghi,
+file per file, sia sul codice storico in `legacy/opensumit/sum-it/`
+sia sulla UI nuova in `ui/src/`) per capire con precisione cosa manca
+davvero e quanto costerebbe recuperarlo. Risultato in sintesi (analisi
+completa nella cronologia della sessione, non duplicata qui):
+
+**Già allineato** (presente in entrambi, seppure con perimetro ridotto
+in Atomo123): taglia/copia/incolla, cancella, trova/sostituisci,
+formattazione numero (4 categorie invece di ~9), grafici (solo barre,
+ma incorporati e aggiornati dal vivo), stampa, import Excel legacy.
+
+**Mancante rispetto a Sum-It** (in ordine di impatto stimato, non
+tutto necessariamente da recuperare): Annulla/Ripeti (assente del
+tutto), selezione multi-cella (assente fino a questa fase), Ordina,
+Riempi (in basso/a destra/serie), inserisci/elimina riga e colonna,
+ridimensionamento riga/colonna, formattazione font/colore/allineamento,
+Incolla speciale, intervalli con nome, Vai a, un vero Blocca riquadri
+(quello attuale è solo un effetto grafico di rendering, non
+attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
+(ora aggiunto, vedi sotto).
+
+**Nuovo in Atomo123, assente in Sum-It**: import/export XLSX e ODS
+(formati che non esistevano nell'epoca di Sum-It), tabelle pivot
+(Sum-It non le ha mai avute), formattazione numerica locale-aware
+(Locale Kit), funzioni SUMIF/COUNTIF/AVERAGEIF.
+
+- [x] **Selezione multi-cella**: base da cui dipendono Ordina, Riempi
+      e la formattazione a intervallo (scelta di priorità dell'utente
+      esplicita, tra le opzioni proposte). `SheetView` teneva una sola
+      cella selezionata (`cell fSelection`); ora tiene anche un'ancora
+      (`cell fAnchor`, dove è iniziata la selezione) e espone
+      `SelectionRange()` (il rettangolo `range` tra i due, con
+      `left/right` e `top/bottom` sempre ordinati indipendentemente da
+      quale angolo sia stato trascinato per ultimo). Estesa in tre
+      modi, tutti convergenti sullo stesso `ExtendSelection()`:
+      - Maiusc+frecce (`SheetView::HandleKey`): muove solo la cella
+        attiva, l'ancora resta ferma; una freccia senza Maiusc dopo
+        un'estensione ricollassa a una sola cella, come Excel.
+      - Trascinamento del mouse: `MouseDown` senza Maiusc arma il
+        tracking (`SetMouseEventMask(B_POINTER_EVENTS, ...)`,
+        necessario perché il Interface Kit continui a richiamare
+        `MouseMoved` anche se il puntatore esce dai confini della
+        vista), `MouseMoved` estende finché il bottone resta premuto
+        (stato `fDragging`), `MouseUp` lo interrompe.
+      - Maiusc+click: estende dall'ancora dell'ultimo click semplice
+        (stesso `ExtendSelection`, letto dal `modifiers` del messaggio
+        `B_MOUSE_DOWN` corrente in `MouseDown`).
+      Backspace/Canc e il comando "Cancella" del menu Modifica ora
+      svuotano **tutte** le celle nell'intervallo selezionato (prima
+      solo la cella attiva, dato che un intervallo non poteva nemmeno
+      esistere) — nuovo metodo `ClearSelection()`, condiviso da
+      entrambi i punti d'ingresso, che itera con `CCellIterator`
+      invece di toccare `fDoc` cella per cella a mano. L'indirizzo
+      mostrato nella barra formula diventa "A1:B5" (angolo alto-sinistra
+      : angolo basso-destra, sempre in quest'ordine) quando la
+      selezione copre più di una cella, "A1" altrimenti.
+
+      **Bug scoperto e aggirato mentre si implementava Ctrl+A**: su
+      Haiku `B_HOME` vale `0x01` — lo stesso byte che Ctrl+A genera
+      (`InterfaceDefs.h`: `B_HOME = 0x01, // Ctrl + A`). I due tasti
+      sono quindi indistinguibili leggendo solo `bytes[0]`/`raw_char`
+      del messaggio `B_KEY_DOWN` in `SheetView::KeyDown`, il
+      meccanismo già usato per tutte le altre scorciatoie di questa
+      classe: un tasto Ctrl+A finirebbe per attivare Ctrl+Inizio (o
+      viceversa), qualunque dei due si scelga di implementare per
+      primo. Non risolvibile a livello di `SheetView` senza introdurre
+      una lettura diversa del messaggio (es. lo scan code fisico, che
+      dipende dal layout di tastiera). **Scelta**: "Seleziona tutto"
+      resta disponibile (`SheetView::SelectAll()`, pubblico) ma esposto
+      solo dal menu Modifica, senza scorciatoia da tastiera — coerente
+      con quanto faceva lo stesso Sum-It storico, che nel menu Edit
+      aveva "Select All" con tasto **'A' senza modificatore** (voce di
+      menu apposita, non Ctrl+A: evidentemente un problema già noto a
+      chi scriveva quel codice).
+
+      Test dedicato `ui/tests/test_selection.cpp` (nuovo target
+      `make test-selection`): selezione singola come range di una
+      cella, estensione da tastiera, ricollasso dopo una freccia senza
+      Maiusc, trascinamento del mouse, nessuna estensione dopo
+      `MouseUp`, `SelectAll()`, cancellazione dell'intero intervallo.
+      Nessuna regressione nella suite esistente (`test`,
+      `test-editing`, `test-navigation`, `test-scroll`, `test-chart`,
+      `test-pivot`).
+
+      **Non ancora fatto in questo incremento** (prossimi passi
+      naturali, non ancora iniziati): Taglia/Copia/Incolla operano
+      ancora sulla sola cella attiva, non sull'intero intervallo
+      selezionato; formattazione (Formato menu) idem; Ordina e Riempi
+      (gli usi più diretti di una selezione multi-cella, secondo il
+      ragionamento che ha guidato questa priorità) non ancora
+      cominciati.
 
 ---
 
