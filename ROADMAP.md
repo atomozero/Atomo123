@@ -1758,7 +1758,10 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
       entrambe le direzioni esplicitamente, essendo un vettore per
       valore di cui `SheetView` tiene un puntatore che deve restare
       stabile. Un nuovo `BMenuField` sotto il foglio permette di
-      cambiare foglio attivo dal menu a tendina.
+      cambiare foglio attivo dal menu a tendina (sostituito da una
+      striscia di schede subito dopo, vedi sotto — l'utente l'ha
+      provato dal vivo e ha preferito l'aspetto di Excel/LibreOffice
+      Calc).
 
       **Bug reale scoperto e corretto durante lo sviluppo**:
       `ResetWorkbook()`, chiamato quasi subito nel costruttore,
@@ -1774,6 +1777,45 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
       checkpoint: corretto assegnando esplicitamente `fSheetView =
       NULL; fSheetSelector = NULL;` prima della prima chiamata a
       `ResetWorkbook()`.
+
+- [x] **Striscia di schede al posto del menu a tendina**: appena
+      provato dal vivo, l'utente ha chiesto una striscia di schede in
+      basso (come Excel/LibreOffice Calc) al posto del `BMenuField`
+      appena aggiunto, notando subito il problema che aveva motivato
+      la scelta iniziale — con decine di fogli le schede non entrano
+      tutte nella larghezza della finestra, quindi serve un modo per
+      scorrerle.
+
+      Nuova `SheetTabView` (`ui/src/SheetTabView.h/.cpp`), un `BView`
+      disegnato a mano come le altre viste di questo progetto
+      (`SheetView`, `ToolbarIcons`): calcola quante schede entrano
+      nello spazio disponibile a partire da `fFirstVisible` (la prima
+      scheda visibile), con due frecce a sinistra per scorrere quando
+      non entrano tutte. `SetSheets()` porta sempre la scheda attiva
+      in vista se non lo è già (dopo Apri o un cambio foglio), ma la
+      funzione di solo-disegno (`Layout()`, richiamata anche da
+      `Draw()` per adattarsi a un ridimensionamento della finestra) non
+      lo fa mai: altrimenti scorrere manualmente con le frecce per
+      guardare altre schede verrebbe subito annullato dal ridisegno
+      successivo, che raggiungerebbe di nuovo quella attiva. Invia lo
+      stesso messaggio `kMsgSwitchSheet` già gestito da
+      `MainWindow::MessageReceived` (un `BMessage` con un intero
+      "index", esattamente come inviava il vecchio `BMenuItem`), quindi
+      il cambio foglio vero e proprio in `MainWindow` non è cambiato
+      affatto — solo il widget che lo innesca.
+
+      `TabRectFor`/`LeftArrowRect`/`RightArrowRect`/`IsScrolling`/
+      `FirstVisibleIndex` pubblici apposta per essere testabili
+      direttamente, stesso principio già usato per `SheetView::
+      CellRect`/`CellAt`. Test dedicato `ui/tests/test_sheet_tabs.cpp`
+      (nuovo target `make test-sheet-tabs`, 12 verifiche): poche schede
+      corte non richiedono scorrimento, venti schede sì, le frecce
+      scorrono di una scheda alla volta senza mai cambiare il foglio
+      attivo (verificato lasciando un breve `snooze` dopo aver
+      rilasciato il lock della finestra di prova, perché l'invio del
+      messaggio è asincrono come un vero clic su un menu), un clic su
+      una scheda visibile invia l'indice giusto. Nessuna regressione
+      nelle altre 17 suite di test.
 
 - [x] **`XlsxTranslator` legge tutti i fogli, non solo il primo**:
       `xl/workbook.xml` elenca nome e `r:id` di ciascun foglio
