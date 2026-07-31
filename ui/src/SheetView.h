@@ -311,7 +311,7 @@ private:
 
 	static const int kColWidth = 80;
 	static const int kRowHeight = 20;
-	static const int kHeaderWidth = 40;
+	static const int kHeaderWidth = 30;
 	static const int kHeaderHeight = 20;
 	// Non si puo' stringere una colonna/riga oltre questo, per non
 	// farla sparire (e con lei la maniglia per riallargarla).

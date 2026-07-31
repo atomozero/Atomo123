@@ -98,16 +98,16 @@ int main()
 	// selezione e arma il tracking; MouseMoved mentre "premuto" (stato
 	// interno fDragging) estende fino alla cella sotto il mouse;
 	// MouseUp lo interrompe.
-	view->MouseDown(BPoint(40 + 5, 20 + 5));		// A1: colonna 1, riga 1
-	view->MouseMoved(BPoint(40 + 85, 20 + 25), B_INSIDE_VIEW, NULL);	// dentro B2
-	view->MouseUp(BPoint(40 + 85, 20 + 25));
+	view->MouseDown(BPoint(30 + 5, 20 + 5));		// A1: colonna 1, riga 1
+	view->MouseMoved(BPoint(30 + 85, 20 + 25), B_INSIDE_VIEW, NULL);	// dentro B2
+	view->MouseUp(BPoint(30 + 85, 20 + 25));
 	range dragged = view->SelectionRange();
 	Check(dragged.left == 1 && dragged.right == 2 && dragged.top == 1 && dragged.bottom == 2,
 		"trascinare il mouse da A1 a B2 seleziona il range A1:B2");
 
 	// Dopo MouseUp, MouseMoved non deve piu' estendere la selezione
 	// (il trascinamento e' finito).
-	view->MouseMoved(BPoint(40 + 165, 20 + 65), B_INSIDE_VIEW, NULL);	// D4, lontano
+	view->MouseMoved(BPoint(30 + 165, 20 + 65), B_INSIDE_VIEW, NULL);	// D4, lontano
 	range afterMouseUp = view->SelectionRange();
 	Check(afterMouseUp.left == 1 && afterMouseUp.right == 2
 		&& afterMouseUp.top == 1 && afterMouseUp.bottom == 2,

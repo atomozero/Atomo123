@@ -13,7 +13,7 @@
 
 	Coordinate della griglia usate qui (stesse gia' note e verificate
 	nel resto della suite, es. test_selection.cpp): intestazioni a
-	kHeaderWidth=40/kHeaderHeight=20, colonne/righe di default
+	kHeaderWidth=30/kHeaderHeight=20, colonne/righe di default
 	kColWidth=80/kRowHeight=20 -- valori privati a SheetView, non
 	esposti, quindi ripresi qui per costruire le coordinate del mouse
 	esattamente come negli altri test di questa suite.
@@ -76,13 +76,13 @@ int main()
 	Check(a1.Width() == 80 && b1.left == a1.right,
 		"A1 e B1 hanno la larghezza predefinita e sono contigue");
 
-	// Trascina il confine fra A1 e B1 (a x=40+80=120, dentro la banda
+	// Trascina il confine fra A1 e B1 (a x=30+80=110, dentro la banda
 	// dell'intestazione di colonna, y=10) verso destra di 30 pixel:
 	// A1 deve allargarsi, B1 deve spostarsi a destra della stessa
 	// quantita' senza cambiare larghezza.
-	view->MouseDown(BPoint(120, 10));
-	view->MouseMoved(BPoint(150, 10), B_INSIDE_VIEW, NULL);
-	view->MouseUp(BPoint(150, 10));
+	view->MouseDown(BPoint(110, 10));
+	view->MouseMoved(BPoint(140, 10), B_INSIDE_VIEW, NULL);
+	view->MouseUp(BPoint(140, 10));
 
 	BRect a1After = view->CellRect(cell(1, 1));
 	BRect b1After = view->CellRect(cell(2, 1));
@@ -101,7 +101,7 @@ int main()
 	// trascinare il confine molto a sinistra (oltre il bordo iniziale
 	// della colonna) la blocca comunque a un valore minimo positivo,
 	// non a zero ne' a un valore negativo.
-	view->MouseDown(BPoint(120 + 30, 10)); // confine fra A1 (ora 110 larga) e B1
+	view->MouseDown(BPoint(140, 10)); // confine fra A1 (ora 110 larga) e B1
 	view->MouseMoved(BPoint(10, 10), B_INSIDE_VIEW, NULL); // molto a sinistra
 	view->MouseUp(BPoint(10, 10));
 
