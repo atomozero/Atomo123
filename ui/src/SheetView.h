@@ -249,6 +249,16 @@ private:
 	// riflette il nuovo spazio scorrevole totale.
 	void UpdateCanvasSize();
 
+	// Cursore mostrato passando sopra un confine ridimensionabile
+	// (segnalato dall'utente insieme ai puntini in Draw(), come
+	// indizio visivo aggiuntivo -- stessa idea del cursore a doppia
+	// freccia di Excel/LibreOffice Calc sull'intestazione): 0 =
+	// normale, 1 = confine di colonna (freccia orizzontale), 2 =
+	// confine di riga (freccia verticale). Ricordato per evitare di
+	// richiamare SetViewCursor a ogni singolo MouseMoved anche quando
+	// non e' cambiato nulla.
+	int fHoverCursor;
+
 	CContainer* fDoc;
 	cell fSelection;
 

@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <Alert.h>
+#include <Cursor.h>
 #include <MessageFilter.h>
 #include <Messenger.h>
 #include <Region.h>
@@ -89,6 +90,7 @@ SheetView::SheetView(CContainer* doc)
 	fResizingRow(0),
 	fResizeDragStart(0),
 	fResizeStartSize(0),
+	fHoverCursor(0),
 	fDoc(doc),
 	fSelection(1, 1),
 	fAnchor(1, 1),
@@ -1088,6 +1090,23 @@ void SheetView::Draw(BRect updateRect)
 		DrawString(name, pos);
 	}
 
+	// Puntini sul confine fra due righe, nella colonna delle
+	// intestazioni: indizio visivo di dove si puo' trascinare per
+	// ridimensionare la riga (segnalato dall'utente dopo aver provato
+	// il ridimensionamento senza nessun riferimento visivo -- prima
+	// c'era solo la funzionalita', senza modo di scoprirla guardando
+	// lo schermo). Non disegnato dopo l'ultima riga (row == kRowCount),
+	// che non ha un confine "dopo" di se'.
+	SetHighColor(140, 140, 140);
+	for (int row = firstRow; row <= lastRow && row < kRowCount; row++)
+	{
+		float y = kHeaderHeight + fRowOffsets[row];
+		float midX = rowHeaderLeft + kHeaderWidth / 2.0f;
+		FillEllipse(BPoint(midX - 4, y), 1, 1);
+		FillEllipse(BPoint(midX, y), 1, 1);
+		FillEllipse(BPoint(midX + 4, y), 1, 1);
+	}
+
 	// Grafici incorporati: prima dell'intestazione di colonna (sotto),
 	// cosi' quest'ultima -- "congelata", quindi sempre sopra qualunque
 	// altra cosa -- copre un eventuale grafico scorso proprio sotto di
@@ -1131,6 +1150,20 @@ void SheetView::Draw(BRect updateRect)
 		ColumnName(col, name);
 		BPoint pos(kHeaderWidth + fColOffsets[col - 1] + 4, headerTop + kHeaderHeight - 6);
 		DrawString(name, pos);
+	}
+
+	// Puntini sul confine fra due colonne, speculari a quelli
+	// dell'intestazione di riga sopra -- stesso motivo (indizio
+	// visivo del ridimensionamento, altrimenti scopribile solo per
+	// caso trascinando alla cieca).
+	SetHighColor(140, 140, 140);
+	for (int col = firstCol; col <= lastCol && col < kColCount; col++)
+	{
+		float x = kHeaderWidth + fColOffsets[col];
+		float midY = headerTop + kHeaderHeight / 2.0f;
+		FillEllipse(BPoint(x, midY - 4), 1, 1);
+		FillEllipse(BPoint(x, midY), 1, 1);
+		FillEllipse(BPoint(x, midY + 4), 1, 1);
 	}
 }
 
@@ -1253,6 +1286,48 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 		UpdateCanvasSize();
 		Invalidate();
 		return;
+	}
+
+	// Cursore a doppia freccia passando sopra un confine ridimensionabile
+	// (anche senza trascinare): indizio visivo in piu' oltre ai puntini
+	// disegnati in Draw(), segnalato dall'utente dopo aver provato il
+	// ridimensionamento senza nessun riferimento visivo. B_EXITED_VIEW
+	// riporta subito al cursore normale, altrimenti resterebbe
+	// "incollato" a doppia freccia una volta che il mouse esce dalla
+	// vista. fHoverCursor evita di richiamare SetViewCursor a ogni
+	// singolo MouseMoved quando non e' cambiato nulla.
+	int hoverCursor = 0;
+	if (code != B_EXITED_VIEW)
+	{
+		BRect bounds = Bounds();
+		if (where.y >= bounds.top && where.y < bounds.top + kHeaderHeight
+			&& where.x >= kHeaderWidth
+			&& ColumnBoundaryAt(where.x - kHeaderWidth) > 0)
+			hoverCursor = 1;
+		else if (where.x >= bounds.left && where.x < bounds.left + kHeaderWidth
+			&& where.y >= bounds.top + kHeaderHeight
+			&& RowBoundaryAt(where.y - kHeaderHeight) > 0)
+			hoverCursor = 2;
+	}
+
+	if (hoverCursor != fHoverCursor)
+	{
+		fHoverCursor = hoverCursor;
+		if (hoverCursor == 1)
+		{
+			BCursor cursor(B_CURSOR_ID_RESIZE_EAST_WEST);
+			SetViewCursor(&cursor);
+		}
+		else if (hoverCursor == 2)
+		{
+			BCursor cursor(B_CURSOR_ID_RESIZE_NORTH_SOUTH);
+			SetViewCursor(&cursor);
+		}
+		else
+		{
+			BCursor cursor(B_CURSOR_ID_SYSTEM_DEFAULT);
+			SetViewCursor(&cursor);
+		}
 	}
 
 	if (!fDragging)
