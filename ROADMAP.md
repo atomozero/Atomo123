@@ -2000,6 +2000,80 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
       foglio, non più bianco/nero fisso ovunque. Nessuna regressione
       nelle altre suite.
 
+- [x] **Apertura automatica dal doppio clic in Tracker**: cliccare due
+      volte su un file XLSX/XLSM/XLS/ODS/CSV/ASCD non avviava Atomo123
+      — segnalato dall'utente. La causa non era mancanza di supporto
+      (il Translation Kit sapeva già aprire tutti questi formati), ma
+      il database MIME di sistema: Tracker sceglie l'app da avviare in
+      base all'"applicazione preferita" registrata per il tipo MIME del
+      file (`BMimeType::SetPreferredApp`), non in base a quali app
+      *sanno* aprirlo.
+
+      `Atomo123.rdef` guadagna una risorsa `file_types` (`BEOS:
+      FILE_TYPES`) che elenca i tipi supportati — necessaria perché
+      Atomo123 compaia in "Apri con..." di Tracker, ma **non**
+      sufficiente da sola per l'apertura automatica. `App::
+      RegisterFileTypes()`, chiamata a ogni avvio da `ReadyToRun()`,
+      imposta esplicitamente Atomo123 come applicazione preferita per
+      ciascun tipo, ma **solo** se quel tipo non ne ha già una — non
+      scavalca mai una scelta già fatta dall'utente o da un'altra
+      applicazione installata. Verificato con una sonda dedicata
+      (`BMimeType::GetPreferredApp`) sui sei tipi supportati: tutti
+      impostati su Atomo123, nessuno era già assegnato ad altro.
+
+      Aggiunto anche `app_flags B_SINGLE_LAUNCH` (esplicito, era già il
+      comportamento di default) per chiarezza.
+
+- [x] **Una finestra per ogni file aperto, invece di una sola**:
+      aprire un secondo file mentre Atomo123 era già in esecuzione
+      rimpiazzava il documento della finestra esistente — segnalato
+      dall'utente subito dopo l'apertura automatica sopra, con lo
+      stesso rischio pratico di perdita del lavoro già aperto.
+
+      `App` non tiene più un singolo `MainWindow* fWindow`: l'elenco
+      delle finestre aperte è quello che `BApplication` gestisce già da
+      sé (`CountWindows()`/`WindowAt()`), niente struttura duplicata da
+      tenere sincronizzata. `App::RefsReceived` cerca fra le finestre
+      esistenti un'eventuale finestra "vergine" (`MainWindow::
+      IsUntouched()`, mai modificata e senza nessun file aperto con
+      successo — lo stesso stato della finestra creata da `ReadyToRun`
+      all'avvio) da riusare; se non ne trova, ne apre una nuova, senza
+      mai rimpiazzare un documento già aperto. `ReadyToRun` stesso crea
+      la finestra iniziale solo se `RefsReceived` non ne ha già creata
+      una (l'avvio con un file passato da Tracker può consegnare
+      `B_REFS_RECEIVED` prima o dopo `ReadyToRun`, ordine non
+      garantito — la ricerca della finestra vergine funziona
+      correttamente in entrambi i casi).
+
+      Rimosso `B_QUIT_ON_WINDOW_CLOSE` dal costruttore di `MainWindow`
+      (avrebbe chiuso l'intera applicazione alla chiusura di una
+      qualunque finestra, anche con altre ancora aperte):
+      `MainWindow::QuitRequested()` ora chiude l'applicazione da sé,
+      ma solo quando quella che si sta chiudendo è rimasta l'ultima.
+
+      **Bug reale scoperto scrivendo il test dedicato**: contare le
+      finestre rimaste con `BApplication::CountWindows()` grezzo non
+      basta — ogni `MainWindow` crea anche due `BFilePanel` (Apri/Salva
+      con nome), che sono `BWindow` a loro volta e si registrano
+      anch'essi presso l'app, quindi il conteggio grezzo resta sempre
+      sopra 1 anche con una sola `MainWindow` aperta: l'applicazione
+      non sarebbe mai terminata chiudendo l'ultima finestra. Corretto
+      filtrando per tipo (`dynamic_cast<MainWindow*>`) sia in
+      `QuitRequested()` sia nella ricerca della finestra vergine.
+
+      Test: `test_multiwindow.cpp`, nuovo — usa la vera classe `App`
+      (non una `BApplication` generica) per esercitare la logica reale
+      di `RefsReceived`/`FindReusableWindow` senza reimplementarla nel
+      test; il target Makefile ricompila `App.cpp` a parte con
+      `-DATOMO123_TEST_BUILD` per escluderne il `main()`, che altrimenti
+      confliggerebbe con quello del test. Verificato anche dal vivo:
+      processo lanciato, primo file aperto, secondo file aperto tramite
+      lo stesso meccanismo `B_REFS_RECEIVED`/`BMessenger` usato da
+      Tracker — il processo è rimasto in esecuzione con due finestre
+      (conteggio thread coerente, titolo della prima finestra
+      verificato via scripting BeAPI) invece di terminare o perdere il
+      primo documento. Nessuna regressione nelle altre 18 suite.
+
 **Limiti noti, non ancora affrontati in questo incremento**:
 formule che attraversano i fogli (es. `+MT_CM_Installazione!I56`,
 presenti 166 volte in "RIEPILOGO COMPLETO" in questo file) vengono
