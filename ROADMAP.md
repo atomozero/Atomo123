@@ -2074,6 +2074,52 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
       verificato via scripting BeAPI) invece di terminare o perdere il
       primo documento. Nessuna regressione nelle altre 18 suite.
 
+- [x] **Toolbar con icone HVIF vere, raggruppate per categoria**: la
+      toolbar aveva solo otto pulsanti (Nuovo/Apri/Salva/Stampa/Taglia/
+      Copia/Incolla/Trova) con icone disegnate a codice, scelta presa
+      in Fase 8 perché il sito autorizzato per le icone del progetto
+      (www.hvif-store.art) risultava vuoto in tre controlli successivi.
+      Il sito è ora popolato — l'utente ha costruito un catalogo
+      HVIF scaricato da li' (`Atomo123_icons/`, fuori da questo
+      repository: script di raccolta, `catalog.csv`/`CATALOGO.md`, e
+      `ATOMO123.md` con una selezione ragionata per le funzioni di
+      Atomo123) e ha chiesto di collegarlo alla toolbar, con un layout
+      "come Excel": icone imparentate raggruppate, separate da un
+      divisore sottile, non una `BToolBar` per categoria (quella
+      classe non è nell'SDK pubblico stabile di questo sistema, vedi
+      il commento già presente sui `BButton`).
+
+      `ToolbarIcons.h`/`.cpp` (i glifi disegnati a codice) sono stati
+      rimossi, sostituiti da `IconCatalog.h`/`.cpp` (rendering vettore
+      via `BIconUtils::GetVectorIcon`, stessa API con cui Haiku
+      renderizza le icone di Tracker) e `IconData.cpp` (i byte grezzi
+      HVIF di 15 icone incorporati come array C, non file `.hvif`
+      separati da distribuire a parte — stesso principio già scelto
+      per l'icona dell'applicazione in `Atomo123.rdef`). Tutte le 15
+      icone hanno licenza MIT (verificata riga per riga in
+      `Atomo123_icons/catalog.csv` prima di incorporarle).
+
+      La toolbar stessa non è più scritta a mano un pulsante alla
+      volta: `MainWindow.cpp` guadagna una tabella dichiarativa
+      (`kToolbarGroups`, un `ToolbarGroupDef` per voce di menu
+      principale — File/Modifica/Dati/Inserisci) e `BuildToolbar()`,
+      che la percorre creando ogni `BButton` con la sua icona e un
+      `BSeparatorView` verticale fra un gruppo e il successivo. Solo
+      funzioni già implementate da un comando vero (Annulla/Ripeti,
+      Elimina, Ordina crescente/decrescente, Grafico, Tabella pivot
+      oltre agli otto originali) — niente pulsanti per funzioni ancora
+      "da disegnare" nel catalogo o non presenti in Atomo123
+      (formattazione testo, filtro, zoom...): 15 pulsanti in tutto,
+      contro gli 8 di prima.
+
+      Verificato dal vivo: processo lanciato, screenshot della
+      finestra — icone vettoriali vere (a colori, non più i glifi
+      grigi disegnati a mano) visibili e raggruppate correttamente con
+      il separatore fra File e Modifica. Nessuna regressione nelle 19
+      suite automatiche (nessun test dedicato alla sola toolbar: è
+      composizione diretta di `BButton`/`BBitmap` già esercitata
+      indirettamente da ogni test che crea una `MainWindow` reale).
+
 **Limiti noti, non ancora affrontati in questo incremento**:
 formule che attraversano i fogli (es. `+MT_CM_Installazione!I56`,
 presenti 166 volte in "RIEPILOGO COMPLETO" in questo file) vengono
