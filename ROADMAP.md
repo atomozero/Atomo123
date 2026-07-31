@@ -30,10 +30,13 @@ crescente/decrescente fatto (menu Dati, ordinamento stabile per righe
 intere; nel verificarlo è emerso e risolto un bug generico di doppio
 free in `Value::Value(CellData&)`), Annulla/Ripeti fatto (menu
 Modifica, Ctrl+Z/Ctrl+Y, una sola pila di istantanee per intervallo
-condivisa da tutte le operazioni che mutano il documento); restano
-inserimento/eliminazione riga e colonna, formattazione
-font/colore/allineamento e altro (dettaglio nella sezione Fase 7).
-Aggiornato ad ogni fase completata.
+condivisa da tutte le operazioni che mutano il documento), Taglia/
+Copia/Incolla e Formato numerico estesi dalla sola cella attiva
+all'intero intervallo selezionato (formato TSV sugli appunti,
+compatibile con Excel/LibreOffice Calc); restano inserimento/
+eliminazione riga e colonna, formattazione font/colore/allineamento e
+altro (dettaglio nella sezione Fase 7). Aggiornato ad ogni fase
+completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -1404,6 +1407,59 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       della pila, reset di entrambe le pile alla apertura di un nuovo
       documento. Nessuna regressione nella suite esistente (verificato
       anche con esecuzioni ripetute).
+
+- [x] **Taglia/Copia/Incolla e Formato estesi all'intervallo**: le tre
+      operazioni (già presenti, elencate fra gli "Già allineato" con
+      Sum-It in cima a questa fase) operavano finora solo sulla cella
+      attiva — un residuo dall'epoca prima della selezione
+      multi-cella, mai aggiornato quando quest'ultima è arrivata.
+      `MainWindow::CopySelection`/`PasteSelection`/`SetCellFormat`
+      leggono ora `SheetView::SelectionRange()` invece di
+      `SheetView::Selection()`.
+
+      Copia/Taglia scrivono l'intero intervallo sugli appunti di
+      sistema in formato TSV (colonne separate da tabulazione, righe
+      da ritorno a capo): una sola cella resta testo semplice come
+      prima (compatibile con qualunque applicazione Haiku), un
+      intervallo più grande usa lo stesso formato capito da
+      Excel/LibreOffice Calc — copiare/incollare fra Atomo123 e loro
+      tramite gli appunti di sistema funziona già da solo, senza
+      bisogno di un formato proprietario né di codice dedicato
+      all'interoperabilità. Incolla legge lo stesso formato: un
+      blocco multi-cella si ancora all'angolo in alto a sinistra della
+      selezione corrente ed espande la selezione alla dimensione del
+      blocco incollato (non a quella della selezione corrente, che può
+      restare una sola cella); un valore singolo incollato su una
+      selezione più grande di una cella riempie invece tutto
+      l'intervallo, non solo l'angolo — stesso comportamento di
+      Excel/LibreOffice Calc in entrambi i casi. Il formato numerico
+      (menu Formato) si applica a ogni cella dell'intervallo tramite
+      `GetCellStyle`/`SetCellStyle` per cella, che già gestiscono da
+      soli le celle senza contenuto (creano una voce solo se lo stile
+      differisce da quello di colonna/predefinito, non "sporcano" con
+      voci vuote celle che restano senza dati).
+
+      Tutte e tre restano annullabili tramite `SaveUndoState()`, già
+      introdotto per Annulla/Ripeti sopra — nessuna logica nuova, solo
+      la stessa chiamata prima di mutare il documento.
+
+      `CopySelection`/`PasteSelection`/`SetCellFormat` diventano
+      pubblici in `MainWindow` (comunque irraggiungibili se non
+      tramite i messaggi di menu nel normale funzionamento
+      dell'app), insieme a un nuovo `GetSheetView()`, apposta per
+      essere testabili direttamente — stesso principio già usato in
+      `SheetView` per Ordina/Riempi/Seleziona tutto. A differenza
+      degli altri test di questa fase serve una vera `MainWindow`, non
+      la sola `SheetView`, perché le tre operazioni vivono lì.
+
+      Test dedicato `ui/tests/test_paste_range.cpp` (nuovo target
+      `make test-paste-range`): copia di un intervallo 2x2 in formato
+      TSV, incolla che ricrea la griglia altrove ed estende la
+      selezione al blocco incollato, incolla di un valore singolo che
+      riempie un intervallo più grande, taglia su un intervallo (con
+      annulla), formato esteso a tutte le celle di un intervallo.
+      Nessuna regressione nella suite esistente (verificato anche con
+      esecuzioni ripetute).
 
 ---
 
