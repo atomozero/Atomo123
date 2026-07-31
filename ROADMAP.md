@@ -1941,6 +1941,65 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
       niente più larghezza fissa uguale ovunque. Nessuna regressione
       nelle altre suite.
 
+- [x] **Colori di sfondo/testo in funzione del file aperto**: le celle
+      mostravano finora sempre sfondo bianco e testo nero, qualunque
+      fosse la colorazione del file originale — chiesto dall'utente
+      subito dopo la larghezza di colonna sopra, stesso principio.
+
+      Il motore ha già un campo per il colore di sfondo
+      (`CellStyle::fLowColor`, mai letto dalla UI) fin dal porting da
+      Sum-It, ma nessun colore di testo (nuovo campo `fHighColor`) né
+      alcuna lettura/scrittura effettiva — `GetCellStyle`/
+      `SetCellStyle`/`GetColumnStyle`/`SetColumnStyle` erano già
+      completamente funzionanti, solo mai usati per altro che il
+      formato numerico (menu Formato).
+
+      `XlsxTranslator` legge `xl/theme/theme1.xml` (la tavolozza a 12
+      colori del documento) e `xl/styles.xml` (fills/fonts/cellXfs),
+      risolvendo sia i colori diretti (`rgb="..."`) sia quelli del
+      tema con tinta (`theme="N" tint="..."`), con la stessa
+      approssimazione ragionevole già scelta per la larghezza di
+      colonna invece dell'esatta conversione RGB↔HSL dello standard.
+      L'indice del tema non segue l'ordine degli elementi in
+      `<a:clrScheme>`: scambia i primi quattro (0=lt1, 1=dk1, 2=lt2,
+      3=dk2), una stranezza nota di OOXML. Applicato sia per cella
+      (`s="..."` su ogni `<c>`) sia per colonna (`style="..."` su
+      `<col>`, che `GetCellStyle` usa già come ripiego per le celle
+      senza uno stile proprio).
+
+      **Bug reale scoperto scrivendo il test dedicato**: applicare il
+      colore PRIMA di scrivere il contenuto della cella lo perdeva
+      subito dopo, perché `CContainer::NewCell` (chiamata anche per
+      scrivere testo/formula) sovrascrive sempre l'intero `CellData`
+      della cella, stile compreso — ogni cella con un contenuto
+      proprio risultava quindi sempre al colore predefinito nonostante
+      `s="..."` fosse letto e risolto correttamente (verificato con
+      una sonda dedicata: i valori risolti da tema+tint erano esatti,
+      solo mai applicati con successo alla cella finale). Corretto
+      invertendo l'ordine: colore sempre dopo il contenuto.
+
+      Il formato ASCD/ASCB guadagna due nuove sezioni opzionali in
+      coda (colori di cella e di colonna, stesso principio delle
+      sezioni già esistenti per grafici/larghezze) — a differenza
+      della larghezza di colonna, che vive solo in `SheetView`, il
+      colore vive già dentro `CContainer`: `SaveASCD` lo legge
+      direttamente da "doc" e `LoadASCD` lo scrive direttamente lì,
+      senza bisogno di un canale esterno separato come `colWidths`.
+
+      `SheetView::Draw` ora riempie lo sfondo di ogni cella col suo
+      colore (sotto le righe della griglia, che restano visibili
+      sopra, come in Excel/LibreOffice Calc) e disegna il testo col
+      suo colore, invece dei valori fissi bianco/nero di sempre.
+
+      Test: risoluzione tema+tint e applicazione `s=`/`style=` in
+      `test_xlsx_translator.cpp` (esteso con `xl/theme/theme1.xml` e
+      `xl/styles.xml` nel file di prova), round-trip dei colori in
+      `AscdIO` (`test_ascd_io.cpp`, incluso il ripiego sul colore di
+      colonna per una cella vuota). Verificato anche con una sonda
+      dedicata sul file reale da 38 fogli: colori diversi da foglio a
+      foglio, non più bianco/nero fisso ovunque. Nessuna regressione
+      nelle altre suite.
+
 **Limiti noti, non ancora affrontati in questo incremento**:
 formule che attraversano i fogli (es. `+MT_CM_Installazione!I56`,
 presenti 166 volte in "RIEPILOGO COMPLETO" in questo file) vengono
