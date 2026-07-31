@@ -14,6 +14,7 @@
 #define SHEET_VIEW_H
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <NumberFormat.h>
@@ -111,6 +112,30 @@ public:
 	// se la selezione e' una sola riga (niente da ordinare).
 	void SortSelection(bool ascending);
 
+	// Inserisci/elimina riga e colonna: il numero di righe/colonne
+	// coinvolte e il punto di inserimento/cancellazione vengono da
+	// SelectionRange() (una selezione di 3 righe inserisce/elimina 3
+	// righe, non serve selezionare l'intestazione -- Atomo123 non ha
+	// ancora un modo per farlo). Sposta le celle esistenti oltre il
+	// punto E aggiorna i riferimenti nelle formule di OGNI cella del
+	// documento, non solo di quelle che si spostano fisicamente (una
+	// formula sopra il punto di inserimento puo' comunque riferirsi a
+	// una cella sotto che si sposta: il suo testo cambia pur restando
+	// ferma) -- riusa CContainer::MoveCell con uno SplitType, lo
+	// stesso meccanismo (mai cambiato) del Sum-It storico, vedi
+	// legacy/opensumit/.../Commands/InsertCommands.cpp. Rifiuta
+	// l'inserimento (senza modificare nulla, con un avviso) se
+	// spingerebbe fuori dal limite fisso del foglio (kColCount/
+	// kRowCount) celle che contengono gia' dati, per non perderli
+	// silenziosamente. Limite noto: non sposta ne' ridimensiona i
+	// grafici incorporati (ChartObject vive in MainWindow, non qui) --
+	// restano dove sono anche se la loro area dati era nelle righe/
+	// colonne spostate.
+	void InsertRows();
+	void InsertColumns();
+	void DeleteRows();
+	void DeleteColumns();
+
 	// Annulla/Ripeti: pila di istantanee testuali di un intervallo (lo
 	// stesso formato grezzo per cella usato da Ordina/Riempi --
 	// GetCellFormula in lettura, TryToParseString in scrittura), cosi'
@@ -176,11 +201,21 @@ private:
 	bool fDragging;
 
 	// Vedi SaveUndoState/Undo/Redo: un'istantanea e' l'intervallo
-	// coinvolto piu' il testo grezzo (per cella, riga per riga) di
-	// quell'intervallo nel momento in cui e' stata catturata.
+	// coinvolto piu' il testo grezzo delle sole celle che esistevano
+	// davvero al suo interno nel momento in cui e' stata catturata
+	// (non un blocco denso con una voce anche per le celle vuote --
+	// per un intervallo piccolo come quelli di Riempi/Ordina la
+	// differenza e' irrilevante, ma Inserisci/Elimina riga o colonna
+	// deve poter catturare l'INTERO documento, dato che una formula
+	// sopra il punto di inserimento puo' comunque riferirsi a una
+	// cella sotto che si sposta: un blocco denso su kColCount x
+	// kRowCount sarebbe milioni di celle anche per un foglio quasi
+	// vuoto). Ripristinare svuota prima ogni cella che esiste ora
+	// nell'intervallo (CCellIterator, non un doppio ciclo su ogni
+	// posizione), poi riscrive solo le celle catturate.
 	struct UndoSnapshot {
 		range r;
-		std::vector<std::string> texts;
+		std::vector<std::pair<cell, std::string> > cells;
 	};
 	std::vector<UndoSnapshot> fUndoStack;
 	std::vector<UndoSnapshot> fRedoStack;

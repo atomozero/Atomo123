@@ -60,6 +60,10 @@ static const uint32 kMsgFillDown = 'afdn';
 static const uint32 kMsgFillRight = 'afrt';
 static const uint32 kMsgSortAscending = 'asta';
 static const uint32 kMsgSortDescending = 'astd';
+static const uint32 kMsgInsertRows = 'ainr';
+static const uint32 kMsgInsertColumns = 'ainc';
+static const uint32 kMsgDeleteRows = 'adlr';
+static const uint32 kMsgDeleteColumns = 'adlc';
 static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
 static const uint32 kMsgSetFormat = 'stfm';
@@ -175,6 +179,19 @@ MainWindow::MainWindow()
 	// dell'intervallo selezionato (vedi SheetView::SortSelection).
 	dataMenu->AddItem(new BMenuItem("Ordina crescente", new BMessage(kMsgSortAscending)));
 	dataMenu->AddItem(new BMenuItem("Ordina decrescente", new BMessage(kMsgSortDescending)));
+	dataMenu->AddSeparatorItem();
+	// Il numero di righe/colonne e il punto vengono dalla selezione
+	// corrente (SheetView::SelectionRange()), non da una selezione di
+	// intestazione -- Atomo123 non ha ancora un modo per selezionare
+	// un'intera riga/colonna cliccando l'intestazione. Quattro voci
+	// separate ed esplicite invece dell'unico comando "Inserisci"/
+	// "Elimina" di Sum-It storico (che inferiva riga o colonna dal
+	// fatto che la selezione coprisse un'intera riga/colonna): senza
+	// quel gesto sarebbe ambiguo qui.
+	dataMenu->AddItem(new BMenuItem("Inserisci riga", new BMessage(kMsgInsertRows)));
+	dataMenu->AddItem(new BMenuItem("Inserisci colonna", new BMessage(kMsgInsertColumns)));
+	dataMenu->AddItem(new BMenuItem("Elimina riga", new BMessage(kMsgDeleteRows)));
+	dataMenu->AddItem(new BMenuItem("Elimina colonna", new BMessage(kMsgDeleteColumns)));
 	menuBar->AddItem(dataMenu);
 
 	// Grafico e tabella pivot leggono un intervallo di due colonne
@@ -1152,6 +1169,22 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgSortDescending:
 			fSheetView->SortSelection(false);
+			break;
+
+		case kMsgInsertRows:
+			fSheetView->InsertRows();
+			break;
+
+		case kMsgInsertColumns:
+			fSheetView->InsertColumns();
+			break;
+
+		case kMsgDeleteRows:
+			fSheetView->DeleteRows();
+			break;
+
+		case kMsgDeleteColumns:
+			fSheetView->DeleteColumns();
 			break;
 
 		case kMsgPrint:

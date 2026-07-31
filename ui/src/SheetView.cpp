@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include <Alert.h>
 #include <MessageFilter.h>
 #include <Messenger.h>
 #include <Region.h>
@@ -499,49 +500,244 @@ void SheetView::SortSelection(bool ascending)
 	NotifySelectionChanged();
 }
 
+void SheetView::InsertRows()
+{
+	if (!fDoc)
+		return;
+
+	range sel = SelectionRange();
+	int count = sel.bottom - sel.top + 1;
+	int first = sel.top;
+
+	// Se ci sono gia' dati nelle ultime "count" righe del foglio,
+	// inserire le spingerebbe oltre kRowCount (il limite fisso del
+	// motore): si rifiuta invece di perderle silenziosamente, come
+	// faceva anche Sum-It storico (errCellsWouldFallOf).
+	range overflow(1, kRowCount - count + 1, kColCount, kRowCount);
+	CCellIterator overflowIter(fDoc, &overflow);
+	cell dummy;
+	if (overflowIter.NextExisting(dummy))
+	{
+		BAlert* alert = new BAlert("Inserisci riga",
+			"Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.",
+			"OK");
+		alert->Go();
+		return;
+	}
+
+	range bounds;
+	fDoc->GetBounds(bounds);
+	if (bounds.right >= 1 && bounds.bottom >= 1)
+		SaveUndoState(bounds);
+
+	// Scandisce le righe dal basso verso l'alto: una formula sopra il
+	// punto di inserimento puo' riferirsi a una cella sotto (che si
+	// sposta), quindi va toccata anche se lei stessa non si sposta --
+	// MoveCell con split diverso da noSplit aggiorna i riferimenti
+	// della formula anche quando destLoc == srcLoc. Scendere dal basso
+	// evita di sovrascrivere celle non ancora spostate (la
+	// destinazione ha sempre v maggiore o uguale alla sorgente).
+	for (int v = kRowCount - count; v >= 1; v--)
+	{
+		cell c(0, v);
+		while (fDoc->GetNextCellInRow(c, true))
+		{
+			cell newLoc = c;
+			if (newLoc.v >= first)
+				newLoc.v += count;
+			fDoc->MoveCell(fDoc, c, newLoc, vSplit, first, count);
+		}
+	}
+
+	RecalculateAll(fDoc);
+	Invalidate();
+	NotifySelectionChanged();
+}
+
+void SheetView::InsertColumns()
+{
+	if (!fDoc)
+		return;
+
+	range sel = SelectionRange();
+	int count = sel.right - sel.left + 1;
+	int first = sel.left;
+
+	range overflow(kColCount - count + 1, 1, kColCount, kRowCount);
+	CCellIterator overflowIter(fDoc, &overflow);
+	cell dummy;
+	if (overflowIter.NextExisting(dummy))
+	{
+		BAlert* alert = new BAlert("Inserisci colonna",
+			"Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.",
+			"OK");
+		alert->Go();
+		return;
+	}
+
+	range bounds;
+	fDoc->GetBounds(bounds);
+	if (bounds.right >= 1 && bounds.bottom >= 1)
+		SaveUndoState(bounds);
+
+	// Le righe sono indipendenti fra loro per uno spostamento di
+	// colonne, quindi l'ordine fra righe non conta -- conta pero'
+	// l'ordine ALL'INTERNO di ogni riga: da destra verso sinistra
+	// (GetPreviousCellInRow, partendo oltre l'ultima colonna), stessa
+	// ragione di InsertRows ma sull'asse orizzontale.
+	for (int v = 1; v <= kRowCount; v++)
+	{
+		cell c(kColCount + 1, v);
+		while (fDoc->GetPreviousCellInRow(c, true))
+		{
+			cell newLoc = c;
+			if (newLoc.h >= first)
+				newLoc.h += count;
+			fDoc->MoveCell(fDoc, c, newLoc, hSplit, first, count);
+		}
+	}
+
+	RecalculateAll(fDoc);
+	Invalidate();
+	NotifySelectionChanged();
+}
+
+void SheetView::DeleteRows()
+{
+	if (!fDoc)
+		return;
+
+	range sel = SelectionRange();
+	int count = sel.bottom - sel.top + 1;
+	int first = sel.top;
+	int last = sel.bottom;
+
+	range bounds;
+	fDoc->GetBounds(bounds);
+	if (bounds.right < 1 || bounds.bottom < 1)
+		return; // foglio vuoto: niente da eliminare
+
+	SaveUndoState(bounds);
+
+	// Le celle dentro le righe eliminate spariscono (nessuna
+	// destinazione valida per loro, a differenza di quelle sotto, che
+	// si spostano in su).
+	{
+		range deletedZone(1, first, kColCount, last);
+		CCellIterator deletedIter(fDoc, &deletedZone);
+		cell toDelete;
+		while (deletedIter.NextExisting(toDelete))
+			fDoc->DisposeCell(toDelete);
+	}
+
+	// Scandisce dall'alto verso il basso stavolta: la destinazione ha
+	// sempre v minore o uguale alla sorgente per una cancellazione,
+	// quindi l'ordine ascendente evita di sovrascrivere celle non
+	// ancora spostate (speculare a InsertRows).
+	for (int v = 1; v <= kRowCount; v++)
+	{
+		cell c(0, v);
+		while (fDoc->GetNextCellInRow(c, true))
+		{
+			cell newLoc = c;
+			if (newLoc.v > last)
+				newLoc.v -= count;
+			fDoc->MoveCell(fDoc, c, newLoc, vSplit, first, -count);
+		}
+	}
+
+	RecalculateAll(fDoc);
+	Invalidate();
+	NotifySelectionChanged();
+}
+
+void SheetView::DeleteColumns()
+{
+	if (!fDoc)
+		return;
+
+	range sel = SelectionRange();
+	int count = sel.right - sel.left + 1;
+	int first = sel.left;
+	int last = sel.right;
+
+	range bounds;
+	fDoc->GetBounds(bounds);
+	if (bounds.right < 1 || bounds.bottom < 1)
+		return; // foglio vuoto: niente da eliminare
+
+	SaveUndoState(bounds);
+
+	{
+		range deletedZone(first, 1, last, kRowCount);
+		CCellIterator deletedIter(fDoc, &deletedZone);
+		cell toDelete;
+		while (deletedIter.NextExisting(toDelete))
+			fDoc->DisposeCell(toDelete);
+	}
+
+	for (int v = 1; v <= kRowCount; v++)
+	{
+		cell c(0, v);
+		while (fDoc->GetNextCellInRow(c, true))
+		{
+			cell newLoc = c;
+			if (newLoc.h > last)
+				newLoc.h -= count;
+			fDoc->MoveCell(fDoc, c, newLoc, hSplit, first, -count);
+		}
+	}
+
+	RecalculateAll(fDoc);
+	Invalidate();
+	NotifySelectionChanged();
+}
+
 SheetView::UndoSnapshot SheetView::CaptureSnapshot(range r) const
 {
 	UndoSnapshot snap;
 	snap.r = r;
 
-	int numRows = r.bottom - r.top + 1;
-	int numCols = r.right - r.left + 1;
-	snap.texts.resize((size_t)numRows * numCols);
-
-	for (int i = 0; i < numRows; i++)
-		for (int j = 0; j < numCols; j++)
-		{
-			char text[512];
-			fDoc->GetCellFormula(cell(r.left + j, r.top + i), text, false);
-			snap.texts[(size_t)i * numCols + j] = text;
-		}
+	CCellIterator iter(fDoc, &r);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		char text[512];
+		fDoc->GetCellFormula(c, text, false);
+		snap.cells.push_back(std::make_pair(c, std::string(text)));
+	}
 
 	return snap;
 }
 
 void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 {
-	int numRows = snap.r.bottom - snap.r.top + 1;
-	int numCols = snap.r.right - snap.r.left + 1;
+	// Svuota prima tutto cio' che esiste ORA nell'intervallo (non solo
+	// le celle catturate): una cella vuota al momento della cattura ma
+	// scritta nel frattempo deve tornare vuota, non restare com'e'.
+	{
+		range r = snap.r;
+		CCellIterator iter(fDoc, &r);
+		cell c;
+		while (iter.NextExisting(c))
+			fDoc->DisposeCell(c);
+	}
 
-	for (int i = 0; i < numRows; i++)
-		for (int j = 0; j < numCols; j++)
+	for (size_t i = 0; i < snap.cells.size(); i++)
+	{
+		const cell& c = snap.cells[i].first;
+		const std::string& text = snap.cells[i].second;
+		if (!text.empty())
 		{
-			cell c(snap.r.left + j, snap.r.top + i);
-			const std::string& text = snap.texts[(size_t)i * numCols + j];
-			if (text.empty())
-				fDoc->DisposeCell(c);
-			else
+			try
 			{
-				try
-				{
-					TryToParseString(text.c_str(), c, fDoc, true);
-				}
-				catch (...)
-				{
-				}
+				TryToParseString(text.c_str(), c, fDoc, true);
+			}
+			catch (...)
+			{
 			}
 		}
+	}
 
 	RecalculateAll(fDoc);
 }
