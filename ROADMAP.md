@@ -11,8 +11,11 @@ in corso** — ricetta HaikuDepot pronta ma non ancora buildabile
 (nessun repository pubblico); licenza **MIT** decisa per il codice
 nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
 la sua licenza BSD originale); export ODS e XLSX aggiunti (oltre a
-CSV); restano l'export XLS legacy e il test di compatibilità su un
-corpus di file reali. **Fase 6 chiusa**: guida utente, funzioni con
+CSV) — export XLS legacy escluso deliberatamente (nessun writer
+BIFF/OLE2 su cui appoggiarsi, XLSX copre già l'export verso
+l'ecosistema Excel); resta il test di compatibilità su un corpus di
+file reali, bloccato in attesa di file campione o autorizzazione a
+installare software. **Fase 6 chiusa**: guida utente, funzioni con
 nome nelle formule, grafici a barre e tabelle pivot di base, editing
 in-cella e navigazione da tastiera in stile Excel, SUMIF/COUNTIF/
 AVERAGEIF, correzione della propagazione del ricalcolo alle celle
@@ -374,7 +377,8 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       Costruito per essere direttamente riusabile quando XLS/XLSX/ODS
       avranno anche loro un writer, non solo per CSV. **Bug scoperto e
       corretto costruendo questa funzione**: vedi sotto.
-- [ ] Export XLS/XLSX/ODS: **ODS e XLSX fatti**, resta solo XLS legacy.
+- [x] Export XLS/XLSX/ODS: **ODS e XLSX fatti; XLS legacy escluso
+      deliberatamente**, non lasciato in sospeso per mancanza di tempo.
       `OdsTranslator` ora scrive anche verso ODS (`Identify()`
       riconosce un sorgente ASCD nativo in ingresso, `Translate()`
       instrada nelle due direzioni), riusando lo stesso `CZipReader` in
@@ -398,9 +402,29 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       lettura per riconoscerle (prima gestiva solo `t="s"` verso
       `sharedStrings.xml`). Anche qui verificato con `unzip` di sistema
       oltre che col proprio `CZipReader`. Test di round-trip completo
-      in `translators/xlsx/tests/test_xlsx_translator.cpp`. Resta XLS
-      legacy (servirebbe generare BIFF/OLE2, formato binario molto più
-      complesso di ZIP+XML — non ancora affrontato).
+      in `translators/xlsx/tests/test_xlsx_translator.cpp`.
+
+      **XLS legacy escluso deliberatamente, non per mancanza di
+      tempo**: verificato che non esiste da nessuna parte nel
+      repository (né in `legacy/opensumit/` né nella porting `engine/`)
+      alcun codice di scrittura BIFF/OLE2 su cui appoggiarsi —
+      `Excel.OLE2.cpp` contiene solo `CExcel5Filter::GetBookStream`,
+      lettura pura (naviga una FAT/directory OLE2 già esistente, non ne
+      costruisce una), e `CExcelStream` ha solo deserializzatori
+      (`operator>>`), nessun `operator<<`. Scrivere un export XLS
+      legacy da zero richiederebbe sia un contenitore OLE2 Compound
+      File completo (allocazione settori, FAT, MSAT per FAT oltre 109
+      settori, voci di directory) sia un serializzatore di record BIFF
+      — ordini di grandezza più complesso di ZIP+XML (dove è bastato un
+      `CZipWriter` di ~100 righe sopra zlib). `translators/xls/
+      XlsTranslator.h` documenta già questa scelta esplicitamente fin
+      dalla Fase 3 ("l'export verso Excel moderno passerà dal futuro
+      translator XLSX"): con ODS e XLSX ora entrambi funzionanti in
+      scrittura, quella strategia è completa — un lettore Excel/
+      LibreOffice moderno apre XLSX senza problemi, quindi non c'è un
+      bisogno reale di un secondo formato di export verso lo stesso
+      ecosistema Microsoft.
+
       **Due bug reali del motore scoperti costruendo l'export ODS**
       (lo stesso fix è stato applicato preventivamente a XLSX, che non
       ha quindi mai manifestato questi bug in prima persona),
