@@ -25,10 +25,13 @@ funzionalità rispetto a Sum-It storico) in corso**: confronto puntuale
 completato (menu/comandi/dialoghi di Sum-It vs. Atomo123), selezione
 multi-cella fatta (Maiusc+frecce, trascinamento del mouse, Maiusc+click,
 Seleziona tutto, Canc su un intervallo intero), Riempi in basso/a destra
-fatto (menu Dati, sposta i riferimenti relativi nelle formule); restano
-Annulla/Ripeti, Ordina, inserimento/eliminazione riga e colonna,
-formattazione font/colore/allineamento e altro (dettaglio nella sezione
-Fase 7). Aggiornato ad ogni fase completata.
+fatto (menu Dati, sposta i riferimenti relativi nelle formule), Ordina
+crescente/decrescente fatto (menu Dati, ordinamento stabile per righe
+intere; nel verificarlo è emerso e risolto un bug generico di doppio
+free in `Value::Value(CellData&)`); restano Annulla/Ripeti,
+inserimento/eliminazione riga e colonna, formattazione
+font/colore/allineamento e altro (dettaglio nella sezione Fase 7).
+Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -1244,8 +1247,7 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       **Non ancora fatto in questo incremento** (prossimi passi
       naturali, non ancora iniziati): Taglia/Copia/Incolla operano
       ancora sulla sola cella attiva, non sull'intero intervallo
-      selezionato; formattazione (Formato menu) idem; Ordina non
-      ancora cominciato.
+      selezionato; formattazione (Formato menu) idem.
 
 - [x] **Riempi in basso/a destra**: copia la prima riga/colonna di
       `SelectionRange()` nel resto dell'intervallo, spostando i
@@ -1283,6 +1285,57 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       testo della formula sia il valore ricalcolato), nessuna azione
       su una selezione di una sola cella. Nessuna regressione nella
       suite esistente.
+
+- [x] **Ordina crescente/decrescente**: ordina `SelectionRange()` per
+      righe intere, confrontando solo la colonna più a sinistra
+      dell'intervallo come chiave — numericamente se entrambi i valori
+      a confronto sono numeri, altrimenti come testo
+      (case-insensitive). Ordinamento stabile (`std::stable_sort`): a
+      parità di chiave le righe mantengono l'ordine relativo
+      originale invece di uno arbitrario. A differenza di Riempi, ogni
+      cella si sposta come **testo grezzo** della formula (via
+      `GetCellFormula`/riscrittura con `TryToParseString`), senza
+      alcun aggiustamento dei riferimenti — un limite noto e
+      accettato: ordinare righe con formule che si riferiscono a
+      *altre righe della stessa selezione* può produrre riferimenti
+      "sbagliati" nello stesso modo in cui lo farebbe Excel/Sum-It in
+      quel caso (un riferimento relativo punta sempre alla posizione,
+      non alla riga logica che si è spostata).
+
+      Esposto dal nuovo menu Dati ("Ordina crescente"/"Ordina
+      decrescente"), senza scorciatoia da tastiera — a differenza di
+      Riempi non c'è un tasto Ctrl storico da assegnare, quindi niente
+      collisioni `B_HOME`/`B_END` da aggirare stavolta.
+
+      **Bug scoperto mentre si scriveva `test_sort.cpp` (non
+      nell'ordinamento stesso)**: il test sembrava bloccarsi a metà
+      sotto `timeout`, con un pattern già visto altrove in questo
+      progetto ("il processo si blocca invece di andare in crash" —
+      vedi la nota su `debug_server` in Fase 5). Il vero problema è
+      emerso solo controllando i file `.report` che `debug_server`
+      scrive sul Desktop quando intercetta un crash: `Value::Clear()`
+      tentava un `free()` doppio, corrompendo l'heap. Causa radice in
+      `engine/src/Cell/Value.cpp`, non nel test né in `SortSelection`:
+      `Value::Value(CellData&)` faceva `*this = cd;` senza mai
+      inizializzare `fType`/`fText`/`fTextIsCopy` — se la memoria dello
+      stack lasciata da chiamate precedenti conteneva per caso un
+      pattern che sembrava `eTextData` con un puntatore non nullo e
+      `fTextIsCopy = true`, `Clear()` (richiamato a cascata da
+      `operator=(const char*)`) tentava di liberare un puntatore a
+      caso. Bug pre-esistente e generico — colpisce *ogni* chiamata a
+      `CContainer::GetCellFormula` su una cella di testo, non solo
+      durante l'ordinamento — che spiega perché il test passava quasi
+      sempre (3 scenari su 4) e falliva solo in modo intermittente.
+      Risolto inizializzando `fType = eNoData` prima della delega a
+      `operator=`.
+
+      Test dedicato `ui/tests/test_sort.cpp` (nuovo target
+      `make test-sort`): ordinamento crescente e decrescente con una
+      colonna "passeggero" che deve seguire la riga, ordinamento
+      stabile su chiavi duplicate, nessuna azione su una selezione di
+      una sola riga. Nessuna regressione nella suite esistente
+      (verificato anche con esecuzioni ripetute, dato che il bug del
+      motore era dipendente dallo stato dello stack).
 
 ---
 
