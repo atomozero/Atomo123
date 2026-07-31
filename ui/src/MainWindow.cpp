@@ -4,10 +4,9 @@
 	Vedi MainWindow.h.
 */
 
-#include <cstdio>
-
 #include "MainWindow.h"
 #include "SheetView.h"
+#include "SheetTabView.h"
 #include "AscdIO.h"
 #include "FindWindow.h"
 #include "ChartWindow.h"
@@ -32,9 +31,7 @@
 #include <FilePanel.h>
 #include <LayoutBuilder.h>
 #include <MenuBar.h>
-#include <MenuField.h>
 #include <MenuItem.h>
-#include <PopUpMenu.h>
 #include <Path.h>
 #include <PrintJob.h>
 #include <ScrollView.h>
@@ -112,7 +109,7 @@ MainWindow::MainWindow()
 	BWindow(BRect(80, 80, 900, 700), "Atomo123", B_TITLED_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
 {
-	// fSheetView/fSheetSelector vanno azzerati ESPLICITAMENTE prima di
+	// fSheetView/fSheetTabView vanno azzerati ESPLICITAMENTE prima di
 	// ResetWorkbook() qui sotto: sono puntatori membro senza un
 	// inizializzatore nella lista sopra, quindi contengono spazzatura
 	// indeterminata finche' non vengono creati piu' avanti in questo
@@ -125,7 +122,7 @@ MainWindow::MainWindow()
 	// mandava SetDocument/SetCharts su un oggetto inesistente, con esito
 	// imprevedibile (a volte un blocco indefinito, non un crash pulito).
 	fSheetView = NULL;
-	fSheetSelector = NULL;
+	fSheetTabView = NULL;
 	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
 	ResetWorkbook("Foglio1");
 	fModified = false;
@@ -299,16 +296,16 @@ MainWindow::MainWindow()
 	// a rompere l'eredita' iniziale dal target.
 	scroll->ResizeTo(400, 300);
 
-	// Selettore del foglio attivo: un menu a tendina invece di una
-	// striscia di schede orizzontale (come Excel/LibreOffice Calc, in
-	// basso) -- piu' semplice da implementare bene per un numero
-	// qualunque di fogli (una cartella di lavoro reale puo' averne
-	// decine, vedi Fase 9) senza dover gestire lo scorrimento della
-	// striscia quando non ci sta piu' tutta nella larghezza della
-	// finestra. Ripopolato da RebuildSheetSelector() ogni volta che
-	// cambia l'elenco dei fogli (Nuovo, Apri, in futuro Inserisci/
-	// Elimina/Rinomina foglio).
-	fSheetSelector = new BMenuField("sheetSelector", "Foglio:", new BPopUpMenu(""));
+	// Striscia di schede del foglio attivo, come Excel/LibreOffice
+	// Calc, in basso sotto la griglia -- sostituisce il menu a tendina
+	// iniziale su richiesta dell'utente. Scorre con due frecce quando
+	// le schede non entrano tutte nella larghezza della finestra
+	// (una cartella di lavoro reale puo' averne decine, vedi Fase 9),
+	// invece di tagliarle silenziosamente o far crescere la finestra
+	// all'infinito. Ripopolata da RebuildSheetTabs() ogni volta che
+	// cambia l'elenco dei fogli o il foglio attivo (Nuovo, Apri, cambio
+	// scheda, in futuro Inserisci/Elimina/Rinomina foglio).
+	fSheetTabView = new SheetTabView("sheetTabs", kMsgSwitchSheet, this);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
@@ -330,13 +327,9 @@ MainWindow::MainWindow()
 			.Add(fFormulaBar)
 		.End()
 		.Add(scroll)
-		.AddGroup(B_HORIZONTAL, 4)
-			.SetInsets(4, 4, 4, 4)
-			.Add(fSheetSelector)
-			.AddGlue()
-		.End();
+		.Add(fSheetTabView);
 
-	RebuildSheetSelector();
+	RebuildSheetTabs();
 
 	fOpenPanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this));
 	fSavePanel = new BFilePanel(B_SAVE_PANEL, new BMessenger(this));
@@ -438,8 +431,8 @@ void MainWindow::ResetWorkbook(const char* name)
 		fSheetView->SetDocument(fDoc);
 		fSheetView->SetCharts(&fCharts);
 	}
-	if (fSheetSelector)
-		RebuildSheetSelector();
+	if (fSheetTabView)
+		RebuildSheetTabs();
 }
 
 void MainWindow::SwitchToSheet(int index)
@@ -462,27 +455,19 @@ void MainWindow::SwitchToSheet(int index)
 
 	fSheetView->SetDocument(fDoc);
 	fFormulaBar->SetText("");
-	RebuildSheetSelector();
+	RebuildSheetTabs();
 }
 
-void MainWindow::RebuildSheetSelector()
+void MainWindow::RebuildSheetTabs()
 {
-	if (!fSheetSelector)
+	if (!fSheetTabView)
 		return;
 
-	BMenu* menu = fSheetSelector->Menu();
-	while (menu->CountItems() > 0)
-		delete menu->RemoveItem((int32)0);
-
+	std::vector<BString> names;
 	for (size_t i = 0; i < fSheets.size(); i++)
-	{
-		BMessage* msg = new BMessage(kMsgSwitchSheet);
-		msg->AddInt32("index", (int32)i);
-		BMenuItem* item = new BMenuItem(fSheets[i].name.String(), msg);
-		item->SetTarget(this);
-		item->SetMarked((int)i == fActiveSheetIndex);
-		menu->AddItem(item);
-	}
+		names.push_back(fSheets[i].name);
+
+	fSheetTabView->SetSheets(names, fActiveSheetIndex);
 }
 
 void MainWindow::NewDocument()
@@ -605,7 +590,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fCharts = fSheets[0].charts;
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
-	RebuildSheetSelector();
+	RebuildSheetTabs();
 
 	fDocumentName = ref.name;
 	fModified = false;

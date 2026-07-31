@@ -21,10 +21,10 @@
 #include "Chart.h"
 
 class BFilePanel;
-class BMenuField;
 class BTextControl;
 class BStringView;
 class SheetView;
+class SheetTabView;
 class CContainer;
 class FindWindow;
 class ChartWindow;
@@ -108,14 +108,14 @@ private:
 	// stesso oggetto puntato da fDoc mentre quel foglio e' attivo.
 	std::vector<AscdSheet> fSheets;
 	int fActiveSheetIndex;
-	BMenuField* fSheetSelector;
+	SheetTabView* fSheetTabView;
 
 	// Sostituisce l'intera cartella di lavoro con un solo foglio
 	// vuoto di nome "name" -- usato da NewDocument() e come base
 	// prima di popolare i fogli letti da un file. Rilascia tutti i
 	// CContainer dei fogli precedenti (Release(), mai delete diretto).
 	void ResetWorkbook(const char* name);
-	void RebuildSheetSelector();
+	void RebuildSheetTabs();
 
 	// Nome del file corrente (solo il nome, non il percorso completo:
 	// basta per il titolo -- vedi UpdateTitle) e se il documento ha
