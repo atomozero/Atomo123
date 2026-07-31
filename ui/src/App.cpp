@@ -8,6 +8,7 @@
 #include "MainWindow.h"
 
 #include <Entry.h>
+#include <Mime.h>
 #include <Path.h>
 #include <Roster.h>
 
@@ -20,10 +21,23 @@
 
 static const char* kAppSignature = "application/x-vnd.Atomo-Atomo123";
 
+// Stessi tipi elencati nella risorsa file_types di Atomo123.rdef (che
+// serve solo a farli comparire nella lista "Apri con..." di Tracker):
+// qui si decide invece se diventare l'applicazione preferita, cioe'
+// quella scelta automaticamente al doppio clic.
+static const char* kSupportedTypes[] = {
+	"application/x-vnd.atomo-sheet-data", // .ascd nativo
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+	"application/vnd.ms-excel.sheet.macroenabled.12", // .xlsm
+	"application/vnd.ms-excel", // .xls
+	"application/vnd.oasis.opendocument.spreadsheet", // .ods
+	"text/csv",
+	NULL
+};
+
 App::App()
 	:
-	BApplication(kAppSignature),
-	fWindow(NULL)
+	BApplication(kAppSignature)
 {
 }
 
@@ -55,25 +69,107 @@ void App::ReadyToRun()
 		}
 	}
 
-	fWindow = new MainWindow();
-	fWindow->Show();
+	RegisterFileTypes();
+
+	// Se un file era gia' pronto all'avvio (RefsReceived sotto puo'
+	// arrivare prima di ReadyToRun quando Tracker lancia l'app con un
+	// file, comportamento standard di BApplication), quella finestra
+	// esiste gia': non se ne crea una seconda vuota. Se invece
+	// RefsReceived arrivasse dopo (ordine non garantito), la trovera'
+	// comunque vergine e la riusera' -- vedi FindReusableWindow().
+	if (CountWindows() == 0)
+	{
+		MainWindow* window = new MainWindow();
+		window->Show();
+	}
 }
+
+void App::RegisterFileTypes()
+{
+	for (int i = 0; kSupportedTypes[i]; i++)
+	{
+		BMimeType type(kSupportedTypes[i]);
+		if (type.InitCheck() != B_OK)
+			continue;
+
+		// Installa il tipo nel database MIME se non c'e' gia' (un
+		// pacchetto XLSX/ODS/CSV aperto per la prima volta su questo
+		// sistema potrebbe non averlo ancora): senza questo passo
+		// SetPreferredApp sotto fallirebbe silenziosamente su un tipo
+		// sconosciuto al database.
+		if (!type.IsInstalled())
+			type.Install();
+
+		char preferred[B_MIME_TYPE_LENGTH];
+		// GetPreferredApp fallisce (o restituisce una stringa vuota)
+		// se il tipo non ha ancora nessuna applicazione preferita:
+		// solo in quel caso si imposta Atomo123, senza mai scavalcare
+		// una scelta gia' fatta dall'utente o da un'altra
+		// applicazione installata.
+		if (type.GetPreferredApp(preferred) != B_OK || preferred[0] == 0)
+			type.SetPreferredApp(kAppSignature);
+	}
+} // App::RegisterFileTypes
 
 void App::RefsReceived(BMessage* message)
 {
-	// BApplication e BWindow girano su thread (BLooper) distinti:
-	// non si puo' chiamare direttamente un metodo che tocca le BView
-	// della finestra da qui senza il lock della finestra. Si inoltra
-	// invece il messaggio al BWindow stesso (MainWindow::MessageReceived
-	// gestisce gia' B_REFS_RECEIVED), cosi' viene elaborato sul thread
-	// corretto con il lock preso automaticamente dal message loop.
-	if (fWindow)
-		fWindow->PostMessage(message);
+	// BApplication e BWindow girano su thread (BLooper) distinti: non si
+	// puo' toccare direttamente le BView di una finestra da qui senza il
+	// suo lock. Si inoltra invece un B_REFS_RECEIVED per ogni ref alla
+	// finestra scelta (nuova o riusata sotto): MainWindow::MessageReceived
+	// gestisce gia' quel messaggio chiamando OpenFile sul thread corretto,
+	// con il lock preso automaticamente dal message loop.
+	//
+	// Una finestra con un documento gia' aperto (anche solo aperto e mai
+	// modificato) non va MAI rimpiazzata da un file successivo: se
+	// l'utente ha gia' Atomo123 aperto e fa doppio clic su un secondo
+	// file, vuole una finestra nuova, non perdere quella di prima.
+	MainWindow* reusable = FindReusableWindow();
+
+	entry_ref ref;
+	for (int32 i = 0; message->FindRef("refs", i, &ref) == B_OK; i++)
+	{
+		BMessage oneRef(B_REFS_RECEIVED);
+		oneRef.AddRef("refs", &ref);
+
+		MainWindow* target = reusable;
+		if (target)
+			// Usata: PostMessage e' asincrono, quindi lo stato della
+			// finestra (fDocumentName) non si aggiorna subito -- se
+			// questo messaggio contiene piu' ref (piu' file aperti in
+			// un colpo solo da Tracker), i successivi devono sempre
+			// aprire finestre nuove, non ricontrollare la stessa
+			// finestra vergine gia' assegnata al primo file.
+			reusable = NULL;
+		else
+		{
+			target = new MainWindow();
+			target->Show();
+		}
+		target->PostMessage(&oneRef);
+	}
 }
 
+MainWindow* App::FindReusableWindow() const
+{
+	for (int32 i = 0; i < CountWindows(); i++)
+	{
+		MainWindow* window = dynamic_cast<MainWindow*>(WindowAt(i));
+		if (window && window->IsUntouched())
+			return window;
+	}
+	return NULL;
+}
+
+// tests/test_multiwindow.cpp compila una seconda copia di questo file
+// (con ATOMO123_TEST_BUILD definita, vedi Makefile) per esercitare la
+// vera App::RefsReceived con il proprio main() di test: senza questa
+// esclusione i due main() confliggerebbero al link.
+#ifndef ATOMO123_TEST_BUILD
 int main()
 {
 	App app;
 	app.Run();
 	return 0;
 }
+#endif

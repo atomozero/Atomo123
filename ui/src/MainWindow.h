@@ -72,6 +72,14 @@ public:
 	bool IsModified() const { return fModified; }
 	bool ConfirmDiscardChanges();
 
+	// Usato da App::RefsReceived per decidere se riusare questa finestra
+	// per un file in arrivo invece di aprirne una nuova (vedi App.cpp) --
+	// vera solo per una finestra "vergine" come quella creata da
+	// ReadyToRun all'avvio: mai nessuna modifica e mai nessun file
+	// aperto con successo (OpenFile imposta fDocumentName solo a
+	// caricamento riuscito).
+	bool IsUntouched() const { return !fModified && fDocumentName.Length() == 0; }
+
 	// Pubblici per lo stesso motivo di CopySelection/PasteSelection
 	// sopra -- vedi tests/test_multisheet.cpp. SheetCount()/SheetName()
 	// permettono di verificare l'elenco dei fogli letti da un file
