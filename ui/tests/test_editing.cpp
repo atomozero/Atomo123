@@ -29,9 +29,10 @@
 #include <Window.h>
 
 #include "Cell.h"
-#include "Container.h"
-#include "SheetView.h"
 #include "Value.h"
+#include "Container.h"
+#include "CellParser.h"
+#include "SheetView.h"
 
 static const uint32 kMsgCellEditCommit = 'cedt';
 
@@ -121,6 +122,38 @@ int main()
 	cell afterCancel = view->Selection();
 	Check(afterCancel.h == 1 && afterCancel.v == 3,
 		"annullare con Escape non fa avanzare la selezione (resta su A3)");
+
+	// Propagazione a celle dipendenti: CContainer non tiene un grafo
+	// delle dipendenze, quindi modificare una cella referenziata da
+	// una formula altrove (qui B1="=A1+5") deve ricalcolare anche
+	// quella formula, non solo la cella appena modificata -- bug
+	// scoperto in Fase 6 ("ottimizzazione ricalcolo su fogli grandi":
+	// il problema reale non era la velocita', ma che le formule
+	// dipendenti restavano non aggiornate finche' non venivano
+	// toccate a mano). Fix: CommitEditing chiama RecalculateAll(fDoc)
+	// invece del solo CalcCell(editedCell).
+	view->SetSelection(cell(1, 4));	// A4
+	char digit4 = '1';
+	view->KeyDown(&digit4, 1);
+	view->MessageReceived(&commit);	// A4 = 1
+
+	TryToParseString("=A4+5", cell(2, 4), doc, true);	// B4 = "=A4+5"
+	doc->CalcCell(cell(2, 4));
+
+	Value b4;
+	doc->GetValue(cell(2, 4), b4);
+	Check(b4.fType == eNumData && (double)b4 == 6.0,
+		"B4 (=A4+5) calcola 6 col primo valore di A4 (1)");
+
+	view->SetSelection(cell(1, 4));	// torna su A4
+	char digit5 = '2';
+	view->KeyDown(&digit5, 1);
+	view->MessageReceived(&commit);	// A4 = 2, non piu' "1"
+
+	doc->GetValue(cell(2, 4), b4);
+	Check(b4.fType == eNumData && (double)b4 == 7.0,
+		"modificando A4 (senza toccare B4 direttamente), B4 si aggiorna da solo a 7 "
+		"(non resta fermo al valore vecchio, 6)");
 
 	win->Unlock();
 

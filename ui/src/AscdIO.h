@@ -48,9 +48,19 @@ bool IsASCDFile(BPositionIO* source);
 
 // Ricalcola tutte le celle con formula del documento fino a
 // convergenza (o a un limite di passate). Usata da LoadASCD dopo aver
-// popolato le celle: TryToParseString non calcola, quindi senza
+// popolato le celle (TryToParseString non calcola, quindi senza
 // questo passo le celle con formula restano vuote finche' l'utente
-// non le tocca a mano.
+// non le tocca a mano) e, soprattutto, da MainWindow/SheetView dopo
+// OGNI modifica di una cella (editing, taglia/incolla/cancella,
+// trova e sostituisci) invece del solo CalcCell() sulla cella
+// toccata: CContainer non tiene un grafo delle dipendenze, quindi
+// CalcCell() su una sola cella non si propaga a chi la referenzia in
+// formula altrove -- bug scoperto in Fase 6 ("se modifico A1, B1
+// (=A1+5) resta al valore vecchio finche' non lo tocco anch'esso").
+// Il costo (piu' passate su tutte le celle CON CONTENUTO, non
+// sull'intero foglio virtuale -- vedi GetBounds()) resta accettabile
+// anche su fogli grandi: e' lo stesso meccanismo gia' usato e
+// verificato al caricamento file.
 void RecalculateAll(CContainer* doc);
 
 #endif

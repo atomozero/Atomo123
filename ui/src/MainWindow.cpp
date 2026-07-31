@@ -404,7 +404,7 @@ void MainWindow::CopySelection(bool cut)
 	if (cut)
 	{
 		fDoc->DisposeCell(sel);
-		fDoc->CalcCell(sel);
+		RecalculateAll(fDoc);
 		fSheetView->Invalidate();
 		SelectionChanged(sel);
 	}
@@ -436,7 +436,7 @@ void MainWindow::PasteSelection()
 		catch (...)
 		{
 		}
-		fDoc->CalcCell(sel);
+		RecalculateAll(fDoc);
 		fSheetView->Invalidate();
 		SelectionChanged(sel);
 	}
@@ -451,6 +451,7 @@ void MainWindow::DeleteSelection()
 
 	cell sel = fSheetView->Selection();
 	fDoc->DisposeCell(sel);
+	RecalculateAll(fDoc);
 	fSheetView->Invalidate();
 	SelectionChanged(sel);
 }
@@ -709,7 +710,7 @@ void MainWindow::ReplaceCurrent(const char* searchText, const char* replaceText)
 	catch (...)
 	{
 	}
-	fDoc->CalcCell(sel);
+	RecalculateAll(fDoc);
 	fSheetView->Invalidate();
 	SelectionChanged(sel);
 
@@ -753,9 +754,13 @@ void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
 		catch (...)
 		{
 		}
-		fDoc->CalcCell(matches[i]);
 	}
 
+	// Un solo ricalcolo completo dopo tutte le sostituzioni, non uno
+	// per cella modificata: piu' efficiente ed equivalente (vedi
+	// AscdIO.h per il perche' non basta CalcCell sulla sola cella
+	// toccata).
+	RecalculateAll(fDoc);
 	fSheetView->Invalidate();
 	SelectionChanged(fSheetView->Selection());
 
@@ -844,7 +849,7 @@ void MainWindow::CommitFormulaBar()
 	catch (...)
 	{
 	}
-	fDoc->CalcCell(sel);
+	RecalculateAll(fDoc);
 	fSheetView->Invalidate();
 }
 

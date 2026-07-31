@@ -25,6 +25,8 @@
 #include "Constants.h"
 #include "Formatter.h"
 
+#include "AscdIO.h"
+
 static const uint32 kMsgCellEditCommit = 'cedt';
 static const uint32 kMsgCellEditCancel = 'cedc';
 
@@ -577,6 +579,7 @@ bool SheetView::HandleKey(char key, bool ctrl, bool shift)
 			if (fDoc)
 			{
 				fDoc->DisposeCell(fSelection);
+				RecalculateAll(fDoc);
 				Invalidate(CellRect(fSelection));
 				NotifySelectionChanged();
 			}
@@ -665,7 +668,7 @@ void SheetView::CommitEditing(bool cancel)
 		catch (...)
 		{
 		}
-		fDoc->CalcCell(editedCell);
+		RecalculateAll(fDoc);
 	}
 
 	editor->RemoveSelf();
