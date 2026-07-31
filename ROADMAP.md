@@ -1720,6 +1720,144 @@ toolbar, ridimensionamento riga/colonna.
       Con questo, tutti e quattro i punti scelti dall'utente per la
       Fase 8 sono completi.
 
+## Fase 9 — Supporto multi-foglio (IN CORSO)
+
+Con la Fase 8 chiusa, l'utente ha indicato un vero file di lavoro —
+`Form_Economico_GaraEPC2026_Nord_Est.xlsm`, una gara d'appalto reale —
+come banco di prova per continuare lo sviluppo in autonomia "fino al
+raggiungimento della piena compatibilità e visualizzazione". Aprirlo
+ha subito rivelato che il file ha **38 fogli**, con formule che
+attraversano i fogli (es. `RIEPILOGO COMPLETO` referenzia altri fogli
+166 volte) — mentre l'importazione XLSX, fin dalla Fase 3, leggeva
+solo il primo foglio e `MainWindow` gestiva un solo documento alla
+volta. Di fronte a un cambio architetturale di questa portata, prima
+di procedere è stata chiesta conferma esplicita all'utente, che ha
+risposto: "è assolutamente necessario supportare il multi-sheet".
+
+- [x] **Formato "cartella di lavoro" multi-foglio (`ASCB`)**: nuovo
+      livello sopra il formato `ASCD` esistente, in `ui/src/AscdIO.h/
+      .cpp`. Magic `"ASCB"` + numero di fogli, poi per ciascuno
+      nome + un blocco `ASCD` completo, riusando `SaveASCD`/`LoadASCD`
+      così come sono (ognuno si autodelimita tramite i propri
+      contatori) invece di duplicarne la logica. `IsASCDBookFile`
+      distingue un file `ASCB` da un vecchio `.ascd` a un solo foglio
+      (`"ASCD"`, senza wrapper): piena compatibilità all'indietro in
+      lettura. Test dedicato `ui/tests/test_ascd_book.cpp` (nuovo
+      target `make test-ascd-book`, 13 verifiche): giro completo a due
+      fogli, nomi preservati, ricalcolo delle formule, un vecchio file
+      a un solo foglio non viene mai scambiato per una cartella.
+
+- [x] **`MainWindow` multi-foglio**: `fDoc`/`fCharts` restano
+      deliberatamente gli "alias del foglio attivo" (mai rimossi) così
+      le circa quaranta chiamate esistenti che li usano (Copia/Incolla,
+      Formato, Trova e sostituisci, grafico/tabella pivot incorporati,
+      ecc.) non richiedono nessuna modifica. `std::vector<AscdSheet>
+      fSheets` tiene tutti i fogli aperti; `SwitchToSheet(indice)`
+      ripunta semplicemente `fDoc` allo stesso `CContainer*` già in
+      `fSheets[indice].doc` (nessuna copia) e sincronizza `fCharts` in
+      entrambe le direzioni esplicitamente, essendo un vettore per
+      valore di cui `SheetView` tiene un puntatore che deve restare
+      stabile. Un nuovo `BMenuField` sotto il foglio permette di
+      cambiare foglio attivo dal menu a tendina.
+
+      **Bug reale scoperto e corretto durante lo sviluppo**:
+      `ResetWorkbook()`, chiamato quasi subito nel costruttore,
+      controllava `if (fSheetView)`/`if (fSheetSelector)` prima che
+      l'uno o l'altro fossero mai stati assegnati (nessuna voce nella
+      lista di inizializzazione, assegnati più avanti nel corpo del
+      costruttore) — un puntatore letto non inizializzato, che quando
+      per caso sembrava non-NULL faceva chiamare `SetDocument`/
+      `SetCharts` su un puntatore selvaggio, con blocchi intermittenti
+      e legati al layout di memoria del momento. Scoperto scrivendo
+      `ui/tests/test_multisheet.cpp` (nuovo target `make
+      test-multisheet`, 14 verifiche) tramite bisezione con
+      checkpoint: corretto assegnando esplicitamente `fSheetView =
+      NULL; fSheetSelector = NULL;` prima della prima chiamata a
+      `ResetWorkbook()`.
+
+- [x] **`XlsxTranslator` legge tutti i fogli, non solo il primo**:
+      `xl/workbook.xml` elenca nome e `r:id` di ciascun foglio
+      nell'ordine delle schede; `xl/_rels/workbook.xml.rels` fa
+      corrispondere ogni `r:id` al file XML fisico che contiene i
+      dati (i due non sono necessariamente allineati numericamente —
+      `rId1` può benissimo puntare a `sheet47.xml`). Se manca anche
+      solo uno dei due pezzi, si torna al comportamento precedente (un
+      solo foglio, `xl/worksheets/sheet1.xml`) invece di fallire del
+      tutto. L'esportazione (ASCD → XLSX) resta a un solo foglio, non
+      toccata da questo incremento.
+
+      **Due bug reali scoperti aprendo il file da 38 fogli**, in
+      questo ordine:
+
+      1. **Corruzione dello stack su testo lungo**: `GetCellFormula`/
+         `GetCellResult` di `CContainer` scrivevano nel buffer del
+         chiamante senza mai controllarne la dimensione — `FormatValue`
+         (caso testo) e `CFormula::UnMangle` non hanno mai avuto un
+         limite in tutta la storia di questo codice, ereditato da
+         Sum-It. Il foglio "Indice Pricelist" ha una nota introduttiva
+         di circa 2900 caratteri in una singola cella: scritta in un
+         tipico `char text[512]` locale del chiamante, corrompeva lo
+         stack — non un crash pulito ma un blocco apparente, lo stesso
+         pattern di intercettazione di `debug_server` già visto altre
+         volte in questo progetto per corruzioni di memoria. Trovato
+         bisecando con `fprintf`/checkpoint attraverso l'intera catena
+         (`Translate` → `WriteASCDBook` → `WriteASCD` →
+         `GetCellFormula`), fino a isolare la cella esatta con uno
+         script Python sul contenuto XML grezzo. **Corretto**: le due
+         funzioni ora richiedono la dimensione del buffer del
+         chiamante e formattano prima in un buffer di appoggio
+         dimensionato sul contenuto reale (o un limite esplicito
+         generoso per le formule), poi copiano nel buffer del
+         chiamante con `strlcpy`, mai scrivendo oltre. Il buffer tipico
+         dei chiamanti (traduttori, `SheetView`, `MainWindow`) sale
+         anche da 512 a 4096 byte, per non troncare inutilmente testi
+         lunghi ma comuni (il più lungo trovato in questo file è di
+         3300 caratteri). Alzato anche `kMaxStringLength` di
+         `CFormula::UnMangle` (256 → 4096) per lo stesso motivo sulle
+         formule, difesa in profondità anche se non era la causa di
+         questo blocco specifico.
+
+      2. **Disallineamento fra fogli in un `ASCB`**: `WriteASCD` del
+         translator XLSX non scrive mai una sezione grafici (non
+         gestisce grafici); `LoadASCD` invece la considera sempre
+         presente, distinguendo "fine vera del flusso" (nessun
+         grafico, formato vecchio) da "sezione presente" solo provando
+         a leggere 4 byte in più e controllando se lo stream è già
+         finito lì. Questa euristica funziona per un singolo blocco
+         `ASCD` isolato, ma **non** quando `WriteASCDBook` incapsula
+         più fogli in sequenza nello stesso flusso: per ogni foglio
+         tranne l'ultimo, quei 4 byte "in più" non sono la vera fine
+         del flusso ma i primi 4 byte del foglio successivo (la
+         lunghezza del suo nome), letti per errore come numero di
+         grafici — disallineando la lettura di ogni foglio dopo il
+         primo. Il sintomo era subdolo: `MainWindow::OpenFile`
+         mostrava solo un foglio invece di 38, senza errori né blocchi
+         (il primo foglio si leggeva sempre correttamente per
+         coincidenza). **Corretto** scrivendo sempre un contatore
+         grafici a zero in coda a `WriteASCD`, eliminando l'ambiguità
+         alla radice invece di renderla innocua caso per caso.
+
+      Verificato con una sonda dedicata (non nella suite di test, solo
+      per questo controllo) che apre il file reale attraverso
+      `MainWindow::OpenFile` — lo stesso percorso di File > Apri: i 38
+      fogli si aprono tutti correttamente, coi nomi giusti, navigabili
+      dal menu a tendina.
+
+      Nessuna regressione: tutte le 17 suite di test della UI e le 4
+      dei translator restano verdi dopo entrambe le correzioni.
+
+**Limiti noti, non ancora affrontati in questo incremento**:
+formule che attraversano i fogli (es. `+MT_CM_Installazione!I56`,
+presenti 166 volte in "RIEPILOGO COMPLETO" in questo file) vengono
+importate come testo/formula grezza ma **non** calcolate
+correttamente — il motore di calcolo, ereditato da Sum-It, non
+risolve riferimenti a un `CContainer` diverso dal proprio; serve un
+meccanismo a livello di motore per risolvere un riferimento
+`NomeFoglio!Cella` verso il documento giusto fra quelli aperti, non
+ancora progettato. Esportazione (XLSX/CSV/ODS) resta a un solo foglio
+(quello attivo). Nessuno stile/formato numerico/cella unita di questo
+file specifico è stato ancora verificato in dettaglio.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
