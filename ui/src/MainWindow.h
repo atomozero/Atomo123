@@ -16,10 +16,12 @@
 #include <String.h>
 #include <Window.h>
 
+#include "AscdIO.h"
 #include "Cell.h"
 #include "Chart.h"
 
 class BFilePanel;
+class BMenuField;
 class BTextControl;
 class BStringView;
 class SheetView;
@@ -70,6 +72,15 @@ public:
 	bool IsModified() const { return fModified; }
 	bool ConfirmDiscardChanges();
 
+	// Pubblici per lo stesso motivo di CopySelection/PasteSelection
+	// sopra -- vedi tests/test_multisheet.cpp. SheetCount()/SheetName()
+	// permettono di verificare l'elenco dei fogli letti da un file
+	// senza dover aprire il menu a tendina vero e proprio.
+	int SheetCount() const { return (int)fSheets.size(); }
+	int ActiveSheetIndex() const { return fActiveSheetIndex; }
+	const char* SheetName(int index) const { return fSheets[index].name.String(); }
+	void SwitchToSheet(int index);
+
 private:
 	SheetView* fSheetView;
 	BTextControl* fFormulaBar;
@@ -81,6 +92,30 @@ private:
 	ChartWindow* fChartWindow;
 	PivotWindow* fPivotWindow;
 	std::vector<ChartObject> fCharts;
+
+	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
+	// AscdSheet (nome + documento + grafici) per ogni foglio, in
+	// ordine di tabulazione; fDoc/fCharts sopra restano il "foglio
+	// attivo" -- letti/scritti direttamente da tutte le operazioni
+	// gia' esistenti (Taglia/Copia/Incolla, Trova e sostituisci,
+	// grafici, tabelle pivot...), che quindi non hanno bisogno di
+	// sapere nulla dei fogli multipli: SwitchToSheet() si limita a
+	// ripuntare fDoc al CContainer del nuovo foglio attivo (nessuna
+	// copia: e' lo stesso puntatore gia' tenuto in fSheets) e a
+	// risincronizzare fCharts (un vector per valore, non un
+	// puntatore, quindi va ricopiato avanti e indietro esplicitamente
+	// a ogni cambio). fSheets[fActiveSheetIndex].doc rimane sempre lo
+	// stesso oggetto puntato da fDoc mentre quel foglio e' attivo.
+	std::vector<AscdSheet> fSheets;
+	int fActiveSheetIndex;
+	BMenuField* fSheetSelector;
+
+	// Sostituisce l'intera cartella di lavoro con un solo foglio
+	// vuoto di nome "name" -- usato da NewDocument() e come base
+	// prima di popolare i fogli letti da un file. Rilascia tutti i
+	// CContainer dei fogli precedenti (Release(), mai delete diretto).
+	void ResetWorkbook(const char* name);
+	void RebuildSheetSelector();
 
 	// Nome del file corrente (solo il nome, non il percorso completo:
 	// basta per il titolo -- vedi UpdateTitle) e se il documento ha

@@ -30,7 +30,9 @@
 #include <FilePanel.h>
 #include <LayoutBuilder.h>
 #include <MenuBar.h>
+#include <MenuField.h>
 #include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <Path.h>
 #include <PrintJob.h>
 #include <ScrollView.h>
@@ -68,6 +70,7 @@ static const uint32 kMsgDeleteRows = 'adlr';
 static const uint32 kMsgDeleteColumns = 'adlc';
 static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
+static const uint32 kMsgSwitchSheet = 'swsh';
 static const uint32 kMsgSetFormat = 'stfm';
 static const uint32 kMsgShowChart = 'shch';
 static const uint32 kMsgShowPivot = 'shpv';
@@ -107,7 +110,22 @@ MainWindow::MainWindow()
 	BWindow(BRect(80, 80, 900, 700), "Atomo123", B_TITLED_WINDOW,
 		B_ASYNCHRONOUS_CONTROLS | B_QUIT_ON_WINDOW_CLOSE)
 {
-	fDoc = new CContainer(NULL, NULL);
+	// fSheetView/fSheetSelector vanno azzerati ESPLICITAMENTE prima di
+	// ResetWorkbook() qui sotto: sono puntatori membro senza un
+	// inizializzatore nella lista sopra, quindi contengono spazzatura
+	// indeterminata finche' non vengono creati piu' avanti in questo
+	// costruttore -- ResetWorkbook() li controlla con "if (fSheetView)"
+	// prima di usarli (per essere richiamabile anche piu' tardi, es. da
+	// NewDocument(), quando esistono gia' entrambi), ma letta PRIMA di
+	// questo azzeramento quella condizione varrebbe su un puntatore a
+	// caso, non su "non ancora creato" -- bug reale scoperto scrivendo
+	// tests/test_multisheet.cpp: un puntatore a caso che capita non-NULL
+	// mandava SetDocument/SetCharts su un oggetto inesistente, con esito
+	// imprevedibile (a volte un blocco indefinito, non un crash pulito).
+	fSheetView = NULL;
+	fSheetSelector = NULL;
+	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
+	ResetWorkbook("Foglio1");
 	fModified = false;
 
 	BMenuBar* menuBar = new BMenuBar("menu");
@@ -279,6 +297,17 @@ MainWindow::MainWindow()
 	// a rompere l'eredita' iniziale dal target.
 	scroll->ResizeTo(400, 300);
 
+	// Selettore del foglio attivo: un menu a tendina invece di una
+	// striscia di schede orizzontale (come Excel/LibreOffice Calc, in
+	// basso) -- piu' semplice da implementare bene per un numero
+	// qualunque di fogli (una cartella di lavoro reale puo' averne
+	// decine, vedi Fase 9) senza dover gestire lo scorrimento della
+	// striscia quando non ci sta piu' tutta nella larghezza della
+	// finestra. Ripopolato da RebuildSheetSelector() ogni volta che
+	// cambia l'elenco dei fogli (Nuovo, Apri, in futuro Inserisci/
+	// Elimina/Rinomina foglio).
+	fSheetSelector = new BMenuField("sheetSelector", "Foglio:", new BPopUpMenu(""));
+
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.AddGroup(B_HORIZONTAL, 4)
@@ -298,7 +327,14 @@ MainWindow::MainWindow()
 			.Add(fCellLabel)
 			.Add(fFormulaBar)
 		.End()
-		.Add(scroll);
+		.Add(scroll)
+		.AddGroup(B_HORIZONTAL, 4)
+			.SetInsets(4, 4, 4, 4)
+			.Add(fSheetSelector)
+			.AddGlue()
+		.End();
+
+	RebuildSheetSelector();
 
 	fOpenPanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this));
 	fSavePanel = new BFilePanel(B_SAVE_PANEL, new BMessenger(this));
@@ -333,8 +369,12 @@ MainWindow::~MainWindow()
 		fPivotWindow->Lock();
 		fPivotWindow->Quit();
 	}
-	if (fDoc)
-		fDoc->Release();
+	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
+	// .doc (mai un CContainer a parte): rilasciare solo fDoc
+	// perderebbe (memory leak, non un doppio Release) tutti gli altri
+	// fogli della cartella di lavoro.
+	for (size_t i = 0; i < fSheets.size(); i++)
+		fSheets[i].doc->Release();
 }
 
 void MainWindow::UpdateTitle()
@@ -374,22 +414,106 @@ bool MainWindow::ConfirmDiscardChanges()
 	return alert->Go() == 1;
 }
 
+void MainWindow::ResetWorkbook(const char* name)
+{
+	// Rilascia tutti i fogli precedenti (Release(), mai delete diretto
+	// -- CContainer e' un BLocker con conteggio di riferimenti).
+	for (size_t i = 0; i < fSheets.size(); i++)
+		fSheets[i].doc->Release();
+	fSheets.clear();
+
+	AscdSheet sheet;
+	sheet.name = name;
+	sheet.doc = new CContainer(NULL, NULL);
+	fSheets.push_back(sheet);
+
+	fActiveSheetIndex = 0;
+	fDoc = fSheets[0].doc;
+	fCharts.clear();
+
+	if (fSheetView)
+	{
+		fSheetView->SetDocument(fDoc);
+		fSheetView->SetCharts(&fCharts);
+	}
+	if (fSheetSelector)
+		RebuildSheetSelector();
+}
+
+void MainWindow::SwitchToSheet(int index)
+{
+	if (index < 0 || index >= (int)fSheets.size() || index == fActiveSheetIndex)
+		return;
+
+	// fDoc e' gia' lo stesso puntatore di fSheets[fActiveSheetIndex].doc
+	// (mai copiato: le mutazioni fatte finora sono gia' scritte
+	// direttamente li'), quindi non c'e' nulla da salvare per il
+	// documento -- solo fCharts, un vector per valore invece che un
+	// puntatore (SheetView ne tiene solo l'indirizzo, che deve restare
+	// stabile: vedi il commento sui campi in MainWindow.h), va
+	// risincronizzato esplicitamente in entrambe le direzioni.
+	fSheets[fActiveSheetIndex].charts = fCharts;
+
+	fActiveSheetIndex = index;
+	fDoc = fSheets[index].doc;
+	fCharts = fSheets[index].charts;
+
+	fSheetView->SetDocument(fDoc);
+	fFormulaBar->SetText("");
+	RebuildSheetSelector();
+}
+
+void MainWindow::RebuildSheetSelector()
+{
+	if (!fSheetSelector)
+		return;
+
+	BMenu* menu = fSheetSelector->Menu();
+	while (menu->CountItems() > 0)
+		delete menu->RemoveItem((int32)0);
+
+	for (size_t i = 0; i < fSheets.size(); i++)
+	{
+		BMessage* msg = new BMessage(kMsgSwitchSheet);
+		msg->AddInt32("index", (int32)i);
+		BMenuItem* item = new BMenuItem(fSheets[i].name.String(), msg);
+		item->SetTarget(this);
+		item->SetMarked((int)i == fActiveSheetIndex);
+		menu->AddItem(item);
+	}
+}
+
 void MainWindow::NewDocument()
 {
 	if (!ConfirmDiscardChanges())
 		return;
 
-	CContainer* newDoc = new CContainer(NULL, NULL);
-	if (fDoc)
-		fDoc->Release();
-	fDoc = newDoc;
-	fCharts.clear();
-	fSheetView->SetDocument(fDoc);
+	ResetWorkbook("Foglio1");
 	fFormulaBar->SetText("");
 
 	fDocumentName = "";
 	fModified = false;
 	UpdateTitle();
+}
+
+// Legge un singolo blocco ASCD (un solo foglio, formato "ASCD") in un
+// AscdSheet nuovo di nome "Foglio1" -- usato sia per un vecchio file
+// .ascd nativo a un solo foglio, sia per l'output di un translator che
+// non produce ancora una cartella di lavoro multi-foglio (CSV/ODS/XLS,
+// e XLSX per i formati diversi da .xlsx/.xlsm con piu' fogli -- vedi
+// il commento in XlsxTranslator.cpp). Restituisce false (e rilascia il
+// documento) se la lettura fallisce.
+static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
+{
+	outSheet->name = "Foglio1";
+	outSheet->doc = new CContainer(NULL, NULL);
+	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts);
+	if (err != B_OK)
+	{
+		outSheet->doc->Release();
+		return false;
+	}
+	return true;
 }
 
 void MainWindow::OpenFile(const entry_ref& ref)
@@ -406,33 +530,41 @@ void MainWindow::OpenFile(const entry_ref& ref)
 		return;
 	}
 
-	CContainer* newDoc = new CContainer(NULL, NULL);
-	std::vector<ChartObject> newCharts;
-	status_t err;
+	std::vector<AscdSheet> newSheets;
+	bool ok = true;
 
-	if (IsASCDFile(&file))
+	if (IsASCDBookFile(&file))
 	{
-		// File gia' nel formato nativo: si legge direttamente, senza
-		// passare dal Translation Kit -- che per un file gia' ASCD lo
-		// farebbe comunque rileggere/riscrivere tramite la copia
-		// duplicata di ReadASCD/WriteASCD di un translator qualunque
-		// (vedi translators/csv/CsvTranslator.cpp), perdendo la
-		// sezione dei grafici incorporati che quella copia non
-		// conosce.
-		err = LoadASCD(&file, newDoc, &newCharts);
+		// Cartella di lavoro nativa multi-foglio (Fase 9): si legge
+		// direttamente, senza passare dal Translation Kit -- stesso
+		// motivo di IsASCDFile sotto.
+		ok = LoadASCDBook(&file, &newSheets) == B_OK;
+	}
+	else if (IsASCDFile(&file))
+	{
+		// Vecchio file .ascd a un solo foglio (senza il wrapper "ASCB"):
+		// si legge direttamente, senza passare dal Translation Kit --
+		// che per un file gia' ASCD lo farebbe comunque rileggere/
+		// riscrivere tramite la copia duplicata di ReadASCD/WriteASCD
+		// di un translator qualunque, perdendo la sezione dei grafici
+		// incorporati che quella copia non conosce.
+		AscdSheet sheet;
+		ok = ReadSingleSheetASCD(&file, &sheet);
+		if (ok)
+			newSheets.push_back(sheet);
 	}
 	else
 	{
 		// BTranslatorRoster sceglie automaticamente il translator
 		// installato adatto (CSV/XLS/XLSX/ODS) in base al contenuto
-		// reale del file, non all'estensione. Nessuno di questi
-		// formati porta grafici incorporati: newCharts resta vuoto.
+		// reale del file, non all'estensione. Solo XlsxTranslator (per
+		// .xlsx/.xlsm con piu' fogli) produce una cartella di lavoro
+		// "ASCB"; gli altri restano a un solo foglio, senza grafici.
 		BMallocIO ascd;
-		err = BTranslatorRoster::Default()->Translate(&file, NULL, NULL,
+		status_t translateErr = BTranslatorRoster::Default()->Translate(&file, NULL, NULL,
 			&ascd, kAtomoNativeFormat);
-		if (err != B_OK)
+		if (translateErr != B_OK)
 		{
-			newDoc->Release();
 			BAlert* alert = new BAlert("Errore",
 				"Formato file non riconosciuto da nessun translator installato.",
 				"OK");
@@ -441,12 +573,21 @@ void MainWindow::OpenFile(const entry_ref& ref)
 		}
 
 		ascd.Seek(0, SEEK_SET);
-		err = LoadASCD(&ascd, newDoc);
+		if (IsASCDBookFile(&ascd))
+			ok = LoadASCDBook(&ascd, &newSheets) == B_OK;
+		else
+		{
+			AscdSheet sheet;
+			ok = ReadSingleSheetASCD(&ascd, &sheet);
+			if (ok)
+				newSheets.push_back(sheet);
+		}
 	}
 
-	if (err != B_OK)
+	if (!ok || newSheets.empty())
 	{
-		newDoc->Release();
+		for (size_t i = 0; i < newSheets.size(); i++)
+			newSheets[i].doc->Release();
 		BAlert* alert = new BAlert("Errore",
 			"Il file e' stato tradotto ma i dati risultanti non sono validi.",
 			"OK");
@@ -454,11 +595,15 @@ void MainWindow::OpenFile(const entry_ref& ref)
 		return;
 	}
 
-	fCharts = newCharts;
-	if (fDoc)
-		fDoc->Release();
-	fDoc = newDoc;
+	for (size_t i = 0; i < fSheets.size(); i++)
+		fSheets[i].doc->Release();
+	fSheets = newSheets;
+	fActiveSheetIndex = 0;
+	fDoc = fSheets[0].doc;
+	fCharts = fSheets[0].charts;
 	fSheetView->SetDocument(fDoc);
+	fSheetView->SetCharts(&fCharts);
+	RebuildSheetSelector();
 
 	fDocumentName = ref.name;
 	fModified = false;
@@ -488,7 +633,15 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 
 	if (outType == kAtomoNativeFormat)
 	{
-		status_t err = SaveASCD(fDoc, &file, &fCharts);
+		// Salva l'intera cartella di lavoro (tutti i fogli, non solo
+		// quello attivo) nel formato "ASCB" -- fCharts e' la copia di
+		// lavoro del foglio attivo (vedi il commento sui campi in
+		// MainWindow.h), va risincronizzata su fSheets prima di
+		// scrivere, altrimenti l'ultima modifica ai grafici del foglio
+		// attivo non verrebbe salvata.
+		fSheets[fActiveSheetIndex].charts = fCharts;
+
+		status_t err = SaveASCDBook(fSheets, &file);
 		if (err != B_OK)
 		{
 			BAlert* alert = new BAlert("Errore", "Scrittura del file fallita.", "OK");
@@ -1191,6 +1344,14 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgNew:
 			NewDocument();
 			break;
+
+		case kMsgSwitchSheet:
+		{
+			int32 index;
+			if (message->FindInt32("index", &index) == B_OK)
+				SwitchToSheet(index);
+			break;
+		}
 
 		case kMsgOpen:
 			fOpenPanel->Show();
