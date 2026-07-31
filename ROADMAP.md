@@ -1888,6 +1888,59 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
       Nessuna regressione: tutte le 17 suite di test della UI e le 4
       dei translator restano verdi dopo entrambe le correzioni.
 
+- [x] **Larghezza di colonna in funzione del file aperto**: le colonne
+      mostravano finora sempre la larghezza predefinita
+      (`SheetView::kColWidth`), qualunque fosse la larghezza scelta nel
+      file originale — solo il ridimensionamento manuale trascinando
+      un'intestazione era supportato (Fase 8), e valeva solo per la
+      sessione corrente. Richiesto dall'utente subito dopo aver
+      provato la striscia di schede dal vivo su questo stesso file da
+      38 fogli.
+
+      `XlsxTranslator` legge `<cols>` dal foglio XLSX (intervalli di
+      colonne con una larghezza esplicita in caratteri) e converte
+      l'unità di misura di Excel in pixel con un'approssimazione
+      ampiamente usata da importatori più semplici (`pixel =
+      caratteri*7 + 5`) — non l'algoritmo esatto dipendente dal
+      font/DPI del documento originale (ECMA-376, 18.3.1.13), che
+      questo motore non modella. Il formato ASCD/ASCB guadagna una
+      nuova sezione opzionale in coda, dopo quella dei grafici, stesso
+      principio (assente in un file scritto prima di questa modifica,
+      mai un errore): le sole colonne la cui larghezza differisce da
+      quella predefinita, non un array denso su tutte le colonne.
+
+      `SheetView::SetColumnWidths`/`CustomColumnWidths` applicano/
+      catturano queste larghezze (pubblici apposta per essere
+      testabili direttamente, stesso principio di `CellRect`/
+      `CellAt`); `MainWindow` le sincronizza a ogni apertura file e a
+      ogni cambio di foglio attivo (`SwitchToSheet`), cosí un
+      ridimensionamento fatto a mano su un foglio non si mostra più
+      per errore su un altro (bug preesistente, mai notato perché il
+      ridimensionamento non persisteva comunque), e sopravvive al
+      salvataggio nel formato nativo.
+
+      **Irrobustimento scoperto strada facendo**: le sezioni opzionali
+      di `LoadASCD` (grafici, ora anche larghezze di colonna)
+      consumavano i propri byte dallo stream solo quando il chiamante
+      passava un puntatore non nullo per riceverli — se un futuro
+      chiamante avesse passato `NULL` su un blocco ASCD incapsulato in
+      una cartella multi-foglio, la lettura del foglio successivo si
+      sarebbe disallineata esattamente come il bug della sezione
+      grafici sopra. Nessun chiamante reale lo fa oggi, ma corretto
+      comunque alla radice: ora i byte si consumano sempre se presenti,
+      indipendentemente da cosa chiede il chiamante.
+
+      Test: round-trip delle larghezze in `AscdIO`
+      (`test_ascd_io.cpp`), `SetColumnWidths`/`CustomColumnWidths` e
+      interazione col trascinamento diretto (`test_resize.cpp`),
+      persistenza per foglio nel cambio foglio avanti e indietro
+      (`test_multisheet.cpp`), lettura di `<cols>` dal file XLSX di
+      prova (`test_xlsx_translator.cpp`, esteso con un blocco
+      `<cols>`). Verificato anche con una sonda dedicata sul file reale
+      da 38 fogli: colonne di larghezza diversa foglio per foglio,
+      niente più larghezza fissa uguale ovunque. Nessuna regressione
+      nelle altre suite.
+
 **Limiti noti, non ancora affrontati in questo incremento**:
 formule che attraversano i fogli (es. `+MT_CM_Installazione!I56`,
 presenti 166 volte in "RIEPILOGO COMPLETO" in questo file) vengono
