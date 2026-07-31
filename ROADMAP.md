@@ -24,10 +24,11 @@ dell'utente possono comunque emergere e aggiungersi). **Fase 7 (recupero
 funzionalità rispetto a Sum-It storico) in corso**: confronto puntuale
 completato (menu/comandi/dialoghi di Sum-It vs. Atomo123), selezione
 multi-cella fatta (Maiusc+frecce, trascinamento del mouse, Maiusc+click,
-Seleziona tutto, Canc su un intervallo intero); restano Annulla/Ripeti,
-Ordina, Riempi, inserimento/eliminazione riga e colonna, formattazione
-font/colore/allineamento e altro (dettaglio nella sezione Fase 7).
-Aggiornato ad ogni fase completata.
+Seleziona tutto, Canc su un intervallo intero), Riempi in basso/a destra
+fatto (menu Dati, sposta i riferimenti relativi nelle formule); restano
+Annulla/Ripeti, Ordina, inserimento/eliminazione riga e colonna,
+formattazione font/colore/allineamento e altro (dettaglio nella sezione
+Fase 7). Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -1243,10 +1244,45 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       **Non ancora fatto in questo incremento** (prossimi passi
       naturali, non ancora iniziati): Taglia/Copia/Incolla operano
       ancora sulla sola cella attiva, non sull'intero intervallo
-      selezionato; formattazione (Formato menu) idem; Ordina e Riempi
-      (gli usi più diretti di una selezione multi-cella, secondo il
-      ragionamento che ha guidato questa priorità) non ancora
-      cominciati.
+      selezionato; formattazione (Formato menu) idem; Ordina non
+      ancora cominciato.
+
+- [x] **Riempi in basso/a destra**: copia la prima riga/colonna di
+      `SelectionRange()` nel resto dell'intervallo, spostando i
+      riferimenti relativi nelle formule come farebbe la maniglia di
+      riempimento di Excel. Riusa `CContainer::CopyCell` (già nel
+      motore, ereditato da Sum-It storico) invece di reinventare lo
+      spostamento dei riferimenti — un riferimento relativo è sempre
+      interpretato rispetto alla posizione della cella che lo
+      contiene, quindi copiare lo stesso testo di formula in una
+      nuova cella lo fa già puntare al riferimento "spostato"
+      corrispondente da solo, **senza** passare `isDragMove=true`
+      (quel parametro serve per lo spostamento di una cella, che deve
+      *mantenere* i riferimenti puntati alle stesse celle di prima
+      compensando lo spostamento — l'esatto opposto di riempire).
+      Bug scoperto per tentativi durante l'implementazione: il primo
+      tentativo passava `isDragMove=true`, sembrava plausibile "perché
+      Sum-It lo chiama così per il trascinamento della maniglia di
+      riempimento" ma produceva riferimenti sbagliati (un test scritto
+      apposta, `test-fill`, lo ha subito smascherato) — verificato con
+      un mini programma a sé stante il comportamento esatto della
+      funzione del motore prima di correggere `SheetView`, invece di
+      teorizzare a vuoto sulla semantica di `isDragMove`.
+
+      Esposto dal nuovo menu Dati ("Riempi in basso"/"Riempi a
+      destra", Ctrl+D/Ctrl+R) come scorciatoie di voce di menu, non
+      come casi in `SheetView::HandleKey`: su Haiku `B_END` vale lo
+      stesso byte (`0x04`) generato da Ctrl+D — stesso problema già
+      visto con Ctrl+A/`B_HOME` per "Seleziona tutto" sopra, stessa
+      soluzione (scorciatoia di menu, risolta a un livello diverso
+      prima che `KeyDown` veda un byte ambiguo).
+
+      Test dedicato `ui/tests/test_fill.cpp` (nuovo target
+      `make test-fill`): copia di un valore semplice, spostamento dei
+      riferimenti relativi in entrambe le direzioni (verificato sia il
+      testo della formula sia il valore ricalcolato), nessuna azione
+      su una selezione di una sola cella. Nessuna regressione nella
+      suite esistente.
 
 ---
 
