@@ -198,6 +198,18 @@ test-sort: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_sort
 
+# Test di Annulla/Ripeti (Fase 7): stessa ragione di test-selection
+# (BScrollView reale).
+test-undo: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_undo.cpp -o tests/test_undo.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_undo tests/test_undo.o \
+		src/MainWindow.o src/SheetView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_undo
+
 clean:
 	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
 		tests/roundtrip.ascd tests/roundtrip_charts.ascd tests/edge.ascd \
@@ -209,6 +221,7 @@ clean:
 		tests/test_navigation tests/test_navigation.o \
 		tests/test_selection tests/test_selection.o \
 		tests/test_fill tests/test_fill.o \
-		tests/test_sort tests/test_sort.o
+		tests/test_sort tests/test_sort.o \
+		tests/test_undo tests/test_undo.o
 
-.PHONY: all run test test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort clean
+.PHONY: all run test test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo clean

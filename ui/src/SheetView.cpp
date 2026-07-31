@@ -216,6 +216,11 @@ void SheetView::SetDocument(CContainer* doc)
 	fDoc = doc;
 	fSelection.Set(1, 1);
 	fAnchor.Set(1, 1);
+	// Le istantanee di Annulla/Ripeti si riferiscono al documento
+	// precedente: applicarle a questo (nuovo/appena aperto) scambierebbe
+	// il contenuto di celle senza relazione.
+	fUndoStack.clear();
+	fRedoStack.clear();
 	Invalidate();
 	NotifySelectionChanged();
 }
@@ -324,6 +329,8 @@ void SheetView::ClearSelection()
 		return;
 
 	range sel = SelectionRange();
+	SaveUndoState(sel);
+
 	CCellIterator iter(fDoc, &sel);
 	cell c;
 	while (iter.NextExisting(c))
@@ -342,6 +349,8 @@ void SheetView::FillDown()
 	range sel = SelectionRange();
 	if (sel.top == sel.bottom)
 		return; // una sola riga: niente da riempire
+
+	SaveUndoState(sel);
 
 	for (int col = sel.left; col <= sel.right; col++)
 	{
@@ -363,6 +372,8 @@ void SheetView::FillRight()
 	range sel = SelectionRange();
 	if (sel.left == sel.right)
 		return; // una sola colonna: niente da riempire
+
+	SaveUndoState(sel);
 
 	for (int row = sel.top; row <= sel.bottom; row++)
 	{
@@ -422,6 +433,8 @@ void SheetView::SortSelection(bool ascending)
 	range sel = SelectionRange();
 	if (sel.top == sel.bottom)
 		return; // una sola riga: niente da ordinare
+
+	SaveUndoState(sel);
 
 	int numRows = sel.bottom - sel.top + 1;
 	int numCols = sel.right - sel.left + 1;
@@ -483,6 +496,104 @@ void SheetView::SortSelection(bool ascending)
 
 	RecalculateAll(fDoc);
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
+	NotifySelectionChanged();
+}
+
+SheetView::UndoSnapshot SheetView::CaptureSnapshot(range r) const
+{
+	UndoSnapshot snap;
+	snap.r = r;
+
+	int numRows = r.bottom - r.top + 1;
+	int numCols = r.right - r.left + 1;
+	snap.texts.resize((size_t)numRows * numCols);
+
+	for (int i = 0; i < numRows; i++)
+		for (int j = 0; j < numCols; j++)
+		{
+			char text[512];
+			fDoc->GetCellFormula(cell(r.left + j, r.top + i), text, false);
+			snap.texts[(size_t)i * numCols + j] = text;
+		}
+
+	return snap;
+}
+
+void SheetView::ApplySnapshot(const UndoSnapshot& snap)
+{
+	int numRows = snap.r.bottom - snap.r.top + 1;
+	int numCols = snap.r.right - snap.r.left + 1;
+
+	for (int i = 0; i < numRows; i++)
+		for (int j = 0; j < numCols; j++)
+		{
+			cell c(snap.r.left + j, snap.r.top + i);
+			const std::string& text = snap.texts[(size_t)i * numCols + j];
+			if (text.empty())
+				fDoc->DisposeCell(c);
+			else
+			{
+				try
+				{
+					TryToParseString(text.c_str(), c, fDoc, true);
+				}
+				catch (...)
+				{
+				}
+			}
+		}
+
+	RecalculateAll(fDoc);
+}
+
+void SheetView::SaveUndoState(range affected)
+{
+	if (!fDoc)
+		return;
+
+	fUndoStack.push_back(CaptureSnapshot(affected));
+	// Una nuova modifica rende irraggiungibile la storia dei "ripeti"
+	// precedenti (come in Excel/LibreOffice Calc: annullare, poi
+	// modificare qualcosa di diverso, invalida il "ripeti" rimasto).
+	fRedoStack.clear();
+}
+
+void SheetView::SaveUndoState(cell affected)
+{
+	SaveUndoState(range(affected.h, affected.v, affected.h, affected.v));
+}
+
+void SheetView::Undo()
+{
+	if (fUndoStack.empty() || !fDoc)
+		return;
+
+	UndoSnapshot toRestore = fUndoStack.back();
+	fUndoStack.pop_back();
+
+	fRedoStack.push_back(CaptureSnapshot(toRestore.r));
+	ApplySnapshot(toRestore);
+
+	SetSelection(toRestore.r.TopLeft());
+	ExtendSelection(toRestore.r.BotRight());
+	Invalidate(CellRect(toRestore.r.TopLeft()) | CellRect(toRestore.r.BotRight()));
+	NotifySelectionChanged();
+}
+
+void SheetView::Redo()
+{
+	if (fRedoStack.empty() || !fDoc)
+		return;
+
+	UndoSnapshot toRestore = fRedoStack.back();
+	fRedoStack.pop_back();
+
+	fUndoStack.push_back(CaptureSnapshot(toRestore.r));
+	ApplySnapshot(toRestore);
+
+	SetSelection(toRestore.r.TopLeft());
+	ExtendSelection(toRestore.r.BotRight());
+	Invalidate(CellRect(toRestore.r.TopLeft()) | CellRect(toRestore.r.BotRight()));
 	NotifySelectionChanged();
 }
 
@@ -991,6 +1102,7 @@ void SheetView::CommitEditing(bool cancel)
 
 	if (!cancel && fDoc)
 	{
+		SaveUndoState(editedCell);
 		try
 		{
 			TryToParseString(editor->Text(), editedCell, fDoc, true);

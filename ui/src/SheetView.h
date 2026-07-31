@@ -13,6 +13,7 @@
 #ifndef SHEET_VIEW_H
 #define SHEET_VIEW_H
 
+#include <string>
 #include <vector>
 
 #include <NumberFormat.h>
@@ -110,6 +111,24 @@ public:
 	// se la selezione e' una sola riga (niente da ordinare).
 	void SortSelection(bool ascending);
 
+	// Annulla/Ripeti: pila di istantanee testuali di un intervallo (lo
+	// stesso formato grezzo per cella usato da Ordina/Riempi --
+	// GetCellFormula in lettura, TryToParseString in scrittura), cosi'
+	// un solo meccanismo copre sia le mutazioni fatte qui dentro
+	// (editing in-cella, Riempi, Ordina, Cancella) sia quelle fatte da
+	// MainWindow (Taglia/Incolla, Trova e sostituisci), che le
+	// possiede ma non ha accesso alle pile private: chiama
+	// SaveUndoState() PRIMA di mutare il documento, esattamente come
+	// fanno i metodi di questa classe. Annullare/ripetere seleziona
+	// l'intervallo coinvolto, cosi' l'utente vede subito cosa e'
+	// cambiato.
+	void SaveUndoState(range affected);
+	void SaveUndoState(cell affected);
+	bool CanUndo() const { return !fUndoStack.empty(); }
+	bool CanRedo() const { return !fRedoStack.empty(); }
+	void Undo();
+	void Redo();
+
 	// Logica di navigazione/modifica da tastiera, con i modificatori
 	// (Ctrl/Maiusc) gia' risolti -- KeyDown() li legge dal vero
 	// messaggio B_KEY_DOWN e poi chiama questa, che e' pubblica
@@ -155,6 +174,18 @@ private:
 	// per non confondere un trascinamento con un semplice movimento
 	// del mouse a bottone rilasciato.
 	bool fDragging;
+
+	// Vedi SaveUndoState/Undo/Redo: un'istantanea e' l'intervallo
+	// coinvolto piu' il testo grezzo (per cella, riga per riga) di
+	// quell'intervallo nel momento in cui e' stata catturata.
+	struct UndoSnapshot {
+		range r;
+		std::vector<std::string> texts;
+	};
+	std::vector<UndoSnapshot> fUndoStack;
+	std::vector<UndoSnapshot> fRedoStack;
+	UndoSnapshot CaptureSnapshot(range r) const;
+	void ApplySnapshot(const UndoSnapshot& snap);
 
 	const std::vector<ChartObject>* fCharts;
 

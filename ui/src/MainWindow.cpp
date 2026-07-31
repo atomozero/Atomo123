@@ -14,6 +14,7 @@
 #include "Pivot.h"
 #include "RangeRef.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -48,6 +49,8 @@ static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
 static const uint32 kMsgSaveAs = 'asva';
 static const uint32 kMsgFormulaCommit = 'afml';
+static const uint32 kMsgUndo = 'aund';
+static const uint32 kMsgRedo = 'ared';
 static const uint32 kMsgCut = 'acut';
 static const uint32 kMsgCopy = 'acpy';
 static const uint32 kMsgPaste = 'apst';
@@ -108,6 +111,16 @@ MainWindow::MainWindow()
 	// formula, come mostrata dalla barra formule) diventa testo piano
 	// condivisibile anche con altre applicazioni Haiku.
 	BMenu* editMenu = new BMenu("Modifica");
+	// Ctrl+Z/Ctrl+Y come scorciatoie dirette (non solo di menu): a
+	// differenza di Ctrl+A/Ctrl+D/Ctrl+End sopra, questi due byte
+	// (0x1a e 0x19) non corrispondono a nessun altro tasto speciale
+	// gia' gestito da SheetView::HandleKey, quindi non c'e' ambiguita'
+	// da aggirare (vedi InterfaceDefs.h: B_SUBSTITUTE = 0x1a per
+	// Ctrl+Z, nessun nome dedicato per Ctrl+Y). La scorciatoia di menu
+	// basta comunque a farli funzionare, risolta dal BWindow.
+	editMenu->AddItem(new BMenuItem("Annulla", new BMessage(kMsgUndo), 'Z'));
+	editMenu->AddItem(new BMenuItem("Ripeti", new BMessage(kMsgRedo), 'Y'));
+	editMenu->AddSeparatorItem();
 	editMenu->AddItem(new BMenuItem("Taglia", new BMessage(kMsgCut), 'X'));
 	editMenu->AddItem(new BMenuItem("Copia", new BMessage(kMsgCopy), 'C'));
 	editMenu->AddItem(new BMenuItem("Incolla", new BMessage(kMsgPaste), 'V'));
@@ -435,6 +448,7 @@ void MainWindow::CopySelection(bool cut)
 
 	if (cut)
 	{
+		fSheetView->SaveUndoState(sel);
 		fDoc->DisposeCell(sel);
 		RecalculateAll(fDoc);
 		fSheetView->Invalidate();
@@ -460,6 +474,7 @@ void MainWindow::PasteSelection()
 
 	if (found)
 	{
+		fSheetView->SaveUndoState(sel);
 		BString pasted(text, len);
 		try
 		{
@@ -734,6 +749,7 @@ void MainWindow::ReplaceCurrent(const char* searchText, const char* replaceText)
 
 	BString replaced = ReplaceAllCaseInsensitive(original, searchText, replaceText);
 
+	fSheetView->SaveUndoState(sel);
 	try
 	{
 		TryToParseString(replaced.String(), sel, fDoc, true);
@@ -772,6 +788,24 @@ void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
 		if (BString(text).IFindFirst(searchText) >= 0)
 			matches.push_back(c);
 	}
+
+	if (matches.empty())
+		return;
+
+	// Un'istantanea sola per il rettangolo che racchiude tutte le
+	// celle toccate (non un intervallo sparso, che SaveUndoState non
+	// sa rappresentare): le celle nel mezzo non modificate vengono
+	// comunque incluse, ma annullare le riscrive con lo stesso testo
+	// che avevano gia', quindi resta corretto anche se non minimale.
+	range affected(matches[0].h, matches[0].v, matches[0].h, matches[0].v);
+	for (size_t i = 1; i < matches.size(); i++)
+	{
+		affected.left = std::min(affected.left, matches[i].h);
+		affected.right = std::max(affected.right, matches[i].h);
+		affected.top = std::min(affected.top, matches[i].v);
+		affected.bottom = std::max(affected.bottom, matches[i].v);
+	}
+	fSheetView->SaveUndoState(affected);
 
 	for (size_t i = 0; i < matches.size(); i++)
 	{
@@ -957,6 +991,14 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgFormulaCommit:
 			CommitFormulaBar();
+			break;
+
+		case kMsgUndo:
+			fSheetView->Undo();
+			break;
+
+		case kMsgRedo:
+			fSheetView->Redo();
 			break;
 
 		case kMsgCut:
