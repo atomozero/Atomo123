@@ -629,14 +629,22 @@ bool CContainer::RefersToNamedRange(const char *inName)
 
 range CContainer::ResolveName(const char *name)
 {
-	range result;
-
+	// (*fNames)[name] (std::map::operator[]) inserirebbe silenziosamente
+	// una voce vuota per un nome inesistente invece di segnalare
+	// l'errore -- find() e' l'unico modo corretto di interrogare la
+	// tabella senza l'effetto collaterale di crearne una voce fantasma.
+	// Bug scoperto in Fase 7 scrivendo ui/tests/test_names.cpp: "Vai a"
+	// su un nome appena eliminato finiva per risolversi silenziosamente
+	// su range(0,0,0,0) (cella non valida) invece di segnalare che il
+	// nome non esiste piu'.
 	if (fNames)
-		result = (*fNames)[name];
-	else
-		THROW((errKeyNotFound));
+	{
+		CNameTable::iterator i = fNames->find(name);
+		if (i != fNames->end())
+			return i->second;
+	}
 
-	return result;
+	THROW((errKeyNotFound));
 } /* CContainer::ResolveName */
 
 CNameTable *CContainer::GetOrCreateNameTable()
