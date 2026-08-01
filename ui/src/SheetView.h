@@ -204,6 +204,14 @@ public:
 	// salvataggio nel formato nativo.
 	std::vector<std::pair<int, float> > CustomColumnWidths() const;
 
+	// Mostra/nascondi la griglia sottile fra le celle (Fase 7,
+	// finestra Preferenze): letta all'avvio da gPrefs (Preferences.h,
+	// se esiste -- vedi App::App) e sovrascrivibile in ogni momento.
+	// Non tocca mai la selezione/il contenuto delle celle, solo se
+	// Draw() disegna le linee di griglia.
+	void SetShowGrid(bool show);
+	bool ShowGrid() const { return fShowGrid; }
+
 	// Blocca riquadri (Fase 7): righe/colonne "congelate" -- restano
 	// sempre visibili, ferme sullo schermo, invece di scorrere col
 	// resto del foglio (stessa tecnica gia' usata per le intestazioni,
@@ -298,6 +306,9 @@ private:
 	// richiamare SetViewCursor a ogni singolo MouseMoved anche quando
 	// non e' cambiato nulla.
 	int fHoverCursor;
+
+	// Mostra/nascondi griglia: vedi SetShowGrid/ShowGrid sopra.
+	bool fShowGrid;
 
 	// Blocca riquadri: vedi ToggleFreezePanes/SetFreezePanes sopra.
 	int fFrozenRows;

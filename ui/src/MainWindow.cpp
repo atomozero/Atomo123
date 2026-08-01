@@ -15,6 +15,7 @@
 #include "PasteSpecialWindow.h"
 #include "GoToWindow.h"
 #include "ColorWindow.h"
+#include "PreferencesWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
 #include "RangeRef.h"
@@ -23,6 +24,8 @@
 #include "Utils.h"
 #include "FontMetrics.h"
 #include "CellStyle.h"
+#include "Preferences.h"
+#include "MyError.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -93,6 +96,7 @@ static const uint32 kMsgToggleItalic = 'tita';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
 static const uint32 kMsgShowBgColor = 'shbc';
+static const uint32 kMsgShowPreferences = 'shpr';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -269,6 +273,9 @@ MainWindow::MainWindow()
 		new BMessage(kMsgSaveAs), 'S'));
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem("Stampa" B_UTF8_ELLIPSIS, new BMessage(kMsgPrint), 'P'));
+	fileMenu->AddSeparatorItem();
+	fileMenu->AddItem(new BMenuItem("Preferenze" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowPreferences)));
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem("Esci", new BMessage(B_QUIT_REQUESTED), 'Q'));
 	menuBar->AddItem(fileMenu);
@@ -469,6 +476,7 @@ MainWindow::MainWindow()
 	fPasteSpecialWindow = NULL;
 	fGoToWindow = NULL;
 	fColorWindow = NULL;
+	fPreferencesWindow = NULL;
 
 	UpdateTitle();
 }
@@ -516,6 +524,11 @@ MainWindow::~MainWindow()
 	{
 		fColorWindow->Lock();
 		fColorWindow->Quit();
+	}
+	if (fPreferencesWindow)
+	{
+		fPreferencesWindow->Lock();
+		fPreferencesWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -1319,6 +1332,40 @@ void MainWindow::ShowColorWindow(bool background)
 	if (fColorWindow->IsHidden())
 		fColorWindow->Show();
 	fColorWindow->Activate();
+}
+
+void MainWindow::ShowPreferencesWindow()
+{
+	if (!fPreferencesWindow)
+		fPreferencesWindow = new PreferencesWindow(BMessenger(this));
+
+	fPreferencesWindow->SetValues(fSheetView->ShowGrid(), gDecimalPoint, gListSeparator);
+
+	if (fPreferencesWindow->IsHidden())
+		fPreferencesWindow->Show();
+	fPreferencesWindow->Activate();
+}
+
+void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep)
+{
+	fSheetView->SetShowGrid(showGrid);
+	gDecimalPoint = decimalSep;
+	gListSeparator = listSep;
+
+	// gPrefs (Preferences.h) puo' essere NULL in un test che non passa
+	// da App::App() (vedi il commento li'): l'effetto in memoria sopra
+	// resta comunque valido e testabile, solo la persistenza su disco
+	// si salta.
+	if (gPrefs)
+	{
+		char decStr[2] = { decimalSep, 0 };
+		char listStr[2] = { listSep, 0 };
+		gPrefs->SetPrefString("decimalSeparator", decStr);
+		gPrefs->SetPrefString("listSeparator", listStr);
+		gPrefs->SetPrefInt("showGrid", showGrid ? 1 : 0);
+		try { gPrefs->WritePrefFile(); }
+		catch (CErr&) { }
+	}
 }
 
 // Legge famiglia/stile/dimensione/colore di un font registrato in
@@ -2220,6 +2267,21 @@ void MainWindow::MessageReceived(BMessage* message)
 				else
 					SetTextColor(*color);
 			}
+			break;
+		}
+
+		case kMsgShowPreferences:
+			ShowPreferencesWindow();
+			break;
+
+		case kMsgPreferencesRequest:
+		{
+			bool showGrid = true;
+			int8 decimalSep = '.', listSep = ';';
+			message->FindBool("showGrid", &showGrid);
+			message->FindInt8("decimalSeparator", &decimalSep);
+			message->FindInt8("listSeparator", &listSep);
+			HandlePreferencesRequest(showGrid, (char)decimalSep, (char)listSep);
 			break;
 		}
 

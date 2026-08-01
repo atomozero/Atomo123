@@ -32,6 +32,7 @@
 #include "Constants.h"
 #include "Formatter.h"
 #include "FontMetrics.h"
+#include "Preferences.h"
 
 #include "AscdIO.h"
 
@@ -92,6 +93,7 @@ SheetView::SheetView(CContainer* doc)
 	fResizeDragStart(0),
 	fResizeStartSize(0),
 	fHoverCursor(0),
+	fShowGrid(gPrefs ? gPrefs->GetPrefInt("showGrid", 1) != 0 : true),
 	fFrozenRows(0),
 	fFrozenCols(0),
 	fDoc(doc),
@@ -282,6 +284,12 @@ void SheetView::SetColumnWidths(const std::vector<std::pair<int, float> >& width
 	}
 	RebuildColumnOffsets();
 	UpdateCanvasSize();
+	Invalidate();
+}
+
+void SheetView::SetShowGrid(bool show)
+{
+	fShowGrid = show;
 	Invalidate();
 }
 
@@ -1145,13 +1153,16 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 		}
 	}
 
-	SetHighColor(220, 220, 220);
-	for (int col = firstCol; col <= lastCol; col++)
-		StrokeLine(BPoint(xOrigin + kHeaderWidth + fColOffsets[col - 1], clipRect.top),
-			BPoint(xOrigin + kHeaderWidth + fColOffsets[col - 1], clipRect.bottom));
-	for (int row = firstRow; row <= lastRow; row++)
-		StrokeLine(BPoint(clipRect.left, yOrigin + kHeaderHeight + fRowOffsets[row - 1]),
-			BPoint(clipRect.right, yOrigin + kHeaderHeight + fRowOffsets[row - 1]));
+	if (fShowGrid)
+	{
+		SetHighColor(220, 220, 220);
+		for (int col = firstCol; col <= lastCol; col++)
+			StrokeLine(BPoint(xOrigin + kHeaderWidth + fColOffsets[col - 1], clipRect.top),
+				BPoint(xOrigin + kHeaderWidth + fColOffsets[col - 1], clipRect.bottom));
+		for (int row = firstRow; row <= lastRow; row++)
+			StrokeLine(BPoint(clipRect.left, yOrigin + kHeaderHeight + fRowOffsets[row - 1]),
+				BPoint(clipRect.right, yOrigin + kHeaderHeight + fRowOffsets[row - 1]));
+	}
 
 	if (fDoc)
 	{
