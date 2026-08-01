@@ -22,8 +22,11 @@
 #include <cstring>
 #include <string>
 
+#include <Application.h>
 #include <File.h>
 #include <DataIO.h>
+#include <Font.h>
+#include <String.h>
 #include <SupportDefs.h>
 
 #include "XlsxTranslator.h"
@@ -141,6 +144,14 @@ static bool UnwrapFirstSheet(const unsigned char* data, size_t len,
 
 int main()
 {
+	// Serve da Fase 12 (import grassetto/corsivo): gFontSizeTable::
+	// GetFontID risolve un BFont reale (CFontStyle::Locate ->
+	// BFont::GetEscapements), una chiamata che senza una BApplication
+	// viva si blocca in attesa di una risposta dall'app_server che non
+	// arriva mai -- stesso motivo gia' noto in ui/tests/test_ascd_io.cpp
+	// e test_persistence.cpp per lo stesso genere di chiamate.
+	BApplication app("application/x-vnd.Atomo-TestXlsxTranslator");
+
 	BTranslator *translator = make_nth_translator(0, 0, 0);
 	Check(translator != NULL, "make_nth_translator crea il translator");
 
@@ -554,6 +565,128 @@ int main()
 				"colore negativo scartato come da limite dichiarato");
 
 			doc.Release();
+		}
+	}
+
+	// Grassetto/corsivo (Fase 12): tests/sample_fontstyle.xlsx ha
+	// cinque celle -- A1 grassetto, B1 corsivo, C1 grassetto+corsivo a
+	// dimensione 16 (esplicita, diversa dall'11 delle altre), D1 con
+	// <b val="0"/> (l'elemento c'e' ma val="0" lo nega esplicitamente:
+	// NON deve risultare in grassetto), E1 senza stile esplicito. Solo
+	// A1/B1/C1 devono finire nella sezione font della Fase 10 (ora
+	// scritta con valori reali invece che sempre vuota) -- D1/E1 non
+	// hanno nessuno stile da applicare, restano col font predefinito.
+	// La famiglia usata e' sempre quella di be_plain_font (il nome
+	// originale "Calibri" nel file non viene cercato/installato, vedi
+	// il commento su ResolveStyle in XlsxTranslator.cpp), quindi il
+	// test verifica solo stile e dimensione, non la famiglia esatta.
+	{
+		BFile fontFile("tests/sample_fontstyle.xlsx", B_READ_ONLY);
+		Check(fontFile.InitCheck() == B_OK, "apertura di tests/sample_fontstyle.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&fontFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_fontstyle.xlsx");
+
+		fontFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&fontFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_fontstyle.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_fontstyle.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 5, "l'ASCD contiene le 5 celle di sample_fontstyle.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				pos += len;
+			}
+
+			if (pos + 4 <= ascdLen)
+			{
+				int32 chartCount;
+				memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+				pos += chartCount * (2 * 4 + 4 * 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				pos += colWidthCount * (2 + 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+				pos += cellColorCount * (2 + 2 + 8);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 columnColorCount;
+				memcpy(&columnColorCount, ascdData + pos, 4); pos += 4;
+				pos += columnColorCount * (2 + 8);
+			}
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+4); } // altezze riga
+			if (pos + 8 <= ascdLen) pos += 8; // Blocca riquadri
+
+			bool haveFontCount = false;
+			int32 fontCount = 0;
+			if (pos + 4 <= ascdLen)
+			{
+				memcpy(&fontCount, ascdData + pos, 4); pos += 4;
+				haveFontCount = true;
+			}
+			Check(haveFontCount && fontCount == 3,
+				"sezione font: 3 celle con stile esplicito (A1/B1/C1, non D1/E1)");
+
+			bool foundA1Bold = false, foundA1Italic = false;
+			bool foundB1Bold = false, foundB1Italic = false;
+			bool foundC1Bold = false, foundC1Italic = false;
+			float foundA1Size = 0, foundC1Size = 0;
+
+			for (int32 i = 0; i < fontCount && pos + 4 + sizeof(font_family) + sizeof(font_style) + 4 <= ascdLen; i++)
+			{
+				int16 row, col;
+				font_family family;
+				font_style style;
+				float size;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(family, ascdData + pos, sizeof(font_family)); pos += sizeof(font_family);
+				memcpy(style, ascdData + pos, sizeof(font_style)); pos += sizeof(font_style);
+				memcpy(&size, ascdData + pos, 4); pos += 4;
+
+				BString styleStr(style);
+				bool bold = styleStr.IFindFirst("Bold") >= 0;
+				bool italic = styleStr.IFindFirst("Italic") >= 0;
+
+				if (row == 1 && col == 1) { foundA1Bold = bold; foundA1Italic = italic; foundA1Size = size; }
+				if (row == 1 && col == 2) { foundB1Bold = bold; foundB1Italic = italic; }
+				if (row == 1 && col == 3) { foundC1Bold = bold; foundC1Italic = italic; foundC1Size = size; }
+			}
+
+			Check(foundA1Bold && !foundA1Italic, "A1 (<b/>) importato come grassetto, non corsivo");
+			Check(foundA1Size == 11.0f, "A1 usa la dimensione esplicita del file (11), non quella predefinita");
+			Check(!foundB1Bold && foundB1Italic, "B1 (<i/>) importato come corsivo, non grassetto");
+			Check(foundC1Bold && foundC1Italic, "C1 (<b/><i/>) importato come grassetto E corsivo");
+			Check(foundC1Size == 16.0f, "C1 usa la dimensione esplicita del file (16)");
 		}
 	}
 

@@ -18,6 +18,8 @@
 
 #include <expat.h>
 
+#include <Font.h>
+
 #include "Cell.h"
 #include "Value.h"
 #include "Container.h"
@@ -26,6 +28,7 @@
 #include "CellStyle.h"
 #include "Constants.h"
 #include "Formatter.h"
+#include "FontMetrics.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -213,15 +216,15 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Sezione altezze di riga, Blocca riquadri, font e allineamento di
-	// cella, bordi di cella, tutte in coda (Fase 10/11 di ui/src/
-	// AscdIO.cpp): sempre scritte vuote/a zero qui, questo translator
-	// non estrae ancora nessuna di queste informazioni dal file XLSX
-	// originale (a differenza di larghezza di colonna e colori sopra).
-	// Il campo va comunque scritto sempre, mai omesso, per lo stesso
-	// motivo della sezione grafici sopra: LoadASCD (in ui/src/
-	// AscdIO.cpp, che legge questo stesso flusso) si aspetta ORA
-	// queste cinque sezioni in coda a ogni blocco ASCD -- ometterle
+	// Sezione altezze di riga, Blocca riquadri, allineamento di cella,
+	// bordi di cella, tutte in coda (Fase 10/11 di ui/src/AscdIO.cpp):
+	// sempre scritte vuote/a zero qui, questo translator non estrae
+	// ancora nessuna di queste informazioni dal file XLSX originale (a
+	// differenza di larghezza di colonna, colori e -- sotto -- font
+	// sopra). Il campo va comunque scritto sempre, mai omesso, per lo
+	// stesso motivo della sezione grafici sopra: LoadASCD (in ui/src/
+	// AscdIO.cpp, che legge questo stesso flusso) si aspetta ORA tutte
+	// queste sezioni in coda a ogni blocco ASCD -- ometterle
 	// disallineerebbe la lettura del blocco successivo in una cartella
 	// di lavoro multi-foglio, esattamente come il bug gia' descritto
 	// sopra per i grafici (bug reale scoperto aprendo di nuovo lo
@@ -237,9 +240,46 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		|| dest->Write(&frozenCols, sizeof(frozenCols)) != (ssize_t)sizeof(frozenCols))
 		return B_IO_ERROR;
 
-	int32 fontCount = 0;
-	if (dest->Write(&fontCount, sizeof(fontCount)) != (ssize_t)sizeof(fontCount))
-		return B_IO_ERROR;
+	// Sezione font di cella non predefinito, in coda (Fase 10, vedi
+	// ui/src/AscdIO.cpp): a differenza delle sezioni vuote sopra/sotto,
+	// questo translator estrae davvero grassetto/corsivo dal file XLSX
+	// originale (Fase 12, ResolveStyle in ParseStyles, applicato a
+	// CellStyle::fFont durante ParseSheet) -- va quindi scritta con i
+	// valori reali, stesso formato di AscdIO.cpp (famiglia/stile/
+	// dimensione gia' risolti, mai l'indice grezzo -- vedi il commento
+	// li' sul perche' fFont e' un indice VOLATILE).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, CellStyle> > toWrite;
+		CCellIterator fontIter(doc, NULL);
+		cell fc2;
+		while (fontIter.NextExisting(fc2))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(fc2, cs);
+			if (cs.fFont != defaultStyle.fFont)
+				toWrite.push_back(std::make_pair(fc2, cs));
+		}
+
+		int32 fontCount = (int32)toWrite.size();
+		if (dest->Write(&fontCount, sizeof(fontCount)) != (ssize_t)sizeof(fontCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < fontCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			font_family family;
+			font_style style;
+			float size;
+			gFontSizeTable.GetFontInfo(toWrite[i].second.fFont, &family, &style, &size);
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(family, sizeof(font_family)) != (ssize_t)sizeof(font_family)
+				|| dest->Write(style, sizeof(font_style)) != (ssize_t)sizeof(font_style)
+				|| dest->Write(&size, sizeof(size)) != (ssize_t)sizeof(size))
+				return B_IO_ERROR;
+		}
+	}
 
 	int32 alignCount = 0;
 	if (dest->Write(&alignCount, sizeof(alignCount)) != (ssize_t)sizeof(alignCount))
@@ -791,6 +831,8 @@ struct ResolvedStyle {
 	rgb_color fg;
 	bool hasFormat;
 	int format; // valore gia' pronto per CellStyle::fFormat
+	bool hasFontStyle; // true solo se grassetto e/o corsivo (il Regular predefinito non serve applicarlo)
+	int fontID; // indice gia' risolto in gFontSizeTable, pronto per CellStyle::fFont
 };
 
 enum StylesSection { kStylesNone, kStylesNumFmts, kStylesFills, kStylesFonts, kStylesCellXfs };
@@ -814,6 +856,9 @@ struct StylesContext {
 
 	std::vector<rgb_color> fontColors;
 	std::vector<bool> fontColorValid;
+	std::vector<bool> fontBold;
+	std::vector<bool> fontItalic;
+	std::vector<float> fontSize; // -1 = non specificata nel font XLSX (<sz> assente)
 
 	std::vector<XfInfo> cellXfs;
 };
@@ -978,6 +1023,9 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 		{
 			ctx->fontColors.push_back(rgb_color());
 			ctx->fontColorValid.push_back(false);
+			ctx->fontBold.push_back(false);
+			ctx->fontItalic.push_back(false);
+			ctx->fontSize.push_back(-1);
 		}
 		else if (strcmp(name, "color") == 0 && !ctx->fontColors.empty())
 		{
@@ -987,6 +1035,33 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 				ctx->fontColors.back() = c;
 				ctx->fontColorValid.back() = true;
 			}
+		}
+		// <b/> e <i/> sono booleani "per presenza": nessun attributo
+		// vuol dire vero, val="0"/"false" lo nega esplicitamente (raro,
+		// ma valido ECMA-376 -- es. per azzerare un grassetto ereditato
+		// da uno stile cellStyleXfs, non usato qui perche' questo
+		// translator non risolve cellStyleXfs, ma innocuo da gestire).
+		else if ((strcmp(name, "b") == 0 || strcmp(name, "i") == 0) && !ctx->fontBold.empty())
+		{
+			bool value = true;
+			for (int i = 0; atts[i]; i += 2)
+			{
+				if (strcmp(atts[i], "val") == 0)
+				{
+					value = strcmp(atts[i + 1], "0") != 0 && strcmp(atts[i + 1], "false") != 0;
+					break;
+				}
+			}
+			if (name[0] == 'b')
+				ctx->fontBold.back() = value;
+			else
+				ctx->fontItalic.back() = value;
+		}
+		else if (strcmp(name, "sz") == 0 && !ctx->fontSize.empty())
+		{
+			for (int i = 0; atts[i]; i += 2)
+				if (strcmp(atts[i], "val") == 0)
+					ctx->fontSize.back() = (float)atof(atts[i + 1]);
 		}
 	}
 	else if (ctx->section == kStylesCellXfs)
@@ -1042,6 +1117,32 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 	if (status != XML_STATUS_OK)
 		return;
 
+	// Famiglia e dimensione predefinite per grassetto/corsivo (sotto):
+	// stesso ripiego di MainWindow::GetCellFontInfo per una cella senza
+	// font esplicito, il nome del font XLSX originale (es. "Calibri")
+	// non e' quasi mai installato su Haiku e questo progetto non prova
+	// a farne il match, solo lo STILE (Bold/Italic) viene importato.
+	font_family defaultFamily;
+	font_style defaultStyle;
+	be_plain_font->GetFamilyAndStyle(&defaultFamily, &defaultStyle);
+	float defaultSize = be_plain_font->Size();
+
+	// Riserva la voce "Regular" per prima: se questo processo non ha
+	// ancora mai chiamato GetFontID, il PRIMO indice mai assegnato e'
+	// 0 -- lo stesso valore che CellStyle usa come sentinella "nessun
+	// font esplicito" (memset a zero nel costruttore, vedi CellStyle.cpp).
+	// Se un font grassetto/corsivo fosse il primo mai registrato invece
+	// di Regular, finirebbe per caso proprio all'indice 0 e verrebbe
+	// scambiato per "nessuno stile", sparendo silenziosamente (bug
+	// reale scoperto scrivendo il test: la sezione font risultava con
+	// una cella in meno del previsto, mancava esattamente la prima
+	// verificata). Il risultato non serve, l'unico scopo e' occupare
+	// un indice con un font che NON e' ne' grassetto ne' corsivo prima
+	// di registrarne uno che lo e' -- se un font Regular esiste gia'
+	// in tabella (uso normale dell'app, non headless), GetFontID lo
+	// trova e basta, innocuo.
+	gFontSizeTable.GetFontID(defaultFamily, defaultStyle, defaultSize);
+
 	out->resize(ctx.cellXfs.size());
 	for (size_t i = 0; i < ctx.cellXfs.size(); i++)
 	{
@@ -1058,6 +1159,19 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 		if (rs.hasFg)
 			rs.fg = ctx.fontColors[fontId];
 		rs.hasFormat = ResolveNumberFormat(ctx.cellXfs[i].numFmtId, ctx.numFmts, &rs.format);
+
+		bool bold = fontId >= 0 && (size_t)fontId < ctx.fontBold.size() && ctx.fontBold[fontId];
+		bool italic = fontId >= 0 && (size_t)fontId < ctx.fontItalic.size() && ctx.fontItalic[fontId];
+		rs.hasFontStyle = bold || italic;
+		if (rs.hasFontStyle)
+		{
+			const char* styleStr = (bold && italic) ? "Bold Italic"
+				: bold ? "Bold" : "Italic";
+			float size = defaultSize;
+			if (fontId >= 0 && (size_t)fontId < ctx.fontSize.size() && ctx.fontSize[fontId] > 0)
+				size = ctx.fontSize[fontId];
+			rs.fontID = (int)gFontSizeTable.GetFontID(defaultFamily, styleStr, size);
+		}
 		(*out)[i] = rs;
 	}
 }
@@ -1195,7 +1309,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				&& (size_t)styleIndex < ctx->styles->size())
 			{
 				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
-				if (rs.hasBg || rs.hasFg || rs.hasFormat)
+				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle)
 				{
 					for (int col = min; col <= clampedMax; col++)
 					{
@@ -1204,6 +1318,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 						if (rs.hasBg) cs.fLowColor = rs.bg;
 						if (rs.hasFg) cs.fHighColor = rs.fg;
 						if (rs.hasFormat) cs.fFormat = rs.format;
+						if (rs.hasFontStyle) cs.fFont = rs.fontID;
 						ctx->doc->SetColumnStyle(col, cs);
 					}
 				}
@@ -1277,13 +1392,14 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 			&& (size_t)ctx->cellStyleIndex < ctx->styles->size())
 		{
 			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
-			if (rs.hasBg || rs.hasFg || rs.hasFormat)
+			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle)
 			{
 				CellStyle cs;
 				ctx->doc->GetCellStyle(loc, cs);
 				if (rs.hasBg) cs.fLowColor = rs.bg;
 				if (rs.hasFg) cs.fHighColor = rs.fg;
 				if (rs.hasFormat) cs.fFormat = rs.format;
+				if (rs.hasFontStyle) cs.fFont = rs.fontID;
 				ctx->doc->SetCellStyle(loc, cs);
 			}
 		}
