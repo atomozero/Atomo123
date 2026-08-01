@@ -91,6 +91,8 @@ SheetView::SheetView(CContainer* doc)
 	fResizeDragStart(0),
 	fResizeStartSize(0),
 	fHoverCursor(0),
+	fFrozenRows(0),
+	fFrozenCols(0),
 	fDoc(doc),
 	fSelection(1, 1),
 	fAnchor(1, 1),
@@ -185,6 +187,33 @@ void SheetView::ScrollTo(BPoint where)
 	BRect newRowHeaderBand(where.x, Bounds().top, where.x + kHeaderWidth - 1, Bounds().bottom);
 	Invalidate(oldRowHeaderBand);
 	Invalidate(newRowHeaderBand);
+
+	// Blocca riquadri: le bande di celle congelate (non solo le
+	// intestazioni sopra) sono anch'esse "incollate" allo schermo
+	// durante lo scroll (vedi Draw()) -- stesso identico problema e
+	// stessa soluzione: senza queste invalidazioni esplicite il blit
+	// automatico di ScrollTo() le sposterebbe via come fantasmi
+	// invece di lasciarle ferme.
+	if (fFrozenRows > 0)
+	{
+		float frozenH = fRowOffsets[fFrozenRows];
+		BRect oldBand(Bounds().left, oldTop + kHeaderHeight,
+			Bounds().right, oldTop + kHeaderHeight + frozenH - 1);
+		BRect newBand(Bounds().left, where.y + kHeaderHeight,
+			Bounds().right, where.y + kHeaderHeight + frozenH - 1);
+		Invalidate(oldBand);
+		Invalidate(newBand);
+	}
+	if (fFrozenCols > 0)
+	{
+		float frozenW = fColOffsets[fFrozenCols];
+		BRect oldBand(oldLeft + kHeaderWidth, Bounds().top,
+			oldLeft + kHeaderWidth + frozenW - 1, Bounds().bottom);
+		BRect newBand(where.x + kHeaderWidth, Bounds().top,
+			where.x + kHeaderWidth + frozenW - 1, Bounds().bottom);
+		Invalidate(oldBand);
+		Invalidate(newBand);
+	}
 }
 
 // Frame() copre l'intero intervallo virtuale del motore
@@ -253,6 +282,30 @@ void SheetView::SetColumnWidths(const std::vector<std::pair<int, float> >& width
 	RebuildColumnOffsets();
 	UpdateCanvasSize();
 	Invalidate();
+}
+
+void SheetView::SetFreezePanes(int rows, int cols)
+{
+	if (rows < 0)
+		rows = 0;
+	if (rows > kRowCount - 1)
+		rows = kRowCount - 1;
+	if (cols < 0)
+		cols = 0;
+	if (cols > kColCount - 1)
+		cols = kColCount - 1;
+
+	fFrozenRows = rows;
+	fFrozenCols = cols;
+	Invalidate();
+}
+
+void SheetView::ToggleFreezePanes()
+{
+	if (HasFreezePanes())
+		SetFreezePanes(0, 0);
+	else
+		SetFreezePanes(fSelection.v - 1, fSelection.h - 1);
 }
 
 std::vector<std::pair<int, float> > SheetView::CustomColumnWidths() const
@@ -934,9 +987,31 @@ BRect SheetView::CellRect(cell c) const
 
 cell SheetView::CellAt(BPoint where) const
 {
-	int col = ColumnAtX(where.x - kHeaderWidth);
-	int row = RowAtY(where.y - kHeaderHeight);
-	return cell(col, row);
+	float x = where.x - kHeaderWidth;
+	float y = where.y - kHeaderHeight;
+
+	// Blocca riquadri: un punto che ricade nella banda congelata (ferma
+	// sullo schermo, vedi Draw()/PinnedCellRect) va prima "riportato"
+	// in spazio virtuale sottraendo l'offset di scroll corrente --
+	// l'esatto inverso di come Draw() la disegna (xOrigin/yOrigin =
+	// Bounds().left/.top). Senza questo, un clic sulla banda congelata
+	// dopo aver scorso il foglio selezionerebbe la cella sbagliata
+	// (quella che si troverebbe li' SENZA il blocco, non quella
+	// davvero disegnata sotto il dito).
+	if (fFrozenCols > 0)
+	{
+		float frozenW = fColOffsets[fFrozenCols];
+		if (x >= Bounds().left && x < Bounds().left + frozenW)
+			x -= Bounds().left;
+	}
+	if (fFrozenRows > 0)
+	{
+		float frozenH = fRowOffsets[fFrozenRows];
+		if (y >= Bounds().top && y < Bounds().top + frozenH)
+			y -= Bounds().top;
+	}
+
+	return cell(ColumnAtX(x), RowAtY(y));
 }
 
 BRect SheetView::ContentRect() const
@@ -968,16 +1043,36 @@ void SheetView::ScrollToShowSelection()
 	BRect visible(b.left, b.top, b.left + viewportSize.Width(),
 		b.top + viewportSize.Height());
 
-	float dx = 0, dy = 0;
-	if (r.left < visible.left + kHeaderWidth)
-		dx = r.left - kHeaderWidth - visible.left;
-	else if (r.right > visible.right)
-		dx = r.right - visible.right;
+	// Blocca riquadri: una cella congelata e' sempre visibile, ferma
+	// sullo schermo (vedi Draw()) -- non serve mai scorrere per
+	// "raggiungerla", altrimenti selezionarla forzerebbe lo scroll a
+	// tornare sempre in cima/a sinistra, vanificando il blocco. Per
+	// una cella NON congelata, la banda occupata dalle celle congelate
+	// va invece considerata come le intestazioni (kHeaderWidth/
+	// kHeaderHeight sopra): senza sommarla, una cella appena rivelata
+	// dallo scroll potrebbe restare parzialmente coperta dalla banda
+	// bloccata.
+	bool colFrozen = fFrozenCols > 0 && fSelection.h <= fFrozenCols;
+	bool rowFrozen = fFrozenRows > 0 && fSelection.v <= fFrozenRows;
+	float frozenW = fFrozenCols > 0 ? fColOffsets[fFrozenCols] : 0;
+	float frozenH = fFrozenRows > 0 ? fRowOffsets[fFrozenRows] : 0;
 
-	if (r.top < visible.top + kHeaderHeight)
-		dy = r.top - kHeaderHeight - visible.top;
-	else if (r.bottom > visible.bottom)
-		dy = r.bottom - visible.bottom;
+	float dx = 0, dy = 0;
+	if (!colFrozen)
+	{
+		if (r.left < visible.left + kHeaderWidth + frozenW)
+			dx = r.left - kHeaderWidth - frozenW - visible.left;
+		else if (r.right > visible.right)
+			dx = r.right - visible.right;
+	}
+
+	if (!rowFrozen)
+	{
+		if (r.top < visible.top + kHeaderHeight + frozenH)
+			dy = r.top - kHeaderHeight - frozenH - visible.top;
+		else if (r.bottom > visible.bottom)
+			dy = r.bottom - visible.bottom;
+	}
 
 	if (dx != 0 || dy != 0)
 		ScrollBy(dx, dy);
@@ -1010,15 +1105,22 @@ static bool IsDefaultBg(rgb_color c)
 	return c.red == 255 && c.green == 255 && c.blue == 255;
 }
 
-void SheetView::Draw(BRect updateRect)
+// Vedi il commento su fFrozenRows/fFrozenCols in SheetView.h: disegna
+// sfondo, griglia e testo per un blocco di celle [firstCol,lastCol] x
+// [firstRow,lastRow], spostato di (xOrigin, yOrigin) -- (0,0) per il
+// riquadro scorrevole normale (comportamento identico a prima di
+// Blocca riquadri), (Bounds().left, 0)/(0, Bounds().top) per una
+// banda congelata. clipRect e' gia' in coordinate sullo schermo
+// (comprensive dell'origine): limita sia il disegno sia cosa
+// StrokeLine/DrawString toccano fuori dal blocco.
+void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
+	int firstRow, int lastRow, float xOrigin, float yOrigin)
 {
-	SetHighColor(255, 255, 255);
-	FillRect(updateRect);
+	if (firstCol > lastCol || firstRow > lastRow)
+		return;
 
-	int firstCol = ColumnAtX(updateRect.left - kHeaderWidth);
-	int lastCol = std::min((int)kColCount, ColumnAtX(updateRect.right - kHeaderWidth) + 1);
-	int firstRow = RowAtY(updateRect.top - kHeaderHeight);
-	int lastRow = std::min((int)kRowCount, RowAtY(updateRect.bottom - kHeaderHeight) + 1);
+	BRegion clip(clipRect);
+	ConstrainClippingRegion(&clip);
 
 	// Sfondo colorato per cella (letto dal file importato o impostato
 	// a mano -- vedi CellStyle::fLowColor), disegnato PRIMA delle righe
@@ -1036,7 +1138,7 @@ void SheetView::Draw(BRect updateRect)
 				if (!IsDefaultBg(cs.fLowColor))
 				{
 					SetHighColor(cs.fLowColor);
-					FillRect(CellRect(c));
+					FillRect(CellRect(c).OffsetByCopy(xOrigin, yOrigin));
 				}
 			}
 		}
@@ -1044,11 +1146,11 @@ void SheetView::Draw(BRect updateRect)
 
 	SetHighColor(220, 220, 220);
 	for (int col = firstCol; col <= lastCol; col++)
-		StrokeLine(BPoint(kHeaderWidth + fColOffsets[col - 1], updateRect.top),
-			BPoint(kHeaderWidth + fColOffsets[col - 1], updateRect.bottom));
+		StrokeLine(BPoint(xOrigin + kHeaderWidth + fColOffsets[col - 1], clipRect.top),
+			BPoint(xOrigin + kHeaderWidth + fColOffsets[col - 1], clipRect.bottom));
 	for (int row = firstRow; row <= lastRow; row++)
-		StrokeLine(BPoint(updateRect.left, kHeaderHeight + fRowOffsets[row - 1]),
-			BPoint(updateRect.right, kHeaderHeight + fRowOffsets[row - 1]));
+		StrokeLine(BPoint(clipRect.left, yOrigin + kHeaderHeight + fRowOffsets[row - 1]),
+			BPoint(clipRect.right, yOrigin + kHeaderHeight + fRowOffsets[row - 1]));
 
 	if (fDoc)
 	{
@@ -1103,14 +1205,77 @@ void SheetView::Draw(BRect updateRect)
 				SetHighColor(cs.fHighColor);
 				SetLowColor(cs.fLowColor);
 
-				BRect r = CellRect(c);
+				BRect r = CellRect(c).OffsetByCopy(xOrigin, yOrigin);
 				BPoint pos(r.left + 3, r.bottom - 5);
-				BRegion clip(r);
-				ConstrainClippingRegion(&clip);
+				BRegion textClip(r);
+				ConstrainClippingRegion(&textClip);
 				DrawString(text, pos);
-				ConstrainClippingRegion(NULL);
 			}
 		}
+	}
+
+	ConstrainClippingRegion(NULL);
+}
+
+BRect SheetView::PinnedCellRect(cell c) const
+{
+	BRect r = CellRect(c);
+	if (fFrozenCols > 0 && c.h <= fFrozenCols)
+		r.OffsetBy(Bounds().left, 0);
+	if (fFrozenRows > 0 && c.v <= fFrozenRows)
+		r.OffsetBy(0, Bounds().top);
+	return r;
+}
+
+void SheetView::Draw(BRect updateRect)
+{
+	SetHighColor(255, 255, 255);
+	FillRect(updateRect);
+
+	// Riquadro scorrevole: sempre le colonne/righe DOPO quelle
+	// congelate (fFrozenCols/fFrozenRows sono 0 quando Blocca riquadri
+	// non e' attivo, quindi qui non cambia nulla rispetto a prima).
+	int firstCol = std::max(fFrozenCols + 1, ColumnAtX(updateRect.left - kHeaderWidth));
+	int lastCol = std::min((int)kColCount, ColumnAtX(updateRect.right - kHeaderWidth) + 1);
+	int firstRow = std::max(fFrozenRows + 1, RowAtY(updateRect.top - kHeaderHeight));
+	int lastRow = std::min((int)kRowCount, RowAtY(updateRect.bottom - kHeaderHeight) + 1);
+	DrawCellBand(updateRect, firstCol, lastCol, firstRow, lastRow, 0, 0);
+
+	// Blocca riquadri: le bande congelate si disegnano SEMPRE per
+	// intero (non ritagliate su updateRect come il riquadro scorrevole
+	// sopra) -- sono in genere poche righe/colonne, il costo e'
+	// trascurabile, ed evita di dover calcolare quale porzione di una
+	// banda "incollata allo schermo" (vedi ScrollTo()) ricade
+	// davvero nell'updateRect corrente, che userebbe uno spazio di
+	// coordinate diverso da quello (virtuale) di ColumnAtX/RowAtY.
+	BRect bounds = Bounds();
+	float frozenW = fFrozenCols > 0 ? fColOffsets[fFrozenCols] : 0;
+	float frozenH = fFrozenRows > 0 ? fRowOffsets[fFrozenRows] : 0;
+
+	if (fFrozenRows > 0)
+	{
+		// Righe congelate, colonne scorrevoli (banda in alto a destra):
+		// ferma sull'asse verticale (yOrigin = Bounds().top), segue
+		// comunque lo scroll orizzontale normalmente.
+		BRect band(bounds.left, bounds.top + kHeaderHeight,
+			bounds.right, bounds.top + kHeaderHeight + frozenH - 1);
+		DrawCellBand(band, firstCol, lastCol, 1, fFrozenRows, 0, bounds.top);
+	}
+	if (fFrozenCols > 0)
+	{
+		// Colonne congelate, righe scorrevoli (banda in basso a
+		// sinistra): speculare alla precedente.
+		BRect band(bounds.left + kHeaderWidth, bounds.top,
+			bounds.left + kHeaderWidth + frozenW - 1, bounds.bottom);
+		DrawCellBand(band, 1, fFrozenCols, firstRow, lastRow, bounds.left, 0);
+	}
+	if (fFrozenRows > 0 && fFrozenCols > 0)
+	{
+		// Angolo (righe E colonne congelate): ferma su entrambi gli
+		// assi, non scorre mai.
+		BRect band(bounds.left + kHeaderWidth, bounds.top + kHeaderHeight,
+			bounds.left + kHeaderWidth + frozenW - 1, bounds.top + kHeaderHeight + frozenH - 1);
+		DrawCellBand(band, 1, fFrozenCols, 1, fFrozenRows, bounds.left, bounds.top);
 	}
 
 	// Selezione corrente: un rettangolo di piu' celle (trascinamento
@@ -1122,8 +1287,8 @@ void SheetView::Draw(BRect updateRect)
 	// coincide con quello della cella attiva, quindi il riempimento
 	// "esclude se stesso" e non lascia alcuna tinta visibile.
 	range selRange = SelectionRange();
-	BRect selOuter = CellRect(selRange.TopLeft()) | CellRect(selRange.BotRight());
-	BRect activeRect = CellRect(fSelection);
+	BRect selOuter = PinnedCellRect(selRange.TopLeft()) | PinnedCellRect(selRange.BotRight());
+	BRect activeRect = PinnedCellRect(fSelection);
 
 	if (selRange.left != selRange.right || selRange.top != selRange.bottom)
 	{
@@ -1150,7 +1315,22 @@ void SheetView::Draw(BRect updateRect)
 	FillRect(BRect(rowHeaderLeft, updateRect.top,
 		rowHeaderLeft + kHeaderWidth - 1, updateRect.bottom));
 
+	// Blocca riquadri: le etichette delle righe congelate (1..
+	// fFrozenRows) restano "incollate" alla cima della viewport
+	// (yOrigin = Bounds().top) insieme alla banda di celle che
+	// etichettano, invece di scorrere via -- altrimenti la banda
+	// congelata perderebbe la sua intestazione durante lo scroll
+	// verticale. row/lastRow sopra partono gia' da fFrozenRows+1, quindi
+	// questo ciclo copre l'intervallo complementare, mai sovrapposto.
 	SetHighColor(0, 0, 0);
+	for (int row = 1; row <= fFrozenRows; row++)
+	{
+		char name[16];
+		snprintf(name, sizeof(name), "%d", row);
+		BPoint pos(rowHeaderLeft + 4,
+			Bounds().top + kHeaderHeight + fRowOffsets[row - 1] + fRowHeights[row - 1] - 6);
+		DrawString(name, pos);
+	}
 	for (int row = firstRow; row <= lastRow; row++)
 	{
 		char name[16];
@@ -1168,6 +1348,14 @@ void SheetView::Draw(BRect updateRect)
 	// lo schermo). Non disegnato dopo l'ultima riga (row == kRowCount),
 	// che non ha un confine "dopo" di se'.
 	SetHighColor(140, 140, 140);
+	for (int row = 1; row <= fFrozenRows && row < kRowCount; row++)
+	{
+		float y = Bounds().top + kHeaderHeight + fRowOffsets[row];
+		float midX = rowHeaderLeft + kHeaderWidth / 2.0f;
+		FillEllipse(BPoint(midX - 4, y), 1, 1);
+		FillEllipse(BPoint(midX, y), 1, 1);
+		FillEllipse(BPoint(midX + 4, y), 1, 1);
+	}
 	for (int row = firstRow; row <= lastRow && row < kRowCount; row++)
 	{
 		float y = kHeaderHeight + fRowOffsets[row];
@@ -1213,7 +1401,18 @@ void SheetView::Draw(BRect updateRect)
 	SetHighColor(230, 230, 230);
 	FillRect(BRect(updateRect.left, headerTop, updateRect.right, headerTop + kHeaderHeight - 1));
 
+	// Blocca riquadri: speculare al blocco analogo dell'intestazione di
+	// riga sopra, sull'altro asse -- le lettere delle colonne congelate
+	// restano incollate al bordo sinistro della viewport.
 	SetHighColor(0, 0, 0);
+	for (int col = 1; col <= fFrozenCols; col++)
+	{
+		char name[8];
+		ColumnName(col, name);
+		BPoint pos(Bounds().left + kHeaderWidth + fColOffsets[col - 1] + 4,
+			headerTop + kHeaderHeight - 6);
+		DrawString(name, pos);
+	}
 	for (int col = firstCol; col <= lastCol; col++)
 	{
 		char name[8];
@@ -1227,6 +1426,14 @@ void SheetView::Draw(BRect updateRect)
 	// visivo del ridimensionamento, altrimenti scopribile solo per
 	// caso trascinando alla cieca).
 	SetHighColor(140, 140, 140);
+	for (int col = 1; col <= fFrozenCols && col < kColCount; col++)
+	{
+		float x = Bounds().left + kHeaderWidth + fColOffsets[col];
+		float midY = headerTop + kHeaderHeight / 2.0f;
+		FillEllipse(BPoint(x, midY - 4), 1, 1);
+		FillEllipse(BPoint(x, midY), 1, 1);
+		FillEllipse(BPoint(x, midY + 4), 1, 1);
+	}
 	for (int col = firstCol; col <= lastCol && col < kColCount; col++)
 	{
 		float x = kHeaderWidth + fColOffsets[col];
@@ -1253,7 +1460,7 @@ void SheetView::MouseDown(BPoint where)
 	// foglio scorso, non solo appena aperto.
 	BRect bounds = Bounds();
 	if (where.y >= bounds.top && where.y < bounds.top + kHeaderHeight
-		&& where.x >= kHeaderWidth)
+		&& where.x >= bounds.left + kHeaderWidth)
 	{
 		int col = ColumnBoundaryAt(where.x - kHeaderWidth);
 		if (col > 0)
@@ -1279,7 +1486,15 @@ void SheetView::MouseDown(BPoint where)
 		}
 	}
 
-	if (where.x < kHeaderWidth || where.y < kHeaderHeight)
+	// Bug scoperto implementando Blocca riquadri: le bande delle
+	// intestazioni sono "congelate" (vedi sopra), quindi il confronto
+	// deve usare bounds.left/bounds.top come i controlli di
+	// ridimensionamento appena sopra, non 0 fisso -- altrimenti un
+	// clic sull'intestazione dopo aver scorso il foglio (ma non su una
+	// maniglia di ridimensionamento) non veniva scartato: proseguiva
+	// fino a CellAt(), selezionando una cella quasi a caso invece di
+	// non fare nulla.
+	if (where.x < bounds.left + kHeaderWidth || where.y < bounds.top + kHeaderHeight)
 		return;
 
 	cell c = CellAt(where);
@@ -1371,7 +1586,7 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 	{
 		BRect bounds = Bounds();
 		if (where.y >= bounds.top && where.y < bounds.top + kHeaderHeight
-			&& where.x >= kHeaderWidth
+			&& where.x >= bounds.left + kHeaderWidth
 			&& ColumnBoundaryAt(where.x - kHeaderWidth) > 0)
 			hoverCursor = 1;
 		else if (where.x >= bounds.left && where.x < bounds.left + kHeaderWidth

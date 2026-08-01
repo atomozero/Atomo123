@@ -204,6 +204,24 @@ public:
 	// salvataggio nel formato nativo.
 	std::vector<std::pair<int, float> > CustomColumnWidths() const;
 
+	// Blocca riquadri (Fase 7): righe/colonne "congelate" -- restano
+	// sempre visibili, ferme sullo schermo, invece di scorrere col
+	// resto del foglio (stessa tecnica gia' usata per le intestazioni,
+	// vedi Draw()/ScrollTo()). Contate dall'alto/da sinistra, 0 =
+	// nessuna. ToggleFreezePanes usa la cella attiva come Excel: se non
+	// e' gia' bloccato nulla, congela tutto cio' che sta sopra/a
+	// sinistra della cella selezionata (fSelection); se lo e' gia',
+	// sblocca. Pubblici apposta per essere testabili direttamente,
+	// stesso principio di CellRect/CellAt sopra -- vedi tests/test_freeze.cpp.
+	void ToggleFreezePanes();
+	bool HasFreezePanes() const { return fFrozenRows > 0 || fFrozenCols > 0; }
+	int FrozenRows() const { return fFrozenRows; }
+	int FrozenCols() const { return fFrozenCols; }
+	// Applica righe/colonne bloccate gia' note (dal formato nativo, non
+	// derivate dalla selezione corrente) -- usata da MainWindow dopo
+	// Apri/cambio foglio, stesso principio di SetColumnWidths.
+	void SetFreezePanes(int rows, int cols);
+
 	// Elenco dei grafici incorporati da disegnare sopra la griglia
 	// (di proprieta' di MainWindow, che lo passa qui solo per
 	// disegnarlo: SheetView non lo possiede ne' lo modifica mai).
@@ -280,6 +298,25 @@ private:
 	// richiamare SetViewCursor a ogni singolo MouseMoved anche quando
 	// non e' cambiato nulla.
 	int fHoverCursor;
+
+	// Blocca riquadri: vedi ToggleFreezePanes/SetFreezePanes sopra.
+	int fFrozenRows;
+	int fFrozenCols;
+	// Disegna un blocco di celle (sfondo, griglia, testo) con
+	// l'origine indicata: (0,0) per il riquadro scorrevole normale,
+	// (Bounds().left, 0)/(0, Bounds().top) per una banda congelata
+	// (cosi' resta ferma sullo schermo durante lo scroll, esattamente
+	// come le intestazioni -- vedi il commento sopra ScrollTo() per il
+	// meccanismo). clipRect delimita l'area disegnata IN COORDINATE
+	// SULLO SCHERMO (gia' comprensive di xOrigin/yOrigin).
+	void DrawCellBand(BRect clipRect, int firstCol, int lastCol,
+		int firstRow, int lastRow, float xOrigin, float yOrigin);
+	// CellRect(c), spostato come farebbe DrawCellBand se "c" ricade in
+	// una banda congelata -- usata per il rettangolo di selezione, che
+	// deve restare incollato allo schermo sopra una cella congelata
+	// esattamente come il suo contenuto (altrimenti la selezione
+	// "scapperebbe" scorrendo mentre la cella stessa resta ferma).
+	BRect PinnedCellRect(cell c) const;
 
 	CContainer* fDoc;
 	cell fSelection;
