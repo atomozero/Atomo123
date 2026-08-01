@@ -802,6 +802,128 @@ int main()
 		}
 	}
 
+	// Bordi da stile (Fase 11 -> import XLSX in Fase 12):
+	// tests/sample_borders.xlsx ha tre celle -- A1 con tutti e quattro
+	// i lati (borderId 1), B1 con solo sinistro e inferiore (borderId
+	// 2), C1 senza stile esplicito (borderId implicito 0, nessun
+	// lato). Verifica anche che borderId si risolva correttamente
+	// contro <borders> (indice separato da fontId/fillId/numFmtId
+	// nello stesso <xf>).
+	{
+		BFile bordersFile("tests/sample_borders.xlsx", B_READ_ONLY);
+		Check(bordersFile.InitCheck() == B_OK, "apertura di tests/sample_borders.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&bordersFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_borders.xlsx");
+
+		bordersFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&bordersFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_borders.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_borders.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 3, "l'ASCD contiene le 3 celle di sample_borders.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				pos += len;
+			}
+
+			if (pos + 4 <= ascdLen)
+			{
+				int32 chartCount;
+				memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+				pos += chartCount * (2 * 4 + 4 * 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				pos += colWidthCount * (2 + 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+				pos += cellColorCount * (2 + 2 + 8);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 columnColorCount;
+				memcpy(&columnColorCount, ascdData + pos, 4); pos += 4;
+				pos += columnColorCount * (2 + 8);
+			}
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+4); } // altezze riga
+			if (pos + 8 <= ascdLen) pos += 8; // Blocca riquadri
+			if (pos + 4 <= ascdLen) // fontCount, nessuno stile grassetto/corsivo qui
+			{
+				int32 fontCount;
+				memcpy(&fontCount, ascdData + pos, 4); pos += 4;
+				pos += fontCount * (2 + 2 + (int32)sizeof(font_family) + (int32)sizeof(font_style) + 4);
+			}
+			if (pos + 4 <= ascdLen) // alignCount, nessun allineamento esplicito qui
+			{
+				int32 alignCount;
+				memcpy(&alignCount, ascdData + pos, 4); pos += 4;
+				pos += alignCount * (2 + 2 + 1);
+			}
+
+			bool haveBorderCount = false;
+			int32 borderCount = 0;
+			if (pos + 4 <= ascdLen)
+			{
+				memcpy(&borderCount, ascdData + pos, 4); pos += 4;
+				haveBorderCount = true;
+			}
+			Check(haveBorderCount && borderCount == 2,
+				"sezione bordi: 2 celle con almeno un lato esplicito (A1/B1, non C1)");
+
+			int foundA1T = -1, foundA1L = -1, foundA1B = -1, foundA1R = -1;
+			int foundB1T = -1, foundB1L = -1, foundB1B = -1, foundB1R = -1;
+			for (int32 i = 0; i < borderCount && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				uint8 sides[4];
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(sides, ascdData + pos, 4); pos += 4;
+
+				if (row == 1 && col == 1)
+				{
+					foundA1T = sides[0]; foundA1L = sides[1]; foundA1B = sides[2]; foundA1R = sides[3];
+				}
+				if (row == 1 && col == 2)
+				{
+					foundB1T = sides[0]; foundB1L = sides[1]; foundB1B = sides[2]; foundB1R = sides[3];
+				}
+			}
+
+			Check(foundA1T == 1 && foundA1L == 1 && foundA1B == 1 && foundA1R == 1,
+				"A1 (borderId 1) importato con tutti e quattro i lati");
+			Check(foundB1T == 0 && foundB1L == 1 && foundB1B == 1 && foundB1R == 0,
+				"B1 (borderId 2) importato con solo sinistro e inferiore");
+		}
+	}
+
 	// Esportazione (ASCD -> XLSX): scrive un documento con un numero,
 	// una stringa e una formula, poi rilegge il file XLSX prodotto con
 	// lo stesso translator (round-trip completo) per verificare che i

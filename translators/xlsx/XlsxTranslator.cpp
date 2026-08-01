@@ -216,12 +216,12 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Sezione altezze di riga, Blocca riquadri, allineamento di cella,
-	// bordi di cella, tutte in coda (Fase 10/11 di ui/src/AscdIO.cpp):
-	// sempre scritte vuote/a zero qui, questo translator non estrae
-	// ancora nessuna di queste informazioni dal file XLSX originale (a
-	// differenza di larghezza di colonna, colori e -- sotto -- font
-	// sopra). Il campo va comunque scritto sempre, mai omesso, per lo
+	// Sezione altezze di riga e Blocca riquadri, in coda (Fase 10 di
+	// ui/src/AscdIO.cpp): sempre scritte vuote/a zero qui, questo
+	// translator non estrae ancora nessuna di queste due informazioni
+	// dal file XLSX originale (a differenza di larghezza di colonna,
+	// colori e -- sotto -- font/allineamento/bordi/formato numero).
+	// Il campo va comunque scritto sempre, mai omesso, per lo
 	// stesso motivo della sezione grafici sopra: LoadASCD (in ui/src/
 	// AscdIO.cpp, che legge questo stesso flusso) si aspetta ORA tutte
 	// queste sezioni in coda a ogni blocco ASCD -- ometterle
@@ -318,9 +318,44 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	int32 borderCount = 0;
-	if (dest->Write(&borderCount, sizeof(borderCount)) != (ssize_t)sizeof(borderCount))
-		return B_IO_ERROR;
+	// Sezione bordi di cella non predefiniti, in coda (Fase 11, vedi
+	// ui/src/AscdIO.cpp): a differenza della sezione formato numero
+	// ancora vuota sotto, questo translator estrae davvero i bordi dal
+	// file XLSX originale (Fase 12, borderId risolto contro <borders>
+	// in ParseStyles, applicato a CellStyle::fTBorderColor ecc durante
+	// ParseSheet) -- va quindi scritta con i valori reali.
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, CellStyle> > toWrite;
+		CCellIterator borderIter(doc, NULL);
+		cell bc;
+		while (borderIter.NextExisting(bc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(bc, cs);
+			if (cs.fTBorderColor != defaultStyle.fTBorderColor
+				|| cs.fLBorderColor != defaultStyle.fLBorderColor
+				|| cs.fBBorderColor != defaultStyle.fBBorderColor
+				|| cs.fRBorderColor != defaultStyle.fRBorderColor)
+				toWrite.push_back(std::make_pair(bc, cs));
+		}
+
+		int32 borderCount = (int32)toWrite.size();
+		if (dest->Write(&borderCount, sizeof(borderCount)) != (ssize_t)sizeof(borderCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < borderCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			const CellStyle& cs = toWrite[i].second;
+			uint8 sides[4] = { cs.fTBorderColor, cs.fLBorderColor,
+				cs.fBBorderColor, cs.fRBorderColor };
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(sides, sizeof(sides)) != (ssize_t)sizeof(sides))
+				return B_IO_ERROR;
+		}
+	}
 
 	// Sezione formato numero di cella non predefinito, in coda (Fase
 	// 12, vedi ui/src/AscdIO.cpp): a differenza delle cinque sezioni
@@ -868,16 +903,26 @@ struct ResolvedStyle {
 	int fontID; // indice gia' risolto in gFontSizeTable, pronto per CellStyle::fFont
 	bool hasAlignment; // true solo se diverso da eAlignGeneral (il predefinito non serve applicarlo)
 	char alignment; // EAlignment, pronto per CellStyle::fAlignment
+	bool hasBorders; // true solo se almeno un lato e' impostato
+	uchar borderT, borderL, borderB, borderR; // 0/1, pronti per CellStyle::fTBorderColor ecc (Fase 11: booleano per lato, non un vero colore)
 };
 
-enum StylesSection { kStylesNone, kStylesNumFmts, kStylesFills, kStylesFonts, kStylesCellXfs };
+enum StylesSection { kStylesNone, kStylesNumFmts, kStylesFills, kStylesFonts, kStylesBorders, kStylesCellXfs };
 
-// (fontId, fillId, numFmtId) per indice s= di una cella/colonna.
+// (fontId, fillId, numFmtId, borderId) per indice s= di una cella/colonna.
 struct XfInfo {
 	int fontId;
 	int fillId;
 	int numFmtId;
+	int borderId;
 	char alignment; // EAlignment, eAlignGeneral se <alignment> assente
+};
+
+// Quattro lati di una voce di <borders>: presente/assente, stesso
+// significato "booleano per lato" definito in Fase 11 (CellStyle::
+// fTBorderColor ecc, non un vero colore/spessore nonostante il nome).
+struct BorderSides {
+	bool top, left, bottom, right;
 };
 
 // "general"/assente -> eAlignGeneral (nessuna preferenza esplicita,
@@ -910,6 +955,8 @@ struct StylesContext {
 	std::vector<bool> fontBold;
 	std::vector<bool> fontItalic;
 	std::vector<float> fontSize; // -1 = non specificata nel font XLSX (<sz> assente)
+
+	std::vector<BorderSides> borders;
 
 	std::vector<XfInfo> cellXfs;
 };
@@ -1019,6 +1066,7 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 	if (strcmp(name, "numFmts") == 0) { ctx->section = kStylesNumFmts; return; }
 	if (strcmp(name, "fills") == 0) { ctx->section = kStylesFills; return; }
 	if (strcmp(name, "fonts") == 0) { ctx->section = kStylesFonts; return; }
+	if (strcmp(name, "borders") == 0) { ctx->section = kStylesBorders; return; }
 	if (strcmp(name, "cellXfs") == 0) { ctx->section = kStylesCellXfs; return; }
 
 	if (ctx->section == kStylesNumFmts)
@@ -1115,6 +1163,35 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 					ctx->fontSize.back() = (float)atof(atts[i + 1]);
 		}
 	}
+	else if (ctx->section == kStylesBorders)
+	{
+		if (strcmp(name, "border") == 0)
+			ctx->borders.push_back(BorderSides());
+		// <left style="thin">...</left> vs <left/>: la presenza
+		// dell'attributo style (con un valore diverso da "none", raro
+		// ma valido) e' cio' che significa "questo lato ha un bordo"
+		// in ECMA-376 -- non lo spessore o il colore, ininfluenti dato
+		// il significato "booleano per lato" gia' definito in Fase 11.
+		else if (!ctx->borders.empty() && (strcmp(name, "left") == 0
+			|| strcmp(name, "right") == 0 || strcmp(name, "top") == 0
+			|| strcmp(name, "bottom") == 0))
+		{
+			bool hasStyle = false;
+			for (int i = 0; atts[i]; i += 2)
+			{
+				if (strcmp(atts[i], "style") == 0 && strcmp(atts[i + 1], "none") != 0)
+				{
+					hasStyle = true;
+					break;
+				}
+			}
+			BorderSides& sides = ctx->borders.back();
+			if (name[0] == 'l') sides.left = hasStyle;
+			else if (name[0] == 'r') sides.right = hasStyle;
+			else if (name[0] == 't') sides.top = hasStyle;
+			else sides.bottom = hasStyle;
+		}
+	}
 	else if (ctx->section == kStylesCellXfs)
 	{
 		if (strcmp(name, "xf") == 0)
@@ -1123,6 +1200,7 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			xf.fontId = 0;
 			xf.fillId = 0;
 			xf.numFmtId = 0;
+			xf.borderId = 0;
 			xf.alignment = eAlignGeneral;
 			for (int i = 0; atts[i]; i += 2)
 			{
@@ -1132,6 +1210,8 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 					xf.fillId = atoi(atts[i + 1]);
 				else if (strcmp(atts[i], "numFmtId") == 0)
 					xf.numFmtId = atoi(atts[i + 1]);
+				else if (strcmp(atts[i], "borderId") == 0)
+					xf.borderId = atoi(atts[i + 1]);
 			}
 			ctx->cellXfs.push_back(xf);
 		}
@@ -1153,7 +1233,8 @@ static void XMLCALL StylesEnd(void* userData, const char* name)
 {
 	StylesContext* ctx = (StylesContext*)userData;
 	if (strcmp(name, "numFmts") == 0 || strcmp(name, "fills") == 0
-		|| strcmp(name, "fonts") == 0 || strcmp(name, "cellXfs") == 0)
+		|| strcmp(name, "fonts") == 0 || strcmp(name, "borders") == 0
+		|| strcmp(name, "cellXfs") == 0)
 		ctx->section = kStylesNone;
 }
 
@@ -1238,6 +1319,19 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 
 		rs.alignment = ctx.cellXfs[i].alignment;
 		rs.hasAlignment = rs.alignment != eAlignGeneral;
+
+		int borderId = ctx.cellXfs[i].borderId;
+		if (borderId >= 0 && (size_t)borderId < ctx.borders.size())
+		{
+			const BorderSides& sides = ctx.borders[borderId];
+			rs.borderT = sides.top ? 1 : 0;
+			rs.borderL = sides.left ? 1 : 0;
+			rs.borderB = sides.bottom ? 1 : 0;
+			rs.borderR = sides.right ? 1 : 0;
+			rs.hasBorders = sides.top || sides.left || sides.bottom || sides.right;
+		}
+		else
+			rs.hasBorders = false;
 
 		(*out)[i] = rs;
 	}
@@ -1376,7 +1470,8 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				&& (size_t)styleIndex < ctx->styles->size())
 			{
 				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
-				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment)
+				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
+					|| rs.hasBorders)
 				{
 					for (int col = min; col <= clampedMax; col++)
 					{
@@ -1387,6 +1482,13 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 						if (rs.hasFormat) cs.fFormat = rs.format;
 						if (rs.hasFontStyle) cs.fFont = rs.fontID;
 						if (rs.hasAlignment) cs.fAlignment = rs.alignment;
+						if (rs.hasBorders)
+						{
+							cs.fTBorderColor = rs.borderT;
+							cs.fLBorderColor = rs.borderL;
+							cs.fBBorderColor = rs.borderB;
+							cs.fRBorderColor = rs.borderR;
+						}
 						ctx->doc->SetColumnStyle(col, cs);
 					}
 				}
@@ -1460,7 +1562,8 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 			&& (size_t)ctx->cellStyleIndex < ctx->styles->size())
 		{
 			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
-			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment)
+			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
+				|| rs.hasBorders)
 			{
 				CellStyle cs;
 				ctx->doc->GetCellStyle(loc, cs);
@@ -1469,6 +1572,13 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 				if (rs.hasFormat) cs.fFormat = rs.format;
 				if (rs.hasFontStyle) cs.fFont = rs.fontID;
 				if (rs.hasAlignment) cs.fAlignment = rs.alignment;
+				if (rs.hasBorders)
+				{
+					cs.fTBorderColor = rs.borderT;
+					cs.fLBorderColor = rs.borderL;
+					cs.fBBorderColor = rs.borderB;
+					cs.fRBorderColor = rs.borderR;
+				}
 				ctx->doc->SetCellStyle(loc, cs);
 			}
 		}
