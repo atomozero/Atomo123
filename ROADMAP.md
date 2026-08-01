@@ -2938,9 +2938,16 @@ Fase 11.
       `ParseStyles` riserva ora la voce Regular per prima apposta.
       Test: nuova fixture `sample_fontstyle.xlsx` in
       `translators/xlsx/tests/test_xlsx_translator.cpp`.
-- [ ] **Allineamento orizzontale**: leggere `<alignment
-      horizontal=".../>` dentro ogni `<xf>` di `cellXfs` e mappare sui
-      valori già supportati da `CellStyle::fAlignment`/`EAlignment`.
+- [x] **Allineamento orizzontale**: legge `<alignment
+      horizontal="..."/>` dentro ogni `<xf>` di `cellXfs` (figlio
+      dell'elemento, non un suo attributo — evento XML separato,
+      applicato sempre all'ultimo `<xf>` appena aggiunto) e mappa i
+      valori su `CellStyle::fAlignment`/`EAlignment` già supportato —
+      "centerContinuous"/"distributed" e simili, senza un
+      corrispondente diretto, restano General. La sezione
+      allineamento di Fase 10 in `WriteASCD` (`XlsxTranslator.cpp`),
+      finora sempre vuota, ora scrive i valori reali quando presenti.
+      Test: nuova fixture `sample_align.xlsx`.
 - [ ] **Bordi da stile**: risolvere l'indice `borderId` di ogni `<xf>`
       contro `<borders>` in `styles.xml` e tradurlo nei quattro campi
       booleani per lato già definiti in Fase 11 (bordo presente/
