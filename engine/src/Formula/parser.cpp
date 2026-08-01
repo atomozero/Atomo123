@@ -39,6 +39,7 @@
 #include "CellParser.h"
 #include "FunctionUtils.h"
 #include "Container.h"
+#include "NameTable.h"
 #include "StringTable.h"
 
 CParser::CParser(CContainer *inContainer,
@@ -394,14 +395,29 @@ void CParser::Factor()
 
 					AddToken(opFunc, &fcd);
 				}
-				else if (mContainer &&
-						 mContainer->GetOwner() &&
-						 mContainer->GetOwner()->IsNamedRange(name))
+				else
 				{
+					// Fase 7: un identificatore che non e' un nome di
+					// funzione conosciuta e' sempre un possibile
+					// riferimento a un intervallo con nome, incorporato
+					// cosi' com'e' -- MAI verificato qui se esiste
+					// davvero (CContainer::GetNameTable/IsNamedRange
+					// tramite il vecchio GetOwner()/CCellView, sempre
+					// NULL nella UI reale, e' stato rimosso). Se il
+					// nome non risulta definito nella tabella del
+					// documento in fase di CALCOLO
+					// (CContainer::ResolveName, mai di parsing), il
+					// riferimento semplicemente non si risolve
+					// (gNameNan) -- stesso principio gia' scelto per i
+					// riferimenti fra fogli (vedi ParseSheetReference
+					// sopra): un nome definito DOPO che la formula e'
+					// stata scritta (o ri-analizzata da un file
+					// caricato, prima che l'utente riapra la finestra
+					// Intervalli con nome) deve comunque restare una
+					// formula, non degradare silenziosamente a testo
+					// puro.
 					AddToken(valName, name);
 				}
-				else
-					throw CParseErr(s, strlen(name), errUnknownIdentifier, name);
 			}
 			break;
 		}

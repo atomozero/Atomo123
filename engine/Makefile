@@ -72,7 +72,15 @@ test-xsheet: $(LIB)
 	$(CXX) -o tests/xsheet_test $(OBJDIR)/xsheet_test.o -L. -lengine -lbe
 	./tests/xsheet_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test
+# Test degli intervalli con nome (Fase 7): GetOrCreateNameTable,
+# riconoscimento in una formula, calcolo, UnMangle -- vedi il commento
+# in cima a named_ranges_test.cpp.
+test-names: $(LIB)
+	$(CXX) -c tests/named_ranges_test.cpp -o $(OBJDIR)/named_ranges_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/named_ranges_test $(OBJDIR)/named_ranges_test.o -L. -lengine -lbe
+	./tests/named_ranges_test
 
-.PHONY: all clean test test-functions test-xsheet
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test
+
+.PHONY: all clean test test-functions test-xsheet test-names
