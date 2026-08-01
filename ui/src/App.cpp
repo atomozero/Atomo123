@@ -17,6 +17,7 @@
 #include "FunctionUtils.h"
 #include "Globals.h"
 #include "MyError.h"
+#include "Preferences.h"
 #include "ResourceManager.h"
 
 static const char* kAppSignature = "application/x-vnd.Atomo-Atomo123";
@@ -39,6 +40,24 @@ App::App()
 	:
 	BApplication(kAppSignature)
 {
+	// gPrefs (Preferences.h) e' dichiarata nel motore ma non era mai
+	// stata istanziata da nessuna parte della UI moderna -- restava
+	// sempre NULL (bug scoperto in Fase 7 implementando la finestra
+	// Preferenze). ReadPrefFile() lancia se il file non esiste ancora
+	// (prima esecuzione, mai salvata nessuna preferenza): non e' un
+	// errore, si parte semplicemente dai valori predefiniti di
+	// ciascuna GetPref*() (gia' gestito da CPreferences stessa).
+	gPrefs = new CPreferences("Atomo123_prefs");
+	try
+	{
+		gPrefs->ReadPrefFile();
+	}
+	catch (CErr&)
+	{
+	}
+
+	gDecimalPoint = gPrefs->GetPrefString("decimalSeparator", ".")[0];
+	gListSeparator = gPrefs->GetPrefString("listSeparator", ";")[0];
 }
 
 void App::ReadyToRun()

@@ -35,6 +35,7 @@ class NameWindow;
 class PasteSpecialWindow;
 class GoToWindow;
 class ColorWindow;
+class PreferencesWindow;
 
 // MainWindow implementa ISheetResolver (Container.h, Fase 9) perche'
 // e' lei a possedere fSheets, l'unico elenco di "nome foglio -> CContainer*"
@@ -79,6 +80,15 @@ public:
 	void SetAlignment(char alignment);
 	void SetTextColor(rgb_color color);
 	void SetBackgroundColor(rgb_color color);
+
+	// Pubblico per lo stesso motivo di SetCellFormat sopra -- vedi
+	// tests/test_preferences.cpp. showGrid si applica alla sola
+	// SheetView di questa finestra; decimalSeparator/listSeparator
+	// sono globali al motore (gDecimalPoint/gListSeparator, lette da
+	// TryToParseString quando non si passa un separatore esplicito),
+	// quindi valgono per l'intera applicazione, non solo per il
+	// documento corrente -- stesso comportamento di Sum-It storico.
+	void HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep);
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che
@@ -172,6 +182,7 @@ private:
 	PasteSpecialWindow* fPasteSpecialWindow;
 	GoToWindow* fGoToWindow;
 	ColorWindow* fColorWindow;
+	PreferencesWindow* fPreferencesWindow;
 	std::vector<ChartObject> fCharts;
 
 	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
@@ -237,6 +248,7 @@ private:
 	void ShowPasteSpecialWindow();
 	void ShowGoToWindow();
 	void ShowColorWindow(bool background);
+	void ShowPreferencesWindow();
 };
 
 #endif
