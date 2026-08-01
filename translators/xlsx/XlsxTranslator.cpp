@@ -1930,6 +1930,97 @@ static bool ParseRelationships(const std::vector<unsigned char>& xml,
 	return status == XML_STATUS_OK;
 }
 
+// --- Parsing di xl/tables/tableN.xml (Fase 12) ---------------------
+//
+// Una tabella strutturata Excel (xl/tables/tableN.xml, collegata a un
+// foglio tramite <tableParts> nel foglio stesso + i _rels del
+// foglio): <table ref="A10:D121" ...><tableStyleInfo
+// name="TableStyleMedium2" showRowStripes="1" .../></table>. Il
+// colore VERO delle bande alternate di uno stile incorporato
+// (es. "TableStyleMedium2") non e' nel file: e' un tema grafico
+// predefinito di Excel stesso, non salvato nella cartella di lavoro a
+// meno che l'utente non abbia creato uno stile personalizzato (raro,
+// non gestito qui). Approssimazione dichiarata: banda grigio chiaro
+// neutra invece del colore esatto dello stile con nome, applicata
+// come normale colore di sfondo per cella (riusa l'infrastruttura
+// colori di Fase 7) -- non un vero oggetto tabella "vivo" (niente
+// filtro/riga totali ricalcolata).
+
+struct TableInfo {
+	range tableRange;
+	bool hasRange;
+	bool showStripes;
+};
+
+static void XMLCALL TableStart(void* userData, const char* name, const char** atts)
+{
+	TableInfo* info = (TableInfo*)userData;
+	if (strcmp(name, "table") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "ref") == 0)
+				info->hasRange = ParseMergeCellRef(atts[i + 1], &info->tableRange);
+	}
+	else if (strcmp(name, "tableStyleInfo") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "showRowStripes") == 0)
+				info->showStripes = strcmp(atts[i + 1], "0") != 0;
+	}
+}
+
+static bool ParseTableInfo(const std::vector<unsigned char>& xml, TableInfo* out)
+{
+	out->hasRange = false;
+	out->showStripes = false;
+	if (xml.empty())
+		return false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, out);
+	XML_SetElementHandler(parser, TableStart, NULL);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
+	XML_ParserFree(parser);
+
+	return status == XML_STATUS_OK && out->hasRange;
+}
+
+// Applica la banda grigio chiaro alle righe dati dispari (la prima
+// riga del range e' l'intestazione, esclusa dalla banda) -- solo
+// alle celle che non hanno gia' un colore di sfondo esplicito
+// dall'importazione dei colori sopra (ParseSheet/SheetEnd), per non
+// coprire uno sfondo scelto apposta dall'utente nel file originale.
+static void ApplyTableBanding(CContainer* doc, const range& tableRange)
+{
+	const rgb_color kBandColor = { 242, 242, 242, 255 };
+	CellStyle defaultStyle;
+
+	for (int row = tableRange.top + 1; row <= tableRange.bottom; row++)
+	{
+		// "row - (tableRange.top + 1)" e' l'indice 0-based della riga
+		// dati (0 = la prima subito sotto l'intestazione): banda le
+		// righe dati dispari in ordine (1a, 3a, 5a...), cioe' indice
+		// pari. Contare da tableRange.top (l'intestazione) invece che
+		// dalla prima riga dati sfaserebbe la banda di una riga (bug
+		// reale scoperto scrivendo il test: bandava la 2a/4a riga dati
+		// invece della 1a/3a).
+		if ((row - tableRange.top - 1) % 2 != 0)
+			continue;
+
+		for (int col = tableRange.left; col <= tableRange.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			doc->GetCellStyle(c, cs);
+			if (!ColorsEqual(cs.fLowColor, defaultStyle.fLowColor))
+				continue;
+			cs.fLowColor = kBandColor;
+			doc->SetCellStyle(c, cs);
+		}
+	}
+}
+
 // Un foglio gia' analizzato, pronto per essere scritto in formato
 // ASCD/ASCB: nome, documento, e le sole colonne con una larghezza
 // esplicita nel file XLSX originale (vedi ParseSheet/SheetStart).
@@ -2130,6 +2221,45 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			parsed.doc->Release();
 			err = B_BAD_DATA;
 			break;
+		}
+
+		// Tabelle strutturate (Fase 12): collegate a QUESTO foglio
+		// tramite i suoi stessi _rels (xl/worksheets/_rels/sheetN.xml.rels),
+		// non tramite quelli della cartella di lavoro sopra -- un
+		// foglio senza tabelle semplicemente non ha questo file, non
+		// e' un errore. I target dei _rels di un foglio sono relativi
+		// a xl/worksheets/ (es. "../tables/table1.xml"), un livello
+		// piu' in profondita' di quelli del workbook sopra: si toglie
+		// il prefisso ".." e si ricompone su "xl/".
+		{
+			const std::string& sheetPath = sheetsToRead[i].second;
+			size_t slash = sheetPath.find_last_of('/');
+			std::string dir = slash == std::string::npos ? "" : sheetPath.substr(0, slash);
+			std::string file = slash == std::string::npos ? sheetPath : sheetPath.substr(slash + 1);
+			std::string sheetRelsPath = dir + "/_rels/" + file + ".rels";
+
+			std::vector<unsigned char> sheetRelsXml;
+			std::map<std::string, std::string> sheetRelTargets;
+			if (zip.ReadEntry(sheetRelsPath.c_str(), sheetRelsXml)
+				&& ParseRelationships(sheetRelsXml, sheetRelTargets))
+			{
+				for (std::map<std::string, std::string>::iterator it = sheetRelTargets.begin();
+					it != sheetRelTargets.end(); ++it)
+				{
+					std::string target = it->second;
+					if (target.compare(0, 3, "../") == 0)
+						target = target.substr(3);
+					if (target.compare(0, 7, "tables/") != 0)
+						continue; // non e' una tabella, un altro tipo di relazione (es. hyperlink)
+
+					std::string tablePath = "xl/" + target;
+					std::vector<unsigned char> tableXml;
+					TableInfo info;
+					if (zip.ReadEntry(tablePath.c_str(), tableXml)
+						&& ParseTableInfo(tableXml, &info) && info.showStripes)
+						ApplyTableBanding(parsed.doc, info.tableRange);
+				}
+			}
 		}
 
 		sheets.push_back(parsed);
