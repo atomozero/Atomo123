@@ -2686,21 +2686,47 @@ la tripla famiglia/stile/dimensione (già ottenibile con
 `GetFontInfo`) e ricostruito l'indice con `GetFontID` al caricamento,
 esattamente come fa già `Excel.pass1.cpp` per un file XLSX importato.
 
+- [x] **Blocca riquadri e altezza di riga** (le due più semplici delle
+      quattro: un intero per foglio la prima, una lista di righe non
+      predefinite la seconda — nessuna delle due tocca l'indice
+      volatile di `fFont`, vedi sopra). `SaveASCD`/`LoadASCD` (in
+      `AscdIO.h`/`.cpp`) guadagnano tre nuovi parametri opzionali in
+      coda alla firma esistente — `rowHeights`, `frozenRows`,
+      `frozenCols` — stesso principio di `colWidths`: puntatori
+      (`NULL` = non legge/scrive quella sezione), sempre consumati
+      dallo stream se presenti anche quando il chiamante passa `NULL`
+      (altrimenti disallineerebbe la lettura del blocco ASCD
+      successivo in una cartella di lavoro multi-foglio, bug già
+      scoperto per un'altra sezione in Fase 9). `AscdSheet` guadagna i
+      campi corrispondenti (`rowHeights`, `frozenRows`, `frozenCols`).
+      Nuovi `SheetView::SetRowHeights`/`CustomRowHeights`, speculari a
+      `SetColumnWidths`/`CustomColumnWidths` già esistenti.
+      `MainWindow::ResetWorkbook`/`SwitchToSheet`/`OpenFile`/
+      `SaveToFile` applicano/raccolgono i nuovi campi negli stessi
+      punti d'innesto già usati per `colWidths` — `SwitchToSheet` in
+      particolare non azzera più il blocco riquadri a ogni cambio
+      foglio (comportamento di Fase 7): lo salva nel foglio che si
+      lascia e ripristina quello del foglio di destinazione, così
+      ciascun foglio di una cartella di lavoro può avere il proprio.
+
+      Test dedicato `ui/tests/test_persistence.cpp` (nuovo target
+      `make test-persistence`, 8 verifiche, headless come
+      `test_ascd_book.cpp` — solo `AscdIO`, nessuna vera
+      `MainWindow`): un giro salva/ricarica con entrambe le
+      preferenze impostate, un file scritto SENZA le nuove sezioni
+      (chiamante che passa `NULL`, come ogni chiamata esistente prima
+      di questa fase) resta leggibile e restituisce i valori
+      predefiniti. Nessuna regressione nella suite esistente (tutti i
+      28 target).
+
 - [ ] Estendere `AscdSheet`/`SaveASCD`/`LoadASCD` con una sezione
       "celle con font non predefinito" (famiglia/stile/dimensione per
       cella, stesso principio della sezione colori già esistente) e
-      una per l'allineamento.
-- [ ] Persistere `fFrozenRows`/`fFrozenCols` per foglio (un intero
-      ciascuno, non serve una sezione per-cella).
-- [ ] Persistere `fRowHeights` per le sole righe non predefinite,
-      speculare a `CustomColumnWidths`/`SetColumnWidths` già esistenti
-      per le colonne.
-- [ ] Aggiornare `MainWindow::SwitchToSheet`/`OpenFile`/`SaveToFile`
-      per applicare/raccogliere i nuovi campi, stesso punto d'innesto
-      già usato per `colWidths`.
-- [ ] Test di round-trip dedicato (scrivi, rileggi, verifica) per
-      ciascuna delle quattro preferenze, sul modello di
-      `test_ascd_book.cpp`.
+      una per l'allineamento — le due restanti, entrambe per-cella
+      invece che per-foglio, la prima complicata dall'indice volatile
+      di `fFont` descritto sopra.
+- [ ] Test di round-trip dedicato per entrambe, sullo stesso modello
+      di `test_persistence.cpp`.
 
 ---
 
