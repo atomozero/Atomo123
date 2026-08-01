@@ -687,6 +687,29 @@ static status_t WriteXLSX(CContainer* doc, BPositionIO* dest)
 	return zip.Close() ? B_OK : B_IO_ERROR;
 }
 
+// Converte un serial Excel (giorni dall'epoca del sistema data della
+// cartella di lavoro, con l'ora come frazione di giorno) in un
+// time_t (Fase 12) -- costruendo direttamente un Value(time_t)
+// (eTimeData) invece di passare da una stringa data testuale, che
+// avrebbe richiesto indovinare l'ordine giorno/mese/anno locale
+// (gDateOrder, dipendente dal sistema, non affidabile da un
+// translator). 25569/24107 sono le costanti standard (usate anche da
+// altre implementazioni non-Excel) per i giorni fra l'epoca Unix
+// (1970-01-01) e l'epoca Excel nei due sistemi data: 1899-12-30 per
+// il predefinito (non 1899-12-31: lo spostamento di un giorno
+// compensa il famoso bug storico di Excel/Lotus 1-2-3 che tratta il
+// 1900 come bisestile, con un errore di un solo giorno per le rare
+// date di gennaio/febbraio 1900 -- limite accettato, stessa
+// approssimazione usata da virtualmente ogni libreria non-Excel) o
+// 1904-01-01 per il sistema Mac storico (<workbookPr date1904="1"/>,
+// nessun bug del genere in quel sistema).
+static time_t ExcelSerialToTime(double serial, bool date1904)
+{
+	double epochOffsetDays = date1904 ? 24107.0 : 25569.0;
+	double unixSeconds = (serial - epochOffsetDays) * 86400.0;
+	return (time_t)(unixSeconds + (unixSeconds >= 0 ? 0.5 : -0.5));
+}
+
 // Converte un riferimento di cella stile Excel ("A1", "AB12") in
 // colonna (1-based) e riga (1-based). Restituisce false se il
 // riferimento non e' valido.
@@ -1007,6 +1030,7 @@ struct ResolvedStyle {
 	rgb_color fg;
 	bool hasFormat;
 	int format; // valore gia' pronto per CellStyle::fFormat
+	bool isDateFormat; // Fase 12: true se numFmtId e' un formato data/ora (vedi IsDateNumFmt) -- il valore numerico grezzo va convertito in eTimeData, non lasciato come numero
 	bool hasFontStyle; // true solo se grassetto e/o corsivo (il Regular predefinito non serve applicarlo)
 	int fontID; // indice gia' risolto in gFontSizeTable, pronto per CellStyle::fFont
 	bool hasAlignment; // true solo se diverso da eAlignGeneral (il predefinito non serve applicarlo)
@@ -1169,6 +1193,26 @@ static bool ResolveNumberFormat(int numFmtId, const std::map<int, std::string>& 
 	CFormatter formatter(code.c_str());
 	*outFormat = formatter.FormatID();
 	return true;
+}
+
+// true se numFmtId e' un formato data/ora (Fase 12) -- incorporato
+// (id 14-22 = data, 45-47 = orario/durata, ECMA-376 18.8.30, nessuno
+// di questi e' nella tabella BuiltinNumFmtCode sopra perche' quella
+// serve solo ai formati NUMERICI) o personalizzato (via il testo del
+// formatCode, LooksLikeDateFormat). Interrogata separatamente da
+// ResolveNumberFormat sopra perche' qui serve sapere "e' una data?"
+// anche per gli id incorporati che quella funzione scarta in
+// sicurezza (nessun formatCode noto per costruire un CFormatter).
+static bool IsDateNumFmt(int numFmtId, const std::map<int, std::string>& numFmts)
+{
+	if (numFmtId <= 0)
+		return false;
+
+	std::map<int, std::string>::const_iterator it = numFmts.find(numFmtId);
+	if (it != numFmts.end())
+		return LooksLikeDateFormat(it->second);
+
+	return (numFmtId >= 14 && numFmtId <= 22) || (numFmtId >= 45 && numFmtId <= 47);
 }
 
 static void XMLCALL StylesStart(void* userData, const char* name, const char** atts)
@@ -1445,6 +1489,7 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 		if (rs.hasFg)
 			rs.fg = ctx.fontColors[fontId];
 		rs.hasFormat = ResolveNumberFormat(ctx.cellXfs[i].numFmtId, ctx.numFmts, &rs.format);
+		rs.isDateFormat = IsDateNumFmt(ctx.cellXfs[i].numFmtId, ctx.numFmts);
 
 		bool bold = fontId >= 0 && (size_t)fontId < ctx.fontBold.size() && ctx.fontBold[fontId];
 		bool italic = fontId >= 0 && (size_t)fontId < ctx.fontItalic.size() && ctx.fontItalic[fontId];
@@ -1615,6 +1660,7 @@ struct SheetContext {
 	std::vector<std::pair<int, float> >* colWidths; // opzionale (NULL = non raccolte)
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
+	bool date1904; // Fase 12: epoca del sistema data, da <workbookPr>
 
 	std::string cellRef;
 	std::string cellType; // valore dell'attributo t="..." (puo' essere vuoto)
@@ -1901,11 +1947,31 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		else
 			text = ctx->value;
 
+		// Formati data/ora (Fase 12): solo per una cella NUMERICA vera
+		// (niente t="...", niente formula -- una data e' sempre un
+		// numero grezzo con uno stile che dice "mostrami come data",
+		// mai una stringa) il cui stile risolto e' un formato data.
+		// Le formule restano sempre formule ricalcolate (stesso
+		// principio gia' documentato in cima al file), indipendenti
+		// dal loro numFmt.
+		bool isDateCell = ctx->formula.empty() && ctx->cellType.empty()
+			&& ctx->styles && ctx->cellStyleIndex >= 0
+			&& (size_t)ctx->cellStyleIndex < ctx->styles->size()
+			&& (*ctx->styles)[ctx->cellStyleIndex].isDateFormat;
+
 		if (!text.empty())
 		{
 			try
 			{
-				TryToParseString(text.c_str(), loc, ctx->doc, false);
+				char* end = NULL;
+				double serial = isDateCell ? strtod(text.c_str(), &end) : 0;
+				if (isDateCell && end != text.c_str() && *end == 0)
+				{
+					Value v(ExcelSerialToTime(serial, ctx->date1904));
+					ctx->doc->NewCell(loc, v, NULL);
+				}
+				else
+					TryToParseString(text.c_str(), loc, ctx->doc, false);
 			}
 			catch (...)
 			{
@@ -1972,7 +2038,8 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	const std::vector<std::string>& sharedStrings,
 	std::vector<std::pair<int, float> >* colWidths,
 	const std::vector<ResolvedStyle>* styles,
-	std::vector<CondFormatRule>* condRules = NULL)
+	std::vector<CondFormatRule>* condRules = NULL,
+	bool date1904 = false)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -1980,6 +2047,7 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.colWidths = colWidths;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
+	ctx.date1904 = date1904;
 	ctx.cellStyleIndex = -1;
 	ctx.inValue = false;
 	ctx.inFormula = false;
@@ -2054,6 +2122,7 @@ struct WorkbookSheetInfo {
 struct WorkbookContext {
 	std::vector<WorkbookSheetInfo> sheets;
 	bool inSheets;
+	bool date1904; // <workbookPr date1904="1"/>: epoca Mac storica (1904-01-01) invece della predefinita (1899-12-30, Fase 12)
 };
 
 static void XMLCALL WorkbookStart(void* userData, const char* name, const char** atts)
@@ -2074,6 +2143,12 @@ static void XMLCALL WorkbookStart(void* userData, const char* name, const char**
 		if (!info.rId.empty())
 			ctx->sheets.push_back(info);
 	}
+	else if (strcmp(name, "workbookPr") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "date1904") == 0)
+				ctx->date1904 = strcmp(atts[i + 1], "0") != 0 && strcmp(atts[i + 1], "false") != 0;
+	}
 }
 
 static void XMLCALL WorkbookEnd(void* userData, const char* name)
@@ -2084,13 +2159,14 @@ static void XMLCALL WorkbookEnd(void* userData, const char* name)
 }
 
 static bool ParseWorkbookSheetList(const std::vector<unsigned char>& xml,
-	std::vector<WorkbookSheetInfo>& out)
+	std::vector<WorkbookSheetInfo>& out, bool* outDate1904 = NULL)
 {
 	if (xml.empty())
 		return false;
 
 	WorkbookContext ctx;
 	ctx.inSheets = false;
+	ctx.date1904 = false;
 
 	XML_Parser parser = XML_ParserCreate(NULL);
 	XML_SetUserData(parser, &ctx);
@@ -2103,6 +2179,8 @@ static bool ParseWorkbookSheetList(const std::vector<unsigned char>& xml,
 		return false;
 
 	out = ctx.sheets;
+	if (outDate1904)
+		*outDate1904 = ctx.date1904;
 	return true;
 }
 
@@ -2500,8 +2578,9 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 	std::vector<unsigned char> workbookXml, relsXml;
 	std::vector<WorkbookSheetInfo> sheetList;
 	std::map<std::string, std::string> relTargets;
+	bool date1904 = false; // <workbookPr date1904="1"/>, Fase 12: resta false (predefinito) se il parse sotto non arriva a leggerlo
 	if (zip.ReadEntry("xl/workbook.xml", workbookXml)
-		&& ParseWorkbookSheetList(workbookXml, sheetList)
+		&& ParseWorkbookSheetList(workbookXml, sheetList, &date1904)
 		&& zip.ReadEntry("xl/_rels/workbook.xml.rels", relsXml)
 		&& ParseRelationships(relsXml, relTargets))
 	{
@@ -2544,7 +2623,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		parsed.doc = new CContainer(NULL, NULL);
 		std::vector<CondFormatRule> condRules;
 		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles,
-			&condRules))
+			&condRules, date1904))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;

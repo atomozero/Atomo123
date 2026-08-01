@@ -1531,6 +1531,70 @@ int main()
 		}
 	}
 
+	// Formati data/ora (Fase 12): tests/sample_dates.xlsx ha tre celle
+	// -- A1 (serial 45892, numFmtId 14 incorporato) e B1 (serial
+	// 44197, numFmtId 165 personalizzato "dd/mm/yyyy") sono numeri
+	// puri con uno stile data, D1 (100, nessuno stile data) resta un
+	// numero normale. Sistema data predefinito (1899-12-30, nessun
+	// <workbookPr date1904="1"/> nel file). Il testo scritto in ASCD
+	// per una cella senza formula passa comunque da GetCellFormula ->
+	// CFormatter::FormatValue (vedi Container.cpp), che per un Value
+	// eTimeData chiama sempre FormatDate indipendentemente da
+	// CellStyle::fFormat -- il valore vero e' quindi gia' verificabile
+	// dal testo stesso, senza dover leggere Value/CellStyle a parte.
+	{
+		BFile dateFile("tests/sample_dates.xlsx", B_READ_ONLY);
+		Check(dateFile.InitCheck() == B_OK, "apertura di tests/sample_dates.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&dateFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_dates.xlsx");
+
+		dateFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&dateFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_dates.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_dates.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 3, "l'ASCD contiene le 3 celle di sample_dates.xlsx");
+
+			bool foundA1 = false, foundB1 = false, foundD1 = false;
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				std::string text((const char *)ascdData + pos, len);
+				pos += len;
+
+				if (row == 1 && col == 1 && text == "23/08/2025") foundA1 = true;
+				if (row == 1 && col == 2 && text == "01/01/2021") foundB1 = true;
+				if (row == 1 && col == 4 && text == "100") foundD1 = true;
+			}
+
+			Check(foundA1,
+				"A1 (serial 45892, numFmtId 14 incorporato) importato come data 23/08/2025");
+			Check(foundB1,
+				"B1 (serial 44197, numFmtId 165 personalizzato) importato come data 01/01/2021");
+			Check(foundD1, "D1 (100, nessuno stile data) resta un numero normale, non una data");
+		}
+	}
+
 	// Esportazione (ASCD -> XLSX): scrive un documento con un numero,
 	// una stringa e una formula, poi rilegge il file XLSX prodotto con
 	// lo stesso translator (round-trip completo) per verificare che i
