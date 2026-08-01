@@ -281,9 +281,42 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	int32 alignCount = 0;
-	if (dest->Write(&alignCount, sizeof(alignCount)) != (ssize_t)sizeof(alignCount))
-		return B_IO_ERROR;
+	// Sezione allineamento di cella non predefinito, in coda (Fase 10,
+	// vedi ui/src/AscdIO.cpp): a differenza della sezione bordi ancora
+	// vuota sotto, questo translator estrae davvero l'allineamento
+	// orizzontale dal file XLSX originale (Fase 12, <alignment
+	// horizontal="..."/> in ParseStyles, applicato a CellStyle::
+	// fAlignment durante ParseSheet) -- va quindi scritta con i valori
+	// reali. Un solo byte per cella, nessuna risoluzione necessaria (a
+	// differenza del font sopra, CellStyle::fAlignment e' gia' il
+	// valore finale, non un indice).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, char> > toWrite;
+		CCellIterator alignIter(doc, NULL);
+		cell ac;
+		while (alignIter.NextExisting(ac))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(ac, cs);
+			if (cs.fAlignment != defaultStyle.fAlignment)
+				toWrite.push_back(std::make_pair(ac, cs.fAlignment));
+		}
+
+		int32 alignCount = (int32)toWrite.size();
+		if (dest->Write(&alignCount, sizeof(alignCount)) != (ssize_t)sizeof(alignCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < alignCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			int8 alignment = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&alignment, sizeof(alignment)) != (ssize_t)sizeof(alignment))
+				return B_IO_ERROR;
+		}
+	}
 
 	int32 borderCount = 0;
 	if (dest->Write(&borderCount, sizeof(borderCount)) != (ssize_t)sizeof(borderCount))
@@ -833,6 +866,8 @@ struct ResolvedStyle {
 	int format; // valore gia' pronto per CellStyle::fFormat
 	bool hasFontStyle; // true solo se grassetto e/o corsivo (il Regular predefinito non serve applicarlo)
 	int fontID; // indice gia' risolto in gFontSizeTable, pronto per CellStyle::fFont
+	bool hasAlignment; // true solo se diverso da eAlignGeneral (il predefinito non serve applicarlo)
+	char alignment; // EAlignment, pronto per CellStyle::fAlignment
 };
 
 enum StylesSection { kStylesNone, kStylesNumFmts, kStylesFills, kStylesFonts, kStylesCellXfs };
@@ -842,7 +877,23 @@ struct XfInfo {
 	int fontId;
 	int fillId;
 	int numFmtId;
+	char alignment; // EAlignment, eAlignGeneral se <alignment> assente
 };
+
+// "general"/assente -> eAlignGeneral (nessuna preferenza esplicita,
+// il ripiego predefinito di CellStyle). "fill"/"justify" mappati
+// sull'equivalente piu' vicino gia' supportato da CellStyle::
+// fAlignment; gli altri valori ECMA-376 (es. "centerContinuous",
+// "distributed") non hanno un corrispondente e restano General.
+static char ResolveHorizontalAlignment(const char* value)
+{
+	if (strcmp(value, "left") == 0) return eAlignLeft;
+	if (strcmp(value, "center") == 0) return eAlignCenter;
+	if (strcmp(value, "right") == 0) return eAlignRight;
+	if (strcmp(value, "fill") == 0) return eAlignFill;
+	if (strcmp(value, "justify") == 0) return eAlignJustify;
+	return eAlignGeneral;
+}
 
 struct StylesContext {
 	const XlsxTheme* theme;
@@ -1072,6 +1123,7 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			xf.fontId = 0;
 			xf.fillId = 0;
 			xf.numFmtId = 0;
+			xf.alignment = eAlignGeneral;
 			for (int i = 0; atts[i]; i += 2)
 			{
 				if (strcmp(atts[i], "fontId") == 0)
@@ -1082,6 +1134,17 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 					xf.numFmtId = atoi(atts[i + 1]);
 			}
 			ctx->cellXfs.push_back(xf);
+		}
+		// <alignment horizontal="center"/> e' un figlio di <xf>, non un
+		// suo attributo: arriva in un evento separato subito dopo lo
+		// start di <xf> (mai prima, ECMA-376 lo mette sempre come
+		// ultimo figlio), quindi si scrive sempre sull'ultimo elemento
+		// appena aggiunto a cellXfs.
+		else if (strcmp(name, "alignment") == 0 && !ctx->cellXfs.empty())
+		{
+			for (int i = 0; atts[i]; i += 2)
+				if (strcmp(atts[i], "horizontal") == 0)
+					ctx->cellXfs.back().alignment = ResolveHorizontalAlignment(atts[i + 1]);
 		}
 	}
 }
@@ -1172,6 +1235,10 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 				size = ctx.fontSize[fontId];
 			rs.fontID = (int)gFontSizeTable.GetFontID(defaultFamily, styleStr, size);
 		}
+
+		rs.alignment = ctx.cellXfs[i].alignment;
+		rs.hasAlignment = rs.alignment != eAlignGeneral;
+
 		(*out)[i] = rs;
 	}
 }
@@ -1309,7 +1376,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				&& (size_t)styleIndex < ctx->styles->size())
 			{
 				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
-				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle)
+				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment)
 				{
 					for (int col = min; col <= clampedMax; col++)
 					{
@@ -1319,6 +1386,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 						if (rs.hasFg) cs.fHighColor = rs.fg;
 						if (rs.hasFormat) cs.fFormat = rs.format;
 						if (rs.hasFontStyle) cs.fFont = rs.fontID;
+						if (rs.hasAlignment) cs.fAlignment = rs.alignment;
 						ctx->doc->SetColumnStyle(col, cs);
 					}
 				}
@@ -1392,7 +1460,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 			&& (size_t)ctx->cellStyleIndex < ctx->styles->size())
 		{
 			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
-			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle)
+			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment)
 			{
 				CellStyle cs;
 				ctx->doc->GetCellStyle(loc, cs);
@@ -1400,6 +1468,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 				if (rs.hasFg) cs.fHighColor = rs.fg;
 				if (rs.hasFormat) cs.fFormat = rs.format;
 				if (rs.hasFontStyle) cs.fFont = rs.fontID;
+				if (rs.hasAlignment) cs.fAlignment = rs.alignment;
 				ctx->doc->SetCellStyle(loc, cs);
 			}
 		}

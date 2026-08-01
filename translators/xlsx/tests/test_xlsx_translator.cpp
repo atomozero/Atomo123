@@ -35,6 +35,7 @@
 #include "Container.h"
 #include "CellIterator.h"
 #include "CellParser.h"
+#include "CellStyle.h"
 
 static int gFailures = 0;
 
@@ -687,6 +688,117 @@ int main()
 			Check(!foundB1Bold && foundB1Italic, "B1 (<i/>) importato come corsivo, non grassetto");
 			Check(foundC1Bold && foundC1Italic, "C1 (<b/><i/>) importato come grassetto E corsivo");
 			Check(foundC1Size == 16.0f, "C1 usa la dimensione esplicita del file (16)");
+		}
+	}
+
+	// Allineamento orizzontale (Fase 12): tests/sample_align.xlsx ha
+	// cinque celle -- A1 centrato, B1 a destra, C1 a sinistra
+	// (esplicito, per verificare che venga comunque letto e non
+	// scambiato per "nessuno stile" come General anche se il risultato
+	// visivo coincide col predefinito), D1 giustificato, E1 senza
+	// stile esplicito (General, non nella sezione).
+	{
+		BFile alignFile("tests/sample_align.xlsx", B_READ_ONLY);
+		Check(alignFile.InitCheck() == B_OK, "apertura di tests/sample_align.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&alignFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_align.xlsx");
+
+		alignFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&alignFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_align.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_align.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 5, "l'ASCD contiene le 5 celle di sample_align.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				pos += len;
+			}
+
+			if (pos + 4 <= ascdLen)
+			{
+				int32 chartCount;
+				memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+				pos += chartCount * (2 * 4 + 4 * 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				pos += colWidthCount * (2 + 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+				pos += cellColorCount * (2 + 2 + 8);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 columnColorCount;
+				memcpy(&columnColorCount, ascdData + pos, 4); pos += 4;
+				pos += columnColorCount * (2 + 8);
+			}
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+4); } // altezze riga
+			if (pos + 8 <= ascdLen) pos += 8; // Blocca riquadri
+			if (pos + 4 <= ascdLen) // fontCount, nessuno stile grassetto/corsivo in questo file
+			{
+				int32 fontCount;
+				memcpy(&fontCount, ascdData + pos, 4); pos += 4;
+				pos += fontCount * (2 + 2 + (int32)sizeof(font_family) + (int32)sizeof(font_style) + 4);
+			}
+
+			bool haveAlignCount = false;
+			int32 alignCount = 0;
+			if (pos + 4 <= ascdLen)
+			{
+				memcpy(&alignCount, ascdData + pos, 4); pos += 4;
+				haveAlignCount = true;
+			}
+			Check(haveAlignCount && alignCount == 4,
+				"sezione allineamento: 4 celle con stile esplicito (A1/B1/C1/D1, non E1)");
+
+			int foundA1 = -1, foundB1 = -1, foundC1 = -1, foundD1 = -1;
+			for (int32 i = 0; i < alignCount && pos + 5 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int8 alignment;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&alignment, ascdData + pos, 1); pos += 1;
+
+				if (row == 1 && col == 1) foundA1 = alignment;
+				if (row == 1 && col == 2) foundB1 = alignment;
+				if (row == 1 && col == 3) foundC1 = alignment;
+				if (row == 1 && col == 4) foundD1 = alignment;
+			}
+
+			Check(foundA1 == eAlignCenter, "A1 (horizontal=\"center\") importato come centrato");
+			Check(foundB1 == eAlignRight, "B1 (horizontal=\"right\") importato come allineato a destra");
+			Check(foundC1 == eAlignLeft,
+				"C1 (horizontal=\"left\" esplicito) importato come sinistra, non scambiato per General");
+			Check(foundD1 == eAlignJustify, "D1 (horizontal=\"justify\") importato come giustificato");
 		}
 	}
 
