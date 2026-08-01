@@ -2893,20 +2893,33 @@ non hanno invece alcuna infrastruttura, nemmeno nel Sum-It storico:
 richiedono progettazione originale come già successo per i bordi in
 Fase 11.
 
-- [ ] **Formati numero**: leggere `numFmtId` per cella (attributo
-      `s=` dell'`<xf>` in `cellXfs`, non ancora catturato da
-      `ParseStyles`/`StylesContext::cellXfs`, oggi solo
-      `fontId`/`fillId`) e tradurre il `formatCode` associato nel
-      formato più vicino tra quelli che `CFormatter` sa già
-      rappresentare (`eCurrency`/`ePercent`/`eFixed` + cifre decimali
-      + separatore delle migliaia, `CellStyle::fFormat`). Limite
-      onesto dell'engine, verificato leggendo `Formatter.template.cpp`/
-      `Formatter.number.cpp`: niente simbolo di valuta personalizzato
-      per formato, niente colore condizionale per i negativi (es.
-      `0.00;[Red]-0.00`, presente nel file reale) — quella parte del
-      formato viene scartata in questo primo giro, non è un
-      regressione ma un'approssimazione dichiarata. Rivalutare in una
-      fase successiva se serve fedeltà completa.
+- [x] **Formati numero**: legge `numFmtId` per cella (attributo `s=`
+      dell'`<xf>` in `cellXfs`, aggiunto a `StylesContext::cellXfs`
+      insieme a `fontId`/`fillId`) e traduce il `formatCode`
+      associato (esplicito in `<numFmts>` o incorporato da una
+      tabella dei più comuni, es. 44/9) riusando direttamente
+      `CFormatter`/`CFormatter::FormatID()` invece di duplicarne
+      l'euristica — il `formatCode` XLSX (già decodificato dalle
+      entità XML) è quasi sempre un template compatibile così com'è.
+      Limite onesto dell'engine, verificato leggendo
+      `Formatter.template.cpp`/`Formatter.number.cpp`: niente simbolo
+      di valuta personalizzato per formato, niente colore condizionale
+      per i negativi (es. `0.00;[Red]-0.00`, presente nel file reale)
+      — quella parte del formato viene scartata, non una regressione
+      ma un'approssimazione dichiarata. I formati data/ora sono
+      riconosciuti (euristica sulle lettere y/m/d/h/s fuori da apici e
+      parentesi quadre — occhio a falsi positivi come la "d" di
+      `[Red]`, bug reale scoperto scrivendo il test) ed esclusi
+      esplicitamente: rimandati al punto dedicato più sotto.
+      **Scoperta per strada**: `CellStyle::fFormat` non era mai stato
+      persistito nel formato nativo, da nessun punto del codice
+      (nemmeno dal menu Formato già esistente prima di questa fase) —
+      aggiunta la sezione mancante in `ui/src/AscdIO.cpp` e nella
+      copia duplicata di `XlsxTranslator.cpp`, sullo stesso modello di
+      font/allineamento/bordi (Fase 10/11). Test:
+      `translators/xlsx/tests/test_xlsx_translator.cpp` (nuova
+      fixture `sample_numfmt.xlsx`, formati incorporati e
+      personalizzati) e `ui/tests/test_persistence.cpp` (round-trip).
 - [ ] **Grassetto/corsivo**: leggere `<b/>`/`<i/>` dentro ogni
       `<font>` di `styles.xml` (oggi `StylesContext` cattura solo il
       colore del font) e scegliere lo stile del font già supportato
