@@ -337,6 +337,22 @@ test-multisheet: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_multisheet
 
+# Menu File > "Apri recenti": elenco degli ultimi 5 file aperti,
+# persistito in gPrefs (vedi il commento in test_recent_files.cpp sul
+# perche' questo test, a differenza degli altri test UI, imposta un
+# vero gPrefs invece di lasciarlo NULL).
+test-recent-files: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_recent_files.cpp -o tests/test_recent_files.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_recent_files tests/test_recent_files.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_recent_files
+
 # Test dei riferimenti fra fogli (Fase 9, "NomeFoglio!Cella") su una
 # vera MainWindow aperta con MainWindow::OpenFile: verifica che
 # AttachSheetResolver/RecalculateWorkbook (chiamati da OpenFile) diano
@@ -504,6 +520,7 @@ clean:
 		tests/test_resize tests/test_resize.o \
 		tests/test_ascd_book tests/test_ascd_book.o tests/AscdIO_book.o \
 		tests/test_multisheet tests/test_multisheet.o \
+		tests/test_recent_files tests/test_recent_files.o \
 		tests/test_xsheet_formulas tests/test_xsheet_formulas.o /tmp/test_xsheet_formulas.ascd \
 		tests/test_sheet_tabs tests/test_sheet_tabs.o \
 		tests/test_multiwindow tests/test_multiwindow.o tests/App_test.o \

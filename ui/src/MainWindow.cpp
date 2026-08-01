@@ -38,6 +38,7 @@
 #include <Button.h>
 #include <Clipboard.h>
 #include <Directory.h>
+#include <Entry.h>
 #include <File.h>
 #include <FilePanel.h>
 #include <GroupView.h>
@@ -64,6 +65,7 @@
 
 static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
+static const uint32 kMsgOpenRecent = 'aorc';
 static const uint32 kMsgSaveAs = 'asva';
 static const uint32 kMsgFormulaCommit = 'afml';
 static const uint32 kMsgUndo = 'aund';
@@ -281,6 +283,7 @@ MainWindow::MainWindow()
 	fSheetView = NULL;
 	fSheetTabView = NULL;
 	fFreezeMenuItem = NULL; // stesso motivo di fSheetView/fSheetTabView sopra
+	fRecentMenu = NULL; // stesso motivo, azzerato prima di essere creato piu' sotto
 	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
 	ResetWorkbook("Foglio1");
 	fModified = false;
@@ -289,6 +292,9 @@ MainWindow::MainWindow()
 	BMenu* fileMenu = new BMenu("File");
 	fileMenu->AddItem(new BMenuItem("Nuovo", new BMessage(kMsgNew), 'N'));
 	fileMenu->AddItem(new BMenuItem("Apri" B_UTF8_ELLIPSIS, new BMessage(kMsgOpen), 'O'));
+	fRecentMenu = new BMenu("Apri recenti");
+	fileMenu->AddItem(new BMenuItem(fRecentMenu));
+	RebuildRecentMenu(); // popolato subito, non solo alla prima apertura del menu
 	fileMenu->AddItem(new BMenuItem("Salva con nome" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgSaveAs), 'S'));
 	fileMenu->AddSeparatorItem();
@@ -752,6 +758,96 @@ void MainWindow::RebuildSheetTabs()
 	fSheetTabView->SetSheets(names, fActiveSheetIndex);
 }
 
+std::vector<BString> MainWindow::LoadRecentFiles()
+{
+	std::vector<BString> result;
+	if (!gPrefs) // vedi il commento sui test senza una vera App::App() altrove in questo file
+		return result;
+
+	for (int i = 0; i < kMaxRecentFiles; i++)
+	{
+		char key[16];
+		sprintf(key, "recentFile%d", i);
+		BString path(gPrefs->GetPrefString(key, ""));
+		if (path.Length() > 0)
+			result.push_back(path);
+	}
+	return result;
+}
+
+void MainWindow::SaveRecentFiles(const std::vector<BString>& paths)
+{
+	if (!gPrefs)
+		return;
+
+	for (int i = 0; i < kMaxRecentFiles; i++)
+	{
+		char key[16];
+		sprintf(key, "recentFile%d", i);
+		gPrefs->SetPrefString(key, (size_t)i < paths.size() ? paths[i].String() : "");
+	}
+	try { gPrefs->WritePrefFile(); } catch (...) { /* preferenze non salvabili: non bloccante */ }
+}
+
+// Aggiunge/sposta "ref" in cima all'elenco (piu' recente per primo),
+// senza duplicati (confronto sul percorso completo, non sul solo nome:
+// due file con lo stesso nome in cartelle diverse restano voci
+// separate) e troncato a kMaxRecentFiles.
+void MainWindow::AddToRecentFiles(const entry_ref& ref)
+{
+	BPath path;
+	if (BEntry(&ref).GetPath(&path) != B_OK)
+		return;
+
+	std::vector<BString> recent = LoadRecentFiles();
+	for (size_t i = 0; i < recent.size(); i++)
+	{
+		if (recent[i] == path.Path())
+		{
+			recent.erase(recent.begin() + i);
+			break;
+		}
+	}
+	recent.insert(recent.begin(), path.Path());
+	if (recent.size() > (size_t)kMaxRecentFiles)
+		recent.resize(kMaxRecentFiles);
+
+	SaveRecentFiles(recent);
+	RebuildRecentMenu();
+}
+
+void MainWindow::RebuildRecentMenu()
+{
+	if (!fRecentMenu)
+		return;
+
+	while (BMenuItem* item = fRecentMenu->RemoveItem((int32)0))
+		delete item;
+
+	std::vector<BString> recent = LoadRecentFiles();
+	if (recent.empty())
+	{
+		BMenuItem* none = new BMenuItem("(nessuno)", NULL);
+		none->SetEnabled(false);
+		fRecentMenu->AddItem(none);
+		return;
+	}
+
+	for (size_t i = 0; i < recent.size(); i++)
+	{
+		BPath path(recent[i].String());
+		BMessage* msg = new BMessage(kMsgOpenRecent);
+		msg->AddString("path", recent[i]);
+		fRecentMenu->AddItem(new BMenuItem(path.Leaf(), msg));
+	}
+}
+
+void MainWindow::MenusBeginning()
+{
+	RebuildRecentMenu();
+	BWindow::MenusBeginning();
+}
+
 void MainWindow::NewDocument()
 {
 	if (!ConfirmDiscardChanges())
@@ -900,6 +996,8 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fDocumentName = ref.name;
 	fModified = false;
 	UpdateTitle();
+
+	AddToRecentFiles(ref);
 }
 
 void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
@@ -2334,6 +2432,39 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgOpen:
 			fOpenPanel->Show();
 			break;
+
+		case kMsgOpenRecent:
+		{
+			BString path;
+			if (message->FindString("path", &path) != B_OK)
+				break;
+
+			BEntry entry(path.String());
+			entry_ref ref;
+			if (entry.InitCheck() != B_OK || !entry.Exists() || entry.GetRef(&ref) != B_OK)
+			{
+				// Voce non piu' valida (file spostato/cancellato): tolta
+				// dall'elenco invece di restare li' a fallire ogni volta.
+				std::vector<BString> recent = LoadRecentFiles();
+				for (size_t i = 0; i < recent.size(); i++)
+				{
+					if (recent[i] == path)
+					{
+						recent.erase(recent.begin() + i);
+						break;
+					}
+				}
+				SaveRecentFiles(recent);
+				RebuildRecentMenu();
+
+				BAlert* alert = new BAlert("Errore",
+					"Il file non e' piu' disponibile nella posizione registrata.", "OK");
+				alert->Go();
+				break;
+			}
+			OpenFile(ref);
+			break;
+		}
 
 		case kMsgSaveAs:
 			fSavePanel->Show();

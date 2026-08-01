@@ -23,6 +23,7 @@
 #include "Container.h"
 
 class BFilePanel;
+class BMenu;
 class BMenuItem;
 class BTextControl;
 class BStringView;
@@ -49,6 +50,14 @@ public:
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
+	// BWindow la chiama subito prima di mostrare/tracciare un menu
+	// qualunque della finestra: punto comodo per ricostruire "Apri
+	// recenti" con l'elenco aggiornato al momento, senza dover
+	// notificare le altre finestre aperte quando una di esse apre un
+	// file (l'app supporta piu' finestre, vedi il commento su fSheets
+	// sotto) -- ogni finestra legge lo stato condiviso al momento
+	// giusto invece di tenerne una copia da tenere sincronizzata.
+	virtual void MenusBeginning();
 
 	void OpenFile(const entry_ref& ref);
 	void SelectionChanged(cell c);
@@ -196,8 +205,20 @@ public:
 	void HandleGoToRequest(const char* rangeText);
 
 private:
+	// Elenco degli ultimi file aperti (menu File > "Apri recenti"),
+	// persistito in gPrefs come 5 chiavi "recentFileN" (N=0..4, la piu'
+	// recente per prima) -- CPreferences non ha un tipo lista, solo
+	// stringa/intero/double (vedi Preferences.h), da qui lo slot fisso
+	// invece di una singola stringa con separatore.
+	static const int kMaxRecentFiles = 5;
+	static std::vector<BString> LoadRecentFiles();
+	static void SaveRecentFiles(const std::vector<BString>& paths);
+	void AddToRecentFiles(const entry_ref& ref);
+	void RebuildRecentMenu();
+
 	SheetView* fSheetView;
 	BMenuItem* fFreezeMenuItem;
+	BMenu* fRecentMenu;
 	BTextControl* fFormulaBar;
 	BStringView* fCellLabel;
 	CContainer* fDoc;
