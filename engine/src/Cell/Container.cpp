@@ -630,14 +630,24 @@ bool CContainer::RefersToNamedRange(const char *inName)
 range CContainer::ResolveName(const char *name)
 {
 	range result;
-	
+
 	if (fNames)
 		result = (*fNames)[name];
 	else
 		THROW((errKeyNotFound));
-	
+
 	return result;
 } /* CContainer::ResolveName */
+
+CNameTable *CContainer::GetOrCreateNameTable()
+{
+	if (!fNames)
+	{
+		fNames = new CNameTable;
+		fNewNames = true;
+	}
+	return fNames;
+} /* CContainer::GetOrCreateNameTable */
 
 long CContainer::CountCells(range *inRange)
 {

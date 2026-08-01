@@ -874,6 +874,19 @@ bool CFormula::IsConstant() const
 			case valRange:return false;
 			case valXRef:	return false;
 			case valXRange:	return false;
+			// Fase 7: un nome, come un riferimento a cella, non e'
+			// mai davvero "costante" -- il suo valore puo' cambiare
+			// ridefinendolo (finestra Intervalli con nome), quindi la
+			// formula deve restare viva (Calculate() a ogni
+			// ricalcolo) invece di "congelarsi" al valore risolto la
+			// prima volta che viene analizzata. Bug preesistente ma
+			// mai raggiungibile prima di questo lavoro: valName
+			// veniva emesso dal parser solo se GetOwner()->
+			// IsNamedRange() era vero, sempre falso nella UI reale
+			// (CCellView/EngineViewStub, mai collegata) -- quindi
+			// nessuna formula reale conteneva mai un valName da
+			// verificare qui.
+			case valName:	return false;
 			case valNum:
 			case valPerc:
 				indx += sizeof(double) / kPFWordSize;
@@ -885,13 +898,12 @@ bool CFormula::IsConstant() const
 				indx++;
 				break;
 			case valStr:
-			case valName:
 				l = 1 + strlen((char *)(fString + indx));
 				if (l & kPFAlignBits)
 					l = (l & ~kPFAlignBits) + kPFWordSize;
 				indx += l / kPFWordSize;
 				break;
-				
+
 			default:
 				// there was a warning about not all enum values handled in
 				// switch statement.

@@ -197,6 +197,19 @@ public:
 	cell CalculatingCell() const		{ return fCalculatingCell; }
 	CNameTable *GetNameTable() const	{ return fNames; }
 
+	// Fase 7: crea la tabella dei nomi (vuota) se questo documento non
+	// ne ha ancora una -- GetNameTable() da sola resta NULL finche'
+	// nessuno definisce il primo intervallo con nome (nessun documento
+	// nuovo/appena aperto ne alloca una a priori). Chiamata dalla UI
+	// (MainWindow) prima di aggiungere/modificare una voce nella
+	// mappa che GetNameTable() restituisce -- CNameTable eredita
+	// pubblicamente da std::map<CName,range>, quindi non serve
+	// nessun metodo dedicato per leggere/scrivere le singole voci.
+	// fNewNames=true segna che e' CContainer stesso a possederla (la
+	// libera nel proprio distruttore), a differenza di una passata
+	// esplicitamente al costruttore.
+	CNameTable *GetOrCreateNameTable();
+
 	range ResolveName(const char *name);
 
 	long CountCells(range *inRange = NULL);
