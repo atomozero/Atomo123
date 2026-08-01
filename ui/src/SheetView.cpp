@@ -31,6 +31,7 @@
 #include "CellStyle.h"
 #include "Constants.h"
 #include "Formatter.h"
+#include "FontMetrics.h"
 
 #include "AscdIO.h"
 
@@ -1205,13 +1206,45 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				SetHighColor(cs.fHighColor);
 				SetLowColor(cs.fLowColor);
 
+				// Grassetto/Corsivo (Fase 7): CellStyle::fFont e' un
+				// indice in gFontSizeTable (mai un flag diretto), quindi
+				// va applicato alla vista prima di disegnare -- e prima
+				// di misurare la stringa qui sotto, dato che Allinea al
+				// centro/a destra ne ha bisogno per calcolare la
+				// posizione e un font diverso cambia la larghezza del
+				// testo.
+				gFontSizeTable.SetFontID(this, cs.fFont);
+
 				BRect r = CellRect(c).OffsetByCopy(xOrigin, yOrigin);
-				BPoint pos(r.left + 3, r.bottom - 5);
+
+				// Allineamento (Fase 7): il generico (eAlignGeneral, il
+				// valore predefinito di CellStyle su ogni cella mai
+				// toccata dal menu Formato) resta sempre a sinistra,
+				// comportamento invariato -- solo le celle che l'utente
+				// ha esplicitamente allineato cambiano posizione.
+				float textX = r.left + 3;
+				if (cs.fAlignment == eAlignCenter || cs.fAlignment == eAlignRight)
+				{
+					float textWidth = StringWidth(text);
+					if (cs.fAlignment == eAlignCenter)
+						textX = r.left + (r.Width() - textWidth) / 2.0f;
+					else
+						textX = r.right - textWidth - 3;
+				}
+
+				BPoint pos(textX, r.bottom - 5);
 				BRegion textClip(r);
 				ConstrainClippingRegion(&textClip);
 				DrawString(text, pos);
 			}
 		}
+
+		// Ripristina il font predefinito: senza, l'ULTIMO font applicato
+		// sopra (magari in grassetto/corsivo per l'ultima cella disegnata)
+		// resterebbe attivo per qualunque altra cosa disegnata dopo in
+		// Draw() -- le intestazioni di riga/colonna, che usano DrawString
+		// a loro volta ma non devono mai ereditare il font di una cella.
+		SetFont(be_plain_font);
 	}
 
 	ConstrainClippingRegion(NULL);

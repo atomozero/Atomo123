@@ -13,6 +13,7 @@
 
 #include <vector>
 
+#include <GraphicsDefs.h>
 #include <String.h>
 #include <Window.h>
 
@@ -33,6 +34,7 @@ class PivotWindow;
 class NameWindow;
 class PasteSpecialWindow;
 class GoToWindow;
+class ColorWindow;
 
 // MainWindow implementa ISheetResolver (Container.h, Fase 9) perche'
 // e' lei a possedere fSheets, l'unico elenco di "nome foglio -> CContainer*"
@@ -62,6 +64,21 @@ public:
 	void CopySelection(bool cut);
 	void PasteSelection();
 	void SetCellFormat(int32 format);
+
+	// Pubblici per lo stesso motivo di SetCellFormat sopra -- vedi
+	// tests/test_format.cpp. Grassetto/Corsivo si basano sullo stato
+	// della sola cella attiva (fSheetView->Selection(), come Excel: il
+	// pulsante "risulta premuto" o no in base a quella) ma si
+	// applicano a tutto SelectionRange(), invertendo lo stato letto
+	// dall'attiva -- se non e' in grassetto, l'intera selezione lo
+	// diventa, e viceversa. SetAlignment/SetTextColor/SetBackgroundColor
+	// si applicano sempre a tutto SelectionRange() direttamente, stesso
+	// principio di SetCellFormat.
+	void ToggleBold();
+	void ToggleItalic();
+	void SetAlignment(char alignment);
+	void SetTextColor(rgb_color color);
+	void SetBackgroundColor(rgb_color color);
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che
@@ -154,6 +171,7 @@ private:
 	NameWindow* fNameWindow;
 	PasteSpecialWindow* fPasteSpecialWindow;
 	GoToWindow* fGoToWindow;
+	ColorWindow* fColorWindow;
 	std::vector<ChartObject> fCharts;
 
 	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
@@ -218,6 +236,7 @@ private:
 	void RefreshNameWindow();
 	void ShowPasteSpecialWindow();
 	void ShowGoToWindow();
+	void ShowColorWindow(bool background);
 };
 
 #endif

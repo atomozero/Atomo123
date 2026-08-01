@@ -14,12 +14,15 @@
 #include "NameWindow.h"
 #include "PasteSpecialWindow.h"
 #include "GoToWindow.h"
+#include "ColorWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
 #include "RangeRef.h"
 #include "IconCatalog.h"
 #include "NameTable.h"
 #include "Utils.h"
+#include "FontMetrics.h"
+#include "CellStyle.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -85,6 +88,11 @@ static const uint32 kMsgShowNames = 'shnm';
 static const uint32 kMsgShowPasteSpecial = 'shps';
 static const uint32 kMsgShowGoTo = 'shgt';
 static const uint32 kMsgToggleFreeze = 'frzp';
+static const uint32 kMsgToggleBold = 'tbld';
+static const uint32 kMsgToggleItalic = 'tita';
+static const uint32 kMsgSetAlignment = 'algn';
+static const uint32 kMsgShowTextColor = 'shtc';
+static const uint32 kMsgShowBgColor = 'shbc';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -317,6 +325,28 @@ MainWindow::MainWindow()
 	BMessage* percentMsg = new BMessage(kMsgSetFormat);
 	percentMsg->AddInt32("format", ePercent);
 	formatMenu->AddItem(new BMenuItem("Percentuale", percentMsg));
+	formatMenu->AddSeparatorItem();
+	// Grassetto/Corsivo: agiscono su CellStyle::fFont (un indice in
+	// gFontSizeTable, mai un flag a parte -- vedi MainWindow::ToggleBold/
+	// ToggleItalic). Allinea: CellStyle::fAlignment, letto da
+	// SheetView::Draw per posizionare il testo dentro la cella.
+	formatMenu->AddItem(new BMenuItem("Grassetto", new BMessage(kMsgToggleBold), 'B'));
+	formatMenu->AddItem(new BMenuItem("Corsivo", new BMessage(kMsgToggleItalic), 'I'));
+	formatMenu->AddSeparatorItem();
+	BMessage* alignLeftMsg = new BMessage(kMsgSetAlignment);
+	alignLeftMsg->AddInt32("alignment", eAlignLeft);
+	formatMenu->AddItem(new BMenuItem("Allinea a sinistra", alignLeftMsg));
+	BMessage* alignCenterMsg = new BMessage(kMsgSetAlignment);
+	alignCenterMsg->AddInt32("alignment", eAlignCenter);
+	formatMenu->AddItem(new BMenuItem("Allinea al centro", alignCenterMsg));
+	BMessage* alignRightMsg = new BMessage(kMsgSetAlignment);
+	alignRightMsg->AddInt32("alignment", eAlignRight);
+	formatMenu->AddItem(new BMenuItem("Allinea a destra", alignRightMsg));
+	formatMenu->AddSeparatorItem();
+	formatMenu->AddItem(new BMenuItem("Colore testo" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowTextColor)));
+	formatMenu->AddItem(new BMenuItem("Colore sfondo" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowBgColor)));
 	menuBar->AddItem(formatMenu);
 
 	// Riempi in basso/a destra: copia la prima riga/colonna
@@ -438,6 +468,7 @@ MainWindow::MainWindow()
 	fNameWindow = NULL;
 	fPasteSpecialWindow = NULL;
 	fGoToWindow = NULL;
+	fColorWindow = NULL;
 
 	UpdateTitle();
 }
@@ -480,6 +511,11 @@ MainWindow::~MainWindow()
 	{
 		fGoToWindow->Lock();
 		fGoToWindow->Quit();
+	}
+	if (fColorWindow)
+	{
+		fColorWindow->Lock();
+		fColorWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -1270,6 +1306,202 @@ void MainWindow::ShowGoToWindow()
 	fGoToWindow->Activate();
 }
 
+void MainWindow::ShowColorWindow(bool background)
+{
+	if (!fColorWindow)
+		fColorWindow = new ColorWindow(BMessenger(this));
+
+	CellStyle cs;
+	if (fDoc)
+		fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	fColorWindow->SetMode(background, background ? cs.fLowColor : cs.fHighColor);
+
+	if (fColorWindow->IsHidden())
+		fColorWindow->Show();
+	fColorWindow->Activate();
+}
+
+// Legge famiglia/stile/dimensione/colore di un font registrato in
+// gFontSizeTable, con un ripiego sicuro se l'indice non e' (ancora)
+// valido -- CContainer::CContainer registra un font predefinito in
+// gFontSizeTable SOLO se costruito con un CCellView non nullo
+// (inPane), ma la UI moderna passa sempre NULL (CCellView e' uno
+// stub permanente, vedi EngineViewStub.h -- stessa classe di bug gia'
+// trovata e corretta per le formule fra fogli e gli intervalli con
+// nome in questa stessa fase): un documento nuovo, mai passato da
+// un'importazione XLSX (che registra font propri in Excel.pass1.cpp),
+// ha quindi gFontSizeTable completamente vuota. CFontSizeTable::
+// GetFontInfo non controlla i limiti (a differenza di SetFontID):
+// chiamarla con un indice fuori dai limiti e' un accesso non valido
+// alla memoria (bug scoperto scrivendo tests/test_format.cpp: il
+// primo tentativo, senza questo controllo, restava bloccato senza
+// mai stampare nulla). Il ripiego usa il font di sistema, lo stesso
+// aspetto che una cella "senza font personalizzato" ha gia' oggi.
+static void GetCellFontInfo(int fontID, font_family* family, font_style* style,
+	float* size, rgb_color* color)
+{
+	if (fontID >= 0 && (unsigned long)fontID < gFontSizeTable.Count())
+	{
+		gFontSizeTable.GetFontInfo(fontID, family, style, size, color);
+		return;
+	}
+
+	be_plain_font->GetFamilyAndStyle(family, style);
+	*size = be_plain_font->Size();
+	if (color)
+	{
+		color->red = color->green = color->blue = 0;
+		color->alpha = 255;
+	}
+}
+
+// Applica un nuovo font (famiglia/stile/dimensione/colore) a tutte le
+// celle di SelectionRange() -- CellStyle::fFont e' un indice in
+// gFontSizeTable (mai un colore/stile diretto), quindi si registra
+// prima l'eventuale nuova combinazione (GetFontID deduplica, non crea
+// un doppione se gia' esiste) e poi si scrive quell'indice nella
+// mappa di stile del documento, stesso principio di SetCellFormat.
+static void ApplyFontToRange(CContainer* doc, range sel,
+	const char* family, const char* style, float size, rgb_color color)
+{
+	int newFontID = (int)gFontSizeTable.GetFontID(family, style, size, color);
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			doc->GetCellStyle(c, cs);
+			cs.fFont = newFontID;
+			doc->SetCellStyle(c, cs);
+		}
+}
+
+void MainWindow::ToggleBold()
+{
+	if (!fDoc)
+		return;
+
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	font_family family;
+	font_style style;
+	float size;
+	rgb_color color;
+	GetCellFontInfo(cs.fFont, &family, &style, &size, &color);
+
+	// Lo stato di partenza (grassetto o no) si legge dalla sola cella
+	// attiva -- come il pulsante "risulta premuto" o no di Excel -- ma
+	// lo stato OPPOSTO si applica a tutto SelectionRange(): se
+	// l'attiva non e' in grassetto, l'intera selezione lo diventa, e
+	// viceversa.
+	BString styleStr(style);
+	bool wasBold = styleStr.IFindFirst("Bold") >= 0;
+	bool isItalic = styleStr.IFindFirst("Italic") >= 0;
+
+	char newStyle[64];
+	if (!wasBold && isItalic)
+		strlcpy(newStyle, "Bold Italic", sizeof(newStyle));
+	else if (!wasBold)
+		strlcpy(newStyle, "Bold", sizeof(newStyle));
+	else if (isItalic)
+		strlcpy(newStyle, "Italic", sizeof(newStyle));
+	else
+		strlcpy(newStyle, "Regular", sizeof(newStyle));
+
+	ApplyFontToRange(fDoc, fSheetView->SelectionRange(), family, newStyle, size, color);
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::ToggleItalic()
+{
+	if (!fDoc)
+		return;
+
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	font_family family;
+	font_style style;
+	float size;
+	rgb_color color;
+	GetCellFontInfo(cs.fFont, &family, &style, &size, &color);
+
+	BString styleStr(style);
+	bool isBold = styleStr.IFindFirst("Bold") >= 0;
+	bool wasItalic = styleStr.IFindFirst("Italic") >= 0;
+
+	char newStyle[64];
+	if (isBold && !wasItalic)
+		strlcpy(newStyle, "Bold Italic", sizeof(newStyle));
+	else if (!wasItalic)
+		strlcpy(newStyle, "Italic", sizeof(newStyle));
+	else if (isBold)
+		strlcpy(newStyle, "Bold", sizeof(newStyle));
+	else
+		strlcpy(newStyle, "Regular", sizeof(newStyle));
+
+	ApplyFontToRange(fDoc, fSheetView->SelectionRange(), family, newStyle, size, color);
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::SetAlignment(char alignment)
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fAlignment = alignment;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::SetTextColor(rgb_color color)
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fHighColor = color;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::SetBackgroundColor(rgb_color color)
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fLowColor = color;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::HandleGoToRequest(const char* rangeText)
 {
 	range r;
@@ -1949,6 +2181,47 @@ void MainWindow::MessageReceived(BMessage* message)
 			fSheetView->ToggleFreezePanes();
 			fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 			break;
+
+		case kMsgToggleBold:
+			ToggleBold();
+			break;
+
+		case kMsgToggleItalic:
+			ToggleItalic();
+			break;
+
+		case kMsgSetAlignment:
+		{
+			int32 alignment;
+			if (message->FindInt32("alignment", &alignment) == B_OK)
+				SetAlignment((char)alignment);
+			break;
+		}
+
+		case kMsgShowTextColor:
+			ShowColorWindow(false);
+			break;
+
+		case kMsgShowBgColor:
+			ShowColorWindow(true);
+			break;
+
+		case kMsgColorRequest:
+		{
+			rgb_color* color = NULL;
+			ssize_t size = 0;
+			bool background = false;
+			message->FindBool("background", &background);
+			if (message->FindData("color", B_RGB_COLOR_TYPE,
+					(const void**)&color, &size) == B_OK && color)
+			{
+				if (background)
+					SetBackgroundColor(*color);
+				else
+					SetTextColor(*color);
+			}
+			break;
+		}
 
 		case kMsgGoToRequest:
 		{
