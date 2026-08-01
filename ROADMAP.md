@@ -1558,6 +1558,78 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       Ripeti e Taglia/Copia/Incolla, per via del refactor
       dell'istantanea; verificato anche con esecuzioni ripetute).
 
+- [ ] **Intervalli con nome** (in corso — motore fatto, manca ancora
+      la finestra per definirli dalla UI): il motore ereditato da
+      Sum-It aveva già tutto l'occorrente (`CNameTable`,
+      `CContainer::ResolveName()`, il token `valName`), ma era
+      **irraggiungibile** dalla UI reale per lo stesso identico motivo
+      già scoperto e risolto in Fase 9 per i riferimenti fra fogli: il
+      riconoscimento di un nome in fase di parsing passava da
+      `CCellView::IsNamedRange()` (`Container.h`, letta tramite
+      `GetOwner()`/`fInView`), e `CCellView` nella UI moderna è uno
+      stub sempre-NULL (`EngineViewStub.h`, retaggio dell'interfaccia
+      grafica BeOS mai riscritta) — un nome definito non veniva quindi
+      **mai** riconosciuto in una formula, a prescindere da quanto
+      fosse popolata `CNameTable`.
+
+      Nuovo `CContainer::GetOrCreateNameTable()` (crea la tabella al
+      volo, la userà anche la futura finestra di definizione). Il
+      parser (`Factor()`, caso `IDENT`) non controlla più se il nome
+      esiste già prima di accettarlo: un identificatore che non
+      corrisponde a nessuna funzione nota diventa sempre un token
+      `valName` vivo — stessa filosofia già scelta per
+      `ParseSheetReference` in Fase 9, **mai rifiutare a tempo di
+      parsing**, perché un nome può benissimo essere definito *dopo*
+      che la formula che lo usa è già stata scritta (o al contrario,
+      ridefinito più tardi: la formula deve seguire, non congelarsi).
+      La risoluzione avviene sempre e solo a tempo di calcolo, in
+      `CFormula::Calculate` (`case valName`), tramite
+      `CContainer::ResolveName()`.
+
+      **Bug scoperto e corretto**: `CFormula::IsConstant()` non
+      considerava `valName` fra i token "non costanti" (a differenza
+      di `valCell`/`valRange`, già gestiti). Una formula come
+      "=Totale*2" veniva quindi giudicata costante da
+      `TryToParseString`, calcolata **una sola volta** in fase di
+      parsing e congelata come valore statico (`NewCell(loc, v,
+      NULL)`, puntatore a formula nullo — non più viva): ridefinire
+      "Totale" più tardi non aveva alcun effetto sulle celle che lo
+      usavano già. Bug preesistente nel codice storico ma sempre
+      rimasto invisibile finché il riconoscimento del nome restava
+      comunque bloccato più a monte da `IsNamedRange()`.
+
+      **Bug scoperto e corretto, non collegato al nome ma solo
+      smascherato scrivendone i test**: il generatore dei valori
+      sentinella NaN interni del motore (`Nan()`, usato per
+      `gNameNan`/`gRefNan`/tutti gli altri "non calcolabile") si
+      basava su una macro `__LITTLE_ENDIAN` che questo GCC/Haiku non
+      definisce mai — il ramo sbagliato di `__HI`/`__LO` scriveva il
+      pattern di bit nella metà sbagliata del `double`, producendo un
+      valore subnormale vicino a zero anziché un vero NaN;
+      `Value::IsNan()` (che chiama `std::isnan`) risultava quindi
+      sempre falso su qualunque sentinella del motore, non solo su
+      `gNameNan`. Corretto in `Utils.h`/`MyMath.h` con un controllo
+      portabile su `__BYTE_ORDER__` (commit a parte, non è un problema
+      specifico degli intervalli con nome).
+
+      Test dedicato `engine/tests/named_ranges_test.cpp` (nuovo target
+      `make test-names`, motore): definizione di un nome su una
+      cella, calcolo di una formula che lo usa, ricostruzione testuale
+      (`UnMangle` mostra "Totale", non "A1"), propagazione dopo
+      ridefinizione, risoluzione di un vero intervallo multi-cella con
+      `ResolveName()`, e un nome non ancora definito che calcola
+      `gNameNan` (NaN vero, formula viva) invece di restare un
+      identificatore testuale morto. Nessuna regressione nella suite
+      esistente del motore (`test`, `test-functions`, `test-xsheet`) né
+      in quella della UI (tutti i 20 target).
+
+      **Non ancora fatto**: nessuna finestra per definire/modificare/
+      cancellare un nome dall'interfaccia (`NameWindow.h`/`.cpp`,
+      sul modello di `FindWindow`), nessuna voce di menu — al momento
+      un nome è utilizzabile in una formula solo se qualcosa (un test,
+      o in futuro la UI) lo inserisce direttamente in
+      `GetOrCreateNameTable()`.
+
 ---
 
 ## Fase 8 — Qualità UI/UX (CHIUSA)
