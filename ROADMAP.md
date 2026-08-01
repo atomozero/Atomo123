@@ -1821,6 +1821,85 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       che non cambia piu' la selezione. Nessuna regressione nella
       suite esistente (tutti i 25 target).
 
+- [x] **Formattazione font/colore/allineamento**: `CellStyle` (motore)
+      aveva gia' tutti i campi necessari (`fFont`, `fAlignment`,
+      `fLowColor`/`fHighColor`) fin dall'inizio — solo mai esposti da
+      nessun controllo UI oltre al percorso di importazione XLSX.
+      Nuove voci nel menu Formato: Grassetto/Corsivo (Ctrl+B/Ctrl+I),
+      Allinea a sinistra/al centro/a destra, Colore testo/Colore
+      sfondo (apre `ColorWindow`, un `BColorControl` piu' un pulsante
+      Applica, riusata per entrambi — `SetMode` cambia titolo e colore
+      iniziale). Tutti si applicano a tutto `SelectionRange()`, non
+      solo alla cella attiva — stesso principio gia' scelto per il
+      formato numerico (`SetCellFormat`).
+
+      Grassetto/Corsivo sono gli unici due che richiedono uno stato
+      "di partenza" per sapere se attivare o disattivare: si legge
+      dalla sola cella attiva (`fSheetView->Selection()`, come il
+      pulsante "risulta premuto" o no di Excel) e si applica lo stato
+      OPPOSTO a tutta la selezione. Agiscono su `CellStyle::fFont`,
+      che non e' un flag diretto ma un indice in `gFontSizeTable`
+      (famiglia/stile/dimensione/colore, deduplicati): si legge la
+      combinazione corrente, si costruisce la nuova stringa di stile
+      ("Bold"/"Italic"/"Bold Italic"/"Regular" — i quattro nomi
+      standard usati dalla stragrande maggioranza dei font di
+      sistema, limite noto e accettato per una famiglia che non li
+      avesse esattamente cosi'), e si registra/riusa l'indice
+      risultante con `GetFontID`.
+
+      `SheetView::DrawCellBand` applica ora il font della cella
+      (`gFontSizeTable.SetFontID`) prima di disegnarne il testo — non
+      lo faceva affatto finora, `CellStyle::fFont` veniva letto e
+      scritto ma mai davvero applicato al disegno — e posiziona il
+      testo secondo `fAlignment` (`eAlignGeneral`, il valore
+      predefinito di ogni cella mai toccata dal menu, resta sempre a
+      sinistra: comportamento invariato, cambia solo per le celle che
+      l'utente ha esplicitamente allineato). Ripristina il font di
+      sistema (`SetFont(be_plain_font)`) alla fine di ogni banda,
+      altrimenti l'ultimo font applicato (magari in grassetto)
+      resterebbe attivo per le intestazioni di riga/colonna disegnate
+      subito dopo, che non devono mai ereditarlo.
+
+      **Bug scoperto scrivendo `ui/tests/test_format.cpp`** (il primo
+      tentativo restava bloccato senza stampare nulla, non un crash
+      pulito): `CContainer::CContainer` registra un font predefinito
+      in `gFontSizeTable` SOLO se costruito con un `CCellView` non
+      nullo (`inPane`) — ma la UI moderna lo passa sempre `NULL`
+      (stub permanente, vedi `EngineViewStub.h`: la stessa classe di
+      bug gia' trovata e corretta per le formule fra fogli e gli
+      intervalli con nome in questa stessa fase). `gFontSizeTable`
+      resta quindi completamente vuota per un documento nuovo mai
+      passato da un'importazione XLSX (che registra font propri a
+      parte, in `Excel.pass1.cpp`), e `CFontSizeTable::GetFontInfo`
+      — a differenza di `SetFontID`, che ha un controllo esplicito —
+      non verifica i limiti dell'indice: leggere lo stile della
+      cella attiva era un accesso di memoria non valido. **Non
+      corretto in `CContainer::CContainer`**: quel costruttore serve
+      anche a costruire documenti headless nei test del motore
+      (`CContainer(NULL, NULL)`, dove `NULL` e' legittimo — nessuna
+      connessione app_server disponibile, non un bug) — toccarlo
+      avrebbe rischiato di rompere quei test. Corretto invece con un
+      accessore sicuro in `MainWindow.cpp` (`GetCellFontInfo`), che
+      ricade sul font di sistema (`be_plain_font`) quando l'indice
+      non e' ancora valido, esattamente l'aspetto che una cella
+      "senza font personalizzato" ha gia' oggi.
+
+      **Limite noto, deliberato**: grassetto/corsivo/allineamento
+      restano per la sola sessione corrente (non salvati nel formato
+      nativo), stessa scelta gia' presa per Blocca riquadri e
+      l'altezza di riga — estendere `AscdIO` tocca anche i translator
+      che condividono lo stesso formato, fuori perimetro per questo
+      incremento. I colori invece si salvano gia' (`fLowColor`/
+      `fHighColor`, aggiunti in una fase precedente).
+
+      Test dedicato `ui/tests/test_format.cpp` (nuovo target
+      `make test-format`, 8 verifiche): Grassetto/Corsivo applicati a
+      un intervallo intero e non solo alla cella attiva, un secondo
+      Grassetto che toglie di nuovo lo stato, grassetto E corsivo
+      insieme sulla stessa cella, Allinea a destra su un intervallo,
+      Colore testo e Colore sfondo indipendenti sulla stessa cella.
+      Nessuna regressione nella suite esistente (tutti i 26 target).
+
 ---
 
 ## Fase 8 — Qualità UI/UX (CHIUSA)
