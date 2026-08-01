@@ -95,6 +95,8 @@ static const uint32 kMsgToggleBold = 'tbld';
 static const uint32 kMsgToggleItalic = 'tita';
 static const uint32 kMsgToggleUnderline = 'tund';
 static const uint32 kMsgToggleWrapText = 'twrp';
+static const uint32 kMsgMergeCells = 'mrgc';
+static const uint32 kMsgUnmergeCells = 'umrg';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
 static const uint32 kMsgShowBgColor = 'shbc';
@@ -402,6 +404,12 @@ MainWindow::MainWindow()
 	rightBorderMsg->AddInt32("side", 3);
 	formatMenu->AddItem(new BMenuItem("Bordo destro", rightBorderMsg));
 	formatMenu->AddItem(new BMenuItem("Nessun bordo", new BMessage(kMsgClearBorders)));
+	formatMenu->AddSeparatorItem();
+	// Celle unite (Fase 12): un rettangolo per foglio (CContainer::
+	// AddMergedRange), non un campo per cella -- vedi MainWindow::
+	// MergeCells/UnmergeCells.
+	formatMenu->AddItem(new BMenuItem("Unisci celle", new BMessage(kMsgMergeCells)));
+	formatMenu->AddItem(new BMenuItem("Dividi celle", new BMessage(kMsgUnmergeCells)));
 	menuBar->AddItem(formatMenu);
 
 	// Riempi in basso/a destra: copia la prima riga/colonna
@@ -1743,6 +1751,66 @@ void MainWindow::ToggleWrapText()
 	MarkModified();
 }
 
+// Rimuove dall'elenco gli intervalli uniti che si sovrappongono a
+// "sel", restituendo quelli che restano -- usata sia da MergeCells
+// (per non lasciare due intervalli sovrapposti, ambigui sia per il
+// disegno che per GetMergedRange) sia da UnmergeCells.
+static std::vector<range> RemoveOverlappingMerges(const std::vector<range>& existing, range sel)
+{
+	std::vector<range> result;
+	for (size_t i = 0; i < existing.size(); i++)
+	{
+		bool overlaps = existing[i].left <= sel.right && existing[i].right >= sel.left
+			&& existing[i].top <= sel.bottom && existing[i].bottom >= sel.top;
+		if (!overlaps)
+			result.push_back(existing[i]);
+	}
+	return result;
+}
+
+// Celle unite (Fase 12): un rettangolo per foglio (CContainer::
+// AddMergedRange), non un campo per cella -- una selezione di una
+// sola cella non fa nulla (niente da unire). A differenza di Excel
+// vero, il contenuto delle celle diverse da quella in alto a sinistra
+// NON viene cancellato (solo nascosto dal disegno, vedi SheetView::
+// DrawCellBand): scelta deliberata per restare non distruttiva senza
+// una finestra di conferma dedicata -- Dividi celle lo farebbe
+// ricomparire.
+void MainWindow::MergeCells()
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	if (sel.left == sel.right && sel.top == sel.bottom)
+		return;
+
+	std::vector<range> kept = RemoveOverlappingMerges(fDoc->GetMergedRanges(), sel);
+	fDoc->ClearMergedRanges();
+	for (size_t i = 0; i < kept.size(); i++)
+		fDoc->AddMergedRange(kept[i]);
+	fDoc->AddMergedRange(sel);
+
+	fSheetView->RecalculateWrappedRowHeights();
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::UnmergeCells()
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	std::vector<range> kept = RemoveOverlappingMerges(fDoc->GetMergedRanges(), sel);
+	fDoc->ClearMergedRanges();
+	for (size_t i = 0; i < kept.size(); i++)
+		fDoc->AddMergedRange(kept[i]);
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::HandleGoToRequest(const char* rangeText)
 {
 	range r;
@@ -2437,6 +2505,14 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgToggleWrapText:
 			ToggleWrapText();
+			break;
+
+		case kMsgMergeCells:
+			MergeCells();
+			break;
+
+		case kMsgUnmergeCells:
+			UnmergeCells();
 			break;
 
 		case kMsgSetAlignment:

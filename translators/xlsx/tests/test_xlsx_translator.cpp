@@ -430,6 +430,14 @@ int main()
 								"sezione testo a capo presente (vuota per questo file di prova, Fase 12)");
 						}
 
+						if (pos + 4 <= ascdLen)
+						{
+							int32 mergeCount;
+							memcpy(&mergeCount, ascdData + pos, 4); pos += 4;
+							Check(mergeCount == 0,
+								"sezione celle unite presente (vuota per questo file di prova, Fase 12)");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
@@ -1196,6 +1204,141 @@ int main()
 			Check(foundB1, "B1 (wrapText=\"1\" + horizontal=\"center\") importato con a capo attivo");
 			Check(foundB1Align == eAlignCenter,
 				"B1 mantiene anche l'allineamento centrato, le due proprieta' convivono");
+		}
+	}
+
+	// Celle unite (Fase 12): tests/sample_merge.xlsx ha due intervalli
+	// -- A1:C1 (intestazione orizzontale) e A2:A3 (verticale) -- piu'
+	// D1 normale, mai coinvolta.
+	{
+		BFile mergeFile("tests/sample_merge.xlsx", B_READ_ONLY);
+		Check(mergeFile.InitCheck() == B_OK, "apertura di tests/sample_merge.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&mergeFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_merge.xlsx");
+
+		mergeFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&mergeFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_merge.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_merge.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 3, "l'ASCD contiene le 3 celle con contenuto di sample_merge.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				pos += len;
+			}
+
+			if (pos + 4 <= ascdLen)
+			{
+				int32 chartCount;
+				memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+				pos += chartCount * (2 * 4 + 4 * 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				pos += colWidthCount * (2 + 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+				pos += cellColorCount * (2 + 2 + 8);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 columnColorCount;
+				memcpy(&columnColorCount, ascdData + pos, 4); pos += 4;
+				pos += columnColorCount * (2 + 8);
+			}
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+4); } // altezze riga
+			if (pos + 8 <= ascdLen) pos += 8; // Blocca riquadri
+			if (pos + 4 <= ascdLen) // fontCount
+			{
+				int32 fontCount;
+				memcpy(&fontCount, ascdData + pos, 4); pos += 4;
+				pos += fontCount * (2 + 2 + (int32)sizeof(font_family) + (int32)sizeof(font_style) + 4);
+			}
+			if (pos + 4 <= ascdLen) // alignCount
+			{
+				int32 alignCount;
+				memcpy(&alignCount, ascdData + pos, 4); pos += 4;
+				pos += alignCount * (2 + 2 + 1);
+			}
+			if (pos + 4 <= ascdLen) // borderCount
+			{
+				int32 borderCount;
+				memcpy(&borderCount, ascdData + pos, 4); pos += 4;
+				pos += borderCount * (2 + 2 + 4);
+			}
+			if (pos + 4 <= ascdLen) // formatCount
+			{
+				int32 formatCount;
+				memcpy(&formatCount, ascdData + pos, 4); pos += 4;
+				pos += formatCount * (2 + 2 + 4);
+			}
+			if (pos + 4 <= ascdLen) // underlineCount
+			{
+				int32 underlineCount;
+				memcpy(&underlineCount, ascdData + pos, 4); pos += 4;
+				pos += underlineCount * (2 + 2);
+			}
+			if (pos + 4 <= ascdLen) // wrapCount
+			{
+				int32 wrapCount;
+				memcpy(&wrapCount, ascdData + pos, 4); pos += 4;
+				pos += wrapCount * (2 + 2);
+			}
+
+			bool haveMergeCount = false;
+			int32 mergeCount = 0;
+			if (pos + 4 <= ascdLen)
+			{
+				memcpy(&mergeCount, ascdData + pos, 4); pos += 4;
+				haveMergeCount = true;
+			}
+			Check(haveMergeCount && mergeCount == 2,
+				"sezione celle unite: 2 intervalli (A1:C1 e A2:A3)");
+
+			bool foundHorizontal = false, foundVertical = false;
+			for (int32 i = 0; i < mergeCount && pos + 8 <= ascdLen; i++)
+			{
+				int16 top, left, bottom, right;
+				memcpy(&top, ascdData + pos, 2); pos += 2;
+				memcpy(&left, ascdData + pos, 2); pos += 2;
+				memcpy(&bottom, ascdData + pos, 2); pos += 2;
+				memcpy(&right, ascdData + pos, 2); pos += 2;
+
+				if (top == 1 && left == 1 && bottom == 1 && right == 3)
+					foundHorizontal = true;
+				if (top == 2 && left == 1 && bottom == 3 && right == 1)
+					foundVertical = true;
+			}
+
+			Check(foundHorizontal, "A1:C1 importato come intervallo unito orizzontale");
+			Check(foundVertical, "A2:A3 importato come intervallo unito verticale");
 		}
 	}
 

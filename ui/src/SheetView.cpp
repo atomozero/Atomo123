@@ -1339,6 +1339,56 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 		}
 	}
 
+	// Celle unite (Fase 12): riempie l'intero rettangolo unito con lo
+	// sfondo della cella in alto a sinistra (che "possiede" il
+	// contenuto e lo stile, vedi CContainer::GetMergedRange) --
+	// cancella cosi' sia le linee di griglia sia gli eventuali bordi
+	// di cella (Fase 11) gia' tracciati sopra all'INTERNO
+	// dell'intervallo, poi ridisegna solo il contorno ESTERNO: griglia
+	// sottile se fShowGrid, o il bordo nero pieno se la cella in alto
+	// a sinistra ne ha uno esplicito su quel lato (stesso significato
+	// booleano per lato di Fase 11). Piu' semplice che modificare i
+	// cicli sopra per saltare selettivamente le linee interne di un
+	// rettangolo di forma qualunque.
+	if (fDoc)
+	{
+		const std::vector<range>& merged = fDoc->GetMergedRanges();
+		for (size_t i = 0; i < merged.size(); i++)
+		{
+			const range& m = merged[i];
+			if (m.right < firstCol || m.left > lastCol
+				|| m.bottom < firstRow || m.top > lastRow)
+				continue;
+
+			cell topLeft(m.left, m.top);
+			CellStyle cs;
+			fDoc->GetCellStyle(topLeft, cs);
+
+			BRect full = CellRect(topLeft);
+			full = full | CellRect(cell(m.right, m.bottom));
+			full.OffsetBy(xOrigin, yOrigin);
+
+			SetHighColor(cs.fLowColor);
+			FillRect(full);
+
+			if (fShowGrid)
+			{
+				SetHighColor(220, 220, 220);
+				StrokeRect(full);
+			}
+
+			SetHighColor(0, 0, 0);
+			if (cs.fTBorderColor)
+				StrokeLine(full.LeftTop(), full.RightTop());
+			if (cs.fBBorderColor)
+				StrokeLine(full.LeftBottom(), full.RightBottom());
+			if (cs.fLBorderColor)
+				StrokeLine(full.LeftTop(), full.LeftBottom());
+			if (cs.fRBorderColor)
+				StrokeLine(full.RightTop(), full.RightBottom());
+		}
+	}
+
 	if (fDoc)
 	{
 		for (int row = firstRow; row <= lastRow; row++)
@@ -1346,6 +1396,17 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 			for (int col = firstCol; col <= lastCol; col++)
 			{
 				cell c(col, row);
+
+				// Celle unite: solo la cella in alto a sinistra
+				// disegna il proprio contenuto (le altre, anche se
+				// non vuote, restano nascoste sotto -- stesso
+				// comportamento di Excel), ma con un rettangolo esteso
+				// a tutto l'intervallo unito per allineamento/a capo.
+				range mergedRange;
+				bool isMerged = fDoc->GetMergedRange(c, &mergedRange);
+				if (isMerged && (mergedRange.top != row || mergedRange.left != col))
+					continue;
+
 				char text[4096];
 				fDoc->GetCellResult(c, text, sizeof(text), true);
 				if (text[0] == 0)
@@ -1401,7 +1462,14 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				// testo.
 				gFontSizeTable.SetFontID(this, cs.fFont);
 
-				BRect r = CellRect(c).OffsetByCopy(xOrigin, yOrigin);
+				// Celle unite: il rettangolo del testo copre l'intero
+				// intervallo (non solo la cella in alto a sinistra),
+				// cosi' l'allineamento/a capo/clip usano la larghezza
+				// vera visibile sullo schermo.
+				BRect r = isMerged
+					? (CellRect(cell(mergedRange.left, mergedRange.top))
+						| CellRect(cell(mergedRange.right, mergedRange.bottom))).OffsetByCopy(xOrigin, yOrigin)
+					: CellRect(c).OffsetByCopy(xOrigin, yOrigin);
 
 				// Allineamento (Fase 7): il generico (eAlignGeneral, il
 				// valore predefinito di CellStyle su ogni cella mai

@@ -462,6 +462,28 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione celle unite, in coda (Fase 12): un elenco di rettangoli
+	// per il foglio (CContainer::GetMergedRanges), non un campo per
+	// cella come tutte le sezioni sopra -- una cella unita e' un'unica
+	// entita' logica che occupa piu' coordinate.
+	{
+		const std::vector<range>& merged = doc->GetMergedRanges();
+		int32 mergeCount = (int32)merged.size();
+		if (dest->Write(&mergeCount, sizeof(mergeCount)) != (ssize_t)sizeof(mergeCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < mergeCount; i++)
+		{
+			int16 top = merged[i].top, left = merged[i].left;
+			int16 bottom = merged[i].bottom, right = merged[i].right;
+			if (dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+				|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+				|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+				|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -867,6 +889,30 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				doc->GetCellStyle(loc, cs);
 				cs.fWrapText = true;
 				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione celle unite, in coda (Fase 12): vedi il commento in
+	// SaveASCD.
+	{
+		int32 mergeCount = 0;
+		ssize_t got = source->Read(&mergeCount, sizeof(mergeCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(mergeCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < mergeCount; i++)
+			{
+				int16 top, left, bottom, right;
+				if (source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+					|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right))
+					return B_BAD_DATA;
+
+				doc->AddMergedRange(range(left, top, right, bottom));
 			}
 		}
 	}

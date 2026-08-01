@@ -680,6 +680,19 @@ bool CContainer::Exists(const cell& inLoc)
 	return fCellData.find(inLoc) != fCellData.end();
 } /* CContainer::Exists */
 
+bool CContainer::GetMergedRange(cell c, range* outRange) const
+{
+	for (size_t i = 0; i < fMergedRanges.size(); i++)
+	{
+		if (fMergedRanges[i].Contains(c))
+		{
+			*outRange = fMergedRanges[i];
+			return true;
+		}
+	}
+	return false;
+} /* CContainer::GetMergedRange */
+
 void CContainer::CollectFunctionNrs(CSet& funcs)
 {	/*CHECKLOCK*/
 	cellmap::iterator i;

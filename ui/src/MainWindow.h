@@ -87,6 +87,13 @@ public:
 	// l'altezza delle righe coinvolte se serve (vedi SheetView::
 	// RecalculateWrappedRowHeights).
 	void ToggleWrapText();
+
+	// Celle unite (Fase 12): un rettangolo per foglio (CContainer::
+	// AddMergedRange), non un campo per cella -- vedi il commento
+	// sull'implementazione in MainWindow.cpp per cosa succede al
+	// contenuto delle celle diverse da quella in alto a sinistra.
+	void MergeCells();
+	void UnmergeCells();
 	void SetAlignment(char alignment);
 	void SetTextColor(rgb_color color);
 	void SetBackgroundColor(rgb_color color);

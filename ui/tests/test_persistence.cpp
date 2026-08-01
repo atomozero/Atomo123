@@ -123,6 +123,11 @@ int main()
 		doc->SetCellStyle(cell(1, 2), cs);
 	}
 
+	// Celle unite (Fase 12): un intervallo D1:E2, indipendente dalle
+	// preferenze per-cella sopra (CContainer::AddMergedRange, un
+	// elenco di rettangoli per foglio, non un campo per cella).
+	doc->AddMergedRange(range(4, 1, 5, 2)); // D1:E2
+
 	// Formato numero (Fase 12) su A3, oltre all'allineamento gia'
 	// impostato sopra: stesso principio dello slittamento
 	// "menu Formato -> CellStyle::fFormat" gia' usato dall'app live
@@ -239,6 +244,15 @@ int main()
 
 		reloaded->GetCellStyle(cell(1, 1), cs);
 		Check(!cs.fWrapText, "A1 (mai impostata a capo) resta senza testo a capo dopo il giro");
+	}
+
+	// Celle unite: l'intervallo D1:E2 sopravvive al giro.
+	{
+		const std::vector<range>& merged = reloaded->GetMergedRanges();
+		Check(merged.size() == 1, "un solo intervallo unito sopravvive al giro");
+		bool found = merged.size() == 1 && merged[0].left == 4 && merged[0].top == 1
+			&& merged[0].right == 5 && merged[0].bottom == 2;
+		Check(found, "l'intervallo unito D1:E2 e' quello corretto dopo il giro");
 	}
 
 	// Formato numero: A3 e' ancora Valuta, A1 (mai toccata) resta al

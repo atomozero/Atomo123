@@ -454,6 +454,28 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione celle unite, in coda (Fase 12, vedi ui/src/AscdIO.cpp):
+	// questo translator estrae davvero <mergeCell ref="..."/> dal file
+	// XLSX originale (CContainer::AddMergedRange, chiamato durante
+	// ParseSheet) -- va quindi scritta con i valori reali.
+	{
+		const std::vector<range>& merged = doc->GetMergedRanges();
+		int32 mergeCount = (int32)merged.size();
+		if (dest->Write(&mergeCount, sizeof(mergeCount)) != (ssize_t)sizeof(mergeCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < mergeCount; i++)
+		{
+			int16 top = merged[i].top, left = merged[i].left;
+			int16 bottom = merged[i].bottom, right = merged[i].right;
+			if (dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+				|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+				|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+				|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -686,6 +708,29 @@ static bool CellRefToColRow(const std::string& ref, int& outCol, int& outRow)
 
 	outCol = col;
 	outRow = row;
+	return true;
+}
+
+// Converte un riferimento di intervallo stile Excel ("A1:C1") in un
+// "range" del motore. Un riferimento a una sola cella ("A1", senza
+// ":") non e' valido qui: <mergeCell ref="A1"/> non e' un caso reale
+// (Excel non scrive mai un intervallo di una sola cella), ma viene
+// comunque scartato in sicurezza invece di produrre un range
+// degenere.
+static bool ParseMergeCellRef(const std::string& ref, range* out)
+{
+	size_t colon = ref.find(':');
+	if (colon == std::string::npos)
+		return false;
+
+	int col1, row1, col2, row2;
+	if (!CellRefToColRow(ref.substr(0, colon), col1, row1))
+		return false;
+	if (!CellRefToColRow(ref.substr(colon + 1), col2, row2))
+		return false;
+
+	out->Set(std::min(col1, col2), std::min(row1, row2),
+		std::max(col1, col2), std::max(row1, row2));
 	return true;
 }
 
@@ -1505,6 +1550,24 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				ctx->cellType = atts[i + 1];
 			else if (strcmp(atts[i], "s") == 0)
 				ctx->cellStyleIndex = atoi(atts[i + 1]);
+		}
+	}
+	// <mergeCells><mergeCell ref="A1:C1"/>...</mergeCells>, un fratello
+	// di <sheetData> (non un figlio): l'ordine nel file non e'
+	// garantito rispetto alle celle stesse, ma qui non serve, si scrive
+	// direttamente su "doc" (CContainer::AddMergedRange) indipendente
+	// dall'ordine di lettura.
+	else if (strcmp(name, "mergeCell") == 0 && ctx->doc)
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "ref") == 0)
+			{
+				range r;
+				if (ParseMergeCellRef(atts[i + 1], &r))
+					ctx->doc->AddMergedRange(r);
+				break;
+			}
 		}
 	}
 	else if (strcmp(name, "v") == 0)

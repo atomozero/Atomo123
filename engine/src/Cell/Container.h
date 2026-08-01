@@ -48,6 +48,7 @@
  ***/
 
 #include <map>
+#include <vector>
 
 #ifndef   CELL_H
 #include "Cell.h"
@@ -225,6 +226,23 @@ public:
 	void SetSheetResolver(ISheetResolver *inResolver)	{ fSheetResolver = inResolver; }
 	ISheetResolver *GetSheetResolver() const			{ return fSheetResolver; }
 
+	// Celle unite (Fase 12): un elenco di rettangoli per foglio, non un
+	// campo per-cella -- una cella unita e' un'unica entita' logica che
+	// occupa piu' coordinate, non N celle indipendenti con uno stile
+	// condiviso (a differenza di colori/font/bordi/ecc, gia' tutti
+	// per-cella). Nessuna infrastruttura preesistente (verificato anche
+	// nel Sum-It storico), ne' nel motore ne' nella UI.
+	void AddMergedRange(const range& r)	{ fMergedRanges.push_back(r); }
+	void ClearMergedRanges()				{ fMergedRanges.clear(); }
+	const std::vector<range>& GetMergedRanges() const	{ return fMergedRanges; }
+
+	// true se "c" fa parte di un intervallo unito (compresa la cella in
+	// alto a sinistra, che lo "possiede" agli effetti del contenuto
+	// disegnato/modificabile) -- "outRange" riceve l'intervallo intero,
+	// utile sia per disegnare (SheetView) sia per rimappare un clic
+	// sulla cella in alto a sinistra.
+	bool GetMergedRange(cell c, range* outRange) const;
+
 private:
 	void Visit(const cell&, void*);
 	bool GetCellData(const cell&, CellData&);
@@ -243,6 +261,7 @@ private:
 	CRunArray2 fColumnStyles;
 	cell fCalculatingCell;
 	ISheetResolver *fSheetResolver;
+	std::vector<range> fMergedRanges;
 };
 
 inline bool CContainer::WriteLock()

@@ -144,6 +144,41 @@ int main()
 			"l'altezza della riga 3 cresce oltre il predefinito per contenere il testo a capo");
 	}
 
+	// Celle unite (Fase 12): MergeCells/UnmergeCells (MainWindow),
+	// GetMergedRange (CContainer).
+	{
+		view->SetSelection(cell(2, 5));
+		view->ExtendSelection(cell(4, 5)); // B5:D5
+
+		win->MergeCells();
+		Check(doc->GetMergedRanges().size() == 1, "MergeCells su B5:D5 crea un intervallo unito");
+
+		range found;
+		bool inMiddle = doc->GetMergedRange(cell(3, 5), &found); // C5, in mezzo all'intervallo
+		Check(inMiddle && found.left == 2 && found.top == 5 && found.right == 4 && found.bottom == 5,
+			"GetMergedRange riconosce una cella in mezzo all'intervallo e restituisce l'intervallo intero");
+
+		bool outside = doc->GetMergedRange(cell(5, 5), &found); // E5, fuori dall'intervallo
+		Check(!outside, "una cella fuori dall'intervallo unito non risulta unita");
+
+		// Selezionare una sola cella non fa nulla (niente da unire).
+		view->SetSelection(cell(6, 6));
+		view->ExtendSelection(cell(6, 6));
+		win->MergeCells();
+		Check(doc->GetMergedRanges().size() == 1,
+			"MergeCells su una sola cella non crea un secondo intervallo");
+
+		// Unire di nuovo B5:D5 (gia' unita) non duplica l'intervallo.
+		view->SetSelection(cell(2, 5));
+		view->ExtendSelection(cell(4, 5));
+		win->MergeCells();
+		Check(doc->GetMergedRanges().size() == 1,
+			"unire di nuovo lo stesso intervallo non lo duplica");
+
+		win->UnmergeCells();
+		Check(doc->GetMergedRanges().size() == 0, "UnmergeCells toglie l'intervallo unito");
+	}
+
 	win->Unlock();
 
 	win->Lock();
