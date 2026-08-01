@@ -285,6 +285,22 @@ test-multisheet: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_multisheet
 
+# Test dei riferimenti fra fogli (Fase 9, "NomeFoglio!Cella") su una
+# vera MainWindow aperta con MainWindow::OpenFile: verifica che
+# AttachSheetResolver/RecalculateWorkbook (chiamati da OpenFile) diano
+# subito il valore corretto, non solo la logica isolata del motore
+# (vedi engine/tests/xsheet_test.cpp). Stessa ragione di
+# test-multisheet (serve una vera MainWindow).
+test-xsheet-formulas: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_xsheet_formulas.cpp -o tests/test_xsheet_formulas.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_xsheet_formulas tests/test_xsheet_formulas.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_xsheet_formulas
+
 # Test della striscia di schede del foglio attivo (Fase 9): nessuna
 # vera MainWindow, solo SheetTabView dentro una finestra di prova --
 # stessa ragione di test-clipboard (richiede una vera sessione
@@ -335,8 +351,9 @@ clean:
 		tests/test_resize tests/test_resize.o \
 		tests/test_ascd_book tests/test_ascd_book.o tests/AscdIO_book.o \
 		tests/test_multisheet tests/test_multisheet.o \
+		tests/test_xsheet_formulas tests/test_xsheet_formulas.o /tmp/test_xsheet_formulas.ascd \
 		tests/test_sheet_tabs tests/test_sheet_tabs.o \
 		tests/test_multiwindow tests/test_multiwindow.o tests/App_test.o \
 		/tmp/test_multiwindow_1.ascd /tmp/test_multiwindow_2.ascd
 
-.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-sheet-tabs test-multiwindow clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-multiwindow clean

@@ -350,6 +350,14 @@ private:
 	// mutazione del documento e' avvenuta qui dentro -- stesso
 	// principio di NotifySelectionChanged.
 	void NotifyDocumentChanged();
+	// Ricalcola fDoc dopo una mutazione -- al posto di RecalculateAll
+	// diretto (usato prima di Fase 9): se la finestra proprietaria e'
+	// una vera MainWindow con piu' fogli, ricalcola l'intera cartella
+	// di lavoro (una formula puo' referenziarne un altro), altrimenti
+	// ricade su RecalculateAll(fDoc) da solo -- stesso principio di
+	// NotifySelectionChanged/NotifyDocumentChanged (dynamic_cast su
+	// Window()).
+	void RecalculateOwningWorkbook();
 	void FixupScrollBars();
 
 	// Il Frame() della view copre l'intero intervallo virtuale del

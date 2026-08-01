@@ -141,9 +141,18 @@ bool CFormula::RefersToName(const char *name) const
 			case valRange:
 				indx += sizeof(range) / kPFWordSize;
 				break;
-//			case valXRef:
-//				indx += sizeof(XRef) / kPFWordSize;
-//				break;	
+			case valXRef:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(cell);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
+			case valXRange:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(range);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
 			default:
 				// there was a warning about not all enum values handled in
 				// switch statement.
@@ -202,9 +211,18 @@ bool CFormula::GetNextName(int& indx, CName& name) const
 			case valRange:
 				indx += sizeof(range) / kPFWordSize;
 				break;
-//			case valXRef:
-//				indx += sizeof(XRef) / kPFWordSize;
-//				break;
+			case valXRef:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(cell);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
+			case valXRange:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(range);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
 			default:
 				// there was a warningt about not all enum values handled
 				// in switch statement
@@ -263,13 +281,28 @@ void CFormula::UpdateReferences(cell inLocation, bool horizontal,
 				range r = *(range *)(fString + indx);
 				r.Offset(inLocation, horizontal, first, count);
 				*(range *)(fString + indx) = r;
-				
+
 				indx += sizeof(range) / kPFWordSize;
 				break;
 			}
-//			case valXRef:
-//				indx += sizeof(XRef) / kPFWordSize;
-//				break;
+			// Un riferimento incrociato punta a un CContainer diverso
+			// (un altro foglio): l'inserimento/eliminazione di righe o
+			// colonne in QUESTO foglio non lo tocca -- si salta solo
+			// la dimensione senza modificarne il contenuto, come
+			// valCell/valRange sopra fanno quando serve un offset
+			// reale.
+			case valXRef:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(cell);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
+			case valXRange:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(range);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
 			default:
 				// there was a warning about not all enum values handled in
 				// switch statement
@@ -331,13 +364,25 @@ void CFormula::UpdateReferences(cell inLocation, int h, int v, range src)
 					r.BotRight().Offset(h, v);
 				}
 				*(range *)(fString + indx) = r;
-				
+
 				indx += sizeof(range) / kPFWordSize;
 				break;
 			}
-//			case valXRef:
-//				indx += sizeof(XRef) / kPFWordSize;
-//				break;
+			// Stesso motivo del CFormula::UpdateReferences sopra: un
+			// riferimento incrociato punta a un CContainer diverso, il
+			// trascinamento/spostamento in QUESTO foglio non lo tocca.
+			case valXRef:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(cell);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
+			case valXRange:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(range);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
 			default:
 				// there was a warning about not all enum values handled
 				// in switch statement.
@@ -423,13 +468,23 @@ void* CFormula::UpdateReferences(cell inLoc, range src, range dst)
 					r.BotRight() = cell::InvalidCell;
 				}
 				*(range *)(fString + indx) = r;
-				
+
 				indx += sizeof(range) / kPFWordSize;
 				break;
 			}
-//			case valXRef:
-//				indx += sizeof(XRef) / kPFWordSize;
-//				break;
+			// Stesso motivo dei due CFormula::UpdateReferences sopra.
+			case valXRef:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(cell);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
+			case valXRange:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(range);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
 			default:
 				// there was a warning about not all enum values handled
 				// in switch statement.
@@ -437,6 +492,6 @@ void* CFormula::UpdateReferences(cell inLoc, range src, range dst)
 		}
 	}
 	while (theOpcode != opEnd);
-	
+
 	return result;
 } /* CFormula::UpdateReferences */

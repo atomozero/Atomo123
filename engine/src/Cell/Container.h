@@ -69,6 +69,7 @@
 
 class CCellView;
 class CCellIterator;
+class CContainer;
 class CFormula;
 class CNameTable;
 class CCalculateJob;
@@ -82,6 +83,40 @@ enum SplitType {
 
 typedef std::map<cell,CellData> cellmap;
 //typedef btree<cell,CellData> cellmap;
+
+// Risolve un riferimento incrociato fra fogli di una stessa cartella
+// di lavoro ("NomeFoglio!Cella", Fase 9) -- implementata dalla UI
+// (MainWindow), non dal motore: l'engine isolato non sa nulla di
+// "cartella di lavoro", solo di singoli CContainer. Stesso principio
+// gia' esistente per CFormula::ResolveName (nomi di intervallo) ma
+// separato da esso: qui la chiave e' il foglio, non un nome di
+// intervallo dentro un foglio. Vedi il commento storico "R4Hack" in
+// Formula.h/.cpp -- Sum-It aveva gia' previsto un meccanismo quasi
+// identico (XRef con un fileNr per riferimenti fra file separati),
+// mai completato: qui e' lo stesso principio, riusato per fogli della
+// stessa cartella invece che file esterni.
+//
+// Risoluzione per NOME (non per indice numerico), sempre in fase di
+// CALCOLO, mai in fase di analisi (CParser): un nome incorporato nel
+// bytecode resta valido anche se, al momento in cui la formula viene
+// compilata, il foglio referenziato non esiste ancora o non e' ancora
+// collegato a nessun resolver -- esattamente il caso di un file
+// caricato da disco, dove ogni foglio viene analizzato singolarmente
+// (LoadASCD) prima che tutti i fogli della cartella di lavoro esistano
+// e siano collegati fra loro (bug reale scoperto scrivendo
+// ui/tests/test_xsheet_formulas.cpp: con una risoluzione per indice
+// decisa dal parser, un riferimento incrociato appena ricaricato da
+// disco falliva sempre, perche' nessun resolver era ancora collegato
+// nel momento in cui quella singola cella veniva ri-analizzata).
+class ISheetResolver {
+public:
+	virtual ~ISheetResolver() {}
+
+	// NULL se nessun foglio ha (ancora, o piu') questo nome esatto
+	// (case-sensitive) -- mai un errore fatale, solo un riferimento
+	// che resta non risolto (vedi CFormula::Calculate, valXRef).
+	virtual CContainer* ResolveSheetByName(const char* inName) = 0;
+};
 
 class CContainer : public BLocker {
 	friend class CCellIterator;
@@ -161,12 +196,22 @@ public:
 	CRunArray2& GetColumnStyles()		{ return fColumnStyles; }
 	cell CalculatingCell() const		{ return fCalculatingCell; }
 	CNameTable *GetNameTable() const	{ return fNames; }
-	
+
 	range ResolveName(const char *name);
-	
+
 	long CountCells(range *inRange = NULL);
 	bool Exists(const cell& c);
-	
+
+	// Fase 9: chi possiede questo foglio (MainWindow) collega qui il
+	// proprio ISheetResolver quando fa parte di una cartella di
+	// lavoro multi-foglio -- NULL per un documento a un solo foglio
+	// (mai collegato, o non ancora). Puntatore preso in prestito, MAI
+	// posseduto/cancellato da CContainer: la cartella di lavoro vive
+	// piu' a lungo di ogni singolo foglio aperto/chiuso al suo
+	// interno, e piu' fogli condividono lo stesso resolver.
+	void SetSheetResolver(ISheetResolver *inResolver)	{ fSheetResolver = inResolver; }
+	ISheetResolver *GetSheetResolver() const			{ return fSheetResolver; }
+
 private:
 	void Visit(const cell&, void*);
 	bool GetCellData(const cell&, CellData&);
@@ -184,6 +229,7 @@ private:
 	int fDefaultCellStyle;
 	CRunArray2 fColumnStyles;
 	cell fCalculatingCell;
+	ISheetResolver *fSheetResolver;
 };
 
 inline bool CContainer::WriteLock()

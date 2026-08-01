@@ -235,6 +235,45 @@ void CParser::Term2()
 	}
 } // CParser::Term2
 
+// Fase 9: "!Cella" o "!Cella:Cella" dopo un nome di foglio gia'
+// riconosciuto (IDENT o QIDENT in Factor()) -- consuma "!" lei stessa
+// come prossimo lookahead atteso. Il nome si incorpora cosi' com'e'
+// nel bytecode (mai un indice numerico): se il foglio referenziato non
+// esiste (ancora, o piu'), il riferimento semplicemente non si risolve
+// in fase di calcolo (vedi CFormula::Calculate) -- risolverlo gia' qui
+// richiederebbe che il foglio esista gia' in questo momento, falso
+// quando un foglio viene ri-analizzato da solo durante il caricamento
+// di un file (vedi ISheetResolver in Container.h -- bug reale scoperto
+// proprio cosi', vedi ui/tests/test_xsheet_formulas.cpp).
+void CParser::ParseSheetReference(const char *inName)
+{
+	Match('!');
+
+	range r;
+	r.TopLeft() = mCell;
+	Match(CELL);
+	mIsFormula = true;
+
+	char buf[256 + sizeof(range)];
+	size_t nameLen = strlen(inName) + 1;
+	memcpy(buf, inName, nameLen);
+
+	if (mLookahead == RANGE)
+	{
+		Match(RANGE);
+		r.BotRight() = mCell;
+		Match(CELL);
+		memcpy(buf + nameLen, &r, sizeof(range));
+		AddToken(valXRange, buf);
+	}
+	else
+	{
+		cell c = r.TopLeft();
+		memcpy(buf + nameLen, &c, sizeof(cell));
+		AddToken(valXRef, buf);
+	}
+} // CParser::ParseSheetReference
+
 void CParser::Factor()
 {
 	switch (mLookahead)
@@ -311,10 +350,10 @@ void CParser::Factor()
 				Match('(');
 				ParamList();
 				Match(')');
-			
+
 				if (fcd.funcNr < 0)
 					throw CParseErr(s, strlen(name), errUnknownFunction, name);
-				
+
 				if (expectedArgs == -1 || expectedArgs == mArgCnt ||
 					(expectedArgs < 0 || expectedArgs <= -fcd.funcNr))
 				{
@@ -326,8 +365,22 @@ void CParser::Factor()
 				else
 					throw CParseErr(s, strlen(name), errIncorrectNrOfArgs,
 							expectedArgs, mArgCnt);
-				
+
 				AddToken(opFunc, &fcd);
+			}
+			else if (mLookahead == '!')
+			{
+				// Riferimento a un'altra scheda della stessa cartella
+				// di lavoro (Fase 9): "NomeFoglio!Cella" oppure
+				// "NomeFoglio!Cella:Cella". "IDENT !" non ha nessun
+				// altro significato in questa grammatica (! come NOT
+				// e' solo un operatore prefisso, mai postfisso a un
+				// identificatore, vedi BoolExpr sopra), quindi
+				// trattarlo sempre come riferimento incrociato non e'
+				// ambiguo. Per un nome che contiene spazi o altri
+				// caratteri non validi in un identificatore semplice
+				// vedi il caso QIDENT sotto ('Nome Foglio'!A1).
+				ParseSheetReference(name);
 			}
 			else
 			{
@@ -336,7 +389,7 @@ void CParser::Factor()
 					if (expectedArgs != -1 && expectedArgs != 0)
 						throw CParseErr(s, strlen(name), errIncorrectNrOfArgs,
 							expectedArgs, 0);
-				
+
 					fcd.argCnt = 0;
 
 					AddToken(opFunc, &fcd);
@@ -352,7 +405,28 @@ void CParser::Factor()
 			}
 			break;
 		}
-		
+
+		case QIDENT:
+		{
+			// Nome di foglio fra apici singoli (Fase 9): a differenza
+			// di IDENT sopra, un QIDENT e' SEMPRE un riferimento a un
+			// altro foglio -- non puo' mai essere un nome di funzione
+			// (le funzioni non hanno mai bisogno delle virgolette) ne'
+			// un nome di intervallo (stesso motivo), quindi deve
+			// sempre essere seguito da "!Cella"; se non lo e', Match
+			// sotto solleva un errore di parsing appropriato da solo.
+			char name[256];
+			strcpy(name, mToken);
+			Match(QIDENT);
+			// Deve sempre essere seguito da "!Cella": ParseSheetReference
+			// si aspetta "!" come prossimo lookahead (lo consuma lei
+			// stessa con Match), esattamente come per il caso IDENT
+			// sopra -- se manca, solleva da sola un errore di parsing
+			// appropriato.
+			ParseSheetReference(name);
+			break;
+		}
+
 		case TEXT:
 			AddToken(valStr, mToken);
 			Match(TEXT);

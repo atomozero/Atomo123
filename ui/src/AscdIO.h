@@ -122,4 +122,13 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets);
 // verificato al caricamento file.
 void RecalculateAll(CContainer* doc);
 
+// Stessa convergenza di RecalculateAll, estesa a tutti i fogli di
+// "sheets" invece di un solo documento: una formula puo' referenziare
+// un foglio diverso dal proprio (Fase 9, "NomeFoglio!Cella" --
+// ISheetResolver in Container.h), quindi modificare un foglio puo'
+// richiedere di ricalcolare anche gli altri. Usata da MainWindow al
+// posto di RecalculateAll quando la cartella di lavoro ha piu' di un
+// foglio (vedi MainWindow::RecalculateActiveWorkbook).
+void RecalculateWorkbook(std::vector<AscdSheet>& sheets);
+
 #endif

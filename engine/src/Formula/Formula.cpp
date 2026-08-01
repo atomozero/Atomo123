@@ -144,10 +144,16 @@ void CFormula::AddToken(PFToken inToken, const void *inData, int& ioOffset)
 		case valRange:
 			toAdd = sizeof(range);
 			break;
-// •••R4Hack
-//		case valXRef:
-//			toAdd = sizeof(XRef);
-//			break;
+		// Nome del foglio (NUL-terminato, come valName/valStr sopra)
+		// seguito dalla cell/range vera e propria: strlen si ferma
+		// correttamente al NUL del nome, i byte della cell/range dopo
+		// non vengono mai considerati parte della stringa.
+		case valXRef:
+			toAdd = strlen((const char *)inData) + 1 + sizeof(cell);
+			break;
+		case valXRange:
+			toAdd = strlen((const char *)inData) + 1 + sizeof(range);
+			break;
 		default:
 			toAdd = 0;
 			break;
@@ -387,17 +393,73 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 				stackIndx++;
 				stack[stackIndx].fType = eNoData;
 				break;
-// •••R4Hack
-//			case valXRef:
-//			{
-//				stackIndx++;
-//				XRef ref = *(XRef *)(fString + indx);
-//				indx += sizeof(XRef) / kPFWordSize;
-//				inContainer->GetOwner()->ResolveXRef(ref.fileNr,
-//					ref.cell.GetFlatCell(inLocation), stack[stackIndx]);
-//				break;
-//			}
-			
+
+			// Fase 9: "NomeFoglio!Cella"/"NomeFoglio!Cella:Cella" -- il
+			// nome del foglio (non un indice, vedi Formula.h) si
+			// risolve QUI, in fase di calcolo, mai in fase di parsing:
+			// GetSheetResolver() e' NULL per un documento a un solo
+			// foglio (mai collegato a una cartella multi-foglio), o il
+			// nome non corrisponde a nessun foglio (piu') esistente --
+			// in entrambi i casi il riferimento resta semplicemente
+			// non risolto (eNoData), mai un crash, esattamente come un
+			// CalcCell che referenzia una cella vuota.
+			case valXRef:
+			{
+				stackIndx++;
+				const char *sheetName = (const char *)(fString + indx);
+				size_t nameLen = strlen(sheetName) + 1;
+				cell target;
+				memcpy(&target, sheetName + nameLen, sizeof(cell));
+				size_t totalBytes = nameLen + sizeof(cell);
+				if (totalBytes & kPFAlignBits)
+					totalBytes = (totalBytes & ~kPFAlignBits) + kPFWordSize;
+				indx += totalBytes / kPFWordSize;
+
+				CContainer *sheet = inContainer && inContainer->GetSheetResolver()
+					? inContainer->GetSheetResolver()->ResolveSheetByName(sheetName) : NULL;
+
+				if (sheet)
+					sheet->GetValue(target.GetFlatCell(inLocation), stack[stackIndx]);
+				else
+					stack[stackIndx].fType = eNoData;
+				break;
+			}
+
+			case valXRange:
+			{
+				stackIndx++;
+				const char *sheetName = (const char *)(fString + indx);
+				size_t nameLen = strlen(sheetName) + 1;
+				range target;
+				memcpy(&target, sheetName + nameLen, sizeof(range));
+				size_t totalBytes = nameLen + sizeof(range);
+				if (totalBytes & kPFAlignBits)
+					totalBytes = (totalBytes & ~kPFAlignBits) + kPFWordSize;
+				indx += totalBytes / kPFWordSize;
+
+				CContainer *sheet = inContainer && inContainer->GetSheetResolver()
+					? inContainer->GetSheetResolver()->ResolveSheetByName(sheetName) : NULL;
+
+				if (sheet && target.TopLeft() == target.BotRight())
+					// Un solo punto (es. "Foglio!A1:A1", che Excel
+					// normalizza comunque a un riferimento singolo):
+					// stesso trattamento di valXRef sopra.
+					sheet->GetValue(target.TopLeft(), stack[stackIndx]);
+				else
+					// Un vero intervallo multi-cella fra fogli (per
+					// una funzione come SUM) non e' ancora supportato:
+					// le funzioni di aggregazione leggono un range dal
+					// CContainer "corrente" passato alla funzione
+					// (inContainer sopra in opFunc), non da un
+					// CContainer arbitrario -- servirebbe estendere
+					// anche quel meccanismo, non ancora progettato.
+					// eNoData invece di sommare/leggere solo la prima
+					// cella: un valore silenziosamente parziale
+					// sarebbe peggio di uno chiaramente non risolto.
+					stack[stackIndx].fType = eNoData;
+				break;
+			}
+
 			case opParen:
 				break;
 
@@ -694,16 +756,60 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 						sLen = (sLen & ~kPFAlignBits) + kPFWordSize;
 					indx += sLen / kPFWordSize;
 					break;
-	// •••R4Hack
-	//			case valXRef:
-	//				stackIndx++;
-	//				XRef ref;
-	//				ref = *(XRef *)(fString + indx);
-	//				indx += sizeof(XRef) / kPFWordSize;
-	//				inContainer->GetOwner()->GetXRefDesc(ref.fileNr,
-	//					ref.cell.GetRefCell(inLocation), stack[stackIndx]);
-	//				break;
-	
+
+				case valXRef:
+				{
+					const char *sheetName = (const char *)(fString + indx);
+					size_t nameLen = strlen(sheetName) + 1;
+					cell target;
+					memcpy(&target, sheetName + nameLen, sizeof(cell));
+					size_t totalBytes = nameLen + sizeof(cell);
+					if (totalBytes & kPFAlignBits)
+						totalBytes = (totalBytes & ~kPFAlignBits) + kPFWordSize;
+					indx += totalBytes / kPFWordSize;
+
+					char cellName[64];
+					if (rcStyle)
+						target.GetRCName(cellName);
+					else
+						target.GetFormulaName(cellName, inLocation);
+
+					// Sempre fra apici (anche se il nome non le richiederebbe,
+					// es. senza spazi): il bytecode non registra se era stato
+					// scritto con o senza, e senza le virgolette un nome con
+					// spazi/trattini non si rianalizzerebbe correttamente
+					// (vedi QIDENT in parser.h/.cpp) -- fondamentale per il
+					// giro testuale di AscdIO::SaveASCD/LoadASCD (UnMangle poi
+					// TryToParseString), non solo per la barra formule.
+					sprintf(outString, "'%s'!%s", sheetName, cellName);
+					stackIndx++;
+					strcpy(stack[stackIndx], outString);
+					break;
+				}
+
+				case valXRange:
+				{
+					const char *sheetName = (const char *)(fString + indx);
+					size_t nameLen = strlen(sheetName) + 1;
+					range target;
+					memcpy(&target, sheetName + nameLen, sizeof(range));
+					size_t totalBytes = nameLen + sizeof(range);
+					if (totalBytes & kPFAlignBits)
+						totalBytes = (totalBytes & ~kPFAlignBits) + kPFWordSize;
+					indx += totalBytes / kPFWordSize;
+
+					char rangeName[128];
+					if (rcStyle)
+						target.GetRCName(rangeName);
+					else
+						target.GetFormulaName(rangeName, inLocation);
+
+					sprintf(outString, "'%s'!%s", sheetName, rangeName);
+					stackIndx++;
+					strcpy(stack[stackIndx], outString);
+					break;
+				}
+
 				case valNil:
 					stackIndx++;
 					stack[stackIndx][0] = 0;
@@ -766,7 +872,8 @@ bool CFormula::IsConstant() const
 			case opFunc:	return false;
 			case valCell:	return false;
 			case valRange:return false;
-//			case valXRef:	return false;
+			case valXRef:	return false;
+			case valXRange:	return false;
 			case valNum:
 			case valPerc:
 				indx += sizeof(double) / kPFWordSize;
@@ -835,13 +942,22 @@ long CFormula::StringLength() const
 			case valRange:
 				indx += sizeof(range) / kPFWordSize;
 				break;
+			case valXRef:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(cell);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
+			case valXRange:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(range);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
 			default:
 				// there was a warning about not all enum values handled in
 				// switch statement.
 				break;
-//			case valXRef:
-//				indx += sizeof(XRef) / kPFWordSize;
-//				break;
 		}
 	}
 	while (theOpcode != opEnd);

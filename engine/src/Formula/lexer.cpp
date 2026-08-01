@@ -131,6 +131,16 @@ int CParser::GetNextToken(bool acceptTime)
 					state = 2;
 				else if (ch == '!')
 					state = 3;
+				else if (ch == '\'')
+					// Nome di foglio fra apici singoli ('Nome Foglio',
+					// Fase 9): serve quando il nome contiene spazi o
+					// altri caratteri non validi in un identificatore
+					// semplice -- riconosciuto qui, come "!" sopra,
+					// invece di passare dalla catena di RESTART (che
+					// prova IDENT/NUMERO/TESTO/ecc. in sequenza) perche'
+					// "'" non ha nessun altro significato in questa
+					// grammatica.
+					state = 40;
 				else
 					RESTART;
 				break;
@@ -686,6 +696,37 @@ int CParser::GetNextToken(bool acceptTime)
 				strcpy(mToken, t + 1);
 				break;
 
+			// Nome di foglio fra apici singoli (Fase 9): stesso
+			// principio degli stati 29-30 sopra per TEXT, con "'" al
+			// posto di '"'. Nessuna gestione di un apostrofo letterale
+			// dentro il nome (l'apice doppio '' di Excel per un
+			// apostrofo letterale non e' supportato): stessa
+			// semplificazione gia' scelta per TEXT, che allo stesso
+			// modo si ferma al primo '"' incontrato senza alcun
+			// meccanismo di escape.
+			case 40:
+				GETNEXTCHAR;
+				if (te >= tm)
+					THROW((errTokenLength, t));
+				if (ch == '\'')
+					state = 41;
+				else if (ch == 0)
+				{
+					RETRACT;
+					state = 41;
+				}
+				else
+					state = 40;
+				break;
+
+			case 41:
+				token = QIDENT;
+				if (te[-1] == '\'')
+					te[-1] = 0;
+
+				strcpy(mToken, t + 1);
+				break;
+
 			case 100:
 				GETNEXTCHAR;
 					// fprintf( stderr, "100/%c(%d)\n", ch,ch ) ;
@@ -760,7 +801,13 @@ int CParser::GetNextToken(bool acceptTime)
 			token = BOOL;
 		}
 	}
-	else if (token != TEXT)
+	else if (token != TEXT && token != QIDENT)
+		// TEXT (stato 30) e QIDENT (stato 41) scrivono gia' mToken da
+		// soli, senza le virgolette che delimitano il token grezzo in
+		// "buf" -- questo ramo va escluso per entrambi, altrimenti
+		// sovrascriverebbe quel risultato gia' corretto con "buf" cosi'
+		// com'e' (bug reale scoperto proprio cosi': un nome di foglio
+		// fra apici risultava ancora con l'apice di apertura davanti).
 		strcpy(mToken, buf);
 
 	return token;
