@@ -422,6 +422,14 @@ int main()
 								"sezione sottolineato presente (vuota per questo file di prova, Fase 12)");
 						}
 
+						if (pos + 4 <= ascdLen)
+						{
+							int32 wrapCount;
+							memcpy(&wrapCount, ascdData + pos, 4); pos += 4;
+							Check(wrapCount == 0,
+								"sezione testo a capo presente (vuota per questo file di prova, Fase 12)");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
@@ -1051,6 +1059,143 @@ int main()
 
 			Check(foundA1, "A1 (<u/>) importato come sottolineato");
 			Check(foundB1, "B1 (<u val=\"double\"/>) importato come sottolineato semplice");
+		}
+	}
+
+	// Testo a capo (Fase 12): tests/sample_wraptext.xlsx ha tre celle
+	// -- A1 con wrapText="1", B1 con wrapText="1" insieme a
+	// horizontal="center" (le due proprieta' dello stesso <alignment>
+	// devono convivere), C1 senza stile esplicito.
+	{
+		BFile wrapFile("tests/sample_wraptext.xlsx", B_READ_ONLY);
+		Check(wrapFile.InitCheck() == B_OK, "apertura di tests/sample_wraptext.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&wrapFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_wraptext.xlsx");
+
+		wrapFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&wrapFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_wraptext.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_wraptext.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 3, "l'ASCD contiene le 3 celle di sample_wraptext.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				pos += len;
+			}
+
+			if (pos + 4 <= ascdLen)
+			{
+				int32 chartCount;
+				memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+				pos += chartCount * (2 * 4 + 4 * 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				pos += colWidthCount * (2 + 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+				pos += cellColorCount * (2 + 2 + 8);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 columnColorCount;
+				memcpy(&columnColorCount, ascdData + pos, 4); pos += 4;
+				pos += columnColorCount * (2 + 8);
+			}
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+4); } // altezze riga
+			if (pos + 8 <= ascdLen) pos += 8; // Blocca riquadri
+			if (pos + 4 <= ascdLen) // fontCount, nessuno stile grassetto/corsivo qui
+			{
+				int32 fontCount;
+				memcpy(&fontCount, ascdData + pos, 4); pos += 4;
+				pos += fontCount * (2 + 2 + (int32)sizeof(font_family) + (int32)sizeof(font_style) + 4);
+			}
+			int foundB1Align = -1;
+			if (pos + 4 <= ascdLen) // alignCount: B1 e' anche centrato
+			{
+				int32 alignCount;
+				memcpy(&alignCount, ascdData + pos, 4); pos += 4;
+				for (int32 i = 0; i < alignCount && pos + 5 <= ascdLen; i++)
+				{
+					int16 row, col;
+					int8 alignment;
+					memcpy(&row, ascdData + pos, 2); pos += 2;
+					memcpy(&col, ascdData + pos, 2); pos += 2;
+					memcpy(&alignment, ascdData + pos, 1); pos += 1;
+					if (row == 1 && col == 2) foundB1Align = alignment;
+				}
+			}
+			if (pos + 4 <= ascdLen) // borderCount, nessun bordo esplicito qui
+			{
+				int32 borderCount;
+				memcpy(&borderCount, ascdData + pos, 4); pos += 4;
+				pos += borderCount * (2 + 2 + 4);
+			}
+			if (pos + 4 <= ascdLen) // formatCount, nessun numFmt esplicito qui
+			{
+				int32 formatCount;
+				memcpy(&formatCount, ascdData + pos, 4); pos += 4;
+				pos += formatCount * (2 + 2 + 4);
+			}
+			if (pos + 4 <= ascdLen) // underlineCount, nessun sottolineato qui
+			{
+				int32 underlineCount;
+				memcpy(&underlineCount, ascdData + pos, 4); pos += 4;
+				pos += underlineCount * (2 + 2);
+			}
+
+			bool haveWrapCount = false;
+			int32 wrapCount = 0;
+			if (pos + 4 <= ascdLen)
+			{
+				memcpy(&wrapCount, ascdData + pos, 4); pos += 4;
+				haveWrapCount = true;
+			}
+			Check(haveWrapCount && wrapCount == 2,
+				"sezione testo a capo: 2 celle con a capo attivo (A1/B1, non C1)");
+
+			bool foundA1 = false, foundB1 = false;
+			for (int32 i = 0; i < wrapCount && pos + 4 <= ascdLen; i++)
+			{
+				int16 row, col;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+
+				if (row == 1 && col == 1) foundA1 = true;
+				if (row == 1 && col == 2) foundB1 = true;
+			}
+
+			Check(foundA1, "A1 (wrapText=\"1\") importato con a capo attivo");
+			Check(foundB1, "B1 (wrapText=\"1\" + horizontal=\"center\") importato con a capo attivo");
+			Check(foundB1Align == eAlignCenter,
+				"B1 mantiene anche l'allineamento centrato, le due proprieta' convivono");
 		}
 	}
 

@@ -94,6 +94,7 @@ static const uint32 kMsgToggleFreeze = 'frzp';
 static const uint32 kMsgToggleBold = 'tbld';
 static const uint32 kMsgToggleItalic = 'tita';
 static const uint32 kMsgToggleUnderline = 'tund';
+static const uint32 kMsgToggleWrapText = 'twrp';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
 static const uint32 kMsgShowBgColor = 'shbc';
@@ -372,6 +373,12 @@ MainWindow::MainWindow()
 	BMessage* alignRightMsg = new BMessage(kMsgSetAlignment);
 	alignRightMsg->AddInt32("alignment", eAlignRight);
 	formatMenu->AddItem(new BMenuItem("Allinea a destra", alignRightMsg));
+	// A capo automatico (Fase 12): CellStyle::fWrapText, stesso
+	// principio di ToggleBold/ToggleUnderline sopra (stato letto dalla
+	// cella attiva, applicato a tutta la selezione) ma con un effetto
+	// collaterale in piu' -- fa anche crescere l'altezza delle righe
+	// coinvolte se serve, vedi MainWindow::ToggleWrapText.
+	formatMenu->AddItem(new BMenuItem("A capo automatico", new BMessage(kMsgToggleWrapText)));
 	formatMenu->AddSeparatorItem();
 	formatMenu->AddItem(new BMenuItem("Colore testo" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgShowTextColor)));
@@ -709,6 +716,11 @@ void MainWindow::SwitchToSheet(int index)
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetColumnWidths(fSheets[index].colWidths);
 	fSheetView->SetRowHeights(fSheets[index].rowHeights);
+	// Testo a capo (Fase 12): il documento porta gia' con se' quali
+	// celle hanno fWrapText (persistito o importato), qui si ricalcola
+	// solo l'altezza di riga necessaria a contenerle alla larghezza di
+	// colonna corrente di QUESTO foglio.
+	fSheetView->RecalculateWrappedRowHeights();
 	fSheetView->SetFreezePanes(fSheets[index].frozenRows, fSheets[index].frozenCols);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	fFormulaBar->SetText("");
@@ -849,6 +861,12 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetColumnWidths(fSheets[0].colWidths);
 	fSheetView->SetRowHeights(fSheets[0].rowHeights);
+	// Testo a capo (Fase 12): copre sia i documenti nativi (fWrapText
+	// gia' persistito per cella) sia quelli importati da un translator
+	// (XLSX imposta fWrapText, ma non puo' calcolare l'altezza senza
+	// una view/font vivi -- questa chiamata lo fa qui, con entrambi
+	// disponibili).
+	fSheetView->RecalculateWrappedRowHeights();
 	fSheetView->SetFreezePanes(fSheets[0].frozenRows, fSheets[0].frozenCols);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	RebuildSheetTabs();
@@ -1693,6 +1711,38 @@ void MainWindow::ToggleUnderline()
 	MarkModified();
 }
 
+// A capo automatico (Fase 12): stesso principio di ToggleUnderline
+// sopra, ma dopo aver applicato il campo alla selezione serve anche
+// far crescere l'altezza delle righe coinvolte se il testo non
+// entrerebbe piu' su una riga sola alla larghezza di colonna
+// corrente -- RecalculateWrappedRowHeights (SheetView) non riduce mai
+// una riga, quindi disattivare l'a capo automatico non restringe le
+// righe gia' allargate (nessun modo semplice di sapere se erano state
+// allargate per quel motivo o a mano dall'utente).
+void MainWindow::ToggleWrapText()
+{
+	if (!fDoc)
+		return;
+
+	CellStyle activeStyle;
+	fDoc->GetCellStyle(fSheetView->Selection(), activeStyle);
+	bool newValue = !activeStyle.fWrapText;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fWrapText = newValue;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->RecalculateWrappedRowHeights();
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::HandleGoToRequest(const char* rangeText)
 {
 	range r;
@@ -2383,6 +2433,10 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgToggleUnderline:
 			ToggleUnderline();
+			break;
+
+		case kMsgToggleWrapText:
+			ToggleWrapText();
 			break;
 
 		case kMsgSetAlignment:

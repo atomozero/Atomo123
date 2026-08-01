@@ -21,6 +21,8 @@
 */
 
 #include <cstdio>
+#include <utility>
+#include <vector>
 
 #include <Application.h>
 
@@ -114,6 +116,33 @@ int main()
 	win->ToggleUnderline();
 	doc->GetCellStyle(cell(1, 1), cs);
 	Check(!cs.fUnderline, "un secondo ToggleUnderline lo toglie da tutta la selezione");
+
+	// A capo automatico (Fase 12): stesso principio di ToggleUnderline
+	// sopra, ma con l'effetto collaterale di far crescere l'altezza
+	// della riga se il testo non entra piu' su una riga sola alla
+	// larghezza di colonna corrente.
+	{
+		std::vector<std::pair<int, float> > narrowCol;
+		narrowCol.push_back(std::make_pair(1, 40.0f)); // colonna 1 stretta
+		view->SetColumnWidths(narrowCol);
+
+		TryToParseString("Testo lungo che sicuramente non entra su una riga sola",
+			cell(1, 3), doc, true); // A3
+
+		view->SetSelection(cell(1, 3));
+		view->ExtendSelection(cell(1, 3));
+		win->ToggleWrapText();
+		doc->GetCellStyle(cell(1, 3), cs);
+		Check(cs.fWrapText, "ToggleWrapText imposta CellStyle::fWrapText su A3");
+
+		std::vector<std::pair<int, float> > heights = view->CustomRowHeights();
+		bool row3Grew = false;
+		for (size_t i = 0; i < heights.size(); i++)
+			if (heights[i].first == 3 && heights[i].second > 20.0f)
+				row3Grew = true;
+		Check(row3Grew,
+			"l'altezza della riga 3 cresce oltre il predefinito per contenere il testo a capo");
+	}
 
 	win->Unlock();
 

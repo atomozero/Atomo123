@@ -210,6 +210,19 @@ public:
 	void SetRowHeights(const std::vector<std::pair<int, float> >& heights);
 	std::vector<std::pair<int, float> > CustomRowHeights() const;
 
+	// Testo a capo (Fase 12): il motore non fa layout di testo (vedi
+	// il commento su CellStyle::fWrapText), quindi e' la UI a dover
+	// far crescere l'altezza di riga quando serve. Ricalcola tutte le
+	// righe con almeno una cella fWrapText, prendendo il MASSIMO fra
+	// l'altezza gia' impostata (manuale o da Fase 10) e quella
+	// necessaria a contenere il testo a capo alla larghezza di
+	// colonna corrente -- non riduce mai una riga gia' piu' alta del
+	// necessario. Chiamata da MainWindow dopo aver aperto un
+	// documento (nativo o importato, in entrambi i casi il testo a
+	// capo arriva gia' impostato sulle celle: qui si calcola solo
+	// l'altezza) e dopo ToggleWrapText.
+	void RecalculateWrappedRowHeights();
+
 	// Mostra/nascondi la griglia sottile fra le celle (Fase 7,
 	// finestra Preferenze): letta all'avvio da gPrefs (Preferences.h,
 	// se esiste -- vedi App::App) e sovrascrivibile in ogni momento.

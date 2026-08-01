@@ -112,6 +112,17 @@ int main()
 		doc->SetCellStyle(cell(1, 2), cs);
 	}
 
+	// Testo a capo (Fase 12) su A2 pure: CellStyle::fWrapText, stesso
+	// principio del sottolineato -- l'altezza di riga necessaria non
+	// viene ricalcolata qui (SaveASCD/LoadASCD non hanno una view/font
+	// vivi), solo il campo booleano viaggia.
+	{
+		CellStyle cs;
+		doc->GetCellStyle(cell(1, 2), cs);
+		cs.fWrapText = true;
+		doc->SetCellStyle(cell(1, 2), cs);
+	}
+
 	// Formato numero (Fase 12) su A3, oltre all'allineamento gia'
 	// impostato sopra: stesso principio dello slittamento
 	// "menu Formato -> CellStyle::fFormat" gia' usato dall'app live
@@ -218,6 +229,16 @@ int main()
 
 		reloaded->GetCellStyle(cell(1, 1), cs);
 		Check(!cs.fUnderline, "A1 (mai sottolineata) resta senza sottolineato dopo il giro");
+	}
+
+	// Testo a capo: A2 ce l'ha ancora, A1 (mai toccata) no.
+	{
+		CellStyle cs;
+		reloaded->GetCellStyle(cell(1, 2), cs);
+		Check(cs.fWrapText, "il testo a capo di A2 sopravvive al giro");
+
+		reloaded->GetCellStyle(cell(1, 1), cs);
+		Check(!cs.fWrapText, "A1 (mai impostata a capo) resta senza testo a capo dopo il giro");
 	}
 
 	// Formato numero: A3 e' ancora Valuta, A1 (mai toccata) resta al

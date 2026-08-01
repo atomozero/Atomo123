@@ -39,6 +39,11 @@
 static const uint32 kMsgCellEditCommit = 'cedt';
 static const uint32 kMsgCellEditCancel = 'cedc';
 
+// Definita piu' sotto (vicino a IsDefaultBg), usata sia da
+// RecalculateWrappedRowHeights che da Draw() -- dichiarata qui perche'
+// la prima viene prima nel file.
+static std::vector<BString> WrapTextLines(BView* view, const char* text, float maxWidth);
+
 // Filtro applicato alla BTextView interna del BTextControl usato per
 // l'editing in-cella: la BTextView interna e' quella che riceve
 // davvero il fuoco tastiera (BTextControl::MakeFocus lo inoltra a
@@ -355,6 +360,59 @@ std::vector<std::pair<int, float> > SheetView::CustomRowHeights() const
 			result.push_back(std::make_pair(i + 1, fRowHeights[i]));
 	}
 	return result;
+}
+
+void SheetView::RecalculateWrappedRowHeights()
+{
+	if (!fDoc)
+		return;
+
+	std::vector<int> neededLines(kRowCount + 1, 0); // 1-based, indice 0 inutilizzato
+
+	CCellIterator iter(fDoc, NULL);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		CellStyle cs;
+		fDoc->GetCellStyle(c, cs);
+		if (!cs.fWrapText)
+			continue;
+
+		char text[4096];
+		fDoc->GetCellResult(c, text, sizeof(text), true);
+		if (text[0] == 0)
+			continue;
+
+		// Stesso font della cella per una misura coerente con Draw()
+		// (StringWidth dipende dal font attivo sulla view).
+		gFontSizeTable.SetFontID(this, cs.fFont);
+
+		float width = fColWidths[c.h - 1] - 6;
+		int lines = (int)WrapTextLines(this, text, width).size();
+		if (lines > neededLines[c.v])
+			neededLines[c.v] = lines;
+	}
+	SetFont(be_plain_font);
+
+	bool changed = false;
+	for (int row = 1; row <= kRowCount; row++)
+	{
+		if (neededLines[row] == 0)
+			continue;
+		float needed = neededLines[row] * kRowHeight;
+		if (needed > fRowHeights[row - 1])
+		{
+			fRowHeights[row - 1] = needed;
+			changed = true;
+		}
+	}
+
+	if (changed)
+	{
+		RebuildRowOffsets();
+		UpdateCanvasSize();
+		Invalidate();
+	}
 }
 
 void SheetView::RebuildRowOffsets()
@@ -1143,6 +1201,55 @@ static bool IsDefaultBg(rgb_color c)
 	return c.red == 255 && c.green == 255 && c.blue == 255;
 }
 
+// Testo a capo (Fase 12): a-capo semplice per parola (spazio come
+// unico punto di rottura, nessuna sillabazione) -- il font attivo
+// sulla view DEVE gia' essere quello giusto per la cella (chi chiama
+// applica gFontSizeTable.SetFontID prima), StringWidth qui sotto
+// dipende da quello. Una singola parola piu' larga di maxWidth resta
+// comunque sulla propria riga (nessun taglio a meta' parola), per non
+// rischiare un ciclo infinito o testo illeggibile.
+static std::vector<BString> WrapTextLines(BView* view, const char* text, float maxWidth)
+{
+	std::vector<BString> lines;
+	BString current;
+	BString word;
+
+	for (const char* p = text; ; p++)
+	{
+		if (*p == ' ' || *p == 0)
+		{
+			if (word.Length() > 0)
+			{
+				BString candidate = current;
+				if (candidate.Length() > 0)
+					candidate << " ";
+				candidate << word;
+
+				if (current.Length() > 0 && view->StringWidth(candidate.String()) > maxWidth)
+				{
+					lines.push_back(current);
+					current = word;
+				}
+				else
+					current = candidate;
+
+				word = "";
+			}
+			if (*p == 0)
+				break;
+		}
+		else
+			word << *p;
+	}
+
+	if (current.Length() > 0)
+		lines.push_back(current);
+	if (lines.empty())
+		lines.push_back(BString(text));
+
+	return lines;
+}
+
 // Vedi il commento su fFrozenRows/fFrozenCols in SheetView.h: disegna
 // sfondo, griglia e testo per un blocco di celle [firstCol,lastCol] x
 // [firstRow,lastRow], spostato di (xOrigin, yOrigin) -- (0,0) per il
@@ -1301,34 +1408,53 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				// toccata dal menu Formato) resta sempre a sinistra,
 				// comportamento invariato -- solo le celle che l'utente
 				// ha esplicitamente allineato cambiano posizione.
-				float textX = r.left + 3;
-				if (cs.fAlignment == eAlignCenter || cs.fAlignment == eAlignRight)
-				{
-					float textWidth = StringWidth(text);
-					if (cs.fAlignment == eAlignCenter)
-						textX = r.left + (r.Width() - textWidth) / 2.0f;
-					else
-						textX = r.right - textWidth - 3;
-				}
-
-				BPoint pos(textX, r.bottom - 5);
 				BRegion textClip(r);
 				ConstrainClippingRegion(&textClip);
-				DrawString(text, pos);
 
-				// Sottolineato (Fase 12): BFont non ha un attributo
-				// sottolineato nativo (vedi il commento su
-				// CellStyle::fUnderline in CellStyle.h), disegnata qui
-				// a mano come una linea sotto il testo -- stesso
-				// colore del testo (fHighColor, gia' impostato sopra
-				// con SetHighColor), non l'intera larghezza della
-				// cella come i bordi in DrawCellBand, solo la
-				// larghezza del testo davvero disegnato.
-				if (cs.fUnderline && text[0] != 0)
+				// Testo a capo (Fase 12): una riga sola (comportamento
+				// invariato) o piu' righe impilate dall'alto della
+				// cella, ciascuna alta kRowHeight -- stessa unita' usata
+				// da RecalculateWrappedRowHeights per far crescere la
+				// riga, altrimenti disegno e layout andrebbero fuori
+				// sincrono (righe tagliate o spazio vuoto in eccesso).
+				std::vector<BString> lines;
+				if (cs.fWrapText)
+					lines = WrapTextLines(this, text, r.Width() - 6);
+				else
+					lines.push_back(BString(text));
+
+				for (size_t li = 0; li < lines.size(); li++)
 				{
-					float textWidth = StringWidth(text);
-					float y = pos.y + 2;
-					StrokeLine(BPoint(pos.x, y), BPoint(pos.x + textWidth, y));
+					const char* lineText = lines[li].String();
+					float textX = r.left + 3;
+					if (cs.fAlignment == eAlignCenter || cs.fAlignment == eAlignRight)
+					{
+						float textWidth = StringWidth(lineText);
+						if (cs.fAlignment == eAlignCenter)
+							textX = r.left + (r.Width() - textWidth) / 2.0f;
+						else
+							textX = r.right - textWidth - 3;
+					}
+
+					BPoint pos(textX, r.top + kRowHeight * (li + 1) - 5);
+					DrawString(lineText, pos);
+
+					// Sottolineato (Fase 12): BFont non ha un
+					// attributo sottolineato nativo (vedi il
+					// commento su CellStyle::fUnderline in
+					// CellStyle.h), disegnata qui a mano come una
+					// linea sotto ogni riga -- stesso colore del
+					// testo (fHighColor, gia' impostato sopra con
+					// SetHighColor), non l'intera larghezza della
+					// cella come i bordi in DrawCellBand, solo la
+					// larghezza del testo davvero disegnato su
+					// quella riga.
+					if (cs.fUnderline && lineText[0] != 0)
+					{
+						float textWidth = StringWidth(lineText);
+						float y = pos.y + 2;
+						StrokeLine(BPoint(pos.x, y), BPoint(pos.x + textWidth, y));
+					}
 				}
 			}
 		}

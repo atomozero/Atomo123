@@ -72,6 +72,7 @@ struct CellStyle {
 	uchar fBBorderColor;
 	uchar fRBorderColor;
 	bool fUnderline; // BFont non ha un attributo sottolineato nativo (solo stile del font, vedi Fase 12): disegnato a mano in SheetView, non parte della tripla famiglia/stile/dimensione di fFont
+	bool fWrapText; // a-capo del testo per larghezza di colonna (Fase 12): il motore non fa layout di testo, solo la UI (SheetView) sa disegnare piu' righe e far crescere l'altezza di riga di conseguenza
 
 	CellStyle();
 	bool operator==(const CellStyle& cs) const;

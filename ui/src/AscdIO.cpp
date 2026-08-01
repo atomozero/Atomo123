@@ -428,6 +428,40 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione testo a capo di cella non predefinito, in coda (Fase
+	// 12): CellStyle::fWrapText, stesso pattern del sottolineato sopra
+	// (un booleano a parte, solo riga/colonna, nessun valore da
+	// scrivere). L'altezza di riga necessaria a contenere il testo a
+	// capo NON viene ricalcolata qui (SaveASCD non ha una view/font
+	// vivi per misurare il testo): resta quella gia' persistita dalla
+	// sezione altezze di riga di Fase 10, ricalcolata di nuovo al
+	// prossimo caricamento da SheetView::RecalculateWrappedRowHeights.
+	{
+		CellStyle defaultStyle;
+		std::vector<cell> toWrite;
+		CCellIterator wrapIter(doc, NULL);
+		cell wc;
+		while (wrapIter.NextExisting(wc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(wc, cs);
+			if (cs.fWrapText != defaultStyle.fWrapText)
+				toWrite.push_back(wc);
+		}
+
+		int32 wrapCount = (int32)toWrite.size();
+		if (dest->Write(&wrapCount, sizeof(wrapCount)) != (ssize_t)sizeof(wrapCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < wrapCount; i++)
+		{
+			int16 row = toWrite[i].v, col = toWrite[i].h;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -805,6 +839,33 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				cell loc(col, row);
 				doc->GetCellStyle(loc, cs);
 				cs.fUnderline = true;
+				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione testo a capo di cella non predefinito, in coda (Fase
+	// 12): vedi il commento in SaveASCD -- solo riga/colonna, nessun
+	// valore da leggere.
+	{
+		int32 wrapCount = 0;
+		ssize_t got = source->Read(&wrapCount, sizeof(wrapCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(wrapCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < wrapCount; i++)
+			{
+				int16 row, col;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_BAD_DATA;
+
+				CellStyle cs;
+				cell loc(col, row);
+				doc->GetCellStyle(loc, cs);
+				cs.fWrapText = true;
 				doc->SetCellStyle(loc, cs);
 			}
 		}

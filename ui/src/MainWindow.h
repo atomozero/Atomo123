@@ -82,6 +82,11 @@ public:
 	// non ha un attributo sottolineato nativo (vedi il commento sul
 	// campo in CellStyle.h).
 	void ToggleUnderline();
+	// A capo automatico (Fase 12): CellStyle::fWrapText, stesso
+	// principio di ToggleUnderline sopra, ma fa anche crescere
+	// l'altezza delle righe coinvolte se serve (vedi SheetView::
+	// RecalculateWrappedRowHeights).
+	void ToggleWrapText();
 	void SetAlignment(char alignment);
 	void SetTextColor(rgb_color color);
 	void SetBackgroundColor(rgb_color color);

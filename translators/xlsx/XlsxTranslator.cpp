@@ -423,6 +423,37 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione testo a capo di cella non predefinito, in coda (Fase 12,
+	// vedi ui/src/AscdIO.cpp): questo translator estrae davvero
+	// wrapText="1" dal file XLSX originale (applicato a CellStyle::
+	// fWrapText durante ParseSheet) -- va quindi scritta con i valori
+	// reali. Solo riga/colonna, nessun valore da scrivere.
+	{
+		CellStyle defaultStyle;
+		std::vector<cell> toWrite;
+		CCellIterator wrapIter(doc, NULL);
+		cell wc;
+		while (wrapIter.NextExisting(wc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(wc, cs);
+			if (cs.fWrapText != defaultStyle.fWrapText)
+				toWrite.push_back(wc);
+		}
+
+		int32 wrapCount = (int32)toWrite.size();
+		if (dest->Write(&wrapCount, sizeof(wrapCount)) != (ssize_t)sizeof(wrapCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < wrapCount; i++)
+		{
+			int16 row = toWrite[i].v, col = toWrite[i].h;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -938,6 +969,7 @@ struct ResolvedStyle {
 	bool hasBorders; // true solo se almeno un lato e' impostato
 	uchar borderT, borderL, borderB, borderR; // 0/1, pronti per CellStyle::fTBorderColor ecc (Fase 11: booleano per lato, non un vero colore)
 	bool underline; // pronto per CellStyle::fUnderline (nessun campo "has": false coincide gia' col predefinito)
+	bool wrapText; // pronto per CellStyle::fWrapText (nessun campo "has", stesso motivo di underline sopra)
 };
 
 enum StylesSection { kStylesNone, kStylesNumFmts, kStylesFills, kStylesFonts, kStylesBorders, kStylesCellXfs };
@@ -949,6 +981,7 @@ struct XfInfo {
 	int numFmtId;
 	int borderId;
 	char alignment; // EAlignment, eAlignGeneral se <alignment> assente
+	bool wrapText;
 };
 
 // Quattro lati di una voce di <borders>: presente/assente, stesso
@@ -1257,6 +1290,7 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			xf.numFmtId = 0;
 			xf.borderId = 0;
 			xf.alignment = eAlignGeneral;
+			xf.wrapText = false;
 			for (int i = 0; atts[i]; i += 2)
 			{
 				if (strcmp(atts[i], "fontId") == 0)
@@ -1278,8 +1312,16 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 		else if (strcmp(name, "alignment") == 0 && !ctx->cellXfs.empty())
 		{
 			for (int i = 0; atts[i]; i += 2)
+			{
 				if (strcmp(atts[i], "horizontal") == 0)
 					ctx->cellXfs.back().alignment = ResolveHorizontalAlignment(atts[i + 1]);
+				// wrapText="1" (booleano XLSX: "1"/"true" = vero,
+				// "0"/"false"/assente = falso -- qui basta escludere
+				// "0" dato che l'attributo non compare affatto quando
+				// e' falso).
+				else if (strcmp(atts[i], "wrapText") == 0)
+					ctx->cellXfs.back().wrapText = strcmp(atts[i + 1], "0") != 0;
+			}
 		}
 	}
 }
@@ -1390,6 +1432,7 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 
 		rs.underline = fontId >= 0 && (size_t)fontId < ctx.fontUnderline.size()
 			&& ctx.fontUnderline[fontId];
+		rs.wrapText = ctx.cellXfs[i].wrapText;
 
 		(*out)[i] = rs;
 	}
@@ -1529,7 +1572,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 			{
 				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
 				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
-					|| rs.hasBorders || rs.underline)
+					|| rs.hasBorders || rs.underline || rs.wrapText)
 				{
 					for (int col = min; col <= clampedMax; col++)
 					{
@@ -1548,6 +1591,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 							cs.fRBorderColor = rs.borderR;
 						}
 						if (rs.underline) cs.fUnderline = true;
+						if (rs.wrapText) cs.fWrapText = true;
 						ctx->doc->SetColumnStyle(col, cs);
 					}
 				}
@@ -1622,7 +1666,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		{
 			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
 			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
-				|| rs.hasBorders || rs.underline)
+				|| rs.hasBorders || rs.underline || rs.wrapText)
 			{
 				CellStyle cs;
 				ctx->doc->GetCellStyle(loc, cs);
@@ -1639,6 +1683,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 					cs.fRBorderColor = rs.borderR;
 				}
 				if (rs.underline) cs.fUnderline = true;
+				if (rs.wrapText) cs.fWrapText = true;
 				ctx->doc->SetCellStyle(loc, cs);
 			}
 		}
