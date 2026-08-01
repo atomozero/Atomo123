@@ -11,10 +11,12 @@
 #include "FindWindow.h"
 #include "ChartWindow.h"
 #include "PivotWindow.h"
+#include "NameWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
 #include "RangeRef.h"
 #include "IconCatalog.h"
+#include "NameTable.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -76,6 +78,7 @@ static const uint32 kMsgSwitchSheet = 'swsh';
 static const uint32 kMsgSetFormat = 'stfm';
 static const uint32 kMsgShowChart = 'shch';
 static const uint32 kMsgShowPivot = 'shpv';
+static const uint32 kMsgShowNames = 'shnm';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -349,6 +352,8 @@ MainWindow::MainWindow()
 		new BMessage(kMsgShowChart)));
 	insertMenu->AddItem(new BMenuItem("Tabella pivot" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgShowPivot)));
+	insertMenu->AddItem(new BMenuItem("Intervalli con nome" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowNames)));
 	menuBar->AddItem(insertMenu);
 
 	// Barra strumenti: pulsanti di testo semplici (BButton), non
@@ -413,6 +418,7 @@ MainWindow::MainWindow()
 	fFindWindow = NULL;
 	fChartWindow = NULL;
 	fPivotWindow = NULL;
+	fNameWindow = NULL;
 
 	UpdateTitle();
 }
@@ -440,6 +446,11 @@ MainWindow::~MainWindow()
 	{
 		fPivotWindow->Lock();
 		fPivotWindow->Quit();
+	}
+	if (fNameWindow)
+	{
+		fNameWindow->Lock();
+		fNameWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -1005,6 +1016,87 @@ void MainWindow::ShowPivotWindow()
 	if (fPivotWindow->IsHidden())
 		fPivotWindow->Show();
 	fPivotWindow->Activate();
+}
+
+// Ricostruisce l'elenco di NameWindow a partire da fDoc->GetOrCreateNameTable()
+// -- chiamato prima di Show() e di nuovo dopo ogni Aggiungi/Aggiorna/Elimina
+// (HandleDefineName/HandleDeleteName), cosi' la finestra riflette sempre lo
+// stato vero di CNameTable invece di tenerne una copia che puo' disallinearsi.
+void MainWindow::RefreshNameWindow()
+{
+	if (!fNameWindow)
+		return;
+
+	std::vector<BString> names, ranges;
+	CNameTable* table = fDoc->GetOrCreateNameTable();
+	for (CNameTable::iterator i = table->begin(); i != table->end(); ++i)
+	{
+		char rangeText[32];
+		range r = i->second;
+		r.GetRCName(rangeText);
+		names.push_back(BString((const char*)i->first));
+		ranges.push_back(BString(rangeText));
+	}
+	fNameWindow->SetNames(names, ranges);
+}
+
+void MainWindow::ShowNameWindow()
+{
+	if (!fNameWindow)
+		fNameWindow = new NameWindow(BMessenger(this));
+
+	RefreshNameWindow();
+
+	if (fNameWindow->IsHidden())
+		fNameWindow->Show();
+	fNameWindow->Activate();
+}
+
+void MainWindow::HandleDefineName(const char* name, const char* rangeText)
+{
+	if (!name || !name[0])
+		return;
+
+	range r;
+	if (!ParseRangeRef(rangeText, r))
+		return;
+
+	(*fDoc->GetOrCreateNameTable())[name] = r;
+
+	// Una ridefinizione puo' cambiare il risultato di qualunque
+	// formula che usa quel nome, in qualunque foglio -- stesso motivo
+	// per cui una modifica cross-foglio (Fase 9) ricalcola l'intera
+	// cartella di lavoro, non solo il foglio attivo.
+	RecalculateActiveWorkbook();
+	RefreshNameWindow();
+}
+
+void MainWindow::HandleDeleteName(const char* name)
+{
+	if (!name || !name[0])
+		return;
+
+	fDoc->GetOrCreateNameTable()->erase(name);
+	RecalculateActiveWorkbook();
+	RefreshNameWindow();
+}
+
+void MainWindow::HandleGoToName(const char* name)
+{
+	if (!name || !name[0])
+		return;
+
+	try
+	{
+		range r = fDoc->ResolveName(name);
+		fSheetView->SetSelection(r.TopLeft());
+		if (!(r.TopLeft() == r.BotRight()))
+			fSheetView->ExtendSelection(r.BotRight());
+	}
+	catch (...)
+	{
+		// Nome non definito: nessuno spostamento, nessun crash.
+	}
 }
 
 // Legge l'intervallo dati richiesto da ChartWindow e manda indietro i
@@ -1600,6 +1692,35 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgShowPivot:
 			ShowPivotWindow();
 			break;
+
+		case kMsgShowNames:
+			ShowNameWindow();
+			break;
+
+		case kMsgDefineName:
+		{
+			BString name, rangeText;
+			if (message->FindString("name", &name) == B_OK
+				&& message->FindString("range", &rangeText) == B_OK)
+				HandleDefineName(name.String(), rangeText.String());
+			break;
+		}
+
+		case kMsgDeleteName:
+		{
+			BString name;
+			if (message->FindString("name", &name) == B_OK)
+				HandleDeleteName(name.String());
+			break;
+		}
+
+		case kMsgGoToName:
+		{
+			BString name;
+			if (message->FindString("name", &name) == B_OK)
+				HandleGoToName(name.String());
+			break;
+		}
 
 		case kMsgChartRequest:
 		{

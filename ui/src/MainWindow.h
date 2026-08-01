@@ -29,6 +29,7 @@ class SheetTabView;
 class FindWindow;
 class ChartWindow;
 class PivotWindow;
+class NameWindow;
 
 // MainWindow implementa ISheetResolver (Container.h, Fase 9) perche'
 // e' lei a possedere fSheets, l'unico elenco di "nome foglio -> CContainer*"
@@ -112,6 +113,16 @@ public:
 	// una modifica del documento.
 	void RecalculateActiveWorkbook();
 
+	// Pubblici per lo stesso motivo di CopySelection/PasteSelection
+	// sopra -- vedi tests/test_names.cpp. Definire/eliminare un nome
+	// ricalcola l'intera cartella di lavoro (una ridefinizione puo'
+	// cambiare qualunque formula in qualunque foglio, stesso motivo di
+	// RecalculateActiveWorkbook sopra); "Vai a" sposta la selezione
+	// della SheetView attiva sull'intervallo risolto.
+	void HandleDefineName(const char* name, const char* rangeText);
+	void HandleDeleteName(const char* name);
+	void HandleGoToName(const char* name);
+
 private:
 	SheetView* fSheetView;
 	BTextControl* fFormulaBar;
@@ -122,6 +133,7 @@ private:
 	FindWindow* fFindWindow;
 	ChartWindow* fChartWindow;
 	PivotWindow* fPivotWindow;
+	NameWindow* fNameWindow;
 	std::vector<ChartObject> fCharts;
 
 	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
@@ -182,6 +194,8 @@ private:
 	void HandleChartRequest(const char* rangeText);
 	void HandleChartInsert(const char* rangeText, const char* destText);
 	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg);
+	void ShowNameWindow();
+	void RefreshNameWindow();
 };
 
 #endif
