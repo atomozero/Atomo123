@@ -30,6 +30,7 @@ class FindWindow;
 class ChartWindow;
 class PivotWindow;
 class NameWindow;
+class PasteSpecialWindow;
 
 // MainWindow implementa ISheetResolver (Container.h, Fase 9) perche'
 // e' lei a possedere fSheets, l'unico elenco di "nome foglio -> CContainer*"
@@ -123,6 +124,13 @@ public:
 	void HandleDeleteName(const char* name);
 	void HandleGoToName(const char* name);
 
+	// Pubblico per lo stesso motivo di CopySelection/PasteSelection
+	// sopra -- vedi tests/test_paste_special.cpp. content/operation/
+	// transpose vengono da PasteSpecialWindow (vedi il commento sopra
+	// la sua implementazione in MainWindow.cpp per il significato dei
+	// due codici numerici).
+	void HandlePasteSpecialRequest(int32 content, int32 operation, bool transpose);
+
 private:
 	SheetView* fSheetView;
 	BTextControl* fFormulaBar;
@@ -134,6 +142,7 @@ private:
 	ChartWindow* fChartWindow;
 	PivotWindow* fPivotWindow;
 	NameWindow* fNameWindow;
+	PasteSpecialWindow* fPasteSpecialWindow;
 	std::vector<ChartObject> fCharts;
 
 	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
@@ -196,6 +205,7 @@ private:
 	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg);
 	void ShowNameWindow();
 	void RefreshNameWindow();
+	void ShowPasteSpecialWindow();
 };
 
 #endif

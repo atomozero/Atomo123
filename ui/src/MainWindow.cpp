@@ -12,11 +12,13 @@
 #include "ChartWindow.h"
 #include "PivotWindow.h"
 #include "NameWindow.h"
+#include "PasteSpecialWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
 #include "RangeRef.h"
 #include "IconCatalog.h"
 #include "NameTable.h"
+#include "Utils.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -79,6 +81,7 @@ static const uint32 kMsgSetFormat = 'stfm';
 static const uint32 kMsgShowChart = 'shch';
 static const uint32 kMsgShowPivot = 'shpv';
 static const uint32 kMsgShowNames = 'shnm';
+static const uint32 kMsgShowPasteSpecial = 'shps';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -276,6 +279,8 @@ MainWindow::MainWindow()
 	editMenu->AddItem(new BMenuItem("Taglia", new BMessage(kMsgCut), 'X'));
 	editMenu->AddItem(new BMenuItem("Copia", new BMessage(kMsgCopy), 'C'));
 	editMenu->AddItem(new BMenuItem("Incolla", new BMessage(kMsgPaste), 'V'));
+	editMenu->AddItem(new BMenuItem("Incolla speciale" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowPasteSpecial)));
 	editMenu->AddSeparatorItem();
 	editMenu->AddItem(new BMenuItem("Cancella", new BMessage(kMsgClear)));
 	editMenu->AddSeparatorItem();
@@ -419,6 +424,7 @@ MainWindow::MainWindow()
 	fChartWindow = NULL;
 	fPivotWindow = NULL;
 	fNameWindow = NULL;
+	fPasteSpecialWindow = NULL;
 
 	UpdateTitle();
 }
@@ -451,6 +457,11 @@ MainWindow::~MainWindow()
 	{
 		fNameWindow->Lock();
 		fNameWindow->Quit();
+	}
+	if (fPasteSpecialWindow)
+	{
+		fPasteSpecialWindow->Lock();
+		fPasteSpecialWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -820,18 +831,35 @@ void MainWindow::CopySelection(bool cut)
 	// Calc, cosi' copiare/incollare fra Atomo123 e loro tramite gli
 	// appunti di sistema funziona gia' da solo, senza bisogno di un
 	// formato proprietario.
-	BString clipText;
+	// "text/x-atomo-values" affianca lo stesso testo ma con
+	// GetCellResult (il risultato calcolato, es. "30") al posto di
+	// GetCellFormula (il testo della formula, es. "=A1+B1") -- solo
+	// per Incolla speciale > Solo valori (vedi HandlePasteSpecialRequest
+	// sotto), che deve convertire una formula copiata nel suo valore
+	// statico invece di ricopiare la formula stessa. Un secondo campo
+	// dati sullo stesso BMessage degli appunti, non un secondo giro di
+	// Lock/Clear/Commit.
+	BString clipText, valuesText;
 	for (int i = 0; i < numRows; i++)
 	{
 		if (i > 0)
+		{
 			clipText << "\n";
+			valuesText << "\n";
+		}
 		for (int j = 0; j < numCols; j++)
 		{
 			if (j > 0)
+			{
 				clipText << "\t";
+				valuesText << "\t";
+			}
+			cell src(sel.left + j, sel.top + i);
 			char text[4096];
-			fDoc->GetCellFormula(cell(sel.left + j, sel.top + i), text, sizeof(text), false);
+			fDoc->GetCellFormula(src, text, sizeof(text), false);
 			clipText << text;
+			fDoc->GetCellResult(src, text, sizeof(text), true);
+			valuesText << text;
 		}
 	}
 
@@ -840,7 +868,11 @@ void MainWindow::CopySelection(bool cut)
 		be_clipboard->Clear();
 		BMessage* clip = be_clipboard->Data();
 		if (clip)
+		{
 			clip->AddData("text/plain", B_MIME_TYPE, clipText.String(), clipText.Length());
+			clip->AddData("text/x-atomo-values", B_MIME_TYPE,
+				valuesText.String(), valuesText.Length());
+		}
 		be_clipboard->Commit();
 		be_clipboard->Unlock();
 	}
@@ -855,6 +887,49 @@ void MainWindow::CopySelection(bool cut)
 		fSheetView->Invalidate();
 		SelectionChanged(fSheetView->Selection());
 		MarkModified();
+	}
+}
+
+// Divide un testo TSV (tabulazioni fra colonne, ritorni a capo fra
+// righe -- lo stesso formato scritto da CopySelection, capito anche
+// da Excel/LibreOffice Calc) in una griglia di stringhe. Condivisa da
+// PasteSelection e HandlePasteSpecialRequest sotto: entrambe leggono
+// un campo dati degli appunti e lo trasformano nella stessa griglia,
+// solo la sorgente del testo (text/plain o text/x-atomo-values) e il
+// modo in cui la griglia viene poi scritta nel documento cambiano.
+static void ParseTSVGrid(const char* text, ssize_t len,
+	std::vector<std::vector<BString> >& grid)
+{
+	BString pasted(text, len);
+
+	int32 rowStart = 0;
+	while (rowStart <= pasted.Length())
+	{
+		int32 rowEnd = pasted.FindFirst('\n', rowStart);
+		if (rowEnd < 0)
+			rowEnd = pasted.Length();
+		BString rowText;
+		pasted.CopyInto(rowText, rowStart, rowEnd - rowStart);
+
+		std::vector<BString> cols;
+		int32 colStart = 0;
+		while (colStart <= rowText.Length())
+		{
+			int32 colEnd = rowText.FindFirst('\t', colStart);
+			if (colEnd < 0)
+				colEnd = rowText.Length();
+			BString cellText;
+			rowText.CopyInto(cellText, colStart, colEnd - colStart);
+			cols.push_back(cellText);
+			if (colEnd == rowText.Length())
+				break;
+			colStart = colEnd + 1;
+		}
+		grid.push_back(cols);
+
+		if (rowEnd == pasted.Length())
+			break;
+		rowStart = rowEnd + 1;
 	}
 }
 
@@ -874,43 +949,8 @@ void MainWindow::PasteSelection()
 
 	if (found)
 	{
-		BString pasted(text, len);
-
-		// Divide il testo incollato in righe (ritorno a capo) e
-		// colonne (tabulazione) -- stesso formato scritto da
-		// CopySelection sopra, capito anche da Excel/LibreOffice Calc,
-		// cosi' incollare un intervallo copiato da li' funziona anche
-		// qui senza bisogno di un formato dedicato.
 		std::vector<std::vector<BString> > grid;
-		int32 rowStart = 0;
-		while (rowStart <= pasted.Length())
-		{
-			int32 rowEnd = pasted.FindFirst('\n', rowStart);
-			if (rowEnd < 0)
-				rowEnd = pasted.Length();
-			BString rowText;
-			pasted.CopyInto(rowText, rowStart, rowEnd - rowStart);
-
-			std::vector<BString> cols;
-			int32 colStart = 0;
-			while (colStart <= rowText.Length())
-			{
-				int32 colEnd = rowText.FindFirst('\t', colStart);
-				if (colEnd < 0)
-					colEnd = rowText.Length();
-				BString cellText;
-				rowText.CopyInto(cellText, colStart, colEnd - colStart);
-				cols.push_back(cellText);
-				if (colEnd == rowText.Length())
-					break;
-				colStart = colEnd + 1;
-			}
-			grid.push_back(cols);
-
-			if (rowEnd == pasted.Length())
-				break;
-			rowStart = rowEnd + 1;
-		}
+		ParseTSVGrid(text, len, grid);
 
 		int numRows = (int)grid.size();
 		int numCols = 0;
@@ -963,6 +1003,134 @@ void MainWindow::PasteSelection()
 					catch (...)
 					{
 					}
+				}
+			}
+		}
+
+		RecalculateActiveWorkbook();
+		fSheetView->Invalidate();
+		fSheetView->SetSelection(destRange.TopLeft());
+		fSheetView->ExtendSelection(destRange.BotRight());
+		MarkModified();
+	}
+
+	be_clipboard->Unlock();
+}
+
+// Incolla speciale (Fase 7, sul modello di Sum-It storico
+// PasteSpecialDialog): content sceglie il campo dati sorgente
+// (0 = "text/plain", lo stesso testo di un Incolla normale, puo'
+// contenere formule; 1 = "text/x-atomo-values", il risultato gia'
+// calcolato -- vedi il commento in CopySelection sopra), operation
+// sceglie come combinare il valore incollato con quello gia' presente
+// nella cella di destinazione (0 = Sovrascrivi, lo stesso di Incolla;
+// 1..4 = Somma/Sottrai/Moltiplica/Dividi, sempre su valori, mai su
+// formule -- come Excel, il risultato di un'operazione aritmetica e'
+// sempre una cella statica, non conta se la sorgente era una
+// formula), transpose scambia righe e colonne del blocco incollato
+// prima di scriverlo.
+void MainWindow::HandlePasteSpecialRequest(int32 content, int32 operation, bool transpose)
+{
+	if (!fDoc)
+		return;
+
+	if (!be_clipboard->Lock())
+		return;
+
+	BMessage* clip = be_clipboard->Data();
+	const char* text = NULL;
+	ssize_t len = 0;
+	bool found = false;
+	if (content == 1 && clip)
+		found = clip->FindData("text/x-atomo-values", B_MIME_TYPE,
+			(const void**)&text, &len) == B_OK;
+	if (!found && clip)
+		found = clip->FindData("text/plain", B_MIME_TYPE,
+			(const void**)&text, &len) == B_OK;
+
+	if (found)
+	{
+		std::vector<std::vector<BString> > grid;
+		ParseTSVGrid(text, len, grid);
+
+		if (transpose)
+		{
+			size_t rows = grid.size();
+			size_t cols = 0;
+			for (size_t i = 0; i < rows; i++)
+				cols = std::max(cols, grid[i].size());
+
+			std::vector<std::vector<BString> > t(cols);
+			for (size_t c = 0; c < cols; c++)
+			{
+				t[c].resize(rows);
+				for (size_t r = 0; r < rows; r++)
+					t[c][r] = (c < grid[r].size()) ? grid[r][c] : BString();
+			}
+			grid = t;
+		}
+
+		int numRows = (int)grid.size();
+		int numCols = 0;
+		for (size_t i = 0; i < grid.size(); i++)
+			numCols = std::max(numCols, (int)grid[i].size());
+
+		range sel = fSheetView->SelectionRange();
+		cell anchor = sel.TopLeft();
+
+		range destRange;
+		if (numRows == 1 && numCols == 1 &&
+			(sel.right > sel.left || sel.bottom > sel.top))
+			destRange = sel; // stesso comportamento di PasteSelection
+		else
+			destRange = range(anchor.h, anchor.v,
+				anchor.h + numCols - 1, anchor.v + numRows - 1);
+
+		fSheetView->SaveUndoState(destRange);
+
+		for (int row = destRange.top; row <= destRange.bottom; row++)
+		{
+			int srcRow = std::min(row - destRange.top, numRows - 1);
+			for (int col = destRange.left; col <= destRange.right; col++)
+			{
+				int srcCol = std::min(col - destRange.left, numCols - 1);
+				const char* fieldText = "";
+				if (srcRow < (int)grid.size() && srcCol < (int)grid[srcRow].size())
+					fieldText = grid[srcRow][srcCol].String();
+
+				cell dest(col, row);
+
+				if (operation == 0)
+				{
+					if (fieldText[0] == 0)
+						fDoc->DisposeCell(dest);
+					else
+					{
+						try { TryToParseString(fieldText, dest, fDoc, true); }
+						catch (...) { }
+					}
+				}
+				else if (fieldText[0] != 0)
+				{
+					double srcValue = atof_i(fieldText);
+					Value destVal;
+					double destValue = (fDoc->GetValue(dest, destVal)
+						&& destVal.fType == eNumData && !destVal.IsNan())
+						? (double)destVal : 0.0;
+
+					double result = srcValue;
+					switch (operation)
+					{
+						case 1: result = destValue + srcValue; break;
+						case 2: result = destValue - srcValue; break;
+						case 3: result = destValue * srcValue; break;
+						case 4:
+							if (srcValue != 0.0)
+								result = destValue / srcValue;
+							break;
+					}
+
+					fDoc->NewCell(dest, Value(result), NULL);
 				}
 			}
 		}
@@ -1050,6 +1218,16 @@ void MainWindow::ShowNameWindow()
 	if (fNameWindow->IsHidden())
 		fNameWindow->Show();
 	fNameWindow->Activate();
+}
+
+void MainWindow::ShowPasteSpecialWindow()
+{
+	if (!fPasteSpecialWindow)
+		fPasteSpecialWindow = new PasteSpecialWindow(BMessenger(this));
+
+	if (fPasteSpecialWindow->IsHidden())
+		fPasteSpecialWindow->Show();
+	fPasteSpecialWindow->Activate();
 }
 
 void MainWindow::HandleDefineName(const char* name, const char* rangeText)
@@ -1696,6 +1874,21 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgShowNames:
 			ShowNameWindow();
 			break;
+
+		case kMsgShowPasteSpecial:
+			ShowPasteSpecialWindow();
+			break;
+
+		case kMsgPasteSpecialRequest:
+		{
+			int32 content = 0, operation = 0;
+			bool transpose = false;
+			message->FindInt32("content", &content);
+			message->FindInt32("operation", &operation);
+			message->FindBool("transpose", &transpose);
+			HandlePasteSpecialRequest(content, operation, transpose);
+			break;
+		}
 
 		case kMsgDefineName:
 		{
