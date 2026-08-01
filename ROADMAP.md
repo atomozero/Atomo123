@@ -3015,15 +3015,23 @@ Fase 11.
       ref="A1:C1"/>` da `<mergeCells>`, indipendente dall'ordine
       rispetto alle celle. Verificato anche dal vivo sul file di gara
       reale (537 celle unite su 39 fogli), nessun crash.
-- [ ] **Tabelle strutturate (bande alternate)**: **approssimate come
+- [x] **Tabelle strutturate (bande alternate)**: **approssimate come
       colori di sfondo statici all'importazione**, non come un vero
-      oggetto tabella (l'XLSX reale referenzia `TableStyleMedium2` con
-      `showRowStripes="1"` in `xl/tables/table*.xml`): risolvere il
-      colore di banda per riga pari/dispari e scriverlo come normale
-      colore di sfondo per cella, riusando l'infrastruttura colori già
-      esistente da Fase 7. Scelta deliberata per restare nello scope
-      di "importazione fedele", non "editor di tabelle Excel vive"
-      (niente filtro automatico, niente riga totali ricalcolata).
+      oggetto tabella. Legge `xl/tables/tableN.xml` (collegato al
+      foglio tramite i _rels del foglio stesso, non quelli della
+      cartella di lavoro) per `showRowStripes`: il colore VERO di uno
+      stile con nome incorporato (es. `TableStyleMedium2`, quello del
+      file reale) non è nel file — è un tema grafico predefinito di
+      Excel stesso, non salvato nella cartella di lavoro. Banda grigio
+      chiaro neutra invece del colore esatto, scritta come normale
+      colore di sfondo per cella (riusa l'infrastruttura colori di
+      Fase 7) solo dove non c'è già un colore esplicito. Scelta
+      deliberata per restare nello scope di "importazione fedele", non
+      "editor di tabelle Excel vive" (niente filtro automatico, niente
+      riga totali ricalcolata). **Bug reale scoperto scrivendo il
+      test**: la banda usava la riga dell'intestazione come
+      riferimento per l'alternanza invece della prima riga dati,
+      disallineando la banda di una riga.
 - [ ] **Formattazione condizionale**: **valutata una tantum
       all'importazione e congelata come colore statico**, stesso
       principio delle tabelle sopra — non un motore di regole vive
