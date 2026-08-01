@@ -1746,6 +1746,81 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       intervallo, testo non valido. Nessuna regressione nella suite
       esistente (tutti i 23 target).
 
+- [x] **Un vero Blocca riquadri**: prima di questo incremento non
+      esisteva affatto (il "solo effetto grafico di rendering" citato
+      nell'analisi dei punti mancanti in cima a questa fase si
+      riferiva alle intestazioni di riga/colonna, sempre "incollate"
+      allo schermo durante lo scroll — non un vero blocco per il
+      contenuto delle celle, mai implementato). `SheetView::
+      ToggleFreezePanes()` congela tutto cio' che sta sopra/a sinistra
+      della cella attiva, come il comando "Blocca riquadri" di Excel:
+      un secondo `Toggle` sblocca tutto. Nuova voce di menu "Blocca
+      riquadri" (menu Dati), con segno di spunta sincronizzato a ogni
+      attivazione/cambio foglio/documento.
+
+      Le righe/colonne bloccate restano ferme sullo schermo durante lo
+      scroll — sfondo, righe della griglia, testo, non solo le lettere/
+      numeri delle intestazioni (che gia' usavano questa tecnica, vedi
+      il commento su `ScrollTo()`): `Draw()` disegna fino a 4 bande
+      invece di una sola (riquadro scorrevole normale; riga bloccata,
+      colonne scorrevoli; colonna bloccata, righe scorrevoli;
+      l'angolo, bloccato su entrambi gli assi), tramite un nuovo
+      `DrawCellBand()` condiviso che accetta un'origine di disegno
+      (`(0,0)` per il riquadro scorrevole, `Bounds().left`/`.top` per
+      una banda bloccata — la stessa tecnica delle intestazioni,
+      estesa al contenuto). Le etichette delle intestazioni di riga/
+      colonna che ricadono nella banda bloccata vengono anch'esse
+      "agganciate" sull'asse che gli mancava (le intestazioni di riga
+      erano gia' fisse in orizzontale ma no in verticale, e viceversa
+      per quelle di colonna), altrimenti la banda bloccata perderebbe
+      la propria intestazione scorrendo.
+
+      `CellAt()` "riporta indietro" un clic sulla banda bloccata
+      sottraendo lo scroll corrente (`Bounds().left`/`.top`) prima di
+      risolverlo a una cella — l'esatto inverso di come `Draw()` la
+      disegna: senza questo, un clic sulla banda bloccata dopo aver
+      scorso il foglio avrebbe selezionato la cella che si troverebbe
+      li' SENZA il blocco, non quella davvero disegnata sotto il dito.
+      `ScrollToShowSelection()` non scorre mai per una cella gia'
+      bloccata (sempre visibile per definizione — altrimenti
+      selezionarla riporterebbe sempre la vista in cima/a sinistra,
+      vanificando il blocco) e considera lo spazio occupato dalla
+      banda bloccata come le intestazioni, cosi' una cella appena
+      rivelata dallo scroll non resta parzialmente coperta.
+
+      **Due bug preesistenti scoperti implementando questa
+      funzionalita'**, nello stesso codice di gestione del mouse ma
+      non specifici di Blocca riquadri: `MouseDown`/`MouseMoved`
+      confrontavano un clic sull'intestazione (per scartarlo, o per
+      riconoscere una maniglia di ridimensionamento) con `0`/
+      `kHeaderWidth` fissi invece di `Bounds().top`/`.left` +
+      `kHeaderHeight`/`kHeaderWidth`, nonostante le intestazioni stesse
+      seguissero gia' lo scroll (`Bounds()`) da quando erano state
+      "congelate" in una fase precedente. Un clic sull'intestazione
+      dopo aver scorso il foglio (senza colpire una vera maniglia di
+      ridimensionamento) selezionava percio' una cella quasi a caso
+      invece di non fare nulla — mai notato prima perche' nessun altro
+      codice aveva motivo di toccare di nuovo quella stessa logica.
+
+      **Limite noto, deliberato**: solo per la sessione corrente, non
+      salvato nel formato nativo — stessa scelta gia' presa per
+      l'altezza di riga (vedi il commento su `fRowHeights` in
+      `SheetView.h`). Estendere `AscdIO`/`AscdSheet` per farlo
+      sarebbe stato un cambiamento di formato dati piu' ampio (tocca
+      anche i translator che leggono/scrivono lo stesso formato),
+      fuori perimetro per questo incremento.
+
+      Test dedicato `ui/tests/test_freeze.cpp` (nuovo target
+      `make test-freeze`, 12 verifiche, stesso schema di finestra di
+      prova di `test-scroll`): attivazione/disattivazione dalla
+      selezione corrente, `SetFreezePanes` con valori fuori limite
+      (negativi, enormi) che non escono mai da un intervallo valido,
+      nessuno scroll selezionando una cella bloccata anche a foglio
+      gia' scorso lontano, `CellAt()` sulla banda bloccata (angolo e
+      banda di sole colonne) dopo lo scroll, il clic sull'intestazione
+      che non cambia piu' la selezione. Nessuna regressione nella
+      suite esistente (tutti i 25 target).
+
 ---
 
 ## Fase 8 — Qualità UI/UX (CHIUSA)
