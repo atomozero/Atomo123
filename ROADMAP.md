@@ -2958,13 +2958,29 @@ Fase 11.
       campi in Fase 11). La sezione bordi di Fase 11 in `WriteASCD`
       (`XlsxTranslator.cpp`), finora sempre vuota, ora scrive i valori
       reali quando presenti. Test: nuova fixture `sample_borders.xlsx`.
-- [ ] **Sottolineato**: nessuna infrastruttura esistente (verificato:
-      Haiku `BFont` non ha un attributo sottolineato nativo, solo
-      stile del font). Nuovo campo booleano in `CellStyle` (stesso
-      pattern dei quattro campi bordo di Fase 11) disegnato a mano in
-      `SheetView::DrawCellBand` (una linea sotto il testo), letto da
-      `<u/>` nel font XLSX, persistito nel formato nativo con lo
-      stesso principio delle sezioni opzionali già esistenti.
+- [x] **Sottolineato**: nuovo campo booleano `CellStyle::fUnderline`
+      (Haiku `BFont` non ha un attributo sottolineato nativo, solo
+      stile del font), voce "Sottolineato" nel menu Formato
+      (`MainWindow::ToggleUnderline`, stesso principio di
+      ToggleBold/ToggleItalic/ToggleBorder), disegnato a mano in
+      `SheetView::Draw` come una linea sotto il testo (larghezza del
+      testo davvero disegnato, colore del testo), persistito nel
+      formato nativo con lo stesso principio delle sezioni opzionali
+      già esistenti (Fase 11). Import XLSX: legge `<u/>` nel font
+      (`val="none"` lo nega esplicitamente, gli altri stili diversi da
+      "single" trattati comunque come sottolineato semplice).
+      **Scoperta per strada**: la regola `libengine.a` del Makefile di
+      `translators/xlsx` non ha prerequisiti — non si ricompila mai
+      automaticamente quando cambia un header del motore, serve
+      `make clean` esplicito in `engine/` dopo ogni modifica a un
+      header di `CellStyle`/`Container`/ecc, altrimenti le librerie
+      compilate contro il vecchio layout dello struct restano linkate
+      silenziosamente (bug reale scoperto scrivendo il test:
+      `SetCellStyle`/`GetCellStyle` sembravano ignorare il nuovo campo
+      — in realtà un disallineamento ABI fra `.o` compilati con
+      `sizeof(CellStyle)` diversi). Da tenere a mente per ogni
+      modifica futura a un header del motore, non solo per questo
+      campo.
 - [ ] **Testo a capo e altezza di riga automatica**: nessuna
       infrastruttura esistente, il disegno del testo è oggi sempre su
       una riga sola. Nuovo campo `wrapText` in `CellStyle`, a-capo del
