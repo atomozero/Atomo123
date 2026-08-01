@@ -73,7 +73,13 @@ ora al salvataggio/riapertura nel formato nativo. **Fase 11 (bordi
 delle celle) chiusa**: l'ultimo campo di `CellStyle` mai esposto dalla
 UI, mai implementato nemmeno nel Sum-It storico — un bordo nero
 semplice per lato, con UI dedicata e persistenza nel formato nativo.
-Aggiornato ad ogni fase completata.
+**Fase 12 (fedeltà visiva import XLSX) in corso**: aprire un file
+Excel reale e complesso (bordi, celle unite, formati numero, tabelle,
+formattazione condizionale, immagini) deve somigliare a quello che si
+vede aprendolo con Excel vero su Windows, non solo importare valori e
+colori grezzi — richiesto esplicitamente dall'utente dopo aver
+riaperto il file di gara reale da 38 fogli e trovato la resa "ancora
+carente". Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -2859,6 +2865,118 @@ presente: qualunque futura modifica al layout delle sezioni di
 `SaveASCD` in `AscdIO.cpp` va replicata a mano in ogni `WriteASCD`
 duplicato dei translator, non esiste oggi un controllo automatico che
 lo verifichi.
+
+---
+
+## Fase 12 — Fedeltà visiva import XLSX (IN CORSO)
+
+Verifica puntuale (grep mirato su `XlsxTranslator.cpp`, non solo
+lettura del codice) contro `Form_Economico_GaraEPC2026_Nord_Est.xlsm`
+(38 fogli, file di gara reale già usato per motivare Fase 9 e per il
+bug corretto subito prima di questa fase): il translator importa oggi
+solo valori/formule, larghezza di colonna e colori di sfondo/testo.
+Zero righe toccano `mergeCell`, `numFmt`/`numFmtId`, i flag
+grassetto/corsivo/sottolineato del font, allineamento/testo a capo,
+bordi da stile, formattazione condizionale, tabelle strutturate o
+immagini incorporate — tutti presenti nel file reale (537 celle unite
+su 39 fogli, sette formati numero personalizzati, nove tabelle
+strutturate, un logo incorporato, diverse regole di formattazione
+condizionale). Aperto con Atomo123 il file si legge ma non somiglia
+affatto a quello che si vede aprendolo con Excel vero: è questo il
+gap che la fase chiude.
+
+Per ciascun punto, verificato prima cosa esiste già in motore/UI (non
+assunto): grassetto/corsivo, allineamento orizzontale e bordi hanno
+già campo in `CellStyle` e disegno in `SheetView` (Fase 7/11) — solo
+l'importazione XLSX manca. Celle unite, sottolineato e testo a capo
+non hanno invece alcuna infrastruttura, nemmeno nel Sum-It storico:
+richiedono progettazione originale come già successo per i bordi in
+Fase 11.
+
+- [ ] **Formati numero**: leggere `numFmtId` per cella (attributo
+      `s=` dell'`<xf>` in `cellXfs`, non ancora catturato da
+      `ParseStyles`/`StylesContext::cellXfs`, oggi solo
+      `fontId`/`fillId`) e tradurre il `formatCode` associato nel
+      formato più vicino tra quelli che `CFormatter` sa già
+      rappresentare (`eCurrency`/`ePercent`/`eFixed` + cifre decimali
+      + separatore delle migliaia, `CellStyle::fFormat`). Limite
+      onesto dell'engine, verificato leggendo `Formatter.template.cpp`/
+      `Formatter.number.cpp`: niente simbolo di valuta personalizzato
+      per formato, niente colore condizionale per i negativi (es.
+      `0.00;[Red]-0.00`, presente nel file reale) — quella parte del
+      formato viene scartata in questo primo giro, non è un
+      regressione ma un'approssimazione dichiarata. Rivalutare in una
+      fase successiva se serve fedeltà completa.
+- [ ] **Grassetto/corsivo**: leggere `<b/>`/`<i/>` dentro ogni
+      `<font>` di `styles.xml` (oggi `StylesContext` cattura solo il
+      colore del font) e scegliere lo stile del font già supportato
+      da `gFontSizeTable`/`CellStyle::fFont` (stessa tripla famiglia/
+      stile/dimensione usata dall'export nativo in Fase 10).
+- [ ] **Allineamento orizzontale**: leggere `<alignment
+      horizontal=".../>` dentro ogni `<xf>` di `cellXfs` e mappare sui
+      valori già supportati da `CellStyle::fAlignment`/`EAlignment`.
+- [ ] **Bordi da stile**: risolvere l'indice `borderId` di ogni `<xf>`
+      contro `<borders>` in `styles.xml` e tradurlo nei quattro campi
+      booleani per lato già definiti in Fase 11 (bordo presente/
+      assente per lato, indipendentemente da spessore/colore reale
+      dell'originale — stesso limite dichiarato per il significato dei
+      campi in Fase 11).
+- [ ] **Sottolineato**: nessuna infrastruttura esistente (verificato:
+      Haiku `BFont` non ha un attributo sottolineato nativo, solo
+      stile del font). Nuovo campo booleano in `CellStyle` (stesso
+      pattern dei quattro campi bordo di Fase 11) disegnato a mano in
+      `SheetView::DrawCellBand` (una linea sotto il testo), letto da
+      `<u/>` nel font XLSX, persistito nel formato nativo con lo
+      stesso principio delle sezioni opzionali già esistenti.
+- [ ] **Testo a capo e altezza di riga automatica**: nessuna
+      infrastruttura esistente, il disegno del testo è oggi sempre su
+      una riga sola. Nuovo campo `wrapText` in `CellStyle`, a-capo del
+      testo per larghezza di colonna in `SheetView`, e ricalcolo
+      dell'altezza di riga quando supera quella di default (si
+      appoggia alle altezze di riga per-riga già persistite in Fase
+      10, non serve un nuovo meccanismo di persistenza, solo il
+      calcolo all'importazione/modifica).
+- [ ] **Celle unite**: nessuna infrastruttura esistente in motore o
+      UI, verificato anche nel Sum-It storico. Serve un nuovo concetto
+      a livello di `CContainer` (elenco di rettangoli uniti per
+      foglio, non un campo per-cella: una cella unita è un'unica
+      entità logica che occupa più coordinate), `SheetView` che non
+      ridisegni la griglia interna né ripeta il contenuto dentro
+      l'intervallo, persistenza nel formato nativo, e lettura di
+      `<mergeCells>` dall'XLSX. Il pezzo più grande della fase insieme
+      alla formattazione condizionale.
+- [ ] **Tabelle strutturate (bande alternate)**: **approssimate come
+      colori di sfondo statici all'importazione**, non come un vero
+      oggetto tabella (l'XLSX reale referenzia `TableStyleMedium2` con
+      `showRowStripes="1"` in `xl/tables/table*.xml`): risolvere il
+      colore di banda per riga pari/dispari e scriverlo come normale
+      colore di sfondo per cella, riusando l'infrastruttura colori già
+      esistente da Fase 7. Scelta deliberata per restare nello scope
+      di "importazione fedele", non "editor di tabelle Excel vive"
+      (niente filtro automatico, niente riga totali ricalcolata).
+- [ ] **Formattazione condizionale**: **valutata una tantum
+      all'importazione e congelata come colore statico**, stesso
+      principio delle tabelle sopra — non un motore di regole vive
+      che si aggiornano al ricalcolo (richiederebbe uno storage
+      per-range delle regole e una valutazione ad ogni `CalcCell`,
+      un'estensione del motore molto più grande di tutto il resto
+      della fase insieme). L'XLSX reale usa `cellIs`/`duplicateValues`
+      contro un `dxfId` (formato differenziale): risolvere il colore
+      del `dxf` referenziato e, se la regola è già vera per il valore
+      importato, applicarlo come `fLowColor`/`fHighColor` normale.
+      Limite dichiarato: il colore non si aggiorna più se il valore
+      della cella cambia dopo l'importazione.
+- [ ] **Immagini incorporate**: leggere `xl/drawings/`+`xl/media/`
+      (un logo nel file reale), ancorarle a un intervallo di celle e
+      disegnarle in `SheetView` (o una `BView` figlia posizionata
+      sopra il foglio). Nessuna infrastruttura esistente per bitmap
+      nel motore o nella UI: nuovo concetto, probabilmente l'ultimo
+      punto della fase per complessità.
+- [ ] Test dedicato per ciascun punto in
+      `translators/xlsx/tests/test_xlsx_translator.cpp` (lettura) ed
+      eventualmente `ui/tests/` per il disegno (celle unite, testo a
+      capo, sottolineato), sul modello dei test già esistenti per
+      colori/larghezza colonna.
 
 ---
 
