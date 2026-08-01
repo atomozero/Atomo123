@@ -438,6 +438,14 @@ int main()
 								"sezione celle unite presente (vuota per questo file di prova, Fase 12)");
 						}
 
+						if (pos + 4 <= ascdLen)
+						{
+							int32 imageCount;
+							memcpy(&imageCount, ascdData + pos, 4); pos += 4;
+							Check(imageCount == 0,
+								"sezione immagini incorporate presente (vuota per questo file di prova, Fase 12)");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
@@ -1339,6 +1347,160 @@ int main()
 
 			Check(foundHorizontal, "A1:C1 importato come intervallo unito orizzontale");
 			Check(foundVertical, "A2:A3 importato come intervallo unito verticale");
+		}
+	}
+
+	// Immagini incorporate (Fase 12): tests/sample_image.xlsx ha A1
+	// ("Testo", una cella normale che deve convivere con l'immagine)
+	// piu' un logo PNG 4x3 ancorato a B2 (xdr:from col=1/row=1,
+	// 0-based) con uno scarto di 95250x47625 EMU (10x5 pixel) e una
+	// dimensione esplicita di 381000x285750 EMU (40x30 pixel) -- il
+	// caso "gia' ridimensionata a mano", diverso dal file di gara
+	// reale (cx/cy=0, dove si usa la dimensione naturale del PNG).
+	{
+		BFile imageFile("tests/sample_image.xlsx", B_READ_ONLY);
+		Check(imageFile.InitCheck() == B_OK, "apertura di tests/sample_image.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&imageFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_image.xlsx");
+
+		imageFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&imageFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_image.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_image.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 1, "l'ASCD contiene la sola cella con contenuto di sample_image.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				pos += len;
+			}
+
+			if (pos + 4 <= ascdLen)
+			{
+				int32 chartCount;
+				memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+				pos += chartCount * (2 * 4 + 4 * 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				pos += colWidthCount * (2 + 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+				pos += cellColorCount * (2 + 2 + 8);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 columnColorCount;
+				memcpy(&columnColorCount, ascdData + pos, 4); pos += 4;
+				pos += columnColorCount * (2 + 8);
+			}
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+4); } // altezze riga
+			if (pos + 8 <= ascdLen) pos += 8; // Blocca riquadri
+			if (pos + 4 <= ascdLen) // fontCount
+			{
+				int32 fontCount;
+				memcpy(&fontCount, ascdData + pos, 4); pos += 4;
+				pos += fontCount * (2 + 2 + (int32)sizeof(font_family) + (int32)sizeof(font_style) + 4);
+			}
+			if (pos + 4 <= ascdLen) // alignCount
+			{
+				int32 alignCount;
+				memcpy(&alignCount, ascdData + pos, 4); pos += 4;
+				pos += alignCount * (2 + 2 + 1);
+			}
+			if (pos + 4 <= ascdLen) // borderCount
+			{
+				int32 borderCount;
+				memcpy(&borderCount, ascdData + pos, 4); pos += 4;
+				pos += borderCount * (2 + 2 + 4);
+			}
+			if (pos + 4 <= ascdLen) // formatCount
+			{
+				int32 formatCount;
+				memcpy(&formatCount, ascdData + pos, 4); pos += 4;
+				pos += formatCount * (2 + 2 + 4);
+			}
+			if (pos + 4 <= ascdLen) // underlineCount
+			{
+				int32 underlineCount;
+				memcpy(&underlineCount, ascdData + pos, 4); pos += 4;
+				pos += underlineCount * (2 + 2);
+			}
+			if (pos + 4 <= ascdLen) // wrapCount
+			{
+				int32 wrapCount;
+				memcpy(&wrapCount, ascdData + pos, 4); pos += 4;
+				pos += wrapCount * (2 + 2);
+			}
+			if (pos + 4 <= ascdLen) // mergeCount
+			{
+				int32 mergeCount;
+				memcpy(&mergeCount, ascdData + pos, 4); pos += 4;
+				pos += mergeCount * (2 * 4);
+			}
+
+			bool haveImageCount = false;
+			int32 imageCount = 0;
+			if (pos + 4 <= ascdLen)
+			{
+				memcpy(&imageCount, ascdData + pos, 4); pos += 4;
+				haveImageCount = true;
+			}
+			Check(haveImageCount && imageCount == 1,
+				"sezione immagini incorporate: 1 immagine (il logo di sample_image.xlsx)");
+
+			if (haveImageCount && imageCount == 1 && pos + 2 + 2 + 16 + 4 <= ascdLen)
+			{
+				int16 row, col;
+				float geom[4];
+				int32 pngLen;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(geom, ascdData + pos, 16); pos += 16;
+				memcpy(&pngLen, ascdData + pos, 4); pos += 4;
+
+				Check(row == 2 && col == 2, "l'immagine e' ancorata a B2 (xdr:from col=1/row=1, 0-based)");
+				Check(geom[0] == 10.0f && geom[1] == 5.0f,
+					"lo scarto dall'angolo di B2 e' 10x5 pixel (95250x47625 EMU / 9525)");
+				Check(geom[2] == 40.0f && geom[3] == 30.0f,
+					"la dimensione esplicita e' 40x30 pixel (381000x285750 EMU / 9525), non quella naturale del PNG");
+				Check(pngLen == 75, "il blob PNG incorporato ha la lunghezza originale (75 byte)");
+
+				if (pos + (size_t)pngLen <= ascdLen && pngLen >= 8)
+				{
+					static const unsigned char kPngSig[8] =
+						{ 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+					Check(memcmp(ascdData + pos, kPngSig, 8) == 0,
+						"il blob PNG incorporato inizia con la firma PNG vera");
+					pos += pngLen;
+				}
+			}
 		}
 	}
 

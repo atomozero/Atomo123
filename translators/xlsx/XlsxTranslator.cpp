@@ -27,6 +27,7 @@
 #include "CellParser.h"
 #include "CellStyle.h"
 #include "Constants.h"
+#include "EmbeddedImage.h"
 #include "Formatter.h"
 #include "FontMetrics.h"
 
@@ -76,7 +77,8 @@ static bool ColorsEqual(rgb_color a, rgb_color b)
 // Stessa serializzazione ASCD degli altri translator (vedi
 // translators/csv/CsvTranslator.cpp per la descrizione completa).
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
-	const std::vector<std::pair<int, float> >* colWidths = NULL)
+	const std::vector<std::pair<int, float> >* colWidths = NULL,
+	const std::vector<EmbeddedImage>* images = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -472,6 +474,33 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 				|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
 				|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
 				|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione immagini incorporate, in coda (Fase 12, vedi
+	// ui/src/AscdIO.cpp): questo translator estrae davvero
+	// xl/drawings/+xl/media/ (DrawingPic/ParseDrawing sotto) -- va
+	// quindi scritta con i valori reali, non sempre vuota come i
+	// grafici sopra.
+	{
+		int32 imageCount = images ? (int32)images->size() : 0;
+		if (dest->Write(&imageCount, sizeof(imageCount)) != (ssize_t)sizeof(imageCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < imageCount; i++)
+		{
+			const EmbeddedImage& img = (*images)[i];
+			int16 row = img.anchor.v, col = img.anchor.h;
+			float geom[4] = { img.offsetX, img.offsetY, img.width, img.height };
+			int32 pngLen = (int32)img.pngData.size();
+
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
+				|| dest->Write(&pngLen, sizeof(pngLen)) != (ssize_t)sizeof(pngLen))
+				return B_IO_ERROR;
+			if (pngLen > 0 && dest->Write(&img.pngData[0], pngLen) != pngLen)
 				return B_IO_ERROR;
 		}
 	}
@@ -2419,6 +2448,162 @@ static void ApplyConditionalFormatting(CContainer* doc,
 	}
 }
 
+// --- Parsing di xl/drawings/drawingN.xml (Fase 12) ------------------
+//
+// Un'immagine incorporata (es. un logo, presente nel file di gara
+// reale) e' ancorata a una cella tramite <xdr:twoCellAnchor>/
+// <xdr:oneCellAnchor>: <xdr:from> da' sempre colonna/riga 0-based piu'
+// uno scarto in EMU (unita' di DrawingML, 914400 per pollice = 9525
+// per pixel a 96 DPI, la risoluzione predefinita di Excel), mentre la
+// dimensione si legge da <xdr:ext> (oneCellAnchor) o da
+// <a:xfrm><a:ext> (twoCellAnchor) -- spesso 0x0 quando l'immagine non
+// e' mai stata ridimensionata a mano (visto nel file reale): in quel
+// caso si usa la dimensione naturale del PNG (dal proprio IHDR, vedi
+// PngDimensions sotto) invece di non disegnare nulla. Il riferimento
+// all'immagine vera e propria (<a:blip r:embed="rId..">) si risolve
+// dopo, tramite i _rels dello stesso file drawing.
+struct DrawingPic {
+	int fromCol, fromRow; // 0-based, come nel file XLSX originale
+	long fromColOffEmu, fromRowOffEmu;
+	long extCxEmu, extCyEmu; // 0 = non specificato, vedi sopra
+	std::string relId;
+
+	DrawingPic() : fromCol(0), fromRow(0), fromColOffEmu(0), fromRowOffEmu(0),
+		extCxEmu(0), extCyEmu(0) {}
+};
+
+struct DrawingContext {
+	std::vector<DrawingPic> pics;
+	DrawingPic current;
+	bool inAnchor;
+	bool inFrom;
+	bool captureNum;
+	std::string numText;
+};
+
+static void XMLCALL DrawingStart(void* userData, const char* name, const char** atts)
+{
+	DrawingContext* ctx = (DrawingContext*)userData;
+
+	if (strcmp(name, "xdr:twoCellAnchor") == 0 || strcmp(name, "xdr:oneCellAnchor") == 0)
+	{
+		ctx->inAnchor = true;
+		ctx->current = DrawingPic();
+		return;
+	}
+	if (!ctx->inAnchor)
+		return;
+
+	if (strcmp(name, "xdr:from") == 0)
+		ctx->inFrom = true;
+	else if (ctx->inFrom && (strcmp(name, "xdr:col") == 0 || strcmp(name, "xdr:colOff") == 0
+		|| strcmp(name, "xdr:row") == 0 || strcmp(name, "xdr:rowOff") == 0))
+	{
+		ctx->numText.clear();
+		ctx->captureNum = true;
+	}
+	else if (strcmp(name, "xdr:ext") == 0 || strcmp(name, "a:ext") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "cx") == 0)
+				ctx->current.extCxEmu = atol(atts[i + 1]);
+			else if (strcmp(atts[i], "cy") == 0)
+				ctx->current.extCyEmu = atol(atts[i + 1]);
+		}
+	}
+	else if (strcmp(name, "a:blip") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "r:embed") == 0)
+				ctx->current.relId = atts[i + 1];
+		}
+	}
+}
+
+static void XMLCALL DrawingEnd(void* userData, const char* name)
+{
+	DrawingContext* ctx = (DrawingContext*)userData;
+
+	if (strcmp(name, "xdr:twoCellAnchor") == 0 || strcmp(name, "xdr:oneCellAnchor") == 0)
+	{
+		ctx->inAnchor = false;
+		if (!ctx->current.relId.empty())
+			ctx->pics.push_back(ctx->current);
+	}
+	else if (strcmp(name, "xdr:from") == 0)
+		ctx->inFrom = false;
+	else if (ctx->captureNum)
+	{
+		long value = atol(ctx->numText.c_str());
+		if (strcmp(name, "xdr:col") == 0)
+			ctx->current.fromCol = (int)value;
+		else if (strcmp(name, "xdr:colOff") == 0)
+			ctx->current.fromColOffEmu = value;
+		else if (strcmp(name, "xdr:row") == 0)
+			ctx->current.fromRow = (int)value;
+		else if (strcmp(name, "xdr:rowOff") == 0)
+			ctx->current.fromRowOffEmu = value;
+		ctx->captureNum = false;
+	}
+}
+
+static void XMLCALL DrawingChars(void* userData, const char* s, int len)
+{
+	DrawingContext* ctx = (DrawingContext*)userData;
+	if (ctx->captureNum)
+		ctx->numText.append(s, len);
+}
+
+static bool ParseDrawing(const std::vector<unsigned char>& xml, std::vector<DrawingPic>* out)
+{
+	if (xml.empty())
+		return false;
+
+	DrawingContext ctx;
+	ctx.inAnchor = false;
+	ctx.inFrom = false;
+	ctx.captureNum = false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, DrawingStart, DrawingEnd);
+	XML_SetCharacterDataHandler(parser, DrawingChars);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), (int)xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK)
+		return false;
+
+	*out = ctx.pics;
+	return true;
+}
+
+// Legge larghezza/altezza in pixel dall'header IHDR di un PNG, senza
+// serve un decodificatore completo (il Translation Kit non e'
+// disponibile qui, questo translator resta senza dipendenze
+// dall'Interface Kit) -- 8 byte di firma PNG, poi length(4)+"IHDR"(4)+
+// width(4, big-endian)+height(4, big-endian)+... Usata solo quando
+// l'anchor XLSX non da' gia' una dimensione esplicita (vedi sopra);
+// altri formati immagine (JPEG...) restano senza dimensione naturale
+// nota, limite dichiarato -- il file di gara reale usa solo PNG.
+static bool PngDimensions(const std::vector<unsigned char>& data, uint32* outW, uint32* outH)
+{
+	static const unsigned char kPngSig[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+	if (data.size() < 24 || memcmp(&data[0], kPngSig, 8) != 0)
+		return false;
+	if (memcmp(&data[12], "IHDR", 4) != 0)
+		return false;
+
+	*outW = ((uint32)data[16] << 24) | ((uint32)data[17] << 16) | ((uint32)data[18] << 8) | data[19];
+	*outH = ((uint32)data[20] << 24) | ((uint32)data[21] << 16) | ((uint32)data[22] << 8) | data[23];
+	return true;
+}
+
+static const double kEmuPerPixel = 9525.0; // DrawingML, 96 DPI (predefinito Excel)
+
 // Un foglio gia' analizzato, pronto per essere scritto in formato
 // ASCD/ASCB: nome, documento, e le sole colonne con una larghezza
 // esplicita nel file XLSX originale (vedi ParseSheet/SheetStart).
@@ -2426,6 +2611,7 @@ struct ParsedSheet {
 	std::string name;
 	CContainer* doc;
 	std::vector<std::pair<int, float> > colWidths;
+	std::vector<EmbeddedImage> images;
 };
 
 // Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
@@ -2450,7 +2636,7 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 		if (nameLen > 0 && dest->Write(name.data(), nameLen) != nameLen)
 			return B_IO_ERROR;
 
-		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths);
+		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths, &sheets[i].images);
 		if (err != B_OK)
 			return err;
 	}
@@ -2663,15 +2849,78 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 					std::string target = it->second;
 					if (target.compare(0, 3, "../") == 0)
 						target = target.substr(3);
-					if (target.compare(0, 7, "tables/") != 0)
-						continue; // non e' una tabella, un altro tipo di relazione (es. hyperlink)
 
-					std::string tablePath = "xl/" + target;
-					std::vector<unsigned char> tableXml;
-					TableInfo info;
-					if (zip.ReadEntry(tablePath.c_str(), tableXml)
-						&& ParseTableInfo(tableXml, &info) && info.showStripes)
-						ApplyTableBanding(parsed.doc, info.tableRange);
+					if (target.compare(0, 7, "tables/") == 0)
+					{
+						std::string tablePath = "xl/" + target;
+						std::vector<unsigned char> tableXml;
+						TableInfo info;
+						if (zip.ReadEntry(tablePath.c_str(), tableXml)
+							&& ParseTableInfo(tableXml, &info) && info.showStripes)
+							ApplyTableBanding(parsed.doc, info.tableRange);
+					}
+					else if (target.compare(0, 9, "drawings/") == 0)
+					{
+						// Immagini incorporate (Fase 12): il file drawing
+						// elenca solo l'ancoraggio (cella/scarto/dimensione)
+						// piu' un r:embed -- l'immagine vera si risolve
+						// tramite i _rels DI QUESTO drawing (un livello di
+						// indirizzamento indipendente da quelli del foglio
+						// sopra, stesso principio ma un passo piu' in
+						// profondita').
+						std::string drawingPath = "xl/" + target;
+						std::vector<unsigned char> drawingXml;
+						std::vector<DrawingPic> pics;
+						if (!zip.ReadEntry(drawingPath.c_str(), drawingXml)
+							|| !ParseDrawing(drawingXml, &pics) || pics.empty())
+							continue;
+
+						size_t dSlash = drawingPath.find_last_of('/');
+						std::string dDir = dSlash == std::string::npos ? ""
+							: drawingPath.substr(0, dSlash);
+						std::string dFile = dSlash == std::string::npos ? drawingPath
+							: drawingPath.substr(dSlash + 1);
+						std::string drawingRelsPath = dDir + "/_rels/" + dFile + ".rels";
+
+						std::vector<unsigned char> drawingRelsXml;
+						std::map<std::string, std::string> drawingRelTargets;
+						if (!zip.ReadEntry(drawingRelsPath.c_str(), drawingRelsXml)
+							|| !ParseRelationships(drawingRelsXml, drawingRelTargets))
+							continue;
+
+						for (size_t p = 0; p < pics.size(); p++)
+						{
+							std::map<std::string, std::string>::iterator rit =
+								drawingRelTargets.find(pics[p].relId);
+							if (rit == drawingRelTargets.end())
+								continue;
+
+							std::string mediaTarget = rit->second;
+							if (mediaTarget.compare(0, 3, "../") == 0)
+								mediaTarget = mediaTarget.substr(3);
+							std::string mediaPath = "xl/" + mediaTarget;
+
+							std::vector<unsigned char> pngBytes;
+							if (!zip.ReadEntry(mediaPath.c_str(), pngBytes) || pngBytes.empty())
+								continue;
+
+							uint32 natW = 0, natH = 0;
+							PngDimensions(pngBytes, &natW, &natH);
+
+							EmbeddedImage img;
+							img.anchor = cell(pics[p].fromCol + 1, pics[p].fromRow + 1);
+							img.offsetX = (float)(pics[p].fromColOffEmu / kEmuPerPixel);
+							img.offsetY = (float)(pics[p].fromRowOffEmu / kEmuPerPixel);
+							img.width = pics[p].extCxEmu > 0
+								? (float)(pics[p].extCxEmu / kEmuPerPixel) : (float)natW;
+							img.height = pics[p].extCyEmu > 0
+								? (float)(pics[p].extCyEmu / kEmuPerPixel) : (float)natH;
+							img.pngData.assign(pngBytes.begin(), pngBytes.end());
+
+							if (img.width > 0 && img.height > 0)
+								parsed.images.push_back(img);
+						}
+					}
 				}
 			}
 		}

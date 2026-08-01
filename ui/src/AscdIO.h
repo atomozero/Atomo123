@@ -23,6 +23,7 @@
 #include <SupportDefs.h>
 
 #include "Chart.h"
+#include "EmbeddedImage.h"
 
 class CContainer;
 
@@ -65,16 +66,24 @@ class CContainer;
 // SheetView::SetFreezePanes), non una lista: puntatori anziche'
 // riferimenti per lo stesso motivo di charts/colWidths, NULL = non
 // legge/scrive nulla di quella sezione.
+// "images" (Fase 12) segue lo stesso principio opzionale di "charts"
+// sopra: elenco delle immagini incorporate nel foglio (import XLSX,
+// vedi EmbeddedImage.h), NULL = non legge/scrive nulla di quella
+// sezione, i byte vengono comunque sempre consumati se presenti per lo
+// stesso motivo di "charts" (LoadASCDBook concatena piu' blocchi ASCD
+// sullo stesso flusso).
 status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<ChartObject>* charts = NULL,
 	std::vector<std::pair<int, float> >* colWidths = NULL,
 	std::vector<std::pair<int, float> >* rowHeights = NULL,
-	int* frozenRows = NULL, int* frozenCols = NULL);
+	int* frozenRows = NULL, int* frozenCols = NULL,
+	std::vector<EmbeddedImage>* images = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
 	const std::vector<std::pair<int, float> >* rowHeights = NULL,
-	const int* frozenRows = NULL, const int* frozenCols = NULL);
+	const int* frozenRows = NULL, const int* frozenCols = NULL,
+	const std::vector<EmbeddedImage>* images = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -102,6 +111,8 @@ struct AscdSheet {
 	std::vector<std::pair<int, float> > rowHeights;
 	int frozenRows = 0;
 	int frozenCols = 0;
+	// Fase 12: vedi il commento sopra LoadASCD/SaveASCD.
+	std::vector<EmbeddedImage> images;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

@@ -128,6 +128,25 @@ int main()
 	// elenco di rettangoli per foglio, non un campo per cella).
 	doc->AddMergedRange(range(4, 1, 5, 2)); // D1:E2
 
+	// Immagini incorporate (Fase 12): vivono fuori da "doc" (come i
+	// grafici, non un campo di CContainer -- vedi EmbeddedImage.h),
+	// quindi viaggiano come parametro a parte di SaveASCD/LoadASCD,
+	// stesso principio di "charts". Blob PNG minimo (non un vero PNG
+	// valido: la persistenza non lo decodifica, solo lo trasporta a
+	// byte).
+	std::vector<EmbeddedImage> images;
+	{
+		EmbeddedImage img;
+		img.anchor = cell(2, 2); // B2
+		img.offsetX = 10; img.offsetY = 5;
+		img.width = 40; img.height = 30;
+		img.pngData.push_back(0x89);
+		img.pngData.push_back('P');
+		img.pngData.push_back('N');
+		img.pngData.push_back('G');
+		images.push_back(img);
+	}
+
 	// Formato numero (Fase 12) su A3, oltre all'allineamento gia'
 	// impostato sopra: stesso principio dello slittamento
 	// "menu Formato -> CellStyle::fFormat" gia' usato dall'app live
@@ -143,7 +162,8 @@ int main()
 
 	{
 		BFile file(path, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-		status_t err = SaveASCD(doc, &file, NULL, NULL, &rowHeights, &frozenRows, &frozenCols);
+		status_t err = SaveASCD(doc, &file, NULL, NULL, &rowHeights, &frozenRows, &frozenCols,
+			&images);
 		Check(err == B_OK, "SaveASCD con altezze di riga e Blocca riquadri riesce");
 	}
 	doc->Release();
@@ -151,11 +171,12 @@ int main()
 	CContainer* reloaded = new CContainer(NULL, NULL);
 	std::vector<std::pair<int, float> > loadedHeights;
 	int loadedFrozenRows = -1, loadedFrozenCols = -1;
+	std::vector<EmbeddedImage> loadedImages;
 
 	{
 		BFile file(path, B_READ_ONLY);
 		status_t err = LoadASCD(&file, reloaded, NULL, NULL,
-			&loadedHeights, &loadedFrozenRows, &loadedFrozenCols);
+			&loadedHeights, &loadedFrozenRows, &loadedFrozenCols, &loadedImages);
 		Check(err == B_OK, "LoadASCD dallo stesso file riesce");
 	}
 
@@ -253,6 +274,23 @@ int main()
 		bool found = merged.size() == 1 && merged[0].left == 4 && merged[0].top == 1
 			&& merged[0].right == 5 && merged[0].bottom == 2;
 		Check(found, "l'intervallo unito D1:E2 e' quello corretto dopo il giro");
+	}
+
+	// Immagini incorporate: l'ancoraggio, lo scarto/dimensione e il
+	// blob PNG sopravvivono tutti al giro.
+	{
+		Check(loadedImages.size() == 1, "una sola immagine incorporata sopravvive al giro");
+		if (loadedImages.size() == 1)
+		{
+			const EmbeddedImage& img = loadedImages[0];
+			Check(img.anchor.h == 2 && img.anchor.v == 2,
+				"l'immagine resta ancorata a B2 dopo il giro");
+			Check(img.offsetX == 10 && img.offsetY == 5 && img.width == 40 && img.height == 30,
+				"scarto e dimensione dell'immagine sopravvivono al giro");
+			Check(img.pngData.size() == 4 && img.pngData[0] == 0x89 && img.pngData[1] == 'P'
+				&& img.pngData[2] == 'N' && img.pngData[3] == 'G',
+				"il blob PNG incorporato sopravvive byte per byte al giro");
+		}
 	}
 
 	// Formato numero: A3 e' ancora Valuta, A1 (mai toccata) resta al

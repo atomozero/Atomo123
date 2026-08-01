@@ -15,7 +15,10 @@
 #include <vector>
 
 #include <Alert.h>
+#include <Bitmap.h>
+#include <BitmapStream.h>
 #include <Cursor.h>
+#include <DataIO.h>
 #include <MessageFilter.h>
 #include <Messenger.h>
 #include <Region.h>
@@ -23,6 +26,7 @@
 #include <String.h>
 #include <TextControl.h>
 #include <TextView.h>
+#include <TranslatorRoster.h>
 
 #include "Value.h"
 #include "Container.h"
@@ -106,6 +110,7 @@ SheetView::SheetView(CContainer* doc)
 	fAnchor(1, 1),
 	fDragging(false),
 	fCharts(NULL),
+	fImages(NULL),
 	fEditor(NULL),
 	fEditingCell(1, 1)
 {
@@ -1548,6 +1553,29 @@ BRect SheetView::PinnedCellRect(cell c) const
 	return r;
 }
 
+// Decodifica un blob PNG (o qualunque altro formato per cui esista un
+// translator installato) in una BBitmap pronta per DrawBitmap -- di
+// proprieta' del chiamante, che deve fare "delete". Nessuna cache:
+// il file di gara reale che ha motivato questa fase ne ha una sola,
+// piccola (vedi ROADMAP.md Fase 12), decodificarla a ogni ridisegno
+// resta trascurabile.
+static BBitmap* DecodeImageBytes(const std::vector<uint8>& data)
+{
+	if (data.empty())
+		return NULL;
+
+	BMemoryIO memIO(&data[0], data.size());
+	BBitmapStream stream;
+	status_t err = BTranslatorRoster::Default()->Translate(&memIO, NULL, NULL,
+		&stream, B_TRANSLATOR_BITMAP);
+	if (err != B_OK)
+		return NULL;
+
+	BBitmap* bitmap = NULL;
+	stream.DetachBitmap(&bitmap);
+	return bitmap;
+}
+
 void SheetView::Draw(BRect updateRect)
 {
 	SetHighColor(255, 255, 255);
@@ -1704,6 +1732,33 @@ void SheetView::Draw(BRect updateRect)
 			std::vector<ChartSeries> series;
 			BuildChartSeries(fDoc, obj.dataRange, series);
 			DrawBarChart(this, obj.frame, series);
+		}
+	}
+
+	// Immagini incorporate (Fase 12): stesso principio dei grafici
+	// sopra ma ancorate a una cella (anchor+scarto in pixel, come
+	// l'anchor XLSX originale) invece di un BRect assoluto -- cosi'
+	// seguono la cella se righe/colonne cambiano dimensione, esattamente
+	// come in Excel vero (vedi il commento su EmbeddedImage in
+	// EmbeddedImage.h).
+	if (fImages && fDoc)
+	{
+		for (size_t i = 0; i < fImages->size(); i++)
+		{
+			const EmbeddedImage& img = (*fImages)[i];
+			BRect anchorRect = CellRect(img.anchor);
+			BRect frame(anchorRect.left + img.offsetX, anchorRect.top + img.offsetY,
+				anchorRect.left + img.offsetX + img.width - 1,
+				anchorRect.top + img.offsetY + img.height - 1);
+			if (!frame.Intersects(updateRect))
+				continue;
+
+			BBitmap* bitmap = DecodeImageBytes(img.pngData);
+			if (bitmap)
+			{
+				DrawBitmap(bitmap, bitmap->Bounds(), frame);
+				delete bitmap;
+			}
 		}
 	}
 

@@ -22,6 +22,7 @@
 
 #include "Cell.h"
 #include "Chart.h"
+#include "EmbeddedImage.h"
 #include "Range.h"
 
 class BTextControl;
@@ -254,6 +255,15 @@ public:
 	// disegnarlo: SheetView non lo possiede ne' lo modifica mai).
 	void SetCharts(const std::vector<ChartObject>* charts) { fCharts = charts; }
 
+	// Elenco delle immagini incorporate (import XLSX, Fase 12) da
+	// disegnare sopra la griglia -- stesso principio di SetCharts
+	// sopra (di proprieta' di MainWindow), ma ogni immagine e' ancorata
+	// a una cella (EmbeddedImage::anchor) invece di un BRect assoluto:
+	// la posizione a schermo si ricalcola da CellRect(anchor) a ogni
+	// disegno, cosi' l'immagine segue la cella se righe/colonne
+	// cambiano dimensione.
+	void SetImages(const std::vector<EmbeddedImage>* images) { fImages = images; }
+
 	// Rettangolo in pixel (a partire da 0,0, intestazioni comprese) che
 	// copre le celle con contenuto -- usato da MainWindow per la stampa
 	// (Print Kit), per sapere quanto foglio serve davvero senza
@@ -385,6 +395,7 @@ private:
 	void ApplySnapshot(const UndoSnapshot& snap);
 
 	const std::vector<ChartObject>* fCharts;
+	const std::vector<EmbeddedImage>* fImages;
 
 	BTextControl* fEditor;
 	cell fEditingCell;

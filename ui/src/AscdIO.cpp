@@ -58,7 +58,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts,
 	const std::vector<std::pair<int, float> >* colWidths,
 	const std::vector<std::pair<int, float> >* rowHeights,
-	const int* frozenRows, const int* frozenCols)
+	const int* frozenRows, const int* frozenCols,
+	const std::vector<EmbeddedImage>* images)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -484,6 +485,32 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione immagini incorporate, in coda (Fase 12): stesso principio
+	// opzionale delle sezioni sopra -- un elenco di record a lunghezza
+	// variabile (il blob PNG grezzo, vedi EmbeddedImage.h), non un
+	// campo per cella o un rettangolo fisso come le sezioni precedenti.
+	{
+		int32 imageCount = images ? (int32)images->size() : 0;
+		if (dest->Write(&imageCount, sizeof(imageCount)) != (ssize_t)sizeof(imageCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < imageCount; i++)
+		{
+			const EmbeddedImage& img = (*images)[i];
+			int16 row = img.anchor.v, col = img.anchor.h;
+			float geom[4] = { img.offsetX, img.offsetY, img.width, img.height };
+			int32 pngLen = (int32)img.pngData.size();
+
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
+				|| dest->Write(&pngLen, sizeof(pngLen)) != (ssize_t)sizeof(pngLen))
+				return B_IO_ERROR;
+			if (pngLen > 0 && dest->Write(&img.pngData[0], pngLen) != pngLen)
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -491,7 +518,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<ChartObject>* charts,
 	std::vector<std::pair<int, float> >* colWidths,
 	std::vector<std::pair<int, float> >* rowHeights,
-	int* frozenRows, int* frozenCols)
+	int* frozenRows, int* frozenCols,
+	std::vector<EmbeddedImage>* images)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -917,6 +945,54 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione immagini incorporate, in coda (Fase 12): vedi il
+	// commento in SaveASCD. Stesso principio "got != 0" delle sezioni
+	// sopra per distinguere un file scritto prima di questa sezione da
+	// uno davvero troncato/corrotto.
+	{
+		std::vector<EmbeddedImage> discardedImages;
+		std::vector<EmbeddedImage>* out = images ? images : &discardedImages;
+		out->clear();
+
+		int32 imageCount = 0;
+		ssize_t got = source->Read(&imageCount, sizeof(imageCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(imageCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < imageCount; i++)
+			{
+				int16 row, col;
+				float geom[4];
+				int32 pngLen;
+
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
+					|| source->Read(&pngLen, sizeof(pngLen)) != (ssize_t)sizeof(pngLen))
+					return B_BAD_DATA;
+				if (pngLen < 0)
+					return B_BAD_DATA;
+
+				EmbeddedImage img;
+				img.anchor = cell(col, row);
+				img.offsetX = geom[0];
+				img.offsetY = geom[1];
+				img.width = geom[2];
+				img.height = geom[3];
+				if (pngLen > 0)
+				{
+					img.pngData.resize(pngLen);
+					if (source->Read(&img.pngData[0], pngLen) != pngLen)
+						return B_BAD_DATA;
+				}
+
+				out->push_back(img);
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1031,7 +1107,7 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			return B_IO_ERROR;
 
 		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts, &sheet.colWidths,
-			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols);
+			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images);
 		if (err != B_OK)
 			return err;
 	}
@@ -1073,7 +1149,7 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
 		sheet.doc = new CContainer(NULL, NULL);
 
 		status_t err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths,
-			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols);
+			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

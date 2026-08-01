@@ -212,6 +212,7 @@ private:
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
 	std::vector<ChartObject> fCharts;
+	std::vector<EmbeddedImage> fImages;
 
 	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
 	// AscdSheet (nome + documento + grafici) per ogni foglio, in

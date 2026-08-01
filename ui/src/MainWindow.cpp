@@ -485,6 +485,7 @@ MainWindow::MainWindow()
 
 	fSheetView = new SheetView(fDoc);
 	fSheetView->SetCharts(&fCharts);
+	fSheetView->SetImages(&fImages);
 	BScrollView* scroll = new BScrollView("scroll", fSheetView,
 		B_FOLLOW_ALL, 0, true, true);
 
@@ -651,11 +652,13 @@ void MainWindow::ResetWorkbook(const char* name)
 	fActiveSheetIndex = 0;
 	fDoc = fSheets[0].doc;
 	fCharts.clear();
+	fImages.clear();
 
 	if (fSheetView)
 	{
 		fSheetView->SetDocument(fDoc);
 		fSheetView->SetCharts(&fCharts);
+		fSheetView->SetImages(&fImages);
 		fSheetView->SetColumnWidths(fSheets[0].colWidths);
 		fSheetView->SetRowHeights(fSheets[0].rowHeights);
 		// Un foglio nuovo (fSheets[0] appena creato da ResetWorkbook)
@@ -712,6 +715,7 @@ void MainWindow::SwitchToSheet(int index)
 	// foglio: vedi il commento sui campi in MainWindow.h), vanno
 	// risincronizzati esplicitamente in entrambe le direzioni.
 	fSheets[fActiveSheetIndex].charts = fCharts;
+	fSheets[fActiveSheetIndex].images = fImages;
 	fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 	fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 	fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
@@ -720,6 +724,7 @@ void MainWindow::SwitchToSheet(int index)
 	fActiveSheetIndex = index;
 	fDoc = fSheets[index].doc;
 	fCharts = fSheets[index].charts;
+	fImages = fSheets[index].images;
 
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetColumnWidths(fSheets[index].colWidths);
@@ -865,8 +870,10 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fActiveSheetIndex = 0;
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
+	fImages = fSheets[0].images;
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
+	fSheetView->SetImages(&fImages);
 	fSheetView->SetColumnWidths(fSheets[0].colWidths);
 	fSheetView->SetRowHeights(fSheets[0].rowHeights);
 	// Testo a capo (Fase 12): copre sia i documenti nativi (fWrapText
@@ -925,6 +932,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		// scrivere, altrimenti l'ultima modifica ai grafici/alle
 		// larghezze di colonna del foglio attivo non verrebbe salvata.
 		fSheets[fActiveSheetIndex].charts = fCharts;
+		fSheets[fActiveSheetIndex].images = fImages;
 		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
