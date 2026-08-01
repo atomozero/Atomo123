@@ -597,12 +597,13 @@ void MainWindow::ResetWorkbook(const char* name)
 		fSheetView->SetDocument(fDoc);
 		fSheetView->SetCharts(&fCharts);
 		fSheetView->SetColumnWidths(fSheets[0].colWidths);
-		// Blocca riquadri (Fase 7): a differenza della larghezza di
-		// colonna, e' solo per la sessione corrente (non salvata nel
-		// formato nativo, stesso limite noto gia' documentato per
-		// l'altezza di riga in SheetView.h) -- un documento nuovo parte
-		// sempre senza nulla di bloccato.
-		fSheetView->SetFreezePanes(0, 0);
+		fSheetView->SetRowHeights(fSheets[0].rowHeights);
+		// Un foglio nuovo (fSheets[0] appena creato da ResetWorkbook)
+		// non ha mai nulla di bloccato: frozenRows/frozenCols sono gia'
+		// 0 di default (vedi AscdSheet in AscdIO.h), letti comunque da
+		// li' invece di un letterale 0,0 per restare corretto anche se
+		// in futuro ResetWorkbook ricevesse fogli non vuoti.
+		fSheetView->SetFreezePanes(fSheets[0].frozenRows, fSheets[0].frozenCols);
 		if (fFreezeMenuItem)
 			fFreezeMenuItem->SetMarked(false);
 	}
@@ -652,6 +653,9 @@ void MainWindow::SwitchToSheet(int index)
 	// risincronizzati esplicitamente in entrambe le direzioni.
 	fSheets[fActiveSheetIndex].charts = fCharts;
 	fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
+	fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
+	fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
+	fSheets[fActiveSheetIndex].frozenCols = fSheetView->FrozenCols();
 
 	fActiveSheetIndex = index;
 	fDoc = fSheets[index].doc;
@@ -659,8 +663,9 @@ void MainWindow::SwitchToSheet(int index)
 
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetColumnWidths(fSheets[index].colWidths);
-	fSheetView->SetFreezePanes(0, 0); // solo per sessione, vedi ResetWorkbook
-	fFreezeMenuItem->SetMarked(false);
+	fSheetView->SetRowHeights(fSheets[index].rowHeights);
+	fSheetView->SetFreezePanes(fSheets[index].frozenRows, fSheets[index].frozenCols);
+	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	fFormulaBar->SetText("");
 	RebuildSheetTabs();
 }
@@ -798,8 +803,9 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetColumnWidths(fSheets[0].colWidths);
-	fSheetView->SetFreezePanes(0, 0); // solo per sessione, vedi ResetWorkbook
-	fFreezeMenuItem->SetMarked(false);
+	fSheetView->SetRowHeights(fSheets[0].rowHeights);
+	fSheetView->SetFreezePanes(fSheets[0].frozenRows, fSheets[0].frozenCols);
+	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	RebuildSheetTabs();
 
 	// Collega il resolver PRIMA di ricalcolare: ogni foglio e' stato
@@ -849,6 +855,9 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		// larghezze di colonna del foglio attivo non verrebbe salvata.
 		fSheets[fActiveSheetIndex].charts = fCharts;
 		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
+		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
+		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
+		fSheets[fActiveSheetIndex].frozenCols = fSheetView->FrozenCols();
 
 		status_t err = SaveASCDBook(fSheets, &file);
 		if (err != B_OK)

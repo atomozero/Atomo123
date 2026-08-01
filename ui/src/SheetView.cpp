@@ -328,6 +328,35 @@ std::vector<std::pair<int, float> > SheetView::CustomColumnWidths() const
 	return result;
 }
 
+void SheetView::SetRowHeights(const std::vector<std::pair<int, float> >& heights)
+{
+	fRowHeights.assign(kRowCount, kRowHeight);
+	for (size_t i = 0; i < heights.size(); i++)
+	{
+		int row = heights[i].first;
+		if (row < 1 || row > kRowCount)
+			continue;
+		float h = heights[i].second;
+		if (h < kMinRowHeight)
+			h = kMinRowHeight;
+		fRowHeights[row - 1] = h;
+	}
+	RebuildRowOffsets();
+	UpdateCanvasSize();
+	Invalidate();
+}
+
+std::vector<std::pair<int, float> > SheetView::CustomRowHeights() const
+{
+	std::vector<std::pair<int, float> > result;
+	for (int i = 0; i < kRowCount; i++)
+	{
+		if (fRowHeights[i] != kRowHeight)
+			result.push_back(std::make_pair(i + 1, fRowHeights[i]));
+	}
+	return result;
+}
+
 void SheetView::RebuildRowOffsets()
 {
 	fRowOffsets.resize(kRowCount + 1);

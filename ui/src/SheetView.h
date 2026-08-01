@@ -204,6 +204,12 @@ public:
 	// salvataggio nel formato nativo.
 	std::vector<std::pair<int, float> > CustomColumnWidths() const;
 
+	// Speculari a SetColumnWidths/CustomColumnWidths sopra, sull'altro
+	// asse (Fase 10: persistenza dell'altezza di riga, prima un limite
+	// noto -- solo per la sessione corrente).
+	void SetRowHeights(const std::vector<std::pair<int, float> >& heights);
+	std::vector<std::pair<int, float> > CustomRowHeights() const;
+
 	// Mostra/nascondi la griglia sottile fra le celle (Fase 7,
 	// finestra Preferenze): letta all'avvio da gPrefs (Preferences.h,
 	// se esiste -- vedi App::App) e sovrascrivibile in ogni momento.
@@ -258,12 +264,10 @@ private:
 	// una larghezza/altezza cambia davvero (RebuildColumnOffsets/
 	// RebuildRowOffsets), non a ogni Draw().
 	//
-	// Le larghezze di colonna sopravvivono al salvataggio/riapertura
-	// (Fase 9: vedi SetColumnWidths/CustomColumnWidths sopra e la
-	// sezione dedicata in AscdIO.h/XlsxTranslator.cpp) -- le altezze di
-	// riga no, restano un limite noto: solo per la sessione corrente,
-	// tornano all'altezza predefinita riaprendo un foglio. Stessa
-	// estensione del formato applicabile in futuro se servisse.
+	// Larghezza di colonna e altezza di riga sopravvivono entrambe al
+	// salvataggio/riapertura (Fase 9 per le colonne, Fase 10 per le
+	// righe: vedi SetColumnWidths/CustomColumnWidths e SetRowHeights/
+	// CustomRowHeights sopra, piu' la sezione dedicata in AscdIO.h).
 	std::vector<float> fColWidths;
 	std::vector<float> fRowHeights;
 	std::vector<float> fColOffsets;

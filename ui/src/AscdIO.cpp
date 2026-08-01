@@ -54,7 +54,9 @@ static bool ColorsEqual(rgb_color a, rgb_color b)
 
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts,
-	const std::vector<std::pair<int, float> >* colWidths)
+	const std::vector<std::pair<int, float> >* colWidths,
+	const std::vector<std::pair<int, float> >* rowHeights,
+	const int* frozenRows, const int* frozenCols)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -204,12 +206,40 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione altezze di riga personalizzate, in coda: speculare alla
+	// sezione larghezze di colonna sopra (Fase 10).
+	int32 rowHeightCount = rowHeights ? (int32)rowHeights->size() : 0;
+	if (dest->Write(&rowHeightCount, sizeof(rowHeightCount)) != (ssize_t)sizeof(rowHeightCount))
+		return B_IO_ERROR;
+
+	for (int32 i = 0; i < rowHeightCount; i++)
+	{
+		int16 row = (int16)(*rowHeights)[i].first;
+		float height = (*rowHeights)[i].second;
+		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+			|| dest->Write(&height, sizeof(height)) != (ssize_t)sizeof(height))
+			return B_IO_ERROR;
+	}
+
+	// Sezione Blocca riquadri, in coda: due soli interi, non una lista
+	// (Fase 10) -- 0 di default se il chiamante non passa nulla, stesso
+	// significato di "nessun blocco" di SheetView::SetFreezePanes.
+	{
+		int32 fr = frozenRows ? *frozenRows : 0;
+		int32 fc = frozenCols ? *frozenCols : 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
 status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<ChartObject>* charts,
-	std::vector<std::pair<int, float> >* colWidths)
+	std::vector<std::pair<int, float> >* colWidths,
+	std::vector<std::pair<int, float> >* rowHeights,
+	int* frozenRows, int* frozenCols)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -394,6 +424,49 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione altezze di riga personalizzate, in coda: stessa cautela
+	// delle sezioni sopra sul consumare sempre i byte se presenti
+	// (Fase 10).
+	{
+		std::vector<std::pair<int, float> > discardedHeights;
+		std::vector<std::pair<int, float> >* out = rowHeights ? rowHeights : &discardedHeights;
+		out->clear();
+
+		int32 rowHeightCount = 0;
+		ssize_t got = source->Read(&rowHeightCount, sizeof(rowHeightCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(rowHeightCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < rowHeightCount; i++)
+			{
+				int16 row;
+				float height;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&height, sizeof(height)) != (ssize_t)sizeof(height))
+					return B_BAD_DATA;
+
+				out->push_back(std::make_pair((int)row, height));
+			}
+		}
+	}
+
+	// Sezione Blocca riquadri, in coda: due soli interi (Fase 10),
+	// stessa cautela delle sezioni sopra.
+	{
+		int32 fr = 0, fc = 0;
+		ssize_t got = source->Read(&fr, sizeof(fr));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(fr)
+				|| source->Read(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+				return B_BAD_DATA;
+		}
+		if (frozenRows) *frozenRows = (int)fr;
+		if (frozenCols) *frozenCols = (int)fc;
+	}
+
 	return B_OK;
 }
 
@@ -507,7 +580,8 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 		if (nameLen > 0 && dest->Write(sheet.name.String(), nameLen) != nameLen)
 			return B_IO_ERROR;
 
-		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts, &sheet.colWidths);
+		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts, &sheet.colWidths,
+			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols);
 		if (err != B_OK)
 			return err;
 	}
@@ -548,7 +622,8 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
 		sheet.name = nameBuf;
 		sheet.doc = new CContainer(NULL, NULL);
 
-		status_t err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths);
+		status_t err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths,
+			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

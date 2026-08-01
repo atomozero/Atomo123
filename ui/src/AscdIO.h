@@ -54,12 +54,27 @@ class CContainer;
 // SetColumnStyle (gia' usate per il formato numerico) -- SaveASCD lo
 // legge direttamente da "doc" e LoadASCD lo scrive direttamente li',
 // esattamente come gia' avviene per il testo/formula di ogni cella.
+// "rowHeights"/"frozenRows"/"frozenCols" (Fase 10) seguono lo stesso
+// principio opzionale di "charts"/"colWidths" sopra -- sezioni
+// aggiunte in coda al formato, un file scritto prima di questa
+// modifica semplicemente non le ha. "rowHeights" e' l'elenco delle
+// SOLE righe con un'altezza diversa da quella predefinita
+// (SheetView::kRowHeight), speculare a "colWidths". "frozenRows"/
+// "frozenCols" sono un solo intero ciascuno (quante righe/colonne
+// dall'alto/da sinistra sono bloccate, 0 = nessuna -- vedi
+// SheetView::SetFreezePanes), non una lista: puntatori anziche'
+// riferimenti per lo stesso motivo di charts/colWidths, NULL = non
+// legge/scrive nulla di quella sezione.
 status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<ChartObject>* charts = NULL,
-	std::vector<std::pair<int, float> >* colWidths = NULL);
+	std::vector<std::pair<int, float> >* colWidths = NULL,
+	std::vector<std::pair<int, float> >* rowHeights = NULL,
+	int* frozenRows = NULL, int* frozenCols = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
-	const std::vector<std::pair<int, float> >* colWidths = NULL);
+	const std::vector<std::pair<int, float> >* colWidths = NULL,
+	const std::vector<std::pair<int, float> >* rowHeights = NULL,
+	const int* frozenRows = NULL, const int* frozenCols = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -83,6 +98,10 @@ struct AscdSheet {
 	CContainer* doc;
 	std::vector<ChartObject> charts;
 	std::vector<std::pair<int, float> > colWidths;
+	// Fase 10: vedi il commento sopra LoadASCD/SaveASCD.
+	std::vector<std::pair<int, float> > rowHeights;
+	int frozenRows = 0;
+	int frozenCols = 0;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di
