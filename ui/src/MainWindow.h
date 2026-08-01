@@ -31,6 +31,7 @@ class ChartWindow;
 class PivotWindow;
 class NameWindow;
 class PasteSpecialWindow;
+class GoToWindow;
 
 // MainWindow implementa ISheetResolver (Container.h, Fase 9) perche'
 // e' lei a possedere fSheets, l'unico elenco di "nome foglio -> CContainer*"
@@ -131,6 +132,13 @@ public:
 	// due codici numerici).
 	void HandlePasteSpecialRequest(int32 content, int32 operation, bool transpose);
 
+	// Pubblico per lo stesso motivo di CopySelection/PasteSelection
+	// sopra -- vedi tests/test_goto.cpp. "range" accetta sia una sola
+	// cella ("C15") sia un intervallo ("A1:B5"), stessa sintassi di
+	// RangeRef::ParseRangeRef; un testo non valido non fa nulla
+	// (nessuno spostamento, nessun crash).
+	void HandleGoToRequest(const char* rangeText);
+
 private:
 	SheetView* fSheetView;
 	BTextControl* fFormulaBar;
@@ -143,6 +151,7 @@ private:
 	PivotWindow* fPivotWindow;
 	NameWindow* fNameWindow;
 	PasteSpecialWindow* fPasteSpecialWindow;
+	GoToWindow* fGoToWindow;
 	std::vector<ChartObject> fCharts;
 
 	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
@@ -206,6 +215,7 @@ private:
 	void ShowNameWindow();
 	void RefreshNameWindow();
 	void ShowPasteSpecialWindow();
+	void ShowGoToWindow();
 };
 
 #endif
