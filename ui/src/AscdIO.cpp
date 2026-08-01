@@ -15,6 +15,7 @@
 #include "Container.h"
 #include "CellIterator.h"
 #include "CellParser.h"
+#include "FontMetrics.h"
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 static const int32 kASCDVersion = 1;
@@ -230,6 +231,84 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
 			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
 			return B_IO_ERROR;
+	}
+
+	// Sezione font di cella non predefinito, in coda (Fase 10):
+	// CellStyle::fFont e' un indice VOLATILE, valido solo dentro
+	// gFontSizeTable per la sessione corrente (vedi il commento su
+	// CFontSizeTable::GetFontID/GetFontInfo in Fase 7) -- non si puo'
+	// scrivere l'indice grezzo e rileggerlo in una sessione successiva,
+	// punterebbe a una voce diversa o inesistente. Si scrive invece la
+	// tripla famiglia/stile/dimensione gia' risolta (GetFontInfo), e
+	// LoadASCD la registra di nuovo con GetFontID (dedup se gia'
+	// esistente) per ottenere un indice valido nella sessione che
+	// ricarica. Il colore del font (un campo separato dentro
+	// CFontMetrics, non usato da SheetView::Draw per disegnare il
+	// testo -- quello legge cs.fHighColor, gia' persistito nella
+	// sezione colori sopra) non serve qui.
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, CellStyle> > toWrite;
+		CCellIterator fontIter(doc, NULL);
+		cell fc2;
+		while (fontIter.NextExisting(fc2))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(fc2, cs);
+			if (cs.fFont != defaultStyle.fFont)
+				toWrite.push_back(std::make_pair(fc2, cs));
+		}
+
+		int32 fontCount = (int32)toWrite.size();
+		if (dest->Write(&fontCount, sizeof(fontCount)) != (ssize_t)sizeof(fontCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < fontCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			font_family family;
+			font_style style;
+			float size;
+			gFontSizeTable.GetFontInfo(toWrite[i].second.fFont, &family, &style, &size);
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(family, sizeof(font_family)) != (ssize_t)sizeof(font_family)
+				|| dest->Write(style, sizeof(font_style)) != (ssize_t)sizeof(font_style)
+				|| dest->Write(&size, sizeof(size)) != (ssize_t)sizeof(size))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione allineamento di cella non predefinito, in coda (Fase 10):
+	// un solo byte per cella, nessuna risoluzione necessaria (a
+	// differenza del font sopra, CellStyle::fAlignment e' gia' il
+	// valore finale, non un indice).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, char> > toWrite;
+		CCellIterator alignIter(doc, NULL);
+		cell ac;
+		while (alignIter.NextExisting(ac))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(ac, cs);
+			if (cs.fAlignment != defaultStyle.fAlignment)
+				toWrite.push_back(std::make_pair(ac, cs.fAlignment));
+		}
+
+		int32 alignCount = (int32)toWrite.size();
+		if (dest->Write(&alignCount, sizeof(alignCount)) != (ssize_t)sizeof(alignCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < alignCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			int8 alignment = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&alignment, sizeof(alignment)) != (ssize_t)sizeof(alignment))
+				return B_IO_ERROR;
+		}
 	}
 
 	return B_OK;
@@ -465,6 +544,67 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 		if (frozenRows) *frozenRows = (int)fr;
 		if (frozenCols) *frozenCols = (int)fc;
+	}
+
+	// Sezione font di cella non predefinito, in coda (Fase 10): vedi
+	// il commento in SaveASCD -- registra di nuovo la tripla famiglia/
+	// stile/dimensione con GetFontID (dedup se gia' esistente) per
+	// ottenere un indice valido nella sessione che ricarica.
+	{
+		int32 fontCount = 0;
+		ssize_t got = source->Read(&fontCount, sizeof(fontCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(fontCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < fontCount; i++)
+			{
+				int16 row, col;
+				font_family family;
+				font_style style;
+				float size;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(family, sizeof(font_family)) != (ssize_t)sizeof(font_family)
+					|| source->Read(style, sizeof(font_style)) != (ssize_t)sizeof(font_style)
+					|| source->Read(&size, sizeof(size)) != (ssize_t)sizeof(size))
+					return B_BAD_DATA;
+
+				CellStyle cs;
+				cell loc(col, row);
+				doc->GetCellStyle(loc, cs);
+				cs.fFont = (int)gFontSizeTable.GetFontID(family, style, size);
+				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione allineamento di cella non predefinito, in coda (Fase 10).
+	{
+		int32 alignCount = 0;
+		ssize_t got = source->Read(&alignCount, sizeof(alignCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(alignCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < alignCount; i++)
+			{
+				int16 row, col;
+				int8 alignment;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&alignment, sizeof(alignment)) != (ssize_t)sizeof(alignment))
+					return B_BAD_DATA;
+
+				CellStyle cs;
+				cell loc(col, row);
+				doc->GetCellStyle(loc, cs);
+				cs.fAlignment = (char)alignment;
+				doc->SetCellStyle(loc, cs);
+			}
+		}
 	}
 
 	return B_OK;
