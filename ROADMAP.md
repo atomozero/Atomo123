@@ -48,6 +48,15 @@ intestazioni, con puntini e cursore come indizio visivo), icone sulla
 toolbar (disegnate a codice, non da HVIF — il sito autorizzato
 risultava ancora vuoto) — tutti e quattro i punti scelti dall'utente
 fatti (nuovi bug/richieste possono comunque emergere e aggiungersi).
+**Fase 9 (supporto multi-foglio) chiusa**: cartella di lavoro nativa
+multi-foglio, formule che attraversano i fogli (risoluzione per nome,
+non per indice — vedi la sezione dedicata per il perché — con
+supporto ai nomi di foglio fra apici richiesti da spazi/trattini),
+apertura automatica dal doppio clic in Tracker, una finestra per ogni
+file aperto invece di una sola, toolbar con icone HVIF vere raggruppate
+per categoria (il sito autorizzato per le icone si è nel frattempo
+popolato) — tutti i punti pianificati fatti, verificato anche contro
+il file di gara reale da 38 fogli che ha motivato l'intera fase.
 Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
@@ -1720,7 +1729,7 @@ toolbar, ridimensionamento riga/colonna.
       Con questo, tutti e quattro i punti scelti dall'utente per la
       Fase 8 sono completi.
 
-## Fase 9 — Supporto multi-foglio (IN CORSO)
+## Fase 9 — Supporto multi-foglio (CHIUSA)
 
 Con la Fase 8 chiusa, l'utente ha indicato un vero file di lavoro —
 `[file di lavoro reale].xlsm`, una gara d'appalto reale —
@@ -2132,17 +2141,111 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
       sensibilmente più stretta a parità di pulsanti. Nessuna
       regressione nelle 19 suite.
 
-**Limiti noti, non ancora affrontati in questo incremento**:
-formule che attraversano i fogli (es. `+MT_CM_Installazione!I56`,
-presenti 166 volte in "RIEPILOGO COMPLETO" in questo file) vengono
-importate come testo/formula grezza ma **non** calcolate
-correttamente — il motore di calcolo, ereditato da Sum-It, non
-risolve riferimenti a un `CContainer` diverso dal proprio; serve un
-meccanismo a livello di motore per risolvere un riferimento
-`NomeFoglio!Cella` verso il documento giusto fra quelli aperti, non
-ancora progettato. Esportazione (XLSX/CSV/ODS) resta a un solo foglio
-(quello attivo). Nessuno stile/formato numerico/cella unita di questo
-file specifico è stato ancora verificato in dettaglio.
+- [x] **Formule che attraversano i fogli** ("NomeFoglio!Cella",
+      l'ultimo limite noto rimasto aperto da questo incremento):
+      166 riferimenti incrociati in "RIEPILOGO COMPLETO" del file
+      reale (es. `+MT_CM_Installazione!I56`) venivano importati come
+      testo/formula grezza ma non calcolati — il motore, ereditato da
+      Sum-It, non sapeva risolvere un riferimento verso un `CContainer`
+      diverso dal proprio.
+
+      **Meccanismo**: `ISheetResolver` (nuova interfaccia in
+      `Container.h`), implementata da `MainWindow` (non dal motore
+      isolato, che non sa nulla di "cartella di lavoro"), risolve un
+      *nome* di foglio verso il `CContainer` corrispondente fra
+      `fSheets`. Nuovi token bytecode `valXRef`/`valXRange`
+      (`Formula.h/.cpp`) incorporano il nome del foglio come stringa
+      (non un indice), esattamente come `valName` già fa per gli
+      intervalli con nome — risolto sempre e solo in fase di
+      **calcolo**, mai di parsing.
+
+      **Bug reale scoperto per primo (progettazione iniziale)**: la
+      prima versione risolveva il nome del foglio in un *indice*
+      già in fase di parsing (`CParser` doveva già conoscere l'elenco
+      dei fogli). Funzionava nel motore isolato ma falliva sempre dopo
+      un giro salva/ricarica: `LoadASCD` ri-analizza ogni foglio
+      *singolarmente* (il testo della formula è quello che è, il
+      formato nativo salva/ricarica le formule come testo, non come
+      bytecode), prima che tutti i fogli della cartella di lavoro
+      esistano e siano collegati fra loro — un riferimento incrociato
+      diventava quindi un identificatore sconosciuto, silenziosamente
+      salvato come testo puro invece che come formula. Riprogettato
+      per nome (risoluzione differita al calcolo, come `valName`):
+      "NomeFoglio!Cella" è sempre e comunque un riferimento incrociato
+      a livello sintattico, si limita a non risolversi (`eNoData`) se
+      il foglio non esiste ancora o il resolver non è collegato — mai
+      un crash, mai una falsa retrocessione a testo. Scoperto e
+      corretto scrivendo `ui/tests/test_xsheet_formulas.cpp`, che apre
+      davvero un file con `MainWindow::OpenFile` invece di limitarsi
+      al motore isolato.
+
+      **Secondo bug reale scoperto (nomi di foglio fra apici)**:
+      ispezionando l'XML grezzo del file di gara reale, 118 dei 143
+      riferimenti incrociati usano la sintassi Excel con apici singoli
+      (`'BT02 - CM_Installazione'!I29`, necessaria perché il nome
+      contiene spazi/trattini) — solo una minoranza (i fogli
+      "MT_CM_...", senza spazi) usa la sintassi semplice. Aggiunto un
+      token lessicale `QIDENT` (stessa logica di `TEXT`, apice singolo
+      invece di doppio, senza gestione di un apostrofo letterale
+      sfuggito — semplificazione già accettata per `TEXT`) e la
+      relativa produzione grammaticale in `CParser::Factor`/
+      `ParseSheetReference`. **Bug scoperto scrivendolo**: il codice
+      di chiusura di `GetNextToken` sovrascriveva il nome già ripulito
+      dagli apici con il buffer grezzo (apici compresi), perché
+      escludeva esplicitamente `TEXT` da quella sovrascrittura ma non
+      il nuovo `QIDENT` — un riferimento incrociato fra apici
+      risultava sempre non risolto, con il nome del foglio preceduto
+      da un apice letterale mai tolto.
+
+      `UnMangle` ricostruisce sempre il nome del foglio fra apici
+      singoli (anche quando non sarebbero strettamente necessari):
+      il bytecode non registra se era stato scritto con o senza, e
+      senza le virgolette un nome con spazi non si rianalizzerebbe
+      correttamente al giro salva/ricarica successivo.
+
+      **Limite noto, non affrontato in questo incremento**: un vero
+      intervallo multi-cella fra fogli usato come argomento di una
+      funzione di aggregazione (es. `SUM('Foglio2'!A1:A10)`) non è
+      supportato — le funzioni leggono il proprio argomento range dal
+      `CContainer` "corrente", non da uno arbitrario; servirebbe
+      estendere anche quel meccanismo. Il file reale non sembra
+      usare questo schema (somma cella per cella con `+`, non `SUM`
+      su un intervallo fra fogli), quindi non blocca l'uso pratico
+      constatato finora. Resta anche il limite già noto sull'indice
+      di foglio incorporato in `valXRef`/`valXRange` (ora un nome, non
+      più un problema) — ma un foglio *rinominato* dopo che una
+      formula lo referenzia romperebbe comunque quel riferimento
+      (nessuna UI per rinominare un foglio, quindi non ancora
+      raggiungibile).
+
+      Test: `engine/tests/xsheet_test.cpp` (nuovo, 8 verifiche —
+      calcolo, round-trip testuale UnMangle, nome fra apici,
+      propagazione dopo una modifica, foglio inesistente, nessun
+      resolver collegato, resolver rimosso dopo la compilazione,
+      round-trip `Write`/`Read` sul formato nativo) e
+      `ui/tests/test_xsheet_formulas.cpp` (nuovo, 6 verifiche — stesso
+      comportamento end-to-end su una vera `MainWindow::OpenFile`,
+      compreso un vero giro salva/ricarica su disco). Verificato anche
+      aprendo dal vivo il file reale da 38 fogli: nessun crash,
+      titolo/nomi di foglio (con spazi) corretti. Nessuna regressione
+      nelle 19 suite UI + 2 suite motore preesistenti.
+
+- [x] **Ricalcolo esteso a tutta la cartella di lavoro**: `MainWindow::
+      RecalculateActiveWorkbook()` (nuovo, sostituisce ogni chiamata
+      diretta a `RecalculateAll(fDoc)` in `MainWindow.cpp`/
+      `SheetView.cpp`) ricalcola tutti i fogli — non solo quello
+      attivo — quando la cartella di lavoro ne ha più di uno, così una
+      modifica in un foglio si propaga correttamente a un altro
+      foglio che lo referenzia in formula; con un solo foglio ricade
+      sul più economico `RecalculateAll` di prima, nessun costo
+      aggiuntivo per il caso comune. `AscdIO::RecalculateWorkbook`
+      (nuovo) applica la stessa logica a convergenza già usata da
+      `RecalculateAll` (più passate finché nessuna cella cambia più
+      valore) a tutti i fogli insieme in ogni passata, non uno alla
+      volta in sequenza — necessario perché una dipendenza circolare
+      fra due fogli (A referenzia B, B referenzia A) converga
+      correttamente nello stesso numero di passate di un riferimento
+      circolare nello stesso foglio.
 
 ---
 
