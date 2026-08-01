@@ -4,10 +4,14 @@
 	Verifica la persistenza nel formato nativo delle quattro preferenze
 	rimaste "solo per la sessione corrente" dopo la Fase 7 (Blocca
 	riquadri, altezza di riga, font di cella -- grassetto/corsivo -- e
-	allineamento, Fase 10) piu' i bordi di cella (Fase 11) -- tutti
-	salvati/ricaricati tramite sezioni opzionali in coda al formato
-	ASCD, stesso principio gia' usato per larghezza di colonna e
-	colori (vedi il commento in AscdIO.h). Il font e' il caso piu'
+	allineamento, Fase 10) piu' i bordi di cella (Fase 11) e il
+	formato numero (Fase 12, CellStyle::fFormat -- scoperto senza
+	nessuna sezione dedicata proprio scrivendo l'import XLSX di Fase
+	12: anche il menu Formato esistente da prima di questa fase perdeva
+	silenziosamente il formato scelto al salvataggio/riapertura) --
+	tutti salvati/ricaricati tramite sezioni opzionali in coda al
+	formato ASCD, stesso principio gia' usato per larghezza di colonna
+	e colori (vedi il commento in AscdIO.h). Il font e' il caso piu'
 	delicato: CellStyle::fFont e' un indice VOLATILE in
 	gFontSizeTable, valido solo per la sessione che l'ha creato -- si
 	scrive/rilegge la tripla famiglia/stile/dimensione, non l'indice
@@ -34,6 +38,7 @@
 #include "Cell.h"
 #include "CellStyle.h"
 #include "FontMetrics.h"
+#include "Formatter.h"
 #include "Container.h"
 #include "CellParser.h"
 
@@ -95,6 +100,19 @@ int main()
 		cs.fLBorderColor = 1;
 		cs.fBBorderColor = 1;
 		doc->SetCellStyle(cell(1, 2), cs);
+	}
+
+	// Formato numero (Fase 12) su A3, oltre all'allineamento gia'
+	// impostato sopra: stesso principio dello slittamento
+	// "menu Formato -> CellStyle::fFormat" gia' usato dall'app live
+	// (MainWindow::SetCellFormat), non un CFormatter costruito da un
+	// template come nell'import XLSX -- entrambi i percorsi finiscono
+	// comunque nello stesso campo.
+	{
+		CellStyle cs;
+		doc->GetCellStyle(cell(1, 3), cs);
+		cs.fFormat = eCurrency;
+		doc->SetCellStyle(cell(1, 3), cs);
 	}
 
 	{
@@ -180,6 +198,19 @@ int main()
 		Check(cs.fTBorderColor == 0 && cs.fLBorderColor == 0
 			&& cs.fBBorderColor == 0 && cs.fRBorderColor == 0,
 			"A1 (mai toccata) resta senza nessun bordo dopo il giro");
+	}
+
+	// Formato numero: A3 e' ancora Valuta, A1 (mai toccata) resta al
+	// formato predefinito.
+	{
+		CellStyle cs;
+		reloaded->GetCellStyle(cell(1, 3), cs);
+		Check(cs.fFormat == eCurrency, "il formato Valuta di A3 sopravvive al giro");
+
+		CellStyle defaultStyle;
+		reloaded->GetCellStyle(cell(1, 1), cs);
+		Check(cs.fFormat == defaultStyle.fFormat,
+			"A1 (mai formattata) resta col formato predefinito dopo il giro");
 	}
 
 	// Un file scritto SENZA queste sezioni (chiamante che passa NULL,

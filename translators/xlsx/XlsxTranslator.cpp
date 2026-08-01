@@ -25,6 +25,7 @@
 #include "CellParser.h"
 #include "CellStyle.h"
 #include "Constants.h"
+#include "Formatter.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -247,6 +248,40 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	int32 borderCount = 0;
 	if (dest->Write(&borderCount, sizeof(borderCount)) != (ssize_t)sizeof(borderCount))
 		return B_IO_ERROR;
+
+	// Sezione formato numero di cella non predefinito, in coda (Fase
+	// 12, vedi ui/src/AscdIO.cpp): a differenza delle cinque sezioni
+	// vuote sopra, questo translator estrae davvero il formato numero
+	// dal file XLSX originale (ResolveNumberFormat in ParseStyles,
+	// applicato a CellStyle::fFormat durante ParseSheet) -- va quindi
+	// scritta con i valori reali, non a zero.
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, int32> > toWrite;
+		CCellIterator formatIter(doc, NULL);
+		cell fc;
+		while (formatIter.NextExisting(fc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(fc, cs);
+			if (cs.fFormat != defaultStyle.fFormat)
+				toWrite.push_back(std::make_pair(fc, (int32)cs.fFormat));
+		}
+
+		int32 formatCount = (int32)toWrite.size();
+		if (dest->Write(&formatCount, sizeof(formatCount)) != (ssize_t)sizeof(formatCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < formatCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			int32 format = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&format, sizeof(format)) != (ssize_t)sizeof(format))
+				return B_IO_ERROR;
+		}
+	}
 
 	return B_OK;
 }
@@ -754,13 +789,24 @@ struct ResolvedStyle {
 	rgb_color bg;
 	bool hasFg;
 	rgb_color fg;
+	bool hasFormat;
+	int format; // valore gia' pronto per CellStyle::fFormat
 };
 
-enum StylesSection { kStylesNone, kStylesFills, kStylesFonts, kStylesCellXfs };
+enum StylesSection { kStylesNone, kStylesNumFmts, kStylesFills, kStylesFonts, kStylesCellXfs };
+
+// (fontId, fillId, numFmtId) per indice s= di una cella/colonna.
+struct XfInfo {
+	int fontId;
+	int fillId;
+	int numFmtId;
+};
 
 struct StylesContext {
 	const XlsxTheme* theme;
 	StylesSection section;
+
+	std::map<int, std::string> numFmts; // numFmtId -> formatCode (solo i personalizzati, id >= 164 di norma)
 
 	std::vector<rgb_color> fillColors;
 	std::vector<bool> fillColorValid;
@@ -769,18 +815,134 @@ struct StylesContext {
 	std::vector<rgb_color> fontColors;
 	std::vector<bool> fontColorValid;
 
-	std::vector<std::pair<int, int> > cellXfs; // (fontId, fillId) per indice s=
+	std::vector<XfInfo> cellXfs;
 };
+
+// I formati incorporati (numFmtId 0..163, es. 9="0%", 44=contabilita')
+// non compaiono mai in <numFmts> (solo quelli personalizzati, di norma
+// id >= 164, ma il file puo' ridefinirne uno incorporato esplicitamente
+// come visto con id=44 in un file di gara reale): tabella dei piu'
+// comuni, sufficiente per l'approssimazione di formato dichiarata in
+// Fase 12 (vedi ResolveNumberFormat sotto). Elenco completo in ECMA-376
+// 18.8.30; qui solo quelli che ricorrono davvero in fogli reali.
+static const char* BuiltinNumFmtCode(int numFmtId)
+{
+	switch (numFmtId)
+	{
+		case 1: return "0";
+		case 2: return "0.00";
+		case 3: return "#,##0";
+		case 4: return "#,##0.00";
+		case 9: return "0%";
+		case 10: return "0.00%";
+		case 37: return "#,##0";
+		case 38: return "#,##0";
+		case 39: return "#,##0.00";
+		case 40: return "#,##0.00";
+		case 44: return "#,##0.00";
+		default: return NULL;
+	}
+}
+
+// Traduce un numFmtId XLSX nel formato piu' vicino gia' rappresentabile
+// da CFormatter/CellStyle::fFormat, riusando la stessa euristica di
+// CFormatter::ParseTemplate (cerca '$'/'%'/','/'.') invece di
+// duplicarla: il formatCode XLSX (gia' decodificato dalle entita' XML
+// da expat) e' quasi sempre un template compatibile cosi' com'e'.
+// Limite dichiarato in ROADMAP.md (Fase 12): il colore condizionale
+// per i negativi (es. "0.00;[Red]-0.00") e il simbolo di valuta
+// specifico del formato vengono scartati, ParseTemplate guarda solo la
+// parte prima del primo ';' e solo se contiene un carattere '$'
+// letterale (non un simbolo Unicode come '€' scritto fra apici). I
+// formati data/ora (heuristica: contengono lettere y/m/d/h/s fuori da
+// apici, nessun carattere che ParseTemplate riconosca) sono lasciati
+// al task dedicato "Formati data/ora da XLSX", non gestiti qui: se lo
+// fossero, ParseTemplate li tratterebbe erroneamente come eGeneral.
+// Guarda solo la parte prima del primo ';' (stessa porzione che
+// ParseTemplate usa davvero, vedi sopra) e ignora sia il testo fra
+// apici (es. l'unita' di misura in "0.00 \"kg\"") sia le direttive fra
+// parentesi quadre (es. "[Red]", "[$€-410]"): senza quest'ultimo
+// filtro la "d" di "[Red]" farebbe scambiare per data un formato
+// numerico qualunque con un colore condizionale (bug reale scoperto
+// scrivendo il test con numFmtId 166, "0.00;[Red]0.00").
+static bool LooksLikeDateFormat(const std::string& code)
+{
+	bool inQuotes = false;
+	bool inBrackets = false;
+	for (size_t i = 0; i < code.size(); i++)
+	{
+		char c = code[i];
+		if (!inBrackets && c == '"')
+			inQuotes = !inQuotes;
+		else if (!inQuotes && c == '[')
+			inBrackets = true;
+		else if (!inQuotes && c == ']')
+			inBrackets = false;
+		else if (!inQuotes && !inBrackets)
+		{
+			if (c == ';')
+				return false; // fine della porzione rilevante, nessuna lettera data trovata
+			if (c == 'y' || c == 'm' || c == 'd' || c == 'h' || c == 's'
+				|| c == 'Y' || c == 'M' || c == 'D' || c == 'H' || c == 'S')
+				return true;
+		}
+	}
+	return false;
+}
+
+static bool ResolveNumberFormat(int numFmtId, const std::map<int, std::string>& numFmts,
+	int* outFormat)
+{
+	if (numFmtId <= 0)
+		return false; // 0 = General, nessuna formattazione esplicita da applicare
+
+	std::string code;
+	std::map<int, std::string>::const_iterator it = numFmts.find(numFmtId);
+	if (it != numFmts.end())
+		code = it->second;
+	else
+	{
+		const char* builtin = BuiltinNumFmtCode(numFmtId);
+		if (!builtin)
+			return false; // id incorporato non nella nostra tabella, ignorato
+		code = builtin;
+	}
+
+	if (LooksLikeDateFormat(code))
+		return false;
+
+	CFormatter formatter(code.c_str());
+	*outFormat = formatter.FormatID();
+	return true;
+}
 
 static void XMLCALL StylesStart(void* userData, const char* name, const char** atts)
 {
 	StylesContext* ctx = (StylesContext*)userData;
 
+	if (strcmp(name, "numFmts") == 0) { ctx->section = kStylesNumFmts; return; }
 	if (strcmp(name, "fills") == 0) { ctx->section = kStylesFills; return; }
 	if (strcmp(name, "fonts") == 0) { ctx->section = kStylesFonts; return; }
 	if (strcmp(name, "cellXfs") == 0) { ctx->section = kStylesCellXfs; return; }
 
-	if (ctx->section == kStylesFills)
+	if (ctx->section == kStylesNumFmts)
+	{
+		if (strcmp(name, "numFmt") == 0)
+		{
+			int numFmtId = -1;
+			const char* formatCode = NULL;
+			for (int i = 0; atts[i]; i += 2)
+			{
+				if (strcmp(atts[i], "numFmtId") == 0)
+					numFmtId = atoi(atts[i + 1]);
+				else if (strcmp(atts[i], "formatCode") == 0)
+					formatCode = atts[i + 1];
+			}
+			if (numFmtId >= 0 && formatCode)
+				ctx->numFmts[numFmtId] = formatCode;
+		}
+	}
+	else if (ctx->section == kStylesFills)
 	{
 		if (strcmp(name, "fill") == 0)
 		{
@@ -831,15 +993,20 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 	{
 		if (strcmp(name, "xf") == 0)
 		{
-			int fontId = 0, fillId = 0;
+			XfInfo xf;
+			xf.fontId = 0;
+			xf.fillId = 0;
+			xf.numFmtId = 0;
 			for (int i = 0; atts[i]; i += 2)
 			{
 				if (strcmp(atts[i], "fontId") == 0)
-					fontId = atoi(atts[i + 1]);
+					xf.fontId = atoi(atts[i + 1]);
 				else if (strcmp(atts[i], "fillId") == 0)
-					fillId = atoi(atts[i + 1]);
+					xf.fillId = atoi(atts[i + 1]);
+				else if (strcmp(atts[i], "numFmtId") == 0)
+					xf.numFmtId = atoi(atts[i + 1]);
 			}
-			ctx->cellXfs.push_back(std::make_pair(fontId, fillId));
+			ctx->cellXfs.push_back(xf);
 		}
 	}
 }
@@ -847,7 +1014,8 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 static void XMLCALL StylesEnd(void* userData, const char* name)
 {
 	StylesContext* ctx = (StylesContext*)userData;
-	if (strcmp(name, "fills") == 0 || strcmp(name, "fonts") == 0 || strcmp(name, "cellXfs") == 0)
+	if (strcmp(name, "numFmts") == 0 || strcmp(name, "fills") == 0
+		|| strcmp(name, "fonts") == 0 || strcmp(name, "cellXfs") == 0)
 		ctx->section = kStylesNone;
 }
 
@@ -877,8 +1045,8 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 	out->resize(ctx.cellXfs.size());
 	for (size_t i = 0; i < ctx.cellXfs.size(); i++)
 	{
-		int fontId = ctx.cellXfs[i].first;
-		int fillId = ctx.cellXfs[i].second;
+		int fontId = ctx.cellXfs[i].fontId;
+		int fillId = ctx.cellXfs[i].fillId;
 
 		ResolvedStyle rs;
 		rs.hasBg = fillId >= 0 && (size_t)fillId < ctx.fillColorValid.size()
@@ -889,6 +1057,7 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 			&& ctx.fontColorValid[fontId];
 		if (rs.hasFg)
 			rs.fg = ctx.fontColors[fontId];
+		rs.hasFormat = ResolveNumberFormat(ctx.cellXfs[i].numFmtId, ctx.numFmts, &rs.format);
 		(*out)[i] = rs;
 	}
 }
@@ -1026,7 +1195,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				&& (size_t)styleIndex < ctx->styles->size())
 			{
 				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
-				if (rs.hasBg || rs.hasFg)
+				if (rs.hasBg || rs.hasFg || rs.hasFormat)
 				{
 					for (int col = min; col <= clampedMax; col++)
 					{
@@ -1034,6 +1203,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 						ctx->doc->GetColumnStyle(col, cs);
 						if (rs.hasBg) cs.fLowColor = rs.bg;
 						if (rs.hasFg) cs.fHighColor = rs.fg;
+						if (rs.hasFormat) cs.fFormat = rs.format;
 						ctx->doc->SetColumnStyle(col, cs);
 					}
 				}
@@ -1107,12 +1277,13 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 			&& (size_t)ctx->cellStyleIndex < ctx->styles->size())
 		{
 			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
-			if (rs.hasBg || rs.hasFg)
+			if (rs.hasBg || rs.hasFg || rs.hasFormat)
 			{
 				CellStyle cs;
 				ctx->doc->GetCellStyle(loc, cs);
 				if (rs.hasBg) cs.fLowColor = rs.bg;
 				if (rs.hasFg) cs.fHighColor = rs.fg;
+				if (rs.hasFormat) cs.fFormat = rs.format;
 				ctx->doc->SetCellStyle(loc, cs);
 			}
 		}
