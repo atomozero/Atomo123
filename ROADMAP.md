@@ -66,10 +66,12 @@ formattazione font/colore/allineamento e una finestra Preferenze
 fatti (oltre a Selezione multi-cella/Riempi/Ordina/Inserisci-Elimina
 riga e colonna già completati nella prima parte della fase) — tutti i
 punti individuati nel confronto con Sum-It storico recuperati.
-**Fase 10 (persistenza completa delle preferenze) e Fase 11 (bordi
-delle celle) in corso**: chiudono il debito di "solo per sessione"
-lasciato deliberatamente da Fase 7 e completano l'ultimo campo di
-`CellStyle` mai esposto dalla UI. Aggiornato ad ogni fase completata.
+**Fase 10 (persistenza completa delle preferenze) chiusa**: Blocca
+riquadri, altezza di riga, font e allineamento — tutte e quattro le
+preferenze rimaste "solo per sessione" dopo la Fase 7 — sopravvivono
+ora al salvataggio/riapertura nel formato nativo. **Fase 11 (bordi
+delle celle) in corso**: l'ultimo campo di `CellStyle` mai esposto
+dalla UI. Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -2659,7 +2661,7 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
 
 ---
 
-## Fase 10 — Persistenza completa delle preferenze di cella e vista (IN CORSO)
+## Fase 10 — Persistenza completa delle preferenze di cella e vista (CHIUSA)
 
 Con Fase 7 chiusa, quattro delle funzionalità appena recuperate sono
 rimaste deliberatamente **solo per la sessione corrente**, non
@@ -2719,14 +2721,41 @@ esattamente come fa già `Excel.pass1.cpp` per un file XLSX importato.
       predefiniti. Nessuna regressione nella suite esistente (tutti i
       28 target).
 
-- [ ] Estendere `AscdSheet`/`SaveASCD`/`LoadASCD` con una sezione
-      "celle con font non predefinito" (famiglia/stile/dimensione per
-      cella, stesso principio della sezione colori già esistente) e
-      una per l'allineamento — le due restanti, entrambe per-cella
-      invece che per-foglio, la prima complicata dall'indice volatile
-      di `fFont` descritto sopra.
-- [ ] Test di round-trip dedicato per entrambe, sullo stesso modello
-      di `test_persistence.cpp`.
+- [x] **Font e allineamento di cella**: le due restanti, entrambe
+      per-cella invece che per-foglio come le prime due sopra. Due
+      nuove sezioni in coda ad `AscdSheet`/`SaveASCD`/`LoadASCD`
+      (stesso principio delle sezioni colori già esistenti, non nuovi
+      parametri: entrambe leggono/scrivono direttamente su `doc`
+      tramite `GetCellStyle`/`SetCellStyle`, come i colori):
+
+      - **Font**: per ciascuna cella con `fFont` diverso dal
+        predefinito, si scrive la tripla famiglia/stile/dimensione
+        già risolta con `CFontSizeTable::GetFontInfo` — mai l'indice
+        grezzo, per il motivo descritto sopra. `LoadASCD` la registra
+        di nuovo con `GetFontID` (dedup se la stessa combinazione
+        esiste già), ottenendo un indice valido per la sessione che
+        ricarica — necessariamente diverso da quello scritto, ma
+        questo non conta: solo la SheetView::Draw usa `CellStyle::
+        fFont` come chiave verso `gFontSizeTable`, mai il valore
+        grezzo confrontato altrove. Il colore del font (un campo
+        separato dentro `CFontMetrics`, mai usato per disegnare il
+        testo — `SheetView::Draw` legge sempre `CellStyle::
+        fHighColor`, già persistito nella sezione colori) non serve.
+      - **Allineamento**: un solo byte diretto per cella, nessuna
+        risoluzione necessaria (a differenza del font, `CellStyle::
+        fAlignment` è già il valore finale).
+
+      Esteso `ui/tests/test_persistence.cpp` (ora 12 verifiche): una
+      cella in grassetto e una allineata a destra sopravvivono al
+      giro salva/ricarica (stessa famiglia/dimensione/"Bold" nello
+      stile, indice grezzo diverso ma ininfluente), le celle mai
+      toccate restano col predefinito. Nessuna regressione nella
+      suite esistente (tutti i 29 target).
+
+      **Con questo si chiude anche la Fase 10**: tutte e quattro le
+      preferenze rimaste "solo per sessione" dopo la Fase 7 (Blocca
+      riquadri, altezza di riga, font, allineamento) sopravvivono ora
+      al salvataggio/riapertura nel formato nativo.
 
 ---
 
