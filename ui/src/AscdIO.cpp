@@ -16,6 +16,7 @@
 #include "CellIterator.h"
 #include "CellParser.h"
 #include "FontMetrics.h"
+#include "Formatter.h"
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 static const int32 kASCDVersion = 1;
@@ -349,6 +350,53 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione formato numero di cella non predefinito, in coda (Fase
+	// 12): CellStyle::fFormat era l'unico campo di stile rimasto senza
+	// persistenza nel formato nativo -- non scoperto prima perche' fino
+	// a Fase 12 nessun importatore lo impostava mai (solo il menu
+	// Formato lo scriveva, da sessione a sessione, mai notato perche'
+	// nessun test di round-trip lo copriva). A differenza del font
+	// (Fase 10), fFormat non e' un indice volatile: CFormatTable::
+	// GetFormatID(int) risolve gli ID sopra eFirstNewFormat (1024) da
+	// una mappa interna popolata SOLO durante l'esecuzione corrente
+	// (mai persistita a sua volta) -- scriverlo e rileggerlo cosi'
+	// com'e' e' quindi sicuro solo per gli ID sotto eFirstNewFormat
+	// (i formati "vecchio stile": General/Valuta/Percentuale/Fisso +
+	// cifre + virgole, tutti quelli che UI e import XLSX producono
+	// oggi). Un ID sopra eFirstNewFormat scritto da questa sessione e
+	// riletto in una sessione successiva punterebbe a una voce
+	// diversa o assente: scartato silenziosamente al salvataggio (si
+	// perde solo l'eventuale formato "nuovo stile", mai prodotto da
+	// nessun punto del codice ad oggi) invece di corrompere la
+	// lettura.
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, int32> > toWrite;
+		CCellIterator formatIter(doc, NULL);
+		cell fc;
+		while (formatIter.NextExisting(fc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(fc, cs);
+			if (cs.fFormat != defaultStyle.fFormat && cs.fFormat < eFirstNewFormat)
+				toWrite.push_back(std::make_pair(fc, (int32)cs.fFormat));
+		}
+
+		int32 formatCount = (int32)toWrite.size();
+		if (dest->Write(&formatCount, sizeof(formatCount)) != (ssize_t)sizeof(formatCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < formatCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			int32 format = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&format, sizeof(format)) != (ssize_t)sizeof(format))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -671,6 +719,34 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				cs.fLBorderColor = sides[1];
 				cs.fBBorderColor = sides[2];
 				cs.fRBorderColor = sides[3];
+				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione formato numero di cella non predefinito, in coda (Fase
+	// 12): vedi il commento in SaveASCD.
+	{
+		int32 formatCount = 0;
+		ssize_t got = source->Read(&formatCount, sizeof(formatCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(formatCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < formatCount; i++)
+			{
+				int16 row, col;
+				int32 format;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&format, sizeof(format)) != (ssize_t)sizeof(format))
+					return B_BAD_DATA;
+
+				CellStyle cs;
+				cell loc(col, row);
+				doc->GetCellStyle(loc, cs);
+				cs.fFormat = (int)format;
 				doc->SetCellStyle(loc, cs);
 			}
 		}

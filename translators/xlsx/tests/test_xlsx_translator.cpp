@@ -385,6 +385,23 @@ int main()
 								"sezione bordi di cella presente (vuota, Fase 11)");
 						}
 
+						// Sezione formato numero (Fase 12): sample.xlsx
+						// non ha nessun numFmt esplicito in styles.xml
+						// (tutti gli xf hanno numFmtId="0" = General),
+						// quindi 0 celle -- ma la sezione stessa deve
+						// esserci (a differenza delle cinque sopra,
+						// questo translator la scrive con valori REALI
+						// quando presenti, non sempre vuota: qui e'
+						// vuota perche' il file di prova non ha formati,
+						// non perche' la sezione manchi).
+						if (pos + 4 <= ascdLen)
+						{
+							int32 formatCount;
+							memcpy(&formatCount, ascdData + pos, 4); pos += 4;
+							Check(formatCount == 0,
+								"sezione formato numero presente (vuota per questo file di prova, Fase 12)");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
@@ -398,6 +415,146 @@ int main()
 		}
 
 		doc.Release();
+	}
+
+	// Formati numero (Fase 12): tests/sample_numfmt.xlsx ha cinque
+	// celle sulla riga 1 -- A1 con un formato incorporato (numFmtId 44,
+	// mai definito esplicitamente in <numFmts>, dalla tabella
+	// BuiltinNumFmtCode), B1 con un altro incorporato (9 = "0%"), C1 e
+	// D1 con due formati personalizzati definiti in <numFmts> (165 =
+	// "0.0", 166 = "0.00;[Red]0.00" -- quest'ultimo per verificare che
+	// solo la parte prima del ";" venga usata, il colore condizionale
+	// del negativo scartato come da limite dichiarato in ROADMAP.md),
+	// E1 senza stile esplicito (numFmtId 0 = General, nessun formato
+	// da applicare). Gli ID attesi sono calcolati a mano seguendo la
+	// stessa logica di CFormatter::ParseTemplate/FormatID (vedi
+	// ResolveNumberFormat in XlsxTranslator.cpp).
+	{
+		BFile numFmtFile("tests/sample_numfmt.xlsx", B_READ_ONLY);
+		Check(numFmtFile.InitCheck() == B_OK, "apertura di tests/sample_numfmt.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&numFmtFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_numfmt.xlsx");
+
+		numFmtFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&numFmtFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_numfmt.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_numfmt.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			CContainer &doc = *new CContainer(NULL, NULL);
+
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 5, "l'ASCD contiene le 5 celle di sample_numfmt.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				std::string text((const char *)ascdData + pos, len);
+				pos += len;
+				cell loc(col, row);
+				TryToParseString(text.c_str(), loc, &doc, true);
+			}
+
+			// Salta grafici (sempre 0)/larghezze colonna (nessuna qui)
+			// per arrivare alla sezione colori, poi a quella formato.
+			if (pos + 4 <= ascdLen)
+			{
+				int32 chartCount;
+				memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+				pos += chartCount * (2 * 4 + 4 * 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				pos += colWidthCount * (2 + 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+				pos += cellColorCount * (2 + 2 + 8); // row+col+WriteColorEntry
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 columnColorCount;
+				memcpy(&columnColorCount, ascdData + pos, 4); pos += 4;
+				pos += columnColorCount * (2 + 8);
+			}
+			// Le cinque sezioni vuote di Fase 10/11 (altezze riga,
+			// Blocca riquadri, font, allineamento, bordi).
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+4); } // altezze riga
+			if (pos + 8 <= ascdLen) { pos += 8; } // Blocca riquadri (due int32 fissi)
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; /* font: lunghezza variabile, non atteso qui (0) */ }
+
+			// A questo punto pos e' dopo fontCount (atteso 0 per questo
+			// file, nessuna riga di skip necessaria oltre i 4 byte del
+			// contatore gia' consumati sopra) -- allineamento e bordi
+			// sotto, entrambe attese vuote.
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+1); } // allineamento
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+4); } // bordi
+
+			bool haveFormatCount = false;
+			int32 formatCount = 0;
+			if (pos + 4 <= ascdLen)
+			{
+				memcpy(&formatCount, ascdData + pos, 4); pos += 4;
+				haveFormatCount = true;
+			}
+			Check(haveFormatCount && formatCount == 4,
+				"sezione formato numero: 4 celle con formato esplicito (A1/B1/C1/D1, non E1)");
+
+			int foundA1 = -1, foundB1 = -1, foundC1 = -1, foundD1 = -1;
+			for (int32 i = 0; i < formatCount && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 format;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&format, ascdData + pos, 4); pos += 4;
+
+				if (row == 1 && col == 1) foundA1 = format;
+				if (row == 1 && col == 2) foundB1 = format;
+				if (row == 1 && col == 3) foundC1 = format;
+				if (row == 1 && col == 4) foundD1 = format;
+			}
+
+			// eFixed(3) | cifre<<4 | commas<<9: "#,##0.00" (numFmtId 44
+			// incorporato) -> fisso, 2 cifre, virgola = 3|32|512 = 547.
+			Check(foundA1 == 547,
+				"A1 (numFmtId 44 incorporato, \"#,##0.00\") risolto a fisso/2 cifre/virgola");
+			// ePercent(4), "0%" -> nessuna cifra, nessuna virgola = 4.
+			Check(foundB1 == 4,
+				"B1 (numFmtId 9 incorporato, \"0%\") risolto a percentuale");
+			// eFixed(3) | 1<<4, "0.0" (personalizzato) -> 3|16 = 19.
+			Check(foundC1 == 19,
+				"C1 (numFmtId 165 personalizzato, \"0.0\") risolto a fisso/1 cifra");
+			// eFixed(3) | 2<<4, "0.00;[Red]0.00" -> solo la parte prima
+			// del ';' conta (colore del negativo scartato) = 3|32 = 35.
+			Check(foundD1 == 35,
+				"D1 (numFmtId 166 personalizzato, \"0.00;[Red]0.00\") risolto a fisso/2 cifre, "
+				"colore negativo scartato come da limite dichiarato");
+
+			doc.Release();
+		}
 	}
 
 	// Esportazione (ASCD -> XLSX): scrive un documento con un numero,
