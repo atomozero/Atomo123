@@ -1558,8 +1558,7 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       Ripeti e Taglia/Copia/Incolla, per via del refactor
       dell'istantanea; verificato anche con esecuzioni ripetute).
 
-- [ ] **Intervalli con nome** (in corso — motore fatto, manca ancora
-      la finestra per definirli dalla UI): il motore ereditato da
+- [x] **Intervalli con nome**: il motore ereditato da
       Sum-It aveva già tutto l'occorrente (`CNameTable`,
       `CContainer::ResolveName()`, il token `valName`), ma era
       **irraggiungibile** dalla UI reale per lo stesso identico motivo
@@ -1623,12 +1622,43 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       esistente del motore (`test`, `test-functions`, `test-xsheet`) né
       in quella della UI (tutti i 20 target).
 
-      **Non ancora fatto**: nessuna finestra per definire/modificare/
-      cancellare un nome dall'interfaccia (`NameWindow.h`/`.cpp`,
-      sul modello di `FindWindow`), nessuna voce di menu — al momento
-      un nome è utilizzabile in una formula solo se qualcosa (un test,
-      o in futuro la UI) lo inserisce direttamente in
-      `GetOrCreateNameTable()`.
+      **Lato UI**: `NameWindow` (nuova voce "Intervalli con nome..."
+      nel menu Inserisci) segue lo schema di `FindWindow`/
+      `PivotWindow` — non tocca mai `CNameTable` direttamente, solo
+      `BMessage` verso `MainWindow` (`kMsgDefineName`/
+      `kMsgDeleteName`/`kMsgGoToName`), che possiede `fDoc` e lo può
+      leggere/scrivere sul proprio thread. Una `BListView` elenca i
+      nomi già definiti (ricostruita da
+      `MainWindow::RefreshNameWindow()` a ogni apertura e dopo ogni
+      Aggiungi/Aggiorna/Elimina, mai tenuta come copia che potrebbe
+      disallinearsi da `CNameTable`); due campi di testo (Nome,
+      Intervallo — sintassi "A1" o "A1:B5", lo stesso
+      `RangeRef::ParseRangeRef()` già condiviso da grafico e tabella
+      pivot); "Vai a" sposta/estende la selezione della `SheetView`
+      attiva sull'intervallo risolto (`SetSelection`/
+      `ExtendSelection`).
+
+      **Bug scoperto e corretto scrivendo `ui/tests/test_names.cpp`,
+      non specifico della UI**: `CContainer::ResolveName()` usava
+      `(*fNames)[name]` (`operator[]` di `std::map`), che inserisce
+      silenziosamente una voce vuota per una chiave assente invece di
+      segnalare l'errore — "Vai a" su un nome appena eliminato con
+      "Elimina" si risolveva quindi su `range(0,0,0,0)` (una cella non
+      valida) invece di segnalare che il nome non esiste più, e ogni
+      lettura ripetuta di un nome inesistente inquinava silenziosamente
+      la tabella con voci fantasma. Corretto con `find()` (commit a
+      parte).
+
+      Metodi `HandleDefineName`/`HandleDeleteName`/`HandleGoToName`
+      pubblici apposta (stesso principio già scelto per
+      `CopySelection`/`PasteSelection` in Fase 7): `ui/tests/
+      test_names.cpp` (nuovo target `make test-names`, UI) li chiama
+      direttamente su una vera `MainWindow`, senza dover gestire un
+      giro di dispatch dei messaggi in un test headless — definizione,
+      ricalcolo immediato dopo una ridefinizione, "Vai a" su una
+      cella singola e su un intervallo multi-cella, eliminazione.
+      Nessuna regressione nella suite esistente del motore né in
+      quella della UI (tutti i 21 target).
 
 ---
 
