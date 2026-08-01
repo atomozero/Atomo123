@@ -2920,11 +2920,24 @@ Fase 11.
       `translators/xlsx/tests/test_xlsx_translator.cpp` (nuova
       fixture `sample_numfmt.xlsx`, formati incorporati e
       personalizzati) e `ui/tests/test_persistence.cpp` (round-trip).
-- [ ] **Grassetto/corsivo**: leggere `<b/>`/`<i/>` dentro ogni
-      `<font>` di `styles.xml` (oggi `StylesContext` cattura solo il
-      colore del font) e scegliere lo stile del font già supportato
-      da `gFontSizeTable`/`CellStyle::fFont` (stessa tripla famiglia/
-      stile/dimensione usata dall'export nativo in Fase 10).
+- [x] **Grassetto/corsivo**: legge `<b/>`/`<i/>` dentro ogni `<font>`
+      di `styles.xml` (`val="0"` li nega esplicitamente, raro ma
+      valido) e sceglie lo stile del font già supportato da
+      `gFontSizeTable`/`CellStyle::fFont` — la famiglia originale
+      (es. "Calibri") non viene cercata/installata, solo stile e
+      dimensione (`<sz val=".."/>`) vengono importati, stesso
+      ripiego già usato da `MainWindow::ToggleBold`/`ToggleItalic`
+      per una cella senza font esplicito. La sezione font di Fase 10
+      in `WriteASCD` (`XlsxTranslator.cpp`), finora sempre vuota, ora
+      scrive i valori reali quando presenti. **Scoperta per strada**:
+      il primo indice mai assegnato da `CFontSizeTable::GetFontID` in
+      un processo è 0, lo stesso valore che `CellStyle` usa come
+      sentinella "nessun font esplicito" — se grassetto/corsivo fosse
+      il primo font registrato ci finirebbe per caso, sparendo
+      silenziosamente (bug reale scoperto scrivendo il test).
+      `ParseStyles` riserva ora la voce Regular per prima apposta.
+      Test: nuova fixture `sample_fontstyle.xlsx` in
+      `translators/xlsx/tests/test_xlsx_translator.cpp`.
 - [ ] **Allineamento orizzontale**: leggere `<alignment
       horizontal=".../>` dentro ogni `<xf>` di `cellXfs` e mappare sui
       valori già supportati da `CellStyle::fAlignment`/`EAlignment`.
