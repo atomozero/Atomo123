@@ -1435,6 +1435,102 @@ int main()
 		}
 	}
 
+	// Formattazione condizionale (Fase 12): tests/sample_condformat.xlsx
+	// ha due regole -- cellIs/equal "Mancante" su A1:A3 (solo A1
+	// corrisponde, dxf 0 = rgb FFC7CE) e duplicateValues su B1:B3 (B1
+	// e B3 sono entrambe "X", duplicate fra loro; B2 = "Y", unica,
+	// dxf 1 = rgb FFEB9C).
+	{
+		BFile condFile("tests/sample_condformat.xlsx", B_READ_ONLY);
+		Check(condFile.InitCheck() == B_OK, "apertura di tests/sample_condformat.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&condFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_condformat.xlsx");
+
+		condFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&condFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_condformat.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_condformat.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 6, "l'ASCD contiene le 6 celle di sample_condformat.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				pos += len;
+			}
+
+			if (pos + 4 <= ascdLen)
+			{
+				int32 chartCount;
+				memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+				pos += chartCount * (2 * 4 + 4 * 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				pos += colWidthCount * (2 + 4);
+			}
+
+			bool haveCellColorCount = false;
+			int32 cellColorCount = 0;
+			if (pos + 4 <= ascdLen)
+			{
+				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+				haveCellColorCount = true;
+			}
+			Check(haveCellColorCount && cellColorCount == 3,
+				"sezione colori di cella: 3 celle colorate dalla formattazione condizionale (A1/B1/B3)");
+
+			int foundA1Bg = -1, foundB1Bg = -1, foundB3Bg = -1;
+			bool foundA2 = false, foundA3 = false, foundB2 = false;
+			for (int32 i = 0; i < cellColorCount && pos + 4 + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				rgb_color bg;
+				memcpy(&bg, ascdData + pos, 4); pos += 4;
+				pos += 4; // fg, non verificato qui
+
+				int packed = (bg.red << 16) | (bg.green << 8) | bg.blue;
+				if (row == 1 && col == 1) foundA1Bg = packed;
+				if (row == 1 && col == 2) foundB1Bg = packed;
+				if (row == 3 && col == 2) foundB3Bg = packed;
+				if (row == 2 && col == 1) foundA2 = true;
+				if (row == 3 && col == 1) foundA3 = true;
+				if (row == 2 && col == 2) foundB2 = true;
+			}
+
+			Check(foundA1Bg == 0xFFC7CE, "A1 (\"Mancante\", cellIs/equal) ha lo sfondo del dxf 0");
+			Check(foundB1Bg == 0xFFEB9C, "B1 (\"X\", duplicata con B3) ha lo sfondo del dxf 1");
+			Check(foundB3Bg == 0xFFEB9C, "B3 (\"X\", duplicata con B1) ha lo sfondo del dxf 1");
+			Check(!foundA2, "A2 (\"OK\", nessuna corrispondenza) resta senza colore");
+			Check(!foundA3, "A3 (\"OK2\", nessuna corrispondenza) resta senza colore");
+			Check(!foundB2, "B2 (\"Y\", valore unico) resta senza colore");
+		}
+	}
+
 	// Esportazione (ASCD -> XLSX): scrive un documento con un numero,
 	// una stringa e una formula, poi rilegge il file XLSX prodotto con
 	// lo stesso translator (round-trip completo) per verificare che i

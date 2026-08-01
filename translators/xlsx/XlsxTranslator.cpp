@@ -1483,6 +1483,98 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 	}
 }
 
+// --- Parsing di <dxfs> in xl/styles.xml (formati differenziali, per la
+// formattazione condizionale sotto) ---------------------------------
+//
+// Un dxf ("differential format") descrive solo le DIFFERENZE da
+// applicare quando una regola di formattazione condizionale scatta,
+// non uno stile completo come <cellXfs>: <dxf><font><color .../></font>
+// <fill><patternFill><bgColor .../></patternFill></fill></dxf>. Nota
+// la stranezza opposta a <fills> sopra: qui il colore di sfondo
+// visibile e' in bgColor, non fgColor (i dxf non hanno patternType,
+// sono impliciti "solid").
+
+struct DxfInfo {
+	bool hasBg;
+	rgb_color bg;
+	bool hasFg;
+	rgb_color fg;
+};
+
+struct DxfsContext {
+	const XlsxTheme* theme;
+	std::vector<DxfInfo> dxfs;
+	bool inFont;
+	bool inFill;
+};
+
+static void XMLCALL DxfsStart(void* userData, const char* name, const char** atts)
+{
+	DxfsContext* ctx = (DxfsContext*)userData;
+
+	if (strcmp(name, "dxf") == 0)
+	{
+		DxfInfo info;
+		info.hasBg = false;
+		info.hasFg = false;
+		ctx->dxfs.push_back(info);
+	}
+	else if (strcmp(name, "font") == 0)
+		ctx->inFont = true;
+	else if (strcmp(name, "fill") == 0)
+		ctx->inFill = true;
+	else if (ctx->inFont && strcmp(name, "color") == 0 && !ctx->dxfs.empty())
+	{
+		rgb_color c;
+		if (ResolveColorAttrs(atts, *ctx->theme, &c))
+		{
+			ctx->dxfs.back().fg = c;
+			ctx->dxfs.back().hasFg = true;
+		}
+	}
+	else if (ctx->inFill && strcmp(name, "bgColor") == 0 && !ctx->dxfs.empty())
+	{
+		rgb_color c;
+		if (ResolveColorAttrs(atts, *ctx->theme, &c))
+		{
+			ctx->dxfs.back().bg = c;
+			ctx->dxfs.back().hasBg = true;
+		}
+	}
+}
+
+static void XMLCALL DxfsEnd(void* userData, const char* name)
+{
+	DxfsContext* ctx = (DxfsContext*)userData;
+	if (strcmp(name, "font") == 0)
+		ctx->inFont = false;
+	else if (strcmp(name, "fill") == 0)
+		ctx->inFill = false;
+}
+
+static void ParseDxfs(const std::vector<unsigned char>& xml, const XlsxTheme& theme,
+	std::vector<DxfInfo>* out)
+{
+	out->clear();
+	if (xml.empty())
+		return;
+
+	DxfsContext ctx;
+	ctx.theme = &theme;
+	ctx.inFont = false;
+	ctx.inFill = false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, DxfsStart, DxfsEnd);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status == XML_STATUS_OK)
+		*out = ctx.dxfs;
+}
+
 // --- Parsing di xl/worksheets/sheetN.xml --------------------------------
 //
 // Struttura minima gestita:
@@ -1502,11 +1594,27 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 // <f>), per verificare che il nostro motore produca lo stesso
 // risultato in modo indipendente.
 
+// Formattazione condizionale (Fase 12): una regola grezza cosi' come
+// appare nel foglio (<conditionalFormatting sqref="B8 D8"><cfRule
+// type="cellIs" dxfId="22" operator="equal"><formula>"..."</formula>
+// </cfRule></conditionalFormatting>), valutata contro i valori gia'
+// importati SOLO dopo che l'intero foglio e' stato letto (vedi
+// ApplyConditionalFormatting sotto) -- non un motore di regole vive,
+// il colore risultante e' congelato all'importazione.
+struct CondFormatRule {
+	std::vector<range> ranges; // da sqref, uno o piu' intervalli/celle separati da spazio
+	std::string type;          // "cellIs", "duplicateValues", ... (solo questi due gestiti)
+	std::string operatorAttr;  // solo per "cellIs": "equal" e' l'unico gestito
+	std::string formula;       // solo per "cellIs"
+	int dxfId;
+};
+
 struct SheetContext {
 	CContainer* doc;
 	const std::vector<std::string>* sharedStrings;
 	std::vector<std::pair<int, float> >* colWidths; // opzionale (NULL = non raccolte)
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
+	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
 
 	std::string cellRef;
 	std::string cellType; // valore dell'attributo t="..." (puo' essere vuoto)
@@ -1515,7 +1623,61 @@ struct SheetContext {
 	int cellStyleIndex;   // valore di s="..." sulla cella corrente, -1 se assente
 	bool inValue;
 	bool inFormula;
+
+	// Stato per <conditionalFormatting>/<cfRule>/<formula> (solo se
+	// condRules non e' NULL).
+	std::vector<range> currentSqref;
+	bool inCfRule;
+	CondFormatRule currentRule;
+	bool inCondFormula;
+	std::string condFormula;
 };
+
+// Un singolo token di sqref ("B8" o "B6:B8") in un "range" del
+// motore -- a differenza di ParseMergeCellRef, qui un riferimento a
+// una sola cella (senza ':') e' il caso comune, non un errore.
+static bool ParseSqrefToken(const std::string& token, range* out)
+{
+	int col1, row1;
+	if (!CellRefToColRow(token.substr(0, token.find(':')), col1, row1))
+		return false;
+
+	size_t colon = token.find(':');
+	if (colon == std::string::npos)
+	{
+		out->Set(col1, row1, col1, row1);
+		return true;
+	}
+
+	int col2, row2;
+	if (!CellRefToColRow(token.substr(colon + 1), col2, row2))
+		return false;
+
+	out->Set(std::min(col1, col2), std::min(row1, row2),
+		std::max(col1, col2), std::max(row1, row2));
+	return true;
+}
+
+// sqref e' un elenco di riferimenti separati da spazio ("B8 D8" o
+// "D8 B6:B8") -- ognuno un token da passare a ParseSqrefToken.
+static void ParseSqref(const std::string& sqref, std::vector<range>* out)
+{
+	out->clear();
+	size_t start = 0;
+	while (start < sqref.size())
+	{
+		size_t end = sqref.find(' ', start);
+		if (end == std::string::npos)
+			end = sqref.size();
+		if (end > start)
+		{
+			range r;
+			if (ParseSqrefToken(sqref.substr(start, end - start), &r))
+				out->push_back(r);
+		}
+		start = end + 1;
+	}
+}
 
 // La larghezza in <col width="..."> e' nell'unita' di misura di Excel
 // ("numero di caratteri '0' del carattere piu' largo del font
@@ -1569,6 +1731,38 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				break;
 			}
 		}
+	}
+	// Formattazione condizionale (Fase 12): <conditionalFormatting
+	// sqref="B8 D8"> puo' contenere piu' <cfRule>, ognuna diventa una
+	// CondFormatRule a parte ma tutte condividono lo stesso sqref
+	// (catturato una volta sola qui, riusato per ogni <cfRule> dentro).
+	else if (strcmp(name, "conditionalFormatting") == 0 && ctx->condRules)
+	{
+		ctx->currentSqref.clear();
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "sqref") == 0)
+				ParseSqref(atts[i + 1], &ctx->currentSqref);
+	}
+	else if (strcmp(name, "cfRule") == 0 && ctx->condRules)
+	{
+		ctx->inCfRule = true;
+		ctx->currentRule = CondFormatRule();
+		ctx->currentRule.ranges = ctx->currentSqref;
+		ctx->currentRule.dxfId = -1;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "type") == 0)
+				ctx->currentRule.type = atts[i + 1];
+			else if (strcmp(atts[i], "operator") == 0)
+				ctx->currentRule.operatorAttr = atts[i + 1];
+			else if (strcmp(atts[i], "dxfId") == 0)
+				ctx->currentRule.dxfId = atoi(atts[i + 1]);
+		}
+	}
+	else if (strcmp(name, "formula") == 0 && ctx->inCfRule)
+	{
+		ctx->inCondFormula = true;
+		ctx->condFormula.clear();
 	}
 	else if (strcmp(name, "v") == 0)
 		ctx->inValue = true;
@@ -1671,6 +1865,16 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		ctx->inValue = false;
 	else if (strcmp(name, "f") == 0)
 		ctx->inFormula = false;
+	else if (strcmp(name, "formula") == 0 && ctx->inCondFormula)
+	{
+		ctx->inCondFormula = false;
+		ctx->currentRule.formula = ctx->condFormula;
+	}
+	else if (strcmp(name, "cfRule") == 0 && ctx->inCfRule)
+	{
+		ctx->inCfRule = false;
+		ctx->condRules->push_back(ctx->currentRule);
+	}
 	else if (strcmp(name, "t") == 0)
 		ctx->inValue = false;
 	else if (strcmp(name, "c") == 0)
@@ -1760,21 +1964,27 @@ static void XMLCALL SheetChars(void* userData, const char* s, int len)
 		ctx->value.append(s, len);
 	else if (ctx->inFormula)
 		ctx->formula.append(s, len);
+	else if (ctx->inCondFormula)
+		ctx->condFormula.append(s, len);
 }
 
 static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	const std::vector<std::string>& sharedStrings,
 	std::vector<std::pair<int, float> >* colWidths,
-	const std::vector<ResolvedStyle>* styles)
+	const std::vector<ResolvedStyle>* styles,
+	std::vector<CondFormatRule>* condRules = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
 	ctx.sharedStrings = &sharedStrings;
 	ctx.colWidths = colWidths;
 	ctx.styles = styles;
+	ctx.condRules = condRules;
 	ctx.cellStyleIndex = -1;
 	ctx.inValue = false;
 	ctx.inFormula = false;
+	ctx.inCfRule = false;
+	ctx.inCondFormula = false;
 
 	XML_Parser parser = XML_ParserCreate(NULL);
 	XML_SetUserData(parser, &ctx);
@@ -2021,6 +2231,116 @@ static void ApplyTableBanding(CContainer* doc, const range& tableRange)
 	}
 }
 
+// Toglie le virgolette che racchiudono un letterale stringa in una
+// formula di cfRule (es. "\"Missing price\"" -> "Missing price") --
+// un letterale numerico non le ha, resta invariato.
+static std::string StripQuotes(const std::string& s)
+{
+	if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+		return s.substr(1, s.size() - 2);
+	return s;
+}
+
+// Applica il colore del dxf referenziato alla cella, solo se non ne
+// ha gia' uno esplicito (stesso principio di ApplyTableBanding sopra
+// -- non sovrascrive un colore scelto apposta nel file originale).
+static void ApplyDxfColor(CContainer* doc, cell c, const DxfInfo& dxf)
+{
+	if (!dxf.hasBg && !dxf.hasFg)
+		return;
+
+	CellStyle defaultStyle;
+	CellStyle cs;
+	doc->GetCellStyle(c, cs);
+	bool changed = false;
+	if (dxf.hasBg && ColorsEqual(cs.fLowColor, defaultStyle.fLowColor))
+	{
+		cs.fLowColor = dxf.bg;
+		changed = true;
+	}
+	if (dxf.hasFg && ColorsEqual(cs.fHighColor, defaultStyle.fHighColor))
+	{
+		cs.fHighColor = dxf.fg;
+		changed = true;
+	}
+	if (changed)
+		doc->SetCellStyle(c, cs);
+}
+
+// Formattazione condizionale (Fase 12): valutata una tantum contro i
+// valori GIA' importati (non un motore di regole vive -- se il
+// valore di una cella cambiasse dopo l'importazione, il colore non si
+// aggiornerebbe piu', limite dichiarato in ROADMAP.md). Solo due tipi
+// di regola gestiti, i piu' comuni: "cellIs"/"equal" (confronto con
+// un letterale, stringa o numero) e "duplicateValues" (celle il cui
+// valore compare piu' di una volta nello stesso intervallo). Gli
+// altri tipi ECMA-376 (containsText, top10, colorScale, dataBar,
+// iconSet, expression con formula arbitraria...) sono ignorati in
+// sicurezza, nessun colore applicato -- richiederebbero un vero
+// motore di valutazione formule contro un valore ipotetico, fuori
+// scope per un'approssimazione "congelata all'importazione".
+static void ApplyConditionalFormatting(CContainer* doc,
+	const std::vector<CondFormatRule>& rules, const std::vector<DxfInfo>& dxfs)
+{
+	for (size_t i = 0; i < rules.size(); i++)
+	{
+		const CondFormatRule& rule = rules[i];
+		if (rule.dxfId < 0 || (size_t)rule.dxfId >= dxfs.size())
+			continue;
+		const DxfInfo& dxf = dxfs[rule.dxfId];
+
+		if (rule.type == "cellIs" && rule.operatorAttr == "equal")
+		{
+			std::string literal = StripQuotes(rule.formula);
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						char text[4096];
+						doc->GetCellResult(c, text, sizeof(text), true);
+						if (literal == text)
+							ApplyDxfColor(doc, c, dxf);
+					}
+				}
+			}
+		}
+		else if (rule.type == "duplicateValues")
+		{
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+				std::map<std::string, int> counts;
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						char text[4096];
+						doc->GetCellResult(cell(col, row), text, sizeof(text), true);
+						if (text[0] != 0)
+							counts[text]++;
+					}
+				}
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						char text[4096];
+						doc->GetCellResult(c, text, sizeof(text), true);
+						if (text[0] != 0 && counts[text] > 1)
+							ApplyDxfColor(doc, c, dxf);
+					}
+				}
+			}
+		}
+		// altri tipi: ignorati, vedi il commento sopra la funzione.
+	}
+}
+
 // Un foglio gia' analizzato, pronto per essere scritto in formato
 // ASCD/ASCB: nome, documento, e le sole colonne con una larghezza
 // esplicita nel file XLSX originale (vedi ParseSheet/SheetStart).
@@ -2169,6 +2489,12 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 	std::vector<ResolvedStyle> resolvedStyles;
 	ParseStyles(stylesXml, theme, &resolvedStyles);
 
+	// Formati differenziali (Fase 12), per la formattazione
+	// condizionale sotto: stesso file styles.xml di sopra, una
+	// sezione <dxfs> a parte da <cellXfs>.
+	std::vector<DxfInfo> dxfs;
+	ParseDxfs(stylesXml, theme, &dxfs);
+
 	std::vector<std::pair<std::string, std::string> > sheetsToRead; // (nome, percorso XML)
 
 	std::vector<unsigned char> workbookXml, relsXml;
@@ -2216,12 +2542,21 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		ParsedSheet parsed;
 		parsed.name = sheetsToRead[i].first;
 		parsed.doc = new CContainer(NULL, NULL);
-		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles))
+		std::vector<CondFormatRule> condRules;
+		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles,
+			&condRules))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
 			break;
 		}
+
+		// Formattazione condizionale (Fase 12): valutata ORA, dopo che
+		// l'intero foglio e' stato letto e ogni cella ha gia' il suo
+		// valore vero (serve per "cellIs"/"duplicateValues", che
+		// confrontano contenuti di celle) -- vedi il commento sopra
+		// ApplyConditionalFormatting.
+		ApplyConditionalFormatting(parsed.doc, condRules, dxfs);
 
 		// Tabelle strutturate (Fase 12): collegate a QUESTO foglio
 		// tramite i suoi stessi _rels (xl/worksheets/_rels/sheetN.xml.rels),
