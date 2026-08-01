@@ -212,6 +212,42 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione altezze di riga, Blocca riquadri, font e allineamento di
+	// cella, bordi di cella, tutte in coda (Fase 10/11 di ui/src/
+	// AscdIO.cpp): sempre scritte vuote/a zero qui, questo translator
+	// non estrae ancora nessuna di queste informazioni dal file XLSX
+	// originale (a differenza di larghezza di colonna e colori sopra).
+	// Il campo va comunque scritto sempre, mai omesso, per lo stesso
+	// motivo della sezione grafici sopra: LoadASCD (in ui/src/
+	// AscdIO.cpp, che legge questo stesso flusso) si aspetta ORA
+	// queste cinque sezioni in coda a ogni blocco ASCD -- ometterle
+	// disallineerebbe la lettura del blocco successivo in una cartella
+	// di lavoro multi-foglio, esattamente come il bug gia' descritto
+	// sopra per i grafici (bug reale scoperto aprendo di nuovo lo
+	// stesso file .xlsm da 38 fogli dopo l'aggiunta di quelle sezioni
+	// in Fase 10/11: leggeva byte del foglio successivo come se
+	// fossero l'altezza di una riga del foglio corrente).
+	int32 rowHeightCount = 0;
+	if (dest->Write(&rowHeightCount, sizeof(rowHeightCount)) != (ssize_t)sizeof(rowHeightCount))
+		return B_IO_ERROR;
+
+	int32 frozenRows = 0, frozenCols = 0;
+	if (dest->Write(&frozenRows, sizeof(frozenRows)) != (ssize_t)sizeof(frozenRows)
+		|| dest->Write(&frozenCols, sizeof(frozenCols)) != (ssize_t)sizeof(frozenCols))
+		return B_IO_ERROR;
+
+	int32 fontCount = 0;
+	if (dest->Write(&fontCount, sizeof(fontCount)) != (ssize_t)sizeof(fontCount))
+		return B_IO_ERROR;
+
+	int32 alignCount = 0;
+	if (dest->Write(&alignCount, sizeof(alignCount)) != (ssize_t)sizeof(alignCount))
+		return B_IO_ERROR;
+
+	int32 borderCount = 0;
+	if (dest->Write(&borderCount, sizeof(borderCount)) != (ssize_t)sizeof(borderCount))
+		return B_IO_ERROR;
+
 	return B_OK;
 }
 

@@ -313,6 +313,86 @@ int main()
 						"A1: sfondo dal tema (accent1 schiarito) e testo blu (rgb diretto) importati");
 					Check(foundB1Color,
 						"B1: stesso sfondo dal tema, testo predefinito nero (il font non ne specifica uno)");
+
+					// Sezione colori di colonna (esistente prima di
+					// Fase 10/11, sample.xlsx non ne ha): saltata senza
+					// verificarne il conteggio, serve solo per arrivare
+					// alla posizione giusta per le sezioni sotto.
+					if (pos + 4 <= ascdLen)
+					{
+						int32 columnColorCount;
+						memcpy(&columnColorCount, ascdData + pos, 4); pos += 4;
+						pos += columnColorCount * (2 + 8); // col (int16) + WriteColorEntry (8 byte)
+
+						// Regressione reale (crash "Assert failed:
+						// inIndex <= fMax" in RunArray2.cpp, riprodotto
+						// aprendo un file .xlsm da 38 fogli): quando
+						// SaveASCD/LoadASCD (ui/src/AscdIO.cpp) hanno
+						// guadagnato le cinque sezioni sotto (Fase
+						// 10/11 -- altezze di riga, Blocca riquadri,
+						// font, allineamento, bordi), la copia duplicata
+						// di WriteASCD in questo file non era stata
+						// aggiornata: per un foglio SINGOLO lo stream
+						// finiva semplicemente prima (nessun crash,
+						// LoadASCD tratta un EOF pulito come "sezione
+						// assente" -- perche' questo test non l'aveva
+						// gia' scoperto da solo), ma in una cartella di
+						// lavoro multi-foglio (WriteASCDBook, un blocco
+						// ASCD dopo l'altro sullo stesso flusso) i byte
+						// del foglio SUCCESSIVO venivano letti come se
+						// fossero queste sezioni del foglio corrente.
+						// Le cinque verifiche sotto controllano che
+						// questo translator le scriva sempre, anche
+						// vuote, esattamente come SaveASCD.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 rowHeightCount;
+							memcpy(&rowHeightCount, ascdData + pos, 4); pos += 4;
+							Check(rowHeightCount == 0,
+								"sezione altezze di riga presente (vuota, Fase 10) subito dopo i colori di colonna");
+						}
+
+						if (pos + 8 <= ascdLen)
+						{
+							int32 frozenRows, frozenCols;
+							memcpy(&frozenRows, ascdData + pos, 4); pos += 4;
+							memcpy(&frozenCols, ascdData + pos, 4); pos += 4;
+							Check(frozenRows == 0 && frozenCols == 0,
+								"sezione Blocca riquadri presente (nessun blocco, Fase 10)");
+						}
+
+						if (pos + 4 <= ascdLen)
+						{
+							int32 fontCount;
+							memcpy(&fontCount, ascdData + pos, 4); pos += 4;
+							Check(fontCount == 0,
+								"sezione font di cella presente (vuota, Fase 10)");
+						}
+
+						if (pos + 4 <= ascdLen)
+						{
+							int32 alignCount;
+							memcpy(&alignCount, ascdData + pos, 4); pos += 4;
+							Check(alignCount == 0,
+								"sezione allineamento di cella presente (vuota, Fase 10)");
+						}
+
+						if (pos + 4 <= ascdLen)
+						{
+							int32 borderCount;
+							memcpy(&borderCount, ascdData + pos, 4); pos += 4;
+							Check(borderCount == 0,
+								"sezione bordi di cella presente (vuota, Fase 11)");
+						}
+
+						// sample.xlsx e' un solo foglio: dopo tutte le
+						// sezioni lo stream deve finire ESATTAMENTE qui,
+						// non prima (sezione mancante) ne' dopo (byte
+						// avanzati, altro sintomo di disallineamento).
+						Check(pos == ascdLen,
+							"dopo tutte le sezioni lo stream ASCD del foglio finisce esattamente "
+							"alla fine del buffer, nessun byte mancante o avanzato");
+					}
 				}
 			}
 		}
