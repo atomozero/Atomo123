@@ -93,6 +93,7 @@ static const uint32 kMsgShowGoTo = 'shgt';
 static const uint32 kMsgToggleFreeze = 'frzp';
 static const uint32 kMsgToggleBold = 'tbld';
 static const uint32 kMsgToggleItalic = 'tita';
+static const uint32 kMsgToggleUnderline = 'tund';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
 static const uint32 kMsgShowBgColor = 'shbc';
@@ -355,6 +356,12 @@ MainWindow::MainWindow()
 	// SheetView::Draw per posizionare il testo dentro la cella.
 	formatMenu->AddItem(new BMenuItem("Grassetto", new BMessage(kMsgToggleBold), 'B'));
 	formatMenu->AddItem(new BMenuItem("Corsivo", new BMessage(kMsgToggleItalic), 'I'));
+	// Sottolineato (Fase 12): CellStyle::fUnderline, un booleano a
+	// parte -- BFont non ha un attributo sottolineato nativo (vedi il
+	// commento sul campo in CellStyle.h), quindi non puo' viaggiare
+	// nella tripla famiglia/stile/dimensione di fFont come Grassetto/
+	// Corsivo sopra.
+	formatMenu->AddItem(new BMenuItem("Sottolineato", new BMessage(kMsgToggleUnderline), 'U'));
 	formatMenu->AddSeparatorItem();
 	BMessage* alignLeftMsg = new BMessage(kMsgSetAlignment);
 	alignLeftMsg->AddInt32("alignment", eAlignLeft);
@@ -1658,6 +1665,34 @@ void MainWindow::ClearBorders()
 	MarkModified();
 }
 
+// Sottolineato (Fase 12): un booleano semplice come i quattro lati dei
+// bordi sopra (BFont non ha un attributo sottolineato nativo, vedi il
+// commento su CellStyle::fUnderline), stesso principio "stato letto
+// dalla sola cella attiva, applicato all'intera selezione" di
+// Grassetto/Corsivo/Bordo.
+void MainWindow::ToggleUnderline()
+{
+	if (!fDoc)
+		return;
+
+	CellStyle activeStyle;
+	fDoc->GetCellStyle(fSheetView->Selection(), activeStyle);
+	bool newValue = !activeStyle.fUnderline;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fUnderline = newValue;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::HandleGoToRequest(const char* rangeText)
 {
 	range r;
@@ -2344,6 +2379,10 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgToggleItalic:
 			ToggleItalic();
+			break;
+
+		case kMsgToggleUnderline:
+			ToggleUnderline();
 			break;
 
 		case kMsgSetAlignment:

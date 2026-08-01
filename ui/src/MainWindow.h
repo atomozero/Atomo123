@@ -77,6 +77,11 @@ public:
 	// principio di SetCellFormat.
 	void ToggleBold();
 	void ToggleItalic();
+	// Sottolineato (Fase 12): CellStyle::fUnderline, stesso principio
+	// di ToggleBold/ToggleItalic sopra ma un booleano a parte -- BFont
+	// non ha un attributo sottolineato nativo (vedi il commento sul
+	// campo in CellStyle.h).
+	void ToggleUnderline();
 	void SetAlignment(char alignment);
 	void SetTextColor(rgb_color color);
 	void SetBackgroundColor(rgb_color color);

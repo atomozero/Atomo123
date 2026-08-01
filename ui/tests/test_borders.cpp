@@ -12,6 +12,12 @@
 	attiva, stesso principio di ToggleBold/ToggleItalic (Fase 7).
 	Richiede una vera MainWindow (i metodi sono pubblici apposta per
 	essere testabili, stesso principio di CopySelection/PasteSelection).
+
+	Include anche il sottolineato (Fase 12, MainWindow::
+	ToggleUnderline): CellStyle::fUnderline, un booleano a parte
+	(BFont non ha un attributo sottolineato nativo), stesso principio
+	di ToggleBorder sopra -- aggiunto qui invece che in un file a
+	parte per non duplicare il setup di MainWindow/documento.
 */
 
 #include <cstdio>
@@ -94,6 +100,20 @@ int main()
 	Check(cs.fTBorderColor == 0 && cs.fLBorderColor == 0
 		&& cs.fBBorderColor == 0 && cs.fRBorderColor == 0,
 		"ClearBorders toglie tutti e quattro i lati insieme");
+
+	// Sottolineato (Fase 12): stesso principio di ToggleBorder sopra,
+	// ma un booleano semplice (nessun "lato").
+	view->SetSelection(cell(1, 1));
+	view->ExtendSelection(cell(2, 1)); // A1:B1
+	win->ToggleUnderline();
+	doc->GetCellStyle(cell(1, 1), cs);
+	Check(cs.fUnderline, "ToggleUnderline su A1:B1 lo applica ad A1, non solo all'attiva");
+	doc->GetCellStyle(cell(2, 1), cs);
+	Check(cs.fUnderline, "e anche a B1 (l'attiva)");
+
+	win->ToggleUnderline();
+	doc->GetCellStyle(cell(1, 1), cs);
+	Check(!cs.fUnderline, "un secondo ToggleUnderline lo toglie da tutta la selezione");
 
 	win->Unlock();
 

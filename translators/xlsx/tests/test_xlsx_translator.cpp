@@ -414,6 +414,14 @@ int main()
 								"sezione formato numero presente (vuota per questo file di prova, Fase 12)");
 						}
 
+						if (pos + 4 <= ascdLen)
+						{
+							int32 underlineCount;
+							memcpy(&underlineCount, ascdData + pos, 4); pos += 4;
+							Check(underlineCount == 0,
+								"sezione sottolineato presente (vuota per questo file di prova, Fase 12)");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
@@ -921,6 +929,128 @@ int main()
 				"A1 (borderId 1) importato con tutti e quattro i lati");
 			Check(foundB1T == 0 && foundB1L == 1 && foundB1B == 1 && foundB1R == 0,
 				"B1 (borderId 2) importato con solo sinistro e inferiore");
+		}
+	}
+
+	// Sottolineato (Fase 12): tests/sample_underline.xlsx ha quattro
+	// celle -- A1 con <u/> (semplice), B1 con <u val="double"/>
+	// (trattato comunque come sottolineato semplice, nessuna
+	// distinzione di stile), C1 con <u val="none"/> esplicito (NON
+	// sottolineato nonostante l'elemento presente), D1 senza stile
+	// esplicito.
+	{
+		BFile underlineFile("tests/sample_underline.xlsx", B_READ_ONLY);
+		Check(underlineFile.InitCheck() == B_OK, "apertura di tests/sample_underline.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&underlineFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_underline.xlsx");
+
+		underlineFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&underlineFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_underline.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_underline.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+			Check(count == 4, "l'ASCD contiene le 4 celle di sample_underline.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				pos += len;
+			}
+
+			if (pos + 4 <= ascdLen)
+			{
+				int32 chartCount;
+				memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+				pos += chartCount * (2 * 4 + 4 * 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 colWidthCount;
+				memcpy(&colWidthCount, ascdData + pos, 4); pos += 4;
+				pos += colWidthCount * (2 + 4);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+				pos += cellColorCount * (2 + 2 + 8);
+			}
+			if (pos + 4 <= ascdLen)
+			{
+				int32 columnColorCount;
+				memcpy(&columnColorCount, ascdData + pos, 4); pos += 4;
+				pos += columnColorCount * (2 + 8);
+			}
+			if (pos + 4 <= ascdLen) { int32 n; memcpy(&n, ascdData+pos, 4); pos += 4; pos += n * (2+2+4); } // altezze riga
+			if (pos + 8 <= ascdLen) pos += 8; // Blocca riquadri
+			if (pos + 4 <= ascdLen) // fontCount, nessuno stile grassetto/corsivo qui
+			{
+				int32 fontCount;
+				memcpy(&fontCount, ascdData + pos, 4); pos += 4;
+				pos += fontCount * (2 + 2 + (int32)sizeof(font_family) + (int32)sizeof(font_style) + 4);
+			}
+			if (pos + 4 <= ascdLen) // alignCount, nessun allineamento esplicito qui
+			{
+				int32 alignCount;
+				memcpy(&alignCount, ascdData + pos, 4); pos += 4;
+				pos += alignCount * (2 + 2 + 1);
+			}
+			if (pos + 4 <= ascdLen) // borderCount, nessun bordo esplicito qui
+			{
+				int32 borderCount;
+				memcpy(&borderCount, ascdData + pos, 4); pos += 4;
+				pos += borderCount * (2 + 2 + 4);
+			}
+			if (pos + 4 <= ascdLen) // formatCount, nessun numFmt esplicito qui
+			{
+				int32 formatCount;
+				memcpy(&formatCount, ascdData + pos, 4); pos += 4;
+				pos += formatCount * (2 + 2 + 4);
+			}
+
+			bool haveUnderlineCount = false;
+			int32 underlineCount = 0;
+			if (pos + 4 <= ascdLen)
+			{
+				memcpy(&underlineCount, ascdData + pos, 4); pos += 4;
+				haveUnderlineCount = true;
+			}
+			Check(haveUnderlineCount && underlineCount == 2,
+				"sezione sottolineato: 2 celle sottolineate (A1/B1, non C1/D1)");
+
+			bool foundA1 = false, foundB1 = false;
+			for (int32 i = 0; i < underlineCount && pos + 4 <= ascdLen; i++)
+			{
+				int16 row, col;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+
+				if (row == 1 && col == 1) foundA1 = true;
+				if (row == 1 && col == 2) foundB1 = true;
+			}
+
+			Check(foundA1, "A1 (<u/>) importato come sottolineato");
+			Check(foundB1, "B1 (<u val=\"double\"/>) importato come sottolineato semplice");
 		}
 	}
 

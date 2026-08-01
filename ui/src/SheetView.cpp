@@ -1315,6 +1315,21 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				BRegion textClip(r);
 				ConstrainClippingRegion(&textClip);
 				DrawString(text, pos);
+
+				// Sottolineato (Fase 12): BFont non ha un attributo
+				// sottolineato nativo (vedi il commento su
+				// CellStyle::fUnderline in CellStyle.h), disegnata qui
+				// a mano come una linea sotto il testo -- stesso
+				// colore del testo (fHighColor, gia' impostato sopra
+				// con SetHighColor), non l'intera larghezza della
+				// cella come i bordi in DrawCellBand, solo la
+				// larghezza del testo davvero disegnato.
+				if (cs.fUnderline && text[0] != 0)
+				{
+					float textWidth = StringWidth(text);
+					float y = pos.y + 2;
+					StrokeLine(BPoint(pos.x, y), BPoint(pos.x + textWidth, y));
+				}
 			}
 		}
 

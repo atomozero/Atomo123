@@ -397,6 +397,37 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione sottolineato di cella non predefinito, in coda (Fase
+	// 12): CellStyle::fUnderline, un booleano a parte (BFont non ha un
+	// attributo sottolineato nativo, vedi il commento sul campo in
+	// CellStyle.h) -- stesso pattern dei bordi in Fase 11, un byte per
+	// cella.
+	{
+		CellStyle defaultStyle;
+		std::vector<cell> toWrite;
+		CCellIterator underlineIter(doc, NULL);
+		cell uc;
+		while (underlineIter.NextExisting(uc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(uc, cs);
+			if (cs.fUnderline != defaultStyle.fUnderline)
+				toWrite.push_back(uc);
+		}
+
+		int32 underlineCount = (int32)toWrite.size();
+		if (dest->Write(&underlineCount, sizeof(underlineCount)) != (ssize_t)sizeof(underlineCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < underlineCount; i++)
+		{
+			int16 row = toWrite[i].v, col = toWrite[i].h;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -747,6 +778,33 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				cell loc(col, row);
 				doc->GetCellStyle(loc, cs);
 				cs.fFormat = (int)format;
+				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione sottolineato di cella non predefinito, in coda (Fase
+	// 12): vedi il commento in SaveASCD -- solo riga/colonna, nessun
+	// valore da leggere (la sola presenza nell'elenco vuol dire true).
+	{
+		int32 underlineCount = 0;
+		ssize_t got = source->Read(&underlineCount, sizeof(underlineCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(underlineCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < underlineCount; i++)
+			{
+				int16 row, col;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_BAD_DATA;
+
+				CellStyle cs;
+				cell loc(col, row);
+				doc->GetCellStyle(loc, cs);
+				cs.fUnderline = true;
 				doc->SetCellStyle(loc, cs);
 			}
 		}

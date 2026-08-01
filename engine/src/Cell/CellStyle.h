@@ -71,6 +71,7 @@ struct CellStyle {
 	uchar fLBorderColor;
 	uchar fBBorderColor;
 	uchar fRBorderColor;
+	bool fUnderline; // BFont non ha un attributo sottolineato nativo (solo stile del font, vedi Fase 12): disegnato a mano in SheetView, non parte della tripla famiglia/stile/dimensione di fFont
 
 	CellStyle();
 	bool operator==(const CellStyle& cs) const;

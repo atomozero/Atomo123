@@ -391,6 +391,38 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione sottolineato di cella non predefinito, in coda (Fase 12,
+	// vedi ui/src/AscdIO.cpp): questo translator estrae davvero
+	// <u/> dal file XLSX originale (applicato a CellStyle::fUnderline
+	// durante ParseSheet) -- va quindi scritta con i valori reali. Solo
+	// riga/colonna, nessun valore da scrivere (la sola presenza vuol
+	// dire true, stesso principio di ui/src/AscdIO.cpp).
+	{
+		CellStyle defaultStyle;
+		std::vector<cell> toWrite;
+		CCellIterator underlineIter(doc, NULL);
+		cell uc;
+		while (underlineIter.NextExisting(uc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(uc, cs);
+			if (cs.fUnderline != defaultStyle.fUnderline)
+				toWrite.push_back(uc);
+		}
+
+		int32 underlineCount = (int32)toWrite.size();
+		if (dest->Write(&underlineCount, sizeof(underlineCount)) != (ssize_t)sizeof(underlineCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < underlineCount; i++)
+		{
+			int16 row = toWrite[i].v, col = toWrite[i].h;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -905,6 +937,7 @@ struct ResolvedStyle {
 	char alignment; // EAlignment, pronto per CellStyle::fAlignment
 	bool hasBorders; // true solo se almeno un lato e' impostato
 	uchar borderT, borderL, borderB, borderR; // 0/1, pronti per CellStyle::fTBorderColor ecc (Fase 11: booleano per lato, non un vero colore)
+	bool underline; // pronto per CellStyle::fUnderline (nessun campo "has": false coincide gia' col predefinito)
 };
 
 enum StylesSection { kStylesNone, kStylesNumFmts, kStylesFills, kStylesFonts, kStylesBorders, kStylesCellXfs };
@@ -954,6 +987,7 @@ struct StylesContext {
 	std::vector<bool> fontColorValid;
 	std::vector<bool> fontBold;
 	std::vector<bool> fontItalic;
+	std::vector<bool> fontUnderline;
 	std::vector<float> fontSize; // -1 = non specificata nel font XLSX (<sz> assente)
 
 	std::vector<BorderSides> borders;
@@ -1124,6 +1158,7 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			ctx->fontColorValid.push_back(false);
 			ctx->fontBold.push_back(false);
 			ctx->fontItalic.push_back(false);
+			ctx->fontUnderline.push_back(false);
 			ctx->fontSize.push_back(-1);
 		}
 		else if (strcmp(name, "color") == 0 && !ctx->fontColors.empty())
@@ -1161,6 +1196,26 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			for (int i = 0; atts[i]; i += 2)
 				if (strcmp(atts[i], "val") == 0)
 					ctx->fontSize.back() = (float)atof(atts[i + 1]);
+		}
+		// <u/> senza attributi vuol dire "single" (sottolineato
+		// semplice, l'unico stile che CellStyle::fUnderline sa
+		// rappresentare): val="none" lo nega esplicitamente,
+		// "double"/"singleAccounting"/"doubleAccounting" vengono
+		// comunque trattati come sottolineato semplice (nessuna
+		// distinzione fra stili nel motore, stesso limite dichiarato
+		// per lo spessore/colore dei bordi in Fase 11).
+		else if (strcmp(name, "u") == 0 && !ctx->fontUnderline.empty())
+		{
+			bool value = true;
+			for (int i = 0; atts[i]; i += 2)
+			{
+				if (strcmp(atts[i], "val") == 0)
+				{
+					value = strcmp(atts[i + 1], "none") != 0;
+					break;
+				}
+			}
+			ctx->fontUnderline.back() = value;
 		}
 	}
 	else if (ctx->section == kStylesBorders)
@@ -1333,6 +1388,9 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 		else
 			rs.hasBorders = false;
 
+		rs.underline = fontId >= 0 && (size_t)fontId < ctx.fontUnderline.size()
+			&& ctx.fontUnderline[fontId];
+
 		(*out)[i] = rs;
 	}
 }
@@ -1471,7 +1529,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 			{
 				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
 				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
-					|| rs.hasBorders)
+					|| rs.hasBorders || rs.underline)
 				{
 					for (int col = min; col <= clampedMax; col++)
 					{
@@ -1489,6 +1547,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 							cs.fBBorderColor = rs.borderB;
 							cs.fRBorderColor = rs.borderR;
 						}
+						if (rs.underline) cs.fUnderline = true;
 						ctx->doc->SetColumnStyle(col, cs);
 					}
 				}
@@ -1563,7 +1622,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		{
 			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
 			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
-				|| rs.hasBorders)
+				|| rs.hasBorders || rs.underline)
 			{
 				CellStyle cs;
 				ctx->doc->GetCellStyle(loc, cs);
@@ -1579,6 +1638,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 					cs.fBBorderColor = rs.borderB;
 					cs.fRBorderColor = rs.borderR;
 				}
+				if (rs.underline) cs.fUnderline = true;
 				ctx->doc->SetCellStyle(loc, cs);
 			}
 		}
