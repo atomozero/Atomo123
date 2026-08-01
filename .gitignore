@@ -24,6 +24,9 @@ translators/*/tests/test_*_translator
 ui/Atomo123
 ui/src/*.o
 ui/Atomo123.rsrc
+# Copie del binario rinominate con l'hash del commit (invece di
+# cancellarle con "make clean"), vedi CLAUDE.md/istruzioni di sessione
+ui/Atomo123-*
 
 # Compiled binaries produced by the legacy build (not source)
 legacy/opensumit/bsl/bsl
