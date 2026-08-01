@@ -3032,18 +3032,26 @@ Fase 11.
       test**: la banda usava la riga dell'intestazione come
       riferimento per l'alternanza invece della prima riga dati,
       disallineando la banda di una riga.
-- [ ] **Formattazione condizionale**: **valutata una tantum
+- [x] **Formattazione condizionale**: **valutata una tantum
       all'importazione e congelata come colore statico**, stesso
       principio delle tabelle sopra — non un motore di regole vive
       che si aggiornano al ricalcolo (richiederebbe uno storage
       per-range delle regole e una valutazione ad ogni `CalcCell`,
       un'estensione del motore molto più grande di tutto il resto
-      della fase insieme). L'XLSX reale usa `cellIs`/`duplicateValues`
-      contro un `dxfId` (formato differenziale): risolvere il colore
-      del `dxf` referenziato e, se la regola è già vera per il valore
-      importato, applicarlo come `fLowColor`/`fHighColor` normale.
-      Limite dichiarato: il colore non si aggiorna più se il valore
-      della cella cambia dopo l'importazione.
+      della fase insieme). Legge `<conditionalFormatting sqref="...">`
+      dal foglio (`sqref` può elencare più intervalli/celle separati
+      da spazio) e `<dxfs>` da `styles.xml` per il colore — una
+      sezione a parte da `<cellXfs>`, con la stranezza opposta a
+      `<fills>`: il colore visibile è in `bgColor`, non `fgColor` (i
+      dxf non hanno `patternType`, sono impliciti "solid"). Solo due
+      tipi di regola gestiti, i più comuni nel file reale:
+      `cellIs`/`equal` (confronto con un letterale) e
+      `duplicateValues`; gli altri tipi ECMA-376 (`containsText`,
+      `top10`, `colorScale`, `dataBar`, `iconSet`, `expression` con
+      formula arbitraria...) sono ignorati in sicurezza, nessun colore
+      applicato — richiederebbero un vero motore di valutazione
+      formule. Limite dichiarato: il colore non si aggiorna più se il
+      valore della cella cambia dopo l'importazione.
 - [ ] **Immagini incorporate**: leggere `xl/drawings/`+`xl/media/`
       (un logo nel file reale), ancorarle a un intervallo di celle e
       disegnarle in `SheetView` (o una `BView` figlia posizionata
