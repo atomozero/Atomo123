@@ -1724,6 +1724,28 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       scambia una riga copiata in una colonna incollata. Nessuna
       regressione nella suite esistente (tutti i 22 target).
 
+- [x] **Vai a**: `GoToWindow`, sul modello minimale di `FindWindow`
+      (un campo di testo, un pulsante, nessuna lista) — nuova voce
+      "Vai a..." nel menu Modifica (Ctrl+G, come Excel). Accetta sia
+      una cella singola ("C15") sia un intervallo ("A1:B5"), la stessa
+      sintassi già condivisa da grafico e tabella pivot
+      (`RangeRef::ParseRangeRef`), invece di introdurre un terzo
+      parser di riferimenti. Un testo non valido non fa nulla (nessuno
+      spostamento, nessun crash) — stesso principio già scelto per
+      `HandleGoToName` (l'equivalente legato a un nome definito,
+      Fase 7 sopra): entrambi condividono lo stesso meccanismo di
+      spostamento (`SheetView::SetSelection`/`ExtendSelection`, che
+      scorre già da sola per mostrare la cella selezionata —
+      `ScrollToShowSelection()`, nessun codice nuovo da scrivere per
+      quella parte).
+
+      `HandleGoToRequest` pubblico apposta (stesso principio di
+      `CopySelection`/`PasteSelection`): `ui/tests/test_goto.cpp`
+      (nuovo target `make test-goto`, 3 verifiche) lo chiama
+      direttamente su una vera `MainWindow` — cella singola,
+      intervallo, testo non valido. Nessuna regressione nella suite
+      esistente (tutti i 23 target).
+
 ---
 
 ## Fase 8 — Qualità UI/UX (CHIUSA)
