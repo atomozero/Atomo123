@@ -908,14 +908,36 @@ logica, non l'esperienza utente end-to-end.
       vero corpus sistematico), aprendolo sia a livello di translator
       sia dal vivo nell'app vera — ha fatto emergere tre bug reali nel
       lettore BIFF/OLE2 legacy (vedi sezione dedicata in
-      `docs/TRANSLATORS.md`), tutti corretti. Resta un vero corpus
-      eterogeneo di file XLS/XLSX/ODS di varie versioni generati da
-      Excel/LibreOffice/OpenOffice in condizioni non controllate — un
-      solo file XLS non basta a dire il formato pienamente compatibile,
-      solo che il caso comune (righe/colonne/font/valori) ora funziona.
-      Il file di test usato non è stato incluso nel repository (licenza
-      di ridistribuzione non chiara): servirebbe un file campione con
-      licenza libera per fissarlo come fixture di test automatizzato.
+      `docs/TRANSLATORS.md`), tutti corretti. Poi altri sei bug reali
+      (file di lavoro di un utente, 2 .xls e 7 .xlsx) e la mancanza
+      completa di SST/LABELSST (stringhe condivise BIFF8/Excel97+, il
+      caso comune in ogni .xls moderno) — vedi le due sezioni "Bug
+      scoperto" più sotto. Resta un vero corpus eterogeneo di file
+      XLS/XLSX/ODS di varie versioni generati da Excel/LibreOffice/
+      OpenOffice in condizioni non controllate — i file reali usati per
+      la verifica non sono mai stati inclusi nel repository (licenza di
+      ridistribuzione non chiara). Il gap del test automatizzato è però
+      **parzialmente colmato** per l'SST: `translators/xls/tests/
+      sample_sst.xls`/`sample_sst_large.xls`, generate con la libreria
+      Python xlwt (licenza BSD, non file utente), coprono quel percorso
+      con fixture committate.
+- [x] "Apri recenti" nel menu File: gli ultimi 5 file aperti,
+      persistiti in `gPrefs` come cinque chiavi `recentFileN` (la più
+      recente per prima). Il sottomenu si ricostruisce da
+      `MenusBeginning` appena prima di essere mostrato invece che
+      quando un file viene aperto: così ogni finestra della cartella
+      di lavoro (Fase 4, più finestre possibili) legge lo stato
+      condiviso al momento giusto, senza bisogno di notificare le
+      altre finestre aperte. Una voce non più disponibile (file
+      spostato o cancellato) viene tolta dall'elenco al tentativo di
+      riapertura invece di restare lì a fallire ogni volta. Test:
+      `ui/tests/test_recent_files.cpp`.
+- [x] Finestra "Informazioni su Atomo123", raggiungibile dal menu
+      File: stesso stile (banner sfumato blu-ardesia, icona su
+      riquadro arrotondato, titolo/versione, link cliccabile al
+      progetto) della finestra Informazioni di Brube2000, altro
+      progetto nativo Haiku dello stesso autore — `ClickableStringView`
+      riportato pari pari da lì per coerenza visiva fra le due app.
 
 ### Bug scoperto: `GetBounds` esclude le celle non ancora calcolate, rompendo il ricalcolo/salvataggio quando sono ai margini del foglio
 
@@ -1028,6 +1050,62 @@ crash. Il file usato per il test non è nel repository (licenza di
 ridistribuzione non chiara) — resta un gap per un vero test
 automatizzato end-to-end con fixture reale, annotato nell'item
 "Test di compatibilità con corpus di file reali" qui sopra.
+
+### Bug scoperto: sei crash/blocchi aggiuntivi nel filtro XLS legacy su file reali
+
+Scoperti aprendo altri file `.xls`/`.xlsx` reali di un utente (2 `.xls`,
+7 `.xlsx`), oltre ai tre già corretti sopra:
+
+1. `COLINFO` con colonna "first" > "last": violava l'assert di
+   `CRunArray2::SetValue`, che richiede un intervallo ordinato.
+2. `MapFunction` con un indice di funzione fuori dall'intervallo noto:
+   usciva dalla jump table compilata dallo switch, segfault.
+3. `PTG_BASE` che restituisce 62 o 63: `kPtgMap`/`ptgLen` coprono solo
+   fino a 61, una lettura fuori tabella poteva far arretrare l'indice
+   del parser dei token invece di farlo avanzare, ciclo infinito.
+4. `gFuncArrayByNr` usata senza controllare che fosse mai stata
+   popolata.
+5. `MULRK`/`MULBLANK`: una lunghezza di record corrotta rendeva
+   negativo il contatore di `while (i--)`, ciclo infinito.
+6. Record `NAME`: la lunghezza del nome letta come `char` con segno
+   diventava negativa per nomi "lunghi" (≥128), scrivendo prima
+   dell'inizio del buffer sullo stack invece che dopo. Tolto anche un
+   alert modale bloccante per funzioni sconosciute nello stesso punto,
+   che avrebbe bloccato per sempre un'importazione senza sessione
+   interattiva.
+
+Verificato con un harness standalone su tutti i file di lavoro reali
+forniti dall'utente: tutti si aprono ora senza crash né blocchi.
+
+### Bug scoperto: mancanza completa di SST/LABELSST (stringhe condivise BIFF8/Excel97+) nel filtro XLS legacy
+
+Il filtro Excel storico (ereditato da Sum-It) leggeva solo le stringhe
+dirette in linea di BIFF5 (`LABEL`/`RSTRING`), mai aggiornato per BIFF8:
+praticamente ogni file `.xls` reale odierno (Excel 97 in poi) usa
+invece la tabella di stringhe condivise (record `SST`) con un
+riferimento per cella (`LABELSST`), quindi l'importazione perdeva
+silenziosamente quasi tutto il testo — numeri e formule sopravvivevano
+perché non passano da SST, il testo no. Scoperto confrontando
+visivamente con Excel vero l'importazione di una fattura reale di un
+utente.
+
+`CExcel5Filter::ReadSST` (`engine/src/Excel/Excel.pass1.cpp`) legge la
+tabella intera durante il primo passaggio, attraversando in modo
+trasparente eventuali record `CONTINUE` quando la tabella supera la
+dimensione massima di un record BIFF (~8KB, il caso comune sui file
+reali) — compresa la stranezza BIFF8 per cui un `CONTINUE` che
+interrompe una stringa a metà ricomincia con un proprio byte "grbit"
+(compresso/non compresso), che può differire da quello della stringa
+originale. `LABELSST` nel secondo passaggio si limita a cercare
+l'indice nella tabella già pronta, con un controllo sui limiti per un
+indice fuori range (file corrotto) invece di leggere fuori dal vector.
+
+Test: due fixture generate con xlwt (Python, licenza BSD, non un file
+utente reale) — `sample_sst.xls` (stringhe semplici, duplicate
+deduplicate in una sola voce SST, una stringa lunga) e
+`sample_sst_large.xls` (400 stringhe uniche, oltre 12KB, forza
+l'attraversamento dei record `CONTINUE`). Verificato anche dal vivo
+aprendo entrambi i file nell'app vera, nessun crash né blocco.
 
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
