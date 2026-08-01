@@ -2996,15 +2996,25 @@ Fase 11.
       nella UI, che ha sempre un font/view vivi. Si appoggia alle
       altezze di riga per-riga già persistite in Fase 10 per il
       salvataggio, non serve un nuovo meccanismo lì.
-- [ ] **Celle unite**: nessuna infrastruttura esistente in motore o
-      UI, verificato anche nel Sum-It storico. Serve un nuovo concetto
-      a livello di `CContainer` (elenco di rettangoli uniti per
-      foglio, non un campo per-cella: una cella unita è un'unica
-      entità logica che occupa più coordinate), `SheetView` che non
-      ridisegni la griglia interna né ripeta il contenuto dentro
-      l'intervallo, persistenza nel formato nativo, e lettura di
-      `<mergeCells>` dall'XLSX. Il pezzo più grande della fase insieme
-      alla formattazione condizionale.
+- [x] **Celle unite**: nuovo concetto a livello di `CContainer` —
+      elenco di rettangoli per foglio (`AddMergedRange`/
+      `GetMergedRanges`/`GetMergedRange`), non un campo per-cella.
+      `SheetView::DrawCellBand` riempie l'intero rettangolo unito con
+      lo sfondo della cella in alto a sinistra (cancella così griglia
+      e bordi interni già tracciati), poi ridisegna solo il contorno
+      esterno; solo la cella in alto a sinistra disegna il proprio
+      contenuto, con un rettangolo esteso a tutto l'intervallo per
+      allineamento/a capo. UI: "Unisci celle"/"Dividi celle"
+      (`MainWindow::MergeCells`/`UnmergeCells`) — a differenza di
+      Excel vero il contenuto delle celle diverse da quella in alto a
+      sinistra non viene cancellato all'unione (solo nascosto dal
+      disegno), scelta deliberata per restare non distruttiva senza
+      una finestra di conferma dedicata. Persistenza: nuova sezione
+      in coda (un rettangolo per intervallo, non il pattern per-cella
+      delle altre sezioni). Import XLSX: legge `<mergeCell
+      ref="A1:C1"/>` da `<mergeCells>`, indipendente dall'ordine
+      rispetto alle celle. Verificato anche dal vivo sul file di gara
+      reale (537 celle unite su 39 fogli), nessun crash.
 - [ ] **Tabelle strutturate (bande alternate)**: **approssimate come
       colori di sfondo statici all'importazione**, non come un vero
       oggetto tabella (l'XLSX reale referenzia `TableStyleMedium2` con
