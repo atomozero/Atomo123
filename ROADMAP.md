@@ -2948,12 +2948,16 @@ Fase 11.
       allineamento di Fase 10 in `WriteASCD` (`XlsxTranslator.cpp`),
       finora sempre vuota, ora scrive i valori reali quando presenti.
       Test: nuova fixture `sample_align.xlsx`.
-- [ ] **Bordi da stile**: risolvere l'indice `borderId` di ogni `<xf>`
-      contro `<borders>` in `styles.xml` e tradurlo nei quattro campi
-      booleani per lato già definiti in Fase 11 (bordo presente/
+- [x] **Bordi da stile**: risolve l'indice `borderId` di ogni `<xf>`
+      contro `<borders>` in `styles.xml` — un lato conta come presente
+      se il figlio `<left>`/`<right>`/`<top>`/`<bottom>` ha un
+      attributo `style` diverso da `"none"` — e lo traduce nei quattro
+      campi booleani per lato già definiti in Fase 11 (bordo presente/
       assente per lato, indipendentemente da spessore/colore reale
       dell'originale — stesso limite dichiarato per il significato dei
-      campi in Fase 11).
+      campi in Fase 11). La sezione bordi di Fase 11 in `WriteASCD`
+      (`XlsxTranslator.cpp`), finora sempre vuota, ora scrive i valori
+      reali quando presenti. Test: nuova fixture `sample_borders.xlsx`.
 - [ ] **Sottolineato**: nessuna infrastruttura esistente (verificato:
       Haiku `BFont` non ha un attributo sottolineato nativo, solo
       stile del font). Nuovo campo booleano in `CellStyle` (stesso
