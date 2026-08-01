@@ -26,7 +26,7 @@ SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/SheetTabView.cpp
 	src/AscdIO.cpp src/FindWindow.cpp src/ChartWindow.cpp src/ChartView.cpp src/Chart.cpp \
 	src/PivotWindow.cpp src/Pivot.cpp src/RangeRef.cpp src/IconCatalog.cpp src/IconData.cpp \
 	src/NameWindow.cpp src/PasteSpecialWindow.cpp src/GoToWindow.cpp src/ColorWindow.cpp \
-	src/PreferencesWindow.cpp
+	src/PreferencesWindow.cpp src/AboutWindow.cpp src/ClickableStringView.cpp
 OBJECTS := $(SOURCES:.cpp=.o)
 RDEF := Atomo123.rdef
 RSRC := Atomo123.rsrc
@@ -114,7 +114,7 @@ test-borders: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_borders
 
@@ -171,7 +171,7 @@ test-scroll: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_scroll
 
@@ -186,7 +186,7 @@ test-editing: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_editing
 
@@ -202,7 +202,7 @@ test-navigation: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_navigation
 
@@ -217,7 +217,7 @@ test-selection: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_selection
 
@@ -231,7 +231,7 @@ test-fill: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_fill
 
@@ -245,7 +245,7 @@ test-sort: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_sort
 
@@ -259,7 +259,7 @@ test-undo: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_undo
 
@@ -274,7 +274,7 @@ test-paste-range: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_paste_range
 
@@ -288,7 +288,7 @@ test-insert-delete: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_insert_delete
 
@@ -303,7 +303,7 @@ test-unsaved-changes: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_unsaved_changes
 
@@ -317,7 +317,7 @@ test-resize: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_resize
 
@@ -333,7 +333,7 @@ test-multisheet: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_multisheet
 
@@ -349,7 +349,7 @@ test-recent-files: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_recent_files
 
@@ -367,7 +367,7 @@ test-xsheet-formulas: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_xsheet_formulas
 
@@ -399,7 +399,7 @@ test-multiwindow: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_multiwindow
 
@@ -414,7 +414,7 @@ test-paste-special: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_paste_special
 
@@ -430,7 +430,7 @@ test-preferences: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_preferences
 
@@ -446,7 +446,7 @@ test-format: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_format
 
@@ -463,7 +463,7 @@ test-freeze: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_freeze
 
@@ -478,7 +478,7 @@ test-goto: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_goto
 
@@ -496,7 +496,7 @@ test-names: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/ChartWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_names
 

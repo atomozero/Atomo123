@@ -16,6 +16,7 @@
 #include "GoToWindow.h"
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
+#include "AboutWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
 #include "RangeRef.h"
@@ -302,6 +303,8 @@ MainWindow::MainWindow()
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem("Preferenze" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgShowPreferences)));
+	fileMenu->AddItem(new BMenuItem("Informazioni su Atomo123" B_UTF8_ELLIPSIS,
+		new BMessage(B_ABOUT_REQUESTED)));
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem("Esci", new BMessage(B_QUIT_REQUESTED), 'Q'));
 	menuBar->AddItem(fileMenu);
@@ -2689,6 +2692,10 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgShowPreferences:
 			ShowPreferencesWindow();
+			break;
+
+		case B_ABOUT_REQUESTED:
+			(new AboutWindow())->Show();
 			break;
 
 		case kMsgPreferencesRequest:
