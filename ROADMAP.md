@@ -2819,6 +2819,47 @@ storico da rispettare, libertà di definirne il significato da zero.
       salva/ricarica su una cella con due lati impostati. Nessuna
       regressione nella suite esistente (tutti i 30 target).
 
+### Bug scoperto: crash all'apertura di file XLSX multi-foglio dopo le nuove sezioni di Fase 10/11
+
+Segnalato dall'utente con un report di crash di Haiku
+(`Atomo123-33974-debug-*.report`): assert fuori range
+(`inIndex <= fMax`, `RunArray2.cpp`) aprendo un file `.xlsm` reale a
+38 fogli, con un `col` letto da uno stream palesemente sbagliato
+(25454, ben oltre il massimo valido).
+
+Causa: `SaveASCD`/`LoadASCD` (`ui/src/AscdIO.cpp`) hanno guadagnato
+cinque nuove sezioni finali in Fase 10/11 (altezze di riga, Blocca
+riquadri, font, allineamento, bordi di cella) — ma la copia duplicata
+di `WriteASCD` in `translators/xlsx/XlsxTranslator.cpp` (stessa
+duplicazione intenzionale già discussa sopra per non introdurre una
+dipendenza di link fra translator e app) non era stata aggiornata di
+pari passo. Per un solo foglio l'effetto passava inosservato — fine
+flusso pulita viene trattata da `LoadASCD` come "sezione assente", un
+fallback già esistente per la compatibilità con documenti vecchi —
+ma in una cartella di lavoro multi-foglio (`WriteASCDBook`, un blocco
+ASCD dietro l'altro sullo stesso flusso) i byte del foglio
+**successivo** venivano letti come se fossero queste sezioni del
+foglio corrente, disallineando tutta la lettura da lì in avanti.
+
+**Fix**: aggiunte le cinque sezioni, vuote/a zero, nello stesso ordine
+di `AscdIO.cpp`. Nessuna estrazione reale di queste informazioni dal
+formato XLSX originale (fuori scopo per questo fix): il translator si
+limita a non disallineare più lo stream. Verificato sia con un nuovo
+test byte-per-byte in `translators/xlsx/tests/test_xlsx_translator.cpp`
+(le cinque sezioni sono presenti e lo stream finisce esattamente alla
+fine del buffer per il foglio singolo di `sample.xlsx`) sia dal vivo,
+riaprendo il file `.xlsm` da 38 fogli che aveva originato il crash.
+
+`CsvTranslator.cpp`/`XlsTranslator.cpp`/`OdsTranslator.cpp` non
+implementano `WriteASCDBook` (nessun supporto multi-foglio in
+scrittura, verificato non avere alcun riferimento a
+`WriteASCDBook`/`LoadASCDBook`/`kASCDBookMagic`): non esposti a questo
+bug, non modificati. Resta un rischio di manutenzione da tenere
+presente: qualunque futura modifica al layout delle sezioni di
+`SaveASCD` in `AscdIO.cpp` va replicata a mano in ogni `WriteASCD`
+duplicato dei translator, non esiste oggi un controllo automatico che
+lo verifichi.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
