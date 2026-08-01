@@ -70,8 +70,10 @@ punti individuati nel confronto con Sum-It storico recuperati.
 riquadri, altezza di riga, font e allineamento — tutte e quattro le
 preferenze rimaste "solo per sessione" dopo la Fase 7 — sopravvivono
 ora al salvataggio/riapertura nel formato nativo. **Fase 11 (bordi
-delle celle) in corso**: l'ultimo campo di `CellStyle` mai esposto
-dalla UI. Aggiornato ad ogni fase completata.
+delle celle) chiusa**: l'ultimo campo di `CellStyle` mai esposto dalla
+UI, mai implementato nemmeno nel Sum-It storico — un bordo nero
+semplice per lato, con UI dedicata e persistenza nel formato nativo.
+Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -2759,7 +2761,7 @@ esattamente come fa già `Excel.pass1.cpp` per un file XLSX importato.
 
 ---
 
-## Fase 11 — Bordi delle celle (IN CORSO)
+## Fase 11 — Bordi delle celle (CHIUSA)
 
 `CellStyle` (motore) riserva già quattro campi per il colore del
 bordo di ciascun lato di una cella (`fTBorderColor`/`fLBorderColor`/
@@ -2767,22 +2769,55 @@ bordo di ciascun lato di una cella (`fTBorderColor`/`fLBorderColor`/
 `fFont`/`fAlignment`/`fLowColor`/`fHighColor` (Fase 7), **nessun altro
 punto del motore li legge o li scrive**: non hanno mai avuto un
 significato definito, nessun equivalente dei "campi già pronti, solo
-da esporre" trovati ripetutamente in Fase 7. Questa fase richiede
-quindi progettazione originale, non solo esposizione di
-un'infrastruttura già presente:
+da esporre" trovati ripetutamente in Fase 7. Verificato con una
+ricerca dedicata anche nel codice storico di Sum-It
+(`legacy/opensumit/`): stessi quattro campi, stesso `memset` a zero
+nel costruttore, **mai implementati nemmeno lì** — nessun contratto
+storico da rispettare, libertà di definirne il significato da zero.
 
-- [ ] Definire il significato dei quattro campi (indice di colore?
-      spessore fisso, solo presenza/assenza per lato?) e la loro
-      lettura/scrittura in `CContainer::GetCellStyle`/`SetCellStyle`.
-- [ ] Disegnare i bordi in `SheetView::DrawCellBand`, sopra la griglia
-      sottile già esistente (che resta invariata per le celle senza
-      bordo esplicito).
-- [ ] UI per impostarli (menu Formato: Bordo superiore/inferiore/
-      sinistro/destro, o un'unica finestra con anteprima — da
-      valutare in base alla complessità reale una volta iniziato).
-- [ ] Persistenza nel formato nativo, stesso pattern di Fase 10 (da
-      coordinare se le due fasi sono ancora entrambe aperte).
-- [ ] Test dedicato, sul modello di `test_format.cpp`.
+- [x] **Significato definito**: un byte booleano per lato (0 = nessun
+      bordo, diverso da zero = bordo nero pieno spesso un pixel) —
+      non un vero colore nonostante il nome storico del campo, e non
+      uno spessore configurabile. Scelta deliberata per restare
+      minimale: cambiare il layout di `CellStyle` (es. aggiungere
+      `rgb_color` veri) avrebbe toccato `CellStyle::operator==`
+      (basato su `memcmp` dell'intera struct) e ogni punto che la
+      copia/confronta, per un beneficio visivo marginale rispetto a
+      un bordo nero semplice. Nessuna modifica a `CContainer::
+      GetCellStyle`/`SetCellStyle`: gestiscono già l'intera struct in
+      modo generico, i quattro byte viaggiano gratis.
+- [x] **Disegno**: `SheetView::DrawCellBand` disegna i bordi in un
+      ciclo dedicato — non dentro quello del testo (che salta le
+      celle vuote: una cella senza contenuto può comunque avere un
+      bordo, stesso motivo per cui lo sfondo colorato non salta le
+      celle vuote) — dopo la griglia sottile esistente (cosicché un
+      bordo nero pieno si distingua sempre da un confine di griglia
+      qualunque) e prima del testo (cosicché non copra mai un
+      carattere che vi si sovrapponesse).
+- [x] **UI**: menu Formato, cinque voci — Bordo superiore/sinistro/
+      inferiore/destro (un lato alla volta, come Grassetto/Corsivo:
+      `MainWindow::ToggleBorder(side)` legge lo stato dalla sola
+      cella attiva e applica lo stato opposto a tutta
+      `SelectionRange()`) e Nessun bordo (`ClearBorders`, toglie
+      tutti e quattro i lati in un colpo solo, sempre sull'intera
+      selezione). Niente finestra con anteprima: quattro lati
+      indipendenti sono già chiari da soli come voci di menu, una
+      finestra dedicata avrebbe aggiunto complessità senza un vero
+      bisogno.
+- [x] **Persistenza**: nuova sezione per-cella in coda ad `AscdIO`
+      (stesso pattern per-cella di font/allineamento in Fase 10, non
+      nuovi parametri di funzione: legge/scrive direttamente su `doc`
+      tramite `GetCellStyle`/`SetCellStyle`) — quattro byte per cella
+      con almeno un lato non predefinito.
+- [x] Test dedicato `ui/tests/test_borders.cpp` (nuovo target
+      `make test-borders`, 6 verifiche): un lato applicato a tutta la
+      selezione non solo alla cella attiva, un secondo `ToggleBorder`
+      sullo stesso lato lo toglie di nuovo, i quattro lati sono
+      indipendenti fra loro e si accumulano su una stessa cella,
+      `ClearBorders` li toglie tutti insieme. Esteso anche
+      `ui/tests/test_persistence.cpp` (ora 14 verifiche) con un giro
+      salva/ricarica su una cella con due lati impostati. Nessuna
+      regressione nella suite esistente (tutti i 30 target).
 
 ---
 
