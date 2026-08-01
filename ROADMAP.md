@@ -1660,6 +1660,70 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       Nessuna regressione nella suite esistente del motore né in
       quella della UI (tutti i 21 target).
 
+- [x] **Incolla speciale**: `PasteSpecialWindow` (stesso schema di
+      `FindWindow`/`PivotWindow`) sul modello del vecchio
+      `PasteSpecialDialog` di Sum-It storico
+      (`legacy/opensumit/sum-it/Source/main/Dialog/
+      PasteSpecialDialog.cpp`), con un perimetro volutamente ridotto:
+      niente "Paste Format" (Atomo123 non copia ancora lo stile di
+      una cella negli appunti, solo il contenuto — la formattazione
+      font/colore/allineamento resta un punto a sé, ancora da fare),
+      niente "References"/link (opzione di nicchia del dialogo
+      storico). Tre scelte, non le sei della versione storica:
+
+      - **Cosa incollare** — Tutto (stesso testo di un Incolla
+        normale, può contenere formule) o Solo valori.
+      - **Operazione con la cella di destinazione** — Sovrascrivi
+        (come Incolla) oppure Somma/Sottrai/Moltiplica/Dividi.
+      - **Trasponi** — scambia righe e colonne del blocco incollato.
+
+      "Solo valori" richiede di sapere il *risultato calcolato* di
+      ogni cella copiata, non la sua formula — ma `CopySelection`
+      scriveva sugli appunti solo `GetCellFormula` (il testo della
+      formula, es. "=A1+B1"). Aggiunto un secondo campo dati sullo
+      stesso `BMessage` degli appunti, `"text/x-atomo-values"`,
+      costruito con `GetCellResult` (il risultato già calcolato, es.
+      "30") invece di `GetCellFormula` — un secondo campo, non un
+      secondo giro di `Lock`/`Clear`/`Commit`. `Incolla speciale >
+      Solo valori` legge quel campo quando c'è; se manca (appunti
+      copiati da un'altra applicazione, o prima che questo campo
+      esistesse) ripiega su `"text/plain"`, nessun crash, solo lo
+      stesso comportamento di un Incolla normale.
+
+      Le quattro operazioni aritmetiche operano **sempre** su valori,
+      mai su formule — come Excel: il risultato è sempre una cella
+      statica, non conta se la sorgente copiata era una formula.
+      Scritte con `CContainer::NewCell(dest, Value(result), NULL)`
+      diretto, non tramite `TryToParseString` su un numero
+      convertito in testo — quest'ultima strada avrebbe dovuto
+      generare il testo del numero con `snprintf`, che usa sempre il
+      punto come separatore decimale (locale "C"), mentre
+      `TryToParseString` lo interpreta secondo `gDecimalPoint`
+      (impostabile, tipicamente la virgola in italiano): un'ambiguità
+      inutile su un numero che il codice stesso genera, evitata del
+      tutto scrivendo il `Value` nel documento senza mai passare da
+      una rappresentazione testuale.
+
+      La logica di lettura di un blocco TSV dagli appunti (righe
+      separate da ritorno a capo, colonne da tabulazione — già
+      esistente in `PasteSelection`) è stata estratta in una funzione
+      condivisa, `ParseTSVGrid`, usata sia da `PasteSelection` sia da
+      `HandlePasteSpecialRequest` — la differenza fra le due sta solo
+      in quale campo degli appunti si legge e come la griglia risultante
+      viene poi scritta nel documento (l'una sempre come formula/
+      testo con `TryToParseString`, l'altra secondo l'operazione
+      scelta).
+
+      `HandlePasteSpecialRequest` pubblico apposta (stesso principio
+      di `CopySelection`/`PasteSelection`): `ui/tests/
+      test_paste_special.cpp` (nuovo target `make test-paste-special`,
+      9 verifiche) lo chiama direttamente su una vera `MainWindow` —
+      Solo valori (il testo incollato non è più una formula viva),
+      le quattro operazioni in sequenza sullo stesso valore di
+      destinazione, l'operazione aritmetica è annullabile, Trasponi
+      scambia una riga copiata in una colonna incollata. Nessuna
+      regressione nella suite esistente (tutti i 22 target).
+
 ---
 
 ## Fase 8 — Qualità UI/UX (CHIUSA)
