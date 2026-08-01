@@ -37,9 +37,12 @@ compatibile con Excel/LibreOffice Calc), Inserisci/Elimina riga e
 colonna fatto (menu Dati, riusa `CContainer::MoveCell` gia' presente
 nel motore ereditato ma mai esposto dalla UI nuova, aggiorna i
 riferimenti anche nelle celle che non si spostano fisicamente);
-restano formattazione font/colore/allineamento, Incolla speciale,
-intervalli con nome, Vai a, un vero Blocca riquadri, una finestra
-Preferenze e altro (dettaglio nella sezione Fase 7). **Fase 8
+intervalli con nome, Incolla speciale, Vai a, un vero Blocca riquadri
+(le righe/colonne bloccate restano ferme sullo schermo durante lo
+scroll, non solo le intestazioni), formattazione font/colore/
+allineamento e una finestra Preferenze fatti (dettaglio nella sezione
+Fase 7) — tutti i punti individuati nel confronto con Sum-It storico
+recuperati. **Fase 8
 (qualità UI/UX) chiusa**: protezione dalle modifiche non salvate
 (Nuovo/Apri/Esci chiedono conferma solo se ci sono modifiche in
 sospeso) con titolo finestra e indicatore di modifica,
@@ -1181,7 +1184,7 @@ automatizzato end-to-end con fixture reale, annotato nell'item
       ai documenti tecnici di Fase 2/3/4 che non erano ancora
       referenziati lì.
 
-## Fase 7 — Recupero funzionalità rispetto a Sum-It storico (IN CORSO)
+## Fase 7 — Recupero funzionalità rispetto a Sum-It storico (CHIUSA)
 
 La "Decisione architetturale di fondo" (sopra) ha sempre significato
 che la UI riscritta da zero avrebbe coperto solo un sottoinsieme delle
@@ -1899,6 +1902,62 @@ attivabile/disattivabile), una finestra Preferenze, Seleziona tutto
       insieme sulla stessa cella, Allinea a destra su un intervallo,
       Colore testo e Colore sfondo indipendenti sulla stessa cella.
       Nessuna regressione nella suite esistente (tutti i 26 target).
+
+- [x] **Una finestra Preferenze**: `PreferencesWindow` (menu File),
+      sottoinsieme volutamente ridotto rispetto a Sum-It storico —
+      solo le preferenze per cui il motore aveva già un punto di
+      estensione pronto, non un pannello con ogni opzione storica:
+
+      - **Mostra griglia** (`BCheckBox`) — per-vista
+        (`SheetView::SetShowGrid`/`ShowGrid`), letta all'avvio da
+        `gPrefs` se esiste. `DrawCellBand` salta il disegno delle
+        linee di griglia quando disattivata.
+      - **Separatore decimale** e **separatore di elenco**
+        (`BMenuField`, Punto/Virgola e Punto e virgola/Virgola) —
+        globali al motore (`gDecimalPoint`/`gListSeparator`), già
+        lette da `TryToParseString` quando non si passa un separatore
+        esplicito (`CellParser.h`): cambiarle si riflette subito su
+        come le formule digitate vengono interpretate, per l'intera
+        applicazione — stesso comportamento del Sum-It storico
+        (un'unica preferenza globale, non per documento).
+
+      **`gPrefs` (`Preferences.h`, il meccanismo storico di
+      lettura/scrittura preferenze su file — coppie chiave=valore in
+      `~/config/settings/`) non era mai stato istanziato da nessuna
+      parte della UI moderna**: restava sempre `NULL` (dichiarato
+      `extern CPreferences *gPrefs = NULL;` in `Preferences.cpp`, mai
+      assegnato). Istanziato ora in `App::App()`, con
+      `ReadPrefFile()` avvolto in un `try`/`catch` — lancia se il
+      file non esiste ancora (prima esecuzione), non è un errore: si
+      parte semplicemente dai valori predefiniti di ciascun
+      `GetPref*()` (già gestito da `CPreferences` stessa, che scrive
+      il default al primo utilizzo se la chiave manca).
+      `HandlePreferencesRequest` applica l'effetto in memoria SEMPRE,
+      e se `gPrefs` esiste (può essere `NULL` in un test che non
+      passa da una vera `App`, come tutti i test UI esistenti) lo
+      persiste anche su disco.
+
+      Test dedicato `ui/tests/test_preferences.cpp` (nuovo target
+      `make test-preferences`, 7 verifiche): griglia visibile per
+      default, `HandlePreferencesRequest` che la nasconde/riattiva,
+      i separatori impostati globalmente, e soprattutto che il nuovo
+      separatore decimale si applica DAVVERO al parser (`"1,5"` con
+      la virgola come decimale si interpreta come il numero 1.5, non
+      come testo) — non solo che la variabile globale cambia valore.
+      Nessuna regressione nella suite esistente (tutti i 27 target).
+
+      **Con questo si chiude la Fase 7**: tutti e sei i punti mancanti
+      individuati nell'analisi in cima a questa fase (formattazione
+      font/colore/allineamento, Incolla speciale, intervalli con
+      nome, Vai a, un vero Blocca riquadri, una finestra Preferenze)
+      sono stati recuperati, oltre a Selezione multi-cella, Riempi,
+      Ordina, Inserisci/Elimina riga e colonna e Seleziona tutto
+      (nella prima parte di questa stessa fase). Diversi bug
+      preesistenti nel codice storico/di transizione sono stati
+      scoperti e corretti lungo il percorso — quasi tutti della
+      stessa famiglia: qualcosa gated dietro `CCellView`/`inPane`,
+      sempre `NULL` nella UI moderna (mai raggiunto), o un confronto
+      di coordinate che non teneva conto dello scroll (`Bounds()`).
 
 ---
 
