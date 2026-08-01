@@ -103,6 +103,21 @@ test-ascd-book: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
 	./tests/test_ascd_book
 
+# Test dei bordi di cella (Fase 11): un lato alla volta, applicati a
+# tutta la selezione, indipendenti fra loro, ClearBorders. Stessa
+# ragione di test-paste-range (serve una vera MainWindow).
+test-borders: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_borders.cpp -o tests/test_borders.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_borders tests/test_borders.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_borders
+
 # Test della persistenza di Blocca riquadri/altezza di riga nel
 # formato nativo (Fase 10): stessa ragione headless di test-ascd-book
 # sopra (solo AscdIO, nessuna vera MainWindow).
@@ -500,6 +515,7 @@ clean:
 		tests/test_format tests/test_format.o \
 		tests/test_preferences tests/test_preferences.o \
 		tests/test_persistence tests/test_persistence.o tests/AscdIO_persistence.o \
-		/tmp/test_persistence.ascd /tmp/test_persistence_old.ascd
+		/tmp/test_persistence.ascd /tmp/test_persistence_old.ascd \
+		tests/test_borders tests/test_borders.o
 
-.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-preferences test-persistence clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-preferences test-persistence test-borders clean

@@ -311,6 +311,44 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione bordi di cella non predefiniti, in coda (Fase 11): un
+	// byte per lato (CellStyle::fTBorderColor/fLBorderColor/
+	// fBBorderColor/fRBorderColor -- 0 = nessun bordo, diverso da 0 =
+	// bordo nero pieno su quel lato, vedi ROADMAP.md Fase 11 sul
+	// perche' non e' un vero colore nonostante il nome del campo).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, CellStyle> > toWrite;
+		CCellIterator borderIter(doc, NULL);
+		cell bc;
+		while (borderIter.NextExisting(bc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(bc, cs);
+			if (cs.fTBorderColor != defaultStyle.fTBorderColor
+				|| cs.fLBorderColor != defaultStyle.fLBorderColor
+				|| cs.fBBorderColor != defaultStyle.fBBorderColor
+				|| cs.fRBorderColor != defaultStyle.fRBorderColor)
+				toWrite.push_back(std::make_pair(bc, cs));
+		}
+
+		int32 borderCount = (int32)toWrite.size();
+		if (dest->Write(&borderCount, sizeof(borderCount)) != (ssize_t)sizeof(borderCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < borderCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			const CellStyle& cs = toWrite[i].second;
+			uint8 sides[4] = { cs.fTBorderColor, cs.fLBorderColor,
+				cs.fBBorderColor, cs.fRBorderColor };
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(sides, sizeof(sides)) != (ssize_t)sizeof(sides))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -602,6 +640,37 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				cell loc(col, row);
 				doc->GetCellStyle(loc, cs);
 				cs.fAlignment = (char)alignment;
+				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione bordi di cella non predefiniti, in coda (Fase 11): vedi
+	// il commento in SaveASCD.
+	{
+		int32 borderCount = 0;
+		ssize_t got = source->Read(&borderCount, sizeof(borderCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(borderCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < borderCount; i++)
+			{
+				int16 row, col;
+				uint8 sides[4];
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(sides, sizeof(sides)) != (ssize_t)sizeof(sides))
+					return B_BAD_DATA;
+
+				CellStyle cs;
+				cell loc(col, row);
+				doc->GetCellStyle(loc, cs);
+				cs.fTBorderColor = sides[0];
+				cs.fLBorderColor = sides[1];
+				cs.fBBorderColor = sides[2];
+				cs.fRBorderColor = sides[3];
 				doc->SetCellStyle(loc, cs);
 			}
 		}

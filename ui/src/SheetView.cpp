@@ -1193,6 +1193,45 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				BPoint(clipRect.right, yOrigin + kHeaderHeight + fRowOffsets[row - 1]));
 	}
 
+	// Bordi di cella (Fase 11): un lato alla volta, un byte booleano
+	// ciascuno (CellStyle::fTBorderColor/fLBorderColor/fBBorderColor/
+	// fRBorderColor -- il nome "colore" e' ereditato dal codice storico
+	// di Sum-It, mai davvero implementato ne' li' ne' qui prima d'ora,
+	// vedi ROADMAP.md Fase 11: 0 = nessun bordo, diverso da 0 = un
+	// bordo nero pieno su quel lato). Ciclo a parte, non dentro quello
+	// del testo sotto: una cella vuota puo' comunque avere un bordo
+	// (lo stesso motivo per cui lo sfondo colorato, sopra, non salta le
+	// celle senza contenuto). Disegnato DOPO la griglia sottile (sopra)
+	// cosi' un bordo nero pieno si distingue sempre da un confine di
+	// griglia qualunque, PRIMA del testo (sotto) cosi' un bordo non
+	// copre mai un carattere che vi si sovrapponesse per un pixel.
+	if (fDoc)
+	{
+		SetHighColor(0, 0, 0);
+		for (int row = firstRow; row <= lastRow; row++)
+		{
+			for (int col = firstCol; col <= lastCol; col++)
+			{
+				cell c(col, row);
+				CellStyle cs;
+				fDoc->GetCellStyle(c, cs);
+				if (!cs.fTBorderColor && !cs.fLBorderColor
+					&& !cs.fBBorderColor && !cs.fRBorderColor)
+					continue;
+
+				BRect r = CellRect(c).OffsetByCopy(xOrigin, yOrigin);
+				if (cs.fTBorderColor)
+					StrokeLine(r.LeftTop(), r.RightTop());
+				if (cs.fBBorderColor)
+					StrokeLine(r.LeftBottom(), r.RightBottom());
+				if (cs.fLBorderColor)
+					StrokeLine(r.LeftTop(), r.LeftBottom());
+				if (cs.fRBorderColor)
+					StrokeLine(r.RightTop(), r.RightBottom());
+			}
+		}
+	}
+
 	if (fDoc)
 	{
 		for (int row = firstRow; row <= lastRow; row++)
