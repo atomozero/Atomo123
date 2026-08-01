@@ -144,6 +144,18 @@
 #define MMS	0x0C1		//ADDMENU/DELMENU Record Group Count
 #define ADDMENU	0x0C2		//Menu Addition
 #define DELMENU	0x0C3		//Menu Deletion
+// SST/LABELSST (BIFF8, Excel 97+): la tabella delle stringhe
+// condivise e il riferimento ad essa da una cella -- questo filtro
+// era fermo alle stringhe dirette in linea (LABEL/RSTRING, BIFF5),
+// mai aggiornato per BIFF8. Praticamente ogni file .xls reale odierno
+// (Excel 97 in poi) usa SST per il testo delle celle, non LABEL:
+// senza queste due, l'importazione di un file .xls moderno perde
+// silenziosamente quasi tutto il testo (numeri e formule sopravvivono
+// perche' non passano da SST), lasciando solo poche celle isolate --
+// bug reale scoperto confrontando visivamente l'importazione con
+// Excel vero su un file di fattura di un utente.
+#define SST	0x0FC		//Shared String Table
+#define LABELSST	0x0FD		//Cell Value, String Constant/SST
 #define SXDI	0x0C5		//Data Item
 #define SXSTRING	0x0CD		//String
 #define SXTBL	0x0D0		//Multiple Consolidation Source Info

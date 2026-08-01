@@ -127,15 +127,41 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 		{
 			char label[512];
 			short l;
-			
+
 			es >> c.v >> c.h >> style >> l;
 			c.v++;
 			c.h++;
-			
-			if (l > 511) l = 511;
+
+			// "l" con segno: una lunghezza dichiarata >=32768 (rara ma
+			// possibile, il campo BIFF e' un intero senza segno)
+			// diventerebbe negativa e supererebbe il solo controllo
+			// "> 511" sopra, arrivando a es.Read/label[l]=0 con un
+			// indice negativo -- stesso principio delle altre difese
+			// aggiunte in questa fase.
+			if (l > 511 || l < 0) l = 511;
 			es.Read(label, l);
 			label[l] = 0;
 			v = label;
+
+			fContainer->NewCell(c, v, NULL);
+			fContainer->SetCellStyleNr(c, fStyles[style]);
+			break;
+		}
+		case LABELSST:
+		{
+			// Vedi il commento su SST/LABELSST in XL_Biff_codes.h e su
+			// ReadSST in Excel.pass1.cpp: qui c'e' solo l'indice nella
+			// tabella (fSST), popolata durante Pass1. Un indice fuori
+			// dai limiti (file corrotto, o SST non ancora vista per un
+			// ordine di record inatteso) da' una cella vuota invece di
+			// leggere fuori dal vector.
+			long isst;
+			es >> c.v >> c.h >> style >> isst;
+			c.v++;
+			c.h++;
+
+			if (isst >= 0 && (size_t)isst < fSST.size())
+				v = fSST[isst].c_str();
 
 			fContainer->NewCell(c, v, NULL);
 			fContainer->SetCellStyleNr(c, fStyles[style]);

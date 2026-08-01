@@ -34,6 +34,7 @@
 
 */
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include "Excel.h"
@@ -234,7 +235,150 @@ void CExcel5Filter::Name()
 			fCellView->AddNamedRange(name, r);
 		fNames.push_back(name);
 	}
-} 
+}
+
+// SST (BIFF8/Excel97+, vedi il commento su SST/LABELSST in
+// XL_Biff_codes.h): count(4, totale riferimenti, ignorato) +
+// uniqueCount(4) seguiti da "uniqueCount" XLUnicodeRichExtendedString
+// -- cch(2) + grbit(1) + [cRun(2) se fRichSt] + [cbExtRst(4) se
+// fExtSt] + i caratteri veri e propri (1 byte/carattere se
+// "compresso", 2 se no) + [rgRun, cRun*4 byte] + [ExtRst, cbExtRst
+// byte]. Una tabella di stringhe reale supera quasi sempre la
+// dimensione massima di un record BIFF (~8KB): il resto prosegue in
+// uno o piu' record CONTINUE, attraversati qui in modo trasparente da
+// "advance" -- compresa la stranezza BIFF8 per cui un CONTINUE che
+// interrompe una stringa A META' CARATTERI ricomincia con un byte
+// "grbit" (compresso/non compresso) tutto suo, che puo' differire da
+// quello della stringa originale.
+void CExcel5Filter::ReadSST(int len)
+{
+	off_t pos = fBook.Position();
+	off_t recordEnd = pos + (unsigned short)len;
+
+	// Legge "n" byte grezzi, attraversando un confine CONTINUE se
+	// serve (senza reinterpretare il contenuto: usato per i campi a
+	// lunghezza fissa e per i dati da scartare, non per i caratteri
+	// della stringa, che hanno bisogno di ricontrollare il flag
+	// "compresso" a ogni attraversamento -- vedi sotto).
+	auto readRaw = [&](void* buf, int n)
+	{
+		unsigned char* p = (unsigned char*)buf;
+		while (n > 0)
+		{
+			if (pos >= recordEnd)
+			{
+				fBook.Seek(pos, SEEK_SET);
+				short nextCode, nextLen;
+				CExcelStream cs(fBook);
+				cs >> nextCode >> nextLen;
+				if (nextCode != CONTINUE)
+					throw CErr("SST troncata: atteso un record CONTINUE");
+				pos += 4;
+				recordEnd = pos + (unsigned short)nextLen;
+			}
+			int chunk = (int)std::min((off_t)n, recordEnd - pos);
+			fBook.Seek(pos, SEEK_SET);
+			if (fBook.Read(p, chunk) != chunk)
+				throw CErr("SST troncata: lettura incompleta");
+			p += chunk;
+			pos += chunk;
+			n -= chunk;
+		}
+	};
+
+	unsigned char header[8];
+	readRaw(header, 8);
+	long uniqueCount;
+	memcpy(&uniqueCount, header + 4, 4);
+	uniqueCount = B_LENDIAN_TO_HOST_INT32(uniqueCount);
+	if (uniqueCount < 0)
+		throw CErr("SST: conteggio stringhe non valido");
+
+	fSST.clear();
+	fSST.reserve(uniqueCount);
+
+	for (long i = 0; i < uniqueCount; i++)
+	{
+		unsigned char strHeader[3];
+		readRaw(strHeader, 3);
+		unsigned short charCount = strHeader[0] | (strHeader[1] << 8);
+		unsigned char flags = strHeader[2];
+		bool wide = (flags & 0x01) != 0;
+		bool farEast = (flags & 0x04) != 0;	// fExtSt
+		bool richText = (flags & 0x08) != 0;	// fRichSt
+
+		unsigned short cRun = 0;
+		if (richText)
+		{
+			unsigned char b[2];
+			readRaw(b, 2);
+			cRun = b[0] | (b[1] << 8);
+		}
+		unsigned long cbExtRst = 0;
+		if (farEast)
+		{
+			unsigned char b[4];
+			readRaw(b, 4);
+			memcpy(&cbExtRst, b, 4);
+			cbExtRst = B_LENDIAN_TO_HOST_INT32(cbExtRst);
+		}
+
+		std::string text;
+		text.reserve(charCount);
+		bool curWide = wide;
+		for (unsigned short ch = 0; ch < charCount; ch++)
+		{
+			if (pos >= recordEnd)
+			{
+				fBook.Seek(pos, SEEK_SET);
+				short nextCode, nextLen;
+				CExcelStream cs(fBook);
+				cs >> nextCode >> nextLen;
+				if (nextCode != CONTINUE)
+					throw CErr("SST troncata: stringa interrotta senza CONTINUE");
+				pos += 4;
+				recordEnd = pos + (unsigned short)nextLen;
+
+				unsigned char newFlag;
+				readRaw(&newFlag, 1);
+				curWide = (newFlag & 0x01) != 0;
+			}
+
+			if (curWide)
+			{
+				unsigned char c2[2];
+				readRaw(c2, 2);
+				unsigned short u = c2[0] | (c2[1] << 8);
+				// Riduzione a byte singolo (Latin-1/ASCII): il motore
+				// non gestisce ancora Unicode multibyte nelle celle,
+				// stesso limite gia' presente per LABEL/RSTRING, non
+				// introdotto ora.
+				text += (u < 256) ? (char)u : '?';
+			}
+			else
+			{
+				unsigned char c1;
+				readRaw(&c1, 1);
+				text += (char)c1;
+			}
+		}
+
+		if (richText && cRun > 0)
+		{
+			std::vector<unsigned char> skip(cRun * 4);
+			readRaw(&skip[0], cRun * 4);
+		}
+		if (farEast && cbExtRst > 0)
+		{
+			std::vector<unsigned char> skip(cbExtRst);
+			readRaw(&skip[0], cbExtRst);
+		}
+
+		fSST.push_back(text);
+	}
+
+	fBook.Seek(pos, SEEK_SET);
+}
 
 void CExcel5Filter::Font()
 {
@@ -433,6 +577,9 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 //			ReadSwapped(inStream, x);
 //			fPrGrid = (x == 1);
 //			break;
+		case SST:
+			ReadSST(len);
+			break;
 		case FORMAT:
 		{
 			char s[256];

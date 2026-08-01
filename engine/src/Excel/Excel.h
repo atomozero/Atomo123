@@ -38,6 +38,7 @@
 #include "Formula.h"
 #include "Functions.h"
 //#include <ByteOrder.h>
+#include <string>
 #include <vector>
 
 class CCellView;
@@ -176,18 +177,27 @@ class CExcel5Filter
 	void Name();
 	void Font();
 	void Xf();
-	
+	// Tabella delle stringhe condivise (BIFF8/Excel97+, record SST):
+	// vedi il commento su SST/LABELSST in XL_Biff_codes.h. "len" e' la
+	// lunghezza dichiarata del record SST stesso, necessaria per sapere
+	// quando la lettura esce dai suoi confini e deve proseguire in un
+	// eventuale record CONTINUE che segue (le tabelle di stringhe dei
+	// file reali superano quasi sempre la dimensione massima di un
+	// singolo record BIFF).
+	void ReadSST(int len);
+
 	void HandleXLRecordForPass2(int code, int len);
 	void ParseXLFormula(CFormula& formula, cell loc, cell shared,
 		const void *data, int len);
-	
+
 	bool f1904;
 	int fNewFunctionNr;
 	BMallocIO fBook;
 	std::vector<xlName> fNames;
 	std::vector<int> fFonts, fStyles, fFormats;
 	std::vector<XLSHFormula> fSharedFormulas;
-	
+	std::vector<std::string> fSST;
+
 	CCellView *fCellView;
 	CContainer *fContainer;
 };
