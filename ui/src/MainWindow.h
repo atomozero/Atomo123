@@ -22,6 +22,7 @@
 #include "Container.h"
 
 class BFilePanel;
+class BMenuItem;
 class BTextControl;
 class BStringView;
 class SheetView;
@@ -141,6 +142,7 @@ public:
 
 private:
 	SheetView* fSheetView;
+	BMenuItem* fFreezeMenuItem;
 	BTextControl* fFormulaBar;
 	BStringView* fCellLabel;
 	CContainer* fDoc;

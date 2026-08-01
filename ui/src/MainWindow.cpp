@@ -84,6 +84,7 @@ static const uint32 kMsgShowPivot = 'shpv';
 static const uint32 kMsgShowNames = 'shnm';
 static const uint32 kMsgShowPasteSpecial = 'shps';
 static const uint32 kMsgShowGoTo = 'shgt';
+static const uint32 kMsgToggleFreeze = 'frzp';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -247,6 +248,7 @@ MainWindow::MainWindow()
 	// imprevedibile (a volte un blocco indefinito, non un crash pulito).
 	fSheetView = NULL;
 	fSheetTabView = NULL;
+	fFreezeMenuItem = NULL; // stesso motivo di fSheetView/fSheetTabView sopra
 	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
 	ResetWorkbook("Foglio1");
 	fModified = false;
@@ -349,6 +351,12 @@ MainWindow::MainWindow()
 	dataMenu->AddItem(new BMenuItem("Inserisci colonna", new BMessage(kMsgInsertColumns)));
 	dataMenu->AddItem(new BMenuItem("Elimina riga", new BMessage(kMsgDeleteRows)));
 	dataMenu->AddItem(new BMenuItem("Elimina colonna", new BMessage(kMsgDeleteColumns)));
+	dataMenu->AddSeparatorItem();
+	// Blocca tutto cio' che sta sopra/a sinistra della cella attiva
+	// (come Excel): voce con segno di spunta, sincronizzato a ogni
+	// attivazione/cambio foglio -- vedi SheetView::ToggleFreezePanes.
+	fFreezeMenuItem = new BMenuItem("Blocca riquadri", new BMessage(kMsgToggleFreeze));
+	dataMenu->AddItem(fFreezeMenuItem);
 	menuBar->AddItem(dataMenu);
 
 	// Grafico e tabella pivot leggono un intervallo di due colonne
@@ -540,6 +548,14 @@ void MainWindow::ResetWorkbook(const char* name)
 		fSheetView->SetDocument(fDoc);
 		fSheetView->SetCharts(&fCharts);
 		fSheetView->SetColumnWidths(fSheets[0].colWidths);
+		// Blocca riquadri (Fase 7): a differenza della larghezza di
+		// colonna, e' solo per la sessione corrente (non salvata nel
+		// formato nativo, stesso limite noto gia' documentato per
+		// l'altezza di riga in SheetView.h) -- un documento nuovo parte
+		// sempre senza nulla di bloccato.
+		fSheetView->SetFreezePanes(0, 0);
+		if (fFreezeMenuItem)
+			fFreezeMenuItem->SetMarked(false);
 	}
 	if (fSheetTabView)
 		RebuildSheetTabs();
@@ -594,6 +610,8 @@ void MainWindow::SwitchToSheet(int index)
 
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetColumnWidths(fSheets[index].colWidths);
+	fSheetView->SetFreezePanes(0, 0); // solo per sessione, vedi ResetWorkbook
+	fFreezeMenuItem->SetMarked(false);
 	fFormulaBar->SetText("");
 	RebuildSheetTabs();
 }
@@ -731,6 +749,8 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetColumnWidths(fSheets[0].colWidths);
+	fSheetView->SetFreezePanes(0, 0); // solo per sessione, vedi ResetWorkbook
+	fFreezeMenuItem->SetMarked(false);
 	RebuildSheetTabs();
 
 	// Collega il resolver PRIMA di ricalcolare: ogni foglio e' stato
@@ -1923,6 +1943,11 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgShowGoTo:
 			ShowGoToWindow();
+			break;
+
+		case kMsgToggleFreeze:
+			fSheetView->ToggleFreezePanes();
+			fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 			break;
 
 		case kMsgGoToRequest:

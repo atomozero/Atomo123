@@ -360,6 +360,22 @@ test-paste-special: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_paste_special
 
+# Test di Blocca riquadri (Fase 7): righe/colonne bloccate restano
+# ferme sullo schermo durante lo scroll, CellAt() risolve un clic
+# sulla banda bloccata alla cella giusta anche a foglio scorso.
+# Stessa ragione di test-scroll (richiede una vera sessione grafica,
+# stesso schema di finestra di prova).
+test-freeze: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_freeze.cpp -o tests/test_freeze.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_freeze tests/test_freeze.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_freeze
+
 # Test di "Vai a" (Fase 7): sposta la selezione su una cella singola
 # o un intervallo digitato, un testo non valido non fa nulla. Stessa
 # ragione di test-paste-range (serve una vera MainWindow).
@@ -417,6 +433,7 @@ clean:
 		/tmp/test_multiwindow_1.ascd /tmp/test_multiwindow_2.ascd \
 		tests/test_names tests/test_names.o \
 		tests/test_paste_special tests/test_paste_special.o \
-		tests/test_goto tests/test_goto.o
+		tests/test_goto tests/test_goto.o \
+		tests/test_freeze tests/test_freeze.o
 
-.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-multiwindow test-names test-paste-special test-goto clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-multiwindow test-names test-paste-special test-goto test-freeze clean
