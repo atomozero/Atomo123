@@ -113,15 +113,21 @@ static const uint32 kAtomoCsvFormat = 'ACSV';
 // incorporati). Un gruppo per voce di menu principale a cui i pulsanti
 // corrispondono (File/Modifica/Dati/Inserisci), con un separatore
 // verticale fra un gruppo e il successivo in un'unica riga -- una
-// vera BToolBar per riga/categoria non e' possibile (quella classe
-// vive solo sotto develop/headers/private/shared/ su questo sistema,
-// vedi il commento gia' presente piu' sotto sui BButton), ma questo
-// raggruppamento visivo riprende lo stesso principio della barra
-// Standard di Excel classico (icone imparentate raggruppate, separate
-// da un divisore sottile) chiesto dall'utente. Solo funzioni gia'
-// implementate da un comando vero (menu o scorciatoia): niente
-// pulsanti per funzioni ancora "da disegnare" nel catalogo o non
-// ancora presenti in Atomo123 (formattazione testo, filtro, zoom...).
+// vera BToolBar non e' disponibile su questo sistema (quella classe
+// vive solo sotto develop/headers/private/shared/, la sua
+// implementazione non e' nemmeno presente in libbe.so qui: non solo
+// "sconsigliata", proprio non linkabile). Bottoni BButton normali,
+// resi piatti con SetFlat() (pubblica, vedi il commento piu' sotto) e
+// una riga di separazione orizzontale subito sotto (vedi
+// MainWindow::MainWindow) riprendono lo stesso aspetto di una vera
+// BToolBar (Terminal, WebPositive...) senza quella classe. Il
+// raggruppamento per categoria riprende invece lo stesso principio
+// della barra Standard di Excel classico (icone imparentate
+// raggruppate, separate da un divisore sottile) chiesto dall'utente.
+// Solo funzioni gia' implementate da un comando vero (menu o
+// scorciatoia): niente pulsanti per funzioni ancora "da disegnare"
+// nel catalogo o non ancora presenti in Atomo123 (formattazione
+// testo, filtro, zoom...).
 struct ToolbarButtonDef {
 	const char* name;
 	const char* label;
@@ -205,6 +211,14 @@ static BView* BuildToolbar(BHandler* target)
 			BButton* button = new BButton(def.name, NULL, new BMessage(def.message));
 			button->SetToolTip(def.label);
 			button->SetTarget(target);
+			// Bottone piatto (bordo visibile solo al passaggio del mouse/
+			// alla pressione, non sempre come un BButton normale): stesso
+			// aspetto dei pulsanti di una vera BToolBar (Terminal,
+			// WebPositive, Tracker...), quella classe non e' pero'
+			// disponibile su questo sistema -- vedi il commento in cima
+			// al file. SetFlat() da sola e' pubblica (Button.h) e basta a
+			// ottenere lo stesso stile visivo senza la classe intera.
+			button->SetFlat(true);
 
 			BBitmap* icon = IconCatalog::Render(*def.icon);
 			if (icon)
@@ -477,6 +491,10 @@ MainWindow::MainWindow()
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.Add(toolbar)
+		// Riga di separazione sotto la toolbar: l'altra meta' dell'aspetto
+		// di una vera BToolBar (vedi il commento sopra BuildToolbar), non
+		// disponibile su questo sistema.
+		.Add(new BSeparatorView(B_HORIZONTAL))
 		.AddGroup(B_HORIZONTAL, 4)
 			.SetInsets(4, 4, 4, 4)
 			.Add(fCellLabel)
