@@ -452,7 +452,7 @@ void SheetView::ClearSelection()
 	while (iter.NextExisting(c))
 		fDoc->DisposeCell(c);
 
-	RecalculateAll(fDoc);
+	RecalculateOwningWorkbook();
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -476,7 +476,7 @@ void SheetView::FillDown()
 			fDoc->CopyCell(fDoc, src, cell(col, row));
 	}
 
-	RecalculateAll(fDoc);
+	RecalculateOwningWorkbook();
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -500,7 +500,7 @@ void SheetView::FillRight()
 			fDoc->CopyCell(fDoc, src, cell(col, row));
 	}
 
-	RecalculateAll(fDoc);
+	RecalculateOwningWorkbook();
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -613,7 +613,7 @@ void SheetView::SortSelection(bool ascending)
 		}
 	}
 
-	RecalculateAll(fDoc);
+	RecalculateOwningWorkbook();
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -668,7 +668,7 @@ void SheetView::InsertRows()
 		}
 	}
 
-	RecalculateAll(fDoc);
+	RecalculateOwningWorkbook();
 	Invalidate();
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -717,7 +717,7 @@ void SheetView::InsertColumns()
 		}
 	}
 
-	RecalculateAll(fDoc);
+	RecalculateOwningWorkbook();
 	Invalidate();
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -767,7 +767,7 @@ void SheetView::DeleteRows()
 		}
 	}
 
-	RecalculateAll(fDoc);
+	RecalculateOwningWorkbook();
 	Invalidate();
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -810,7 +810,7 @@ void SheetView::DeleteColumns()
 		}
 	}
 
-	RecalculateAll(fDoc);
+	RecalculateOwningWorkbook();
 	Invalidate();
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -862,7 +862,7 @@ void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 		}
 	}
 
-	RecalculateAll(fDoc);
+	RecalculateOwningWorkbook();
 }
 
 void SheetView::SaveUndoState(range affected)
@@ -1616,7 +1616,7 @@ void SheetView::CommitEditing(bool cancel)
 		catch (...)
 		{
 		}
-		RecalculateAll(fDoc);
+		RecalculateOwningWorkbook();
 		NotifyDocumentChanged();
 	}
 
@@ -1658,4 +1658,13 @@ void SheetView::NotifyDocumentChanged()
 	MainWindow* win = dynamic_cast<MainWindow*>(Window());
 	if (win)
 		win->DocumentChanged();
+}
+
+void SheetView::RecalculateOwningWorkbook()
+{
+	MainWindow* win = dynamic_cast<MainWindow*>(Window());
+	if (win)
+		win->RecalculateActiveWorkbook();
+	else
+		RecalculateAll(fDoc);
 }

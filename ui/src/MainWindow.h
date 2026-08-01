@@ -19,18 +19,23 @@
 #include "AscdIO.h"
 #include "Cell.h"
 #include "Chart.h"
+#include "Container.h"
 
 class BFilePanel;
 class BTextControl;
 class BStringView;
 class SheetView;
 class SheetTabView;
-class CContainer;
 class FindWindow;
 class ChartWindow;
 class PivotWindow;
 
-class MainWindow : public BWindow {
+// MainWindow implementa ISheetResolver (Container.h, Fase 9) perche'
+// e' lei a possedere fSheets, l'unico elenco di "nome foglio -> CContainer*"
+// che esista: i CContainer dei fogli aperti si limitano a tenere un
+// puntatore preso in prestito a questa interfaccia (vedi
+// AttachSheetResolver sotto), mai a fSheets direttamente.
+class MainWindow : public BWindow, public ISheetResolver {
 public:
 	MainWindow();
 	virtual ~MainWindow();
@@ -89,6 +94,24 @@ public:
 	const char* SheetName(int index) const { return fSheets[index].name.String(); }
 	void SwitchToSheet(int index);
 
+	// ISheetResolver (Fase 9): risolve "NomeFoglio!Cella" verso il
+	// CContainer corrispondente in fSheets, per nome. Pubblico perche'
+	// la classe lo espone come override di un'interfaccia pubblica, non
+	// per uso diretto dall'esterno -- vedi AttachSheetResolver sotto
+	// per come i CContainer dei fogli ne ricevono il puntatore.
+	CContainer* ResolveSheetByName(const char* inName);
+
+	// Pubblico per lo stesso motivo di CopySelection/PasteSelection
+	// sopra -- vedi tests/test_xsheet.cpp. Ricalcola l'intera cartella
+	// di lavoro (tutti i fogli, non solo quello attivo) se ne esiste
+	// piu' di uno, altrimenti il solo foglio attivo (RecalculateAll,
+	// piu' economico) -- serve perche' una formula in un foglio puo'
+	// referenziarne un altro (vedi AscdIO.h), quindi modificare un
+	// foglio puo' richiedere di ricalcolare anche gli altri. Sostituisce
+	// RecalculateAll(fDoc) in tutti i punti che gia' lo chiamavano dopo
+	// una modifica del documento.
+	void RecalculateActiveWorkbook();
+
 private:
 	SheetView* fSheetView;
 	BTextControl* fFormulaBar;
@@ -124,6 +147,16 @@ private:
 	// CContainer dei fogli precedenti (Release(), mai delete diretto).
 	void ResetWorkbook(const char* name);
 	void RebuildSheetTabs();
+
+	// Collega questa MainWindow (come ISheetResolver) a ogni
+	// CContainer in fSheets, cosi' le formule possono referenziare un
+	// foglio diverso dal proprio (Fase 9) -- chiamato da ResetWorkbook
+	// e da OpenFile ogni volta che fSheets cambia. Il puntatore e'
+	// preso in prestito (mai posseduto dai CContainer, vedi il
+	// commento su ISheetResolver in Container.h): non serve nessuno
+	// scollegamento esplicito quando un foglio viene rilasciato, dato
+	// che a quel punto il puntatore stesso smette di essere usato.
+	void AttachSheetResolver();
 
 	// Nome del file corrente (solo il nome, non il percorso completo:
 	// basta per il titolo -- vedi UpdateTitle) e se il documento ha

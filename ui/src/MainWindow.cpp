@@ -511,6 +511,33 @@ void MainWindow::ResetWorkbook(const char* name)
 	}
 	if (fSheetTabView)
 		RebuildSheetTabs();
+
+	AttachSheetResolver();
+}
+
+// ISheetResolver (Fase 9): cerca per nome esatto (case-sensitive) fra
+// i fogli aperti -- vedi il commento su ISheetResolver in Container.h
+// sul perche' la risoluzione e' per nome e non per indice.
+CContainer* MainWindow::ResolveSheetByName(const char* inName)
+{
+	for (size_t i = 0; i < fSheets.size(); i++)
+		if (fSheets[i].name == inName)
+			return fSheets[i].doc;
+	return NULL;
+}
+
+void MainWindow::AttachSheetResolver()
+{
+	for (size_t i = 0; i < fSheets.size(); i++)
+		fSheets[i].doc->SetSheetResolver(this);
+}
+
+void MainWindow::RecalculateActiveWorkbook()
+{
+	if (fSheets.size() > 1)
+		RecalculateWorkbook(fSheets);
+	else
+		RecalculateAll(fDoc);
 }
 
 void MainWindow::SwitchToSheet(int index)
@@ -674,6 +701,17 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fSheetView->SetColumnWidths(fSheets[0].colWidths);
 	RebuildSheetTabs();
 
+	// Collega il resolver PRIMA di ricalcolare: ogni foglio e' stato
+	// letto (e gia' ricalcolato una prima volta) da LoadASCDBook/
+	// LoadASCD singolarmente, quando gli altri fogli della stessa
+	// cartella di lavoro non erano ancora tutti presenti -- un
+	// riferimento incrociato (Fase 9, "NomeFoglio!Cella") non poteva
+	// quindi risolversi in quella prima passata. Questo ricalcolo
+	// dell'intera cartella, con tutti i fogli gia' collegati fra loro,
+	// e' il primo punto in cui puo' farlo correttamente.
+	AttachSheetResolver();
+	RecalculateWorkbook(fSheets);
+
 	fDocumentName = ref.name;
 	fModified = false;
 	UpdateTitle();
@@ -802,7 +840,7 @@ void MainWindow::CopySelection(bool cut)
 		for (int i = 0; i < numRows; i++)
 			for (int j = 0; j < numCols; j++)
 				fDoc->DisposeCell(cell(sel.left + j, sel.top + i));
-		RecalculateAll(fDoc);
+		RecalculateActiveWorkbook();
 		fSheetView->Invalidate();
 		SelectionChanged(fSheetView->Selection());
 		MarkModified();
@@ -918,7 +956,7 @@ void MainWindow::PasteSelection()
 			}
 		}
 
-		RecalculateAll(fDoc);
+		RecalculateActiveWorkbook();
 		fSheetView->Invalidate();
 		fSheetView->SetSelection(destRange.TopLeft());
 		fSheetView->ExtendSelection(destRange.BotRight());
@@ -1196,7 +1234,7 @@ void MainWindow::ReplaceCurrent(const char* searchText, const char* replaceText)
 	catch (...)
 	{
 	}
-	RecalculateAll(fDoc);
+	RecalculateActiveWorkbook();
 	fSheetView->Invalidate();
 	SelectionChanged(sel);
 	MarkModified();
@@ -1265,7 +1303,7 @@ void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
 	// per cella modificata: piu' efficiente ed equivalente (vedi
 	// AscdIO.h per il perche' non basta CalcCell sulla sola cella
 	// toccata).
-	RecalculateAll(fDoc);
+	RecalculateActiveWorkbook();
 	fSheetView->Invalidate();
 	SelectionChanged(fSheetView->Selection());
 	MarkModified();
@@ -1366,7 +1404,7 @@ void MainWindow::CommitFormulaBar()
 	catch (...)
 	{
 	}
-	RecalculateAll(fDoc);
+	RecalculateActiveWorkbook();
 	fSheetView->Invalidate();
 }
 

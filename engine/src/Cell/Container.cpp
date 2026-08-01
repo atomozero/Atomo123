@@ -86,6 +86,7 @@ CContainer::CContainer(CCellView *inPane, CNameTable *inNames)
 	fNames = inNames;
 	fNewNames = false;
 	fReferenceCount = 1;
+	fSheetResolver = NULL;
 	
 	CellStyle cs;
 

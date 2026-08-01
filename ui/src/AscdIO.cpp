@@ -421,18 +421,56 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 // NextExisting resta comunque efficiente su un range pieno: salta
 // direttamente da una cella esistente alla successiva tramite la
 // mappa, senza scandire le celle vuote in mezzo.
+// Una singola passata su "doc" (usata sia da RecalculateAll che da
+// RecalculateWorkbook sotto): true se almeno una cella ha cambiato
+// valore, cioe' se serve un'altra passata per raggiungere la
+// convergenza.
+static bool RecalculatePass(CContainer* doc)
+{
+	bool changed = false;
+	CCellIterator iter(doc, NULL);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		if (doc->CalcCell(c))
+			changed = true;
+	}
+	return changed;
+}
+
 void RecalculateAll(CContainer* doc)
 {
 	bool changed = true;
 	int guard = 0;
 	while (changed && guard < 50)
 	{
+		changed = RecalculatePass(doc);
+		guard++;
+	}
+}
+
+// Stesso principio di RecalculateAll, esteso a TUTTI i fogli di una
+// cartella di lavoro invece di un solo CContainer: una formula puo'
+// referenziare un foglio diverso dal proprio (Fase 9, vedi
+// ISheetResolver in Container.h), quindi il ricalcolo per
+// convergenza deve considerare le celle di ogni foglio a ogni
+// passata, non i fogli uno alla volta in sequenza -- altrimenti un
+// foglio B che referenzia un foglio A ricalcolato PRIMA di lui nella
+// stessa passata leggerebbe comunque un valore aggiornato (va bene),
+// ma l'inverso (A referenzia B) alla stessa passata leggerebbe
+// ancora il valore vecchio di B, richiedendo un'altra passata
+// completa per propagarsi -- esattamente cio' che il ciclo esterno
+// "changed" gia' gestisce, come per un singolo foglio.
+void RecalculateWorkbook(std::vector<AscdSheet>& sheets)
+{
+	bool changed = true;
+	int guard = 0;
+	while (changed && guard < 50)
+	{
 		changed = false;
-		CCellIterator iter(doc, NULL);
-		cell c;
-		while (iter.NextExisting(c))
+		for (size_t i = 0; i < sheets.size(); i++)
 		{
-			if (doc->CalcCell(c))
+			if (RecalculatePass(sheets[i].doc))
 				changed = true;
 		}
 		guard++;

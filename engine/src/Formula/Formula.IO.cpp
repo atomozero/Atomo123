@@ -142,18 +142,44 @@ void CFormula::Write(BPositionIO& inStream)
 				indx += sizeof(range) / kPFWordSize;
 				break;
 			}
-// •••R4Hack
-//			case valXRef:
-//			{
-//				int ref = *(int *)(fString + indx);
-//				CHECKWRITE(str, &ref, sizeof(XRef));
-//				indx += sizeof(XRef) / kPFWordSize;
-//				break;
-//			}
+			case valXRef:
+			{
+				// Il nome del foglio si scrive come stringa (stesso
+				// formato lunghezza-prefissa di valName/valStr sopra),
+				// non un indice: vedi il commento su ISheetResolver in
+				// Container.h sul perche'.
+				const char *sheetName = (const char *)(fString + indx);
+				size_t nameLen = strlen(sheetName) + 1;
+				cell target;
+				memcpy(&target, sheetName + nameLen, sizeof(cell));
+				size_t totalBytes = nameLen + sizeof(cell);
+				if (totalBytes & kPFAlignBits)
+					totalBytes = (totalBytes & ~kPFAlignBits) + kPFWordSize;
+				indx += totalBytes / kPFWordSize;
+
+				str << (char *)sheetName;
+				str << target.v << target.h;
+				break;
+			}
+			case valXRange:
+			{
+				const char *sheetName = (const char *)(fString + indx);
+				size_t nameLen = strlen(sheetName) + 1;
+				range target;
+				memcpy(&target, sheetName + nameLen, sizeof(range));
+				size_t totalBytes = nameLen + sizeof(range);
+				if (totalBytes & kPFAlignBits)
+					totalBytes = (totalBytes & ~kPFAlignBits) + kPFWordSize;
+				indx += totalBytes / kPFWordSize;
+
+				str << (char *)sheetName;
+				str << target.top << target.left << target.bottom << target.right;
+				break;
+			}
 		}
 	}
 	while (token != opEnd);
-	
+
 } /* CFormula::Write */
 
 void CFormula::Read(BPositionIO& inStream, int *inFuncList)
@@ -232,14 +258,38 @@ void CFormula::Read(BPositionIO& inStream, int *inFuncList)
 				AddToken(opCode, &r, offset);
 				break;
 			}
-// •••R4Hack
-//			case valXRef:
-//			{
-//				int ref;
-//				str.Read(&ref, sizeof(XRef));
-//				AddToken(valXRef, &ref, offset);
-//				break;
-//			}
+			case valXRef:
+			{
+				// Stesso principio di valStr sopra (nome lunghezza-
+				// prefissa sullo stream), con la cell aggiunta subito
+				// dopo nel buffer passato ad AddToken -- vedi il
+				// commento su ISheetResolver in Container.h.
+				char name[256];
+				str >> name;
+				cell c;
+				str >> c.v >> c.h;
+
+				char buf[sizeof(name) + sizeof(cell)];
+				size_t nameLen = strlen(name) + 1;
+				memcpy(buf, name, nameLen);
+				memcpy(buf + nameLen, &c, sizeof(cell));
+				AddToken(opCode, buf, offset);
+				break;
+			}
+			case valXRange:
+			{
+				char name[256];
+				str >> name;
+				range r;
+				str >> r.top >> r.left >> r.bottom >> r.right;
+
+				char buf[sizeof(name) + sizeof(range)];
+				size_t nameLen = strlen(name) + 1;
+				memcpy(buf, name, nameLen);
+				memcpy(buf + nameLen, &r, sizeof(range));
+				AddToken(opCode, buf, offset);
+				break;
+			}
 			case opEnd:
 			case opRaise:
 			case opMul:
@@ -323,16 +373,23 @@ void CFormula::CollectFunctionNrs(CSet& funcs) const
 			case valRange:
 				indx += sizeof(range) / kPFWordSize;
 				break;
-				
+			case valXRef:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(cell);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
+			case valXRange:
+				l = strlen((char *)(fString + indx)) + 1 + sizeof(range);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
+
 			default:
 				// there was a wearning about not all enum values handled in
 				// switch statement.
 				break;
-				
-// •••R4Hack
-//			case valXRef:
-//				indx += sizeof(XRef) / kPFWordSize;
-//				break;
 		}
 	}
 	while (theOpcode != opEnd);

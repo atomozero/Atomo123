@@ -74,7 +74,7 @@ enum PFToken {
 	valNum, valBool, valStr, valCell, valNil,
 	valRange, valPerc, valTime, opNOT, opAND,
 	opOR, valName, opParen,
-	valXRef
+	valXRef, valXRange
 };
 
 const long
@@ -94,11 +94,28 @@ struct FuncCallData {
 	short funcNr;
 	short argCnt;
 };
+
+// Riferimento a un'altra scheda della stessa cartella di lavoro
+// (formula "NomeFoglio!Cella"/"NomeFoglio!Cella:Cella", Fase 9): il
+// NOME del foglio (non un indice) e' incorporato nel bytecode come
+// stringa terminata da NUL, esattamente come valName per i nomi di
+// intervallo -- risolto in fase di CALCOLO (mai di parsing) tramite
+// CContainer::GetSheetResolver() (vedi Container.h). Stesso principio
+// del vecchio "XRef" di Sum-It (un fileNr per riferimenti fra file
+// separati, mai completato: vedi i commenti "R4Hack" ancora presenti
+// in Formula.cpp), riusato per fogli della stessa cartella invece che
+// file esterni, ma per nome invece che per indice -- un indice
+// risolto gia' in fase di parsing richiederebbe che il foglio
+// referenziato esista gia' in quel momento, cosa falsa quando un
+// foglio viene ri-analizzato da solo durante il caricamento di un
+// file (vedi il commento su ISheetResolver in Container.h).
 //
-//struct XRef {
-//	int fileNr;
-//	cell cell;
-//};
+// Layout in memoria (bytecode) di valXRef: nome del foglio (NUL-
+// terminato) seguito da una "cell" (allineamento non garantito, letta
+// sempre byte a byte). valXRange: stesso nome, seguito da una "range".
+// Nessuna struct dedicata: gli accessi vanno tramite aritmetica sui
+// puntatori (vedi Formula.cpp), stesso principio gia' usato per
+// valStr/valName.
 
 class CFormula {
 	friend class CFormulaIterator;

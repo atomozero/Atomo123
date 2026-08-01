@@ -64,7 +64,15 @@ test-functions: $(LIB) $(FUNC_TEST_RSRC)
 	$(CXX) -o tests/named_functions_test $(OBJDIR)/named_functions_test.o -L. -lengine -lbe
 	./tests/named_functions_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test
+# Test dei riferimenti fra fogli (Fase 9, "NomeFoglio!Cella"):
+# ISheetResolver, valXRef/valXRange, parsing/calcolo/UnMangle -- vedi
+# il commento in cima a xsheet_test.cpp.
+test-xsheet: $(LIB)
+	$(CXX) -c tests/xsheet_test.cpp -o $(OBJDIR)/xsheet_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/xsheet_test $(OBJDIR)/xsheet_test.o -L. -lengine -lbe
+	./tests/xsheet_test
 
-.PHONY: all clean test test-functions
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test
+
+.PHONY: all clean test test-functions test-xsheet

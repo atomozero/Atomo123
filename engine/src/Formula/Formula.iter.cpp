@@ -135,9 +135,24 @@ bool CFormulaIterator::Next(cell& ioCell)
 				fIndex = -fIndex;
 				ioCell = fRange.TopLeft();
 				break;
-//			case valXRef:
-//				fIndex += sizeof(XRef) / kPFWordSize;
-//				break;
+			case valXRef:
+				// Punta a un CContainer diverso: irrilevante per
+				// questo iteratore, che segue le dipendenze SOLO
+				// dentro il container corrente (vedi CCalcStack) --
+				// si salta la dimensione senza farlo contare come
+				// riferimento trovato (non e' fra le condizioni del
+				// while sotto).
+				l = strlen((char *)(fString + fIndex)) + 1 + sizeof(cell);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				fIndex += l / kPFWordSize;
+				break;
+			case valXRange:
+				l = strlen((char *)(fString + fIndex)) + 1 + sizeof(range);
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				fIndex += l / kPFWordSize;
+				break;
 			default:
 				// there was a warning about not all enum values handled in
 				// switch statement.
