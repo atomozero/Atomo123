@@ -2981,14 +2981,21 @@ Fase 11.
       `sizeof(CellStyle)` diversi). Da tenere a mente per ogni
       modifica futura a un header del motore, non solo per questo
       campo.
-- [ ] **Testo a capo e altezza di riga automatica**: nessuna
-      infrastruttura esistente, il disegno del testo è oggi sempre su
-      una riga sola. Nuovo campo `wrapText` in `CellStyle`, a-capo del
-      testo per larghezza di colonna in `SheetView`, e ricalcolo
-      dell'altezza di riga quando supera quella di default (si
-      appoggia alle altezze di riga per-riga già persistite in Fase
-      10, non serve un nuovo meccanismo di persistenza, solo il
-      calcolo all'importazione/modifica).
+- [x] **Testo a capo e altezza di riga automatica**: nuovo campo
+      `CellStyle::fWrapText` (il motore non fa layout di testo, solo
+      la UI). Voce "A capo automatico" nel menu Formato
+      (`MainWindow::ToggleWrapText`), disegno a righe multiple in
+      `SheetView::Draw` (`WrapTextLines`, a-capo per parola, nessuna
+      sillabazione) e `SheetView::RecalculateWrappedRowHeights` che fa
+      crescere l'altezza delle righe coinvolte quando serve (mai
+      ridotta sotto quella già impostata) — chiamata sia dopo
+      `ToggleWrapText` sia dopo l'apertura di un documento (nativo o
+      importato): il translator XLSX imposta solo `fWrapText` da
+      `wrapText="1"` (nessuna view/font a quel livello per misurare il
+      testo), l'altezza vera si calcola quando il documento arriva
+      nella UI, che ha sempre un font/view vivi. Si appoggia alle
+      altezze di riga per-riga già persistite in Fase 10 per il
+      salvataggio, non serve un nuovo meccanismo lì.
 - [ ] **Celle unite**: nessuna infrastruttura esistente in motore o
       UI, verificato anche nel Sum-It storico. Serve un nuovo concetto
       a livello di `CContainer` (elenco di rettangoli uniti per
