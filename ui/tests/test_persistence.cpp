@@ -1,29 +1,38 @@
 /*
 	test_persistence.cpp
 
-	Verifica la persistenza nel formato nativo (Fase 10) di Blocca
-	riquadri e altezza di riga -- le due funzionalita' rimaste "solo
-	per la sessione corrente" dopo la Fase 7, ora salvate/ricaricate
-	tramite una sezione opzionale in coda al formato ASCD, stesso
-	principio gia' usato per larghezza di colonna e colori (vedi il
-	commento in AscdIO.h). Non copre font/allineamento (ancora un
-	limite noto, vedi ROADMAP.md Fase 10 -- fFont e' un indice
-	volatile in gFontSizeTable, richiede una sezione a parte non
-	ancora scritta).
+	Verifica la persistenza nel formato nativo (Fase 10) delle quattro
+	preferenze rimaste "solo per la sessione corrente" dopo la Fase 7:
+	Blocca riquadri, altezza di riga, font di cella (grassetto/
+	corsivo) e allineamento -- tutte salvate/ricaricate tramite
+	sezioni opzionali in coda al formato ASCD, stesso principio gia'
+	usato per larghezza di colonna e colori (vedi il commento in
+	AscdIO.h). Il font e' il caso piu' delicato: CellStyle::fFont e'
+	un indice VOLATILE in gFontSizeTable, valido solo per la sessione
+	che l'ha creato -- si scrive/rilegge la tripla famiglia/stile/
+	dimensione, non l'indice grezzo (vedi il commento in AscdIO.cpp).
 
 	Stesso motivo di BApplication di test_ascd_io.cpp/test_ascd_book.cpp:
 	GetCellFormula su una formula passa da BFont::StringWidth, che
-	senza un'app registrata resta bloccato in attesa dell'app_server.
+	senza un'app registrata resta bloccato in attesa dell'app_server
+	-- per lo stesso motivo, un font/famiglia realmente installato
+	(quello di be_plain_font, non un nome inventato) evita di dover
+	passare dal ripiego di CFontMetrics che referenzia gPrefs (qui
+	NULL, nessuna vera App::App() in questo harness).
 */
 
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 #include <Application.h>
 #include <File.h>
+#include <Font.h>
 
 #include "AscdIO.h"
 #include "Cell.h"
+#include "CellStyle.h"
+#include "FontMetrics.h"
 #include "Container.h"
 #include "CellParser.h"
 
@@ -48,12 +57,35 @@ int main()
 
 	CContainer* doc = new CContainer(NULL, NULL);
 	TryToParseString("10", cell(1, 1), doc, true); // A1
+	TryToParseString("20", cell(1, 2), doc, true); // A2, in grassetto sotto
+	TryToParseString("30", cell(1, 3), doc, true); // A3, allineata a destra sotto
 
 	std::vector<std::pair<int, float> > rowHeights;
 	rowHeights.push_back(std::make_pair(1, 40.0f)); // riga 1 alta il doppio
 	rowHeights.push_back(std::make_pair(3, 10.0f)); // riga 3 al minimo
 
 	int frozenRows = 2, frozenCols = 1;
+
+	// Font non predefinito su A2 (grassetto), sulla famiglia REALE del
+	// font di sistema (vedi il commento in cima al file sul perche').
+	font_family sysFamily;
+	font_style sysStyle;
+	be_plain_font->GetFamilyAndStyle(&sysFamily, &sysStyle);
+	int boldFontID = (int)gFontSizeTable.GetFontID(sysFamily, "Bold", 14.0f);
+	{
+		CellStyle cs;
+		doc->GetCellStyle(cell(1, 2), cs);
+		cs.fFont = boldFontID;
+		doc->SetCellStyle(cell(1, 2), cs);
+	}
+
+	// Allineamento non predefinito su A3 (a destra).
+	{
+		CellStyle cs;
+		doc->GetCellStyle(cell(1, 3), cs);
+		cs.fAlignment = eAlignRight;
+		doc->SetCellStyle(cell(1, 3), cs);
+	}
 
 	{
 		BFile file(path, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
@@ -87,6 +119,43 @@ int main()
 	}
 	Check(foundRow1, "l'altezza della riga 1 (40) e' quella corretta dopo il giro");
 	Check(foundRow3, "l'altezza della riga 3 (10) e' quella corretta dopo il giro");
+
+	// Font: A2 e' ancora in grassetto (indice DIVERSO da prima --
+	// l'indice grezzo non e' portabile, vedi il commento in cima al
+	// file -- ma la stessa famiglia/dimensione e "Bold" nello stile).
+	{
+		CellStyle cs;
+		reloaded->GetCellStyle(cell(1, 2), cs);
+		font_family family;
+		font_style style;
+		float size;
+		gFontSizeTable.GetFontInfo(cs.fFont, &family, &style, &size);
+		Check(strcmp(family, sysFamily) == 0 && strstr(style, "Bold") != NULL && size == 14.0f,
+			"il font di A2 (famiglia, Bold, dimensione) sopravvive al giro, "
+			"anche se l'indice grezzo cambia");
+	}
+
+	// A1 (mai toccata) resta col font predefinito: la sezione non
+	// scrive/sovrascrive celle che non l'avevano mai avuto.
+	{
+		CellStyle cs;
+		reloaded->GetCellStyle(cell(1, 1), cs);
+		CellStyle defaultStyle;
+		Check(cs.fFont == defaultStyle.fFont,
+			"A1 (mai messa in grassetto) resta col font predefinito dopo il giro");
+	}
+
+	// Allineamento: A3 e' ancora allineata a destra, A1/A2 restano
+	// generiche (mai toccate).
+	{
+		CellStyle cs;
+		reloaded->GetCellStyle(cell(1, 3), cs);
+		Check(cs.fAlignment == eAlignRight, "l'allineamento a destra di A3 sopravvive al giro");
+
+		reloaded->GetCellStyle(cell(1, 1), cs);
+		Check(cs.fAlignment == eAlignGeneral,
+			"A1 (mai allineata) resta con l'allineamento generico dopo il giro");
+	}
 
 	// Un file scritto SENZA queste sezioni (chiamante che passa NULL,
 	// come tutte le chiamate a SaveASCD/LoadASCD esistenti prima di
