@@ -13,6 +13,7 @@
 #include "PivotWindow.h"
 #include "NameWindow.h"
 #include "PasteSpecialWindow.h"
+#include "GoToWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
 #include "RangeRef.h"
@@ -82,6 +83,7 @@ static const uint32 kMsgShowChart = 'shch';
 static const uint32 kMsgShowPivot = 'shpv';
 static const uint32 kMsgShowNames = 'shnm';
 static const uint32 kMsgShowPasteSpecial = 'shps';
+static const uint32 kMsgShowGoTo = 'shgt';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -292,6 +294,8 @@ MainWindow::MainWindow()
 	editMenu->AddSeparatorItem();
 	editMenu->AddItem(new BMenuItem("Trova e sostituisci" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgFind), 'F'));
+	editMenu->AddItem(new BMenuItem("Vai a" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowGoTo), 'G'));
 	menuBar->AddItem(editMenu);
 
 	// Formato numero della cella selezionata: agisce su CellStyle::fFormat
@@ -425,6 +429,7 @@ MainWindow::MainWindow()
 	fPivotWindow = NULL;
 	fNameWindow = NULL;
 	fPasteSpecialWindow = NULL;
+	fGoToWindow = NULL;
 
 	UpdateTitle();
 }
@@ -462,6 +467,11 @@ MainWindow::~MainWindow()
 	{
 		fPasteSpecialWindow->Lock();
 		fPasteSpecialWindow->Quit();
+	}
+	if (fGoToWindow)
+	{
+		fGoToWindow->Lock();
+		fGoToWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -1230,6 +1240,27 @@ void MainWindow::ShowPasteSpecialWindow()
 	fPasteSpecialWindow->Activate();
 }
 
+void MainWindow::ShowGoToWindow()
+{
+	if (!fGoToWindow)
+		fGoToWindow = new GoToWindow(BMessenger(this));
+
+	if (fGoToWindow->IsHidden())
+		fGoToWindow->Show();
+	fGoToWindow->Activate();
+}
+
+void MainWindow::HandleGoToRequest(const char* rangeText)
+{
+	range r;
+	if (!ParseRangeRef(rangeText, r))
+		return;
+
+	fSheetView->SetSelection(r.TopLeft());
+	if (!(r.TopLeft() == r.BotRight()))
+		fSheetView->ExtendSelection(r.BotRight());
+}
+
 void MainWindow::HandleDefineName(const char* name, const char* rangeText)
 {
 	if (!name || !name[0])
@@ -1887,6 +1918,18 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindInt32("operation", &operation);
 			message->FindBool("transpose", &transpose);
 			HandlePasteSpecialRequest(content, operation, transpose);
+			break;
+		}
+
+		case kMsgShowGoTo:
+			ShowGoToWindow();
+			break;
+
+		case kMsgGoToRequest:
+		{
+			BString rangeText;
+			if (message->FindString("range", &rangeText) == B_OK)
+				HandleGoToRequest(rangeText.String());
 			break;
 		}
 
