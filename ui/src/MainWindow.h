@@ -81,6 +81,17 @@ public:
 	void SetTextColor(rgb_color color);
 	void SetBackgroundColor(rgb_color color);
 
+	// Bordi di cella (Fase 11), stesso principio di ToggleBold/
+	// ToggleItalic sopra -- vedi tests/test_borders.cpp. "side": 0 =
+	// superiore, 1 = sinistro, 2 = inferiore, 3 = destro (stesso
+	// ordine di CellStyle::fTBorderColor/fLBorderColor/fBBorderColor/
+	// fRBorderColor). ClearBorders toglie tutti e quattro i lati in
+	// un colpo solo, sempre su tutto SelectionRange() direttamente
+	// (nessuno stato "di partenza" da invertire, a differenza di
+	// ToggleBorder).
+	void ToggleBorder(int side);
+	void ClearBorders();
+
 	// Pubblico per lo stesso motivo di SetCellFormat sopra -- vedi
 	// tests/test_preferences.cpp. showGrid si applica alla sola
 	// SheetView di questa finestra; decimalSeparator/listSeparator

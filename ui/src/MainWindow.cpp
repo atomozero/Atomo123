@@ -97,6 +97,8 @@ static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
 static const uint32 kMsgShowBgColor = 'shbc';
 static const uint32 kMsgShowPreferences = 'shpr';
+static const uint32 kMsgToggleBorder = 'tbrd';
+static const uint32 kMsgClearBorders = 'cbrd';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -354,6 +356,24 @@ MainWindow::MainWindow()
 		new BMessage(kMsgShowTextColor)));
 	formatMenu->AddItem(new BMenuItem("Colore sfondo" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgShowBgColor)));
+	formatMenu->AddSeparatorItem();
+	// Bordi di cella (Fase 11): un lato alla volta, come Grassetto/
+	// Corsivo sopra -- vedi MainWindow::ToggleBorder ("side" nello
+	// stesso ordine di CellStyle::fTBorderColor/fLBorderColor/
+	// fBBorderColor/fRBorderColor).
+	BMessage* topBorderMsg = new BMessage(kMsgToggleBorder);
+	topBorderMsg->AddInt32("side", 0);
+	formatMenu->AddItem(new BMenuItem("Bordo superiore", topBorderMsg));
+	BMessage* leftBorderMsg = new BMessage(kMsgToggleBorder);
+	leftBorderMsg->AddInt32("side", 1);
+	formatMenu->AddItem(new BMenuItem("Bordo sinistro", leftBorderMsg));
+	BMessage* bottomBorderMsg = new BMessage(kMsgToggleBorder);
+	bottomBorderMsg->AddInt32("side", 2);
+	formatMenu->AddItem(new BMenuItem("Bordo inferiore", bottomBorderMsg));
+	BMessage* rightBorderMsg = new BMessage(kMsgToggleBorder);
+	rightBorderMsg->AddInt32("side", 3);
+	formatMenu->AddItem(new BMenuItem("Bordo destro", rightBorderMsg));
+	formatMenu->AddItem(new BMenuItem("Nessun bordo", new BMessage(kMsgClearBorders)));
 	menuBar->AddItem(formatMenu);
 
 	// Riempi in basso/a destra: copia la prima riga/colonna
@@ -1558,6 +1578,68 @@ void MainWindow::SetBackgroundColor(rgb_color color)
 	MarkModified();
 }
 
+// Legge/scrive il campo di CellStyle corrispondente a "side" (0..3 =
+// superiore/sinistro/inferiore/destro, stesso ordine di
+// ToggleBorder/ClearBorders in MainWindow.h) -- un unico punto invece
+// di quattro rami quasi identici ripetuti in ToggleBorder/ClearBorders
+// sotto.
+static uchar& BorderField(CellStyle& cs, int side)
+{
+	switch (side)
+	{
+		case 1: return cs.fLBorderColor;
+		case 2: return cs.fBBorderColor;
+		case 3: return cs.fRBorderColor;
+		default: return cs.fTBorderColor;
+	}
+}
+
+void MainWindow::ToggleBorder(int side)
+{
+	if (!fDoc)
+		return;
+
+	// Stato di partenza dalla sola cella attiva (come Grassetto/
+	// Corsivo): se non ha gia' un bordo su quel lato, l'intera
+	// selezione lo ottiene; se ce l'ha gia', lo perde.
+	CellStyle activeStyle;
+	fDoc->GetCellStyle(fSheetView->Selection(), activeStyle);
+	bool hadBorder = BorderField(activeStyle, side) != 0;
+	uchar newValue = hadBorder ? 0 : 1;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			BorderField(cs, side) = newValue;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::ClearBorders()
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fTBorderColor = cs.fLBorderColor = cs.fBBorderColor = cs.fRBorderColor = 0;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::HandleGoToRequest(const char* rangeText)
 {
 	range r;
@@ -2293,6 +2375,18 @@ void MainWindow::MessageReceived(BMessage* message)
 			HandlePreferencesRequest(showGrid, (char)decimalSep, (char)listSep);
 			break;
 		}
+
+		case kMsgToggleBorder:
+		{
+			int32 side = 0;
+			if (message->FindInt32("side", &side) == B_OK)
+				ToggleBorder(side);
+			break;
+		}
+
+		case kMsgClearBorders:
+			ClearBorders();
+			break;
 
 		case kMsgGoToRequest:
 		{

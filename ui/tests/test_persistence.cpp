@@ -1,16 +1,17 @@
 /*
 	test_persistence.cpp
 
-	Verifica la persistenza nel formato nativo (Fase 10) delle quattro
-	preferenze rimaste "solo per la sessione corrente" dopo la Fase 7:
-	Blocca riquadri, altezza di riga, font di cella (grassetto/
-	corsivo) e allineamento -- tutte salvate/ricaricate tramite
-	sezioni opzionali in coda al formato ASCD, stesso principio gia'
-	usato per larghezza di colonna e colori (vedi il commento in
-	AscdIO.h). Il font e' il caso piu' delicato: CellStyle::fFont e'
-	un indice VOLATILE in gFontSizeTable, valido solo per la sessione
-	che l'ha creato -- si scrive/rilegge la tripla famiglia/stile/
-	dimensione, non l'indice grezzo (vedi il commento in AscdIO.cpp).
+	Verifica la persistenza nel formato nativo delle quattro preferenze
+	rimaste "solo per la sessione corrente" dopo la Fase 7 (Blocca
+	riquadri, altezza di riga, font di cella -- grassetto/corsivo -- e
+	allineamento, Fase 10) piu' i bordi di cella (Fase 11) -- tutti
+	salvati/ricaricati tramite sezioni opzionali in coda al formato
+	ASCD, stesso principio gia' usato per larghezza di colonna e
+	colori (vedi il commento in AscdIO.h). Il font e' il caso piu'
+	delicato: CellStyle::fFont e' un indice VOLATILE in
+	gFontSizeTable, valido solo per la sessione che l'ha creato -- si
+	scrive/rilegge la tripla famiglia/stile/dimensione, non l'indice
+	grezzo (vedi il commento in AscdIO.cpp).
 
 	Stesso motivo di BApplication di test_ascd_io.cpp/test_ascd_book.cpp:
 	GetCellFormula su una formula passa da BFont::StringWidth, che
@@ -87,6 +88,15 @@ int main()
 		doc->SetCellStyle(cell(1, 3), cs);
 	}
 
+	// Bordi (Fase 11) su A2: sinistro e inferiore, non gli altri due.
+	{
+		CellStyle cs;
+		doc->GetCellStyle(cell(1, 2), cs);
+		cs.fLBorderColor = 1;
+		cs.fBBorderColor = 1;
+		doc->SetCellStyle(cell(1, 2), cs);
+	}
+
 	{
 		BFile file(path, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 		status_t err = SaveASCD(doc, &file, NULL, NULL, &rowHeights, &frozenRows, &frozenCols);
@@ -155,6 +165,21 @@ int main()
 		reloaded->GetCellStyle(cell(1, 1), cs);
 		Check(cs.fAlignment == eAlignGeneral,
 			"A1 (mai allineata) resta con l'allineamento generico dopo il giro");
+	}
+
+	// Bordi: A2 ha ancora sinistro e inferiore, non gli altri due; A1
+	// (mai toccata) resta senza nessun bordo.
+	{
+		CellStyle cs;
+		reloaded->GetCellStyle(cell(1, 2), cs);
+		Check(cs.fLBorderColor != 0 && cs.fBBorderColor != 0
+			&& cs.fTBorderColor == 0 && cs.fRBorderColor == 0,
+			"i bordi sinistro e inferiore di A2 sopravvivono al giro, gli altri due restano assenti");
+
+		reloaded->GetCellStyle(cell(1, 1), cs);
+		Check(cs.fTBorderColor == 0 && cs.fLBorderColor == 0
+			&& cs.fBBorderColor == 0 && cs.fRBorderColor == 0,
+			"A1 (mai toccata) resta senza nessun bordo dopo il giro");
 	}
 
 	// Un file scritto SENZA queste sezioni (chiamante che passa NULL,
