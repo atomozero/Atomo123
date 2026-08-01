@@ -103,6 +103,17 @@ test-ascd-book: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
 	./tests/test_ascd_book
 
+# Test della persistenza di Blocca riquadri/altezza di riga nel
+# formato nativo (Fase 10): stessa ragione headless di test-ascd-book
+# sopra (solo AscdIO, nessuna vera MainWindow).
+test-persistence: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_persistence.cpp -o tests/test_persistence.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/AscdIO.cpp -o tests/AscdIO_persistence.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_persistence tests/test_persistence.o tests/AscdIO_persistence.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
+	./tests/test_persistence
+
 # Test della logica del grafico a barre (Chart.cpp): headless come
 # "test" sopra, non tocca mai BView/BWindow (quello e' ChartView, non
 # testato qui).
@@ -487,6 +498,8 @@ clean:
 		tests/test_goto tests/test_goto.o \
 		tests/test_freeze tests/test_freeze.o \
 		tests/test_format tests/test_format.o \
-		tests/test_preferences tests/test_preferences.o
+		tests/test_preferences tests/test_preferences.o \
+		tests/test_persistence tests/test_persistence.o tests/AscdIO_persistence.o \
+		/tmp/test_persistence.ascd /tmp/test_persistence_old.ascd
 
-.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-preferences clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-preferences test-persistence clean
