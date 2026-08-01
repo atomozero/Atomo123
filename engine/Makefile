@@ -80,7 +80,22 @@ test-names: $(LIB)
 	$(CXX) -o tests/named_ranges_test $(OBJDIR)/named_ranges_test.o -L. -lengine -lbe
 	./tests/named_ranges_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test
+# Micro-benchmark del ricalcolo a punto fisso (replica di
+# RecalculateAll): misura come scala il modello attuale al crescere di
+# N e della profondita' delle dipendenze, per decidere sui numeri se
+# valga la pena sostituire l'iterazione a punto fisso con un grafo
+# delle dipendenze (dirty-set + ordine topologico). Non modifica il
+# motore: lo esercita. Vedi il commento in cima a
+# tests/recalc_benchmark.cpp. Da eseguire su Haiku (richiede -lbe).
+# Suggerimento: rilancia con "make bench-recalc CXXFLAGS='-std=gnu++17
+# -O2'" per misurare anche l'effetto dell'ottimizzazione (l'app oggi
+# viene compilata senza -O2, quindi il default qui e' rappresentativo).
+bench-recalc: $(LIB)
+	$(CXX) -c tests/recalc_benchmark.cpp -o $(OBJDIR)/recalc_benchmark.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/recalc_benchmark $(OBJDIR)/recalc_benchmark.o -L. -lengine -lbe
+	./tests/recalc_benchmark
 
-.PHONY: all clean test test-functions test-xsheet test-names
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/recalc_benchmark
+
+.PHONY: all clean test test-functions test-xsheet test-names bench-recalc
