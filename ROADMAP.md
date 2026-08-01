@@ -73,13 +73,14 @@ ora al salvataggio/riapertura nel formato nativo. **Fase 11 (bordi
 delle celle) chiusa**: l'ultimo campo di `CellStyle` mai esposto dalla
 UI, mai implementato nemmeno nel Sum-It storico — un bordo nero
 semplice per lato, con UI dedicata e persistenza nel formato nativo.
-**Fase 12 (fedeltà visiva import XLSX) in corso**: aprire un file
-Excel reale e complesso (bordi, celle unite, formati numero, tabelle,
-formattazione condizionale, immagini) deve somigliare a quello che si
-vede aprendolo con Excel vero su Windows, non solo importare valori e
-colori grezzi — richiesto esplicitamente dall'utente dopo aver
-riaperto il file di gara reale da 38 fogli e trovato la resa "ancora
-carente". Aggiornato ad ogni fase completata.
+**Fase 12 (fedeltà visiva import XLSX) chiusa**: aprire un file Excel
+reale e complesso (bordi, celle unite, formati numero, formati
+data/ora, tabelle, formattazione condizionale, immagini incorporate)
+ora somiglia a quello che si vede aprendolo con Excel vero su Windows,
+non solo valori e colori grezzi come prima della fase — richiesto
+esplicitamente dall'utente dopo aver riaperto il file di gara reale da
+38 fogli e trovato la resa "ancora carente". Aggiornato ad ogni fase
+completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -2868,7 +2869,7 @@ lo verifichi.
 
 ---
 
-## Fase 12 — Fedeltà visiva import XLSX (IN CORSO)
+## Fase 12 — Fedeltà visiva import XLSX (CHIUSA)
 
 Verifica puntuale (grep mirato su `XlsxTranslator.cpp`, non solo
 lettura del codice) contro `[file di lavoro reale].xlsm`
@@ -3076,13 +3077,45 @@ Fase 11.
       nuova fixture `sample_dates.xlsx` (formato incorporato e
       personalizzato, più una cella numerica senza stile data per
       verificare che non venga toccata).
-- [ ] **Immagini incorporate**: leggere `xl/drawings/`+`xl/media/`
-      (un logo nel file reale), ancorarle a un intervallo di celle e
-      disegnarle in `SheetView` (o una `BView` figlia posizionata
-      sopra il foglio). Nessuna infrastruttura esistente per bitmap
-      nel motore o nella UI: nuovo concetto, probabilmente l'ultimo
-      punto della fase per complessità.
-- [ ] Test dedicato per ciascun punto in
+- [x] **Immagini incorporate**: legge `xl/drawings/drawingN.xml` (un
+      logo nel file reale) — `<xdr:from>` da colonna/riga 0-based più
+      uno scarto in EMU (unità di DrawingML, 9525 per pixel a 96 DPI,
+      la risoluzione predefinita di Excel), la dimensione da
+      `<xdr:ext>`/`<a:xfrm><a:ext>` — e risolve `<a:blip r:embed="..">`
+      tramite i _rels DEL DRAWING stesso (un livello di indirizzamento
+      indipendente da quelli del foglio, usati invece per collegare il
+      foglio al proprio drawing). Quando l'anchor non dà una
+      dimensione esplicita (`cx`/`cy` a 0, il caso comune anche nel
+      file di gara reale) si usa la dimensione naturale del PNG, letta
+      dal proprio header IHDR senza serve un decodificatore completo.
+      Nuovo concetto a livello di modello: `EmbeddedImage`
+      (`engine/src/Cell/EmbeddedImage.h`, nuovo file, struct dati pura
+      senza dipendenze da Interface/Translation Kit) vive fuori da
+      `CContainer`, come i grafici — ancorata a una cella invece di un
+      rettangolo assoluto, così segue la cella se righe/colonne
+      cambiano dimensione, esattamente come in Excel vero. Il blob PNG
+      grezzo viaggia così com'è fino a `SheetView`, che lo decodifica
+      in una `BBitmap` solo al disegno (`BTranslatorRoster`, nessuna
+      cache: il file reale ne ha una sola, piccola). Persistenza:
+      nuova sezione in coda al formato nativo, stesso principio
+      opzionale delle sezioni precedenti. **Bug reale scoperto dal vivo
+      sul file di gara reale**: dopo aver ricompilato `ui/` (che ora si
+      aspetta la sezione immagini per ogni foglio) senza reinstallare
+      anche il translator XLSX aggiornato, l'app restava bloccata
+      all'apertura — lo stesso disallineamento dello stream ASCB già
+      documentato per i grafici in Fase 9, qui riscoperto perché
+      `translators/xlsx/Makefile` ha un passo `install` separato da
+      `make` (copia l'add-on in `~/config/non-packaged/add-ons/
+      Translators/`) facile da dimenticare dopo una modifica al
+      formato. Verificato anche dal vivo sul file di gara reale (39
+      fogli, un logo su "P-GE_Generali") dopo aver reinstallato il
+      translator: apertura senza crash né blocchi. Test: nuova fixture
+      `sample_image.xlsx` (ancoraggio, scarto/dimensione espliciti,
+      blob PNG verificato byte per byte) in
+      `translators/xlsx/tests/test_xlsx_translator.cpp` e round-trip
+      completo (ancoraggio/scarto/dimensione/blob) in
+      `ui/tests/test_persistence.cpp`.
+- [x] Test dedicato per ciascun punto in
       `translators/xlsx/tests/test_xlsx_translator.cpp` (lettura) ed
       eventualmente `ui/tests/` per il disegno (celle unite, testo a
       capo, sottolineato), sul modello dei test già esistenti per
