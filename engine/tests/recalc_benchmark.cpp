@@ -32,12 +32,23 @@
 	Per ogni scenario misura anche il costo REALISTICO per singola
 	modifica: cambiare una cella e richiamare RecalculateAll una volta
 	(cio' che CommitEditing fa a ogni conferma).
+
+	Infine una variante "FREEZE UI": il ricalcolo gira SINCRONO sul
+	thread della finestra (BLooper), quindi la sua durata e' esattamente
+	il tempo per cui la UI resta bloccata a ogni conferma di cella.
+	Questa variante replica RecalculateWorkbook (ricalcolo dell'INTERA
+	cartella multi-foglio, il percorso piu' costoso) su cartelle di
+	dimensioni realistiche -- fino al file di gara da 38 fogli che ha
+	motivato la Fase 9 -- e traduce i millisecondi in un verdetto di
+	percezione utente. E' un limite inferiore del freeze reale: non
+	include il ridisegno via app_server che segue il ricalcolo.
 */
 
 #include <cstdio>
 #include <cstring>
 #include <chrono>
 #include <string>
+#include <vector>
 
 #include "Cell.h"
 #include "Value.h"
@@ -76,6 +87,29 @@ static int RecalculateAll(CContainer* doc)
 	while (changed && guard < 50)
 	{
 		changed = RecalculatePass(doc);
+		guard++;
+	}
+	return guard;
+}
+
+// Replica di RecalculateWorkbook (ui/src/AscdIO.cpp): a ogni passata
+// ri-scansiona TUTTI i fogli, non uno alla volta, perche' una formula
+// puo' referenziare un altro foglio (Fase 9). E' il percorso che
+// RecalculateActiveWorkbook prende su una cartella multi-foglio -- il
+// piu' costoso, ed e' cio' che gira sincrono sul thread della finestra
+// a ogni conferma di cella. Ritorna il numero di passate.
+static int RecalculateWorkbook(std::vector<CContainer*>& sheets)
+{
+	bool changed = true;
+	int guard = 0;
+	while (changed && guard < 50)
+	{
+		changed = false;
+		for (size_t i = 0; i < sheets.size(); i++)
+		{
+			if (RecalculatePass(sheets[i]))
+				changed = true;
+		}
 		guard++;
 	}
 	return guard;
@@ -173,11 +207,65 @@ static void RunCase(int n, Shape shape)
 	doc->Release();
 }
 
+// --- Variante: freeze percepito della UI ------------------------------
+
+// Traduce una durata in millisecondi nella sensazione all'utente. Il
+// ricalcolo gira SINCRONO sul thread della finestra (BLooper): per
+// tutto questo tempo la UI non ridisegna, non risponde al mouse/
+// tastiera, non si puo' annullare -> e' esattamente la durata del
+// "freeze".
+static const char* FreezeVerdict(double ms)
+{
+	if (ms < 16.0)   return "impercettibile (< 1 frame a 60 fps)";
+	if (ms < 100.0)  return "fluido";
+	if (ms < 1000.0) return "lag visibile";
+	return "FREEZE evidente (UI bloccata > 1 s)";
+}
+
+// Simula il costo di UNA modifica di cella su una cartella multi-foglio,
+// cioe' cio' che RecalculateActiveWorkbook -> RecalculateWorkbook fa
+// sincrono sul thread della finestra dopo ogni conferma. Ogni foglio e'
+// una catena FORWARD (caso realistico e "ben formato": converge in
+// poche passate, quindi il costo NON viene dai riferimenti circolari ma
+// dal semplice ri-scansionare tutte le celle di tutti i fogli).
+//
+// Il valore misurato e' un LIMITE INFERIORE del freeze reale: l'app,
+// subito dopo, chiama anche fSheetView->Invalidate() (ridisegno via
+// app_server), non misurabile headless, che si somma a questo tempo.
+static void RunFreezeCase(int nSheets, int nPerSheet)
+{
+	std::vector<CContainer*> sheets;
+	sheets.reserve(nSheets);
+	for (int s = 0; s < nSheets; s++)
+		sheets.push_back(BuildSheet(nPerSheet, kForward));
+
+	// Convergenza iniziale (apertura file), non cronometrata qui.
+	RecalculateWorkbook(sheets);
+
+	// Una singola modifica utente: cambio la radice del primo foglio e
+	// misuro il ricalcolo sincrono che ne segue.
+	TryToParseString("2", cell(1, 1), sheets[0], true);
+
+	Clock::time_point t0 = Clock::now();
+	int passes = RecalculateWorkbook(sheets);
+	double freezeMs = MsSince(t0);
+
+	long totalCells = (long)nSheets * nPerSheet;
+	printf("  %2d fogli x %6d celle (= %8ld totali) | freeze %9.2f ms"
+	       " (%2d passate) | %s\n",
+	       nSheets, nPerSheet, totalCells, freezeMs, passes, FreezeVerdict(freezeMs));
+
+	for (size_t i = 0; i < sheets.size(); i++)
+		sheets[i]->Release();
+}
+
 int main()
 {
 	// 40 e 60 servono a mostrare la soglia del guard di 50 passate nel
 	// caso BACKWARD: N=40 converge (< 50 livelli), N=60 viene tagliato.
-	const int sizes[] = { 40, 60, 500, 1000, 2000, 5000, 10000, 20000 };
+	// Il massimo e' 16000: kRowCount (Config/Constants.h) limita un
+	// foglio a 16384 righe, e queste catene stanno tutte sulla colonna A.
+	const int sizes[] = { 40, 60, 500, 1000, 2000, 5000, 10000, 16000 };
 	const int nSizes = (int)(sizeof(sizes) / sizeof(sizes[0]));
 
 	printf("Benchmark ricalcolo a punto fisso (replica di RecalculateAll)\n");
@@ -198,6 +286,22 @@ int main()
 	printf("50 passate PRIMA della convergenza: il valore di coda resta sbagliato\n");
 	printf("senza segnalare alcun errore. E' la scogliera di correttezza del\n");
 	printf("modello a punto fisso descritta nell'analisi.\n");
+
+	printf("\nFREEZE UI: durata del ricalcolo SINCRONO sul thread finestra dopo\n");
+	printf("          UNA modifica su una cartella multi-foglio (fogli ben\n");
+	printf("          formati, catene FORWARD). E' il tempo per cui la UI resta\n");
+	printf("          bloccata a ogni conferma di cella (limite inferiore: non\n");
+	printf("          include il ridisegno via app_server che segue).\n");
+	RunFreezeCase(1,  5000);
+	RunFreezeCase(1,  16000);  // foglio singolo quasi pieno (max kRowCount)
+	RunFreezeCase(10, 2000);
+	RunFreezeCase(38, 1000);   // il file di gara reale che ha motivato la Fase 9
+	RunFreezeCase(38, 5000);
+	printf("\nIl ricalcolo gira sul thread della finestra (BLooper), quindi la\n");
+	printf("durata sopra e' esattamente il tempo di freeze percepito. Spostarlo\n");
+	printf("su un thread worker (l'inutilizzato CCalcThread) toglie il freeze\n");
+	printf("senza cambiare i risultati; un grafo delle dipendenze ne abbatte\n");
+	printf("anche la durata ricalcolando solo le celle a valle della modifica.\n");
 
 	return 0;
 }
