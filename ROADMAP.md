@@ -60,7 +60,16 @@ file aperto invece di una sola, toolbar con icone HVIF vere raggruppate
 per categoria (il sito autorizzato per le icone si è nel frattempo
 popolato) — tutti i punti pianificati fatti, verificato anche contro
 il file di gara reale da 38 fogli che ha motivato l'intera fase.
-Aggiornato ad ogni fase completata.
+**Fase 7 (recupero funzionalità rispetto a Sum-It storico) chiusa**:
+intervalli con nome, Incolla speciale, Vai a, un vero Blocca riquadri,
+formattazione font/colore/allineamento e una finestra Preferenze
+fatti (oltre a Selezione multi-cella/Riempi/Ordina/Inserisci-Elimina
+riga e colonna già completati nella prima parte della fase) — tutti i
+punti individuati nel confronto con Sum-It storico recuperati.
+**Fase 10 (persistenza completa delle preferenze) e Fase 11 (bordi
+delle celle) in corso**: chiudono il debito di "solo per sessione"
+lasciato deliberatamente da Fase 7 e completano l'ultimo campo di
+`CellStyle` mai esposto dalla UI. Aggiornato ad ogni fase completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
 calcolo nativa per Haiku OS (Interface/Layout Kit), compatibile con i
@@ -2647,6 +2656,78 @@ risposto: "è assolutamente necessario supportare il multi-sheet".
       fra due fogli (A referenzia B, B referenzia A) converga
       correttamente nello stesso numero di passate di un riferimento
       circolare nello stesso foglio.
+
+---
+
+## Fase 10 — Persistenza completa delle preferenze di cella e vista (IN CORSO)
+
+Con Fase 7 chiusa, quattro delle funzionalità appena recuperate sono
+rimaste deliberatamente **solo per la sessione corrente**, non
+salvate nel formato nativo (`AscdIO`/`AscdSheet`): Blocca riquadri
+(righe/colonne bloccate), grassetto/corsivo (`CellStyle::fFont`),
+allineamento (`CellStyle::fAlignment`), altezza di riga
+(`SheetView::fRowHeights`, un limite noto anche prima di questa fase,
+per la larghezza di colonna già persistita). Ognuna era stata
+rimandata esplicitamente per non allargare la superficie di un
+incremento già di per sé consistente — questa fase chiude quel
+debito, estendendo `AscdIO` con lo stesso pattern già usato per
+larghezza di colonna e colori (una sezione opzionale in coda al
+formato, sempre consumata dallo stream anche se il chiamante non la
+richiede, cosicché un file scritto prima di questa fase resti
+leggibile senza modifiche).
+
+Punto di attenzione particolare: `CellStyle::fFont` è un indice
+**volatile**, valido solo all'interno di `gFontSizeTable` per la
+durata del processo corrente (vedi il commento in Fase 7 su
+`CFontSizeTable::GetFontID`/`GetFontInfo`) — non si può scrivere
+l'indice grezzo su disco e rileggerlo in una sessione successiva
+(punterebbe a una voce diversa o inesistente). Va invece serializzata
+la tripla famiglia/stile/dimensione (già ottenibile con
+`GetFontInfo`) e ricostruito l'indice con `GetFontID` al caricamento,
+esattamente come fa già `Excel.pass1.cpp` per un file XLSX importato.
+
+- [ ] Estendere `AscdSheet`/`SaveASCD`/`LoadASCD` con una sezione
+      "celle con font non predefinito" (famiglia/stile/dimensione per
+      cella, stesso principio della sezione colori già esistente) e
+      una per l'allineamento.
+- [ ] Persistere `fFrozenRows`/`fFrozenCols` per foglio (un intero
+      ciascuno, non serve una sezione per-cella).
+- [ ] Persistere `fRowHeights` per le sole righe non predefinite,
+      speculare a `CustomColumnWidths`/`SetColumnWidths` già esistenti
+      per le colonne.
+- [ ] Aggiornare `MainWindow::SwitchToSheet`/`OpenFile`/`SaveToFile`
+      per applicare/raccogliere i nuovi campi, stesso punto d'innesto
+      già usato per `colWidths`.
+- [ ] Test di round-trip dedicato (scrivi, rileggi, verifica) per
+      ciascuna delle quattro preferenze, sul modello di
+      `test_ascd_book.cpp`.
+
+---
+
+## Fase 11 — Bordi delle celle (IN CORSO)
+
+`CellStyle` (motore) riserva già quattro campi per il colore del
+bordo di ciascun lato di una cella (`fTBorderColor`/`fLBorderColor`/
+`fBBorderColor`/`fRBorderColor`, tutti `uchar`) — ma, a differenza di
+`fFont`/`fAlignment`/`fLowColor`/`fHighColor` (Fase 7), **nessun altro
+punto del motore li legge o li scrive**: non hanno mai avuto un
+significato definito, nessun equivalente dei "campi già pronti, solo
+da esporre" trovati ripetutamente in Fase 7. Questa fase richiede
+quindi progettazione originale, non solo esposizione di
+un'infrastruttura già presente:
+
+- [ ] Definire il significato dei quattro campi (indice di colore?
+      spessore fisso, solo presenza/assenza per lato?) e la loro
+      lettura/scrittura in `CContainer::GetCellStyle`/`SetCellStyle`.
+- [ ] Disegnare i bordi in `SheetView::DrawCellBand`, sopra la griglia
+      sottile già esistente (che resta invariata per le celle senza
+      bordo esplicito).
+- [ ] UI per impostarli (menu Formato: Bordo superiore/inferiore/
+      sinistro/destro, o un'unica finestra con anteprima — da
+      valutare in base alla complessità reale una volta iniziato).
+- [ ] Persistenza nel formato nativo, stesso pattern di Fase 10 (da
+      coordinare se le due fasi sono ancora entrambe aperte).
+- [ ] Test dedicato, sul modello di `test_format.cpp`.
 
 ---
 
