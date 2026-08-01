@@ -37,6 +37,7 @@
 	
 */
 
+#include <cstdio>
 #include <support/Debug.h>
 #include "Excel.h"
 #include "XL_Biff_codes.h"
@@ -332,6 +333,13 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 			c.v++; c.h++;
 			
 			int i = (len-4)/6;
+			// "len" viene dal record letto dal file: un valore
+			// corrotto/negativo darebbe un "i" negativo, e
+			// "while (i--)" su un intero negativo non finisce mai
+			// (continua a decrescere) -- bug reale scoperto aprendo
+			// un file .xls di un utente, stesso principio delle altre
+			// verifiche difensive di questa fase.
+			if (i < 0) i = 0;
 
 			while (i--)
 			{
@@ -361,6 +369,8 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 			es >> c.h; c.h++;
 			
 			int i = (len-4)/2;
+			// Stesso motivo del controllo su MULRK sopra.
+			if (i < 0) i = 0;
 
 			while (i--)
 			{

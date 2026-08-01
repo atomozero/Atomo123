@@ -34,6 +34,8 @@
 
 */
 
+#include <cstdio>
+#include <cstring>
 #include "Excel.h"
 #include "XL_Biff_codes.h"
 #include "Excel.colors.h"
@@ -50,19 +52,19 @@ void CExcel5Filter::Pass1()
 
 	short code, len, bofrec;
 	int32 offset;
-	
+
 	offset = 0;
 
 	fBook.Seek(offset, SEEK_SET);
 	es >> code >> len;
 	offset += 4 + len;
-		
+
 	if (code != 0x0809)
 		throw CErr("Expected BOF record");
 
 	es >> bofrec >> bofrec;
 	if (bofrec != 0x0005) throw CErr("Expected global section");
-	
+
 	while (offset < fBook.BufferLength())
 	{
 		fBook.Seek(offset, SEEK_SET);
@@ -158,32 +160,56 @@ void CExcel5Filter::Name()
 	CExcelStream es(fBook);
 
 	char name[256], c;
+	// "c" resta un char CON segno (serve invariato per lo switch sotto
+	// e per range.left/right, dove il segno non conta per valori
+	// piccoli) -- ma il secondo byte letto qui e' davvero la
+	// lunghezza del nome che segue (0-255), va tenuto SENZA segno a
+	// parte: letto come char con segno, una lunghezza dichiarata
+	// >=128 diventava negativa, e "name[c] = 0" scriveva PRIMA
+	// dell'inizio del buffer "name" invece che dopo -- bug reale
+	// scoperto aprendo un file .xls di un utente (corrompeva lo stack
+	// invece di un crash pulito, manifestandosi come un blocco
+	// indefinito piu' avanti).
+	unsigned char nameLen;
 	short grbit, deflen;
 
-	es >> grbit >> c >> c >> deflen;
-	
+	es >> grbit >> c >> nameLen >> deflen;
+
 	if (deflen == 0)	// dan zal het wel een functie zijn, hoop ik
 	{
 		fBook.Seek(fBook.Position() + 8, SEEK_SET);
-		es.Read(name, c);
-		name[c] = 0;
-		
+		es.Read(name, nameLen);
+		name[nameLen] = 0;
+
 		int funcNr = GetFunctionNr(name);
-		
+
+		// CErr::DoError() (vedi MyError.cpp) mostra un vero MStopAlert
+		// modale e aspetta un clic -- appropriato per un errore
+		// dell'utente durante l'uso interattivo dell'app, ma non qui:
+		// l'importazione di un file .xls prosegue record per record
+		// anche quando un nome definito referenzia una funzione che
+		// questo motore non conosce (xlName con funcNr=-1 resta
+		// comunque un valore valido da inserire in fNames, usato
+		// altrove solo se davvero referenziato da una formula). Un
+		// alert modale qui bloccherebbe l'intera applicazione in
+		// attesa di un clic nel bel mezzo dell'apertura di un file --
+		// bug reale scoperto aprendo un file di un utente con un nome
+		// del genere: un translator headless (o uno script) resta
+		// bloccato per sempre, senza nessuna finestra su cui cliccare.
 		if (funcNr < 0)
-			CErr("File contains an unknown function: %s", name).DoError();
-		
+			fprintf(stderr, "Atomo123: nome definito con funzione sconosciuta: %s\n", name);
+
 		fNames.push_back(xlName(funcNr));
 	}
 	else
-	{ 
+	{
 		fBook.Seek(fBook.Position() + 8, SEEK_SET);
-		es.Read(name, c);
-		name[c] = 0;
-		
+		es.Read(name, nameLen);
+		name[nameLen] = 0;
+
 		range r;
 		es >> c;
-		
+
 		switch (c)
 		{
 			case 0x3B:
@@ -242,8 +268,21 @@ void CExcel5Filter::Font()
 	es >> x;
 	es >> x;
 
+	// operator>>(char*) legge una stringa lunga fino a 255 byte (il
+	// prefisso di lunghezza e' un byte 0-255, vedi il commento in
+	// SwapStream.h) in un buffer fornito dal chiamante senza
+	// conoscerne la dimensione -- font_family (Font.h) e' pero' molto
+	// piu' piccola (B_FONT_FAMILY_LENGTH+1, 64 byte): un nome di font
+	// dichiarato piu' lungo di cosi' nel file (visto in pratica, non
+	// solo teorico) scriverebbe oltre la fine di "fn". Si legge prima
+	// in un buffer da 256 byte, capiente per qualunque lunghezza
+	// valida dell'operatore, poi si tronca in modo sicuro.
+	char fontName[256];
+	es >> (unsigned char *)fontName;
+
 	font_family fn;
-	es >> (unsigned char *)fn;
+	strncpy(fn, fontName, sizeof(fn) - 1);
+	fn[sizeof(fn) - 1] = 0;
 
 	rgb_color c = { 0, 0, 0, 0};
 	if (color >= 8 && color < 64)
@@ -395,10 +434,11 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 //			fPrGrid = (x == 1);
 //			break;
 		case FORMAT:
-		{	
+		{
 			char s[256];
-			es >> x >> (unsigned char *)s;
-			
+			es >> x;
+			es >> (unsigned char *)s;
+
 			fFormats.push_back(gFormatTable.GetFormatID(s));
 			break;
 		}
@@ -423,18 +463,29 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 
 			es >> first >> last >> wi >> x >> f;
 
-			if (fCellView)
+			// Un file .xls reale puo' contenere un record COLINFO con
+			// "first" > "last" (visto in pratica, non solo teorico:
+			// bug reale scoperto aprendo un file di un utente, crash
+			// riproducibile) -- CRunArray2::SetValue richiede un
+			// intervallo ordinato (ASSERT(inStart <= inStop)) e non lo
+			// verifica da sola. Un record del genere non descrive
+			// nessuna colonna valida: va scartato, non fatto
+			// crashare l'intera applicazione.
+			if (first <= last)
 			{
-				if (f & 0x11)
-					fCellView->GetWidths().SetValue(first + 1,last + 1,0);
-				else
+				if (fCellView)
 				{
-					fCellView->GetWidths().SetValue(first + 1, last + 1,
-						floor(be_plain_font->StringWidth("x") * wi / 256));
+					if (f & 0x11)
+						fCellView->GetWidths().SetValue(first + 1,last + 1,0);
+					else
+					{
+						fCellView->GetWidths().SetValue(first + 1, last + 1,
+							floor(be_plain_font->StringWidth("x") * wi / 256));
+					}
 				}
-			}
 
-			fContainer->GetColumnStyles().SetValue(first + 1, last + 1, x);
+				fContainer->GetColumnStyles().SetValue(first + 1, last + 1, x);
+			}
 			break;
 		}
 		case XF:

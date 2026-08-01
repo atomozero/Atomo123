@@ -155,6 +155,25 @@ void Read(uchar *s, int indx, double& t)
 
 static void MapFunction(FuncCallData& fcd)
 {
+	// Un indice funzione fuori dall'intervallo noto (0x0000-0x0151) --
+	// visto in pratica, non solo teorico: bug reale scoperto aprendo
+	// un file .xls di un utente con un record FORMULA/tFuncVar
+	// malformato o non allineato -- fa compilare lo switch sotto
+	// (denso, ottimizzato dal compilatore come jump table) con un
+	// controllo dei limiti solo sul lato superiore: un valore negativo
+	// (es. un indice letto storto da un byte con segno) supera quel
+	// controllo e finisce a saltare fuori dalla tabella, crash reale
+	// gia' verificato. Uscita esplicita qui, prima dello switch, cosi'
+	// un indice fuori range diventa "funzione sconosciuta" (stesso
+	// esito del ramo "default:" sotto per un valore in range ma non
+	// mappato) invece di un crash.
+	if (fcd.funcNr < 0x0000 || fcd.funcNr > 0x0151)
+	{
+		fcd.funcNr = -1;
+		fcd.argCnt = 0;
+		return;
+	}
+
 	switch (fcd.funcNr)
 	{
 		case 0x0000: fcd.funcNr = kCOUNTFuncNr; break;
@@ -235,7 +254,15 @@ static void MapFunction(FuncCallData& fcd)
 		default: fcd.funcNr = -1;
 	}
 
-	if (fcd.funcNr >= 0)
+	// gFuncArrayByNr e' popolata da InitFunctions() (vedi App.cpp) da
+	// una risorsa 'Func' legata al binario in esecuzione -- un
+	// translator headless (o un fallimento del caricamento risorse,
+	// catturato ma non fatale in App::ReadyToRun) puo' arrivare qui
+	// con gFuncArrayByNr ancora NULL/vuota. Bug reale scoperto aprendo
+	// un file .xls di un utente: crash riproducibile senza questo
+	// controllo, un indice altrimenti valido (0-88) letto da un
+	// puntatore nullo.
+	if (fcd.funcNr >= 0 && gFuncArrayByNr != NULL && fcd.funcNr < gFuncCount)
 		fcd.argCnt = gFuncArrayByNr[fcd.funcNr].argCnt;
 	else
 		fcd.argCnt = 0;
@@ -262,8 +289,22 @@ void CExcel5Filter::ParseXLFormula(CFormula& formula,
 		ptg = str[indx++];
 		basePtg = PTG_BASE(ptg);
 
+		// PTG_BASE puo' restituire fino a 0x3F (63), ma kPtgMap/ptgLen
+		// (XL_Ptg.h) coprono solo fino a 0x3D (61): un byte di token
+		// reale in quel buco (visto in pratica in un file .xls di un
+		// utente, non solo teorico) leggerebbe fuori dai due array --
+		// comportamento indefinito, bug reale scoperto aprendo quel
+		// file: il valore letto fuori bordo da ptgLen puo' capitare
+		// negativo, facendo *arretrare* indx invece di farlo avanzare,
+		// che manda il ciclo in loop infinito invece di un semplice
+		// valore sbagliato. "indx" e' gia' avanzato di 1 sopra (lettura
+		// del byte ptg stesso), quindi saltare per intero il resto di
+		// questa iterazione resta comunque un progresso valido.
+		if (basePtg >= (int)(sizeof(kPtgMap) / sizeof(kPtgMap[0])))
+			continue;
+
 		opCode = (PFToken)kPtgMap[basePtg];
-		
+
 		switch(basePtg)
 		{
 			case ptgStr:
@@ -516,7 +557,11 @@ void CExcel5Filter::ParseXLFormula(CFormula& formula,
 //					THROW(("Unable to parse Excel formula for cell %d,%d", inLoc.h, inLoc.v));
 		}
 
-		indx += ptgLen[basePtg];
+		// Stesso motivo del controllo su kPtgMap sopra -- ridondante se
+		// i due array hanno davvero la stessa dimensione (sembra cosi'
+		// leggendo XL_Ptg.h, ma qui costa nulla non doverlo assumere).
+		if (basePtg < (int)(sizeof(ptgLen) / sizeof(ptgLen[0])))
+			indx += ptgLen[basePtg];
 	}
 	
 	formula.AddToken(opEnd, NULL, offset);

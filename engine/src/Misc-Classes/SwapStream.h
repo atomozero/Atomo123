@@ -122,9 +122,18 @@ class CSwapStream
 		return *this;
 	}
 	
+	// "l" e' la lunghezza della stringa che segue nel record BIFF,
+	// come un byte SENZA segno 0-255 (non un byte con segno -128..127
+	// come prima di questo fix): letta come "char" con segno, un
+	// lunghezza dichiarata >=128 diventava un intero negativo, che
+	// convertito implicitamente nel parametro "size_t" di s.Read()
+	// diventava un numero enorme -- lettura di centinaia di milioni di
+	// byte in un buffer di poche centinaia, bug reale scoperto aprendo
+	// un file .xls di un utente (si manifestava come un blocco
+	// indefinito dell'intera applicazione, non un crash pulito).
 	CSwapStream& operator >> (char *t)
 	{
-		char l;
+		unsigned char l;
 		*this >> l;
 		if (s.Read(t, l) != l)
 			THROW((errIORead, errno));
