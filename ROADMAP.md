@@ -3052,6 +3052,30 @@ Fase 11.
       applicato — richiederebbero un vero motore di valutazione
       formule. Limite dichiarato: il colore non si aggiorna più se il
       valore della cella cambia dopo l'importazione.
+- [x] **Formati data/ora**: punto separato dai "Formati numero" più
+      sopra perché il rischio è diverso — non un'approssimazione di
+      rendering ma la scelta del *tipo* di valore da creare. Le celle
+      il cui `numFmtId` risolto è riconosciuto come data (incorporati
+      14-22/45-47 o personalizzato individuato da
+      `LooksLikeDateFormat`, la stessa euristica già scritta per i
+      formati numero, qui riusata per decidere se convertire) vengono
+      convertite dal numero seriale Excel a un `Value(time_t)`
+      costruito direttamente in `ExcelSerialToTime` — niente parsing
+      di stringhe data, che dipenderebbe dal locale a runtime
+      (`gDateOrder`/`CellParser.cpp`). Una volta creato un
+      `Value(time_t)`, `CFormatter::FormatValue` lo formatta come data
+      automaticamente in base al solo `Value::fType`, indipendente da
+      `CellStyle::fFormat`: nessuna sezione nuova serve nel formato
+      nativo, la data viaggia come normale contenuto di cella già
+      coperto dal meccanismo esistente. Offset epoca: 25569 giorni
+      (sistema 1900, predefinito) o 24107 (sistema 1904, rilevato da
+      `<workbookPr date1904="1"/>` nel workbook). Limite dichiarato:
+      la costante 25569 compensa il bug storico di Excel "1900 è
+      bisestile" per le date da marzo 1900 in poi, restando sbagliata
+      di un giorno per le rare date di gennaio/febbraio 1900. Test:
+      nuova fixture `sample_dates.xlsx` (formato incorporato e
+      personalizzato, più una cella numerica senza stile data per
+      verificare che non venga toccata).
 - [ ] **Immagini incorporate**: leggere `xl/drawings/`+`xl/media/`
       (un logo nel file reale), ancorarle a un intervallo di celle e
       disegnarle in `SheetView` (o una `BView` figlia posizionata
