@@ -294,6 +294,11 @@ class CExcel5Filter
 	std::vector<EscherBlip> fBlips;
 	void HandleMsoDrawingGroup(int len);
 	void HandleMsoDrawing(int len);
+	// Larghezza in pixel di una colonna (1-based): quella esplicita
+	// di fColWidths se il file la dichiara (record COLINFO), altrimenti
+	// il valore predefinito -- usata per l'ancoraggio/dimensione delle
+	// immagini incorporate (vedi SpanPixels in Excel.escher.cpp).
+	float ColWidthPixels(int col) const;
 	// Legge "len" byte del record corrente, poi attraversa in modo
 	// trasparente uno o piu' record CONTINUE che seguono subito dopo
 	// (stesso principio di ReadSST sopra, fattorizzato qui perche'

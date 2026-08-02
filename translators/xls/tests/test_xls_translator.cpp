@@ -669,11 +669,18 @@ int main()
 	// gli stessi record Escher trovati in una fattura reale con un
 	// logo incorporato (struttura verificata contro quel file prima
 	// di scrivere il parser -- vedi il commento in Excel.escher.cpp),
-	// con un piccolo JPEG rosso 8x6 sintetico al posto del logo vero.
+	// con un piccolo JPEG rosso sintetico al posto del logo vero.
 	// Prima di questa modifica il filtro XLS ignorava del tutto questi
 	// record: un'immagine incorporata spariva sempre, non solo dal
 	// file di test ma anche dalla fattura reale usata per la verifica
-	// in Fase 5.
+	// in Fase 5. Il rettangolo di ancoraggio della fixture copre
+	// esattamente le colonne 0-1 e le righe 0-2 (colEnd=2/rowEnd=3,
+	// nessuno scarto): la dimensione attesa e' quindi due colonne e
+	// tre righe predefinite (kColWidth=80/kRowHeight=20 di
+	// SheetView.h, duplicati in Excel.escher.cpp), non la dimensione
+	// nativa del JPEG sintetico (8x6) -- vedi il commento su
+	// SpanPixels in Excel.escher.cpp sul perche' non si usa piu' la
+	// dimensione nativa.
 	{
 		BFile imageFile("tests/sample_image.xls", B_READ_ONLY);
 		Check(imageFile.InitCheck() == B_OK, "apertura di tests/sample_image.xls riuscita");
@@ -739,7 +746,7 @@ int main()
 					if (row == 1 && col == 1)
 					{
 						foundImageA1 = true;
-						sizeCorrect = (geom[2] == 8.0f && geom[3] == 6.0f);
+						sizeCorrect = (geom[2] == 160.0f && geom[3] == 60.0f);
 						if (pngLen >= 4 && pos + 4 <= len)
 						{
 							jpegSignature = data[pos] == 0xFF && data[pos+1] == 0xD8
@@ -753,7 +760,7 @@ int main()
 			Check(foundImageA1,
 				"l'immagine incorporata e' ancorata ad A1, come nel file originale");
 			Check(sizeCorrect,
-				"l'immagine incorporata ha la dimensione nativa del JPEG (8x6), non zero");
+				"l'immagine incorporata ha la dimensione del rettangolo di ancoraggio (160x60, due colonne per tre righe predefinite), non quella nativa del JPEG (8x6) ne' zero");
 			Check(jpegSignature,
 				"i byte dell'immagine incorporata sono un JPEG valido (firma FF D8 FF), non dati troncati/corrotti");
 		}

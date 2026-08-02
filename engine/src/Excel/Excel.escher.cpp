@@ -170,7 +170,45 @@ bool ImageDimensions(int blipType, const std::vector<unsigned char>& data, uint3
 	return JpegDimensions(data, outW, outH);
 }
 
+// Dimensione visualizzata dal rettangolo di ancoraggio Escher
+// (ClientAnchor: colonna/riga iniziale+scarto fino a colonna/riga
+// finale+scarto, vedi il commento in HandleMsoDrawing) invece della
+// dimensione nativa dell'immagine -- le due NON coincidono quasi mai:
+// l'immagine puo' essere stata ridimensionata a mano in Excel dopo
+// l'inserimento, e comunque il suo DPI nativo non ha alcun rapporto
+// con la larghezza di colonna/altezza di riga del foglio. Usare la
+// dimensione nativa (come faceva questa funzione all'inizio)
+// produceva un logo visibilmente piu' grande del rettangolo che
+// Excel stesso disegna -- bug reale scoperto confrontando
+// visivamente con Excel vero l'importazione di una fattura reale.
+// "span" somma le colonne/righe intere attraversate piu' la frazione
+// di quella iniziale/finale coperta dallo scarto (in 1/1024 per le
+// colonne, 1/256 per le righe, stessa unita' di offsetX/offsetY).
+float SpanPixels(unsigned short start, unsigned short startFrac,
+	unsigned short end, unsigned short endFrac, unsigned short fracDenom,
+	float (*sizeOf)(unsigned short, void*), void* ctx)
+{
+	if (end == start)
+		return sizeOf(start, ctx) * (endFrac - (float)startFrac) / fracDenom;
+
+	float total = sizeOf(start, ctx) * (fracDenom - (float)startFrac) / fracDenom;
+	for (unsigned short c = start + 1; c < end; c++)
+		total += sizeOf(c, ctx);
+	total += sizeOf(end, ctx) * (float)endFrac / fracDenom;
+	return total;
+}
+
 } // namespace
+
+float CExcel5Filter::ColWidthPixels(int col) const
+{
+	for (size_t i = 0; i < fColWidths.size(); i++)
+	{
+		if (fColWidths[i].first == col)
+			return fColWidths[i].second;
+	}
+	return kDefaultColWidthPixels;
+}
 
 std::vector<unsigned char> CExcel5Filter::ReadRecordWithContinues(int len)
 {
@@ -271,6 +309,7 @@ void CExcel5Filter::HandleMsoDrawing(int len)
 		unsigned int pib = 0;
 		bool hasAnchor = false;
 		unsigned short colStart = 0, dxStart = 0, rowStart = 0, dyStart = 0;
+		unsigned short colEnd = 0, dxEnd = 0, rowEnd = 0, dyEnd = 0;
 
 		WalkEscher(b, contentStart, contentEnd,
 			[&](const EscherRecord& inner, const unsigned char* b2, size_t innerStart, size_t innerEnd)
@@ -295,15 +334,20 @@ void CExcel5Filter::HandleMsoDrawing(int len)
 				{
 					// flag(2) colStart(2) dxStart(2) rowStart(2)
 					// dyStart(2) colEnd(2) dxEnd(2) rowEnd(2) dyEnd(2):
-					// solo l'angolo in alto a sinistra serve qui (vedi
-					// il commento sotto sul perche' non si calcola
-					// anche la dimensione dal rettangolo intero).
-					if (innerEnd >= innerStart + 10)
+					// il rettangolo intero, non solo l'angolo in alto a
+					// sinistra -- serve anche per la dimensione
+					// visualizzata (vedi SpanPixels sopra), non solo per
+					// la posizione.
+					if (innerEnd >= innerStart + 18)
 					{
 						colStart = b2[innerStart + 2] | ((unsigned short)b2[innerStart + 3] << 8);
 						dxStart = b2[innerStart + 4] | ((unsigned short)b2[innerStart + 5] << 8);
 						rowStart = b2[innerStart + 6] | ((unsigned short)b2[innerStart + 7] << 8);
 						dyStart = b2[innerStart + 8] | ((unsigned short)b2[innerStart + 9] << 8);
+						colEnd = b2[innerStart + 10] | ((unsigned short)b2[innerStart + 11] << 8);
+						dxEnd = b2[innerStart + 12] | ((unsigned short)b2[innerStart + 13] << 8);
+						rowEnd = b2[innerStart + 14] | ((unsigned short)b2[innerStart + 15] << 8);
+						dyEnd = b2[innerStart + 16] | ((unsigned short)b2[innerStart + 17] << 8);
 						hasAnchor = true;
 					}
 				}
@@ -316,36 +360,44 @@ void CExcel5Filter::HandleMsoDrawing(int len)
 		if (!IsSupportedBlipType(blip.type))
 			return;
 
-		uint32 natW = 0, natH = 0;
-		if (!ImageDimensions(blip.type, blip.data, &natW, &natH) || natW == 0 || natH == 0)
-			return;
+		float colWidthPixels = ColWidthPixels(colStart + 1);
 
-		float colWidthPixels = kDefaultColWidthPixels;
-		for (size_t i = 0; i < fColWidths.size(); i++)
-		{
-			if (fColWidths[i].first == colStart + 1)
-			{
-				colWidthPixels = fColWidths[i].second;
-				break;
-			}
-		}
-
-		// Dimensione visualizzata: quella nativa dell'immagine, non
-		// calcolata dal rettangolo di ancoraggio Escher (differenza
-		// fra angolo iniziale e finale, sommando le larghezze di
-		// colonna/altezze di riga attraversate) -- servirebbe
-		// conoscere anche l'altezza di riga di OGNI riga attraversata
-		// (non solo quella di default), che questo filtro non importa
-		// ancora per XLS. La dimensione nativa e' un'approssimazione
-		// ragionevole per un logo, coerente con lo stesso fallback
-		// gia' usato da XlsxTranslator.cpp quando l'estensione XML
-		// non e' specificata.
 		EmbeddedImage img;
 		img.anchor = cell(colStart + 1, rowStart + 1);
 		img.offsetX = (dxStart / 1024.0f) * colWidthPixels;
 		img.offsetY = (dyStart / 256.0f) * kDefaultRowHeightPixels;
-		img.width = (float)natW;
-		img.height = (float)natH;
+
+		// Larghezza/altezza calcolate dal rettangolo di ancoraggio
+		// (colStart/dxStart fino a colEnd/dxEnd, in colonne+righe
+		// vere del foglio, vedi SpanPixels sopra) -- NON dalla
+		// dimensione nativa dell'immagine, che non ha alcun rapporto
+		// con quanto Excel disegna davvero (l'immagine puo' essere
+		// stata ridimensionata a mano dopo l'inserimento). L'altezza
+		// di riga usa sempre il valore predefinito: questo filtro non
+		// importa ancora le altezze di riga personalizzate per XLS
+		// (a differenza delle larghezze di colonna, gia' disponibili
+		// in fColWidths), un'approssimazione che vale solo se nessuna
+		// riga toccata dall'immagine e' stata ridimensionata a mano.
+		img.width = SpanPixels(colStart, dxStart, colEnd, dxEnd, 1024,
+			[](unsigned short c, void* self) { return ((CExcel5Filter*)self)->ColWidthPixels(c + 1); },
+			this);
+		img.height = SpanPixels(rowStart, dyStart, rowEnd, dyEnd, 256,
+			[](unsigned short, void*) { return kDefaultRowHeightPixels; }, this);
+
+		if (img.width <= 0 || img.height <= 0)
+		{
+			// Rettangolo di ancoraggio degenere (angolo finale prima
+			// di quello iniziale, o coincidente: file corrotto, o una
+			// combinazione mai vista finora) -- la dimensione nativa
+			// dell'immagine resta un fallback ragionevole piuttosto
+			// che disegnarla a dimensione zero/invisibile.
+			uint32 natW = 0, natH = 0;
+			if (!ImageDimensions(blip.type, blip.data, &natW, &natH) || natW == 0 || natH == 0)
+				return;
+			img.width = (float)natW;
+			img.height = (float)natH;
+		}
+
 		img.pngData.assign(blip.data.begin(), blip.data.end());
 
 		fImages.push_back(img);
