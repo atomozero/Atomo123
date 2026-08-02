@@ -217,6 +217,42 @@ const translation_format* CCsvTranslator::OutputFormats(int32* _count) const
 	return sOutputFormats;
 }
 
+// CSV non ha una firma propria (a differenza di ASCD/XLS/XLSX/ODS):
+// un formato di testo puro non ha niente all'inizio del file che lo
+// distingua da un altro formato di testo. Prima di questo controllo,
+// Identify() accettava incondizionatamente QUALUNQUE contenuto come
+// "forse CSV" (qualita' 0.6) -- bug reale, non solo teorico: un JPEG
+// (o qualunque altro binario) veniva "riconosciuto" come CSV con
+// priorita' sufficiente a battere JPEGTranslator in
+// BTranslatorRoster::Translate() con B_TRANSLATOR_BITMAP come uscita,
+// che poi falliva con "No translator found" perche' CsvTranslator non
+// sa produrre un bitmap -- scoperto verificando perche' un'immagine
+// incorporata in un file XLS non veniva mai disegnata nonostante i
+// byte estratti fossero un JPEG valido. Un contenuto binario (byte
+// NUL, o troppi byte di controllo non tipici del testo) viene quindi
+// respinto qui invece di essere accettato come "forse CSV".
+static bool LooksLikeText(BPositionIO* source)
+{
+	off_t pos = source->Position();
+	unsigned char sample[512];
+	ssize_t read = source->Read(sample, sizeof(sample));
+	source->Seek(pos, SEEK_SET);
+
+	if (read <= 0)
+		return true; // file vuoto: nessuna prova di essere binario
+
+	int controlBytes = 0;
+	for (ssize_t i = 0; i < read; i++)
+	{
+		unsigned char c = sample[i];
+		if (c == 0)
+			return false; // un NUL non compare mai in un file di testo genuino
+		if (c < 0x20 && c != '\t' && c != '\n' && c != '\r')
+			controlBytes++;
+	}
+	return controlBytes * 10 < read; // oltre il 10% di controllo -> binario
+}
+
 status_t CCsvTranslator::Identify(BPositionIO* source,
 	const translation_format* format, BMessage* extension,
 	translator_info* info, uint32 outType)
@@ -226,12 +262,16 @@ status_t CCsvTranslator::Identify(BPositionIO* source,
 	ssize_t read = source->Read(header, 4);
 	source->Seek(pos, SEEK_SET);
 
+	bool isAscd = read == 4 && memcmp(header, kASCDMagic, 4) == 0;
+	if (!isAscd && !LooksLikeText(source))
+		return B_NO_TRANSLATOR;
+
 	uint32 type = kAtomoCsvFormat;
 	float quality = 0.6f, capability = 0.6f;
 	const char* name = "Comma-Separated Values (CSV)";
 	const char* mime = "text/csv";
 
-	if (read == 4 && memcmp(header, kASCDMagic, 4) == 0)
+	if (isAscd)
 	{
 		type = kAtomoNativeFormat;
 		quality = capability = 1.0f;

@@ -67,6 +67,34 @@ int main()
 	Check(strstr(result, "20") != NULL, "il round-trip contiene il valore 20");
 	Check(strstr(result, "Ciao") != NULL, "il round-trip contiene il testo Ciao");
 
+	// Identify non deve accettare contenuto binario come "forse CSV"
+	// (bug reale scoperto verificando le immagini incorporate del
+	// filtro XLS legacy: un JPEG veniva riconosciuto come CSV con
+	// priorita' sufficiente a far fallire BTranslatorRoster::Translate
+	// quando cercava un bitmap, con "No translator found" -- vedi
+	// LooksLikeText in CsvTranslator.cpp).
+	{
+		const unsigned char jpegHeader[] = {
+			0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46,
+			0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+			0xFF, 0xDB, 0x00, 0x43, 0x00, 0x03, 0x02, 0x02, 0x02, 0x02,
+			0x02, 0x03, 0x02, 0x02, 0x02, 0x03, 0x03, 0x03, 0x03, 0x04,
+		};
+		BMemoryIO jpegIn(jpegHeader, sizeof(jpegHeader));
+		translator_info jpegInfo;
+		status_t jpegErr = translator->Identify(&jpegIn, NULL, NULL, &jpegInfo, 0);
+		Check(jpegErr != B_OK,
+			"Identify rifiuta l'intestazione binaria di un JPEG, non la accetta come \"forse CSV\"");
+	}
+	{
+		const unsigned char nulBytes[] = { 'a', ',', 'b', 0x00, ',', 'c', '\n' };
+		BMemoryIO nulIn(nulBytes, sizeof(nulBytes));
+		translator_info nulInfo;
+		status_t nulErr = translator->Identify(&nulIn, NULL, NULL, &nulInfo, 0);
+		Check(nulErr != B_OK,
+			"Identify rifiuta un contenuto con un byte NUL, mai presente in un CSV genuino");
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
