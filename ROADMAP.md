@@ -1402,6 +1402,40 @@ sopra: probabile instabilità ambientale di questa sandbox, non un bug
 nella logica di MERGEDCELLS. Segnalato qui per trasparenza, non
 bloccante.
 
+### Bug scoperto: il testo che trabocca sulla colonna vicina veniva sempre troncato
+
+Ultimo punto del confronto diretto con Excel vero sulla stessa fattura
+reale: l'intestazione "dello studio" (e diverse altre righe sotto, tutte più larghe della colonna
+A) appariva troncata al bordo della colonna in Atomo123, mentre Excel
+la mostra per intero, traboccando visivamente sulle colonne B/C/…
+vuote a destra. `SheetView::DrawCellBand` limitava sempre il
+rettangolo di disegno e di ritaglio (`ConstrainClippingRegion`) alla
+sola `CellRect(c)` della cella, indipendentemente dal contenuto delle
+celle vicine — comportamento non specifico dell'import XLS, riguarda
+ogni cella dell'app con testo più largo della propria colonna.
+
+Nuovo metodo `SheetView::ExpandOverflowRect`: parte da `CellRect(c)` e
+cammina sulle celle vicine nella riga, nella direzione dettata
+dall'allineamento (generale/sinistra verso destra, destra verso
+sinistra, centrato su entrambi i lati insieme), finché il testo ci
+entra oppure si incontra una cella non vuota, un intervallo già unito
+(Fase 12) o il bordo del foglio (`kColCount`) — gli stessi tre casi
+che bloccano il trabocco anche in Excel. Non si applica alle celle
+unite (hanno già il proprio rettangolo esteso) né al testo a capo
+automatico (va già a capo dentro la colonna, Fase 12).
+
+Pubblico apposta per essere testabile direttamente, stesso principio
+già usato per `CellRect`/`CopySelection`: nuovo `tests/test_overflow.cpp`
+(nuovo target `make test-overflow`, 11 verifiche) passa una larghezza
+di testo scelta a mano invece di misurarla con `StringWidth`, così il
+test resta deterministico e indipendente dal font di sistema — copre
+tutti e tre i casi di blocco (cella occupata, intervallo unito, bordo
+del foglio) oltre ai tre allineamenti. Verificato anche dal vivo
+riaprendo la fattura reale: l'intestazione e le altre righe più larghe
+della colonna A traboccano ora sulle colonne vuote a destra, fermandosi
+correttamente alla prima cella colorata non vuota (colonna I),
+esattamente come in Excel.
+
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
