@@ -1248,12 +1248,26 @@ da Escher in senso stretto:
 Test: `tests/sample_image.xls` non è generato con xlwt (non sa
 scrivere immagini) ma con uno script Python dedicato che inserisce a
 mano gli stessi record Escher trovati nel file reale, con un piccolo
-JPEG rosso sintetico al posto del logo vero — verifica l'ancoraggio,
-la dimensione nativa e la validità dei byte estratti. Due nuovi test
-in `translators/csv/tests/test_csv_translator.cpp` per il rifiuto di
+JPEG rosso sintetico al posto del logo vero — verifica l'ancoraggio e
+la validità dei byte estratti. Due nuovi test in
+`translators/csv/tests/test_csv_translator.cpp` per il rifiuto di
 un'intestazione JPEG e di un byte NUL. Verificato anche dal vivo: il
 logo della fattura reale si disegna correttamente nell'app, in
-posizione e dimensione coerenti con Excel.
+posizione coerente con Excel.
+
+**Correzione successiva sulla dimensione**: la prima versione usava la
+dimensione nativa del JPEG/PNG (quella salvata nel file) come
+dimensione visualizzata — quasi mai corretta, dato che l'immagine può
+essere stata ridimensionata a mano in Excel dopo l'inserimento, e il
+suo DPI nativo non ha comunque alcun rapporto con la larghezza di
+colonna/altezza di riga del foglio. Il logo della fattura reale
+appariva quindi molto più grande del riquadro che Excel disegna
+davvero. Corretto calcolando la dimensione dal rettangolo di
+ancoraggio Escher (`ClientAnchor`, ora letto per intero — prima solo
+l'angolo in alto a sinistra) sommando le colonne/righe vere
+attraversate, con le larghezze di colonna reali del file dove
+disponibili. La dimensione nativa resta un fallback solo per un
+rettangolo di ancoraggio degenere.
 
 ### Bug scoperto: formato numero "0" ripetuto (riempimento di zeri a sinistra) perso in due punti diversi
 
