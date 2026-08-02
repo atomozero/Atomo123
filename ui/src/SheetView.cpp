@@ -1432,7 +1432,24 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				// Locale Kit, gli altri (incluso il generico) usano il
 				// raggruppamento numerico semplice.
 				Value val;
-				if (fDoc->GetValue(c, val) && val.fType == eNumData && !val.IsNan())
+				// La riformattazione locale-aware sotto sostituisce
+				// SEMPRE il testo gia' calcolato dal motore per un
+				// valore numerico puro, tranne valuta/percentuale --
+				// corretto per General/Fisso (dove il separatore
+				// migliaia/decimale locale ha senso), ma un formato
+				// come "00000" (riempimento di zeri a sinistra, vedi
+				// CFormatter::eZeroPad in Formatter.h) ha gia' un testo
+				// ESATTO da CFormatter, che qui veniva scartato e
+				// sostituito col numero grezzo -- bug reale scoperto
+				// confrontando visivamente con Excel vero l'importazione
+				// di una fattura reale ("Preavviso N. 00073" mostrato
+				// come "73"). "& 0x000F" isola il tipo di formato dai
+				// bit di cifre/virgole impacchettati insieme (vedi
+				// CFormatter::FormatID), dato che un confronto diretto
+				// con l'enum non funzionerebbe mai per un formato con
+				// cifre diverse da zero.
+				if (fDoc->GetValue(c, val) && val.fType == eNumData && !val.IsNan()
+					&& (cs.fFormat & 0x000F) != eZeroPad)
 				{
 					BString formatted;
 					status_t fmtErr;
