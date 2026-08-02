@@ -1360,6 +1360,66 @@ BRect SheetView::ExpandOverflowRect(BRect r, cell c, char alignment, float textW
 	return r;
 }
 
+// Testo effettivo che verra' disegnato per una cella (stringa vuota se
+// la cella non ha contenuto): il testo grezzo del motore
+// (CFormatter/eGeneral) con sopra una riformattazione locale-aware
+// (separatore delle migliaia, punto o virgola decimale secondo le
+// preferenze di sistema) tramite il Locale Kit, per un valore
+// puramente numerico. Rispetta il formato scelto per la cella (menu
+// Formato o import): valuta e percentuale usano le formattazioni
+// dedicate del Locale Kit, gli altri (incluso il generico) usano il
+// raggruppamento numerico semplice. La riformattazione sotto sostituisce
+// SEMPRE il testo gia' calcolato dal motore per un valore numerico
+// puro, tranne per un formato come "00000" (riempimento di zeri a
+// sinistra, vedi CFormatter::eZeroPad in Formatter.h) che ha gia' un
+// testo ESATTO da CFormatter -- sostituirlo scarterebbe gli zeri
+// iniziali, bug reale scoperto confrontando visivamente con Excel vero
+// l'importazione di una fattura reale ("Preavviso N. 00073" mostrato
+// come "73"). "& 0x000F" isola il tipo di formato dai bit di
+// cifre/virgole impacchettati insieme (vedi CFormatter::FormatID): un
+// confronto diretto con l'enum funziona solo per un formato senza
+// cifre decimali ne' separatore delle migliaia (rarissimo in pratica)
+// -- un formato valuta/percentuale REALE (es. "€ ###,###.00", 2 cifre
+// e virgola) impacchetta quei bit sopra l'enum e non risulta mai
+// uguale a eCurrency/ePercent cosi' com'e', altro bug reale scoperto
+// allo stesso modo: ogni importo in valuta ("€ 450,00") si rendeva
+// come un numero puro senza simbolo ne' decimali ("450"). Pubblico
+// apposta per essere testabile direttamente, stesso principio di
+// CellRect/ExpandOverflowRect sopra.
+BString SheetView::FormattedCellText(cell c)
+{
+	if (!fDoc)
+		return BString();
+
+	char text[4096];
+	fDoc->GetCellResult(c, text, sizeof(text), true);
+	if (text[0] == 0)
+		return BString();
+
+	CellStyle cs;
+	fDoc->GetCellStyle(c, cs);
+
+	Value val;
+	if (fDoc->GetValue(c, val) && val.fType == eNumData && !val.IsNan()
+		&& (cs.fFormat & 0x000F) != eZeroPad)
+	{
+		int formatKind = cs.fFormat & 0x000F;
+		BString formatted;
+		status_t fmtErr;
+		if (formatKind == eCurrency)
+			fmtErr = fNumberFormat.FormatMonetary(formatted, (double)val);
+		else if (formatKind == ePercent)
+			fmtErr = fNumberFormat.FormatPercent(formatted, (double)val);
+		else
+			fmtErr = fNumberFormat.Format(formatted, (double)val);
+
+		if (fmtErr == B_OK && formatted.Length() > 0)
+			return formatted;
+	}
+
+	return BString(text);
+}
+
 // Vedi il commento su fFrozenRows/fFrozenCols in SheetView.h: disegna
 // sfondo, griglia e testo per un blocco di celle [firstCol,lastCol] x
 // [firstRow,lastRow], spostato di (xOrigin, yOrigin) -- (0,0) per il
@@ -1517,57 +1577,14 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				if (isMerged && (mergedRange.top != row || mergedRange.left != col))
 					continue;
 
-				char text[4096];
-				fDoc->GetCellResult(c, text, sizeof(text), true);
-				if (text[0] == 0)
+				BString cellTextStr = FormattedCellText(c);
+				if (cellTextStr.Length() == 0)
 					continue;
+				char text[4096];
+				strlcpy(text, cellTextStr.String(), sizeof(text));
 
 				CellStyle cs;
 				fDoc->GetCellStyle(c, cs);
-
-				// Il motore formatta i numeri in modo generico
-				// (CFormatter/eGeneral): per un valore puramente
-				// numerico si applica invece una formattazione
-				// locale-aware (separatore delle migliaia, punto o
-				// virgola decimale secondo le preferenze di sistema)
-				// tramite il Locale Kit, come livello di presentazione
-				// sopra il testo gia' calcolato dal motore. Rispetta il
-				// formato scelto per la cella (menu Formato): valuta e
-				// percentuale usano le formattazioni dedicate del
-				// Locale Kit, gli altri (incluso il generico) usano il
-				// raggruppamento numerico semplice.
-				Value val;
-				// La riformattazione locale-aware sotto sostituisce
-				// SEMPRE il testo gia' calcolato dal motore per un
-				// valore numerico puro, tranne valuta/percentuale --
-				// corretto per General/Fisso (dove il separatore
-				// migliaia/decimale locale ha senso), ma un formato
-				// come "00000" (riempimento di zeri a sinistra, vedi
-				// CFormatter::eZeroPad in Formatter.h) ha gia' un testo
-				// ESATTO da CFormatter, che qui veniva scartato e
-				// sostituito col numero grezzo -- bug reale scoperto
-				// confrontando visivamente con Excel vero l'importazione
-				// di una fattura reale ("Preavviso N. 00073" mostrato
-				// come "73"). "& 0x000F" isola il tipo di formato dai
-				// bit di cifre/virgole impacchettati insieme (vedi
-				// CFormatter::FormatID), dato che un confronto diretto
-				// con l'enum non funzionerebbe mai per un formato con
-				// cifre diverse da zero.
-				if (fDoc->GetValue(c, val) && val.fType == eNumData && !val.IsNan()
-					&& (cs.fFormat & 0x000F) != eZeroPad)
-				{
-					BString formatted;
-					status_t fmtErr;
-					if (cs.fFormat == eCurrency)
-						fmtErr = fNumberFormat.FormatMonetary(formatted, (double)val);
-					else if (cs.fFormat == ePercent)
-						fmtErr = fNumberFormat.FormatPercent(formatted, (double)val);
-					else
-						fmtErr = fNumberFormat.Format(formatted, (double)val);
-
-					if (fmtErr == B_OK && formatted.Length() > 0)
-						strlcpy(text, formatted.String(), sizeof(text));
-				}
 
 				// Il colore passato a SetLowColor deve combaciare con
 				// quello davvero disegnato sotto (sopra): DrawString lo

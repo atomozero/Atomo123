@@ -89,7 +89,17 @@ void CFormatter::ParseTemplate(const char *inTemplate)
 		return;
 	}
 
-	if (strchr(t, '$'))
+	// "$" e' l'unico simbolo di valuta mai riconosciuto qui (eredita'
+	// da Sum-It, mai esteso): un template con "€" al posto di "$" (il
+	// caso comune per una fattura italiana, es. "\€\ ##,###.00")
+	// finiva nel ramo eFixed sotto invece di eCurrency -- bug reale
+	// scoperto confrontando visivamente con Excel vero l'importazione
+	// di una fattura reale (importi mostrati come numeri puri, senza
+	// simbolo ne' decimali forzati). "€" e' UTF-8 multi-byte (0xE2
+	// 0x82 0xAC): strstr sulla sequenza di byte funziona qui perche'
+	// "t" e' gia' una stringa UTF-8 (Excel.pass1.cpp la costruisce con
+	// AppendUnicodeAsUTF8/AppendCP1252Byte), non serve decodificarla.
+	if (strchr(t, '$') || strstr(t, "\xe2\x82\xac"))
 		fFormatID = eCurrency;
 	else if (strchr(t, '%'))
 		fFormatID = ePercent;

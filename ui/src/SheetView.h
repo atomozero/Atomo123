@@ -192,6 +192,16 @@ public:
 	// principio di CellRect sopra -- vedi tests/test_overflow.cpp.
 	BRect ExpandOverflowRect(BRect r, cell c, char alignment, float textWidth) const;
 
+	// Testo effettivo che verra' disegnato per una cella, con la
+	// riformattazione locale-aware valuta/percentuale/generico gia'
+	// applicata sopra al testo del motore -- vedi il commento esteso
+	// sopra la definizione in SheetView.cpp. Stringa vuota se la cella
+	// non ha contenuto. Pubblico apposta per essere testabile
+	// direttamente, stesso principio di CellRect/ExpandOverflowRect
+	// sopra -- vedi tests/test_currency_format.cpp. Non "const": i
+	// metodi Format*/di BNumberFormat (Locale Kit) non lo sono.
+	BString FormattedCellText(cell c);
+
 	// Applica larghezze di colonna personalizzate (coppie colonna
 	// 1-based/larghezza in pixel), sostituendo quelle correnti:
 	// ripristina prima ogni colonna alla larghezza predefinita
