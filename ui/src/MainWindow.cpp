@@ -875,7 +875,15 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 {
 	outSheet->name = "Foglio1";
 	outSheet->doc = new CContainer(NULL, NULL);
-	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts, &outSheet->colWidths);
+	// Tutti gli argomenti opzionali di LoadASCD, non solo i primi tre:
+	// mancavano altezza di riga/blocca riquadri/immagini incorporate
+	// (aggiunti a LoadASCD in Fase 10/12, mai riportati qui) -- bug
+	// reale, non solo teorico per XLS: un file XLSX a un solo foglio
+	// con un'immagine incorporata la perdeva silenziosamente allo
+	// stesso modo, dato che passa dalla stessa funzione. LoadASCDBook
+	// (poco sotto) li passa gia' tutti correttamente.
+	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts, &outSheet->colWidths,
+		&outSheet->rowHeights, &outSheet->frozenRows, &outSheet->frozenCols, &outSheet->images);
 	if (err != B_OK)
 	{
 		outSheet->doc->Release();
