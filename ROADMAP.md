@@ -1255,6 +1255,54 @@ un'intestazione JPEG e di un byte NUL. Verificato anche dal vivo: il
 logo della fattura reale si disegna correttamente nell'app, in
 posizione e dimensione coerenti con Excel.
 
+### Bug scoperto: formato numero "0" ripetuto (riempimento di zeri a sinistra) perso in due punti diversi
+
+Ultimo confronto diretto con Excel vero sulla stessa fattura reale:
+"Preavviso N. 00073" veniva mostrato come "73", nonostante il record
+FORMAT del file dichiari correttamente il template `"00000"` per
+quella cella. Due bug indipendenti, in due file diversi, che si
+sommavano l'uno all'altro — trovati tracciando passo passo l'intero
+percorso (parsing BIFF → `CFormatter` → disegno) con tracce mirate,
+dato che ciascuno singolarmente avrebbe comunque prodotto lo stesso
+sintomo visibile:
+
+- **`CFormatter::ParseTemplate`** (`engine/src/Cell/Formatter.template.cpp`,
+  ereditato da Sum-It) riconosceva solo `"$"`/`"%"`/`"."` per
+  distinguere valuta/percentuale/cifre decimali: un template fatto
+  solo di `'0'`/`'#'` finiva silenziosamente nel formato generico,
+  perdendo il riempimento. Aggiunto `ENumberFormat::eZeroPad`
+  (`Formatter.h`): resta sotto `eFirstNewFormat` (1024) cosi' l'ID
+  risultante e' portabile fra sessioni come i formati "vecchio stile"
+  esistenti, riusando "fDigits" per la larghezza totale del
+  riempimento invece delle cifre decimali. `FormatDouble`
+  (`Formatter.number.cpp`) arrotonda a intero e riempie di zeri a
+  sinistra.
+- **`SheetView::Draw`** (`ui/src/SheetView.cpp`) sostituiva SEMPRE il
+  testo gia' calcolato dal motore per una cella numerica pura con una
+  riformattazione locale-aware (separatore migliaia/decimale secondo
+  le preferenze di sistema), tranne per valuta/percentuale — corretto
+  per General/Fisso (dove il raggruppamento locale ha senso), ma
+  scartava anche un testo gia' ESATTO come "00073" per sostituirlo col
+  numero grezzo. Bug pre-esistente, indipendente dal filtro XLS: si
+  sarebbe manifestato per QUALUNQUE cella con un formato del genere,
+  anche impostata a mano nell'app o importata da un altro formato.
+  Corretto saltando la riformattazione quando il tipo di formato
+  (isolato da `cs.fFormat & 0x000F`) e' `eZeroPad`.
+
+Con solo il primo bug corretto, la cella mostrava ancora "73": e'
+stata la traccia diretta in `CContainer::GetCellResult` (temporanea,
+rimossa prima del commit) a confermare che il motore calcolava gia'
+correttamente "00073" — la sostituzione avveniva un livello piu' sopra,
+nel disegno.
+
+Test: nuova fixture `translators/xls/tests/sample_zeropad.xls` (xlwt)
+con un valore normale (73 → "00073"), zero (0 → "00000", non una
+stringa vuota) e un valore che supera la larghezza del template
+(123456 → resta per esteso, non troncato) — verifica sia che il
+`fFormat` risolto non sia quello generico sia il testo reso da
+`CFormatter` direttamente. Verificato anche dal vivo: "Preavviso N."
+mostra ora "00073" nell'app, come in Excel.
+
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
