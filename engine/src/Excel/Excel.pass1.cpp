@@ -47,6 +47,134 @@
 #include "CellStyle.h"
 #include "Container.h"
 
+// Windows-1252, 0x80-0x9F: gli unici byte per cui differisce da
+// Latin-1 (0xA0-0xFF coincide byte per byte col codepoint Unicode).
+// 0x00 marca le posizioni non assegnate dallo standard CP1252 (rare
+// nei file reali): restituito com'e', un controllo C1 innocuo.
+static const unsigned short kCP1252HighRange[32] = {
+	0x20AC, 0x0000, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+	0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x0000, 0x017D, 0x0000,
+	0x0000, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+	0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x0000, 0x017E, 0x0178
+};
+
+void CExcel5Filter::AppendUnicodeAsUTF8(std::string& out, unsigned int codepoint)
+{
+	if (codepoint < 0x80)
+		out += (char)codepoint;
+	else if (codepoint < 0x800)
+	{
+		out += (char)(0xC0 | (codepoint >> 6));
+		out += (char)(0x80 | (codepoint & 0x3F));
+	}
+	else if (codepoint < 0x10000)
+	{
+		out += (char)(0xE0 | (codepoint >> 12));
+		out += (char)(0x80 | ((codepoint >> 6) & 0x3F));
+		out += (char)(0x80 | (codepoint & 0x3F));
+	}
+	else
+	{
+		out += (char)(0xF0 | (codepoint >> 18));
+		out += (char)(0x80 | ((codepoint >> 12) & 0x3F));
+		out += (char)(0x80 | ((codepoint >> 6) & 0x3F));
+		out += (char)(0x80 | (codepoint & 0x3F));
+	}
+}
+
+void CExcel5Filter::AppendCP1252Byte(std::string& out, unsigned char b)
+{
+	unsigned int codepoint = b;
+	if (b >= 0x80 && b <= 0x9F)
+	{
+		unsigned short mapped = kCP1252HighRange[b - 0x80];
+		codepoint = mapped != 0 ? mapped : b;
+	}
+	AppendUnicodeAsUTF8(out, codepoint);
+}
+
+// Euristica sulle lettere y/m/d/h/s fuori da apici e parentesi
+// quadre, stessa idea (duplicata deliberatamente, vedi il commento in
+// Excel.h) di LooksLikeDateFormat in translators/xlsx/XlsxTranslator.cpp
+// -- usata solo per i formati PERSONALIZZATI (record FORMAT espliciti):
+// i built-in noti (14-22/45-47) sono gia' marcati direttamente da
+// InitBuiltinFormats, senza bisogno di ispezionare nessuna stringa.
+bool CExcel5Filter::LooksLikeDateFormat(const std::string& code)
+{
+	bool inQuotes = false;
+	bool inBrackets = false;
+	for (size_t i = 0; i < code.size(); i++)
+	{
+		char c = code[i];
+		if (!inBrackets && c == '"')
+			inQuotes = !inQuotes;
+		else if (!inQuotes && c == '[')
+			inBrackets = true;
+		else if (!inQuotes && c == ']')
+			inBrackets = false;
+		else if (!inQuotes && !inBrackets)
+		{
+			if (c == ';')
+				return false; // fine della porzione rilevante, nessuna lettera data trovata
+			if (c == 'y' || c == 'm' || c == 'd' || c == 'h' || c == 's'
+				|| c == 'Y' || c == 'M' || c == 'D' || c == 'H' || c == 'S')
+				return true;
+		}
+	}
+	return false;
+}
+
+time_t CExcel5Filter::ExcelSerialToTime(double serial, bool date1904)
+{
+	double epochOffsetDays = date1904 ? 24107.0 : 25569.0;
+	double unixSeconds = (serial - epochOffsetDays) * 86400.0;
+	return (time_t)(unixSeconds + (unixSeconds >= 0 ? 0.5 : -0.5));
+}
+
+// Formati built-in BIFF (0-49, standard ECMA-376/OOXML, invariati fra
+// le versioni di Excel): un file reale li usa liberamente SENZA mai
+// dichiararli con un proprio record FORMAT, dato che sono impliciti
+// -- serve precaricarli prima di leggere il file perche' Xf() li
+// referenzia per ifmt (vedi il commento su "fFormats" in Excel.h).
+// Solo quelli davvero utili sono elencati: General e i numerici (0-4)
+// restano gestiti dal ramo "y < 5" gia' esistente in Xf(), qui
+// servono soprattutto percentuale/data/ora (9-22, 45-47) e
+// contabilita' (37-49), che un file reale puo' usare senza
+// personalizzarli.
+void CExcel5Filter::InitBuiltinFormats()
+{
+	static const struct { unsigned short ifmt; const char* tmpl; bool isDate; } kBuiltins[] = {
+		{ 9, "0%", false },
+		{ 10, "0.00%", false },
+		{ 11, "0.00E+00", false },
+		{ 14, "mm-dd-yy", true },
+		{ 15, "d-mmm-yy", true },
+		{ 16, "d-mmm", true },
+		{ 17, "mmm-yy", true },
+		{ 18, "h:mm AM/PM", true },
+		{ 19, "h:mm:ss AM/PM", true },
+		{ 20, "h:mm", true },
+		{ 21, "h:mm:ss", true },
+		{ 22, "m/d/yy h:mm", true },
+		{ 37, "#,##0_);(#,##0)", false },
+		{ 38, "#,##0_);[Red](#,##0)", false },
+		{ 39, "#,##0.00_);(#,##0.00)", false },
+		{ 40, "#,##0.00_);[Red](#,##0.00)", false },
+		{ 45, "mm:ss", true },
+		{ 46, "[h]:mm:ss", true },
+		{ 47, "mmss.0", true },
+		{ 48, "##0.0E+0", false },
+		{ 49, "@", false },
+	};
+
+	for (size_t i = 0; i < sizeof(kBuiltins) / sizeof(kBuiltins[0]); i++)
+	{
+		fFormats[kBuiltins[i].ifmt] = gFormatTable.GetFormatID(kBuiltins[i].tmpl);
+		if (kBuiltins[i].isDate)
+			fDateIfmts.insert(kBuiltins[i].ifmt);
+	}
+}
+
 void CExcel5Filter::Pass1()
 {
 	CExcelStream es(fBook);
@@ -349,17 +477,22 @@ void CExcel5Filter::ReadSST(int len)
 				unsigned char c2[2];
 				readRaw(c2, 2);
 				unsigned short u = c2[0] | (c2[1] << 8);
-				// Riduzione a byte singolo (Latin-1/ASCII): il motore
-				// non gestisce ancora Unicode multibyte nelle celle,
-				// stesso limite gia' presente per LABEL/RSTRING, non
-				// introdotto ora.
-				text += (u < 256) ? (char)u : '?';
+				// Ogni unita' UTF-16 codificata nella corrispondente
+				// sequenza UTF-8 -- non gestisce le coppie di surrogati
+				// (caratteri oltre il BMP, U+10000 in su), estremamente
+				// rari in un foglio di calcolo reale: limite dichiarato,
+				// non un troncamento silenzioso come la "riduzione a
+				// byte singolo" precedente (che perdeva qualunque
+				// carattere fuori dall'ASCII/Latin-1 con un '?' letterale).
+				AppendUnicodeAsUTF8(text, u);
 			}
 			else
 			{
 				unsigned char c1;
 				readRaw(&c1, 1);
-				text += (char)c1;
+				// Compresso = Windows-1252 (vedi il commento su
+				// AppendCP1252Byte in Excel.h), non Latin-1/ASCII puro.
+				AppendCP1252Byte(text, c1);
 			}
 		}
 
@@ -412,28 +545,57 @@ void CExcel5Filter::Font()
 	es >> x;
 	es >> x;
 
-	// operator>>(char*) legge una stringa lunga fino a 255 byte (il
-	// prefisso di lunghezza e' un byte 0-255, vedi il commento in
-	// SwapStream.h) in un buffer fornito dal chiamante senza
-	// conoscerne la dimensione -- font_family (Font.h) e' pero' molto
-	// piu' piccola (B_FONT_FAMILY_LENGTH+1, 64 byte): un nome di font
-	// dichiarato piu' lungo di cosi' nel file (visto in pratica, non
-	// solo teorico) scriverebbe oltre la fine di "fn". Si legge prima
-	// in un buffer da 256 byte, capiente per qualunque lunghezza
-	// valida dell'operatore, poi si tronca in modo sicuro.
-	char fontName[256];
-	es >> (unsigned char *)fontName;
+	// Il nome del font e' una "ShortXLUnicodeString" (cch a 1 byte,
+	// non 2 come le stringhe "lunghe" del resto del BIFF8, es. il
+	// template di FORMAT sopra) -- ma resta comunque Unicode: cch(1) +
+	// grbit(1, bit0 = wide) + cch caratteri, compressi (1 byte,
+	// Windows-1252) o wide (2 byte, UTF-16) secondo grbit. Il vecchio
+	// codice leggeva solo un prefisso di lunghezza a un byte e poi
+	// copiava "cch" byte grezzi SENZA saltare grbit ne' convertire i
+	// caratteri -- per un nome scritto in wide (il caso comune anche
+	// per nomi puramente ASCII come "Calibri", osservato in un file
+	// reale) il risultato erano pochi byte spazzatura interrotti dal
+	// primo byte alto nullo di un carattere UTF-16, es. "Calibri"
+	// letto come "\x01C" -- bug reale scoperto confrontando
+	// visivamente con Excel vero l'importazione di una fattura reale:
+	// nessun font risultava mai in grassetto, perche' il nome
+	// spazzatura non corrispondeva a nessun font installato e la
+	// sostituzione del sistema perdeva anche lo stile richiesto.
+	unsigned char cch, fontGrbit;
+	es >> cch >> fontGrbit;
+	bool fontWide = (fontGrbit & 0x01) != 0;
 
+	std::string fontNameUtf8;
+	for (unsigned char k = 0; k < cch; k++)
+	{
+		if (fontWide)
+		{
+			unsigned char c2[2];
+			es.Read(c2, 2);
+			unsigned short u = c2[0] | (c2[1] << 8);
+			AppendUnicodeAsUTF8(fontNameUtf8, u);
+		}
+		else
+		{
+			unsigned char c1;
+			es >> c1;
+			AppendCP1252Byte(fontNameUtf8, c1);
+		}
+	}
+
+	// font_family (Font.h) e' B_FONT_FAMILY_LENGTH+1 (64 byte): un
+	// nome dichiarato piu' lungo (raro ma possibile) va troncato in
+	// modo sicuro, non scritto oltre la fine di "fn".
 	font_family fn;
-	strncpy(fn, fontName, sizeof(fn) - 1);
+	strncpy(fn, fontNameUtf8.c_str(), sizeof(fn) - 1);
 	fn[sizeof(fn) - 1] = 0;
 
 	rgb_color c = { 0, 0, 0, 0};
 	if (color >= 8 && color < 64)
 		c = kExcelColorTable[color - 8];
-	
+
 	fFonts.push_back(gFontSizeTable.GetFontID(fn, fs, size, c));
-} 
+}
 
 void CExcel5Filter::Xf()
 {
@@ -448,15 +610,17 @@ void CExcel5Filter::Xf()
 	es >> y;
 	if (y >= 4) y--;
 	style.fFont = fFonts[y];
-	
-	es >> y;
-	
+
+	unsigned short ifmt;
+	es >> ifmt;
+	y = ifmt;
+
 	if (y < 5)
 	{
 		switch (y)
 		{
 // gokje... (that means gamble in Dutch)
-			case 1: 
+			case 1:
 				style.fFormat = 3; //eFixed;
 				break;
 
@@ -476,21 +640,76 @@ void CExcel5Filter::Xf()
 				style.fFormat |= 2 << 4;
 				style.fFormat |= 1 << 9;
 				break;
-				
+
 			case 0:
 			default:
 				style.fFormat = 0;	// general
 				break;
 		}
 	}
-	else	
-		style.fFormat = fFormats[y];
+	else
+	{
+		// "ifmt" e' un identificativo assoluto (built-in o
+		// personalizzato), non un indice sequenziale -- vedi il
+		// commento su "fFormats" in Excel.h. Un ifmt mai visto (file
+		// che referenzia un built-in raro non precaricato da
+		// InitBuiltinFormats, o un indice corrotto) resta al formato
+		// generico invece di leggere una voce sbagliata.
+		std::map<unsigned short, int>::iterator it = fFormats.find(ifmt);
+		style.fFormat = it != fFormats.end() ? it->second : 0;
+	}
 
 	es >> x >> x;
 	style.fAlignment = x & 0x07;
-	
+	// Bit 3 dello stesso byte di allineamento gia' letto sopra (nessun
+	// nuovo campo da leggere): testo a capo (Fase 12, CellStyle::
+	// fWrapText).
+	style.fWrapText = (x & 0x08) != 0;
+
+	// Bordi e sfondo: i restanti 12 byte del record XF (20 byte in
+	// tutto, 8 gia' letti sopra), mai letti prima d'ora -- vedi il
+	// commento sul confronto con Excel vero nell'intestazione del
+	// file. Indent/flags e flag "attributi usati" non servono qui,
+	// solo per saltarli alla posizione giusta.
+	unsigned char indentFlags, attrUsed;
+	es >> indentFlags >> attrUsed;
+
+	unsigned long border1, border2;
+	es >> border1 >> border2;
+
+	unsigned short bgWord;
+	es >> bgWord;
+
+	// Stile del bordo, 4 bit per lato (0 = nessuno): CellStyle::
+	// fTBorderColor/fLBorderColor/fBBorderColor/fRBorderColor sono in
+	// realta' booleani nonostante il nome (vedi SheetView.cpp -- un
+	// bordo e' sempre disegnato nero pieno, mai col colore/spessore
+	// reale), quindi qui basta la sola presenza.
+	style.fLBorderColor = (border1 & 0x0F) ? 1 : 0;
+	style.fRBorderColor = ((border1 >> 4) & 0x0F) ? 1 : 0;
+	style.fTBorderColor = ((border1 >> 8) & 0x0F) ? 1 : 0;
+	style.fBBorderColor = ((border1 >> 12) & 0x0F) ? 1 : 0;
+
+	// Sfondo: un pattern di riempimento diverso da zero (7 bit alti
+	// di border2) usa il colore di primo piano del pattern (7 bit
+	// bassi di bgWord) come sfondo pieno approssimato -- l'app non
+	// distingue i pattern tratteggiati/a righe da un riempimento
+	// pieno, la stessa approssimazione usata per i bordi sopra.
+	unsigned int fillPattern = (border2 >> 25) & 0x7F;
+	if (fillPattern != 0)
+	{
+		unsigned short fgColorIdx = bgWord & 0x7F;
+		if (fgColorIdx >= 8 && fgColorIdx < 64)
+		{
+			rgb_color fill = kExcelColorTable[fgColorIdx - 8];
+			fill.alpha = 255;
+			style.fLowColor = fill;
+		}
+	}
+
 	fStyles.push_back(gStyleTable.GetStyleID(style));
-} 
+	fXfIsDate.push_back(fDateIfmts.count(ifmt) > 0);
+}
 
 void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 {
@@ -582,11 +801,43 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 			break;
 		case FORMAT:
 		{
-			char s[256];
-			es >> x;
-			es >> (unsigned char *)s;
+			// BIFF8 (Excel97+): il template del formato e' una vera
+			// stringa Unicode (cch a 2 byte + grbit + caratteri
+			// compressi/wide), non la stringa "compressa" a un byte di
+			// lunghezza usata altrove nel filtro per i nomi di font
+			// (operator>>(unsigned char*), che qui leggerebbe solo il
+			// byte basso di "cch" come lunghezza e i primi caratteri
+			// come dati a caso) -- bug reale scoperto confrontando
+			// visivamente con Excel vero l'importazione di una fattura
+			// reale: ogni formato personalizzato risultava vuoto o
+			// illeggibile, facendo scattare il ramo "formato generico"
+			// anche per celle con un formato esplicito nel file.
+			unsigned short ifmt, cch;
+			unsigned char grbit;
+			es >> ifmt >> cch >> grbit;
+			bool wide = (grbit & 0x01) != 0;
 
-			fFormats.push_back(gFormatTable.GetFormatID(s));
+			std::string tmpl;
+			for (unsigned short k = 0; k < cch; k++)
+			{
+				if (wide)
+				{
+					unsigned char c2[2];
+					es.Read(c2, 2);
+					unsigned short u = c2[0] | (c2[1] << 8);
+					AppendUnicodeAsUTF8(tmpl, u);
+				}
+				else
+				{
+					unsigned char c1;
+					es >> c1;
+					AppendCP1252Byte(tmpl, c1);
+				}
+			}
+
+			fFormats[ifmt] = gFormatTable.GetFormatID(tmpl.c_str());
+			if (LooksLikeDateFormat(tmpl))
+				fDateIfmts.insert(ifmt);
 			break;
 		}
 		case DEFCOLWIDTH:
@@ -629,6 +880,27 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 						fCellView->GetWidths().SetValue(first + 1, last + 1,
 							floor(be_plain_font->StringWidth("x") * wi / 256));
 					}
+				}
+
+				// "fColWidths" e' catturata anche senza fCellView (il
+				// caso comune: translator headless, vedi il commento
+				// in XlsTranslator.cpp), a differenza della riga sopra
+				// che aggiorna la vista solo se ne esiste gia' una
+				// viva -- serve a WriteASCD per scrivere la sezione
+				// larghezze di colonna, finora sempre vuota per XLS
+				// (limite dichiarato, non piu' vero da questa fase:
+				// una colonna troppo stretta per il testo reale che
+				// contiene, es. dello studio tagliato a
+				// "Studio Tecnicc", era un problema reale confrontando
+				// visivamente con Excel vero l'importazione di una
+				// fattura reale). Le colonne nascoste (f&0x11) restano
+				// escluse, stesso principio della vista sopra: una
+				// larghezza 0 esplicita non aiuterebbe la resa.
+				if (!(f & 0x11))
+				{
+					float widthPixels = floor(be_plain_font->StringWidth("x") * wi / 256);
+					for (int col = first + 1; col <= last + 1; col++)
+						fColWidths.push_back(std::make_pair(col, widthPixels));
 				}
 
 				fContainer->GetColumnStyles().SetValue(first + 1, last + 1, x);

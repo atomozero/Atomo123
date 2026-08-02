@@ -38,6 +38,7 @@
 */
 
 #include <cstdio>
+#include <string>
 #include <support/Debug.h>
 #include "Excel.h"
 #include "XL_Biff_codes.h"
@@ -75,7 +76,7 @@ void CExcel5Filter::Pass2()
 	fBook.Seek(offset, SEEK_SET);
 	es >> code >> len;
 	offset += 4 + len;
-		
+
 	while (offset < fBook.BufferLength())
 	{
 		fBook.Seek(offset, SEEK_SET);
@@ -113,11 +114,22 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 			es >> c.v >> c.h >> style;
 			c.v++;
 			c.h++;
-		
+
 			double d;
 			es >> d;
-			v = d;
-			
+			// Il formato "sembra" una data (built-in 14-22/45-47 o
+			// personalizzato, vedi InitBuiltinFormats/LooksLikeDateFormat
+			// in Excel.pass1.cpp): converte il seriale Excel in un vero
+			// Value(time_t) invece di un numero grezzo -- necessario
+			// perche' CFormatter::FormatValue formatta come data solo
+			// un Value gia' di tipo eTimeData, mai un eNumData con un
+			// fFormat che assomiglia a una data (vedi il commento in
+			// Formatter.cpp).
+			if (style < fXfIsDate.size() && fXfIsDate[style])
+				v = ExcelSerialToTime(d, f1904);
+			else
+				v = d;
+
 			fContainer->NewCell(c, v, NULL);
 			fContainer->SetCellStyleNr(c, fStyles[style]);
 			break;
@@ -141,7 +153,15 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 			if (l > 511 || l < 0) l = 511;
 			es.Read(label, l);
 			label[l] = 0;
-			v = label;
+
+			// LABEL/RSTRING (BIFF5/7, precedenti a SST) sono stringhe
+			// "compresse" a un byte per carattere in Windows-1252, non
+			// UTF-8 (vedi il commento su AppendCP1252Byte in Excel.h) --
+			// riconvertite qui prima di passarle al motore.
+			std::string utf8;
+			for (short k = 0; k < l; k++)
+				AppendCP1252Byte(utf8, (unsigned char)label[k]);
+			v = utf8.c_str();
 
 			fContainer->NewCell(c, v, NULL);
 			fContainer->SetCellStyleNr(c, fStyles[style]);
@@ -221,7 +241,12 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 			}
 			if (l & 0x01)
 				d /= 100;
-			
+
+			// Vedi il commento sulla stessa verifica nel caso NUMBER
+			// sopra.
+			if (style < fXfIsDate.size() && fXfIsDate[style])
+				v = ExcelSerialToTime(d, f1904);
+			else
 				v = d;
 			fContainer->NewCell(c, v, NULL);
 			fContainer->SetCellStyleNr(c, fStyles[style]);
@@ -235,9 +260,9 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 
 			short cce, grbit, num[4];
 			long chn;
-			
+
 			es >> num[3] >> num[2] >> num[1] >> num[0] >> grbit >> chn >> cce;
-			
+
 			if (num[0] == -1)
 			{
 				switch (num[3])
@@ -269,8 +294,21 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 						break;
 					}
 					default:
-						throw CErr("Illegal result type in formula. %d,%d",
-							c.v, c.h);
+						// Tipo di risultato non riconosciuto (es. il
+						// marcatore "non ancora calcolato" di alcuni
+						// strumenti che scrivono .xls senza mai aprirlo
+						// in Excel, come xlwt): non e' un errore fatale,
+						// il ricalcolo vero dal token stream della
+						// formula (subito sotto) e' comunque la fonte
+						// autorevole del valore -- questo campo e' solo
+						// una pre-compilazione best-effort dalla cache
+						// del file. Cella vuota invece di interrompere
+						// l'intera importazione con un'eccezione (bug
+						// reale scoperto verificando il rilevamento
+						// delle formule con un file di prova).
+						fContainer->NewCell(c, v, NULL);
+						fContainer->SetCellStyleNr(c, fStyles[style]);
+						break;
 				}
 			}
 			else
@@ -316,6 +354,18 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 					free(p);
 				}
 				
+				// Se il ricalcolo fallisce (es. una formula che referenzia
+				// un nome definito che questo motore non e' riuscito a
+				// risolvere, vedi il commento su "funcNr < 0" in Name()
+				// sopra), la cella mantiene il valore già impostato poco
+				// sopra dalla cache BIFF (lo stesso valore che Excel
+				// stesso ha scritto l'ultima volta che ha calcolato il
+				// file) invece di essere sovrascritta con la stringa
+				// letterale "!ERROR" -- bug reale scoperto confrontando
+				// visivamente con Excel vero l'importazione di una
+				// fattura reale: celle che in Excel restavano vuote
+				// mostravano "!ERROR" in Atomo123.
+				bool calcFailed = false;
 				try
 				{
 					form.Calculate(c, v, fContainer);
@@ -323,12 +373,13 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 				}
 				catch (...)
 				{
-					int ix = 0;
-					form.AddToken(valStr, "!ERROR", ix);
-					form.AddToken(opEnd, NULL, ix);
+					calcFailed = true;
 				}
 
-				fContainer->SetCellFormula(c, form.DetachString());
+				if (!calcFailed)
+					fContainer->SetCellFormula(c, form.DetachString());
+				else
+					form.Clear();	// libera il buffer di "form" senza attaccarlo alla cella
 			}
 			catch (CErr e) {
 				puts(e);
@@ -340,13 +391,19 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 		{
 			char label[512];
 			short l;
-			
+
 			es >> l;
-			if (l > 511) l = 511;
+			if (l > 511 || l < 0) l = 511;
 			es.Read(label, l);
 			label[l] = 0;
 
-			v = label;
+			// Stessa conversione Windows-1252 -> UTF-8 di LABEL/RSTRING
+			// sopra: anche il risultato testuale di una formula (es.
+			// CONCATENATE) puo' contenere caratteri accentati.
+			std::string utf8;
+			for (short k = 0; k < l; k++)
+				AppendCP1252Byte(utf8, (unsigned char)label[k]);
+			v = utf8.c_str();
 			fContainer->SetValue(c, v);
 			break;
 		}
@@ -357,7 +414,7 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 			
 			es >> c.v >> c.h;
 			c.v++; c.h++;
-			
+
 			int i = (len-4)/6;
 			// "len" viene dal record letto dal file: un valore
 			// corrotto/negativo darebbe un "i" negativo, e
@@ -370,7 +427,7 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 			while (i--)
 			{
 				es >> style >> l;
-				
+
 				if (l & 0x02)
 					d = (double)(l>>2);
 				else
@@ -381,8 +438,13 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 				}
 				if (l & 0x01)
 					d /= 100;
-				
-				v = d;
+
+				// Vedi il commento sulla stessa verifica nel caso
+				// NUMBER sopra.
+				if (style < fXfIsDate.size() && fXfIsDate[style])
+					v = ExcelSerialToTime(d, f1904);
+				else
+					v = d;
 				fContainer->NewCell(c, v, NULL);
 				fContainer->SetCellStyleNr(c, fStyles[style]);
 				c.h++;

@@ -285,6 +285,18 @@ void CExcel5Filter::ParseXLFormula(CFormula& formula,
 
 	while (indx < len)
 	{
+		// Rete di sicurezza: "indx" alla FINE di ogni iterazione deve
+		// sempre essere maggiore di questo valore (il byte del ptg
+		// stesso e' gia' consumato subito sotto) -- un ptgLen[] fuori
+		// dai suoi confini (nessun avanzamento, vedi il controllo piu'
+		// sotto) combinato con un case dello switch che non legge
+		// nulla di suo lascerebbe "indx" fermo per sempre, ciclo
+		// infinito invece di un semplice token scartato. Bug reale
+		// scoperto aprendo un file .xls reale (una formula BIFF8 con
+		// un token che il resto di questa funzione, scritta per
+		// BIFF5, non avanzava mai).
+		int indxBeforeToken = indx;
+
 		lastPtg = ptg;
 		ptg = str[indx++];
 		basePtg = PTG_BASE(ptg);
@@ -433,60 +445,69 @@ void CExcel5Filter::ParseXLFormula(CFormula& formula,
 				}
 				break;
 			}
+			// ptgRef/ptgArea/ptgRefN/ptgAreaN: strutture BIFF8 (Ref8U/
+			// Area8U), non BIFF5 -- la differenza che conta qui e' che
+			// in BIFF8 i flag di riferimento relativo (bit 0x8000 riga
+			// relativa, 0x4000 colonna relativa) vivono nella parola
+			// COLONNA (2 byte, non piu' 1: il limite di 256 colonne
+			// resta lo stesso, ma il campo si e' allargato per fare
+			// posto ai due flag), non nella parola riga come nel
+			// BIFF5 per cui questo codice era stato scritto in
+			// origine -- bug reale scoperto aprendo un file .xls
+			// reale (formula che leggeva un byte di colonna dal posto
+			// sbagliato, disallineando la lettura del token
+			// successivo: prima mascherato da un bug indipendente
+			// nella lettura dei record, poi un vero ciclo infinito
+			// dopo averlo corretto). ptgLen[] per questi quattro
+			// token e' stato aggiornato di conseguenza (4/8/4/8 byte
+			// dopo il ptg, non piu' 3/6/3/6).
 			case ptgRef:
 			{
 				cell c;
-				Read(str, indx, x);
-				
-				if (x & 0x8000)
-					c.v = (x & 0x3FFF) - inLoc.v + 1;
-				else
-					c.v = (x & 0x3FFF) + 1;
+				short rowWord, colWord;
+				Read(str, indx, rowWord);
+				Read(str, indx + 2, colWord);
 
-				if (x & 0x4000)
-					c.h = *((char *)str + indx + 2) - inLoc.h + 1;
-				else
-					c.h = *((char *)str + indx + 2) + 1;
-				
-				if ((x & 0x8000) == 0) c.h ^= VFIXED;
-				if ((x & 0x4000) == 0) c.h ^= HFIXED;
-				
+				bool rowRel = (colWord & 0x8000) != 0;
+				bool colRel = (colWord & 0x4000) != 0;
+				int col = colWord & 0x00FF;
+
+				c.v = rowRel ? (rowWord & 0x3FFF) - inLoc.v + 1 : (rowWord & 0x3FFF) + 1;
+				c.h = colRel ? col - inLoc.h + 1 : col + 1;
+
+				if (!rowRel) c.h ^= VFIXED;
+				if (!colRel) c.h ^= HFIXED;
+
 				formula.AddToken(valCell, &c, offset);
 				break;
 			}
 			case ptgArea:
 			{
-				Read(str, indx, x);
 				range r;
-				
-				if (x & 0x8000)
-					r.top = (x & 0x3FFF) - inLoc.v + 1;
-				else
-					r.top = (x & 0x3FFF) + 1;
+				short rowTop, rowBottom, colLeftWord, colRightWord;
+				Read(str, indx, rowTop);
+				Read(str, indx + 2, rowBottom);
+				Read(str, indx + 4, colLeftWord);
+				Read(str, indx + 6, colRightWord);
 
-				if (x & 0x4000)
-					r.left = *((char *)str + indx + 4) - inLoc.h + 1;
-				else
-					r.left = *((char *)str + indx + 4) + 1;
-				
-				if ((x & 0x8000)==0) r.left ^= VFIXED;
-				if ((x & 0x4000)==0) r.left ^= HFIXED;
+				bool topRel = (colLeftWord & 0x8000) != 0;
+				bool leftRel = (colLeftWord & 0x4000) != 0;
+				int colLeft = colLeftWord & 0x00FF;
 
-				Read(str, indx + 2, x);
-				
-				if (x & 0x8000)
-					r.bottom = (x & 0x3FFF) - inLoc.v + 1;
-				else
-					r.bottom = (x & 0x3FFF) + 1;
+				r.top = topRel ? (rowTop & 0x3FFF) - inLoc.v + 1 : (rowTop & 0x3FFF) + 1;
+				r.left = leftRel ? colLeft - inLoc.h + 1 : colLeft + 1;
+				if (!topRel) r.left ^= VFIXED;
+				if (!leftRel) r.left ^= HFIXED;
 
-				if (x & 0x4000)
-					r.right = *((char *)str + indx + 5) - inLoc.h + 1;
-				else
-					r.right = *((char *)str + indx + 5) + 1;
-				
-				if ((x & 0x8000)==0) r.right ^= VFIXED;
-				if ((x & 0x4000)==0) r.right ^= HFIXED;
-				
+				bool bottomRel = (colRightWord & 0x8000) != 0;
+				bool rightRel = (colRightWord & 0x4000) != 0;
+				int colRight = colRightWord & 0x00FF;
+
+				r.bottom = bottomRel ? (rowBottom & 0x3FFF) - inLoc.v + 1 : (rowBottom & 0x3FFF) + 1;
+				r.right = rightRel ? colRight - inLoc.h + 1 : colRight + 1;
+				if (!bottomRel) r.right ^= VFIXED;
+				if (!rightRel) r.right ^= HFIXED;
+
 				formula.AddToken(valRange, &r, offset);
 				break;
 			}
@@ -501,52 +522,61 @@ void CExcel5Filter::ParseXLFormula(CFormula& formula,
 			}
 			case ptgRefN:
 			{
-				Read(str, indx, x);
 				cell c;
-				
-				if (x & 0x2000)
-					c.v = x | 0xC000;
+				short rowWord, colWord;
+				Read(str, indx, rowWord);
+				Read(str, indx + 2, colWord);
+
+				if (rowWord & 0x2000)
+					c.v = rowWord | 0xC000;
 				else
-					c.v = x & 0x3FFF;
-					
+					c.v = rowWord & 0x3FFF;
 				c.v %= 0x3FFF;
-				c.h = *((char *)str + indx + 2);
-				
-				if ((x&0x8000)==0)
+
+				// Colonna relativa: valore con segno a 8 bit (delta
+				// dalla cella corrente), stesso principio del giro a
+				// 14 bit della riga sopra ma su un solo byte -- e'
+				// esattamente l'interpretazione che il vecchio codice
+				// BIFF5 gia' applicava, qui riletta pero' dal posto
+				// giusto (il byte basso della parola colonna, non un
+				// byte isolato subito dopo la riga).
+				c.h = (char)(colWord & 0x00FF);
+
+				if ((colWord & 0x8000) == 0)
 				{
 					c.v++;
 					c.h ^= VFIXED;
 				}
-				if ((x&0x4000)==0)
+				if ((colWord & 0x4000) == 0)
 					c.h ^= HFIXED;
-				
+
 				formula.AddToken(valCell, &c, offset);
 				break;
 			}
 			case ptgAreaN:
 			{
-				Read(str, indx, x);
 				range r;
-				
-				if (x & 0x2000)
-					r.top = x | 0xC000;
-				else
-					r.top = x & 0x3FFF;
-					
-				r.top %= 0x3FFF;
-				
-				Read(str, indx + 2, x);
+				short rowTop, rowBottom, colLeftWord, colRightWord;
+				Read(str, indx, rowTop);
+				Read(str, indx + 2, rowBottom);
+				Read(str, indx + 4, colLeftWord);
+				Read(str, indx + 6, colRightWord);
 
-				if (x & 0x2000)
-					r.bottom = x | 0xC000;
+				if (rowTop & 0x2000)
+					r.top = rowTop | 0xC000;
 				else
-					r.bottom = x & 0x3FFF;
-					
+					r.top = rowTop & 0x3FFF;
+				r.top %= 0x3FFF;
+
+				if (rowBottom & 0x2000)
+					r.bottom = rowBottom | 0xC000;
+				else
+					r.bottom = rowBottom & 0x3FFF;
 				r.bottom %= 0x3FFF;
-				
-				r.left = *((char *)str + indx + 4);
-				r.right = *((char *)str + indx + 5);
-				
+
+				r.left = (char)(colLeftWord & 0x00FF);
+				r.right = (char)(colRightWord & 0x00FF);
+
 				formula.AddToken(valRange, &r, offset);
 				break;
 			}
@@ -562,6 +592,14 @@ void CExcel5Filter::ParseXLFormula(CFormula& formula,
 		// leggendo XL_Ptg.h, ma qui costa nulla non doverlo assumere).
 		if (basePtg < (int)(sizeof(ptgLen) / sizeof(ptgLen[0])))
 			indx += ptgLen[basePtg];
+
+		// Chiusura della rete di sicurezza aperta sopra: qualunque sia
+		// il motivo (ptgLen fuori indice, un case che consuma meno
+		// byte di quanti il vero formato BIFF8 del token ne usi
+		// davvero...), un'iterazione che non fa avanzare "indx" non
+		// deve mai ripresentarsi identica al giro successivo.
+		if (indx <= indxBeforeToken)
+			indx = indxBeforeToken + 1;
 	}
 	
 	formula.AddToken(opEnd, NULL, offset);

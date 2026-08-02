@@ -38,7 +38,10 @@
 #include "Formula.h"
 #include "Functions.h"
 //#include <ByteOrder.h>
+#include <map>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 class CCellView;
@@ -80,8 +83,18 @@ class CExcel5Filter
   public:
 	CExcel5Filter(BPositionIO& inStream, CCellView *cellView, CContainer *container);
 	virtual ~CExcel5Filter();
-	
+
 	void Translate();
+
+	// Larghezze di colonna esplicite (colonna 1-based, larghezza in
+	// pixel) lette da record COLINFO durante Translate() -- popolata
+	// SEMPRE (non solo quando "cellView" e' vivo, vedi il commento su
+	// COLINFO in Excel.pass1.cpp), cosi' un translator headless (senza
+	// nessun CCellView) puo' comunque recuperarle dopo Translate() per
+	// scriverle nel formato nativo (vedi WriteASCD in
+	// translators/xls/XlsTranslator.cpp).
+	const std::vector<std::pair<int, float> >& GetColumnWidths() const
+		{ return fColWidths; }
 
   private:
 	
@@ -131,17 +144,41 @@ class CExcel5Filter
 			return *this;
 		}
 		
+		// Un campo BIFF "long" e' sempre 4 byte fissi (DWORD) -- MA
+		// "long"/"unsigned long" sono 8 byte su Haiku x86_64 (LP64),
+		// non 4 come sull'hardware BeOS/PPC per cui questo filtro era
+		// stato scritto originariamente. "Read(&x, sizeof(x))" leggeva
+		// quindi 8 byte da un campo che ne ha solo 4: innocuo se e'
+		// l'ultimo campo letto di un record isolato (i 4 byte in piu'
+		// finiscono nel record successivo senza essere mai
+		// riconsultati, dato che il ciclo esterno di Pass1/Pass2
+		// riposiziona comunque il flusso in base alla lunghezza
+		// dichiarata del record), ma un bug reale quando PIU' campi di
+		// questo tipo si leggono in sequenza dallo stesso record (es.
+		// MULRK, piu' celle in un solo record): ogni lettura di troppo
+		// faceva slittare il cursore di 4 byte, corrompendo a cascata
+		// ogni cella successiva nello stesso record -- bug reale
+		// scoperto verificando il rilevamento dei formati data su un
+		// file .xls reale (MULRK con piu' celle sulla stessa riga: la
+		// prima cella corretta, le successive con valori senza senso).
+		// Stessa famiglia del bug gia' corretto in Excel.OLE2.cpp
+		// ("long a 64 bit invece di 32"), qui riemerso negli operatori
+		// di flusso. Fix: leggere sempre esattamente 4 byte in una
+		// variabile a 32 bit fissa, poi assegnare/estendere al long
+		// (con segno) o unsigned long di uscita.
 		CExcelStream& operator>> (long& x)
 		{
-			Read(&x, sizeof(x));
-			x = B_LENDIAN_TO_HOST_INT32(x);
+			int32 v;
+			Read(&v, sizeof(v));
+			x = B_LENDIAN_TO_HOST_INT32(v);
 			return *this;
 		}
-		
+
 		CExcelStream& operator>> (unsigned long& x)
 		{
-			Read(&x, sizeof(x));
-			x = B_LENDIAN_TO_HOST_INT32(x);
+			uint32 v;
+			Read(&v, sizeof(v));
+			x = B_LENDIAN_TO_HOST_INT32(v);
 			return *this;
 		}
 		
@@ -186,6 +223,58 @@ class CExcel5Filter
 	// singolo record BIFF).
 	void ReadSST(int len);
 
+	// Le stringhe BIFF "compresse" (un byte/carattere: LABEL/RSTRING
+	// dirette, e il ramo non "wide" di ReadSST) sono in Windows-1252,
+	// non Latin-1/ASCII puro come assumeva il codice storico -- un
+	// byte >=0x80 copiato cosi' com'e' in una stringa UTF-8 (quella
+	// attesa da tutta la UI, nativa su Haiku) e' una sequenza non
+	// valida, mostrata come carattere di sostituzione -- bug reale
+	// scoperto confrontando visivamente con Excel vero l'importazione
+	// di una fattura reale ("Modalit\xe0" invece di "Modalità").
+	// AppendUnicodeAsUTF8 e' riusata anche per il ramo "wide" (UTF-16,
+	// 2 byte/carattere) di ReadSST, che prima riduceva a '?' qualunque
+	// punto di codice oltre il singolo byte.
+	static void AppendCP1252Byte(std::string& out, unsigned char b);
+	static void AppendUnicodeAsUTF8(std::string& out, unsigned int codepoint);
+
+	// Formati numero (record FORMAT/XF, BIFF5-8): "fFormats" era prima
+	// un vector indicizzato per ORDINE DI APPARIZIONE dei record
+	// FORMAT nel file, mentre l'indice "ifmt" che XF referenzia davvero
+	// e' un identificativo assoluto -- built-in (0-163, es. 14 = data
+	// "mm-dd-yy") o personalizzato (164 in su), quasi mai coincidente
+	// con l'ordine di apparizione. Un file reale che usa un formato
+	// built-in (frequente: data, percentuale) senza mai dichiararlo
+	// con un proprio record FORMAT (il caso comune, dato che e'
+	// built-in) faceva leggere una voce sbagliata o fuori indice --
+	// bug reale scoperto confrontando visivamente con Excel vero
+	// l'importazione di una fattura reale (una data mostrata come
+	// "43242", il numero seriale grezzo). Sostituito con una mappa
+	// ifmt->formatID, precaricata con i formati built-in piu' comuni
+	// da InitBuiltinFormats() prima di leggere il file: un record
+	// FORMAT esplicito nel file sovrascrive semplicemente la voce
+	// gia' precaricata per lo stesso ifmt, se il file la personalizza.
+	void InitBuiltinFormats();
+	// ifmt per cui il formato (built-in o personalizzato via record
+	// FORMAT) e' un formato data/ora -- serve per Pass2, che deve
+	// costruire un Value(time_t) invece del numero seriale grezzo,
+	// dato che CFormatter::FormatValue formatta come data solo un
+	// Value gia' di tipo eTimeData, mai un eNumData con un fFormat che
+	// "sembra" una data (vedi il commento in Formatter.cpp).
+	std::set<unsigned short> fDateIfmts;
+	// Vero se il template di un formato personalizzato "sembra" una
+	// data (euristica sulle lettere y/m/d/h/s fuori da apici e
+	// parentesi quadre, stessa idea di LooksLikeDateFormat in
+	// XlsxTranslator.cpp, duplicata qui per lo stesso motivo per cui
+	// ogni translator/filtro duplica la propria serializzazione: ogni
+	// pezzo di questo progetto resta autonomo senza dipendenze
+	// incrociate fra motore/translator).
+	static bool LooksLikeDateFormat(const std::string& tmpl);
+	// Offset epoca Excel -> Unix, stesso principio di
+	// ExcelSerialToTime in XlsxTranslator.cpp (Fase 12): 25569 giorni
+	// (sistema 1900, predefinito) o 24107 (sistema 1904, "f1904" gia'
+	// letto dal record 1904 del file).
+	static time_t ExcelSerialToTime(double serial, bool date1904);
+
 	void HandleXLRecordForPass2(int code, int len);
 	void ParseXLFormula(CFormula& formula, cell loc, cell shared,
 		const void *data, int len);
@@ -194,7 +283,17 @@ class CExcel5Filter
 	int fNewFunctionNr;
 	BMallocIO fBook;
 	std::vector<xlName> fNames;
-	std::vector<int> fFonts, fStyles, fFormats;
+	std::vector<int> fFonts, fStyles;
+	std::vector<std::pair<int, float> > fColWidths;
+	std::map<unsigned short, int> fFormats;
+	// Un booleano per XF processato, parallelo a "fStyles" sopra
+	// (stesso indice: lo "style" letto da ogni record cella in Pass2
+	// e' proprio l'indice del suo XF, nell'ordine in cui Xf() li ha
+	// visti) -- Pass2 lo controlla direttamente invece di risalire
+	// dallo stile registrato in gStyleTable al suo fFormat e poi
+	// rifare la stessa euristica: piu' semplice e non serve rifare la
+	// classificazione data/non data due volte.
+	std::vector<bool> fXfIsDate;
 	std::vector<XLSHFormula> fSharedFormulas;
 	std::vector<std::string> fSST;
 

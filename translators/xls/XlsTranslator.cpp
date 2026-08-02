@@ -7,13 +7,19 @@
 #include "XlsTranslator.h"
 
 #include <cstring>
+#include <utility>
+#include <vector>
+
+#include <Font.h>
 
 #include "Cell.h"
 #include "Value.h"
+#include "CellStyle.h"
 #include "Container.h"
 #include "CellIterator.h"
 #include "Excel.h"
 #include "EngineViewStub.h"
+#include "FontMetrics.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -43,7 +49,8 @@ static const int32 kASCDVersion = 1;
 // add-on autonomo senza dipendenze incrociate. Se in futuro servono
 // piu' translator con lo stesso formato di uscita, vale la pena
 // estrarla in una libreria condivisa.
-static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
+static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
+	const std::vector<std::pair<int, float> >* colWidths = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -82,6 +89,303 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 		if (len > 0 && dest->Write(text, len) != len)
 			return B_IO_ERROR;
 	}
+
+	// Da qui in poi, stesse sezioni opzionali in coda di
+	// translators/xlsx/XlsxTranslator.cpp (vedi il commento su
+	// ui/src/AscdIO.cpp per il motivo per cui ogni sezione va scritta
+	// SEMPRE, anche vuota: LoadASCD le legge in un ordine fisso, e
+	// omettere una sezione disallineerebbe la lettura di quella dopo).
+	// Font/allineamento/formato numero/testo a capo sono scritti con i
+	// valori REALI: CExcel5Filter (motore, vedi Excel.pass1.cpp) li
+	// risolve gia' correttamente per ogni cella durante Translate()
+	// tramite Xf()/Font(), esattamente come XlsxTranslator fa per XLSX
+	// -- mancava solo la scrittura di queste sezioni qui, che finora
+	// scartava tutto tranne il testo/valore grezzo di ogni cella (bug
+	// reale: un titolo in grassetto nel file originale, o una cella
+	// con formato "00000" per gli zeri iniziali, sparivano del tutto
+	// aprendo il file con Atomo123). Sfondo/testo colorato e bordi
+	// sono ora scritti con i valori REALI anch'essi (fLowColor/
+	// fHighColor/fTBorderColor ecc., risolti da Xf() -- vedi il
+	// commento in Excel.pass1.cpp). Celle unite e immagini incorporate
+	// restano vuote: il motore non estrae ancora MERGEDCELLS ne'
+	// MSODRAWING dal formato BIFF legacy (limite dichiarato).
+
+	int32 chartCount = 0;
+	if (dest->Write(&chartCount, sizeof(chartCount)) != (ssize_t)sizeof(chartCount))
+		return B_IO_ERROR;
+
+	// Larghezze di colonna esplicite: CExcel5Filter::GetColumnWidths(),
+	// popolata da record COLINFO durante Translate() (vedi il
+	// commento in Excel.pass1.cpp) -- prima sempre vuota, dato che
+	// COLINFO scriveva la larghezza vera solo nella vista (fCellView,
+	// sempre NULL in un translator headless), mai in un posto che
+	// questo translator potesse rileggere dopo Translate().
+	int32 colWidthCount = colWidths ? (int32)colWidths->size() : 0;
+	if (dest->Write(&colWidthCount, sizeof(colWidthCount)) != (ssize_t)sizeof(colWidthCount))
+		return B_IO_ERROR;
+
+	for (int32 i = 0; i < colWidthCount; i++)
+	{
+		int16 col = (int16)(*colWidths)[i].first;
+		float width = (*colWidths)[i].second;
+		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+			|| dest->Write(&width, sizeof(width)) != (ssize_t)sizeof(width))
+			return B_IO_ERROR;
+	}
+
+	// Colori di sfondo/testo di cella non predefiniti: fLowColor viene
+	// da Xf() (pattern di riempimento del record XF, vedi il commento
+	// in Excel.pass1.cpp), fHighColor dal colore del FONT associato
+	// (gia' risolto da Font() e conservato dentro gFontSizeTable, non
+	// in CellStyle -- va quindi ripescato qui con GetFontInfo, stesso
+	// indice fFont gia' usato per la sezione "font" sopra).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, CellStyle> > toWrite;
+		CCellIterator colorIter(doc, NULL);
+		cell cc;
+		while (colorIter.NextExisting(cc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(cc, cs);
+
+			rgb_color fontColor = defaultStyle.fHighColor;
+			font_family family;
+			font_style fstyle;
+			float size;
+			gFontSizeTable.GetFontInfo(cs.fFont, &family, &fstyle, &size, &fontColor);
+			// kExcelColorTable (Excel.colors.h) e il colore "automatico"
+			// di ripiego in Font() (Excel.pass1.cpp) hanno entrambi
+			// alpha=0: non e' un canale alfa vero, l'app usa sempre
+			// colori opachi (vedi CellStyle::CellStyle, alpha=255 per
+			// entrambi i colori). Senza normalizzarlo qui, OGNI cella
+			// con un font risolto da Font() finirebbe (erroneamente)
+			// nella sezione colori solo per l'alpha diverso dal
+			// predefinito, anche senza alcun colore testo esplicito.
+			fontColor.alpha = 255;
+			cs.fHighColor = fontColor;
+
+			if (memcmp(&cs.fLowColor, &defaultStyle.fLowColor, sizeof(rgb_color)) != 0
+				|| memcmp(&cs.fHighColor, &defaultStyle.fHighColor, sizeof(rgb_color)) != 0)
+				toWrite.push_back(std::make_pair(cc, cs));
+		}
+
+		int32 cellColorCount = (int32)toWrite.size();
+		if (dest->Write(&cellColorCount, sizeof(cellColorCount)) != (ssize_t)sizeof(cellColorCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < cellColorCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			const CellStyle& cs = toWrite[i].second;
+			uint8 buf[8] = { cs.fLowColor.red, cs.fLowColor.green, cs.fLowColor.blue, cs.fLowColor.alpha,
+				cs.fHighColor.red, cs.fHighColor.green, cs.fHighColor.blue, cs.fHighColor.alpha };
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(buf, sizeof(buf)) != (ssize_t)sizeof(buf))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Colori di colonna: non applicabile a XLS (nessun record BIFF
+	// equivalente al default di colonna XLSX), sezione sempre vuota.
+	int32 columnColorCount = 0;
+	if (dest->Write(&columnColorCount, sizeof(columnColorCount)) != (ssize_t)sizeof(columnColorCount))
+		return B_IO_ERROR;
+
+	int32 rowHeightCount = 0;
+	if (dest->Write(&rowHeightCount, sizeof(rowHeightCount)) != (ssize_t)sizeof(rowHeightCount))
+		return B_IO_ERROR;
+
+	int32 frozenRows = 0, frozenCols = 0;
+	if (dest->Write(&frozenRows, sizeof(frozenRows)) != (ssize_t)sizeof(frozenRows)
+		|| dest->Write(&frozenCols, sizeof(frozenCols)) != (ssize_t)sizeof(frozenCols))
+		return B_IO_ERROR;
+
+	// Font di cella non predefinito: famiglia/stile/dimensione gia'
+	// risolti (mai l'indice grezzo di CellStyle::fFont, volatile fra
+	// una sessione e l'altra -- stesso motivo di XlsxTranslator.cpp e
+	// di ui/src/AscdIO.cpp).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, CellStyle> > toWrite;
+		CCellIterator fontIter(doc, NULL);
+		cell fc;
+		while (fontIter.NextExisting(fc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(fc, cs);
+			if (cs.fFont != defaultStyle.fFont)
+				toWrite.push_back(std::make_pair(fc, cs));
+		}
+
+		int32 fontCount = (int32)toWrite.size();
+		if (dest->Write(&fontCount, sizeof(fontCount)) != (ssize_t)sizeof(fontCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < fontCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			font_family family;
+			font_style fstyle;
+			float size;
+			gFontSizeTable.GetFontInfo(toWrite[i].second.fFont, &family, &fstyle, &size);
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(family, sizeof(font_family)) != (ssize_t)sizeof(font_family)
+				|| dest->Write(fstyle, sizeof(font_style)) != (ssize_t)sizeof(font_style)
+				|| dest->Write(&size, sizeof(size)) != (ssize_t)sizeof(size))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Allineamento orizzontale di cella non predefinito.
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, char> > toWrite;
+		CCellIterator alignIter(doc, NULL);
+		cell ac;
+		while (alignIter.NextExisting(ac))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(ac, cs);
+			if (cs.fAlignment != defaultStyle.fAlignment)
+				toWrite.push_back(std::make_pair(ac, cs.fAlignment));
+		}
+
+		int32 alignCount = (int32)toWrite.size();
+		if (dest->Write(&alignCount, sizeof(alignCount)) != (ssize_t)sizeof(alignCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < alignCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			int8 alignment = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&alignment, sizeof(alignment)) != (ssize_t)sizeof(alignment))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Bordi di cella non predefiniti: CellStyle::fTBorderColor/
+	// fLBorderColor/fBBorderColor/fRBorderColor, gia' risolti da Xf()
+	// come presenza booleana per lato (0/1, nessun vero colore/
+	// spessore -- vedi il commento in Excel.pass1.cpp e in
+	// ui/src/AscdIO.cpp sullo stesso campo per XLSX).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, CellStyle> > toWrite;
+		CCellIterator borderIter(doc, NULL);
+		cell bc;
+		while (borderIter.NextExisting(bc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(bc, cs);
+			if (cs.fTBorderColor != defaultStyle.fTBorderColor
+				|| cs.fLBorderColor != defaultStyle.fLBorderColor
+				|| cs.fBBorderColor != defaultStyle.fBBorderColor
+				|| cs.fRBorderColor != defaultStyle.fRBorderColor)
+				toWrite.push_back(std::make_pair(bc, cs));
+		}
+
+		int32 borderCount = (int32)toWrite.size();
+		if (dest->Write(&borderCount, sizeof(borderCount)) != (ssize_t)sizeof(borderCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < borderCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			const CellStyle& cs = toWrite[i].second;
+			uint8 sides[4] = { cs.fTBorderColor, cs.fLBorderColor,
+				cs.fBBorderColor, cs.fRBorderColor };
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(sides, sizeof(sides)) != (ssize_t)sizeof(sides))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Formato numero di cella non predefinito: CellStyle::fFormat,
+	// gia' risolto da Xf() (built-in Sum-It o gFormatTable::GetFormatID
+	// su un record FORMAT reale, vedi Excel.pass1.cpp).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, int32> > toWrite;
+		CCellIterator formatIter(doc, NULL);
+		cell fmc;
+		while (formatIter.NextExisting(fmc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(fmc, cs);
+			if (cs.fFormat != defaultStyle.fFormat)
+				toWrite.push_back(std::make_pair(fmc, (int32)cs.fFormat));
+		}
+
+		int32 formatCount = (int32)toWrite.size();
+		if (dest->Write(&formatCount, sizeof(formatCount)) != (ssize_t)sizeof(formatCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < formatCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			int32 format = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&format, sizeof(format)) != (ssize_t)sizeof(format))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Sottolineato: non ancora estratto dal record FONT legacy (limite
+	// dichiarato, il campo esiste nel BIFF ma questo filtro non lo
+	// legge ancora), sezione sempre vuota.
+	int32 underlineCount = 0;
+	if (dest->Write(&underlineCount, sizeof(underlineCount)) != (ssize_t)sizeof(underlineCount))
+		return B_IO_ERROR;
+
+	// Testo a capo di cella non predefinito: CellStyle::fWrapText, bit
+	// 3 del byte di allineamento del record XF, letto da Xf() insieme
+	// all'allineamento orizzontale sopra (nessun record separato).
+	{
+		CellStyle defaultStyle;
+		std::vector<cell> toWrite;
+		CCellIterator wrapIter(doc, NULL);
+		cell wc;
+		while (wrapIter.NextExisting(wc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(wc, cs);
+			if (cs.fWrapText != defaultStyle.fWrapText)
+				toWrite.push_back(wc);
+		}
+
+		int32 wrapCount = (int32)toWrite.size();
+		if (dest->Write(&wrapCount, sizeof(wrapCount)) != (ssize_t)sizeof(wrapCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < wrapCount; i++)
+		{
+			int16 row = toWrite[i].v, col = toWrite[i].h;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Celle unite: non ancora estratte (record MERGEDCELLS del BIFF
+	// non ancora gestito, limite dichiarato), sezione sempre vuota.
+	int32 mergeCount = 0;
+	if (dest->Write(&mergeCount, sizeof(mergeCount)) != (ssize_t)sizeof(mergeCount))
+		return B_IO_ERROR;
+
+	// Immagini incorporate: non ancora estratte (il formato BIFF le
+	// incorpora in record MSODRAWING/Escher, un formato binario a
+	// parte molto piu' complesso di xl/drawings/+xl/media/ di XLSX --
+	// limite dichiarato), sezione sempre vuota.
+	int32 imageCount = 0;
+	if (dest->Write(&imageCount, sizeof(imageCount)) != (ssize_t)sizeof(imageCount))
+		return B_IO_ERROR;
 
 	return B_OK;
 }
@@ -155,16 +459,21 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 
 	CContainer* doc = new CContainer(NULL, NULL);
 	status_t err = B_OK;
+	std::vector<std::pair<int, float> > colWidths;
 
 	try
 	{
 		// cellView=NULL: nessuna UI collegata (translator headless).
 		// Il costruttore legge subito il flusso e popola doc; alcuni
-		// metadati (nomi di intervallo, larghezze colonna/altezze
-		// riga) vengono scartati in questa modalita' -- vedi la nota
-		// nello stub in engine/src/Stubs/EngineViewStub.h.
+		// metadati (nomi di intervallo, altezze riga) vengono
+		// scartati in questa modalita' -- vedi la nota nello stub in
+		// engine/src/Stubs/EngineViewStub.h. Le larghezze di colonna
+		// invece si recuperano comunque da GetColumnWidths(), che
+		// CExcel5Filter popola indipendentemente da "cellView" (vedi
+		// il commento in Excel.h).
 		CExcel5Filter filter(*source, NULL, doc);
 		filter.Translate();
+		colWidths = filter.GetColumnWidths();
 	}
 	catch (...)
 	{
@@ -172,7 +481,7 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 	}
 
 	if (err == B_OK)
-		err = WriteASCD(doc, destination);
+		err = WriteASCD(doc, destination, &colWidths);
 
 	doc->Release();
 	return err;

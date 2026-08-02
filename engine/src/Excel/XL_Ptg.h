@@ -263,16 +263,26 @@ const char ptgLen[] =
 	2, // ptgFunc
 	3, // ptgFuncVar
 	14, // ptgName
-	3, // ptgRef
-	6, // ptgArea
+	// ptgRef/ptgArea/ptgRefN/ptgAreaN: 4/8/4/8 byte, non piu' 3/6/6/3
+	// come nel BIFF5 per cui questi valori erano stati scritti in
+	// origine -- in BIFF8 i flag di riferimento relativo si spostano
+	// dalla parola RIGA (2 byte con flag) a una parola COLONNA a se'
+	// stante (2 byte, non piu' 1), vedi il commento sui case
+	// corrispondenti piu' sotto in questo file (bug reale scoperto
+	// aprendo un file .xls reale: un ciclo infinito nel parser di
+	// formule, mascherato prima da un bug indipendente che disallineava
+	// la lettura dei record e faceva fallire il parsing con
+	// un'eccezione invece che raggiungere mai questo punto).
+	4, // ptgRef
+	8, // ptgArea
 	6, // ptgMemArea
 	0, // ptgMemErr
 	6, // ptgMemNoMem
 	2, // ptgMemFunc
 	0, // ptgRefErr
 	0, // ptgAreaErr
-	3, // ptgRefN
-	6, // ptgAreaN
+	4, // ptgRefN
+	8, // ptgAreaN
 	2, // ptgMemAreaN
 	2, // ptgMemNoMemN
 	0, 0, 0, 0, 0, 0, 0, 0, 0, // fillers

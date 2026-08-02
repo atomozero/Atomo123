@@ -76,26 +76,47 @@ CFontMetrics::CFontMetrics()
 CFontMetrics::CFontMetrics(const char *inFamily, const char *inStyle,
 	float inFontSize, rgb_color inFontColor)
 {
-	fFont.SetFamilyAndStyle(inFamily, inStyle);
-	fFont.GetFamilyAndStyle(&fFamily, &fStyle);
-	fFont.SetSize(fSize = inFontSize);
-	
-	if (strcmp(fFamily, "<unknown family>") == 0)
+	// "inFamily" (es. un font Windows come "Calibri", tipico nei file
+	// .xls/.xlsx reali) puo' non essere installato su questo sistema.
+	// Il codice storico rilevava questo caso confrontando il nome
+	// riletto con la stringa letterale "<unknown family>"/
+	// "<unknown style>" -- una convenzione di BeOS R5 che Haiku non
+	// segue piu': qui SetFamilyAndStyle fallita sostituisce
+	// silenziosamente sia famiglia CHE stile col font di sistema in
+	// un solo colpo (senza passare da nessuna stringa "<unknown...>"
+	// rilevabile), perdendo lo stile richiesto anche quando la
+	// famiglia di ripiego lo supporterebbe benissimo -- bug reale
+	// scoperto confrontando visivamente con Excel vero l'importazione
+	// di una fattura reale: nessun testo risultava mai in grassetto.
+	// Il valore di ritorno di SetFamilyAndStyle e' il segnale
+	// affidabile su Haiku: se fallisce, si riprova esplicitamente con
+	// la famiglia di ripiego ma lo STILE originale, prima di arrendersi
+	// anche su quello.
+	status_t err = fFont.SetFamilyAndStyle(inFamily, inStyle);
+	if (err != B_OK)
 	{
-		fFont.SetFamilyAndStyle(
-			gPrefs->GetPrefString("defdoc font family"),
-			inStyle);
+		// gPrefs puo' essere NULL in un contesto senza una vera
+		// App::App() (translator headless con solo un BApplication
+		// minimo, vedi il commento in XlsxTranslator.cpp) -- be_plain_font
+		// resta comunque un ripiego valido, stesso principio gia' usato
+		// in Container.cpp per lo stesso motivo.
+		font_family sysFamily;
+		font_style sysStyle;
+		be_plain_font->GetFamilyAndStyle(&sysFamily, &sysStyle);
+		const char *fallbackFamily = gPrefs
+			? gPrefs->GetPrefString("defdoc font family", sysFamily) : sysFamily;
 
-		fFont.GetFamilyAndStyle(&fFamily, &fStyle);
-
-		if (strcmp(fStyle, "<unknown style>") == 0)
+		err = fFont.SetFamilyAndStyle(fallbackFamily, inStyle);
+		if (err != B_OK)
 		{
-			fFont.SetFamilyAndStyle(
-				gPrefs->GetPrefString("defdoc font family"),
-				gPrefs->GetPrefString("defdoc font style"));
-			fFont.GetFamilyAndStyle(&fFamily, &fStyle);
+			const char *fallbackStyle = gPrefs
+				? gPrefs->GetPrefString("defdoc font style", sysStyle) : sysStyle;
+			fFont.SetFamilyAndStyle(fallbackFamily, fallbackStyle);
 		}
 	}
+
+	fFont.GetFamilyAndStyle(&fFamily, &fStyle);
+	fFont.SetSize(fSize = inFontSize);
 
 	fFontColor = inFontColor;
 	fFontStyle = CFontStyle::Locate(fFamily, fStyle, fSize);

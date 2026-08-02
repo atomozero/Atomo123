@@ -65,12 +65,37 @@
 #include <stdarg.h>
 #include <cstdio>
 
+#include <Font.h>
+
+#include "FontMetrics.h"
+
 CExcel5Filter::CExcel5Filter(BPositionIO& inStream, CCellView *cellView, CContainer *container)
 	: fCellView(cellView), fContainer(container)
 {
 	f1904 = false;
 	fNewFunctionNr = kFunctionCount;
-	
+
+	InitBuiltinFormats();
+
+	// Riserva la voce "Regular" di gFontSizeTable per prima, stesso
+	// motivo e stessa soluzione di ParseStyles in
+	// translators/xlsx/XlsxTranslator.cpp (Fase 12): il PRIMO indice
+	// mai assegnato da GetFontID in questo processo e' 0, lo stesso
+	// valore che CellStyle usa come sentinella "nessun font
+	// esplicito" -- se un font grassetto/corsivo fosse il primo mai
+	// registrato da Font() (Excel.pass1.cpp) invece di un Regular,
+	// finirebbe per caso proprio all'indice 0 e sparirebbe
+	// silenziosamente, scambiato per "nessuno stile" (bug reale
+	// scoperto confrontando visivamente con Excel vero l'importazione
+	// di una fattura reale: nessuna delle celle in grassetto del file
+	// risultava tale). Il risultato non serve, l'unico scopo e'
+	// occupare un indice con un font che non e' ne' grassetto ne'
+	// corsivo prima di registrarne uno che lo e'.
+	font_family defaultFamily;
+	font_style defaultStyle;
+	be_plain_font->GetFamilyAndStyle(&defaultFamily, &defaultStyle);
+	gFontSizeTable.GetFontID(defaultFamily, defaultStyle, be_plain_font->Size());
+
 	inStream.Seek(0, SEEK_SET);
 	FailOSErr(GetBookStream(inStream), "Failed to open Excel File (err: %d)");
 } // CExcel5Filter::CExcel5Filter
