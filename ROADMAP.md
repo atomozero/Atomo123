@@ -1190,10 +1190,9 @@ Test: una fixture xlwt dedicata per ciascun bug in
 riaprendo ripetutamente la fattura reale nell'app vera e confrontando
 screenshot alla mano con Excel — comprese le larghezze di colonna, gli
 sfondi colorati e i bordi della tabella riepilogativa, prima
-completamente assenti. Resta un limite dichiarato: celle unite (record
-`MERGEDCELLS`, non ancora affrontato). Le immagini incorporate
-(record `MSODRAWING`/Escher) sono invece state affrontate subito dopo,
-vedi la sezione dedicata più sotto.
+completamente assenti. Le immagini incorporate (record
+`MSODRAWING`/Escher) e le celle unite (record `MERGEDCELLS`) sono
+state affrontate subito dopo, vedi le sezioni dedicate più sotto.
 
 ### Bug scoperto: immagini incorporate del filtro XLS legacy (Escher/MSODRAWING), e due bug indipendenti scoperti verificandole dal vivo
 
@@ -1365,6 +1364,43 @@ Haiku, nessun gdb disponibile) — probabilmente una corruzione di
 memoria pre-esistente e rara, non necessariamente legata alle modifiche
 di questa sessione. Segnalato qui per trasparenza, da investigare con
 strumenti migliori se si ripresenta.
+
+### Bug scoperto: celle unite ignorate dal filtro XLS legacy (record MERGEDCELLS)
+
+Ultimo limite dichiarato rimasto sul confronto diretto con Excel vero
+della stessa fattura reale: l'intestazione "Corrispettivi"/"Spese
+escluse ex art. 15 DPR 633/72" è unita su due righe nel file originale
+(centrata verticalmente in Excel), ma il filtro BIFF legacy ignorava
+del tutto il record `MERGEDCELLS` (0x0E5) — la stessa intestazione
+appariva in Atomo123 come due righe separate, con testo troncato in
+alto invece che centrato sull'intero blocco.
+
+`CExcel5Filter::HandleXLRecordForPass1` (`Excel.pass1.cpp`) legge ora
+`n` quadruple `(rowFirst,rowLast,colFirst,colLast)`, tutte 0-based
+come il resto del BIFF, convertite a 1-based (la stessa convenzione
+usata per ogni altra cella) e registrate in un nuovo elenco esposto da
+`CExcel5Filter::GetMergedRanges()`. `CXlsTranslator::Translate` lo
+recupera e lo passa a `WriteASCD`, che scrive la sezione "merge" del
+formato nativo (già esistente, usata finora solo dall'import XLSX di
+Fase 12) con i valori reali invece del placeholder a zero usato finora.
+
+Test: nuova fixture dedicata `sample_merge.xls` generata con xlwt
+(`sheet.write_merge`, licenza BSD, non un file utente reale) — due
+celle unite (orizzontale e verticale) più una cella di controllo non
+unita. Verificato anche dal vivo riaprendo la fattura reale:
+l'intestazione "Corrispettivi"/"Spese escluse" appare ora come
+un'unica cella, senza la riga di separazione interna.
+
+**Nota**: durante lo sviluppo di questa fixture la suite di test di
+`translators/xls` si è bloccata una volta, richiedendo `kill -9`.
+Un'indagine approfondita con tracce di debug temporanee (poi rimosse)
+su ogni record BIFF letto in Pass1/Pass2 non ha individuato alcun
+punto deterministico del blocco — le esecuzioni successive, identiche,
+sono sempre state pulite (confermato più volte di fila, sia con le
+tracce attive sia rimosse). Stessa categoria del crash raro descritto
+sopra: probabile instabilità ambientale di questa sandbox, non un bug
+nella logica di MERGEDCELLS. Segnalato qui per trasparenza, non
+bloccante.
 
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
