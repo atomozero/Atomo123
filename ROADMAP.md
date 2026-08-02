@@ -1436,6 +1436,54 @@ della colonna A traboccano ora sulle colonne vuote a destra, fermandosi
 correttamente alla prima cella colorata non vuota (colonna I),
 esattamente come in Excel.
 
+### Bug scoperto: valuta/percentuale senza decimali ne' simbolo per un formato con cifre impacchettate
+
+Ultimo punto del confronto diretto con Excel vero sulla stessa fattura
+reale: gli importi in tabella ("€ 450,00", "€ 400,00", …) si
+rendevano come numeri puri senza simbolo né decimali ("450", "400").
+Due bug distinti nello stesso punto (`SheetView::DrawCellBand`,
+riformattazione locale-aware sopra al testo del motore):
+
+1. `cs.fFormat == eCurrency`/`== ePercent` confrontava il campo
+   impacchettato (`CFormatter::FormatID()` somma cifre decimali e
+   flag virgola sopra l'enum, vedi `Formatter.h`) direttamente con
+   l'enum grezzo — funziona solo per un formato senza cifre né
+   virgola, praticamente mai nel mondo reale. La correzione al bug
+   analogo di `eZeroPad`, un fix precedente nello stesso punto
+   esatto del codice, aveva già introdotto il mascheramento
+   `& 0x000F` corretto ma non era stata applicata anche qui.
+2. `CFormatter::ParseTemplate` (ereditato da Sum-It) riconosce solo
+   `$` come simbolo di valuta — un template con `€` (il caso comune
+   per una fattura italiana, es. `\€\ ##,###.00`) finiva nel ramo
+   Fisso invece che Valuta, a monte del bug 1.
+
+La logica di riformattazione (prima incorporata nel ciclo di disegno)
+è stata estratta in un nuovo metodo pubblico
+`SheetView::FormattedCellText`, stesso principio di
+`CellRect`/`ExpandOverflowRect` sopra: pubblico apposta per essere
+testabile direttamente. Nuovo `tests/test_currency_format.cpp` (nuovo
+target `make test-currency-format`, 6 verifiche) usa un formato
+impacchettato a mano (cifre/virgola) per riprodurre esattamente il
+caso reale, verificando solo la STRUTTURA del risultato (decimali
+forzati, simbolo `%`), non il simbolo di valuta esatto — quello
+dipende dalla valuta configurata nel Locale Kit di sistema, non dal
+codice dell'app.
+
+**Nota**: in questo ambiente sandbox nessuna lingua/valuta è
+configurata nelle preferenze Locale di Haiku (nessun file in
+`~/config/settings/locale/`) — `BNumberFormat` mostra quindi il
+segnaposto generico "¤" invece di "€" anche dopo il fix. Verificato
+che non è un bug dell'app: `BNumberFormat` è costruito senza
+override, delega sempre alla configurazione di sistema per design
+(coerente con l'approccio locale-aware già documentato sopra) — un
+sistema Haiku reale con locale italiana configurata mostrerebbe già
+il simbolo corretto. Non corretto forzando "€" a mano nel codice: pur
+risolvendo il sintomo in questo ambiente, romperebbe la
+localizzazione per qualunque valuta diversa dall'euro su un sistema
+configurato altrimenti. Verificato anche dal vivo riaprendo la
+fattura reale: gli importi mostrano ora i due decimali
+("450,00"/"400,00").
+
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
