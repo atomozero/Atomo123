@@ -1193,7 +1193,12 @@ sfondi colorati e i bordi della tabella riepilogativa, prima
 completamente assenti. Restano limiti dichiarati, non ancora
 affrontati: celle unite (record `MERGEDCELLS`) e immagini incorporate
 (record `MSODRAWING`/Escher, un formato binario molto più complesso
-del semplice zip+XML di XLSX).
+del semplice zip+XML di XLSX). La fattura di prova ne conferma la
+presenza reale, non solo teorica: 23 record `MSODRAWING`, 1
+`MSODRAWINGGROUP` e 12 `OBJ` (il logo dello studio, ma anche caselle
+di controllo e commenti di cella, che in BIFF passano dagli stessi
+record) — un lavoro a parte deliberatamente rimandato, non tentato in
+questa sessione.
 
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
