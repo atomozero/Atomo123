@@ -1190,15 +1190,70 @@ Test: una fixture xlwt dedicata per ciascun bug in
 riaprendo ripetutamente la fattura reale nell'app vera e confrontando
 screenshot alla mano con Excel — comprese le larghezze di colonna, gli
 sfondi colorati e i bordi della tabella riepilogativa, prima
-completamente assenti. Restano limiti dichiarati, non ancora
-affrontati: celle unite (record `MERGEDCELLS`) e immagini incorporate
-(record `MSODRAWING`/Escher, un formato binario molto più complesso
-del semplice zip+XML di XLSX). La fattura di prova ne conferma la
-presenza reale, non solo teorica: 23 record `MSODRAWING`, 1
-`MSODRAWINGGROUP` e 12 `OBJ` (il logo dello studio, ma anche caselle
-di controllo e commenti di cella, che in BIFF passano dagli stessi
-record) — un lavoro a parte deliberatamente rimandato, non tentato in
-questa sessione.
+completamente assenti. Resta un limite dichiarato: celle unite (record
+`MERGEDCELLS`, non ancora affrontato). Le immagini incorporate
+(record `MSODRAWING`/Escher) sono invece state affrontate subito dopo,
+vedi la sezione dedicata più sotto.
+
+### Bug scoperto: immagini incorporate del filtro XLS legacy (Escher/MSODRAWING), e due bug indipendenti scoperti verificandole dal vivo
+
+Ultimo limite dichiarato rimasto sul confronto diretto con Excel vero
+della stessa fattura reale (logo aziendale incorporato): il formato
+binario Escher usato da BIFF per le immagini (la controparte di
+`xl/drawings/+xl/media/` di XLSX, già importato in Fase 12) non era
+mai stato letto — struttura verificata byte per byte contro il file
+reale prima di scrivere il parser (`engine/src/Excel/Excel.escher.cpp`,
+vedi il commento di intestazione per il dettaglio completo), non
+dedotta a memoria dalla sola specifica MS-ODRAW. `MSODRAWINGGROUP` (un
+record per l'intera cartella di lavoro, quasi sempre esteso su uno o
+più record `CONTINUE` anche per una sola immagine di poche decine di
+KB) contiene il "blip store" con i byte grezzi di ogni immagine
+(JPEG/PNG, così come nel file originale); `MSODRAWING` (per foglio)
+contiene l'ancoraggio riga/colonna/scarto e un indice nel blip store
+per ciascuna forma — una forma senza quell'indice non è un'immagine
+(le caselle di spunta della stessa fattura usano un record diverso, si
+escludono da sole senza bisogno di controllare il tipo di forma). Solo
+JPEG/PNG supportati, gli unici osservati finora su un file reale.
+
+Verificando dal vivo che il logo si disegnasse davvero nell'app (non
+solo che i byte estratti fossero un JPEG valido, già confermato a
+livello di translator) sono emersi altri due bug reali, indipendenti
+da Escher in senso stretto:
+
+- **`CCsvTranslator::Identify`** (`translators/csv/CsvTranslator.cpp`)
+  accettava incondizionatamente qualunque contenuto come "forse CSV"
+  (qualità 0.6 di ripiego, dato che il CSV non ha una firma propria) —
+  un JPEG veniva quindi "riconosciuto" come CSV con priorità
+  sufficiente a battere `JPEGTranslator` in
+  `BTranslatorRoster::Translate()` quando la UI chiedeva un bitmap in
+  uscita, che poi falliva con "No translator found" perché
+  `CsvTranslator` non sa produrre bitmap. Bug di sistema, non solo di
+  XLS: qualunque altro punto dell'app (o di un'altra app) che si
+  affidi al riconoscimento automatico del Translation Kit per
+  un'immagine ne era silenziosamente affetto. Corretto respingendo un
+  contenuto con un byte NUL o troppi caratteri di controllo nel
+  campione iniziale, invece di accettarlo sempre.
+- **`ReadSingleSheetASCD`** (`ui/src/MainWindow.cpp`, il percorso di
+  apertura per qualunque file non-cartella di lavoro: CSV, XLS, ODS, e
+  XLSX a un solo foglio) passava a `LoadASCD` solo i primi tre
+  argomenti opzionali, ignorando altezza di riga/blocca riquadri/
+  immagini incorporate (aggiunti a `LoadASCD` in Fase 10/12, mai
+  riportati qui): la sezione immagini veniva letta correttamente e poi
+  scartata subito, mai passata alla `SheetView`. Lo stesso problema
+  riguardava silenziosamente anche un file XLSX a un solo foglio con
+  un'immagine incorporata — non un caso ipotetico, semplicemente mai
+  notato prima. `LoadASCDBook` (cartelle di lavoro multi-foglio) passa
+  già tutti gli argomenti correttamente, da cui l'asimmetria.
+
+Test: `tests/sample_image.xls` non è generato con xlwt (non sa
+scrivere immagini) ma con uno script Python dedicato che inserisce a
+mano gli stessi record Escher trovati nel file reale, con un piccolo
+JPEG rosso sintetico al posto del logo vero — verifica l'ancoraggio,
+la dimensione nativa e la validità dei byte estratti. Due nuovi test
+in `translators/csv/tests/test_csv_translator.cpp` per il rifiuto di
+un'intestazione JPEG e di un byte NUL. Verificato anche dal vivo: il
+logo della fattura reale si disegna correttamente nell'app, in
+posizione e dimensione coerenti con Excel.
 
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
