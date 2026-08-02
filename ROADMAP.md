@@ -2997,6 +2997,20 @@ storico da rispettare, libertà di definirne il significato da zero.
       salva/ricarica su una cella con due lati impostati. Nessuna
       regressione nella suite esistente (tutti i 30 target).
 
+**Lavoro futuro individuato (non ancora pianificato)**: confrontando
+l'importazione XLS della fattura reale usata per la verifica in Fase 5
+con Excel vero, il file usa davvero bordi di più colori (indici
+palette 8/22/23/30/52/62/63 nei record XF, non solo nero) — non solo
+un'ipotesi teorica. La semplificazione booleano-nero descritta sopra
+resta quindi visibile: alcune celle mostrano un bordo nero dove Excel
+lo mostra grigio/colorato. Per un colore reale servirebbe rivedere
+`CellStyle::fTBorderColor` e affini da `uchar` booleano a `rgb_color`
+per lato (tocca `operator==`/`memcmp`, `SheetView::DrawCellBand`, il
+formato ASCD, e sia l'importatore XLS che quello XLSX per coerenza) —
+volutamente non affrontato ora su richiesta esplicita dell'utente, che
+ha preferito limitarsi ad annotarlo qui piuttosto che allargare lo
+scope della Fase 5 in corso.
+
 ### Bug scoperto: crash all'apertura di file XLSX multi-foglio dopo le nuove sezioni di Fase 10/11
 
 Segnalato dall'utente con un report di crash di Haiku
