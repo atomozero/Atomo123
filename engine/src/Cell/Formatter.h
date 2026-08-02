@@ -58,7 +58,13 @@ enum ENumberFormat {
 	eFixed,
 	ePercent,
 	eFormula,	// unused as of 1.1
-	
+	// Intero riempito di zeri a sinistra (template fatto solo di '0'/
+	// '#', es. "00000"): vedi il commento in ParseTemplate
+	// (Formatter.template.cpp) sul perché serve un formato a parte,
+	// non semplicemente eFixed con zero cifre decimali. "fDigits" qui
+	// e' la larghezza totale del riempimento, non le cifre decimali.
+	eZeroPad,
+
 		// commas << 9 | digits << 4 | format
 	eFirstNewFormat = 0x0400	// 1024
 };

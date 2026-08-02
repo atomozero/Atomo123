@@ -591,6 +591,32 @@ float CFormatter::FormatDouble(double inValue, char *outStr,
 					sWid = fm.StringWidth(outStr) + fm[')'];
 			}
 			break;
+
+		case eZeroPad:
+		{
+			// Intero riempito di zeri a sinistra fino a "fDigits"
+			// cifre (es. 73 -> "00073" per il template "00000") --
+			// vedi il commento in ParseTemplate. Arrotondato come un
+			// intero puro: un template fatto solo di '0'/'#' non ha
+			// mai una parte decimale da mostrare, esattamente come
+			// Excel per lo stesso template.
+			long long iv = (long long)(inValue < 0 ? inValue - 0.5 : inValue + 0.5);
+			bool neg = iv < 0;
+			if (neg)
+				iv = -iv;
+
+			char digitsBuf[32];
+			snprintf(digitsBuf, sizeof(digitsBuf), "%lld", iv);
+			int digitLen = (int)strlen(digitsBuf);
+
+			p = outStr;
+			if (neg)
+				*p++ = '-';
+			for (int padCount = fDigits - digitLen; padCount > 0; padCount--)
+				*p++ = '0';
+			strcpy(p, digitsBuf);
+			break;
+		}
 	}
 
 	if (sWid == -1) sWid = fm.StringWidth(outStr);

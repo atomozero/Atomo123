@@ -30,6 +30,8 @@
 #include <File.h>
 
 #include "CellStyle.h"
+#include "Formatter.h"
+#include "Value.h"
 #include "XlsTranslator.h"
 
 static int gFailures = 0;
@@ -754,6 +756,109 @@ int main()
 				"l'immagine incorporata ha la dimensione nativa del JPEG (8x6), non zero");
 			Check(jpegSignature,
 				"i byte dell'immagine incorporata sono un JPEG valido (firma FF D8 FF), non dati troncati/corrotti");
+		}
+	}
+
+	// Formato numero personalizzato "0" ripetuto (es. "00000"): intero
+	// riempito di zeri a sinistra -- tests/sample_zeropad.xls ha A1=73
+	// con formato "00000" (deve rendersi "00073"), B1=0 con lo stesso
+	// formato (deve rendersi "00000", non una stringa vuota), C1=123456
+	// con lo stesso formato (supera la larghezza del template, resta
+	// per esteso invece di troncare), D1=73 senza nessun formato
+	// esplicito (controllo negativo). Prima di questa modifica
+	// ParseTemplate (Formatter.template.cpp, ereditato da Sum-It) non
+	// aveva nessun concetto di "riempimento intero" -- solo "$"/"%"/"."
+	// per distinguere valuta/percentuale/cifre decimali -- quindi un
+	// template fatto solo di zeri finiva silenziosamente nel formato
+	// generico, perdendo gli zeri iniziali: bug reale scoperto
+	// confrontando visivamente con Excel vero l'importazione di una
+	// fattura reale ("Preavviso N. 00073" mostrato come "73").
+	{
+		BFile zpFile("tests/sample_zeropad.xls", B_READ_ONLY);
+		Check(zpFile.InitCheck() == B_OK, "apertura di tests/sample_zeropad.xls riuscita");
+
+		translator_info zpInfo;
+		status_t zpErr = translator->Identify(&zpFile, NULL, NULL, &zpInfo, 0);
+		Check(zpErr == B_OK, "Identify riconosce sample_zeropad.xls");
+
+		zpFile.Seek(0, SEEK_SET);
+		BMallocIO zpOut;
+		zpErr = translator->Translate(&zpFile, &zpInfo, NULL, kAtomoNativeFormat, &zpOut);
+		Check(zpErr == B_OK, "Translate di sample_zeropad.xls riesce");
+
+		if (zpErr == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)zpOut.Buffer();
+			size_t len = zpOut.BufferLength();
+			size_t pos = 12;
+
+			int32 cellCount = 0;
+			if (len > 12)
+				memcpy(&cellCount, data + 8, 4);
+			for (int32 i = 0; i < cellCount && pos + 8 <= len; i++)
+			{
+				short row, col; int32 l;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&l, data + pos, 4); pos += 4;
+				if (pos + (size_t)l > len) break;
+				pos += l;
+			}
+
+			int32 n;
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4+4*4); } // chart
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // rowHeight
+			pos += 8; // frozen
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+64+64+4); } // font
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+1); } // align
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // border
+
+			int32 fmtA1 = -1, fmtB1 = -1, fmtC1 = -1;
+			bool foundD1 = false;
+			if (pos + 4 <= len)
+			{
+				int32 formatCount;
+				memcpy(&formatCount, data + pos, 4); pos += 4;
+				for (int32 i = 0; i < formatCount && pos + 2+2+4 <= len; i++)
+				{
+					short row, col; int32 fmt;
+					memcpy(&row, data + pos, 2); pos += 2;
+					memcpy(&col, data + pos, 2); pos += 2;
+					memcpy(&fmt, data + pos, 4); pos += 4;
+					if (row == 1 && col == 1) fmtA1 = fmt;
+					if (row == 1 && col == 2) fmtB1 = fmt;
+					if (row == 1 && col == 3) fmtC1 = fmt;
+					if (row == 1 && col == 4) foundD1 = true;
+				}
+			}
+			Check(fmtA1 >= 0, "A1 (formato \"00000\" nel file originale) ha un fFormat non generico");
+			Check(!foundD1, "D1 (nessun formato esplicito) non finisce nella sezione formati");
+
+			char outStr[64];
+			if (fmtA1 >= 0)
+			{
+				CFormatter nf(fmtA1);
+				nf.FormatValue(Value(73.0), outStr, 0, 1e6);
+				Check(strcmp(outStr, "00073") == 0,
+					"A1 (73 col formato \"00000\") si rende \"00073\", non \"73\"");
+			}
+			if (fmtB1 >= 0)
+			{
+				CFormatter nf(fmtB1);
+				nf.FormatValue(Value(0.0), outStr, 0, 1e6);
+				Check(strcmp(outStr, "00000") == 0,
+					"B1 (0 col formato \"00000\") si rende \"00000\", non una stringa vuota");
+			}
+			if (fmtC1 >= 0)
+			{
+				CFormatter nf(fmtC1);
+				nf.FormatValue(Value(123456.0), outStr, 0, 1e6);
+				Check(strcmp(outStr, "123456") == 0,
+					"C1 (123456, oltre la larghezza del template) si rende per esteso, non troncato");
+			}
 		}
 	}
 

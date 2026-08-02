@@ -53,10 +53,42 @@ void CFormatter::ParseTemplate(const char *inTemplate)
 {
 	char *sp, *t;
 	t = STRDUP(inTemplate);
-	
+
 	if ((sp = strchr(t, ';')) != NULL)
 		*sp = 0;
-	
+
+	// Template fatto solo di '0'/'#' (es. "00000", "#00000000000"):
+	// intero riempito di zeri a sinistra fino alla larghezza indicata,
+	// il caso comune per un numero identificativo (numero fattura,
+	// CAP) che deve conservare gli zeri iniziali. Il resto di questa
+	// funzione (ereditato da Sum-It) non ha mai avuto il concetto di
+	// "riempimento intero" -- solo "$"/"%"/"." per distinguere
+	// valuta/percentuale/cifre decimali -- quindi un template cosi'
+	// finiva silenziosamente nel ramo "generico" sotto, perdendo gli
+	// zeri iniziali: bug reale scoperto confrontando visivamente con
+	// Excel vero l'importazione di una fattura reale ("Preavviso N.
+	// 00073" mostrato come "73").
+	bool isZeroPad = t[0] != 0;
+	int zeroPadWidth = 0;
+	for (const char *c = t; *c; c++)
+	{
+		if (*c == '0' || *c == '#')
+			zeroPadWidth++;
+		else
+		{
+			isZeroPad = false;
+			break;
+		}
+	}
+	if (isZeroPad)
+	{
+		fFormatID = eZeroPad;
+		fDigits = zeroPadWidth;
+		fCommas = false;
+		FREE(t);
+		return;
+	}
+
 	if (strchr(t, '$'))
 		fFormatID = eCurrency;
 	else if (strchr(t, '%'))
