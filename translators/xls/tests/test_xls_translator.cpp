@@ -869,6 +869,86 @@ int main()
 		}
 	}
 
+	// Celle unite (record MERGEDCELLS 0x0E5, vedi il case omonimo in
+	// Excel.pass1.cpp): tests/sample_merge.xls ha A1:B1 unite ("Unita
+	// A1:B1"), C1 non unita ("Non unita", controllo negativo) e A3:A4
+	// unite verticalmente ("Unita A3:A4"), generato con xlwt
+	// (sheet.write_merge, licenza BSD, non un file utente reale).
+	// Prima di questa modifica il filtro XLS ignorava del tutto questo
+	// record: le celle unite di un'intestazione reale (es.
+	// "Corrispettivi"/"Spese escluse" unite su due righe) apparivano
+	// come righe separate invece che come un'unica cella centrata.
+	{
+		BFile mergeFile("tests/sample_merge.xls", B_READ_ONLY);
+		Check(mergeFile.InitCheck() == B_OK, "apertura di tests/sample_merge.xls riuscita");
+
+		translator_info mergeInfo;
+		status_t mergeErr = translator->Identify(&mergeFile, NULL, NULL, &mergeInfo, 0);
+		Check(mergeErr == B_OK, "Identify riconosce sample_merge.xls");
+
+		mergeFile.Seek(0, SEEK_SET);
+		BMallocIO mergeOut;
+		mergeErr = translator->Translate(&mergeFile, &mergeInfo, NULL, kAtomoNativeFormat, &mergeOut);
+		Check(mergeErr == B_OK, "Translate di sample_merge.xls riesce");
+
+		if (mergeErr == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)mergeOut.Buffer();
+			size_t len = mergeOut.BufferLength();
+			size_t pos = 12;
+
+			int32 cellCount = 0;
+			if (len > 12)
+				memcpy(&cellCount, data + 8, 4);
+			for (int32 i = 0; i < cellCount && pos + 8 <= len; i++)
+			{
+				short row, col; int32 l;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&l, data + pos, 4); pos += 4;
+				if (pos + (size_t)l > len) break;
+				pos += l;
+			}
+
+			int32 n;
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4+4*4); } // chart
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // rowHeight
+			pos += 8; // frozen
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+64+64+4); } // font
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+1); } // align
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // border
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // format
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2); } // underline
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2); } // wrap
+
+			bool foundA1B1 = false, foundA3A4 = false;
+			if (pos + 4 <= len)
+			{
+				int32 mergeCount;
+				memcpy(&mergeCount, data + pos, 4); pos += 4;
+				Check(mergeCount == 2,
+					"mergeCount == 2 (A1:B1 e A3:A4 unite nel file originale, C1 no)");
+				for (int32 i = 0; i < mergeCount && pos + 2*4 <= len; i++)
+				{
+					short top, left, bottom, right;
+					memcpy(&top, data + pos, 2); pos += 2;
+					memcpy(&left, data + pos, 2); pos += 2;
+					memcpy(&bottom, data + pos, 2); pos += 2;
+					memcpy(&right, data + pos, 2); pos += 2;
+					if (top == 1 && left == 1 && bottom == 1 && right == 2)
+						foundA1B1 = true;
+					if (top == 3 && left == 1 && bottom == 4 && right == 1)
+						foundA3A4 = true;
+				}
+			}
+			Check(foundA1B1, "A1:B1 (unite orizzontalmente nel file originale) importate come intervallo unito");
+			Check(foundA3A4, "A3:A4 (unite verticalmente nel file originale) importate come intervallo unito");
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

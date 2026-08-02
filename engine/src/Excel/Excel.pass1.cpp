@@ -916,6 +916,24 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 		case MSODRAWING:
 			HandleMsoDrawing(len);
 			break;
+		case MERGEDCELLS:
+		{
+			// n(2) + n * (rowFirst(2) rowLast(2) colFirst(2) colLast(2)),
+			// tutti 0-based come il resto del BIFF -- convertiti a
+			// 1-based (c.v++/c.h++, la stessa convenzione usata per
+			// ogni altra cella) prima di registrarli.
+			unsigned short n;
+			es >> n;
+			for (unsigned short i = 0; i < n; i++)
+			{
+				unsigned short rowFirst, rowLast, colFirst, colLast;
+				es >> rowFirst >> rowLast >> colFirst >> colLast;
+				range r;
+				r.Set(colFirst + 1, rowFirst + 1, colLast + 1, rowLast + 1);
+				fMergedRanges.push_back(r);
+			}
+			break;
+		}
 		case SHRFMLA:
 		{
 			XLSHFormula shxl;

@@ -52,7 +52,8 @@ static const int32 kASCDVersion = 1;
 // estrarla in una libreria condivisa.
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
-	const std::vector<EmbeddedImage>* images = NULL)
+	const std::vector<EmbeddedImage>* images = NULL,
+	const std::vector<range>* mergedRanges = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -105,12 +106,11 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// scartava tutto tranne il testo/valore grezzo di ogni cella (bug
 	// reale: un titolo in grassetto nel file originale, o una cella
 	// con formato "00000" per gli zeri iniziali, sparivano del tutto
-	// aprendo il file con Atomo123). Sfondo/testo colorato e bordi
-	// sono ora scritti con i valori REALI anch'essi (fLowColor/
-	// fHighColor/fTBorderColor ecc., risolti da Xf() -- vedi il
-	// commento in Excel.pass1.cpp). Celle unite e immagini incorporate
-	// restano vuote: il motore non estrae ancora MERGEDCELLS ne'
-	// MSODRAWING dal formato BIFF legacy (limite dichiarato).
+	// aprendo il file con Atomo123). Sfondo/testo colorato, bordi,
+	// celle unite e immagini incorporate sono ora scritti con i
+	// valori REALI anch'essi (fLowColor/fHighColor/fTBorderColor ecc.
+	// risolti da Xf(), MERGEDCELLS/MSODRAWING -- vedi i commenti in
+	// Excel.pass1.cpp/Excel.escher.cpp).
 
 	int32 chartCount = 0;
 	if (dest->Write(&chartCount, sizeof(chartCount)) != (ssize_t)sizeof(chartCount))
@@ -375,11 +375,25 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Celle unite: non ancora estratte (record MERGEDCELLS del BIFF
-	// non ancora gestito, limite dichiarato), sezione sempre vuota.
-	int32 mergeCount = 0;
-	if (dest->Write(&mergeCount, sizeof(mergeCount)) != (ssize_t)sizeof(mergeCount))
-		return B_IO_ERROR;
+	// Celle unite: CExcel5Filter::GetMergedRanges() (motore, vedi il
+	// case MERGEDCELLS in Excel.pass1.cpp) estrae davvero il record
+	// BIFF -- va quindi scritta con i valori reali.
+	{
+		int32 mergeCount = mergedRanges ? (int32)mergedRanges->size() : 0;
+		if (dest->Write(&mergeCount, sizeof(mergeCount)) != (ssize_t)sizeof(mergeCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < mergeCount; i++)
+		{
+			const range& r = (*mergedRanges)[i];
+			int16 top = r.top, left = r.left, bottom = r.bottom, right = r.right;
+			if (dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+				|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+				|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+				|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+				return B_IO_ERROR;
+		}
+	}
 
 	// Immagini incorporate: CExcel5Filter::GetImages() (motore, vedi
 	// Excel.escher.cpp) estrae davvero i record MSODRAWINGGROUP/
@@ -485,6 +499,7 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 	status_t err = B_OK;
 	std::vector<std::pair<int, float> > colWidths;
 	std::vector<EmbeddedImage> images;
+	std::vector<range> mergedRanges;
 
 	try
 	{
@@ -492,15 +507,16 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 		// Il costruttore legge subito il flusso e popola doc; alcuni
 		// metadati (nomi di intervallo, altezze riga) vengono
 		// scartati in questa modalita' -- vedi la nota nello stub in
-		// engine/src/Stubs/EngineViewStub.h. Le larghezze di colonna
-		// e le immagini incorporate invece si recuperano comunque da
-		// GetColumnWidths()/GetImages(), che CExcel5Filter popola
-		// indipendentemente da "cellView" (vedi il commento in
-		// Excel.h).
+		// engine/src/Stubs/EngineViewStub.h. Le larghezze di colonna,
+		// le immagini incorporate e le celle unite invece si
+		// recuperano comunque da GetColumnWidths()/GetImages()/
+		// GetMergedRanges(), che CExcel5Filter popola indipendentemente
+		// da "cellView" (vedi il commento in Excel.h).
 		CExcel5Filter filter(*source, NULL, doc);
 		filter.Translate();
 		colWidths = filter.GetColumnWidths();
 		images = filter.GetImages();
+		mergedRanges = filter.GetMergedRanges();
 	}
 	catch (...)
 	{
@@ -508,7 +524,7 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 	}
 
 	if (err == B_OK)
-		err = WriteASCD(doc, destination, &colWidths, &images);
+		err = WriteASCD(doc, destination, &colWidths, &images, &mergedRanges);
 
 	doc->Release();
 	return err;

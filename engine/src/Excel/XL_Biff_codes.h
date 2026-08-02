@@ -174,6 +174,7 @@
 #define INTERFACEHDR	0x0E1		//Beginning of User Interface Records
 #define INTERFACEEND	0x0E2		//End of User Interface Records
 #define SXVS	0x0E3		//View Source
+#define MERGEDCELLS	0x0E5	//Merged Cells
 #define TABIDCONF	0x0EA		//Sheet Tab ID of Conflict History (BIFF7)
 #define MSODRAWINGGROUP	0x0EB	//Microsoft Office Drawing Group (Escher, blip store per l'intera cartella di lavoro)
 #define MSODRAWING	0x0EC		//Microsoft Office Drawing (Escher, forme/ancoraggi per foglio)

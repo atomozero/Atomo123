@@ -105,6 +105,11 @@ class CExcel5Filter
 	const std::vector<EmbeddedImage>& GetImages() const
 		{ return fImages; }
 
+	// Celle unite (record MERGEDCELLS) lette durante Translate(),
+	// stesso principio di GetColumnWidths()/GetImages() sopra.
+	const std::vector<range>& GetMergedRanges() const
+		{ return fMergedRanges; }
+
   private:
 	
 	/* Niente "throw()": il corpo chiama CExcelStream::Read, che
@@ -327,6 +332,7 @@ class CExcel5Filter
 	std::vector<XLSHFormula> fSharedFormulas;
 	std::vector<std::string> fSST;
 	std::vector<EmbeddedImage> fImages;
+	std::vector<range> fMergedRanges;
 
 	CCellView *fCellView;
 	CContainer *fContainer;
