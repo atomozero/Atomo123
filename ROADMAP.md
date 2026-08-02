@@ -917,10 +917,14 @@ logica, non l'esperienza utente end-to-end.
       OpenOffice in condizioni non controllate — i file reali usati per
       la verifica non sono mai stati inclusi nel repository (licenza di
       ridistribuzione non chiara). Il gap del test automatizzato è però
-      **parzialmente colmato** per l'SST: `translators/xls/tests/
-      sample_sst.xls`/`sample_sst_large.xls`, generate con la libreria
-      Python xlwt (licenza BSD, non file utente), coprono quel percorso
-      con fixture committate.
+      **in gran parte colmato** per il filtro XLS legacy: oltre a
+      `sample_sst.xls`/`sample_sst_large.xls`, `translators/xls/tests/`
+      ha ora fixture dedicate (sempre generate con xlwt, licenza BSD,
+      mai file utente) per encoding CP1252/UTF-16, date con formato
+      personalizzato, riferimenti a cella BIFF8 in una formula, font/
+      allineamento/testo a capo, larghezza colonna e colore di sfondo/
+      testo/bordi — vedi la sezione "Bug scoperto" più sotto sul
+      confronto diretto con una fattura reale.
 - [x] "Apri recenti" nel menu File: gli ultimi 5 file aperti,
       persistiti in `gPrefs` come cinque chiavi `recentFileN` (la più
       recente per prima). Il sottomenu si ricostruisce da
@@ -1106,6 +1110,90 @@ deduplicate in una sola voce SST, una stringa lunga) e
 `sample_sst_large.xls` (400 stringhe uniche, oltre 12KB, forza
 l'attraversamento dei record `CONTINUE`). Verificato anche dal vivo
 aprendo entrambi i file nell'app vera, nessun crash né blocco.
+
+### Bug scoperto: il filtro XLS legacy portato a livello di Excel su una fattura reale
+
+Confrontando l'importazione della stessa fattura reale  con l'apertura in Excel vero, screenshot alla mano, sono
+emersi altri bug reali nel filtro BIFF legacy, oltre a quello SST già
+descritto sopra — lo stesso filtro era stato scritto per BIFF5 e mai
+davvero aggiornato per i file genuinamente BIFF8 (Excel 97-2003) che
+gli vengono dati in pasto oggi:
+
+- **Encoding testo**: le stringhe "compresse" (1 byte/carattere) del
+  BIFF venivano lette come Latin-1 invece di Windows-1252 — differiscono
+  nell'intervallo 0x80-0x9F (virgolette tipografiche, trattini
+  en/em-dash, il simbolo €). Anche il nome del `FONT` veniva letto col
+  vecchio formato "compressed string" di BIFF5 invece della
+  `ShortXLUnicodeString` vera di BIFF8, producendo nomi font
+  "spazzatura" che non corrispondevano a nessun font installato — la
+  causa reale per cui grassetto/corsivo sparivano del tutto (vedi il
+  punto successivo su `CFontMetrics`).
+- **Formati numero**: `ifmt` era trattato come indice sequenziale
+  invece che identificativo assoluto (built-in o personalizzato), senza
+  nessuna tabella dei formati built-in precaricata, e il record
+  `FORMAT` veniva letto col vecchio formato compresso invece della
+  stringa Unicode BIFF8 vera — una cella con formato "00000" per gli
+  zeri iniziali, o una data con formato personalizzato, tornava al
+  formato generico.
+- **Date**: nessun rilevamento delle celle data — mostravano il
+  seriale Excel grezzo (es. "43241") invece della data formattata,
+  stesso bug già risolto per l'import XLSX in Fase 12.
+- **`CExcelStream::operator>>(long&)`**: leggeva `sizeof(long)` — 8
+  byte su Haiku x86_64 (LP64) — invece dei 4 byte fissi di un campo
+  BIFF "long", corrompendo silenziosamente la seconda cella in poi di
+  ogni record `MULRK` (più celle numeriche compresse in un solo
+  record, il caso comune per righe di numeri consecutivi in un
+  foglio reale).
+- **`ptgRef`/`ptgArea`/`ptgRefN`/`ptgAreaN`** (`Excel.formula.cpp`):
+  usavano ancora la struttura di riferimento a cella di BIFF5 (riga a
+  2 byte coi flag di relatività, colonna a 1 byte) invece di quella di
+  BIFF8 (riga a 2 byte piatta, colonna a 2 byte coi flag) — causava un
+  loop infinito nell'app aprendo la fattura reale (una formula con un
+  riferimento a cella, il caso più comune in assoluto). Aggiunta anche
+  una rete di sicurezza in `ParseXLFormula` che garantisce comunque un
+  avanzamento minimo dell'indice per qualunque token futuro non ancora
+  scoperto, indipendentemente dalla causa.
+- **`CFontMetrics`** (`engine/src/Cell/FontMetrics.cpp`, condiviso con
+  l'import XLSX): il fallback per una famiglia/stile di font non
+  installati controllava la stringa letterale `"<unknown family>"` di
+  BeOS R5 — Haiku non la produce mai, sostituisce famiglia e stile di
+  sistema in silenzio in un solo passo. Il fallback vero (che prova
+  prima famiglia di sistema + stile richiesto, poi famiglia e stile di
+  sistema) non scattava quindi mai, perdendo lo stile richiesto ogni
+  volta che il font del file non era installato. Riscritto sullo
+  `status_t` di ritorno di `SetFamilyAndStyle`, l'unico segnale
+  affidabile su Haiku.
+- **`WriteASCD`** (`translators/xls/XlsTranslator.cpp`) scriveva
+  sempre sezioni vuote per font/formato/allineamento/testo a capo/
+  larghezza colonna/colore sfondo-testo/bordi, anche quando il motore
+  li aveva già risolti correttamente durante il parsing BIFF: un
+  titolo in grassetto, una colonna ridimensionata a mano o
+  un'intestazione con sfondo colorato sparivano del tutto aprendo il
+  file con Atomo123. Il record XF ora viene letto per intero (prima ci
+  si fermava agli 8 byte iniziali di font/formato/allineamento): stile
+  del bordo per lato — solo presenza, `CellStyle::fTBorderColor` e
+  affini sono booleani nonostante il nome, l'app disegna sempre un
+  bordo nero pieno o nessuno, mai un colore/spessore reale (Fase 11) —
+  e pattern di riempimento risolto sulla tabella colori standard di
+  Excel già usata per il colore del font (`kExcelColorTable`,
+  `Excel.colors.h`).
+- Un'eccezione durante il ricalcolo di una formula (es. una formula
+  che referenzia un nome definito che il motore non riesce a
+  risolvere, un caso reale nella fattura di prova) sovrascriveva la
+  cella con la stringa letterale `"!ERROR"`, scartando il valore già
+  letto dalla cache BIFF del file — lo stesso valore che Excel stesso
+  mostra (in questo caso vuoto). La cella ora mantiene il valore già
+  impostato dalla cache invece di essere sovrascritta.
+
+Test: una fixture xlwt dedicata per ciascun bug in
+`translators/xls/tests/` (vedi sopra), verificate anche dal vivo
+riaprendo ripetutamente la fattura reale nell'app vera e confrontando
+screenshot alla mano con Excel — comprese le larghezze di colonna, gli
+sfondi colorati e i bordi della tabella riepilogativa, prima
+completamente assenti. Restano limiti dichiarati, non ancora
+affrontati: celle unite (record `MERGEDCELLS`) e immagini incorporate
+(record `MSODRAWING`/Escher, un formato binario molto più complesso
+del semplice zip+XML di XLSX).
 
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
