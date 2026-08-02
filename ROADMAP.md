@@ -1317,6 +1317,55 @@ stringa vuota) e un valore che supera la larghezza del template
 `CFormatter` direttamente. Verificato anche dal vivo: "Preavviso N."
 mostra ora "00073" nell'app, come in Excel.
 
+### Bug scoperto: il font non veniva mai applicato davvero al disegno (dimensione/grassetto/corsivo/famiglia)
+
+Continuando il confronto con Excel vero sulla stessa fattura reale:
+l'intestazione dello studio (20pt nel file originale)
+appariva alla stessa dimensione del testo normale circostante.
+Tracciando passo passo l'intera catena (translator -> `LoadASCD` ->
+`SheetView::Draw`, con tracce temporanee poi rimosse) il font
+risultava risolto e registrato correttamente in `gFontSizeTable` a
+OGNI passaggio — il problema era un livello più sotto:
+`CFontMetrics::SetFontSizeColor` (`engine/src/Cell/FontMetrics.cpp`)
+era un no-op totale, mai una vera chiamata a `BView::SetFont`. Il
+commento originale ("il disegno è compito della UI, non del motore")
+era vero solo a metà: `SheetView::Draw` chiama proprio
+`gFontSizeTable.SetFontID(this, cs.fFont)` per applicare il font alla
+view PRIMA di disegnare — ma senza quella chiamata mancante, il font
+della view non cambiava mai, a prescindere da `CellStyle::fFont`: ogni
+cella disegnava sempre con l'ultimo font impostato esplicitamente (o
+quello di sistema).
+
+Questo NON è un bug specifico dell'import XLS: riguarda ogni cella
+dell'app, in ogni percorso (editing nativo, import XLSX/ODS/CSV, XLS).
+Le verifiche precedenti su grassetto/corsivo (Fase 5, sezione sui bug
+XLS più sopra) controllavano solo il DATO esportato (es. il campo
+stile della sezione font di ASCD, o la stringa "Bold" in un test),
+mai il rendering pixel per pixel — motivo per cui è rimasto invisibile
+finché non si è confrontato lo screenshot di Atomo123 con quello di
+Excel a occhio nudo.
+
+`BView::SetFont` non richiede una connessione app_server "viva" per il
+solo aggiornamento locale dello stato (serve solo per un ridisegno
+effettivo, già gestito altrove dal ciclo di `Draw`), e `libengine.a`
+collega già `-lbe` ovunque (motore, translator, UI) — nessun nuovo
+vincolo di link introdotto. Verificato dal vivo: l'intestazione e le
+righe in grassetto della fattura reale mostrano ora la dimensione e lo
+stile corretti.
+
+**Nota**: durante questa verifica è emerso anche un crash raro e non
+riproducibile in modo affidabile (General Protection Fault dentro
+`memcmp`, chiamato da qualche parte nella catena di importazione XLS,
+osservato una sola volta su una dozzina di aperture dello stesso file,
+sia in modalità headless sia nell'app vera — non riprodotto in 150
+traduzioni consecutive in un harness isolato). Non ancora
+diagnosticato con certezza per mancanza di strumenti adeguati in
+questo ambiente (AddressSanitizer non funzionante su questa build di
+Haiku, nessun gdb disponibile) — probabilmente una corruzione di
+memoria pre-esistente e rara, non necessariamente legata alle modifiche
+di questa sessione. Segnalato qui per trasparenza, da investigare con
+strumenti migliori se si ripresenta.
+
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
