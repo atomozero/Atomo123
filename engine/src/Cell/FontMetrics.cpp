@@ -169,14 +169,32 @@ float CFontMetrics::StringWidth(const char *inString) const
 	return result;
 } /* CFontMetrics::StringWidth */
 
-void CFontMetrics::SetFontSizeColor(BView*)
+void CFontMetrics::SetFontSizeColor(BView* inView)
 {
-	/* No-op nella libreria engine isolata: qui non esiste una view
-	   reale collegata all'app_server, e la libreria non deve avere
-	   alcun riferimento a simboli dell'Interface Kit (BView) per
-	   restare linkabile senza libbe. Il disegno a schermo del testo
-	   con questo font/colore e' compito della UI (Fase 4), non del
-	   motore di calcolo. */
+	/* Era un no-op totale: "il disegno e' compito della UI, non del
+	   motore" era vero solo a meta'. La UI (SheetView::Draw/
+	   GetCellResult, vedi CContainer/SheetView.cpp) chiama
+	   SetFontID -> SetFontSizeColor proprio per applicare famiglia/
+	   stile/DIMENSIONE alla view prima di disegnare -- ma senza
+	   questa chiamata a BView::SetFont, il font della view non
+	   cambiava mai: ogni cella disegnava col font predefinito
+	   dell'ultima SetFont esplicita (o quello di sistema), a
+	   prescindere da CellStyle::fFont. Bug reale scoperto
+	   confrontando visivamente con Excel vero l'importazione di una
+	   fattura reale: un'intestazione a 20pt appariva alla stessa
+	   dimensione del testo normale circostante -- non solo la
+	   dimensione, lo stesso meccanismo copre anche grassetto/corsivo/
+	   famiglia, mai davvero verificati a schermo finora (solo a
+	   livello di dato esportato, es. il campo "stile" della sezione
+	   font di ASCD). BView::SetFont non richiede un app_server "vivo"
+	   per il solo aggiornamento locale dello stato (serve solo per un
+	   ridisegno effettivo, gia' gestito altrove) -- e libengine.a
+	   collega gia' -lbe ovunque (motore, translator, UI), quindi
+	   nessun nuovo vincolo di link. "inView" resta comunque
+	   controllato: SetFontID puo' in teoria essere chiamato con una
+	   view non ancora valida. */
+	if (inView)
+		inView->SetFont(&fFont);
 } /* CFontMetrics::SetFontSize */
 
 bool CFontMetrics::operator==(const CFontMetrics& inOther)
