@@ -660,6 +660,103 @@ int main()
 		}
 	}
 
+	// Immagini incorporate (record MSODRAWINGGROUP/MSODRAWING, formato
+	// binario Escher -- vedi Excel.escher.cpp): tests/sample_image.xls
+	// non e' generato con xlwt (che non sa scrivere immagini) ma con
+	// uno script Python dedicato che inserisce a mano, byte per byte,
+	// gli stessi record Escher trovati in una fattura reale con un
+	// logo incorporato (struttura verificata contro quel file prima
+	// di scrivere il parser -- vedi il commento in Excel.escher.cpp),
+	// con un piccolo JPEG rosso 8x6 sintetico al posto del logo vero.
+	// Prima di questa modifica il filtro XLS ignorava del tutto questi
+	// record: un'immagine incorporata spariva sempre, non solo dal
+	// file di test ma anche dalla fattura reale usata per la verifica
+	// in Fase 5.
+	{
+		BFile imageFile("tests/sample_image.xls", B_READ_ONLY);
+		Check(imageFile.InitCheck() == B_OK, "apertura di tests/sample_image.xls riuscita");
+
+		translator_info imageInfo;
+		status_t imageErr = translator->Identify(&imageFile, NULL, NULL, &imageInfo, 0);
+		Check(imageErr == B_OK, "Identify riconosce sample_image.xls");
+
+		imageFile.Seek(0, SEEK_SET);
+		BMallocIO imageOut;
+		imageErr = translator->Translate(&imageFile, &imageInfo, NULL, kAtomoNativeFormat, &imageOut);
+		Check(imageErr == B_OK, "Translate di sample_image.xls riesce");
+
+		if (imageErr == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)imageOut.Buffer();
+			size_t len = imageOut.BufferLength();
+			size_t pos = 12;
+
+			int32 cellCount = 0;
+			if (len > 12)
+				memcpy(&cellCount, data + 8, 4);
+			for (int32 i = 0; i < cellCount && pos + 8 <= len; i++)
+			{
+				short row, col; int32 l;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&l, data + pos, 4); pos += 4;
+				if (pos + (size_t)l > len) break;
+				pos += l;
+			}
+
+			int32 n;
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4+4*4); } // chart
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // rowHeight
+			pos += 8; // frozen
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+64+64+4); } // font
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+1); } // align
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // border
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // format
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2); } // underline
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2); } // wrap
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4); } // merge
+
+			bool foundImageA1 = false;
+			bool sizeCorrect = false;
+			bool jpegSignature = false;
+			if (pos + 4 <= len)
+			{
+				int32 imageCount;
+				memcpy(&imageCount, data + pos, 4); pos += 4;
+				Check(imageCount == 1, "imageCount == 1 (un solo logo incorporato nel file originale)");
+				for (int32 i = 0; i < imageCount && pos + 2+2+16+4 <= len; i++)
+				{
+					short row, col; float geom[4]; int32 pngLen;
+					memcpy(&row, data + pos, 2); pos += 2;
+					memcpy(&col, data + pos, 2); pos += 2;
+					memcpy(geom, data + pos, 16); pos += 16;
+					memcpy(&pngLen, data + pos, 4); pos += 4;
+					if (row == 1 && col == 1)
+					{
+						foundImageA1 = true;
+						sizeCorrect = (geom[2] == 8.0f && geom[3] == 6.0f);
+						if (pngLen >= 4 && pos + 4 <= len)
+						{
+							jpegSignature = data[pos] == 0xFF && data[pos+1] == 0xD8
+								&& data[pos+2] == 0xFF;
+						}
+					}
+					if (pos + (size_t)pngLen <= len)
+						pos += pngLen;
+				}
+			}
+			Check(foundImageA1,
+				"l'immagine incorporata e' ancorata ad A1, come nel file originale");
+			Check(sizeCorrect,
+				"l'immagine incorporata ha la dimensione nativa del JPEG (8x6), non zero");
+			Check(jpegSignature,
+				"i byte dell'immagine incorporata sono un JPEG valido (firma FF D8 FF), non dati troncati/corrotti");
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

@@ -37,6 +37,7 @@
 #include "FileFormat.h"
 #include "Formula.h"
 #include "Functions.h"
+#include "EmbeddedImage.h"
 //#include <ByteOrder.h>
 #include <map>
 #include <set>
@@ -95,6 +96,14 @@ class CExcel5Filter
 	// translators/xls/XlsTranslator.cpp).
 	const std::vector<std::pair<int, float> >& GetColumnWidths() const
 		{ return fColWidths; }
+
+	// Immagini incorporate (record MSODRAWINGGROUP/MSODRAWING, formato
+	// binario Escher -- vedi Excel.escher.cpp) lette durante
+	// Translate(), stesso principio di GetColumnWidths() sopra: un
+	// translator headless le recupera dopo Translate() per scriverle
+	// nel formato nativo.
+	const std::vector<EmbeddedImage>& GetImages() const
+		{ return fImages; }
 
   private:
 	
@@ -275,6 +284,22 @@ class CExcel5Filter
 	// letto dal record 1904 del file).
 	static time_t ExcelSerialToTime(double serial, bool date1904);
 
+	// Immagini incorporate (Escher/MSODRAWING, vedi Excel.escher.cpp):
+	// MSODRAWINGGROUP e' un record unico per l'intera cartella di
+	// lavoro (contiene il "blip store" con i byte grezzi di ogni
+	// immagine, indicizzato per posizione), MSODRAWING e' per-cella/
+	// per-forma (contiene l'ancoraggio riga/colonna piu' l'indice nel
+	// blip store) -- stesso rapporto uno-a-molti di FORMAT/XF sopra.
+	struct EscherBlip { int type; std::vector<unsigned char> data; };
+	std::vector<EscherBlip> fBlips;
+	void HandleMsoDrawingGroup(int len);
+	void HandleMsoDrawing(int len);
+	// Legge "len" byte del record corrente, poi attraversa in modo
+	// trasparente uno o piu' record CONTINUE che seguono subito dopo
+	// (stesso principio di ReadSST sopra, fattorizzato qui perche'
+	// serve identico sia per MSODRAWINGGROUP che per MSODRAWING).
+	std::vector<unsigned char> ReadRecordWithContinues(int len);
+
 	void HandleXLRecordForPass2(int code, int len);
 	void ParseXLFormula(CFormula& formula, cell loc, cell shared,
 		const void *data, int len);
@@ -296,6 +321,7 @@ class CExcel5Filter
 	std::vector<bool> fXfIsDate;
 	std::vector<XLSHFormula> fSharedFormulas;
 	std::vector<std::string> fSST;
+	std::vector<EmbeddedImage> fImages;
 
 	CCellView *fCellView;
 	CContainer *fContainer;

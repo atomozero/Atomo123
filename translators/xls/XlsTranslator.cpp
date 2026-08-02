@@ -20,6 +20,7 @@
 #include "Excel.h"
 #include "EngineViewStub.h"
 #include "FontMetrics.h"
+#include "EmbeddedImage.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -50,7 +51,8 @@ static const int32 kASCDVersion = 1;
 // piu' translator con lo stesso formato di uscita, vale la pena
 // estrarla in una libreria condivisa.
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
-	const std::vector<std::pair<int, float> >* colWidths = NULL)
+	const std::vector<std::pair<int, float> >* colWidths = NULL,
+	const std::vector<EmbeddedImage>* images = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -379,13 +381,35 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	if (dest->Write(&mergeCount, sizeof(mergeCount)) != (ssize_t)sizeof(mergeCount))
 		return B_IO_ERROR;
 
-	// Immagini incorporate: non ancora estratte (il formato BIFF le
-	// incorpora in record MSODRAWING/Escher, un formato binario a
-	// parte molto piu' complesso di xl/drawings/+xl/media/ di XLSX --
-	// limite dichiarato), sezione sempre vuota.
-	int32 imageCount = 0;
-	if (dest->Write(&imageCount, sizeof(imageCount)) != (ssize_t)sizeof(imageCount))
-		return B_IO_ERROR;
+	// Immagini incorporate: CExcel5Filter::GetImages() (motore, vedi
+	// Excel.escher.cpp) estrae davvero i record MSODRAWINGGROUP/
+	// MSODRAWING (Escher) -- va quindi scritta con i valori reali,
+	// stesso formato dell'immagine cosi' com'e' nel file originale
+	// (JPEG/PNG, decodificati dal Translation Kit al disegno, vedi
+	// EmbeddedImage.h), solo JPEG/PNG supportati (limite dichiarato
+	// per DIB/EMF/WMF/PICT/TIFF, mai osservati finora su un file
+	// reale).
+	{
+		int32 imageCount = images ? (int32)images->size() : 0;
+		if (dest->Write(&imageCount, sizeof(imageCount)) != (ssize_t)sizeof(imageCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < imageCount; i++)
+		{
+			const EmbeddedImage& img = (*images)[i];
+			int16 row = img.anchor.v, col = img.anchor.h;
+			float geom[4] = { img.offsetX, img.offsetY, img.width, img.height };
+			int32 pngLen = (int32)img.pngData.size();
+
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
+				|| dest->Write(&pngLen, sizeof(pngLen)) != (ssize_t)sizeof(pngLen))
+				return B_IO_ERROR;
+			if (pngLen > 0 && dest->Write(&img.pngData[0], pngLen) != pngLen)
+				return B_IO_ERROR;
+		}
+	}
 
 	return B_OK;
 }
@@ -460,6 +484,7 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 	CContainer* doc = new CContainer(NULL, NULL);
 	status_t err = B_OK;
 	std::vector<std::pair<int, float> > colWidths;
+	std::vector<EmbeddedImage> images;
 
 	try
 	{
@@ -468,12 +493,14 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 		// metadati (nomi di intervallo, altezze riga) vengono
 		// scartati in questa modalita' -- vedi la nota nello stub in
 		// engine/src/Stubs/EngineViewStub.h. Le larghezze di colonna
-		// invece si recuperano comunque da GetColumnWidths(), che
-		// CExcel5Filter popola indipendentemente da "cellView" (vedi
-		// il commento in Excel.h).
+		// e le immagini incorporate invece si recuperano comunque da
+		// GetColumnWidths()/GetImages(), che CExcel5Filter popola
+		// indipendentemente da "cellView" (vedi il commento in
+		// Excel.h).
 		CExcel5Filter filter(*source, NULL, doc);
 		filter.Translate();
 		colWidths = filter.GetColumnWidths();
+		images = filter.GetImages();
 	}
 	catch (...)
 	{
@@ -481,7 +508,7 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 	}
 
 	if (err == B_OK)
-		err = WriteASCD(doc, destination, &colWidths);
+		err = WriteASCD(doc, destination, &colWidths, &images);
 
 	doc->Release();
 	return err;

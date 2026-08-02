@@ -910,6 +910,12 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 		case XF:
 			Xf();
 			break;
+		case MSODRAWINGGROUP:
+			HandleMsoDrawingGroup(len);
+			break;
+		case MSODRAWING:
+			HandleMsoDrawing(len);
+			break;
 		case SHRFMLA:
 		{
 			XLSHFormula shxl;
