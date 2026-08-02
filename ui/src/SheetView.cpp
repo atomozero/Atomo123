@@ -1255,6 +1255,111 @@ static std::vector<BString> WrapTextLines(BView* view, const char* text, float m
 	return lines;
 }
 
+// Testo che trabocca (Fase 5, confronto diretto con Excel vero su una
+// fattura reale: dello studio, un'intestazione piu'
+// larga della propria colonna, veniva troncata al bordo di cella
+// invece di espandersi visivamente sulle colonne vuote a destra, come
+// mostra invece Excel). Cammina cella per cella nella riga di "c",
+// nella direzione dettata dall'allineamento, finche' il testo ci
+// entra o si incontra una cella non vuota o gia' unita (che blocca
+// l'espansione, esattamente come in Excel) o il bordo del foglio
+// (kColCount, vedi Constants.h). "r" arriva gia' nelle coordinate
+// NON scontate di CellRect (l'offset di Blocca riquadri va applicato
+// dopo da chi chiama, come per il rettangolo delle celle unite poco
+// sopra). Non chiamata per celle unite (hanno gia' il proprio
+// rettangolo) ne' per il testo a capo (va gia' a capo dentro la
+// colonna, non deve traboccare).
+BRect SheetView::ExpandOverflowRect(BRect r, cell c, char alignment, float textWidth) const
+{
+	if (!fDoc || textWidth <= r.Width() - 6)
+		return r;
+
+	if (alignment == eAlignRight)
+	{
+		int col = c.h;
+		while (r.Width() < textWidth + 6 && col > 1)
+		{
+			cell neighbor(col - 1, c.v);
+			range dummy;
+			char nbText[4096];
+			fDoc->GetCellResult(neighbor, nbText, sizeof(nbText), true);
+			if (nbText[0] != 0 || fDoc->GetMergedRange(neighbor, &dummy))
+				break;
+			col--;
+			r.left = CellRect(neighbor).left;
+		}
+	}
+	else if (alignment == eAlignCenter)
+	{
+		int leftCol = c.h, rightCol = c.h;
+		bool leftBlocked = false, rightBlocked = false;
+		while (r.Width() < textWidth + 6 && (!leftBlocked || !rightBlocked))
+		{
+			if (!rightBlocked)
+			{
+				if (rightCol >= kColCount)
+					rightBlocked = true;
+				else
+				{
+					cell neighbor(rightCol + 1, c.v);
+					range dummy;
+					char nbText[4096];
+					fDoc->GetCellResult(neighbor, nbText, sizeof(nbText), true);
+					if (nbText[0] != 0 || fDoc->GetMergedRange(neighbor, &dummy))
+						rightBlocked = true;
+					else
+					{
+						rightCol++;
+						r.right = CellRect(neighbor).right;
+					}
+				}
+			}
+			if (r.Width() >= textWidth + 6)
+				break;
+			if (!leftBlocked)
+			{
+				if (leftCol <= 1)
+					leftBlocked = true;
+				else
+				{
+					cell neighbor(leftCol - 1, c.v);
+					range dummy;
+					char nbText[4096];
+					fDoc->GetCellResult(neighbor, nbText, sizeof(nbText), true);
+					if (nbText[0] != 0 || fDoc->GetMergedRange(neighbor, &dummy))
+						leftBlocked = true;
+					else
+					{
+						leftCol--;
+						r.left = CellRect(neighbor).left;
+					}
+				}
+			}
+		}
+	}
+	else // eAlignGeneral/eAlignLeft: il testo si allinea a sinistra e
+	     // trabocca verso destra, lo stesso comportamento di Excel per
+	     // il testo (a differenza dei numeri, sempre allineati a
+	     // destra e mai traboccanti in Excel -- qui non e' un problema
+	     // pratico dato che i numeri di solito entrano nella colonna).
+	{
+		int col = c.h;
+		while (r.Width() < textWidth + 6 && col < kColCount)
+		{
+			cell neighbor(col + 1, c.v);
+			range dummy;
+			char nbText[4096];
+			fDoc->GetCellResult(neighbor, nbText, sizeof(nbText), true);
+			if (nbText[0] != 0 || fDoc->GetMergedRange(neighbor, &dummy))
+				break;
+			col++;
+			r.right = CellRect(neighbor).right;
+		}
+	}
+
+	return r;
+}
+
 // Vedi il commento su fFrozenRows/fFrozenCols in SheetView.h: disegna
 // sfondo, griglia e testo per un blocco di celle [firstCol,lastCol] x
 // [firstRow,lastRow], spostato di (xOrigin, yOrigin) -- (0,0) per il
@@ -1487,11 +1592,23 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				// Celle unite: il rettangolo del testo copre l'intero
 				// intervallo (non solo la cella in alto a sinistra),
 				// cosi' l'allineamento/a capo/clip usano la larghezza
-				// vera visibile sullo schermo.
-				BRect r = isMerged
-					? (CellRect(cell(mergedRange.left, mergedRange.top))
-						| CellRect(cell(mergedRange.right, mergedRange.bottom))).OffsetByCopy(xOrigin, yOrigin)
-					: CellRect(c).OffsetByCopy(xOrigin, yOrigin);
+				// vera visibile sullo schermo. Altrimenti (cella
+				// singola, non a capo automatico) il rettangolo puo'
+				// espandersi sulle colonne vuote vicine se il testo
+				// trabocca (vedi ExpandOverflowRect sopra).
+				BRect r;
+				if (isMerged)
+				{
+					r = CellRect(cell(mergedRange.left, mergedRange.top))
+						| CellRect(cell(mergedRange.right, mergedRange.bottom));
+				}
+				else
+				{
+					r = CellRect(c);
+					if (!cs.fWrapText)
+						r = ExpandOverflowRect(r, c, cs.fAlignment, StringWidth(text));
+				}
+				r.OffsetBy(xOrigin, yOrigin);
 
 				// Allineamento (Fase 7): il generico (eAlignGeneral, il
 				// valore predefinito di CellStyle su ogni cella mai

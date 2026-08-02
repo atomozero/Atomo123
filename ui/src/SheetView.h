@@ -184,6 +184,14 @@ public:
 	// lo fanno gia' a parte, dove serve.
 	cell CellAt(BPoint where) const;
 
+	// Rettangolo di disegno del testo di una cella singola (non unita),
+	// espanso sulle colonne vuote vicine se "textWidth" non entra in
+	// "r" (CellRect(c) di partenza) -- il testo che trabocca in Excel,
+	// vedi il commento esteso sopra la definizione in SheetView.cpp.
+	// Pubblico apposta per essere testabile direttamente, stesso
+	// principio di CellRect sopra -- vedi tests/test_overflow.cpp.
+	BRect ExpandOverflowRect(BRect r, cell c, char alignment, float textWidth) const;
+
 	// Applica larghezze di colonna personalizzate (coppie colonna
 	// 1-based/larghezza in pixel), sostituendo quelle correnti:
 	// ripristina prima ogni colonna alla larghezza predefinita
