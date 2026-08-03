@@ -118,10 +118,10 @@ static const uint32 kAtomoCsvFormat = 'ACSV';
 // e' finalmente popolato, vedi Atomo123_icons/ATOMO123.md per la
 // selezione ragionata e IconCatalog.h/IconData.cpp per i byte HVIF
 // incorporati). Un gruppo per voce di menu principale a cui i pulsanti
-// corrispondono (File/Modifica/Dati/Inserisci), con un separatore
-// verticale fra un gruppo e il successivo in un'unica riga -- una
-// vera BToolBar non e' disponibile su questo sistema (quella classe
-// vive solo sotto develop/headers/private/shared/, la sua
+// corrispondono (File/Modifica/Dati/Inserisci/Formato), con un
+// separatore verticale fra un gruppo e il successivo in un'unica riga
+// -- una vera BToolBar non e' disponibile su questo sistema (quella
+// classe vive solo sotto develop/headers/private/shared/, la sua
 // implementazione non e' nemmeno presente in libbe.so qui: non solo
 // "sconsigliata", proprio non linkabile). Bottoni BButton normali,
 // resi piatti con SetFlat() (pubblica, vedi il commento piu' sotto) e
@@ -133,13 +133,22 @@ static const uint32 kAtomoCsvFormat = 'ACSV';
 // raggruppate, separate da un divisore sottile) chiesto dall'utente.
 // Solo funzioni gia' implementate da un comando vero (menu o
 // scorciatoia): niente pulsanti per funzioni ancora "da disegnare"
-// nel catalogo o non ancora presenti in Atomo123 (formattazione
-// testo, filtro, zoom...).
+// nel catalogo (bordi cella, unisci celle, inserisci riga/colonna...)
+// o non ancora presenti in Atomo123 (filtro, zoom...).
 struct ToolbarButtonDef {
 	const char* name;
 	const char* label;
 	uint32 message;
 	const IconData* icon;
+	// Parametro int32 opzionale nel BMessage (es. "alignment" per i tre
+	// pulsanti di allineamento, che condividono lo stesso kMsgSetAlignment
+	// e si distinguono solo per questo valore -- vedi i tre BMenuItem
+	// equivalenti piu' sotto in questo stesso costruttore). NULL per i
+	// pulsanti che non ne hanno bisogno: le voci esistenti sopra questo
+	// commento non lo specificano, quindi restano NULL/0 per
+	// inizializzazione automatica degli aggregati.
+	const char* paramName;
+	int32 paramValue;
 };
 
 struct ToolbarGroupDef {
@@ -174,6 +183,24 @@ static const ToolbarButtonDef kInsertToolbarButtons[] = {
 	{ "toolPivot", "Pivot", kMsgShowPivot, &kIconTable },
 };
 
+// Stessi comandi dei BMenuItem del menu Formato piu' sotto in questo
+// costruttore (kMsgToggleBold/kMsgToggleItalic/kMsgToggleUnderline/
+// kMsgSetAlignment/kMsgToggleWrapText/kMsgShowTextColor/kMsgShowBgColor):
+// promossi a pulsante ora che il catalogo HVIF li copre tutti (vedi
+// IconData.cpp), rimasti solo voci di menu fino ad ora per questo
+// motivo, non per mancanza della funzione stessa.
+static const ToolbarButtonDef kFormatToolbarButtons[] = {
+	{ "toolBold", "Grassetto", kMsgToggleBold, &kIconBold },
+	{ "toolItalic", "Corsivo", kMsgToggleItalic, &kIconItalic },
+	{ "toolUnderline", "Sottolineato", kMsgToggleUnderline, &kIconUnderline },
+	{ "toolAlignLeft", "Allinea a sinistra", kMsgSetAlignment, &kIconAlignLeft, "alignment", eAlignLeft },
+	{ "toolAlignCenter", "Allinea al centro", kMsgSetAlignment, &kIconAlignCenter, "alignment", eAlignCenter },
+	{ "toolAlignRight", "Allinea a destra", kMsgSetAlignment, &kIconAlignRight, "alignment", eAlignRight },
+	{ "toolWrapText", "A capo automatico", kMsgToggleWrapText, &kIconWrapText },
+	{ "toolTextColor", "Colore testo", kMsgShowTextColor, &kIconTextColor },
+	{ "toolHighlight", "Colore sfondo", kMsgShowBgColor, &kIconHighlight },
+};
+
 #define TOOLBAR_GROUP(buttons) { buttons, sizeof(buttons) / sizeof((buttons)[0]) }
 
 static const ToolbarGroupDef kToolbarGroups[] = {
@@ -181,6 +208,7 @@ static const ToolbarGroupDef kToolbarGroups[] = {
 	TOOLBAR_GROUP(kEditToolbarButtons),
 	TOOLBAR_GROUP(kDataToolbarButtons),
 	TOOLBAR_GROUP(kInsertToolbarButtons),
+	TOOLBAR_GROUP(kFormatToolbarButtons),
 };
 
 #undef TOOLBAR_GROUP
@@ -215,7 +243,11 @@ static BView* BuildToolbar(BHandler* target)
 			// dall'utente dopo aver visto la toolbar coi soli quattro
 			// pulsanti File gia' quasi al limite della larghezza
 			// predefinita della finestra.
-			BButton* button = new BButton(def.name, NULL, new BMessage(def.message));
+			BMessage* message = new BMessage(def.message);
+			if (def.paramName)
+				message->AddInt32(def.paramName, def.paramValue);
+
+			BButton* button = new BButton(def.name, NULL, message);
 			button->SetToolTip(def.label);
 			button->SetTarget(target);
 			// Bottone piatto (bordo visibile solo al passaggio del mouse/
