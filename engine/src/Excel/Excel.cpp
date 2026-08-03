@@ -65,9 +65,17 @@
 #include <stdarg.h>
 #include <cstdio>
 
+#include <AppFileInfo.h>
+#include <Application.h>
 #include <Font.h>
+#include <Path.h>
+#include <Roster.h>
 
 #include "FontMetrics.h"
+#include "FunctionUtils.h"
+#include "Globals.h"
+#include "MyError.h"
+#include "ResourceManager.h"
 
 CExcel5Filter::CExcel5Filter(BPositionIO& inStream, CCellView *cellView, CContainer *container)
 	: fCellView(cellView), fContainer(container)
@@ -95,6 +103,59 @@ CExcel5Filter::CExcel5Filter(BPositionIO& inStream, CCellView *cellView, CContai
 	font_style defaultStyle;
 	be_plain_font->GetFamilyAndStyle(&defaultFamily, &defaultStyle);
 	gFontSizeTable.GetFontID(defaultFamily, defaultStyle, be_plain_font->Size());
+
+	// Le formule con funzioni con nome (SUM, IF, ecc.) hanno bisogno
+	// che InitFunctions() (vedi App::ReadyToRun) abbia caricato la
+	// tabella delle funzioni da una risorsa 'Func' -- ma quella
+	// chiamata la fa solo l'app principale, mai il translator XLS
+	// (un add-on caricato a parte, con la propria copia STATICA di
+	// libengine.a e quindi una propria istanza SEPARATA di gFuncCount/
+	// gFuncArrayByNr/gFuncArrayByName/gFuncs, mai popolata). Bug reale
+	// scoperto confrontando con Excel vero una fattura reale: ogni
+	// SUM(...) veniva importata come se la funzione non esistesse --
+	// sia il valore ricalcolato (Formula.cpp, "gFuncs[funcNr]" nullo)
+	// sia il testo della formula ricostruito (UnMangle, "(G23..G36)"
+	// invece di "SUM(G23:G36)", poi ri-analizzato cosi' com'e' al
+	// caricamento del formato nativo) risultavano sbagliati/vuoti.
+	// be_app riflette sempre il VERO processo in esecuzione (Atomo123,
+	// che ha la risorsa 'Func' allegata al proprio eseguibile) anche
+	// quando questo codice gira dentro l'add-on caricato in-process,
+	// quindi GetAppInfo trova comunque il binario giusto -- stesso
+	// principio, stesso fallback silenzioso di App::ReadyToRun per un
+	// binario senza quella risorsa (es. un test headless).
+	if (gFuncCount <= 0 && be_app != NULL)
+	{
+		app_info info;
+		if (be_app->GetAppInfo(&info) == B_OK)
+		{
+			BPath path(&info.ref);
+			if (path.InitCheck() == B_OK)
+			{
+				// gAppName va impostato PRIMA di InitFunctions(): la
+				// usa LoadPlugIns() per cercare un'eventuale cartella
+				// "Functions/" accanto al binario -- omettendola
+				// lascerebbe gAppName al suo BPath vuoto predefinito
+				// (mai impostato in questo processo separato
+				// dell'add-on), il cui Path() restituisce NULL: bug
+				// reale scoperto dal vivo (blocco indefinito
+				// dell'intera app aprendo un file .xls reale),
+				// strcpy(path, NULL) dentro LoadPlugIns() con
+				// comportamento indefinito invece dell'eccezione
+				// pulita che ci si aspetterebbe. Stesso ordine di
+				// App::ReadyToRun() e di
+				// engine/tests/named_functions_test.cpp.
+				gAppName = path;
+				gResourceManager.SetTo(&path);
+				try
+				{
+					InitFunctions();
+				}
+				catch (CErr&)
+				{
+				}
+			}
+		}
+	}
 
 	inStream.Seek(0, SEEK_SET);
 	FailOSErr(GetBookStream(inStream), "Failed to open Excel File (err: %d)");
