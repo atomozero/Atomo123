@@ -4098,6 +4098,38 @@ grassetto dopo il clic sul pulsante. Nessuna regressione nelle 33
 suite UI né in quelle di engine/translator (FontMetrics è condiviso
 da tutti).
 
+### Bug scoperto: l'area di selezione multi-cella non era trasparente, nascondeva il contenuto
+
+Secondo problema della stessa segnalazione dell'utente: selezionando
+più celle (trascinamento, Maiusc+frecce), la tinta azzurra che
+evidenzia l'intervallo copriva per intero il testo delle celle
+selezionate (non quella attiva, lasciata sempre bianca) invece di
+lasciarlo leggibile in trasparenza, come in Excel/LibreOffice Calc.
+
+Causa: `SheetView::Draw()` disegnava la tinta con
+`FillRegion()`/`SetHighColor()` nella modalità di disegno predefinita
+di `BView` (`B_OP_COPY`, colore opaco) — un riempimento a colore
+pieno *sopra* lo sfondo/testo già disegnati da `DrawCellBand()` poco
+prima nello stesso passaggio, che quindi finiva coperto invece che
+sfumato.
+
+Fix: `SetDrawingMode(B_OP_ALPHA)` con `SetBlendingMode(B_PIXEL_ALPHA,
+B_ALPHA_OVERLAY)` e un colore con alfa parziale (60/255) prima del
+`FillRegion()`, che ora mescola la tinta con quanto già disegnato
+sotto invece di sostituirlo; `SetDrawingMode(B_OP_COPY)` ripristinato
+subito dopo, dato che il resto di `Draw()` (bordi, intestazioni,
+celle successive) si aspetta la modalità opaca predefinita.
+
+Verificato dal vivo con uno screenshot (un piccolo programma di prova
+diretto in-process, tre celle di testo diverse per riga, selezione
+A1:C2): il testo di tutte le celle nell'intervallo resta leggibile
+sotto la tinta, la cella attiva (A1) resta bianca col solo bordo,
+come previsto. Nessuna infrastruttura di cattura pixel in questo
+progetto per un confronto automatico esatto: `ui/tests/test_selection.cpp`
+verifica invece che `Draw()` ripristini `B_OP_COPY` dopo aver
+disegnato la tinta, cosi' la modalita' alfa non resta "incollata" al
+resto del disegno.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
