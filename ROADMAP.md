@@ -1621,6 +1621,52 @@ invece di gonfiarsi contando solo la prima colonna. Verificato anche
 dal vivo riaprendo la fattura reale: le righe delle descrizioni ora
 hanno l'altezza normale a una riga sola, come in Excel.
 
+### Bug scoperto: un indice di stile in più per il record MULBLANK (celle vuote formattate)
+
+L'utente ha chiesto di analizzare perché una cella in colonna F non
+era colorata correttamente. Confrontando pixel per pixel lo screenshot
+della fattura reale in Excel con quello di Atomo123 (e leggendo
+direttamente `CellStyle::fLowColor` per ogni cella tramite un harness
+dedicato) non è emerso un problema in colonna F, ma un bug reale e
+distinto altrove: il record BIFF `MULBLANK` (una riga di celle vuote
+ma formattate — es. uno sfondo colorato applicato senza testo, comune
+per bande decorative) termina con un campo `colLast` (2 byte) DOPO
+l'ultimo indice di stile, oltre a `rw`/`colFirst` (4 byte) prima del
+primo. Il calcolo del numero di colonne, `(len-4)/2`, non escludeva
+quel campo finale: leggeva un indice di stile IN PIÙ rispetto alle
+colonne vuote realmente descritte, applicandolo per sbaglio a una
+cella fantasma subito dopo l'intervallo vero — `colLast` veniva
+travisato da indice XF.
+
+Il record `MULRK` (celle numeriche compresse) ha la stessa identica
+struttura ma non soffriva dello stesso problema per puro caso
+aritmetico: le sue voci sono più larghe di `colLast` (6 byte contro
+2), quindi la troncatura della divisione intera assorbiva il campo
+finale invece di contarlo come voce a sé stante — motivo per cui
+questo bug è rimasto nascosto finché non si è guardato `MULBLANK`
+specificamente.
+
+Fix: `(len-6)/2`, che esclude correttamente `colLast` dal conteggio.
+Test: nuova fixture `sample_mulblank.xls` (sei celle vuote colorate di
+giallo più una settima, subito dopo, lasciata bianca come controllo)
+in `test_xls_translator.cpp`, verifica che la cella fantasma non
+risulti colorata per sbaglio.
+
+**Nota**: durante la stessa indagine è emerso anche un vero
+disallineamento di colore (non correlato a questo bug): una banda
+decorativa dell'intera fattura usa un ciano che Excel mostra come
+RGB (204,255,255) ma che Atomo123 importa come (159,223,223) — il
+colore standard più vicino nella tavolozza classica a 56 colori di
+Excel (`kExcelColorTable`). La causa più probabile è un record
+`XFEXT` (0x087D, l'estensione BIFF8 per i colori "veri" scelti con la
+finestra "Altri colori" di Excel, retrocompatibile con la tavolozza
+classica per i lettori più vecchi) che questo motore non legge
+affatto — ma non è stato possibile confermarlo con certezza decifrando
+il layout binario a mano, e implementarlo comporterebbe una modifica
+più ampia e rischiosa senza quella certezza. Segnalato qui per
+trasparenza come limite noto (uno scarto di tonalità, non un colore
+completamente sbagliato), non ancora risolto.
+
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
