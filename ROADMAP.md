@@ -1682,6 +1682,34 @@ verifica il valore RGB esatto. Verificato anche dal vivo riaprendo la
 fattura reale: la banda decorativa ora mostra esattamente lo stesso
 ciano di Excel, campionato pixel per pixel (204,255,255) su entrambi.
 
+### Bug scoperto: il testo delle formule con risultato testuale non veniva mai letto
+
+Continuando l'indagine sulla stessa fattura reale, la riga 48 (un IBAN
+bancario ricostruito con una formula di concatenamento testo, tipo
+`=A1&" "&A2`) risultava completamente vuota in Atomo123 mentre Excel la
+mostra correttamente.
+
+Causa: nel formato BIFF8, quando una formula ha un risultato testuale
+già calcolato e messo in cache da Excel (marcatore `num[3]==0` nel
+record FORMULA), il testo vero e proprio non è mai incluso nel record
+FORMULA stesso — un record `STRING` (0x0207) separato lo segue sempre
+subito dopo. `CExcel5Filter::Pass2()` non leggeva mai questo record
+STRING, riusando per sbaglio il valore residuo della cella precedente:
+la cella restava vuota (o mostrava il testo sbagliato).
+
+Fix: il caso "risultato testo" ora legge il record STRING immediato
+successivo (stessa struttura Unicode di FORMAT/SST: `cch` a 2 byte,
+poi un byte `grbit` col flag "wide", poi i caratteri) per ottenere il
+vero testo, poi torna alla posizione originale così il resto della
+gestione della formula (token bytecode, formule condivise) continua
+invariato.
+
+Test: nuova fixture `sample_strformula.xls` (costruita correggendo a
+mano il marcatore `num[3]` e aggiungendo il record STRING, dato che
+xlwt non calcola mai le formule) in `test_xls_translator.cpp`.
+Verificato anche dal vivo riaprendo la fattura reale: la riga 48 ora
+mostra correttamente il testo della cella (coordinate bancarie del beneficiario).
+
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
