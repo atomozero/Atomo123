@@ -3913,6 +3913,37 @@ parte dietro il pulsante ">>", e che riallargare la vista li faccia
 ricomparire tutti. Verificato anche dal vivo ridimensionando la
 finestra reale (via `hey`, "SET Frame of Window 0 to BRect(...)").
 
+### Bug scoperto: il pulsante ">>" della toolbar non apriva il menu
+
+Segnalato dall'utente subito dopo la funzionalità sopra: il pulsante
+">>" appariva correttamente quando la finestra si restringeva, ma
+cliccandolo non succedeva nulla — il menu con le icone nascoste non
+si apriva mai.
+
+Causa: `ToolbarView::ToolbarView()` chiamava
+`fOverflowButton->SetTarget(this)` nel proprio costruttore, prima che
+`this` (la `ToolbarView` stessa) fosse agganciata a qualunque
+finestra — l'aggancio avviene solo dopo, quando `BuildToolbar()` la
+restituisce e `MainWindow` la aggiunge al proprio layout. A quel
+punto `Looper()` vale ancora `NULL`, un target inaffidabile da quel
+momento in poi per tutta la vita del pulsante.
+
+Fix: invece di affidarsi a `BInvoker::SetTarget()`/`BMessenger`
+(fragile per un pulsante il cui target è la vista stessa che lo
+contiene, a differenza dei pulsanti veri della toolbar che puntano
+tutti a `MainWindow`, una `BLooper` valida fin dalla costruzione), il
+pulsante ">>" è ora un'istanza di una piccola sottoclasse locale di
+`BButton` che chiama direttamente `ToolbarView::ShowOverflowMenu()`
+da un override di `Invoke()` — una chiamata C++ diretta, che non ha
+bisogno di un `Looper` valido e funziona a prescindere da
+quando/se la vista è agganciata. Corretta anche una piccola perdita
+di memoria scoperta nello stesso punto (`BPopUpMenu` asincrono senza
+`SetAsyncAutoDestruct()`).
+
+Verificato dal vivo: impostando il valore del pulsante da script
+(`hey`, che passa dallo stesso `Invoke()` di un vero clic) il menu ora
+si apre correttamente con tutte le voci nascoste.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
