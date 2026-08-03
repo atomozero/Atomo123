@@ -1164,6 +1164,68 @@ int main()
 		}
 	}
 
+	// Formula con risultato testuale (record FORMULA + STRING, vedi il
+	// case omonimo in Excel.pass2.cpp): tests/sample_strformula.xls ha
+	// A1="Ciao", B1="mondo", A2=A1&" "&B1 con risultato testuale GIA'
+	// calcolato e messo in cache nel file (num[3]=0, il marcatore che
+	// Excel stesso scrive per una formula con risultato testo -- non
+	// generabile con xlwt, che non calcola mai le formule: fixture
+	// costruita correggendo a mano il marcatore e aggiungendo il
+	// record STRING che lo segue, sullo stesso modello del record
+	// Escher per le immagini incorporate). Prima di questa modifica il
+	// record FORMULA col marcatore "risultato testo" non leggeva mai
+	// il record STRING che lo segue subito dopo con la stringa vera:
+	// la cella restava vuota, riusando per sbaglio il valore residuo
+	// dalla cella precedente -- bug reale scoperto confrontando con
+	// Excel vero una fattura reale (una riga con l'IBAN bancario,
+	// ricostruita da una formula testuale, spariva del tutto).
+	{
+		BFile sfFile("tests/sample_strformula.xls", B_READ_ONLY);
+		Check(sfFile.InitCheck() == B_OK, "apertura di tests/sample_strformula.xls riuscita");
+
+		translator_info sfInfo;
+		status_t sfErr = translator->Identify(&sfFile, NULL, NULL, &sfInfo, 0);
+		Check(sfErr == B_OK, "Identify riconosce sample_strformula.xls");
+
+		sfFile.Seek(0, SEEK_SET);
+		BMallocIO sfOut;
+		sfErr = translator->Translate(&sfFile, &sfInfo, NULL, kAtomoNativeFormat, &sfOut);
+		Check(sfErr == B_OK, "Translate di sample_strformula.xls riesce");
+
+		if (sfErr == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)sfOut.Buffer();
+			size_t len = sfOut.BufferLength();
+			size_t pos = 12;
+
+			int32 count = 0;
+			if (len > 12)
+				memcpy(&count, data + 8, 4);
+
+			bool foundA1 = false, foundB1 = false, foundA2 = false;
+			for (int32 i = 0; i < count && pos + 8 <= len; i++)
+			{
+				short row, col;
+				int32 l;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&l, data + pos, 4); pos += 4;
+				if (pos + (size_t)l > len)
+					break;
+				std::string text((const char *)data + pos, l);
+				pos += l;
+
+				if (row == 1 && col == 1 && text == "Ciao") foundA1 = true;
+				if (row == 1 && col == 2 && text == "mondo") foundB1 = true;
+				if (row == 2 && col == 1 && text == "Ciao mondo") foundA2 = true;
+			}
+
+			Check(foundA1 && foundB1, "A1/B1 (testo semplice) importati correttamente");
+			Check(foundA2,
+				"A2 (formula con risultato testuale gia' calcolato da Excel) importata come \"Ciao mondo\", non vuota");
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

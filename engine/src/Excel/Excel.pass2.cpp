@@ -254,6 +254,8 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 		}
 		case FORMULA:
 		{
+			off_t recordBodyStart = fBook.Position();
+
 			es >> c.v >> c.h >> style;
 			c.v++;
 			c.h++;
@@ -268,9 +270,70 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 				switch (num[3])
 				{
 					case 0:	// text cell
+					{
+						// BIFF8: il risultato testuale di una formula
+						// non e' mai in linea nel record FORMULA
+						// stesso -- un record STRING separato (0x0207,
+						// "STRING" qui sopra e' gia' definito come il
+						// codice base 0x007 senza il prefisso di
+						// versione, confrontato con "& 0x00FF" come
+						// ovunque in questo filtro) segue SEMPRE
+						// subito dopo, con la stessa struttura
+						// Unicode di FORMAT/SST (cch a 2 byte, poi un
+						// byte "grbit" col flag "wide", poi i
+						// caratteri) -- bug reale scoperto
+						// confrontando con Excel vero una fattura
+						// reale: ogni formula con risultato testuale
+						// restava vuota, riusando per sbaglio il
+						// valore residuo di "v" dalla cella precedente
+						// invece del vero risultato. "recordBodyStart
+						// + len" (len e' la lunghezza dichiarata di
+						// QUESTO record FORMULA, parametro della
+						// funzione) e' la posizione esatta subito
+						// dopo, indipendentemente da quanti byte il
+						// resto di questo case legge poi per conto suo
+						// (il token stream della formula, piu' sotto) --
+						// tornare ad "afterHeader" dopo aver letto la
+						// stringa lascia quel codice successivo
+						// intatto, come se questa parentesi non ci
+						// fosse mai stata.
+						off_t afterHeader = fBook.Position();
+						fBook.Seek(recordBodyStart + len, SEEK_SET);
+
+						short stringCode, stringLen;
+						es >> stringCode >> stringLen;
+						if ((stringCode & 0x00FF) == STRING)
+						{
+							unsigned short cch;
+							unsigned char strGrbit;
+							es >> cch >> strGrbit;
+							bool wide = (strGrbit & 0x01) != 0;
+
+							std::string utf8;
+							for (unsigned short k = 0; k < cch; k++)
+							{
+								if (wide)
+								{
+									unsigned char c2[2];
+									es.Read(c2, 2);
+									unsigned short u = c2[0] | (c2[1] << 8);
+									AppendUnicodeAsUTF8(utf8, u);
+								}
+								else
+								{
+									unsigned char c1;
+									es >> c1;
+									AppendCP1252Byte(utf8, c1);
+								}
+							}
+							v = utf8.c_str();
+						}
+
+						fBook.Seek(afterHeader, SEEK_SET);
 						fContainer->NewCell(c, v, NULL);
 						fContainer->SetCellStyleNr(c, fStyles[style]);
 						break;
+					}
 					case 1: // bool cell
 						v = (num[1] != 0);
 						fContainer->NewCell(c, v, NULL);
