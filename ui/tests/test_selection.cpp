@@ -87,6 +87,20 @@ int main()
 	Check(active.h == 2 && active.v == 2,
 		"la cella attiva segue il movimento durante l'estensione (arriva su B2)");
 
+	// La tinta della selezione multi-cella si disegna con B_OP_ALPHA
+	// (vedi SheetView::Draw) per restare trasparente sul contenuto
+	// gia' disegnato sotto -- bug reale segnalato dall'utente ("l'area
+	// selezionata non e' trasparente e non mostra il contenuto delle
+	// celle"), verificato dal vivo con uno screenshot (colore pieno
+	// sostituito da uno sfumato che lascia intravedere il testo).
+	// Qui, senza infrastruttura di cattura pixel in questo progetto,
+	// si verifica solo che Draw() ripristini B_OP_COPY per il resto
+	// del disegno (bordi, intestazioni, celle successive), invece di
+	// lasciare la vista bloccata in modalita' alfa.
+	view->Draw(view->Bounds());
+	Check(view->DrawingMode() == B_OP_COPY,
+		"Draw() ripristina B_OP_COPY dopo aver disegnato la tinta della selezione multi-cella");
+
 	// Una freccia senza Maiusc dopo un'estensione collassa la
 	// selezione a una sola cella (quella di arrivo), come Excel.
 	view->HandleKey(B_RIGHT_ARROW, false, false);

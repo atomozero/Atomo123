@@ -1820,10 +1820,22 @@ void SheetView::Draw(BRect updateRect)
 
 	if (selRange.left != selRange.right || selRange.top != selRange.bottom)
 	{
-		SetHighColor(200, 220, 245);
+		// B_OP_ALPHA/B_PIXEL_ALPHA con un colore ad alfa parziale
+		// mescola la tinta con cio' che DrawCellBand ha gia' disegnato
+		// sotto (sfondo e testo), invece di sostituirlo -- con la
+		// modalita' di disegno predefinita B_OP_COPY (colore opaco) la
+		// tinta copriva per intero il contenuto delle celle selezionate,
+		// nascondendolo: bug reale segnalato dall'utente ("l'area
+		// selezionata non e' trasparente e non mostra il contenuto delle
+		// celle"). Ripristinata subito dopo: StrokeRect() sotto e il
+		// resto di Draw() si aspettano B_OP_COPY.
+		SetDrawingMode(B_OP_ALPHA);
+		SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+		SetHighColor(80, 130, 220, 60);
 		BRegion tint(selOuter);
 		tint.Exclude(activeRect);
 		FillRegion(&tint);
+		SetDrawingMode(B_OP_COPY);
 	}
 
 	SetHighColor(30, 100, 200);
