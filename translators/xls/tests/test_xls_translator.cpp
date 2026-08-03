@@ -1098,6 +1098,72 @@ int main()
 		}
 	}
 
+	// Tavolozza predefinita a 56 colori (kExcelColorTable, Excel.colors.h):
+	// tests/sample_colorindex.xls ha A1 con sfondo "light_turquoise"
+	// (ColorIndex 20 della tavolozza standard di Excel, RGB(204,255,255)
+	// -- vedi il commento in Excel.colors.h). Prima di questa modifica
+	// la tavola aveva diversi valori sbagliati ereditati dal codice
+	// storico di Sum-It (fra cui gli indici 13/14 scambiati fra loro),
+	// scoperti confrontando pixel per pixel una fattura reale con Excel
+	// vero: una banda decorativa appariva con un ciano piu' scuro
+	// (159,223,223) di quello mostrato da Excel.
+	{
+		BFile ciFile("tests/sample_colorindex.xls", B_READ_ONLY);
+		Check(ciFile.InitCheck() == B_OK, "apertura di tests/sample_colorindex.xls riuscita");
+
+		translator_info ciInfo;
+		status_t ciErr = translator->Identify(&ciFile, NULL, NULL, &ciInfo, 0);
+		Check(ciErr == B_OK, "Identify riconosce sample_colorindex.xls");
+
+		ciFile.Seek(0, SEEK_SET);
+		BMallocIO ciOut;
+		ciErr = translator->Translate(&ciFile, &ciInfo, NULL, kAtomoNativeFormat, &ciOut);
+		Check(ciErr == B_OK, "Translate di sample_colorindex.xls riesce");
+
+		if (ciErr == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)ciOut.Buffer();
+			size_t len = ciOut.BufferLength();
+			size_t pos = 12;
+
+			int32 cellCount = 0;
+			if (len > 12)
+				memcpy(&cellCount, data + 8, 4);
+			for (int32 i = 0; i < cellCount && pos + 8 <= len; i++)
+			{
+				short row, col; int32 l;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&l, data + pos, 4); pos += 4;
+				if (pos + (size_t)l > len) break;
+				pos += l;
+			}
+
+			int32 n;
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4+4*4); } // chart
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
+
+			bool foundA1 = false;
+			if (pos + 4 <= len)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, data + pos, 4); pos += 4;
+				for (int32 i = 0; i < cellColorCount && pos + 2+2+8 <= len; i++)
+				{
+					short row, col; unsigned char buf[8];
+					memcpy(&row, data + pos, 2); pos += 2;
+					memcpy(&col, data + pos, 2); pos += 2;
+					memcpy(buf, data + pos, 8); pos += 8;
+					if (row == 1 && col == 1
+						&& buf[0] == 204 && buf[1] == 255 && buf[2] == 255)
+						foundA1 = true;
+				}
+			}
+			Check(foundA1,
+				"A1 (sfondo \"light_turquoise\", ColorIndex 20 nel file originale) importato come RGB(204,255,255), non il valore sbagliato della vecchia tavolozza");
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
