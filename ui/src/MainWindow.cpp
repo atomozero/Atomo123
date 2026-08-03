@@ -7,6 +7,7 @@
 #include "MainWindow.h"
 #include "SheetView.h"
 #include "SheetTabView.h"
+#include "ToolbarView.h"
 #include "AscdIO.h"
 #include "FindWindow.h"
 #include "ChartWindow.h"
@@ -220,17 +221,20 @@ static const ToolbarGroupDef kToolbarGroups[] = {
 // benefici), e un separatore verticale fra un gruppo e il successivo.
 // "target" riceve i messaggi di tutti i pulsanti (sempre "this" per
 // MainWindow, passato esplicitamente solo per non legare questa
-// funzione libera a una particolare istanza).
+// funzione libera a una particolare istanza). Il contenitore e' un
+// ToolbarView (non un semplice BGroupView) apposta: quando la finestra
+// si restringe e i pulsanti non entrano piu' tutti, nasconde quelli in
+// eccesso dietro un pulsante ">>" con un menu -- vedi ToolbarView.h,
+// stesso principio di SheetTabView per le schede dei fogli.
 static BView* BuildToolbar(BHandler* target)
 {
-	BGroupView* row = new BGroupView(B_HORIZONTAL, 4);
-	row->GroupLayout()->SetInsets(4, 4, 4, 4);
+	ToolbarView* row = new ToolbarView("toolbarRow");
 
 	size_t groupCount = sizeof(kToolbarGroups) / sizeof(kToolbarGroups[0]);
 	for (size_t g = 0; g < groupCount; g++)
 	{
 		if (g > 0)
-			row->AddChild(new BSeparatorView(B_VERTICAL));
+			row->AddSeparator();
 
 		const ToolbarGroupDef& group = kToolbarGroups[g];
 		for (size_t i = 0; i < group.count; i++)
@@ -266,11 +270,10 @@ static BView* BuildToolbar(BHandler* target)
 				delete icon;
 			}
 
-			row->AddChild(button);
+			row->AddButton(button, def.label);
 		}
 	}
 
-	row->GroupLayout()->AddItem(BSpaceLayoutItem::CreateGlue());
 	return row;
 }
 
