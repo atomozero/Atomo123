@@ -289,13 +289,7 @@ void CParser::Factor()
 		{
 			double d = mNum;
 			Match(NUMBER);
-			if (mLookahead == '%')
-			{
-				Match('%');
-				AddToken(valPerc, &d);
-			}
-			else
-				AddToken(valNum, &d);
+			AddToken(valNum, &d);
 			break;
 		}
 		
@@ -460,6 +454,25 @@ void CParser::Factor()
 		
 		default:
 			Match(NUMBER);
+	}
+
+	// Operatore percentuale postfisso di Excel (es. "F37%", "(A1+A2)%"):
+	// non si applica solo a un numero letterale come "5%" (l'unico
+	// caso gestito prima d'ora, dentro il case NUMBER sopra, col
+	// vecchio token valPerc che pero' non divideva mai per 100 in
+	// fase di calcolo -- vedi CFormula::CalcCell) ma a QUALUNQUE
+	// fattore, esattamente come "-" e' un operatore prefisso generico
+	// sopra. Qui dopo l'intero switch cosi' si applica in modo
+	// uniforme a ogni caso (CELL, '(', IDENT/funzione, ecc.), non solo
+	// a NUMBER -- bug reale scoperto importando una formula da un file
+	// .xls reale ("=D37*F37%", un riferimento a cella seguito da "%",
+	// non un numero letterale): la grammatica capiva solo "numero%",
+	// quindi ri-analizzare il testo della formula esportata falliva e
+	// la cella restava vuota.
+	if (mLookahead == '%')
+	{
+		Match('%');
+		AddToken(opPercent);
 	}
 } // CParser::Factor
 

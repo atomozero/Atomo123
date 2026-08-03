@@ -79,7 +79,7 @@ const uchar
 		0,		//ptgRange	0x0011		//operator
 		0,		//ptgUplus	0x0012		//operator
 		opNegate,	//ptgUminus	0x0013		//operator
-		0,		//ptgPercent	0x0014		//operator
+		opPercent,	//ptgPercent	0x0014		//operator
 		opParen,	//ptgParen	0x0015		//control
 		valNil,	//ptgMissArg	0x0016		//operand
 		valStr,	//ptgStr	0x0017		//operand
@@ -391,15 +391,17 @@ void CExcel5Filter::ParseXLFormula(CFormula& formula,
 				formula.AddToken(valNum, &d, offset);
 				break;
 			}
-			case ptgPercent:
-			{
-//				buffer.Seek(buffer.Position() - 9, SEEK_SET);
-//				opCode = valPerc;
-//				buffer << opCode;
-//				buffer.Seek(buffer.Position() + 8, SEEK_SET);
-//				formula[(offset - sizeof(double)) / kPFWordSize - 1] = valPerc;
-				break;
-			}
+			// ptgPercent (l'operatore percentuale postfisso di Excel,
+			// es. "F37%"): nessun case esplicito serve, kPtgMap sopra
+			// lo mappa gia' a opPercent (vedi Formula.cpp per
+			// l'implementazione dell'operatore) e il ramo "default:"
+			// piu' sotto aggiunge il token da solo, come per ogni
+			// altro operatore senza operandi (opPlus/opMinus/ecc.).
+			// Prima d'ora questo case esisteva ma era vuoto (codice
+			// BIFF5 commentato, mai completato) -- bug reale scoperto
+			// confrontando con Excel vero una formula reale: il
+			// risultato era 100 volte troppo grande perche'
+			// l'operatore veniva scartato in silenzio.
 			case ptgFunc:
 			{
 				Read(str, indx, fcd.funcNr);

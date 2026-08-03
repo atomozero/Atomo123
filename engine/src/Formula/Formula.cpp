@@ -269,6 +269,24 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 					stack[stackIndx] = gRefNan;
 				break;
 
+			// Operatore percentuale postfisso di Excel (es. "F37%",
+			// diverso dal FORMATO valuta/percentuale di una cella --
+			// qui e' l'operatore usato dentro una formula, come "*" o
+			// "/"): divide per 100 il valore in cima allo stack. Il
+			// ptg BIFF corrispondente (ptgPercent) era un case vuoto
+			// in Excel.formula.cpp, ereditato incompleto dal codice
+			// BIFF5 originale -- bug reale scoperto confrontando con
+			// Excel vero una formula reale ("=D37*F37%" impaginata
+			// come "D37*F37" nella fattura di prova): il risultato
+			// era 100 volte troppo grande (5250 invece di 52,5)
+			// perche' l'operatore veniva silenziosamente ignorato.
+			case opPercent:
+				if (stack[stackIndx].fType == eNumData)
+					stack[stackIndx] = stack[stackIndx].fDouble / 100.0;
+				else
+					stack[stackIndx] = gRefNan;
+				break;
+
 			case opAND:
 				stack[stackIndx - 1] &= stack[stackIndx];
 				stackIndx--;
@@ -624,7 +642,13 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					strcat(outString, stack[stackIndx]);
 					strcpy(stack[stackIndx], outString);
 					break;
-	
+
+				case opPercent:
+					strcpy(outString, stack[stackIndx]);
+					strcat(outString, "%");
+					strcpy(stack[stackIndx], outString);
+					break;
+
 				case opRoot:
 					strcpy(outString, "√");
 					strcat(outString, stack[stackIndx]);

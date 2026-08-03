@@ -74,7 +74,14 @@ enum PFToken {
 	valNum, valBool, valStr, valCell, valNil,
 	valRange, valPerc, valTime, opNOT, opAND,
 	opOR, valName, opParen,
-	valXRef, valXRange
+	valXRef, valXRange,
+	// Aggiunto in fondo apposta, mai in mezzo: questi valori sono
+	// scritti cosi' come sono nel bytecode di CFormula (vedi
+	// CFormula::UnMangle/CalcCell, che leggono fString[indx] come un
+	// PFToken grezzo) -- un valore inserito in mezzo sposterebbe gli
+	// ordinali di tutti quelli dopo, corrompendo silenziosamente ogni
+	// formula gia' salvata in un documento .ascd esistente.
+	opPercent
 };
 
 const long

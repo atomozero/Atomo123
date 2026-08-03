@@ -61,6 +61,26 @@ int main()
 	doc.GetValue(b2, v);
 	Check((double)v == 30.0, "B2 (=A1*3) calcola 30");
 
+	// Operatore percentuale postfisso (es. "5%" o "A1%"): divide per
+	// 100 il valore a cui si applica -- bug reale scoperto importando
+	// una formula da un file .xls reale ("=D37*F37%"), dove veniva
+	// silenziosamente ignorato (risultato 100 volte troppo grande).
+	// Prima di questo fix la grammatica lo riconosceva solo subito
+	// dopo un numero letterale ("5%"), mai dopo un riferimento a
+	// cella o un'espressione qualunque, e anche in quel solo caso il
+	// vecchio token valPerc non veniva mai davvero diviso per 100 in
+	// fase di calcolo.
+	cell b3(2, 3), b4(2, 4);
+	TryToParseString("=5%", b3, &doc, true);
+	doc.CalcCell(b3);
+	doc.GetValue(b3, v);
+	Check((double)v == 0.05, "B3 (=5%, numero letterale) calcola 0.05, non 5");
+
+	TryToParseString("=A1%", b4, &doc, true);
+	doc.CalcCell(b4);
+	doc.GetValue(b4, v);
+	Check((double)v == 0.1, "B4 (=A1%, un riferimento a cella, non un numero letterale) calcola 0.1 (10/100)");
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();
