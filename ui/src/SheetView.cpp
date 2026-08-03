@@ -2038,6 +2038,32 @@ void SheetView::MouseDown(BPoint where)
 			SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 			return;
 		}
+
+		// Non su una maniglia di ridimensionamento: un clic altrove
+		// sull'intestazione di colonna seleziona l'intera colonna
+		// (Maiusc la estende dall'ancora corrente fino alla colonna
+		// cliccata, come un clic normale su una cella) -- come Excel/
+		// LibreOffice Calc. Mancava del tutto prima d'ora: bug
+		// segnalato dall'utente ("non posso selezionare l'intera
+		// colonna o l'intera riga").
+		//
+		// L'intervallo di righe e' sempre [1, kRowCount] (tutta la
+		// colonna) indipendentemente dalla riga dell'ancora corrente:
+		// SetSelection() qui sotto fissa entrambi gli angoli sulla
+		// riga kRowCount, poi ExtendSelection() sposta solo l'angolo
+		// "attivo" alla riga 1 -- la cella attiva finale (fSelection)
+		// resta quindi in cima, visibile, invece di trascinare la
+		// vista fino in fondo al foglio (16384 righe) come farebbe
+		// lasciandola sull'ultima riga.
+		int clickedCol = ColumnAtX(where.x - kHeaderWidth);
+		int32 mods = 0;
+		BMessage* msg = Window() ? Window()->CurrentMessage() : NULL;
+		if (msg)
+			msg->FindInt32("modifiers", &mods);
+		int anchorCol = (mods & B_SHIFT_KEY) ? fAnchor.h : clickedCol;
+		SetSelection(cell(anchorCol, kRowCount));
+		ExtendSelection(cell(clickedCol, 1));
+		return;
 	}
 	if (where.x >= bounds.left && where.x < bounds.left + kHeaderWidth
 		&& where.y >= bounds.top + kHeaderHeight)
@@ -2051,6 +2077,19 @@ void SheetView::MouseDown(BPoint where)
 			SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 			return;
 		}
+
+		// Stesso principio dell'intestazione di colonna sopra, per la
+		// riga intera (colonne [1, kColCount] sempre complete, cella
+		// attiva finale a sinistra invece che sull'ultima colonna).
+		int clickedRow = RowAtY(where.y - kHeaderHeight);
+		int32 mods = 0;
+		BMessage* msg = Window() ? Window()->CurrentMessage() : NULL;
+		if (msg)
+			msg->FindInt32("modifiers", &mods);
+		int anchorRow = (mods & B_SHIFT_KEY) ? fAnchor.v : clickedRow;
+		SetSelection(cell(kColCount, anchorRow));
+		ExtendSelection(cell(1, clickedRow));
+		return;
 	}
 
 	// Bug scoperto implementando Blocca riquadri: le bande delle

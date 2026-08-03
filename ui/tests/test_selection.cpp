@@ -127,6 +127,30 @@ int main()
 		&& afterMouseUp.top == 1 && afterMouseUp.bottom == 2,
 		"MouseMoved dopo MouseUp non estende piu' la selezione (trascinamento gia' finito)");
 
+	// Clic sull'intestazione di colonna (non su una maniglia di
+	// ridimensionamento) seleziona l'intera colonna -- mancava del
+	// tutto prima d'ora, bug segnalato dall'utente ("non posso
+	// selezionare l'intera colonna o l'intera riga"). x=30+85 cade
+	// dentro la colonna B (stessa coordinata gia' usata sopra per un
+	// clic su B2), y=5 e' dentro la banda di intestazione (alta
+	// kHeaderHeight=20), lontano da qualunque bordo di colonna quindi
+	// non scambiabile per un trascinamento di ridimensionamento.
+	view->MouseDown(BPoint(30 + 85, 5));
+	range colSelected = view->SelectionRange();
+	Check(colSelected.left == 2 && colSelected.right == 2
+		&& colSelected.top == 1 && colSelected.bottom == (int)kRowCount,
+		"un clic sull'intestazione della colonna B seleziona l'intera colonna B");
+
+	// Stesso principio per l'intestazione di riga: x=5 e' dentro la
+	// banda di intestazione di riga (larga kHeaderWidth=30), y=20+25
+	// cade dentro la riga 2 (stessa coordinata gia' usata sopra per un
+	// clic su B2).
+	view->MouseDown(BPoint(5, 20 + 25));
+	range rowSelected = view->SelectionRange();
+	Check(rowSelected.top == 2 && rowSelected.bottom == 2
+		&& rowSelected.left == 1 && rowSelected.right == (int)kColCount,
+		"un clic sull'intestazione della riga 2 seleziona l'intera riga 2");
+
 	// SelectAll() seleziona tutto il foglio con dati (qui A1:B2, per
 	// via delle quattro celle scritte all'inizio) -- esposta dal menu
 	// Modifica > "Seleziona tutto" in MainWindow, non da una
