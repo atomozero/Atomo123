@@ -926,21 +926,20 @@ logica, non l'esperienza utente end-to-end.
       dell'utente), usati solo localmente per il test. Tutti e 11 si
       convertono in ASCD senza crash tramite `translate` (il tool a
       riga di comando del Translation Kit, con i translator già
-      installati come add-on di sistema) e i due aperti anche dal vivo
-      nell'app vera (`[campione finanziario pubblico].xlsx`, un file con un nome
-      definito che referenzia una funzione sconosciuta) mostrano i
-      dati correttamente. Nessun nuovo bug di importazione dati
-      trovato in questo giro. Due osservazioni per il futuro (non
-      risolte qui): il file da 3,4MB impiega ~94s a importarsi (in
-      linea con quanto già misurato per il ricalcolo su fogli grandi,
-      vedi la nota più sotto sul ricalcolo a grafo delle dipendenze);
-      e un crash intermittente (~2 volte su 8 tentativi, non
-      riprodotto in modo affidabile) osservato aprendo una seconda
-      finestra su un documento subito dopo la prima — segnalato ma
-      **non confermato** come bug reale dell'app (il metodo di
-      riproduzione stesso, con riavvii ripetuti dell'app da riga di
-      comando, potrebbe aver introdotto un artefatto estraneo
-      all'app). Resta comunque un vero corpus eterogeneo generato da
+      installati come add-on di sistema); i due aperti anche dal vivo
+      nell'app vera (`[campione finanziario pubblico].xlsx` e `[file] -
+      073 - [cliente].xls`, quest'ultimo con un nome definito
+      che referenzia una funzione sconosciuta) mostrano i dati
+      correttamente. Nessun nuovo bug di importazione dati trovato in
+      questo giro. Due osservazioni per il futuro (non risolte qui):
+      il file da 3,4MB impiega ~94s a importarsi (in linea con quanto
+      già misurato per il ricalcolo su fogli grandi, vedi la nota più
+      sotto sul ricalcolo a grafo delle dipendenze); e un difetto di
+      riconoscimento MIME a livello di sistema (non di Atomo123) su
+      uno dei file `.xls` — vedi la nota dedicata più sotto, dove un
+      presunto "crash intermittente" si è rivelato essere solo il
+      dialogo di Tracker per un tipo di file senza applicazione
+      preferita. Resta comunque un vero corpus eterogeneo generato da
       installazioni reali di Excel/LibreOffice in condizioni non
       controllate diverso da questo (file donati da altri utenti, o
       un ambiente con Excel/LibreOffice/OpenOffice reali per generarne
@@ -970,31 +969,37 @@ logica, non l'esperienza utente end-to-end.
       progetto nativo Haiku dello stesso autore — `ClickableStringView`
       riportato pari pari da lì per coerenza visiva fra le due app.
 
-### Nota per il futuro: crash intermittente aprendo una seconda finestra subito dopo la prima
+### Falso allarme: non era un crash, era il dialogo "nessuna applicazione preferita" di Tracker
 
-Testando il corpus di file reali dell'utente (vedi sopra): aprendo
-`[campione finanziario pubblico].xlsx` e poi, come seconda finestra, `[file .xls di lavoro reale]` (quello con un nome definito
-che referenzia una funzione sconosciuta), l'app è sparita dal process
-tree due volte di seguito (nessun crash report di `debug_server` nel
-syslog, nessuna eccezione stampata sullo stdout catturato — uscita
-"pulita" ma inattesa, non un fault visibile). Aprendo lo stesso file
-da solo (unica finestra) o come terza finestra dopo due file diversi,
-mai riprodotto; altri 6 tentativi della stessa sequenza (finestra
-"Financial Sample" seguita da questo file, con vari ritardi fra
-0,3s e 1s) non l'hanno più riprodotto.
+Testando il corpus di file reali (vedi sopra) con `open` da riga di
+comando, aprire `[file .xls di lavoro reale]`
+come seconda finestra sembrava a volte far sparire Atomo123 dal
+process tree — inizialmente scambiato per un crash intermittente.
+L'utente ha condiviso uno screenshot del proprio schermo che ha
+chiarito subito la causa vera: non era affatto un crash, era il
+dialogo standard di Tracker "Non è stato possibile trovare
+un'applicazione per aprire ... (There is no preferred application for
+this type of file)" — apparso al posto della finestra di Atomo123, e
+scambiato per una sua scomparsa perché quel dialogo appartiene a un
+altro processo, non a lui.
 
-**Non abbastanza per essere sicuri che sia un bug reale
-dell'applicazione**: la sequenza di riproduzione usava riavvii
-ripetuti dell'app da terminale (`hey ... QUIT` seguito subito da un
-nuovo lancio), che potrebbe di per sé introdurre una corsa fra
-l'istanza precedente ancora in chiusura (con un titolo "*" non
-salvato visto in uno screenshot, quindi potenzialmente in attesa di
-un alert di conferma) e quella nuova appena lanciata, con lo stesso
-signature MIME — un artefatto del metodo di test, non
-necessariamente del codice di `App::RefsReceived`/`FindReusableWindow`
-(vedi sopra) che gestisce la seconda finestra. Da tenere presente se
-riemerge: nessuna azione presa qui, solo documentato per non perdere
-il sospetto.
+Causa reale, verificata con `catattr`/`mimeset`: l'attributo
+`BEOS:TYPE` di quello specifico file viene sniffato in modo
+deterministico come `application/msword` (Word) invece di
+`application/vnd.ms-excel` — probabilmente il contenitore OLE2 di
+questo file in particolare assomiglia abbastanza a un vecchio `.doc`
+da far scattare la regola di riconoscimento generica di sistema per
+Word invece di quella per Excel. Atomo123 non dichiara affatto
+`application/msword` fra i suoi tipi supportati (`kSupportedTypes` in
+`App.cpp`), quindi per quel tipo Tracker non trova nessun'app e mostra
+il dialogo invece di aprire silenziosamente Atomo123. Il file si
+apre invece correttamente (dati importati bene, vedi sopra) ogni
+volta che il translator/l'app lo processano direttamente, ignorando
+l'attributo cache-ato — è solo la risoluzione "che app lancio"
+dell'OS a essere fuorviata per questo file specifico, non
+l'importazione dati stessa. Nessun bug in Atomo123 da correggere qui;
+nota lasciata solo per non riprovare a "riprodurre un crash" che non
+esiste se questo file rispunta in un test futuro.
 
 ### Bug scoperto: `GetBounds` esclude le celle non ancora calcolate, rompendo il ricalcolo/salvataggio quando sono ai margini del foglio
 
