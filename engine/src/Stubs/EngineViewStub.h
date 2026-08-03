@@ -13,12 +13,16 @@
 	solo quando il puntatore e' non-NULL.
 
 	Limitazione nota: l'import Excel legacy (Excel.pass1.cpp) scrive
-	larghezze colonna/altezze riga/intervalli con nome direttamente
-	sulla (ex) CCellView invece che sul modello CContainer. Con questo
-	stub quei dati vengono scartati in silenzio quando si importa un
-	file XLS in modalita' headless. La soluzione corretta e' spostare
-	quei metadati su CContainer (dove concettualmente appartengono):
-	vedi nota aperta in docs/ENGINE_API.md.
+	ancora gli intervalli con nome direttamente sulla (ex) CCellView
+	invece che sul modello CContainer -- con questo stub quel dato
+	viene scartato in silenzio quando si importa un file XLS in
+	modalita' headless. La soluzione corretta e' spostarlo su
+	CContainer (dove concettualmente appartiene): vedi nota aperta in
+	docs/ENGINE_API.md. Larghezze colonna e altezze riga NON hanno piu'
+	questo limite (Fase 5): CExcel5Filter le cattura anche in un
+	elenco proprio (fColWidths/fRowHeights, esposti da
+	GetColumnWidths()/GetRowHeights()), indipendente da questa vista
+	fittizia -- vedi il commento su COLINFO/ROW in Excel.pass1.cpp.
 */
 
 #ifndef ENGINE_VIEW_STUB_H

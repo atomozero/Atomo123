@@ -53,7 +53,8 @@ static const int32 kASCDVersion = 1;
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
 	const std::vector<EmbeddedImage>* images = NULL,
-	const std::vector<range>* mergedRanges = NULL)
+	const std::vector<range>* mergedRanges = NULL,
+	const std::vector<std::pair<int, float> >* rowHeights = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -195,9 +196,25 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	if (dest->Write(&columnColorCount, sizeof(columnColorCount)) != (ssize_t)sizeof(columnColorCount))
 		return B_IO_ERROR;
 
-	int32 rowHeightCount = 0;
+	// Altezze di riga esplicite: CExcel5Filter::GetRowHeights(),
+	// popolata da record ROW durante Translate() (vedi il commento in
+	// Excel.pass1.cpp) -- prima sempre vuota, stesso motivo dichiarato
+	// per le larghezze di colonna qui sopra prima del relativo fix:
+	// ogni riga ridimensionata a mano nel file originale tornava
+	// sempre all'altezza predefinita, bug reale scoperto confrontando
+	// con Excel vero una fattura reale.
+	int32 rowHeightCount = rowHeights ? (int32)rowHeights->size() : 0;
 	if (dest->Write(&rowHeightCount, sizeof(rowHeightCount)) != (ssize_t)sizeof(rowHeightCount))
 		return B_IO_ERROR;
+
+	for (int32 i = 0; i < rowHeightCount; i++)
+	{
+		int16 row = (int16)(*rowHeights)[i].first;
+		float height = (*rowHeights)[i].second;
+		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+			|| dest->Write(&height, sizeof(height)) != (ssize_t)sizeof(height))
+			return B_IO_ERROR;
+	}
 
 	int32 frozenRows = 0, frozenCols = 0;
 	if (dest->Write(&frozenRows, sizeof(frozenRows)) != (ssize_t)sizeof(frozenRows)
@@ -500,16 +517,17 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 	std::vector<std::pair<int, float> > colWidths;
 	std::vector<EmbeddedImage> images;
 	std::vector<range> mergedRanges;
+	std::vector<std::pair<int, float> > rowHeights;
 
 	try
 	{
 		// cellView=NULL: nessuna UI collegata (translator headless).
-		// Il costruttore legge subito il flusso e popola doc; alcuni
-		// metadati (nomi di intervallo, altezze riga) vengono
-		// scartati in questa modalita' -- vedi la nota nello stub in
-		// engine/src/Stubs/EngineViewStub.h. Le larghezze di colonna,
-		// le immagini incorporate e le celle unite invece si
-		// recuperano comunque da GetColumnWidths()/GetImages()/
+		// Il costruttore legge subito il flusso e popola doc; i nomi
+		// di intervallo vengono scartati in questa modalita' -- vedi
+		// la nota nello stub in engine/src/Stubs/EngineViewStub.h. Le
+		// larghezze di colonna, le altezze di riga, le immagini
+		// incorporate e le celle unite invece si recuperano comunque
+		// da GetColumnWidths()/GetRowHeights()/GetImages()/
 		// GetMergedRanges(), che CExcel5Filter popola indipendentemente
 		// da "cellView" (vedi il commento in Excel.h).
 		CExcel5Filter filter(*source, NULL, doc);
@@ -517,6 +535,7 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 		colWidths = filter.GetColumnWidths();
 		images = filter.GetImages();
 		mergedRanges = filter.GetMergedRanges();
+		rowHeights = filter.GetRowHeights();
 	}
 	catch (...)
 	{
@@ -524,7 +543,7 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 	}
 
 	if (err == B_OK)
-		err = WriteASCD(doc, destination, &colWidths, &images, &mergedRanges);
+		err = WriteASCD(doc, destination, &colWidths, &images, &mergedRanges, &rowHeights);
 
 	doc->Release();
 	return err;

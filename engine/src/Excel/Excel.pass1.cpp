@@ -766,6 +766,28 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 			es >> x >> h >> h >> h;
 			if (fCellView)
 				fCellView->GetHeights().SetValue(x + 1, ceil(h / 20) + 1);
+
+			// Altezza di riga esplicita (record ROW, "h" e' l'ultimo
+			// dei tre valori appena letti sopra: colMic/colMac
+			// scartati, miyRw tenuto -- vedi il commento sul layout
+			// del record BIFF8 nel case COLINFO poco sopra) in twips
+			// (1/20 di punto). Catturata SEMPRE, non solo con una
+			// vista viva (fCellView e' sempre NULL in pratica, vedi
+			// il commento sopra) -- stesso principio di fColWidths
+			// per COLINFO: un translator headless la recupera dopo
+			// Translate() per scriverla nel formato nativo (vedi
+			// WriteASCD in XlsTranslator.cpp). h/15.0 converte da
+			// twips a pixel assumendo 96 DPI (la stessa risoluzione
+			// gia' assunta altrove in questo file per le immagini
+			// incorporate, vedi Excel.escher.cpp): 1 twip = 1/20
+			// punto, 1 punto = 96/72 pixel a 96 DPI, quindi
+			// 1 twip = 96/(72*20) = 1/15 pixel. Bug reale scoperto
+			// confrontando con Excel vero una fattura reale: ogni
+			// riga tornava sempre all'altezza predefinita (kRowHeight,
+			// 20px in ui/src/SheetView.h), ignorando qualunque riga
+			// ridimensionata a mano nel file originale.
+			if (h > 0)
+				fRowHeights.push_back(std::make_pair(x + 1, h / 15.0f));
 			break;
 		}
 		case FONT:

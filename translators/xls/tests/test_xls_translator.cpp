@@ -434,7 +434,7 @@ int main()
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
-			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // rowHeight
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // rowHeight
 			pos += 8; // frozen
 
 			bool foundBoldA1 = false;
@@ -631,7 +631,7 @@ int main()
 				"B1 (testo rosso nel file originale) importato con il colore testo reale, non nero");
 
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
-			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // rowHeight
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // rowHeight
 			pos += 8; // frozen
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+64+64+4); } // font
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+1); } // align
@@ -718,7 +718,7 @@ int main()
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
-			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // rowHeight
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // rowHeight
 			pos += 8; // frozen
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+64+64+4); } // font
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+1); } // align
@@ -817,7 +817,7 @@ int main()
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
-			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // rowHeight
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // rowHeight
 			pos += 8; // frozen
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+64+64+4); } // font
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+1); } // align
@@ -915,7 +915,7 @@ int main()
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
-			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // rowHeight
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // rowHeight
 			pos += 8; // frozen
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+64+64+4); } // font
 			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+1); } // align
@@ -946,6 +946,79 @@ int main()
 			}
 			Check(foundA1B1, "A1:B1 (unite orizzontalmente nel file originale) importate come intervallo unito");
 			Check(foundA3A4, "A3:A4 (unite verticalmente nel file originale) importate come intervallo unito");
+		}
+	}
+
+	// Altezza di riga esplicita (record ROW, vedi il commento nel case
+	// omonimo di Excel.pass1.cpp): tests/sample_rowheight.xls ha la
+	// riga 1 molto alta (800 twips, 40pt), la riga 3 molto bassa (150
+	// twips, 7.5pt) e la riga 2 non toccata (l'altezza predefinita che
+	// xlwt scrive comunque per ogni riga con contenuto, non un'assenza
+	// di record ROW). Prima di questa modifica WriteASCD scriveva
+	// sempre rowHeightCount = 0: aprendo una fattura reale con righe
+	// ridimensionate a mano tutte le righe tornavano all'altezza
+	// predefinita, bug reale scoperto confrontando visivamente con
+	// Excel vero.
+	{
+		BFile rhFile("tests/sample_rowheight.xls", B_READ_ONLY);
+		Check(rhFile.InitCheck() == B_OK, "apertura di tests/sample_rowheight.xls riuscita");
+
+		translator_info rhInfo;
+		status_t rhErr = translator->Identify(&rhFile, NULL, NULL, &rhInfo, 0);
+		Check(rhErr == B_OK, "Identify riconosce sample_rowheight.xls");
+
+		rhFile.Seek(0, SEEK_SET);
+		BMallocIO rhOut;
+		rhErr = translator->Translate(&rhFile, &rhInfo, NULL, kAtomoNativeFormat, &rhOut);
+		Check(rhErr == B_OK, "Translate di sample_rowheight.xls riesce");
+
+		if (rhErr == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)rhOut.Buffer();
+			size_t len = rhOut.BufferLength();
+			size_t pos = 12;
+
+			int32 cellCount = 0;
+			if (len > 12)
+				memcpy(&cellCount, data + 8, 4);
+			for (int32 i = 0; i < cellCount && pos + 8 <= len; i++)
+			{
+				short row, col; int32 l;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&l, data + pos, 4); pos += 4;
+				if (pos + (size_t)l > len) break;
+				pos += l;
+			}
+
+			int32 n;
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4+4*4); } // chart
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
+
+			float heightRow1 = -1.0f, heightRow2 = -1.0f, heightRow3 = -1.0f;
+			bool foundRow1 = false, foundRow2 = false, foundRow3 = false;
+			if (pos + 4 <= len)
+			{
+				int32 rowHeightCount;
+				memcpy(&rowHeightCount, data + pos, 4); pos += 4;
+				Check(rowHeightCount == 3,
+					"rowHeightCount == 3 (le tre righe con contenuto nel file originale hanno tutte un record ROW)");
+				for (int32 i = 0; i < rowHeightCount && pos + 2+4 <= len; i++)
+				{
+					short row; float height;
+					memcpy(&row, data + pos, 2); pos += 2;
+					memcpy(&height, data + pos, 4); pos += 4;
+					if (row == 1) { foundRow1 = true; heightRow1 = height; }
+					if (row == 2) { foundRow2 = true; heightRow2 = height; }
+					if (row == 3) { foundRow3 = true; heightRow3 = height; }
+				}
+			}
+			Check(foundRow1 && foundRow2 && foundRow3,
+				"le tre righe (1, 2 e 3) sono tutte presenti nella sezione altezze di riga");
+			Check(heightRow1 > heightRow2 && heightRow2 > heightRow3,
+				"riga 1 (molto alta nel file originale) > riga 2 (normale) > riga 3 (molto bassa), non tutte uguali all'altezza predefinita");
 		}
 	}
 

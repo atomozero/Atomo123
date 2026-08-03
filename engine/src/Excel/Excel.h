@@ -110,6 +110,15 @@ class CExcel5Filter
 	const std::vector<range>& GetMergedRanges() const
 		{ return fMergedRanges; }
 
+	// Altezze di riga esplicite (riga 1-based, altezza in pixel) lette
+	// da record ROW durante Translate(), stesso principio di
+	// GetColumnWidths() sopra -- popolata SEMPRE, non solo quando
+	// "cellView" e' vivo (il vecchio codice per la vista, poco sotto
+	// nel case ROW di Excel.pass1.cpp, non serve mai in pratica: nessun
+	// chiamante di questo costruttore passa mai un CCellView non nullo).
+	const std::vector<std::pair<int, float> >& GetRowHeights() const
+		{ return fRowHeights; }
+
   private:
 	
 	/* Niente "throw()": il corpo chiama CExcelStream::Read, che
@@ -320,6 +329,7 @@ class CExcel5Filter
 	std::vector<xlName> fNames;
 	std::vector<int> fFonts, fStyles;
 	std::vector<std::pair<int, float> > fColWidths;
+	std::vector<std::pair<int, float> > fRowHeights;
 	std::map<unsigned short, int> fFormats;
 	// Un booleano per XF processato, parallelo a "fStyles" sopra
 	// (stesso indice: lo "style" letto da ogni record cella in Pass2
