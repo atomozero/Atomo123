@@ -3848,6 +3848,33 @@ Fase 11.
       capo, sottolineato), sul modello dei test già esistenti per
       colori/larghezza colonna.
 
+### Aggiunta: pulsanti toolbar per le funzioni di formattazione
+
+Grassetto, Corsivo, Sottolineato, Allinea sinistra/centro/destra, A
+capo automatico, Colore testo e Colore sfondo erano comandi già
+implementati da tempo (menu Formato), ma rimasti solo voci di menu
+perché il catalogo HVIF (`Atomo123_icons/`) non aveva ancora
+un'icona verificata a vista per ciascuno. Nove nuove icone (Bold/
+Italic/Underline/Justify Left-Center-Right/Wrap Lines/Color/
+Highlight, tutte MIT da hvif-store.art) coprono ora anche queste
+funzioni: promosse a pulsante in un nuovo gruppo "Formato" nella
+toolbar, seguendo lo stesso schema dei gruppi esistenti
+(`kToolbarGroups` in `MainWindow.cpp`).
+
+I tre pulsanti di allineamento condividono lo stesso comando
+(`kMsgSetAlignment`) e si distinguono solo per un parametro
+`alignment` nel `BMessage`: `ToolbarButtonDef` guadagna due campi
+opzionali (`paramName`/`paramValue`) per coprire questo caso, senza
+toccare le voci esistenti (restano `NULL`/0 per inizializzazione
+automatica degli aggregati).
+
+Test: nuovo `ui/tests/test_format_toolbar.cpp` — verifica che i nove
+pulsanti esistano con `MainWindow` come target, e che il loro
+`BMessage` (recapitato a `MainWindow::MessageReceived` come farebbe la
+`BLooper` reale) produca lo stesso effetto del comando di menu
+equivalente, già verificato in `test_format.cpp` con una chiamata
+diretta al metodo.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
