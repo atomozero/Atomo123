@@ -4130,6 +4130,49 @@ verifica invece che `Draw()` ripristini `B_OP_COPY` dopo aver
 disegnato la tinta, cosi' la modalita' alfa non resta "incollata" al
 resto del disegno.
 
+### Aggiunta: selezionare l'intera riga/colonna cliccando l'intestazione
+
+Terzo problema della stessa segnalazione dell'utente: cliccare
+sull'intestazione di una riga o di una colonna non faceva
+assolutamente nulla — mancava del tutto, come ammetteva già un
+commento nel codice stesso (`SheetView::MouseDown`, subito prima del
+controllo per il ridimensionamento: "che oggi non fa nulla per un
+clic sull'intestazione"). L'unica cosa gestita su un'intestazione era
+il trascinamento del bordo per ridimensionare; un clic altrove veniva
+scartato senza selezionare nulla.
+
+Aggiunto: un clic sull'intestazione di colonna (fuori da una maniglia
+di ridimensionamento) seleziona l'intera colonna; un clic
+sull'intestazione di riga seleziona l'intera riga; Maiusc+clic estende
+dall'ancora corrente fino alla colonna/riga cliccata, come un clic
+normale su una cella — comportamento identico a Excel/LibreOffice
+Calc.
+
+Un dettaglio non ovvio: l'intervallo selezionato copre sempre tutte le
+16384 righe (`kColCount`/`kRowCount`, `Constants.h`) o tutte le 702
+colonne, ma la CELLA ATTIVA finale (`fSelection`, quella che
+`ScrollToShowSelection()` tiene visibile) non può restare sull'angolo
+estremo come una prima implementazione ingenua avrebbe fatto — cliccare
+l'intestazione di una colonna avrebbe fatto scorrere la vista fino
+alla riga 16384 del foglio a ogni clic, un salto violento e
+spiazzante. `SetSelection()` fissa invece entrambi gli angoli
+sull'estremo lontano, poi `ExtendSelection()` sposta solo l'angolo
+"attivo" all'altro estremo (riga 1 per una colonna, colonna 1 per una
+riga) — l'intervallo selezionato resta lo stesso, ma la vista non si
+sposta mai lontano da dove si è cliccato. Scoperto scrivendo il primo
+test (falliva in modo enigmatico finché non ci si è accorti che il
+clic sull'intestazione di riga, subito dopo quello sull'intestazione
+di colonna nello stesso test, cadeva su coordinate ormai sbagliate —
+la vista si era scorsa altrove nel frattempo).
+
+Test: `ui/tests/test_selection.cpp` esteso con un clic
+sull'intestazione della colonna B (verifica che selezioni l'intera
+colonna B, non solo la cella cliccata) e uno sull'intestazione della
+riga 2 (idem per la riga). Verificato anche dal vivo con uno
+screenshot (stesso programma di prova della tinta di selezione sopra,
+clic vero su `MouseDown()` sull'intestazione di colonna): la colonna B
+intera si evidenzia, la vista non salta altrove.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
