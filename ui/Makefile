@@ -223,6 +223,23 @@ test-editing: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_editing
 
+# Come test-editing, ma con un vero B_MOUSE_DOWN/B_KEY_DOWN
+# sintetizzato e smistato dal vero ciclo di dispatch della finestra
+# (BMessenger::SendMessage sincrono), invece di chiamare
+# MouseDown()/KeyDown() direttamente: chiude il punto rimasto aperto
+# in Fase 4 sul test end-to-end del doppio click/digitazione diretta.
+test-real-input-edit: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_real_input_edit.cpp -o tests/test_real_input_edit.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_real_input_edit tests/test_real_input_edit.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_real_input_edit
+
 # Test delle scorciatoie da tastiera in stile Excel (Inizio/Ctrl+
 # Inizio/Ctrl+Fine/PagSu/PagGiu/Maiusc+Tab/Maiusc+Invio): stessa
 # ragione di test-scroll (BScrollView reale per PagSu/PagGiu, che
@@ -568,6 +585,7 @@ clean:
 		tests/test_chart tests/test_chart.o tests/Chart.o \
 		tests/test_pivot tests/test_pivot.o tests/Pivot.o \
 		tests/test_editing tests/test_editing.o \
+		tests/test_real_input_edit tests/test_real_input_edit.o \
 		tests/test_navigation tests/test_navigation.o \
 		tests/test_selection tests/test_selection.o \
 		tests/test_fill tests/test_fill.o \
@@ -594,4 +612,4 @@ clean:
 		/tmp/test_persistence.ascd /tmp/test_persistence_old.ascd \
 		tests/test_borders tests/test_borders.o
 
-.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean
