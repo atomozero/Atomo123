@@ -912,10 +912,10 @@ void CExcel5Filter::HandleXLRecordForPass1(int code, int len)
 				// larghezze di colonna, finora sempre vuota per XLS
 				// (limite dichiarato, non piu' vero da questa fase:
 				// una colonna troppo stretta per il testo reale che
-				// contiene, es. dello studio tagliato a
-				// "Studio Tecnicc", era un problema reale confrontando
-				// visivamente con Excel vero l'importazione di una
-				// fattura reale). Le colonne nascoste (f&0x11) restano
+				// contiene veniva tagliata a meta', era un problema
+				// reale confrontando visivamente con Excel vero
+				// l'importazione di una fattura reale). Le colonne
+				// nascoste (f&0x11) restano
 				// escluse, stesso principio della vista sopra: una
 				// larghezza 0 esplicita non aiuterebbe la resa.
 				if (!(f & 0x11))

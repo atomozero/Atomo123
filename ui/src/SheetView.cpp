@@ -1284,8 +1284,8 @@ static std::vector<BString> WrapTextLines(BView* view, const char* text, float m
 }
 
 // Testo che trabocca (Fase 5, confronto diretto con Excel vero su una
-// fattura reale: dello studio, un'intestazione piu'
-// larga della propria colonna, veniva troncata al bordo di cella
+// fattura reale: l'intestazione dello studio, piu' larga della
+// propria colonna, veniva troncata al bordo di cella
 // invece di espandersi visivamente sulle colonne vuote a destra, come
 // mostra invece Excel). Cammina cella per cella nella riga di "c",
 // nella direzione dettata dall'allineamento, finche' il testo ci

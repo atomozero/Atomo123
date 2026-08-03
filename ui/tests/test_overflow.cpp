@@ -2,8 +2,9 @@
 	test_overflow.cpp
 
 	Verifica il testo che trabocca sulle colonne vuote vicine (Fase 5,
-	confronto diretto con Excel vero su una fattura reale: lo studio, un'intestazione piu' larga della propria
-	colonna, veniva troncata al bordo di cella invece di espandersi
+	confronto diretto con Excel vero su una fattura reale: l'intestazione
+	dello studio, piu' larga della propria colonna, veniva troncata al
+	bordo di cella invece di espandersi
 	sulle colonne vuote a destra come mostra Excel). Testa
 	SheetView::ExpandOverflowRect direttamente, pubblico apposta per
 	essere testabile (stesso principio di CellRect/CopySelection) --
