@@ -48,6 +48,8 @@
 #include "Config.h"
 #endif
 
+#include <string>
+
 
 void CFormatter::ParseTemplate(const char *inTemplate)
 {
@@ -99,26 +101,61 @@ void CFormatter::ParseTemplate(const char *inTemplate)
 	// 0x82 0xAC): strstr sulla sequenza di byte funziona qui perche'
 	// "t" e' gia' una stringa UTF-8 (Excel.pass1.cpp la costruisce con
 	// AppendUnicodeAsUTF8/AppendCP1252Byte), non serve decodificarla.
+	// Testo letterale fra virgolette (es. "x ") o dopo un backslash di
+	// escape (es. \%) non e' un codice di formato: senza toglierlo
+	// prima di cercare '%'/'.'/',' un template come "x "0\% (un simbolo
+	// percento scritto come carattere letterale, non come moltiplicatore
+	// per 100) veniva scambiato per un formato percentuale vero, e un
+	// punto dentro le virgolette (es. "€. "#,##0.00) rompeva il conteggio
+	// delle cifre decimali (il primo '.' trovato era quello letterale,
+	// non quello del template numerico vero) -- bug reale scoperto
+	// confrontando con Excel vero una fattura reale (una cella con
+	// template "x "0\% e valore 5 mostrava "500%" invece di "x 5%").
+	std::string stripped;
+	for (const char *p = t; *p; )
+	{
+		if (*p == '\\' && p[1] != 0)
+		{
+			p += 2;
+			continue;
+		}
+		if (*p == '"')
+		{
+			p++;
+			while (*p && *p != '"')
+				p++;
+			if (*p == '"')
+				p++;
+			continue;
+		}
+		stripped += *p++;
+	}
+
 	if (strchr(t, '$') || strstr(t, "\xe2\x82\xac"))
 		fFormatID = eCurrency;
-	else if (strchr(t, '%'))
+	else if (stripped.find('%') != std::string::npos)
 		fFormatID = ePercent;
 	else
 		fFormatID = eGeneral;
-	
-	fCommas = strchr(t, ',') != NULL;
-	
-	if ((sp = strchr(t, '.')) != NULL)
+
+	fCommas = stripped.find(',') != std::string::npos;
+
+	size_t dotPos = stripped.find('.');
+	if (dotPos != std::string::npos)
 	{
 		if (fFormatID == eGeneral)
 			fFormatID = eFixed;
-		
+
 		fDigits = 0;
-		while (*++sp == '0')
+		size_t k = dotPos + 1;
+		while (k < stripped.size() && stripped[k] == '0')
+		{
 			fDigits++;
+			k++;
+		}
 	}
 	else
 		fDigits = 0;
-	
+
 	FREE(t);
 } /* CFormatter::ParseTemplate */

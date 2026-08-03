@@ -1226,6 +1226,106 @@ int main()
 		}
 	}
 
+	// Simbolo percento letterale (preceduto da un backslash di escape,
+	// non un vero codice di formato "moltiplica per 100"):
+	// tests/sample_percentliteral.xls ha A1=5 con template "x "0\% (il
+	// "%" e' un carattere letterale, come nel modello reale che Excel
+	// scrive per "x 5%": un prefisso di testo letterale seguito da un
+	// numero semplice e da un simbolo percento anch'esso letterale),
+	// B1=5 con template "0%" (percentuale vera, controllo positivo:
+	// deve continuare a moltiplicare per 100 e mostrare "500%"), C1=73
+	// senza nessun formato esplicito (controllo negativo). Prima di
+	// questa modifica, CFormatter::ParseTemplate (Formatter.template.cpp)
+	// cercava '%' con una semplice strchr() sul template grezzo, senza
+	// prima togliere il testo fra virgolette o dopo un backslash di
+	// escape: un "%" letterale veniva scambiato per il codice di
+	// formato percentuale vero, e A1 (valore 5) si rendeva "500%"
+	// invece di "5" -- bug reale scoperto confrontando con Excel vero
+	// una fattura reale (una cella con template "x "0\% mostrava
+	// "500%" invece di "x 5%").
+	{
+		BFile plFile("tests/sample_percentliteral.xls", B_READ_ONLY);
+		Check(plFile.InitCheck() == B_OK, "apertura di tests/sample_percentliteral.xls riuscita");
+
+		translator_info plInfo;
+		status_t plErr = translator->Identify(&plFile, NULL, NULL, &plInfo, 0);
+		Check(plErr == B_OK, "Identify riconosce sample_percentliteral.xls");
+
+		plFile.Seek(0, SEEK_SET);
+		BMallocIO plOut;
+		plErr = translator->Translate(&plFile, &plInfo, NULL, kAtomoNativeFormat, &plOut);
+		Check(plErr == B_OK, "Translate di sample_percentliteral.xls riesce");
+
+		if (plErr == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)plOut.Buffer();
+			size_t len = plOut.BufferLength();
+			size_t pos = 12;
+
+			int32 cellCount = 0;
+			if (len > 12)
+				memcpy(&cellCount, data + 8, 4);
+			for (int32 i = 0; i < cellCount && pos + 8 <= len; i++)
+			{
+				short row, col; int32 l;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&l, data + pos, 4); pos += 4;
+				if (pos + (size_t)l > len) break;
+				pos += l;
+			}
+
+			int32 n;
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4+4*4); } // chart
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // rowHeight
+			pos += 8; // frozen
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+64+64+4); } // font
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+1); } // align
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // border
+
+			int32 fmtB1 = -1;
+			bool foundA1 = false, foundC1 = false;
+			if (pos + 4 <= len)
+			{
+				int32 formatCount;
+				memcpy(&formatCount, data + pos, 4); pos += 4;
+				for (int32 i = 0; i < formatCount && pos + 2+2+4 <= len; i++)
+				{
+					short row, col; int32 fmt;
+					memcpy(&row, data + pos, 2); pos += 2;
+					memcpy(&col, data + pos, 2); pos += 2;
+					memcpy(&fmt, data + pos, 4); pos += 4;
+					if (row == 1 && col == 1) foundA1 = true;
+					if (row == 1 && col == 2) fmtB1 = fmt;
+					if (row == 1 && col == 3) foundC1 = true;
+				}
+			}
+			// A1 non finisce nella sezione formati: col "%" letterale
+			// riconosciuto come tale, il template si riduce a un
+			// formato generico indistinguibile da quello predefinito
+			// del foglio (nessun modo di rappresentare un prefisso/
+			// suffisso di testo letterale in questo formatter) --
+			// prima di questa modifica finiva invece nella sezione
+			// formati come ePercent (diverso dal predefinito).
+			Check(!foundA1,
+				"A1 (template \"x \"0\\%, \"%\" letterale) non finisce nella sezione formati, e' generico come il predefinito");
+			Check(fmtB1 >= 0, "B1 (template \"0%\") ha un fFormat non generico");
+			Check(!foundC1, "C1 (nessun formato esplicito) non finisce nella sezione formati");
+
+			char outStr[64];
+			if (fmtB1 >= 0)
+			{
+				CFormatter nf(fmtB1);
+				nf.FormatValue(Value(5.0), outStr, 0, 1e6);
+				Check(strcmp(outStr, "500%") == 0,
+					"B1 (5 col template \"0%\" vero) si rende ancora \"500%\", la percentuale vera continua a funzionare");
+			}
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
