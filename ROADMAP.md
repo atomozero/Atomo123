@@ -1652,20 +1652,35 @@ giallo più una settima, subito dopo, lasciata bianca come controllo)
 in `test_xls_translator.cpp`, verifica che la cella fantasma non
 risulti colorata per sbaglio.
 
-**Nota**: durante la stessa indagine è emerso anche un vero
-disallineamento di colore (non correlato a questo bug): una banda
-decorativa dell'intera fattura usa un ciano che Excel mostra come
-RGB (204,255,255) ma che Atomo123 importa come (159,223,223) — il
-colore standard più vicino nella tavolozza classica a 56 colori di
-Excel (`kExcelColorTable`). La causa più probabile è un record
-`XFEXT` (0x087D, l'estensione BIFF8 per i colori "veri" scelti con la
-finestra "Altri colori" di Excel, retrocompatibile con la tavolozza
-classica per i lettori più vecchi) che questo motore non legge
-affatto — ma non è stato possibile confermarlo con certezza decifrando
-il layout binario a mano, e implementarlo comporterebbe una modifica
-più ampia e rischiosa senza quella certezza. Segnalato qui per
-trasparenza come limite noto (uno scarto di tonalità, non un colore
-completamente sbagliato), non ancora risolto.
+### Bug scoperto: diversi colori sbagliati nella tavolozza predefinita di Excel
+
+Durante la stessa indagine era emerso anche un vero disallineamento di
+colore (non correlato al bug MULBLANK sopra): una banda decorativa
+dell'intera fattura usa un ciano che Excel mostra come RGB
+(204,255,255) ma che Atomo123 importava come (159,223,223). Prima
+ipotesi (poi esclusa): un record `XFEXT` (0x087D, l'estensione BIFF8
+per i colori "veri" scelti con la finestra "Altri colori" di Excel)
+non gestito da questo motore. Verificato con la specifica ufficiale
+Microsoft [MS-XLS] (campi `FrtHeader`/`ixfe`/`cexts`/`ExtProp`/
+`FullColorExt` decodificati byte per byte con un harness dedicato):
+lo stile in questione non ha nessuna estensione `XFEXT` associata, e
+il file non ha nemmeno un record `PALETTE` (0x0092) che personalizzi
+la tavolozza — usa semplicemente il ColorIndex 20 standard di Excel
+("Light Turquoise") senza alcuna personalizzazione.
+
+La causa reale era `kExcelColorTable` (Excel.colors.h) stessa:
+verificata voce per voce contro due elenchi pubblici indipendenti e
+concordanti dei 56 ColorIndex standard di Excel, la tavola ereditata
+dal codice storico di Sum-It/Hekkelman Programmatuur aveva diversi
+valori sbagliati oltre a quello — fra cui gli indici 13 e 14 scambiati
+fra loro (non solo imprecisi, proprio invertiti). Corretti tutti e 56
+i valori sulla tavolozza standard verificata.
+
+Test: nuova fixture `sample_colorindex.xls` (una cella con sfondo
+"light_turquoise", ColorIndex 20) in `test_xls_translator.cpp`,
+verifica il valore RGB esatto. Verificato anche dal vivo riaprendo la
+fattura reale: la banda decorativa ora mostra esattamente lo stesso
+ciano di Excel, campionato pixel per pixel (204,255,255) su entrambi.
 
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
