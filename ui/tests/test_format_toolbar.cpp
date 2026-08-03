@@ -82,6 +82,8 @@ int main()
 	CContainer* doc = view->Document();
 
 	TryToParseString("1", cell(1, 1), doc, true); // A1
+	TryToParseString("2", cell(1, 2), doc, true); // A2, mai selezionata/formattata
+	TryToParseString("3", cell(2, 1), doc, true); // B1, mai selezionata/formattata
 
 	static const char* kNames[] = {
 		"toolBold", "toolItalic", "toolUnderline",
@@ -112,6 +114,23 @@ int main()
 	ClickButton(win, FindToolButton(win, "toolBold"));
 	Check(StyleHas(doc, cell(1, 1), "Bold"),
 		"il pulsante \"toolBold\" mette in grassetto A1, come il comando di menu equivalente");
+
+	// Bug reale segnalato dall'utente: su un documento dove nessun
+	// font era ancora stato richiesto tramite CFontSizeTable::GetFontID
+	// (il caso comune, un documento nuovo), mettere in grassetto UNA
+	// sola cella selezionata metteva in grassetto anche A2/B1, mai
+	// selezionate ne' formattate -- il font "Bold" appena creato
+	// finiva per occupare per errore l'indice 0 di gFontSizeTable,
+	// lo stesso indice implicito di CellStyle::fFont per ogni cella
+	// mai formattata esplicitamente (CellStyle::CellStyle() azzera
+	// l'intera struct). Fix in CFontSizeTable::ReserveDefaultSlot()
+	// (FontMetrics.cpp): l'indice 0 e' ora sempre riservato a un font
+	// segnaposto "di default" prima che un font specifico possa
+	// riceverlo per sbaglio.
+	Check(!StyleHas(doc, cell(1, 2), "Bold"),
+		"mettere in grassetto A1 (selezione singola) non tocca A2, mai selezionata");
+	Check(!StyleHas(doc, cell(2, 1), "Bold"),
+		"mettere in grassetto A1 (selezione singola) non tocca B1, mai selezionata");
 
 	ClickButton(win, FindToolButton(win, "toolItalic"));
 	Check(StyleHas(doc, cell(1, 1), "Italic"),

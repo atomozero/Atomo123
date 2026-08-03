@@ -117,6 +117,11 @@ public:
 		{ return fFonts.size(); };
 
 private:
+	// Riserva l'indice 0 (il valore implicito di CellStyle::fFont per
+	// ogni cella mai formattata) con un font segnaposto sicuro, se non
+	// gia' fatto -- vedi il commento in FontMetrics.cpp/GetFontID.
+	void ReserveDefaultSlot();
+
 	std::vector<CFontMetrics> fFonts;
 };
 

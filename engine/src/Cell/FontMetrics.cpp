@@ -211,26 +211,65 @@ bool CFontMetrics::operator==(const CFontMetrics& inOther)
 } /* CFontMetrics::operator== */
 
 //////////////////////////////////////////////////////////
-// 
+//
 // FontSizeTable
 //
+
 CFontSizeTable::CFontSizeTable()
 {
 } /* CFontSizeTable::CFontSizeTable */
+
+void CFontSizeTable::ReserveDefaultSlot()
+{
+	if (!fFonts.empty())
+		return;
+
+	// CFontMetrics::CFontMetrics() di default lascia fFamily/fStyle/
+	// fFontColor/fSize non inizializzati (tocca solo fFontStyle), a
+	// differenza del fallback statico gia' usato da
+	// CFontSizeTable::operator[] (una variabile "static" e' azzerata
+	// automaticamente prima del costruttore) -- qui serve lo stesso
+	// azzeramento esplicito perche' l'oggetto finisce copiato dentro
+	// il vector, non e' esso stesso static.
+	CFontMetrics fm;
+	fm.fFontColor.red = fm.fFontColor.green = fm.fFontColor.blue = 0;
+	fm.fFontColor.alpha = 255;
+	fm.fFamily[0] = 0;
+	fm.fStyle[0] = 0;
+	fm.fSize = 0;
+	fFonts.push_back(fm);
+} /* CFontSizeTable::ReserveDefaultSlot */
 
 ulong CFontSizeTable::GetFontID(const char *fontName, const char *fontStyle,
 		float fontSize, rgb_color fontColor)
 {
 	StLocker<CFontSizeTable> lock(this);
+
+	// L'indice 0 e' anche il valore implicito di CellStyle::fFont per
+	// qualunque cella mai formattata esplicitamente (CellStyle::CellStyle()
+	// azzera l'intera struct con memset). Se il PRIMO font mai
+	// richiesto qui (qualunque esso sia) finisse per occupare l'indice
+	// 0, diventerebbe per errore il font "di default" di ogni cella
+	// non ancora formattata dell'intero documento -- bug reale
+	// segnalato dall'utente: mettere in grassetto una sola cella
+	// selezionata, su un documento dove nessun font era ancora stato
+	// richiesto, faceva apparire in grassetto tutto il foglio. Si
+	// riserva quindi l'indice 0 con un font segnaposto sicuro (nessun
+	// accesso ad app_server: lo stesso costruttore di default gia'
+	// usato da CFontSizeTable::operator[] come ripiego) prima di
+	// cercare/aggiungere il font davvero richiesto, cosi' un font
+	// specifico (Bold, Italic, ...) riceve sempre un indice >= 1.
+	ReserveDefaultSlot();
+
 	std::vector<CFontMetrics>::iterator i;
 	CFontMetrics ns(fontName, fontStyle, fontSize, fontColor);
-	
-	for (i = fFonts.begin(); i != fFonts.end(); i++)
+
+	for (i = fFonts.begin() + 1; i != fFonts.end(); i++)
 	{
 		if ((*i) == ns)
 			return i - fFonts.begin();
 	}
-	
+
 	fFonts.push_back(ns);
 	return fFonts.size() - 1;
 } /* CFontSizeTable::GetFontID */
@@ -239,13 +278,21 @@ void CFontSizeTable::SetFontID(BView *view, ulong formatID,
 	CFontMetrics **outMetrics)
 {
 	BAutolock lock(this);
-	
+
+	// Stesso motivo della guardia in GetFontID sopra: la tabella puo'
+	// essere ancora vuota (nessun font mai richiesto tramite
+	// GetFontID) quando una cella col font "di default" (fFont=0,
+	// implicito) viene disegnata per prima. Riservare l'indice 0 qui
+	// invece di limitarsi all'ASSERT/clamp preesistente evita un
+	// accesso fFonts[0] fuori dai limiti su un vettore vuoto.
+	ReserveDefaultSlot();
+
 	if (formatID < 0 || formatID >= fFonts.size())
 	{
 		ASSERT(false);
 		formatID = 0;
 	}
-	
+
 	fFonts[formatID].SetFontSizeColor(view);
 	if (outMetrics)
 		*outMetrics = &fFonts[formatID];
@@ -256,8 +303,14 @@ void CFontSizeTable::GetFontInfo(ulong formatID,
 	rgb_color *fontColor)
 {
 	CFontMetrics *fm;
-	
+
 	BAutolock lock(this);
+
+	// Stessa guardia di SetFontID/GetFontID sopra.
+	ReserveDefaultSlot();
+	if (formatID >= fFonts.size())
+		formatID = 0;
+
 	fm = &fFonts[formatID];
 	fm->fFont.GetFamilyAndStyle(fontName, fontStyle);
 	*fontSize = fm->fFont.Size();
