@@ -927,11 +927,11 @@ logica, non l'esperienza utente end-to-end.
       convertono in ASCD senza crash tramite `translate` (il tool a
       riga di comando del Translation Kit, con i translator già
       installati come add-on di sistema); i due aperti anche dal vivo
-      nell'app vera (`[campione finanziario pubblico].xlsx` e `[file] -
-      073 - [cliente].xls`, quest'ultimo con un nome definito
-      che referenzia una funzione sconosciuta) mostrano i dati
-      correttamente. Nessun nuovo bug di importazione dati trovato in
-      questo giro. Due osservazioni per il futuro (non risolte qui):
+      nell'app vera (il campione finanziario pubblico e il file `.xls`
+      con un nome definito che referenzia una funzione sconosciuta,
+      vedi sotto) mostrano i dati correttamente. Nessun nuovo bug di
+      importazione dati trovato in questo giro. Due osservazioni per
+      il futuro (non risolte qui):
       il file da 3,4MB impiega ~94s a importarsi (in linea con quanto
       già misurato per il ricalcolo su fogli grandi, vedi la nota più
       sotto sul ricalcolo a grafo delle dipendenze); e un difetto di
@@ -972,7 +972,7 @@ logica, non l'esperienza utente end-to-end.
 ### Falso allarme: non era un crash, era il dialogo "nessuna applicazione preferita" di Tracker
 
 Testando il corpus di file reali (vedi sopra) con `open` da riga di
-comando, aprire `[file .xls di lavoro reale]`
+comando, aprire il file `.xls` con il nome definito problematico
 come seconda finestra sembrava a volte far sparire Atomo123 dal
 process tree — inizialmente scambiato per un crash intermittente.
 L'utente ha condiviso uno screenshot del proprio schermo che ha
@@ -1171,7 +1171,8 @@ aprendo entrambi i file nell'app vera, nessun crash né blocco.
 
 ### Bug scoperto: il filtro XLS legacy portato a livello di Excel su una fattura reale
 
-Confrontando l'importazione della stessa fattura reale  con l'apertura in Excel vero, screenshot alla mano, sono
+Confrontando l'importazione della stessa fattura reale con
+l'apertura in Excel vero, screenshot alla mano, sono
 emersi altri bug reali nel filtro BIFF legacy, oltre a quello SST già
 descritto sopra — lo stesso filtro era stato scritto per BIFF5 e mai
 davvero aggiornato per i file genuinamente BIFF8 (Excel 97-2003) che
@@ -1377,8 +1378,8 @@ mostra ora "00073" nell'app, come in Excel.
 ### Bug scoperto: il font non veniva mai applicato davvero al disegno (dimensione/grassetto/corsivo/famiglia)
 
 Continuando il confronto con Excel vero sulla stessa fattura reale:
-l'intestazione dello studio (20pt nel file originale)
-appariva alla stessa dimensione del testo normale circostante.
+l'intestazione dello studio (20pt nel file originale) appariva alla
+stessa dimensione del testo normale circostante.
 Tracciando passo passo l'intera catena (translator -> `LoadASCD` ->
 `SheetView::Draw`, con tracce temporanee poi rimosse) il font
 risultava risolto e registrato correttamente in `gFontSizeTable` a
@@ -1463,8 +1464,9 @@ bloccante.
 ### Bug scoperto: il testo che trabocca sulla colonna vicina veniva sempre troncato
 
 Ultimo punto del confronto diretto con Excel vero sulla stessa fattura
-reale: l'intestazione "dello studio" (e diverse altre righe sotto, tutte più larghe della colonna
-A) appariva troncata al bordo della colonna in Atomo123, mentre Excel
+reale: l'intestazione dello studio (e diverse altre righe sotto, tutte
+più larghe della colonna A) appariva troncata al bordo della colonna
+in Atomo123, mentre Excel
 la mostra per intero, traboccando visivamente sulle colonne B/C/…
 vuote a destra. `SheetView::DrawCellBand` limitava sempre il
 rettangolo di disegno e di ritaglio (`ConstrainClippingRegion`) alla
@@ -1766,7 +1768,9 @@ Test: nuova fixture `sample_strformula.xls` (costruita correggendo a
 mano il marcatore `num[3]` e aggiungendo il record STRING, dato che
 xlwt non calcola mai le formule) in `test_xls_translator.cpp`.
 Verificato anche dal vivo riaprendo la fattura reale: la riga 48 ora
-mostra correttamente il testo della cella (coordinate bancarie del beneficiario).
+mostra correttamente il testo della cella (coordinate bancarie del
+beneficiario) invece che restare vuota o mostrare il valore residuo
+della cella precedente.
 
 ### Bug scoperto: un simbolo percento letterale scambiato per formato percentuale
 
@@ -2923,9 +2927,9 @@ toolbar, ridimensionamento riga/colonna.
 
 ## Fase 9 — Supporto multi-foglio (CHIUSA)
 
-Con la Fase 8 chiusa, l'utente ha indicato un vero file di lavoro —
-`[file di lavoro reale].xlsm`, una gara d'appalto reale —
-come banco di prova per continuare lo sviluppo in autonomia "fino al
+Con la Fase 8 chiusa, l'utente ha indicato un vero file di lavoro
+proprio (un `.xlsm` di una gara d'appalto reale) come banco di prova
+per continuare lo sviluppo in autonomia "fino al
 raggiungimento della piena compatibilità e visualizzazione". Aprirlo
 ha subito rivelato che il file ha **38 fogli**, con formule che
 attraversano i fogli (es. `RIEPILOGO COMPLETO` referenzia altri fogli
@@ -3657,9 +3661,9 @@ lo verifichi.
 ## Fase 12 — Fedeltà visiva import XLSX (CHIUSA)
 
 Verifica puntuale (grep mirato su `XlsxTranslator.cpp`, non solo
-lettura del codice) contro `[file di lavoro reale].xlsm`
-(38 fogli, file di gara reale già usato per motivare Fase 9 e per il
-bug corretto subito prima di questa fase): il translator importa oggi
+lettura del codice) contro il file `.xlsm` di gara reale già usato per
+motivare Fase 9 e per il bug corretto subito prima di questa fase
+(38 fogli): il translator importa oggi
 solo valori/formule, larghezza di colonna e colori di sfondo/testo.
 Zero righe toccano `mergeCell`, `numFmt`/`numFmtId`, i flag
 grassetto/corsivo/sottolineato del font, allineamento/testo a capo,
