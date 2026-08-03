@@ -4053,6 +4053,51 @@ contenevano altro che questi due file sperimentali, già catturati per
 intero in questa nota); chi riprende il lavoro riparte da zero sul
 motore vero, non da quei prototipi.
 
+### Bug scoperto: mettere in grassetto una sola cella metteva in grassetto tutto il foglio
+
+Segnalato dall'utente insieme ad altri due problemi (selezione non
+trasparente, impossibile selezionare un'intera riga/colonna — questi
+due restano da affrontare): su un documento nuovo, selezionando una
+sola cella e cliccando il pulsante "Grassetto" della toolbar,
+diventava in grassetto l'intero foglio, non solo la cella selezionata.
+
+Causa, isolata con un piccolo programma diretto in-process (tre celle
+A1/A2/B1, selezione solo su A1, clic sul pulsante vero, poi lettura
+diretta dello stile di tutte e tre le celle — lo stesso principio
+delle altre indagini in questo file, senza passare da `hey`/screenshot):
+`CFontSizeTable::GetFontID` (`engine/src/Cell/FontMetrics.cpp`) cerca
+un font già presente in tabella o, se non lo trova, lo aggiunge in
+coda e ne restituisce l'indice. Su un documento dove nessun font era
+ancora stato richiesto (la tabella `gFontSizeTable` è vuota — capita
+facilmente, dato che `CContainer` in `MainWindow.cpp` viene sempre
+costruito con `CContainer(NULL, NULL)`, senza una vista che ne
+inizializzi subito un font di default), il PRIMO font mai richiesto
+occupa l'indice 0 — che è anche il valore implicito di
+`CellStyle::fFont` per qualunque cella mai formattata esplicitamente
+(`CellStyle::CellStyle()` azzera l'intera struct con `memset`). Il
+grassetto richiesto per A1 diventava quindi, per puro accidente di
+ordine di chiamata, il font "di default" di ogni cella non ancora
+formattata dell'intero foglio — A2 e B1 comprese, mai selezionate.
+
+Fix: nuovo `CFontSizeTable::ReserveDefaultSlot()`, che riserva sempre
+l'indice 0 con un font segnaposto sicuro (nessun accesso ad
+app_server: stesso principio del fallback statico già usato da
+`CFontSizeTable::operator[]`, ma esplicitamente azzerato campo per
+campo dato che l'oggetto finisce copiato dentro il vector, non è esso
+stesso `static`) prima di cercare/aggiungere il font davvero
+richiesto — così un font specifico riceve sempre un indice ≥ 1,
+indipendentemente da quale sia il primo mai richiesto. Chiamato
+anche da `SetFontID`/`GetFontInfo`, che accedevano `fFonts[formatID]`
+direttamente senza nessun controllo dei limiti (un accesso fuori dai
+limiti su un vettore ancora vuoto, non solo il bug di indice
+condiviso).
+
+Test: `ui/tests/test_format_toolbar.cpp` esteso con A2/B1 (mai
+selezionate né formattate) accanto ad A1 — verifica che restino senza
+grassetto dopo il clic sul pulsante. Nessuna regressione nelle 33
+suite UI né in quelle di engine/translator (FontMetrics è condiviso
+da tutti).
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
