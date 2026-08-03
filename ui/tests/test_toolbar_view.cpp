@@ -108,6 +108,25 @@ int main()
 	Check(toolbar->OverflowButton()->IsHidden(),
 		"riallargando la vista il pulsante \">>\" torna nascosto");
 
+	// --- Il clic del pulsante ">>" chiama Invoke() (BButton lo fa da
+	// se' su MouseUp), che ora e' un override diretto invece di
+	// passare da BInvoker::SetTarget()/BMessenger -- bug reale
+	// segnalato dall'utente ("il pulsante non mi mostra le icone
+	// nascoste"): con SetTarget(this) nel costruttore di ToolbarView,
+	// chiamato prima che la vista fosse agganciata a una finestra
+	// (Looper() ancora NULL a quel punto), il clic non arrivava mai a
+	// ShowOverflowMenu(). Qui non ci sono pulsanti nascosti (vista
+	// appena riallargata sopra), quindi Invoke() ritorna subito senza
+	// aprire nessun BPopUpMenu vero -- non e' il test dell'apertura
+	// del menu (aprirebbe una finestra reale, non adatto a un test
+	// automatico), solo la controprova che l'override non crasha e
+	// arriva davvero a ShowOverflowMenu().
+	Check(toolbar->HiddenButtonCount() == 0,
+		"nessun pulsante nascosto prima della controprova di Invoke()");
+	toolbar->OverflowButton()->Invoke();
+	Check(true,
+		"il clic del pulsante \">>\" (Invoke()) raggiunge ShowOverflowMenu() senza crashare");
+
 	win->Unlock();
 
 	win->Lock();

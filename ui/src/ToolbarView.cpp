@@ -16,7 +16,37 @@
 static const float kInset = 4;
 static const float kSpacing = 4;
 
-static const uint32 kMsgToolbarOverflow = 'tovf';
+// Pulsante ">>" del troppopieno: invoca direttamente
+// ToolbarView::ShowOverflowMenu() da un override di Invoke(), invece
+// di passare da BInvoker::SetTarget()/BMessenger come i pulsanti veri
+// della toolbar (che puntano tutti a MainWindow, una BLooper valida
+// fin dalla costruzione). ToolbarView e' "solo" una BView: il suo
+// Looper() resta NULL finche' non viene agganciata alla finestra
+// (avviene DOPO che questo pulsante e' gia' stato costruito, in
+// BuildToolbar()), quindi un SetTarget(this) qui sarebbe stato
+// costruito con un target ancora non risolvibile -- una chiamata C++
+// diretta non ha invece nessun bisogno di un Looper valido, funziona
+// a prescindere da quando/se la vista e' agganciata. Bug reale
+// segnalato dall'utente ("il pulsante non mi mostra le icone
+// nascoste"): il clic non arrivava mai a ShowOverflowMenu().
+class ToolbarOverflowButton : public BButton {
+public:
+	ToolbarOverflowButton(ToolbarView* owner)
+		:
+		BButton("toolOverflow", ">>", NULL),
+		fOwner(owner)
+	{
+	}
+
+	virtual status_t Invoke(BMessage* message = NULL)
+	{
+		fOwner->ShowOverflowMenu();
+		return B_OK;
+	}
+
+private:
+	ToolbarView* fOwner;
+};
 
 ToolbarView::ToolbarView(const char* name)
 	:
@@ -30,9 +60,8 @@ ToolbarView::ToolbarView(const char* name)
 	// ">>" invece di un'icona vera: e' l'unico pulsante di questa
 	// toolbar che non corrisponde a un comando del foglio, non ha
 	// senso spendere un'altra icona del catalogo HVIF per lui.
-	fOverflowButton = new BButton("toolOverflow", ">>", new BMessage(kMsgToolbarOverflow));
+	fOverflowButton = new ToolbarOverflowButton(this);
 	fOverflowButton->SetToolTip("Altri pulsanti");
-	fOverflowButton->SetTarget(this);
 	fOverflowButton->SetFlat(true);
 	AddChild(fOverflowButton);
 	fOverflowButton->Hide();
@@ -57,16 +86,6 @@ void ToolbarView::FrameResized(float width, float height)
 {
 	BView::FrameResized(width, height);
 	Layout();
-}
-
-void ToolbarView::MessageReceived(BMessage* message)
-{
-	if (message->what == kMsgToolbarOverflow)
-	{
-		ShowOverflowMenu();
-		return;
-	}
-	BView::MessageReceived(message);
 }
 
 BSize ToolbarView::MinSize()
@@ -257,6 +276,10 @@ void ToolbarView::ShowOverflowMenu()
 		return;
 	}
 
+	// Asincrono (l'ultimo "true" in Go) senza SetAsyncAutoDestruct()
+	// non elimina l'oggetto da solo alla chiusura: perderebbe memoria
+	// a ogni apertura del menu, non solo alla prima.
+	menu->SetAsyncAutoDestruct(true);
 	BPoint screenPoint = fOverflowButton->ConvertToScreen(
 		fOverflowButton->Bounds().LeftBottom());
 	menu->Go(screenPoint, true, true, true);

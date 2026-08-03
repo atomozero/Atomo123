@@ -31,7 +31,6 @@ public:
 
 	virtual void AttachedToWindow();
 	virtual void FrameResized(float width, float height);
-	virtual void MessageReceived(BMessage* message);
 
 	virtual BSize MinSize();
 	virtual BSize MaxSize();
@@ -67,6 +66,14 @@ public:
 	int HiddenButtonCount() const;
 	BButton* OverflowButton() const { return fOverflowButton; }
 
+	// Costruisce e mostra il BPopUpMenu con le voci equivalenti dei
+	// pulsanti attualmente nascosti dal troppopieno. Pubblico (oltre
+	// che richiamato dal pulsante ">>" stesso) apposta per essere
+	// testabile/richiamabile direttamente, e per non dover passare da
+	// BInvoker::SetTarget/BMessenger per il clic interno -- vedi
+	// OverflowButton.
+	void ShowOverflowMenu();
+
 private:
 	struct Item {
 		BView* view;       // BButton* o BSeparatorView*
@@ -79,8 +86,6 @@ private:
 	bool fOverflowing;
 	float fRowHeight;
 	float fNaturalWidth;
-
-	void ShowOverflowMenu();
 };
 
 #endif
