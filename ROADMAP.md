@@ -1578,13 +1578,48 @@ diverse fra loro, non più tutte uguali all'altezza predefinita.
 
 **Nota**: durante lo sviluppo di questo fix, aggiungere un nuovo
 membro/metodo a `CExcel5Filter` (`Excel.h`) senza poi rifare un
-`make clean` completo dell'engine ha prodotto un blocco indefinito
-del test suite (non un crash, un hang) — lo stesso genere di
-disallineamento ABI fra `.o` compilati con `sizeof(CExcel5Filter)`
-diversi già documentato altrove in questo file per `CellStyle`/
-`Container`. Risolto con un `make clean && make` completo. Promemoria
-per ogni futura modifica a un header del motore, non solo per questo
-campo.
+`make clean` completo dell'engine ha prodotto quello che sembrava un
+blocco indefinito del test suite. I report di crash di Haiku
+(analizzati in una sessione successiva, salvati sul Desktop
+dall'utente) hanno poi confermato che non era affatto un blocco: era
+un vero Segment violation dentro `std::map` (`fFormats`, un membro di
+`CExcel5Filter`), lo stesso genere di disallineamento ABI fra `.o`
+compilati con `sizeof(CExcel5Filter)` diversi già documentato altrove
+in questo file per `CellStyle`/`Container` — la shell mostrava solo
+"Kill Thread" invece del vero stato dell'eccezione. Risolto con un
+`make clean && make` completo. Promemoria per ogni futura modifica a
+un header del motore, non solo per questo campo: un crash del genere,
+se non diagnosticato con i report di Haiku, è facile da scambiare per
+un problema ambientale.
+
+### Bug scoperto: l'a capo automatico non teneva conto delle celle unite
+
+L'utente ha segnalato: "perchè le righe 25 o 26 sono così 'alte' il
+file aperto con excel non le fa con queste dimensioni". Le righe delle
+descrizioni ("Progettazione impianti schemi meccanici", "Redazione
+relazione legger 10/91", ecc.) apparivano alte più di 80px, mentre
+Excel le mostra a una riga sola (~20px).
+
+Causa: queste celle sono unite su sei colonne nel file originale (una
+descrizione in una colonna A stretta, allargata con l'unione per
+darle spazio) e hanno il testo a capo attivo — ma
+`SheetView::RecalculateWrappedRowHeights` calcolava la larghezza
+disponibile per l'a capo usando SOLO la prima colonna della cella
+(`fColWidths[c.h - 1]`), ignorando del tutto le celle unite. Contando
+solo la prima, stretta colonna invece dell'intera larghezza unita, il
+testo risultava spezzato su molte più righe del necessario.
+
+Stesso principio già applicato a `DrawCellBand` per il disegno del
+testo (Fase 12): ora, se la cella in alto a sinistra dell'iterazione
+fa parte di un intervallo unito, la larghezza usata per l'a capo è la
+somma delle larghezze di TUTTE le colonne dell'intervallo, non solo
+la prima.
+
+Test: nuovo blocco in `test_borders.cpp` — tre colonne strette unite
+in una sola cella con testo a capo, verifica che la riga resti bassa
+invece di gonfiarsi contando solo la prima colonna. Verificato anche
+dal vivo riaprendo la fattura reale: le righe delle descrizioni ora
+hanno l'altezza normale a una riga sola, come in Excel.
 
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
