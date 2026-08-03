@@ -455,9 +455,22 @@ void CExcel5Filter::HandleXLRecordForPass2(int code, int len)
 		{
 			es >> c.v; c.v++;
 			es >> c.h; c.h++;
-			
-			int i = (len-4)/2;
-			// Stesso motivo del controllo su MULRK sopra.
+
+			// Il record MULBLANK finisce con un campo "colLast" (2
+			// byte) DOPO l'ultimo indice di stile, oltre a
+			// rw/colFirst (4 byte) prima del primo -- (len-4)/2 non
+			// lo escludeva, leggendo quindi un indice di stile in
+			// piu' rispetto alle colonne vuote realmente descritte
+			// dal record: l'ultimo valore letto era in realta' il
+			// campo "colLast" travisato da indice XF, applicato per
+			// sbaglio a una cella fantasma subito dopo l'intervallo
+			// vero. Bug reale scoperto confrontando con Excel vero
+			// una fattura reale (record MULRK poco sopra, che ha
+			// ogni voce piu' larga di "colLast", non soffriva dello
+			// stesso problema per puro caso aritmetico: la
+			// troncatura della divisione intera assorbiva il
+			// campo in piu' quando resta invece esatta qui).
+			int i = (len-6)/2;
 			if (i < 0) i = 0;
 
 			while (i--)

@@ -1022,6 +1022,82 @@ int main()
 		}
 	}
 
+	// Celle vuote ma formattate su una riga intera (record MULBLANK,
+	// vedi il case omonimo in Excel.pass2.cpp): tests/sample_mulblank.xls
+	// ha A1:F1 vuote ma con sfondo giallo, G1 non toccata (controllo
+	// negativo) e A2 con del testo normale (secondo controllo
+	// negativo). Il record MULBLANK termina con un campo "colLast"
+	// dopo l'ultimo indice di stile -- prima di questa modifica il
+	// calcolo del numero di colonne non lo escludeva, leggendo un
+	// indice di stile in piu' e applicandolo per sbaglio a una cella
+	// fantasma subito dopo l'intervallo vero (qui G1, che risultava
+	// colorata quando in realta' e' sempre rimasta bianca nel file
+	// originale) -- bug reale scoperto confrontando con Excel vero
+	// una fattura reale.
+	{
+		BFile mbFile("tests/sample_mulblank.xls", B_READ_ONLY);
+		Check(mbFile.InitCheck() == B_OK, "apertura di tests/sample_mulblank.xls riuscita");
+
+		translator_info mbInfo;
+		status_t mbErr = translator->Identify(&mbFile, NULL, NULL, &mbInfo, 0);
+		Check(mbErr == B_OK, "Identify riconosce sample_mulblank.xls");
+
+		mbFile.Seek(0, SEEK_SET);
+		BMallocIO mbOut;
+		mbErr = translator->Translate(&mbFile, &mbInfo, NULL, kAtomoNativeFormat, &mbOut);
+		Check(mbErr == B_OK, "Translate di sample_mulblank.xls riesce");
+
+		if (mbErr == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)mbOut.Buffer();
+			size_t len = mbOut.BufferLength();
+			size_t pos = 12;
+
+			int32 cellCount = 0;
+			if (len > 12)
+				memcpy(&cellCount, data + 8, 4);
+			for (int32 i = 0; i < cellCount && pos + 8 <= len; i++)
+			{
+				short row, col; int32 l;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&l, data + pos, 4); pos += 4;
+				if (pos + (size_t)l > len) break;
+				pos += l;
+			}
+
+			int32 n;
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4+4*4); } // chart
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
+
+			bool foundG1 = false;
+			int32 yellowCount = 0;
+			if (pos + 4 <= len)
+			{
+				int32 cellColorCount;
+				memcpy(&cellColorCount, data + pos, 4); pos += 4;
+				for (int32 i = 0; i < cellColorCount && pos + 2+2+8 <= len; i++)
+				{
+					short row, col; unsigned char buf[8];
+					memcpy(&row, data + pos, 2); pos += 2;
+					memcpy(&col, data + pos, 2); pos += 2;
+					memcpy(buf, data + pos, 8); pos += 8;
+					if (row == 1 && col == 7)
+						foundG1 = true;
+					if (row == 1 && col >= 1 && col <= 6
+						&& buf[0] == 255 && buf[1] == 255 && buf[2] == 0)
+						yellowCount++;
+				}
+				Check(cellColorCount == 6,
+					"cellColorCount == 6 (solo A1:F1 hanno uno sfondo non predefinito nel file originale)");
+			}
+			Check(yellowCount == 6,
+				"A1:F1 (sfondo giallo nel file originale) importate tutte con lo sfondo reale");
+			Check(!foundG1,
+				"G1 (subito dopo l'intervallo MULBLANK vero) non risulta colorata per sbaglio, resta bianca");
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
