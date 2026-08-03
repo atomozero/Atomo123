@@ -1544,6 +1544,48 @@ riaprendo la fattura reale: l'intera catena di totali ora corrisponde
 esattamente ai valori che Excel stesso aveva calcolato l'ultima volta
 (52,50 → 1.102,50 → 242,55 di IVA → 1.345,05 di totale).
 
+### Bug scoperto: le altezze di riga esplicite non venivano mai importate
+
+L'utente ha segnalato: "l'altezza delle righe non risulta coerente
+con l'altezza visualizzata in Excel". Stesso limite già corretto per
+le larghezze di colonna (record COLINFO) in una fase precedente, mai
+applicato al record equivalente per le righe (`ROW`): scriveva
+l'altezza esplicita (in twips) solo sulla vecchia `CCellView`
+(`fCellView`, sempre `NULL` in un translator headless — vedi lo stub
+in `EngineViewStub.h`), mai in un posto che il translator potesse
+rileggere dopo `Translate()`. Ogni riga tornava quindi sempre
+all'altezza predefinita (`kRowHeight`, 20px), ignorando qualunque riga
+ridimensionata a mano nel file originale — il logo della fattura
+reale, che occupa più righe di altezze diverse, appariva quindi
+visibilmente sproporzionato rispetto a Excel.
+
+`CExcel5Filter` ora cattura le altezze in un nuovo elenco proprio
+(`fRowHeights`, esposto da `GetRowHeights()`, stesso principio di
+`fColWidths`/`GetColumnWidths()`), indipendente da `fCellView`.
+`h/15.0` converte da twips a pixel assumendo 96 DPI (la stessa
+risoluzione già assunta altrove in questo file per le immagini
+incorporate). `XlsTranslator` la scrive nella sezione "altezze di
+riga" del formato nativo, finora sempre vuota.
+
+Test: nuova fixture `sample_rowheight.xls` (tre righe con altezze
+molto diverse) e nuovo blocco in `test_xls_translator.cpp` — ha anche
+scoperto e corretto un bug latente nel test stesso (il calcolo dei
+byte da saltare per questa sezione assumeva 8 byte per riga invece dei
+6 reali, mai emerso finora perché la sezione era sempre vuota, quindi
+la dimensione per riga non contava). Verificato anche dal vivo
+riaprendo la fattura reale: le righe ora hanno altezze visibilmente
+diverse fra loro, non più tutte uguali all'altezza predefinita.
+
+**Nota**: durante lo sviluppo di questo fix, aggiungere un nuovo
+membro/metodo a `CExcel5Filter` (`Excel.h`) senza poi rifare un
+`make clean` completo dell'engine ha prodotto un blocco indefinito
+del test suite (non un crash, un hang) — lo stesso genere di
+disallineamento ABI fra `.o` compilati con `sizeof(CExcel5Filter)`
+diversi già documentato altrove in questo file per `CellStyle`/
+`Container`. Risolto con un `make clean && make` completo. Promemoria
+per ogni futura modifica a un header del motore, non solo per questo
+campo.
+
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
