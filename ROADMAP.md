@@ -913,28 +913,45 @@ logica, non l'esperienza utente end-to-end.
       resta ovviamente sotto la sua licenza originale invariata.
       `README.md` e il campo `LICENSE` di `packaging/atomo123-0.1.0.recipe`
       aggiornati di conseguenza.
-- [ ] Test di compatibilità con corpus di file reali: **primo file XLS
-      reale verificato** (scaricato per un test estemporaneo, non un
-      vero corpus sistematico), aprendolo sia a livello di translator
-      sia dal vivo nell'app vera — ha fatto emergere tre bug reali nel
-      lettore BIFF/OLE2 legacy (vedi sezione dedicata in
-      `docs/TRANSLATORS.md`), tutti corretti. Poi altri sei bug reali
-      (file di lavoro di un utente, 2 .xls e 7 .xlsx) e la mancanza
-      completa di SST/LABELSST (stringhe condivise BIFF8/Excel97+, il
-      caso comune in ogni .xls moderno) — vedi le due sezioni "Bug
-      scoperto" più sotto. Resta un vero corpus eterogeneo di file
-      XLS/XLSX/ODS di varie versioni generati da Excel/LibreOffice/
-      OpenOffice in condizioni non controllate — i file reali usati per
-      la verifica non sono mai stati inclusi nel repository (licenza di
-      ridistribuzione non chiara). Il gap del test automatizzato è però
-      **in gran parte colmato** per il filtro XLS legacy: oltre a
-      `sample_sst.xls`/`sample_sst_large.xls`, `translators/xls/tests/`
-      ha ora fixture dedicate (sempre generate con xlwt, licenza BSD,
-      mai file utente) per encoding CP1252/UTF-16, date con formato
-      personalizzato, riferimenti a cella BIFF8 in una formula, font/
-      allineamento/testo a capo, larghezza colonna e colore di sfondo/
-      testo/bordi — vedi la sezione "Bug scoperto" più sotto sul
-      confronto diretto con una fattura reale.
+- [x] Test di compatibilità con corpus di file reali: oltre al primo
+      file XLS scaricato per un test estemporaneo e ai file di lavoro
+      usati in precedenza (insieme: dieci bug reali corretti nel
+      filtro XLS legacy, vedi le sezioni "Bug scoperto" più sotto e
+      `docs/TRANSLATORS.md`), l'utente ha fornito una cartella di 11
+      file reali propri (2 `.xls`, 8 `.xlsx`, 1 `.xlsm`: fatture,
+      budget, documenti tecnici UNI/EN, un file di clustering da
+      3,4MB, un campione finanziario pubblico) — **mai inclusi nel
+      repository** (file di lavoro personali, licenza di
+      ridistribuzione non chiara, per stessa richiesta esplicita
+      dell'utente), usati solo localmente per il test. Tutti e 11 si
+      convertono in ASCD senza crash tramite `translate` (il tool a
+      riga di comando del Translation Kit, con i translator già
+      installati come add-on di sistema) e i due aperti anche dal vivo
+      nell'app vera (`[campione finanziario pubblico].xlsx`, un file con un nome
+      definito che referenzia una funzione sconosciuta) mostrano i
+      dati correttamente. Nessun nuovo bug di importazione dati
+      trovato in questo giro. Due osservazioni per il futuro (non
+      risolte qui): il file da 3,4MB impiega ~94s a importarsi (in
+      linea con quanto già misurato per il ricalcolo su fogli grandi,
+      vedi la nota più sotto sul ricalcolo a grafo delle dipendenze);
+      e un crash intermittente (~2 volte su 8 tentativi, non
+      riprodotto in modo affidabile) osservato aprendo una seconda
+      finestra su un documento subito dopo la prima — segnalato ma
+      **non confermato** come bug reale dell'app (il metodo di
+      riproduzione stesso, con riavvii ripetuti dell'app da riga di
+      comando, potrebbe aver introdotto un artefatto estraneo
+      all'app). Resta comunque un vero corpus eterogeneo generato da
+      installazioni reali di Excel/LibreOffice in condizioni non
+      controllate diverso da questo (file donati da altri utenti, o
+      un ambiente con Excel/LibreOffice/OpenOffice reali per generarne
+      di nuovi — non disponibili su questo sistema). Fixture
+      automatiche sintetiche (mai file utente): `translators/xls/tests/`
+      per encoding CP1252/UTF-16, date con formato personalizzato,
+      riferimenti a cella BIFF8 in una formula, font/allineamento/testo
+      a capo, larghezza colonna e colore di sfondo/testo/bordi;
+      `translators/xlsx/tests/` per allineamento, bordi, formattazione
+      condizionale, date, stile font, immagini, celle unite, formato
+      numero, tabelle, sottolineato, testo a capo.
 - [x] "Apri recenti" nel menu File: gli ultimi 5 file aperti,
       persistiti in `gPrefs` come cinque chiavi `recentFileN` (la più
       recente per prima). Il sottomenu si ricostruisce da
@@ -952,6 +969,32 @@ logica, non l'esperienza utente end-to-end.
       progetto) della finestra Informazioni di Brube2000, altro
       progetto nativo Haiku dello stesso autore — `ClickableStringView`
       riportato pari pari da lì per coerenza visiva fra le due app.
+
+### Nota per il futuro: crash intermittente aprendo una seconda finestra subito dopo la prima
+
+Testando il corpus di file reali dell'utente (vedi sopra): aprendo
+`[campione finanziario pubblico].xlsx` e poi, come seconda finestra, `[file .xls di lavoro reale]` (quello con un nome definito
+che referenzia una funzione sconosciuta), l'app è sparita dal process
+tree due volte di seguito (nessun crash report di `debug_server` nel
+syslog, nessuna eccezione stampata sullo stdout catturato — uscita
+"pulita" ma inattesa, non un fault visibile). Aprendo lo stesso file
+da solo (unica finestra) o come terza finestra dopo due file diversi,
+mai riprodotto; altri 6 tentativi della stessa sequenza (finestra
+"Financial Sample" seguita da questo file, con vari ritardi fra
+0,3s e 1s) non l'hanno più riprodotto.
+
+**Non abbastanza per essere sicuri che sia un bug reale
+dell'applicazione**: la sequenza di riproduzione usava riavvii
+ripetuti dell'app da terminale (`hey ... QUIT` seguito subito da un
+nuovo lancio), che potrebbe di per sé introdurre una corsa fra
+l'istanza precedente ancora in chiusura (con un titolo "*" non
+salvato visto in uno screenshot, quindi potenzialmente in attesa di
+un alert di conferma) e quella nuova appena lanciata, con lo stesso
+signature MIME — un artefatto del metodo di test, non
+necessariamente del codice di `App::RefsReceived`/`FindReusableWindow`
+(vedi sopra) che gestisce la seconda finestra. Da tenere presente se
+riemerge: nessuna azione presa qui, solo documentato per non perdere
+il sospetto.
 
 ### Bug scoperto: `GetBounds` esclude le celle non ancora calcolate, rompendo il ricalcolo/salvataggio quando sono ai margini del foglio
 
