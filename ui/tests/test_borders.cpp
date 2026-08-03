@@ -179,6 +179,44 @@ int main()
 		Check(doc->GetMergedRanges().size() == 0, "UnmergeCells toglie l'intervallo unito");
 	}
 
+	// A capo automatico dentro una cella unita su piu' colonne (Fase
+	// 5/12): il calcolo dell'a capo (RecalculateWrappedRowHeights)
+	// deve usare la larghezza dell'INTERO intervallo unito, non solo
+	// la prima colonna -- bug reale scoperto confrontando con Excel
+	// vero una fattura reale: una descrizione unita su sei colonne
+	// (comune per un'intestazione descrittiva in una colonna A
+	// stretta) andava a capo su molte piu' righe del necessario
+	// contando solo quella prima colonna, gonfiando l'altezza di riga
+	// ben oltre quella che mostra Excel (dove il testo entra su una
+	// riga sola nella larghezza combinata).
+	{
+		std::vector<std::pair<int, float> > narrowCols;
+		narrowCols.push_back(std::make_pair(7, 40.0f)); // colonna G stretta
+		narrowCols.push_back(std::make_pair(8, 40.0f)); // colonna H stretta
+		narrowCols.push_back(std::make_pair(9, 40.0f)); // colonna I stretta
+		view->SetColumnWidths(narrowCols);
+
+		TryToParseString("Voce di test", cell(7, 10), doc, true); // G10
+
+		view->SetSelection(cell(7, 10));
+		view->ExtendSelection(cell(9, 10)); // G10:I10
+		win->MergeCells();
+
+		view->SetSelection(cell(7, 10));
+		view->ExtendSelection(cell(7, 10));
+		win->ToggleWrapText();
+		doc->GetCellStyle(cell(7, 10), cs);
+		Check(cs.fWrapText, "ToggleWrapText imposta CellStyle::fWrapText su G10 (la cella in alto a sinistra dell'intervallo unito)");
+
+		std::vector<std::pair<int, float> > heights = view->CustomRowHeights();
+		float row10Height = 20.0f;
+		for (size_t i = 0; i < heights.size(); i++)
+			if (heights[i].first == 10)
+				row10Height = heights[i].second;
+		Check(row10Height <= 40.0f,
+			"riga 10 (testo a capo dentro una cella unita su tre colonne strette) resta bassa (al piu' due righe), non gonfiata contando solo la larghezza della prima colonna");
+	}
+
 	win->Unlock();
 
 	win->Lock();

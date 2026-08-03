@@ -378,6 +378,24 @@ void SheetView::RecalculateWrappedRowHeights()
 	cell c;
 	while (iter.NextExisting(c))
 	{
+		// Celle unite (Fase 12): solo la cella in alto a sinistra ha
+		// testo proprio (stesso principio di DrawCellBand -- le altre
+		// nell'intervallo, anche se anch'esse marcate a capo,
+		// restano sempre vuote qui sotto), ma il calcolo dell'a capo
+		// deve usare la larghezza dell'INTERO intervallo unito, non
+		// solo la prima colonna: una descrizione lunga in una cella
+		// unita su piu' colonne (comune per un'intestazione
+		// descrittiva in una sola colonna stretta) andava a capo su
+		// molte piu' righe del necessario contando solo quella prima
+		// colonna -- bug reale scoperto confrontando con Excel vero
+		// una fattura reale: righe altissime dove Excel le mostra a
+		// una riga sola, perche' la cella e' in realta' unita su
+		// sei colonne.
+		range mergedRange;
+		bool isMerged = fDoc->GetMergedRange(c, &mergedRange);
+		if (isMerged && (mergedRange.top != c.v || mergedRange.left != c.h))
+			continue;
+
 		CellStyle cs;
 		fDoc->GetCellStyle(c, cs);
 		if (!cs.fWrapText)
@@ -392,7 +410,17 @@ void SheetView::RecalculateWrappedRowHeights()
 		// (StringWidth dipende dal font attivo sulla view).
 		gFontSizeTable.SetFontID(this, cs.fFont);
 
-		float width = fColWidths[c.h - 1] - 6;
+		float width;
+		if (isMerged)
+		{
+			width = 0;
+			for (int col = mergedRange.left; col <= mergedRange.right; col++)
+				width += fColWidths[col - 1];
+		}
+		else
+			width = fColWidths[c.h - 1];
+		width -= 6;
+
 		int lines = (int)WrapTextLines(this, text, width).size();
 		if (lines > neededLines[c.v])
 			neededLines[c.v] = lines;
