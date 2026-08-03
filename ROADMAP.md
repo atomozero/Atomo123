@@ -3875,6 +3875,44 @@ pulsanti esistano con `MainWindow` come target, e che il loro
 equivalente, già verificato in `test_format.cpp` con una chiamata
 diretta al metodo.
 
+### Aggiunta: troppopieno della toolbar quando la finestra si restringe
+
+Con 24 pulsanti in tutto (dopo il gruppo Formato sopra), restringendo
+la finestra quelli in eccesso restavano semplicemente tagliati fuori
+dalla vista, irraggiungibili — segnalato dall'utente, che ha scelto
+esplicitamente fra due alternative proposte (andare a capo su più
+righe, oppure nascondere i pulsanti in eccesso dietro un pulsante di
+troppopieno) quella del pulsante di troppopieno, per non far crescere
+l'altezza della toolbar a ogni ridimensionamento.
+
+Nuova classe `ToolbarView` (`ui/src/ToolbarView.h`/`.cpp`): un
+contenitore per veri `BButton` (non una vista disegnata a mano) che,
+quando i pulsanti non entrano più tutti nella larghezza disponibile,
+nasconde quelli in eccesso e li sostituisce con un unico pulsante
+">>" — cliccandolo si apre un `BPopUpMenu` con le stesse voci
+(etichetta e comando) dei pulsanti nascosti. Stesso principio già
+usato da `SheetTabView` per le schede dei fogli (scorrimento con due
+frecce quando non entrano tutte), qui adattato al pulsante di
+troppopieno scelto dall'utente invece che allo scorrimento.
+`BuildToolbar()` in `MainWindow.cpp` costruisce ora un `ToolbarView`
+invece di un `BGroupView`.
+
+**Bug scoperto scrivendo il test**: `BView::ResizeTo()` non garantisce
+che `FrameResized()` sia già stato eseguito quando il chiamante non è
+il thread della finestra stessa (il giro passa dall'app_server) —
+lo stesso motivo per cui `SheetTabView::SetSheets()` richiama
+`Layout()` da sé invece di aspettare un giro di disegno.
+`ToolbarView::Layout()` è quindi pubblico apposta, richiamabile
+direttamente subito dopo un `ResizeTo()` nei test, oltre che da
+`FrameResized()`/`AttachedToWindow()` nell'uso reale.
+
+Test: nuovo `ui/tests/test_toolbar_view.cpp` (venti pulsanti di prova,
+nessuna vera `MainWindow`) verifica che una vista larga mostri tutti i
+pulsanti senza troppopieno, che una vista stretta ne nasconda una
+parte dietro il pulsante ">>", e che riallargare la vista li faccia
+ricomparire tutti. Verificato anche dal vivo ridimensionando la
+finestra reale (via `hey`, "SET Frame of Window 0 to BRect(...)").
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
