@@ -1484,6 +1484,66 @@ configurato altrimenti. Verificato anche dal vivo riaprendo la
 fattura reale: gli importi mostrano ora i due decimali
 ("450,00"/"400,00").
 
+### Bug scoperto: le formule con funzioni con nome non venivano mai calcolate nell'import XLS
+
+L'utente ha segnalato dopo le verifiche precedenti: "non vedo il
+simbolo dell'euro e i calcoli non vengono fatti". Il primo punto è la
+nota sulla configurazione Locale già scritta sopra; il secondo era un
+bug reale e serio, non ancora scoperto nonostante tutte le verifiche
+precedenti sulla stessa fattura — perché riguardava specificamente le
+formule con FUNZIONI CON NOME (`SUM`, non le formule aritmetiche
+semplici come `D37*F37` già verificate). La sezione "TOTALI" della
+fattura (righe 37-45, `SUM(G23:G36)` e simili) restava vuota o a
+zero invece di mostrare i totali reali.
+
+La Fase 6 aveva già risolto questo stesso problema per l'app
+principale (`App::ReadyToRun()` chiama `InitFunctions()` all'avvio) —
+ma il translator XLS è un add-on caricato a parte, compilato con la
+propria copia STATICA di `libengine.a`: ha quindi una propria istanza
+SEPARATA di `gFuncCount`/`gFuncArrayByNr`/`gFuncArrayByName`/`gFuncs`,
+mai popolata da nessuno. `CExcel5Filter` ora chiama `InitFunctions()`
+da solo se non è ancora stato fatto, puntando al VERO binario in
+esecuzione tramite `be_app->GetAppInfo()` (che riflette sempre
+Atomo123 anche quando il codice gira dentro l'add-on caricato
+in-process).
+
+**Bug collaterale scoperto durante il fix**: la prima versione del
+fix ha bloccato l'intera app all'apertura di un file .xls reale
+(nessun crash, nessun messaggio — un blocco indefinito). Causa:
+`gAppName` (una `BPath` globale usata da `LoadPlugIns()` per cercare
+una cartella "Functions/" accanto al binario) non veniva impostata
+prima di chiamare `InitFunctions()` — `LoadPlugIns()` chiamava
+`strcpy` sul risultato di `gAppName.Path()`, `NULL` per una `BPath`
+mai inizializzata in questo processo separato dell'add-on,
+comportamento indefinito invece dell'eccezione pulita attesa.
+Impostare `gAppName` PRIMA di `InitFunctions()` (stesso ordine di
+`App::ReadyToRun()`) risolve anche questo.
+
+**Bug scoperto verificando il fix sulla stessa fattura**: una volta
+che `SUM(...)` calcolava davvero, è emerso un secondo bug indipendente
+nella stessa catena di totali — l'operatore percentuale postfisso di
+Excel (`F37%`, diverso dal formato valuta/percentuale di una cella)
+era un case vuoto in `Excel.formula.cpp` (codice BIFF5 mai completato
+per BIFF8): `D37*F37%` veniva importato come se il "%" non ci fosse,
+100 volte troppo grande. Corretto aggiungendo un vero operatore
+(`opPercent`, in fondo a `PFToken` apposta per non spostare gli
+ordinali di token già persistiti in documenti esistenti) sia nel
+parser BIFF sia nella grammatica nativa (`parser.cpp`, che deve poter
+ri-analizzare il testo della formula esportata al caricamento del
+formato nativo — riconosceva "%" solo dopo un numero letterale come
+"5%", mai dopo un riferimento a cella come "F37%").
+
+Test: nessun test dedicato per la chiamata a `InitFunctions()` nel
+translator (richiederebbe una risorsa 'Func' allegata al binario di
+test, lo stesso limite già documentato per `GetFunctionNr` nei
+translator headless) — verificato dal vivo. Due nuove verifiche in
+`engine/tests/smoke_test.cpp` per l'operatore percentuale (`"=5%"` e
+`"=A1%"`, quest'ultimo prova che funziona anche dopo un riferimento a
+cella, non solo un numero letterale). Verificato anche dal vivo
+riaprendo la fattura reale: l'intera catena di totali ora corrisponde
+esattamente ai valori che Excel stesso aveva calcolato l'ultima volta
+(52,50 → 1.102,50 → 242,55 di IVA → 1.345,05 di totale).
+
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
