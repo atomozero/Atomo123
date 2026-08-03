@@ -3944,6 +3944,53 @@ Verificato dal vivo: impostando il valore del pulsante da script
 (`hey`, che passa dallo stesso `Invoke()` di un vero clic) il menu ora
 si apre correttamente con tutte le voci nascoste.
 
+### Nota per il futuro: ricalcolo a grafo delle dipendenze (misurato, non implementato)
+
+Esistevano due branch remoti sperimentali, partiti da un punto ormai
+molto vecchio della cronologia (prima della Fase 11):
+`claude/expressionparser-mini-excel-r929jg` (un micro-benchmark del
+ricalcolo attuale) e `claude/depgraph-recalc-prototype` (lo stesso
+benchmark più un proof-of-concept standalone di un ricalcolo a grafo
+delle dipendenze). Su richiesta dell'utente, prima di eliminarli come
+branch ormai vecchi e non integrabili puliti (troppo indietro rispetto
+a `master` per un merge senza conflitti), sono stati eseguiti in un
+worktree temporaneo per misurarli con l'engine reale attuale — nessuna
+modifica è stata portata su `master`, solo la misura.
+
+**`engine/tests/recalc_benchmark.cpp`** (replica in-process di
+`RecalculateAll`, linkato all'engine vero): conferma che il modello a
+punto fisso attuale ha un problema di correttezza silenzioso, non solo
+di prestazioni. Sulle catene "all'indietro" (`Ai = A(i+1)+1`, ordine di
+visita opposto all'ordine di dipendenza) il ricalcolo non converge già
+a partire da N=60: il guard di 50 passate scatta prima della
+convergenza e lascia i valori di coda sbagliati **senza segnalare
+nessun errore**. Sul fronte prestazioni, il ricalcolo gira sincrono sul
+thread della finestra: con fogli grandi ma ben formati (catene in
+avanti, il caso "fortunato") il blocco della UI diventa percepibile
+oltre ~16-20k celle e arriva a **~3 secondi** con 190.000 celle (38
+fogli × 5.000 celle).
+
+**`prototypes/depgraph/depgraph_poc.cpp`** (PoC standalone in C++
+puro, stesso modello cella/formula/riferimenti ma senza dipendenze
+Haiku, per poter girare ovunque): un ricalcolo a grafo delle
+dipendenze (dirty-set + ordine topologico) produce **valori identici**
+al punto fisso in tutti i casi in cui questo converge, li corregge
+dove il punto fisso fallisce (catene all'indietro: una sola passata,
+sempre corretta; riferimenti circolari: rilevati esplicitamente invece
+di divergere in silenzio), e riduce drasticamente il lavoro per singola
+modifica — fino a 32000x meno valutazioni su una modifica isolata in
+un foglio largo con 16.000 celle indipendenti.
+
+**Conclusione pratica**: i numeri giustificano di riprendere in mano
+l'idea in futuro (grafo delle dipendenze al posto del punto fisso, più
+lo spostamento del ricalcolo su un thread worker — l'inutilizzato
+`CCalcThread` già esiste nel motore — per eliminare il freeze della
+UI), ma è lavoro non banale sul motore reale e non ancora pianificato
+in nessuna fase. I due branch sono stati eliminati dopo la misura (non
+contenevano altro che questi due file sperimentali, già catturati per
+intero in questa nota); chi riprende il lavoro riparte da zero sul
+motore vero, non da quei prototipi.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
