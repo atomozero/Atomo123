@@ -1710,6 +1710,38 @@ xlwt non calcola mai le formule) in `test_xls_translator.cpp`.
 Verificato anche dal vivo riaprendo la fattura reale: la riga 48 ora
 mostra correttamente il testo della cella (coordinate bancarie del beneficiario).
 
+### Bug scoperto: un simbolo percento letterale scambiato per formato percentuale
+
+Continuando l'indagine sulla stessa fattura, la cella F37 ("Diritti
+Cassa Professionale: ... x 5% ...") mostrava "500%" invece di "x 5%"
+— un errore di grandezza di 100 volte.
+
+Causa: `CFormatter::ParseTemplate` (Formatter.template.cpp) cercava il
+carattere `%` con una semplice `strchr()` sul template grezzo per
+decidere se applicare il formato percentuale (che moltiplica il
+valore per 100 in visualizzazione). Il template reale della cella era
+`"x "0\%` — un prefisso di testo letterale ("x ") seguito dal numero e
+da un simbolo percento anch'esso letterale (preceduto da un backslash
+di escape, non un vero codice di formato). La ricerca grezza non
+distingueva questo caso da un vero formato percentuale come `0%`.
+
+Fix: prima di cercare `%` (e allo stesso modo `.` per le cifre
+decimali e `,` per il separatore delle migliaia), il template viene
+ripulito dal testo letterale fra virgolette e dai caratteri preceduti
+da un backslash di escape. Il simbolo di valuta (`$`/`€`) resta
+cercato sul template grezzo, dato che compare sempre e solo come
+carattere letterale. Con questo fix un formato del genere risulta
+indistinguibile da quello generico predefinito del foglio (non c'e'
+modo di rappresentare un prefisso/suffisso di testo letterale in
+questo formatter): la cella mostra "5" invece di "500%" — non piu'
+sbagliato di un fattore 100, anche se non identico a "x 5%".
+
+Test: nuova fixture `sample_percentliteral.xls` in
+`test_xls_translator.cpp`, verifica che il "%" letterale non triggeri
+piu' il formato percentuale e che un vero formato percentuale ("0%")
+continui a funzionare come prima. Verificato anche dal vivo riaprendo
+la fattura reale: F37 ora mostra "5" invece di "500%".
+
 ## Fase 6 — Polish e funzionalità avanzate (CHIUSA)
 
 - [x] Funzioni con nome nelle formule (`SUM`, `IF`, `MAX`, ecc.): il
