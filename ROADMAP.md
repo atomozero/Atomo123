@@ -362,15 +362,25 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       selezione (click altrove) confermano; Escape annulla. Vedi nota
       tecnica sotto sul perché Escape richiede un `BMessageFilter`
       sulla `BTextView` interna invece di un semplice `KeyDown`.
-- [ ] Test end-to-end del doppio click/digitazione diretta: verificato
-      con test di non-regressione (apertura file reale con il nuovo
-      codice presente, nessun crash) e con revisione manuale del
-      codice, ma non con un click/tasto realmente sintetizzato — questo
-      ambiente di test non ha uno strumento di iniezione mouse/tastiera
-      (a differenza di `B_REFS_RECEIVED`/`B_SAVE_REQUESTED`, che si
-      possono simulare costruendo il `BMessage` a mano). Verifica
-      interattiva manuale rimandata a un utente reale o a un ambiente
-      con tale strumento.
+- [x] Test end-to-end del doppio click/digitazione diretta: chiuso in
+      `ui/tests/test_real_input_edit.cpp` con una terza tecnica,
+      diversa sia dalla chiamata diretta a `MouseDown()`/`KeyDown()`
+      (usata altrove, vedi `test_editing.cpp`) sia da uno strumento di
+      iniezione esterno come `hey`/Pippo (scartati per i problemi di
+      affidabilità/targeting cross-finestra già documentati): un vero
+      `BMessage(B_MOUSE_DOWN)`/`BMessage(B_KEY_DOWN)`, con gli stessi
+      campi che metterebbe l'app_server, consegnato con
+      `BMessenger::SendMessage()` (sincrono) a `SheetView` — resta
+      in-process ma passa comunque dal vero ciclo di dispatch di
+      `BView::DispatchMessage()`, la stessa strada che userebbe un
+      evento reale. Il campo delle coordinate in vista locale è
+      `"be:view_where"` (non `"where"`, che restava a (0,0); verificato
+      empiricamente con un piccolo programma di prova prima di
+      scrivere il test vero). Verifica sia il doppio click (apre
+      l'editor sul contenuto esistente della cella, senza sostituirlo)
+      sia la digitazione diretta (apre l'editor col solo carattere
+      digitato, sostituendo il contenuto) — comportamento diverso fra
+      i due, entrambi confermati.
 - [x] Menu Modifica: Taglia/Copia/Incolla/Cancella, passano dagli
       appunti di sistema veri (`be_clipboard`, Clipboard Kit) e non da
       un buffer privato dell'app — il contenuto copiato (la formula,
