@@ -60,7 +60,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<std::pair<int, float> >* rowHeights,
 	const int* frozenRows, const int* frozenCols,
 	const std::vector<EmbeddedImage>* images,
-	const bool* showGrid)
+	const bool* showGrid,
+	const bool* hasTabColor, const rgb_color* tabColor)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -522,6 +523,21 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione colore della linguetta del foglio, in coda: vedi il
+	// commento su AscdSheet::hasTabColor/tabColor in AscdIO.h -- un
+	// byte "presente si'/no" seguito da tre byte RGB (sempre scritti,
+	// stesso principio delle altre sezioni sopra).
+	{
+		uint8 has = (hasTabColor && *hasTabColor) ? 1 : 0;
+		rgb_color color = { 0, 0, 0, 255 };
+		if (has && tabColor)
+			color = *tabColor;
+		uint8 rgb[3] = { color.red, color.green, color.blue };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
@@ -531,7 +547,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<std::pair<int, float> >* rowHeights,
 	int* frozenRows, int* frozenCols,
 	std::vector<EmbeddedImage>* images,
-	bool* showGrid)
+	bool* showGrid,
+	bool* hasTabColor, rgb_color* tabColor)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1017,6 +1034,29 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		if (showGrid) *showGrid = sg != 0;
 	}
 
+	// Sezione colore della linguetta del foglio, in coda: vedi il
+	// commento in SaveASCD -- stesso principio "got != 0" delle sezioni
+	// sopra.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has)
+				|| source->Read(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+				return B_BAD_DATA;
+		}
+		if (hasTabColor) *hasTabColor = has != 0;
+		if (tabColor)
+		{
+			tabColor->red = rgb[0];
+			tabColor->green = rgb[1];
+			tabColor->blue = rgb[2];
+			tabColor->alpha = 255;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1132,7 +1172,7 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 
 		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts, &sheet.colWidths,
 			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
-			&sheet.showGrid);
+			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor);
 		if (err != B_OK)
 			return err;
 	}
@@ -1175,7 +1215,7 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
 
 		status_t err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths,
 			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
-			&sheet.showGrid);
+			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

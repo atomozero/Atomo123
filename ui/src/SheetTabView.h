@@ -13,6 +13,7 @@
 #ifndef SHEET_TAB_VIEW_H
 #define SHEET_TAB_VIEW_H
 
+#include <GraphicsDefs.h>
 #include <String.h>
 #include <View.h>
 
@@ -41,7 +42,15 @@ public:
 	// MainWindow::RebuildSheetTabs() ogni volta che cambia l'elenco
 	// dei fogli o il foglio attivo (Nuovo, Apri, cambio scheda).
 	// Porta la scheda attiva in vista se non lo e' gia'.
-	void SetSheets(const std::vector<BString>& names, int activeIndex);
+	// "hasColor"/"colors" sono opzionali e paralleli a "names" (stesso
+	// indice, NULL = nessuna scheda colorata): il colore scelto per
+	// ciascun foglio (import XLSX da <sheetPr><tabColor>, vedi
+	// AscdSheet::tabColor in AscdIO.h) -- questa vista resta comunque
+	// ignara di AscdSheet/MainWindow (vedi il commento in cima al
+	// file), riceve solo colori grezzi.
+	void SetSheets(const std::vector<BString>& names, int activeIndex,
+		const std::vector<bool>* hasColor = NULL,
+		const std::vector<rgb_color>* colors = NULL);
 
 	// Esposti pubblicamente apposta per essere testabili direttamente
 	// (stesso principio di SheetView::CellRect/CellAt -- vedi
@@ -60,6 +69,8 @@ private:
 	struct TabInfo {
 		BString name;
 		float width;
+		bool hasColor;
+		rgb_color color;
 	};
 	struct VisibleTab {
 		int index;

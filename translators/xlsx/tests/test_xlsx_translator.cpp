@@ -469,13 +469,29 @@ int main()
 
 						// Visibilita' griglia: sample.xlsx ha
 						// <sheetView showGridLines="0"/> (aggiunto
-						// apposta per questo test) -- un solo byte,
-						// ultima sezione del formato.
+						// apposta per questo test) -- un solo byte.
 						if (pos + 1 <= ascdLen)
 						{
 							uint8 showGrid = ascdData[pos]; pos += 1;
 							Check(showGrid == 0,
 								"la griglia nascosta (showGridLines=\"0\") e' importata dal file XLSX originale");
+						}
+
+						// Colore della linguetta: sample.xlsx ha
+						// <sheetPr><tabColor rgb="FF00B050"/></sheetPr>
+						// (aggiunto apposta per questo test, lo stesso
+						// verde del file reale che ha motivato questa
+						// fase) -- un byte "presente" seguito da tre
+						// byte RGB, ultima sezione del formato.
+						if (pos + 4 <= ascdLen)
+						{
+							uint8 hasTabColor = ascdData[pos]; pos += 1;
+							uint8 r = ascdData[pos]; pos += 1;
+							uint8 g = ascdData[pos]; pos += 1;
+							uint8 b = ascdData[pos]; pos += 1;
+							Check(hasTabColor == 1 && r == 0 && g == 176 && b == 80,
+								"il colore verde della linguetta (tabColor rgb=\"FF00B050\") "
+								"e' importato dal file XLSX originale");
 						}
 
 						// sample.xlsx e' un solo foglio: dopo tutte le

@@ -77,20 +77,27 @@ class CContainer;
 // showGridLines="...">, o un salvataggio precedente), non una
 // preferenza globale dell'app -- vedi il commento su AscdSheet::
 // showGrid sotto sul perche' e' diventato un attributo per-foglio.
+// "hasTabColor"/"tabColor" seguono lo stesso principio: import XLSX da
+// <sheetPr><tabColor rgb="..."/></sheetPr>, vedi AscdSheet::tabColor
+// sotto. "hasTabColor" separato da un colore "vuoto" sentinella per lo
+// stesso motivo di CellStyle: un colore a caso (es. nero) non si
+// distingue da "nessun colore scelto" senza un booleano a parte.
 status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<ChartObject>* charts = NULL,
 	std::vector<std::pair<int, float> >* colWidths = NULL,
 	std::vector<std::pair<int, float> >* rowHeights = NULL,
 	int* frozenRows = NULL, int* frozenCols = NULL,
 	std::vector<EmbeddedImage>* images = NULL,
-	bool* showGrid = NULL);
+	bool* showGrid = NULL,
+	bool* hasTabColor = NULL, rgb_color* tabColor = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
 	const std::vector<std::pair<int, float> >* rowHeights = NULL,
 	const int* frozenRows = NULL, const int* frozenCols = NULL,
 	const std::vector<EmbeddedImage>* images = NULL,
-	const bool* showGrid = NULL);
+	const bool* showGrid = NULL,
+	const bool* hasTabColor = NULL, const rgb_color* tabColor = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -130,6 +137,14 @@ struct AscdSheet {
 	// true di default: qualunque documento scritto prima di questo
 	// campo (o creato da capo) mantiene il comportamento di sempre.
 	bool showGrid = true;
+	// Colore della linguetta del foglio (import XLSX da <sheetPr>
+	// <tabColor rgb="..."/></sheetPr>, o scelto a mano in futuro --
+	// ancora nessuna UI per farlo, solo lettura/persistenza per ora).
+	// false di default: nessun documento scritto prima di questo campo
+	// aveva mai un colore, la linguetta resta con lo stile predefinito
+	// di SheetTabView.
+	bool hasTabColor = false;
+	rgb_color tabColor = { 0, 0, 0, 255 };
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

@@ -801,10 +801,16 @@ void MainWindow::RebuildSheetTabs()
 		return;
 
 	std::vector<BString> names;
+	std::vector<bool> hasColor;
+	std::vector<rgb_color> colors;
 	for (size_t i = 0; i < fSheets.size(); i++)
+	{
 		names.push_back(fSheets[i].name);
+		hasColor.push_back(fSheets[i].hasTabColor);
+		colors.push_back(fSheets[i].tabColor);
+	}
 
-	fSheetTabView->SetSheets(names, fActiveSheetIndex);
+	fSheetTabView->SetSheets(names, fActiveSheetIndex, &hasColor, &colors);
 }
 
 std::vector<BString> MainWindow::LoadRecentFiles()
@@ -930,7 +936,7 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 	// (poco sotto) li passa gia' tutti correttamente.
 	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts, &outSheet->colWidths,
 		&outSheet->rowHeights, &outSheet->frozenRows, &outSheet->frozenCols, &outSheet->images,
-		&outSheet->showGrid);
+		&outSheet->showGrid, &outSheet->hasTabColor, &outSheet->tabColor);
 	if (err != B_OK)
 	{
 		outSheet->doc->Release();

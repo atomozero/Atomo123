@@ -81,7 +81,8 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
 	const std::vector<EmbeddedImage>* images = NULL,
 	const std::vector<std::pair<int, float> >* rowHeights = NULL,
-	const bool* showGrid = NULL)
+	const bool* showGrid = NULL,
+	const bool* hasTabColor = NULL, const rgb_color* tabColor = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -529,6 +530,22 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	{
 		uint8 sg = (showGrid ? *showGrid : true) ? 1 : 0;
 		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+
+	// Sezione colore della linguetta del foglio, in coda (vedi
+	// ui/src/AscdIO.cpp): questo translator estrae davvero
+	// <sheetPr><tabColor rgb="..."/></sheetPr> dal file XLSX originale
+	// (SheetStart) -- un byte "presente si'/no" seguito da tre byte
+	// RGB (sempre scritti, ignorati in lettura se il primo byte e' 0).
+	{
+		uint8 has = (hasTabColor && *hasTabColor) ? 1 : 0;
+		rgb_color color = { 0, 0, 0, 255 };
+		if (has && tabColor)
+			color = *tabColor;
+		uint8 rgb[3] = { color.red, color.green, color.blue };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
 			return B_IO_ERROR;
 	}
 
@@ -1716,6 +1733,8 @@ struct SheetContext {
 	std::vector<std::pair<int, float> >* colWidths; // opzionale (NULL = non raccolte)
 	std::vector<std::pair<int, float> >* rowHeights; // opzionale (NULL = non raccolte)
 	bool* showGrid; // opzionale (NULL = non raccolto)
+	bool* hasTabColor; // opzionale (NULL = non raccolto)
+	rgb_color* tabColor; // valido solo se *hasTabColor diventa true
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
 	bool date1904; // Fase 12: epoca del sistema data, da <workbookPr>
@@ -1823,6 +1842,21 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 			if (strcmp(atts[i], "showGridLines") == 0)
 				show = atoi(atts[i + 1]) != 0;
 		*ctx->showGrid = show;
+	}
+	// <sheetPr><tabColor rgb="FF00B050"/></sheetPr>, prima di
+	// <sheetViews>/<cols>/<sheetData> -- il colore scelto dall'utente
+	// per la linguetta del foglio (HexToColor, definita sopra, gia'
+	// usata per gli stessi colori "rgb=" di font/sfondo cella). Assente
+	// del tutto se il foglio non ha una linguetta colorata (il caso
+	// comune): *hasTabColor resta false, il valore di partenza passato
+	// dal chiamante.
+	else if (strcmp(name, "tabColor") == 0 && ctx->hasTabColor)
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "rgb") == 0 && HexToColor(atts[i + 1], ctx->tabColor))
+				*ctx->hasTabColor = true;
+		}
 	}
 	// <row r="1" ht="48.75" customHeight="1">...</row>, dentro
 	// <sheetData>, un fratello di <c> (una entry per riga, non per
@@ -2151,7 +2185,8 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	std::vector<CondFormatRule>* condRules = NULL,
 	bool date1904 = false,
 	std::vector<std::pair<int, float> >* rowHeights = NULL,
-	bool* showGrid = NULL)
+	bool* showGrid = NULL,
+	bool* hasTabColor = NULL, rgb_color* tabColor = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -2159,6 +2194,8 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.colWidths = colWidths;
 	ctx.rowHeights = rowHeights;
 	ctx.showGrid = showGrid;
+	ctx.hasTabColor = hasTabColor;
+	ctx.tabColor = tabColor;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
 	ctx.date1904 = date1904;
@@ -2699,6 +2736,8 @@ struct ParsedSheet {
 	std::vector<std::pair<int, float> > rowHeights;
 	std::vector<EmbeddedImage> images;
 	bool showGrid = true;
+	bool hasTabColor = false;
+	rgb_color tabColor = { 0, 0, 0, 255 };
 };
 
 // Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
@@ -2724,7 +2763,8 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			return B_IO_ERROR;
 
 		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths, &sheets[i].images,
-			&sheets[i].rowHeights, &sheets[i].showGrid);
+			&sheets[i].rowHeights, &sheets[i].showGrid,
+			&sheets[i].hasTabColor, &sheets[i].tabColor);
 		if (err != B_OK)
 			return err;
 	}
@@ -2897,7 +2937,8 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		parsed.doc = new CContainer(NULL, NULL);
 		std::vector<CondFormatRule> condRules;
 		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles,
-			&condRules, date1904, &parsed.rowHeights, &parsed.showGrid))
+			&condRules, date1904, &parsed.rowHeights, &parsed.showGrid,
+			&parsed.hasTabColor, &parsed.tabColor))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;

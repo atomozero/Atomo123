@@ -23,9 +23,11 @@
 #include <vector>
 
 #include <Application.h>
+#include <Bitmap.h>
 #include <Message.h>
 #include <OS.h>
 #include <String.h>
+#include <View.h>
 #include <Window.h>
 
 #include "SheetTabView.h"
@@ -141,6 +143,96 @@ int main()
 	win->Lock();
 	Check(win->fLastIndex == 1,
 		"un clic sulla seconda scheda invia il messaggio di cambio foglio con indice 1");
+
+	// --- Colore della scheda (import XLSX, <sheetPr><tabColor>): la
+	// scheda NON attiva con un colore lo mostra a tutta area, quella
+	// attiva resta bianca con solo una barra colorata in basso -- vedi
+	// il commento in SheetTabView::Draw(). Verificato leggendo i pixel
+	// davvero disegnati su una bitmap offscreen ("accetta viste"),
+	// stessa tecnica di ui/tests/test_image_alpha.cpp: un controllo
+	// sullo stato interno non basterebbe, qui conta il colore che
+	// arriva davvero sullo schermo.
+	{
+		std::vector<BString> two;
+		two.push_back("Rossa");
+		two.push_back("Normale");
+		std::vector<bool> hasColor;
+		hasColor.push_back(true);
+		hasColor.push_back(false);
+		std::vector<rgb_color> colorList;
+		rgb_color red = { 255, 0, 0, 255 };
+		colorList.push_back(red);
+		colorList.push_back(red); // ignorato: hasColor[1] e' false
+
+		BRect canvasRect(0, 0, 299, 21);
+		BBitmap* canvas = new BBitmap(canvasRect, B_RGB32, true);
+		SheetTabView* offTabs = new SheetTabView("offtabs", kMsgTestSwitch, win);
+		offTabs->ResizeTo(canvasRect.Width(), canvasRect.Height());
+		canvas->AddChild(offTabs);
+
+		// SetSheets (GetFont/Invalidate) va chiamato con la bitmap
+		// offscreen gia' bloccata, non solo Draw(): chiamato prima del
+		// Lock() va in crash, verificato a parte con un piccolo
+		// programma di prova (nessuna vera finestra dietro la vista
+		// finche' non si blocca la bitmap che la ospita).
+		bool locked = canvas->Lock();
+		Check(locked, "la bitmap offscreen per le schede si blocca per disegnarci sopra");
+
+		// Scheda 0 (rossa) NON attiva: tutta l'area della scheda deve
+		// essere rossa, non il grigio predefinito.
+		offTabs->SetSheets(two, 1, &hasColor, &colorList);
+		BRect tab0Rect = offTabs->TabRectFor(0);
+		// Vicino all'angolo in alto a sinistra, non al centro: il nome
+		// della scheda e' disegnato centrato verticalmente e a ridosso
+		// del bordo sinistro (kTabPadding), un pixel preso li' in mezzo
+		// rischia di cadere sull'antialiasing del testo invece che sul
+		// riempimento pieno dello sfondo.
+		BPoint inside0(tab0Rect.left + 3, tab0Rect.top + 3);
+
+		offTabs->Draw(canvasRect);
+		offTabs->Sync();
+		canvas->Unlock();
+
+		uint8* bits = (uint8*)canvas->Bits();
+		int32 bpr = canvas->BytesPerRow();
+		uint8* px = bits + (int32)inside0.y * bpr + (int32)inside0.x * 4;
+		// B_RGB32 in memoria: B, G, R, A (ordine verificato in
+		// test_image_alpha.cpp).
+		Check(px[0] == 0 && px[1] == 0 && px[2] == 255,
+			"la scheda 0 (rossa, NON attiva) e' disegnata rossa a tutta area");
+
+		// Scheda 0 (rossa) ATTIVA invece: il centro deve restare bianco
+		// (non rosso pieno, si confonderebbe troppo con il foglio
+		// sopra), ma il bordo inferiore mostra comunque la barra
+		// colorata. La scheda 1 (senza colore) e' ora quella NON
+		// attiva: deve tornare al grigio predefinito, non restare
+		// bianca come quando era lei l'attiva sopra.
+		locked = canvas->Lock();
+		offTabs->SetSheets(two, 0, &hasColor, &colorList);
+		tab0Rect = offTabs->TabRectFor(0);
+		BPoint center0(tab0Rect.left + 3, tab0Rect.top + 3);
+		BPoint bottom0(tab0Rect.left + tab0Rect.Width() / 2, tab0Rect.bottom - 1);
+		BRect tab1Rect = offTabs->TabRectFor(1);
+		BPoint inside1(tab1Rect.left + 3, tab1Rect.top + 3);
+
+		offTabs->Draw(canvasRect);
+		offTabs->Sync();
+		canvas->Unlock();
+
+		uint8* pxCenter = bits + (int32)center0.y * bpr + (int32)center0.x * 4;
+		Check(pxCenter[0] == 255 && pxCenter[1] == 255 && pxCenter[2] == 255,
+			"la scheda 0 (rossa) ATTIVA resta bianca al centro, non rossa piena");
+
+		uint8* pxBottom = bits + (int32)bottom0.y * bpr + (int32)bottom0.x * 4;
+		Check(pxBottom[0] == 0 && pxBottom[1] == 0 && pxBottom[2] == 255,
+			"la scheda 0 (rossa) ATTIVA mostra comunque una barra rossa sul bordo inferiore");
+
+		uint8* px1 = bits + (int32)inside1.y * bpr + (int32)inside1.x * 4;
+		Check(px1[0] == 220 && px1[1] == 220 && px1[2] == 220,
+			"la scheda 1 (senza colore, ora NON attiva) e' grigia come sempre");
+
+		delete canvas;
+	}
 
 	win->Unlock();
 

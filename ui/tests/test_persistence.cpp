@@ -72,6 +72,8 @@ int main()
 
 	int frozenRows = 2, frozenCols = 1;
 	bool showGrid = false; // non il default (true): per essere sicuri che sia DAVVERO riletto, non solo lasciato al valore di partenza
+	bool hasTabColor = true;
+	rgb_color tabColor = { 0, 176, 80, 255 }; // verde, lo stesso tabColor del file reale che ha motivato questa fase
 
 	// Font non predefinito su A2 (grassetto), sulla famiglia REALE del
 	// font di sistema (vedi il commento in cima al file sul perche').
@@ -164,7 +166,7 @@ int main()
 	{
 		BFile file(path, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 		status_t err = SaveASCD(doc, &file, NULL, NULL, &rowHeights, &frozenRows, &frozenCols,
-			&images, &showGrid);
+			&images, &showGrid, &hasTabColor, &tabColor);
 		Check(err == B_OK, "SaveASCD con altezze di riga e Blocca riquadri riesce");
 	}
 	doc->Release();
@@ -174,11 +176,14 @@ int main()
 	int loadedFrozenRows = -1, loadedFrozenCols = -1;
 	std::vector<EmbeddedImage> loadedImages;
 	bool loadedShowGrid = true; // opposto del valore scritto, per essere sicuri che sia DAVVERO riletto
+	bool loadedHasTabColor = false;
+	rgb_color loadedTabColor = { 0, 0, 0, 255 };
 
 	{
 		BFile file(path, B_READ_ONLY);
 		status_t err = LoadASCD(&file, reloaded, NULL, NULL,
-			&loadedHeights, &loadedFrozenRows, &loadedFrozenCols, &loadedImages, &loadedShowGrid);
+			&loadedHeights, &loadedFrozenRows, &loadedFrozenCols, &loadedImages, &loadedShowGrid,
+			&loadedHasTabColor, &loadedTabColor);
 		Check(err == B_OK, "LoadASCD dallo stesso file riesce");
 	}
 
@@ -186,6 +191,10 @@ int main()
 		"Blocca riquadri (2 righe, 1 colonna) sopravvive al giro di salvataggio/ricarica");
 
 	Check(!loadedShowGrid, "la griglia nascosta (showGrid=false) sopravvive al giro di salvataggio/ricarica");
+
+	Check(loadedHasTabColor && loadedTabColor.red == 0 && loadedTabColor.green == 176
+			&& loadedTabColor.blue == 80,
+		"il colore della linguetta del foglio sopravvive al giro di salvataggio/ricarica");
 
 	Check(loadedHeights.size() == 2, "entrambe le altezze di riga personalizzate sopravvivono");
 	bool foundRow1 = false, foundRow3 = false;
@@ -328,15 +337,17 @@ int main()
 	int oldFrozenRows = -1, oldFrozenCols = -1;
 	std::vector<std::pair<int, float> > oldHeights;
 	bool oldShowGrid = false; // opposto del default (true): per essere sicuri che il ripiego scatti davvero
+	bool oldHasTabColor = true; // opposto del default (false): stesso motivo
 	{
 		BFile file(oldPath, B_READ_ONLY);
 		status_t err = LoadASCD(&file, oldStyleReloaded, NULL, NULL,
-			&oldHeights, &oldFrozenRows, &oldFrozenCols, NULL, &oldShowGrid);
+			&oldHeights, &oldFrozenRows, &oldFrozenCols, NULL, &oldShowGrid, &oldHasTabColor);
 		Check(err == B_OK, "un file senza le nuove sezioni resta leggibile");
 	}
 	Check(oldFrozenRows == 0 && oldFrozenCols == 0 && oldHeights.empty(),
 		"e chi chiede i nuovi campi riceve i valori predefiniti (nessun blocco/altezza)");
 	Check(oldShowGrid, "un file senza la sezione griglia riceve il default (griglia visibile)");
+	Check(!oldHasTabColor, "un file senza la sezione colore linguetta riceve il default (nessun colore)");
 
 	doc = NULL; // gia' rilasciato sopra
 	reloaded->Release();

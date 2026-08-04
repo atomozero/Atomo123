@@ -57,7 +57,8 @@ void SheetTabView::FrameResized(float width, float height)
 	Invalidate();
 }
 
-void SheetTabView::SetSheets(const std::vector<BString>& names, int activeIndex)
+void SheetTabView::SetSheets(const std::vector<BString>& names, int activeIndex,
+	const std::vector<bool>* hasColor, const std::vector<rgb_color>* colors)
 {
 	fTabs.clear();
 	BFont font;
@@ -69,6 +70,10 @@ void SheetTabView::SetSheets(const std::vector<BString>& names, int activeIndex)
 		t.width = font.StringWidth(t.name.String()) + kTabPadding * 2;
 		if (t.width < kMinTabWidth)
 			t.width = kMinTabWidth;
+		t.hasColor = hasColor && i < hasColor->size() && (*hasColor)[i];
+		t.color = { 0, 0, 0, 255 };
+		if (t.hasColor && colors && i < colors->size())
+			t.color = (*colors)[i];
 		fTabs.push_back(t);
 	}
 	fActiveIndex = activeIndex;
@@ -198,13 +203,29 @@ void SheetTabView::Draw(BRect updateRect)
 	for (size_t v = 0; v < fVisible.size(); v++)
 	{
 		const VisibleTab& tab = fVisible[v];
+		const TabInfo& info = fTabs[tab.index];
 		bool active = tab.index == fActiveIndex;
 
+		// Scheda colorata (import XLSX, <sheetPr><tabColor>): stesso
+		// linguaggio visivo di Excel -- la scheda NON attiva mostra il
+		// colore a tutta area (si nota anche senza guardarla da vicino,
+		// esattamente come l'originale), quella attiva resta bianca
+		// (deve confondersi con il foglio sopra, non spiccare) con solo
+		// una barra colorata in basso a ricordare la scelta.
 		if (active)
 			SetHighColor(255, 255, 255);
+		else if (info.hasColor)
+			SetHighColor(info.color);
 		else
 			SetHighColor(220, 220, 220);
 		FillRect(tab.rect);
+
+		if (active && info.hasColor)
+		{
+			BRect bar(tab.rect.left, tab.rect.bottom - 3, tab.rect.right, tab.rect.bottom);
+			SetHighColor(info.color);
+			FillRect(bar);
+		}
 
 		SetHighColor(140, 140, 140);
 		StrokeRect(tab.rect);
