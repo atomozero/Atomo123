@@ -170,6 +170,18 @@ int main()
 		&& textColorButton->Message() && highlightButton->Message(),
 		"\"toolTextColor\"/\"toolHighlight\" esistono con un messaggio valido");
 
+	// Cliccarlo davvero apre ColorWindow (una BWindow a se', thread
+	// proprio) -- qui interessa solo che l'apertura non vada in crash,
+	// non il risultato della scelta colore (asincrona, guidata
+	// dall'utente, fuori scopo). Cliccato due volte apposta: la
+	// seconda volta la finestra esiste gia' ed e' gia' mostrata, lo
+	// stesso scenario di un crash reale segnalato dall'utente
+	// ("Looper must be locked") in MainWindow::ShowColorWindow(), che
+	// chiamava ColorWindow::SetMode() senza il lock della sua BWindow.
+	ClickButton(win, highlightButton);
+	ClickButton(win, highlightButton);
+	Check(true, "cliccare due volte \"toolHighlight\" (ColorWindow gia' aperta la seconda volta) non va in crash");
+
 	win->Unlock();
 
 	win->Lock();

@@ -1516,7 +1516,18 @@ void MainWindow::RefreshNameWindow()
 		names.push_back(BString((const char*)i->first));
 		ranges.push_back(BString(rangeText));
 	}
-	fNameWindow->SetNames(names, ranges);
+	// fNameWindow e' una BWindow a se', con un thread/BLooper proprio
+	// (non lo stesso di MainWindow): toccare una sua BView (SetNames
+	// aggiorna la BListView interna) da qui senza il suo lock viola le
+	// regole di threading di Haiku -- bug reale scoperto da un crash
+	// realmente riprodotto dall'utente sullo stesso schema in
+	// ShowColorWindow() sotto (vedi il commento li'), poi trovato
+	// replicato anche qui.
+	if (fNameWindow->Lock())
+	{
+		fNameWindow->SetNames(names, ranges);
+		fNameWindow->Unlock();
+	}
 }
 
 void MainWindow::ShowNameWindow()
@@ -1559,7 +1570,20 @@ void MainWindow::ShowColorWindow(bool background)
 	CellStyle cs;
 	if (fDoc)
 		fDoc->GetCellStyle(fSheetView->Selection(), cs);
-	fColorWindow->SetMode(background, background ? cs.fLowColor : cs.fHighColor);
+
+	// fColorWindow e' una BWindow a se' (thread/BLooper proprio, non
+	// quello di MainWindow): SetMode() tocca fColorControl, una sua
+	// BView (BColorControl::SetValue chiama Invalidate()), quindi va
+	// fatto col suo lock preso -- bug reale, crash riprodotto
+	// dall'utente ("Looper must be locked", vedi il report di crash):
+	// mentre la ColorWindow gia' aperta ha un thread proprio attivo,
+	// chiamare un suo metodo da qui senza Lock() e' esattamente la
+	// corsa che Haiku intercetta e blocca in debug.
+	if (fColorWindow->Lock())
+	{
+		fColorWindow->SetMode(background, background ? cs.fLowColor : cs.fHighColor);
+		fColorWindow->Unlock();
+	}
 
 	if (fColorWindow->IsHidden())
 		fColorWindow->Show();
@@ -1571,7 +1595,14 @@ void MainWindow::ShowPreferencesWindow()
 	if (!fPreferencesWindow)
 		fPreferencesWindow = new PreferencesWindow(BMessenger(this));
 
-	fPreferencesWindow->SetValues(fSheetView->ShowGrid(), gDecimalPoint, gListSeparator);
+	// Stesso motivo di fNameWindow/fColorWindow sopra: SetValues tocca
+	// le BView interne di PreferencesWindow, che vive sul proprio
+	// thread.
+	if (fPreferencesWindow->Lock())
+	{
+		fPreferencesWindow->SetValues(fSheetView->ShowGrid(), gDecimalPoint, gListSeparator);
+		fPreferencesWindow->Unlock();
+	}
 
 	if (fPreferencesWindow->IsHidden())
 		fPreferencesWindow->Show();
