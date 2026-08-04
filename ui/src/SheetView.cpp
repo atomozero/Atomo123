@@ -1947,7 +1947,18 @@ void SheetView::Draw(BRect updateRect)
 			BBitmap* bitmap = DecodeImageBytes(img.pngData);
 			if (bitmap)
 			{
+				// Bug reale: senza questo cambio di modalita' resta
+				// attiva B_OP_COPY (l'impostazione predefinita di
+				// BView, mai toccata fin qui in questo Draw()), che
+				// scrive il colore del bitmap cosi' com'e' ignorando
+				// il canale alpha -- un PNG con sfondo trasparente
+				// mostrerebbe uno sfondo pieno/nero invece della
+				// cella sottostante. Stesso schema gia' in uso sopra
+				// per il tinteggio della selezione (righe 1832-1838).
+				SetDrawingMode(B_OP_ALPHA);
+				SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
 				DrawBitmap(bitmap, bitmap->Bounds(), frame);
+				SetDrawingMode(B_OP_COPY);
 				delete bitmap;
 			}
 		}

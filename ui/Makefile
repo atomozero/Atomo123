@@ -271,6 +271,22 @@ test-selection: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_selection
 
+# Test della trasparenza nelle immagini incorporate (bug reale
+# segnalato dall'utente): stessa ragione di legare all'engine di
+# traduzione (-ltranslation, gia' in $(LIBS)) di test-chart/test-pivot,
+# ma qui serve anche codificare un vero PNG con canale alpha al volo.
+test-image-alpha: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_image_alpha.cpp -o tests/test_image_alpha.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_image_alpha tests/test_image_alpha.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_image_alpha
+
 # Test di Riempi in basso/a destra (Fase 7): stessa ragione di
 # test-selection (BScrollView reale).
 test-fill: $(OBJECTS) $(ENGINE_DIR)/libengine.a
@@ -588,6 +604,7 @@ clean:
 		tests/test_real_input_edit tests/test_real_input_edit.o \
 		tests/test_navigation tests/test_navigation.o \
 		tests/test_selection tests/test_selection.o \
+		tests/test_image_alpha tests/test_image_alpha.o \
 		tests/test_fill tests/test_fill.o \
 		tests/test_sort tests/test_sort.o \
 		tests/test_undo tests/test_undo.o \
@@ -612,4 +629,4 @@ clean:
 		/tmp/test_persistence.ascd /tmp/test_persistence_old.ascd \
 		tests/test_borders tests/test_borders.o
 
-.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean
