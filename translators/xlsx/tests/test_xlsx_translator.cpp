@@ -244,8 +244,11 @@ int main()
 
 		// Larghezze di colonna lette da <cols> in tests/sample.xlsx:
 		// colonna 1 a larghezza 20 caratteri, colonne 3-4 a larghezza 8
-		// -- convertite in pixel con la stessa approssimazione di
-		// ExcelColWidthToPixels (XlsxTranslator.cpp): pixel = char*7+5.
+		// -- convertite in pixel con la formula esatta di Excel
+		// (ExcelColWidthToPixels, ECMA-376 18.3.1.13, MDW=7):
+		// floor(((256*w + floor(128/7)) / 256) * 7). Per w=20:
+		// floor(((5120+18)/256)*7) = floor(140.49) = 140. Per w=8:
+		// floor(((2048+18)/256)*7) = floor(56.49) = 56.
 		// "pos" punta gia' subito dopo l'ultima cella, cioe' all'inizio
 		// della sezione grafici (sempre scritta, vuota qui) seguita
 		// dalla sezione larghezze di colonna.
@@ -271,16 +274,16 @@ int main()
 					memcpy(&col, ascdData + pos, 2); pos += 2;
 					memcpy(&width, ascdData + pos, 4); pos += 4;
 
-					if (col == 1 && fabs(width - (20.0f * 7 + 5)) < 0.01f)
+					if (col == 1 && fabs(width - 140.0f) < 0.01f)
 						foundCol1 = true;
-					if (col == 3 && fabs(width - (8.0f * 7 + 5)) < 0.01f)
+					if (col == 3 && fabs(width - 56.0f) < 0.01f)
 						foundCol3 = true;
-					if (col == 4 && fabs(width - (8.0f * 7 + 5)) < 0.01f)
+					if (col == 4 && fabs(width - 56.0f) < 0.01f)
 						foundCol4 = true;
 				}
-				Check(foundCol1, "la larghezza della colonna 1 (20 caratteri -> 145 pixel) e' importata");
-				Check(foundCol3, "la larghezza della colonna 3 (8 caratteri -> 61 pixel, da min=3) e' importata");
-				Check(foundCol4, "la larghezza della colonna 4 (8 caratteri -> 61 pixel, da max=4) e' importata");
+				Check(foundCol1, "la larghezza della colonna 1 (20 caratteri -> 140 pixel) e' importata");
+				Check(foundCol3, "la larghezza della colonna 3 (8 caratteri -> 56 pixel, da min=3) e' importata");
+				Check(foundCol4, "la larghezza della colonna 4 (8 caratteri -> 56 pixel, da max=4) e' importata");
 
 				// Colori di cella: A1 (s="1" in sample.xlsx) usa fontId=1
 				// (testo blu, rgb="FF0000FF") e fillId=2 (sfondo dal tema
@@ -356,12 +359,30 @@ int main()
 						// Le cinque verifiche sotto controllano che
 						// questo translator le scriva sempre, anche
 						// vuote, esattamente come SaveASCD.
+						// Riga 1 di sample.xlsx ha ht="30" customHeight="1"
+						// (aggiunta apposta per questo test): 30 punti a
+						// 96 DPI -> 30 * 4/3 = 40 pixel, stesso fattore
+						// gia' usato altrove in questo progetto per
+						// SheetView::kRowHeight (15pt predefiniti -> 20px).
 						if (pos + 4 <= ascdLen)
 						{
 							int32 rowHeightCount;
 							memcpy(&rowHeightCount, ascdData + pos, 4); pos += 4;
-							Check(rowHeightCount == 0,
-								"sezione altezze di riga presente (vuota, Fase 10) subito dopo i colori di colonna");
+							Check(rowHeightCount == 1,
+								"una riga con altezza esplicita (riga 1, ht=\"30\" customHeight=\"1\")");
+
+							bool foundRow1Height = false;
+							for (int32 i = 0; i < rowHeightCount && pos + 6 <= ascdLen; i++)
+							{
+								int16 row;
+								float height;
+								memcpy(&row, ascdData + pos, 2); pos += 2;
+								memcpy(&height, ascdData + pos, 4); pos += 4;
+								if (row == 1 && fabs(height - 40.0f) < 0.01f)
+									foundRow1Height = true;
+							}
+							Check(foundRow1Height,
+								"l'altezza della riga 1 (30pt -> 40px) e' importata dal file XLSX originale");
 						}
 
 						if (pos + 8 <= ascdLen)

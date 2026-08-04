@@ -8,6 +8,7 @@
 #include "MiniZip.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -78,7 +79,8 @@ static bool ColorsEqual(rgb_color a, rgb_color b)
 // translators/csv/CsvTranslator.cpp per la descrizione completa).
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
-	const std::vector<EmbeddedImage>* images = NULL)
+	const std::vector<EmbeddedImage>* images = NULL,
+	const std::vector<std::pair<int, float> >* rowHeights = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -218,24 +220,37 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Sezione altezze di riga e Blocca riquadri, in coda (Fase 10 di
-	// ui/src/AscdIO.cpp): sempre scritte vuote/a zero qui, questo
-	// translator non estrae ancora nessuna di queste due informazioni
-	// dal file XLSX originale (a differenza di larghezza di colonna,
-	// colori e -- sotto -- font/allineamento/bordi/formato numero).
-	// Il campo va comunque scritto sempre, mai omesso, per lo
-	// stesso motivo della sezione grafici sopra: LoadASCD (in ui/src/
-	// AscdIO.cpp, che legge questo stesso flusso) si aspetta ORA tutte
-	// queste sezioni in coda a ogni blocco ASCD -- ometterle
-	// disallineerebbe la lettura del blocco successivo in una cartella
-	// di lavoro multi-foglio, esattamente come il bug gia' descritto
-	// sopra per i grafici (bug reale scoperto aprendo di nuovo lo
-	// stesso file .xlsm da 38 fogli dopo l'aggiunta di quelle sezioni
-	// in Fase 10/11: leggeva byte del foglio successivo come se
-	// fossero l'altezza di una riga del foglio corrente).
-	int32 rowHeightCount = 0;
+	// Sezione altezze di riga, in coda (Fase 10 di ui/src/AscdIO.cpp):
+	// lette da <row ht="..." customHeight="1"> nel foglio XLSX
+	// originale (vedi ParseSheet/SheetStart), stesso principio di
+	// colWidths sopra -- un tempo sempre vuota qui, bug reale segnalato
+	// dall'utente (immagini incorporate ancorate a righe alte
+	// nell'originale finivano sovrapposte al testo sottostante,
+	// disegnate sulle righe piu' basse di 20px predefinite invece delle
+	// altezze vere del file). Blocca riquadri resta a zero: questo
+	// translator non lo estrae ancora dal file XLSX originale. Il campo
+	// va comunque scritto sempre, mai omesso, per lo stesso motivo della
+	// sezione grafici sopra: LoadASCD (in ui/src/AscdIO.cpp, che legge
+	// questo stesso flusso) si aspetta ORA tutte queste sezioni in coda
+	// a ogni blocco ASCD -- ometterle disallineerebbe la lettura del
+	// blocco successivo in una cartella di lavoro multi-foglio,
+	// esattamente come il bug gia' descritto sopra per i grafici (bug
+	// reale scoperto aprendo di nuovo lo stesso file .xlsm da 38 fogli
+	// dopo l'aggiunta di quelle sezioni in Fase 10/11: leggeva byte del
+	// foglio successivo come se fossero l'altezza di una riga del
+	// foglio corrente).
+	int32 rowHeightCount = rowHeights ? (int32)rowHeights->size() : 0;
 	if (dest->Write(&rowHeightCount, sizeof(rowHeightCount)) != (ssize_t)sizeof(rowHeightCount))
 		return B_IO_ERROR;
+
+	for (int32 i = 0; i < rowHeightCount; i++)
+	{
+		int16 row = (int16)(*rowHeights)[i].first;
+		float height = (*rowHeights)[i].second;
+		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+			|| dest->Write(&height, sizeof(height)) != (ssize_t)sizeof(height))
+			return B_IO_ERROR;
+	}
 
 	int32 frozenRows = 0, frozenCols = 0;
 	if (dest->Write(&frozenRows, sizeof(frozenRows)) != (ssize_t)sizeof(frozenRows)
@@ -1687,6 +1702,7 @@ struct SheetContext {
 	CContainer* doc;
 	const std::vector<std::string>* sharedStrings;
 	std::vector<std::pair<int, float> >* colWidths; // opzionale (NULL = non raccolte)
+	std::vector<std::pair<int, float> >* rowHeights; // opzionale (NULL = non raccolte)
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
 	bool date1904; // Fase 12: epoca del sistema data, da <workbookPr>
@@ -1756,23 +1772,58 @@ static void ParseSqref(const std::string& sqref, std::vector<range>* out)
 
 // La larghezza in <col width="..."> e' nell'unita' di misura di Excel
 // ("numero di caratteri '0' del carattere piu' largo del font
-// predefinito", non pixel): la formula esatta dipende dal font/DPI del
-// documento originale (vedi lo standard ECMA-376, 18.3.1.13), che
-// questo progetto non replica. Approssimazione ampiamente usata da
-// importatori piu' semplici (basata su un carattere largo circa 7
-// pixel per il font predefinito Calibri 11, piu' un margine fisso di
-// 5 pixel) -- visivamente ragionevole, non un valore esatto pixel per
-// pixel come lo mostrerebbe Excel stesso.
+// predefinito", non pixel): formula esatta dallo standard ECMA-376
+// 18.3.1.13, con MDW (Maximum Digit Width) = 7 pixel, quello del font
+// predefinito piu' comune (Calibri 11 a 96 DPI) -- lo stesso di questo
+// file di prova. Bug reale segnalato dall'utente confrontando un file
+// XLSX con lo stesso aperto in Excel vero: la vecchia approssimazione
+// (charWidth * 7 + 5, un margine fisso largamente usato da importatori
+// piu' semplici) sovrastimava sistematicamente ogni colonna di circa
+// 5 pixel -- poco per una colonna sola, ma cumulativo su piu' colonne
+// consecutive (misurato ~16px di troppo su tre colonne in un file
+// reale), spostando verso destra qualunque oggetto ancorato a una
+// colonna successiva (immagini incorporate, Fase 12).
 static float ExcelColWidthToPixels(double charWidth)
 {
-	return (float)(charWidth * 7.0 + 5.0);
+	const double kMDW = 7.0;
+	double n = std::floor(128.0 / kMDW);
+	return (float)std::floor(((256.0 * charWidth + n) / 256.0) * kMDW);
 }
 
 static void XMLCALL SheetStart(void* userData, const char* name, const char** atts)
 {
 	SheetContext* ctx = (SheetContext*)userData;
 
-	if (strcmp(name, "c") == 0)
+	// <row r="1" ht="48.75" customHeight="1">...</row>, dentro
+	// <sheetData>, un fratello di <c> (una entry per riga, non per
+	// cella) -- stesso principio di <col> per le larghezze: "ht" e' in
+	// punti (1/72 di pollice, l'unita' tipografica di Excel per le
+	// altezze), va in pixel a 96 DPI con lo stesso fattore 4/3 gia'
+	// usato altrove in questo progetto per kRowHeight (15pt * 4/3 =
+	// 20px, l'altezza di riga predefinita di SheetView). "customHeight"
+	// distingue un'altezza scelta dall'utente da un semplice suggerimento
+	// di autofit di Excel, stesso principio di "customWidth" per <col>.
+	if (strcmp(name, "row") == 0 && ctx->rowHeights)
+	{
+		int row = 0;
+		bool hasHeight = false, customHeight = false;
+		double heightPt = 0;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "r") == 0)
+				row = atoi(atts[i + 1]);
+			else if (strcmp(atts[i], "ht") == 0)
+			{
+				heightPt = atof(atts[i + 1]);
+				hasHeight = true;
+			}
+			else if (strcmp(atts[i], "customHeight") == 0)
+				customHeight = atoi(atts[i + 1]) != 0;
+		}
+		if (row > 0 && hasHeight && customHeight)
+			ctx->rowHeights->push_back(std::make_pair(row, (float)(heightPt * 4.0 / 3.0)));
+	}
+	else if (strcmp(name, "c") == 0)
 	{
 		ctx->cellRef.clear();
 		ctx->cellType.clear();
@@ -2068,12 +2119,14 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	std::vector<std::pair<int, float> >* colWidths,
 	const std::vector<ResolvedStyle>* styles,
 	std::vector<CondFormatRule>* condRules = NULL,
-	bool date1904 = false)
+	bool date1904 = false,
+	std::vector<std::pair<int, float> >* rowHeights = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
 	ctx.sharedStrings = &sharedStrings;
 	ctx.colWidths = colWidths;
+	ctx.rowHeights = rowHeights;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
 	ctx.date1904 = date1904;
@@ -2611,6 +2664,7 @@ struct ParsedSheet {
 	std::string name;
 	CContainer* doc;
 	std::vector<std::pair<int, float> > colWidths;
+	std::vector<std::pair<int, float> > rowHeights;
 	std::vector<EmbeddedImage> images;
 };
 
@@ -2636,7 +2690,8 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 		if (nameLen > 0 && dest->Write(name.data(), nameLen) != nameLen)
 			return B_IO_ERROR;
 
-		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths, &sheets[i].images);
+		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths, &sheets[i].images,
+			&sheets[i].rowHeights);
 		if (err != B_OK)
 			return err;
 	}
@@ -2809,7 +2864,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		parsed.doc = new CContainer(NULL, NULL);
 		std::vector<CondFormatRule> condRules;
 		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles,
-			&condRules, date1904))
+			&condRules, date1904, &parsed.rowHeights))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
