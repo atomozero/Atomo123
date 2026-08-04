@@ -4268,6 +4268,57 @@ dell'editor (non a `SheetView`) subito dopo il primo — verifica che il
 testo diventi "78" e non "8", e che il valore scritto nel documento
 dopo la conferma sia 78 e non 8. Nessuna regressione nelle 34 suite.
 
+### Bug scoperto: la trasparenza dei PNG incorporati non veniva rispettata a schermo
+
+Chiesto dall'utente: un'immagine con sfondo trasparente inserita nel
+foglio (import XLSX, `EmbeddedImage`, vedi Fase 12) manteneva davvero
+la trasparenza anche in Atomo123?
+
+Risposta: no. Il canale alpha sopravviveva alla decodifica (il
+translator PNG produce un `BBitmap` `B_RGBA32` se il sorgente ne ha
+uno) e al salvataggio nel formato nativo `.ascd` (blob grezzo, mai
+ri-codificato — vedi `test_persistence.cpp`), ma `SheetView::Draw()`
+disegnava le immagini incorporate con `DrawBitmap()` senza mai
+impostare una modalità di disegno alpha-aware: restava attiva
+`B_OP_COPY` (l'impostazione predefinita di `BView`), che copia i byte
+RGB del sorgente così come sono ignorando l'alpha — uno sfondo
+"trasparente" appariva quindi con il colore pieno del pixel sorgente
+invece dello sfondo della cella sottostante.
+
+Fix: `SetDrawingMode(B_OP_ALPHA); SetBlendingMode(B_PIXEL_ALPHA,
+B_ALPHA_OVERLAY);` prima del `DrawBitmap()`, `SetDrawingMode(B_OP_COPY)`
+subito dopo — stesso schema già in uso per il tinteggio della
+selezione poco più sopra nello stesso `Draw()`.
+
+Test: `ui/tests/test_image_alpha.cpp`, nuovo. Codifica al volo un vero
+PNG con canale alpha (metà rosso pieno, metà completamente
+trasparente) tramite lo stesso `BTranslatorRoster` usato per
+decodificarlo — non un blob finto come in `test_persistence.cpp`, qui
+serve un file che il Translation Kit sappia davvero decodificare, per
+esercitare il percorso di codice reale che ha causato il bug. Disegna
+`SheetView` su una vera `BBitmap` offscreen ("accetta viste", tecnica
+mai usata finora nei test di questo progetto: serve leggere i pixel
+realmente scritti da `DrawBitmap()`, non solo lo stato interno — un
+controllo tipo "modalità di disegno dopo `Draw()`" non avrebbe scoperto
+il bug, dato che cambio e ripristino avvengono entrambi dentro la
+stessa chiamata). Verificato che il test riproduce davvero il bug:
+sull'eseguibile senza il fix la metà "trasparente" risultava rosso
+pieno; con il fix mostra correttamente lo sfondo bianco della cella.
+
+Nota sull'ambiente di test in questa sessione: dopo molti lanci
+ravvicinati di eseguibili con una vera `MainWindow` (le decine di test
+UI di questa fase), alcune suite hanno iniziato a bloccarsi
+indefinitamente in fase di creazione/attivazione finestra —
+riprodotto anche su un programma minimo isolato che non tocca il
+codice di questa correzione, e anche sull'eseguibile *precedente* al
+fix (`git stash`), quindi non è una regressione introdotta qui: sembra
+un limite del desktop condiviso di questa sessione sotto carico
+sostenuto di finestre reali, non del codice. Le suite headless e
+quelle senza `MainWindow` restano tutte verdi; `test-image-alpha`
+(quella dedicata a questo bug) passa in modo pulito e ripetibile
+proprio perché disegna offscreen, senza dipendere da attivazione
+finestra/fuoco.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
