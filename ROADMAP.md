@@ -4456,6 +4456,112 @@ sezione, nessun colore di default"). Nessuna regressione nelle suite
 UI (stesso blocco pre-esistente di `test-paste-range` già documentato
 sopra, indipendente da questa modifica).
 
+### Migliorie di fedeltà XLSX (3/3): AutoFilter — righe nascoste, valori distinti, freccia a discesa
+
+Terza e ultima voce del confronto file reale/Excel: `<autoFilter
+ref="A8:N8"/>` (Dati > Filtro in Excel) non veniva importato in alcun
+modo, né come dato né come aspetto visivo (le frecce a discesa
+sull'intestazione della tabella).
+
+**Righe nascoste, l'infrastruttura mancante**. Un filtro attivo in
+Excel nasconde le righe escluse scrivendo `hidden="1"` sull'elemento
+`<row>` corrispondente — lo stesso identico attributo usato per un
+nascondimento manuale ("tasto destro sull'intestazione > Nascondi"),
+Excel non li distingue nel file e nemmeno questo import. Atomo123 non
+aveva alcun concetto di "riga nascosta": aggiunto `SheetView::
+fRowHidden` (un array parallelo a `fRowHeights`, MAI sovrapposto ad
+esso — un'altezza a zero sarebbe stata riportata al minimo da
+`SetRowHeights`, e comunque Excel *ricorda* l'altezza vera di una riga
+nascosta per quando torna visibile, non la scarta). `RebuildRowOffsets`
+tratta una riga nascosta come alta zero pixel nella somma cumulativa,
+esattamente come Excel: `SetHiddenRows`/`HiddenRows` (l'elenco sparso
+usato dalla persistenza) e `IsRowHidden` sono l'API pubblica.
+
+**AutoFilter vero e proprio**: `SheetView::SetAutoFilter`/
+`ClearAutoFilter`/`HasAutoFilter`/`AutoFilterRange` tengono
+l'intervallo (intestazione + colonne, `range`, `top==bottom` perché
+l'intestazione è sempre una riga sola). `UniqueColumnValues(col)`
+elenca i valori distinti di una colonna (in ordine di comparsa,
+`GetCellResult`, lo stesso testo che comparirebbe nel menu di Excel).
+`SetColumnValueHidden(col, valore, nascondi)` nasconde/mostra tutte le
+righe con quel valore in quella colonna — i criteri di più colonne si
+combinano in **AND**, come Excel vero (una riga resta nascosta se
+esclusa da almeno una colonna filtrata), ricalcolando l'intera
+visibilità (`RecomputeAutoFilterVisibility`) a ogni cambio invece di
+toccare solo le righe coinvolte, altrimenti l'AND fra colonne non
+sarebbe corretto. `ClearColumnFilters()` azzera tutti i criteri
+("Mostra tutto"). **Limite dichiarato**: i criteri per colonna
+(`fFilterHiddenValues`) non sono persistiti nel formato nativo — solo
+il *risultato* (le righe nascoste) sopravvive al giro salvataggio/
+ricarica; riaprire un file mostra di nuovo le righe giuste, ma il menu
+non "ricorda" quali valori esatti le avevano escluse.
+
+**Interfaccia**: una piccola freccia a discesa nell'angolo in basso a
+destra di ogni cella di intestazione nell'intervallo del filtro
+(`AutoFilterArrowRect`, usato sia da `Draw()` per disegnarla sia da
+`MouseDown` per riconoscere il clic — stesso rettangolo, mai
+duplicato). Un clic apre `ShowAutoFilterMenu`: un vero `BPopUpMenu`
+**sincrono** (`Go(..., asynchronous=true)` bloccante, non
+`deliversMessage` — restituisce direttamente la voce scelta, niente
+passaggio di messaggi da gestire altrove) con una voce spuntabile per
+valore distinto più "Mostra tutto". Limite dichiarato: un clic per
+volta, il menu si chiude dopo ogni scelta (va riaperto per toccare un
+altro valore) — stesso compromesso di semplicità già accettato altrove
+in questo progetto per i dialoghi modali.
+
+**Import XLSX**: `<row hidden="1">` (indipendentemente da `ht`/
+`customHeight`) popola le righe nascoste; `<autoFilter ref="...">`
+(riusa `ParseMergeCellRef`, già usata per `<mergeCell>`, stesso formato
+"A1:B2") popola l'intervallo. Le condizioni già applicate
+(`<filterColumn><filters>`) non si leggono: il risultato (righe
+nascoste) basta a mostrare il foglio come in Excel.
+
+**Due bug reali scoperti implementando questo, non ovvi da un solo
+sguardo al codice**:
+
+1. *Testo/etichette fantasma sulle righe nascoste.* `RebuildRowOffsets`
+   collassa correttamente una riga nascosta a zero pixel, ma DUE punti
+   del codice continuavano a usare la sua altezza VERA
+   (`fRowHeights`, mai azzerata di proposito, vedi sopra) invece di
+   trattarla come zero: l'etichetta della riga nell'intestazione (che
+   sommava quell'altezza vera alla somma cumulativa già collassata)
+   finiva spinta ben oltre la sua posizione corretta, sovrapposta ad
+   altre etichette molto più sotto; il testo della cella (`DrawString`,
+   mai vincolato all'altezza zero del proprio rettangolo come
+   `FillRect`/`StrokeLine`) restava comunque disegnato, sovrapposto al
+   testo della riga visibile che ne aveva preso il posto. **Scoperto
+   su un file reale** (non nei test, che allora non coprivano righe
+   nascoste): testo illeggibile, ammassato su poche righe, numeri di
+   riga fuori ordine. Fix: `continue` esplicito per ogni riga nascosta
+   in tutti i cicli per-riga di `DrawCellBand`/`Draw()` (sfondo,
+   griglia, bordi, testo, etichette) — una riga nascosta non disegna
+   più nulla, esattamente come Excel.
+2. *La freccia a discesa non compariva mai.* Codice geometricamente
+   corretto e sicuramente raggiunto (verificato passo passo con un
+   programma di prova a parte, anche sostituendo `FillTriangle` con un
+   `FillRect` enorme a copertura di quasi tutta la vista — sempre
+   senza alcun effetto visibile, né offscreen né in una vera finestra).
+   Causa: il ciclo che disegna il testo delle celle restringe il
+   ritaglio dello schermo (`ConstrainClippingRegion`) al rettangolo
+   della singola cella per ogni cella non vuota, ma non lo
+   ripristinava mai né fra un'iterazione e l'altra né all'uscita dal
+   ciclo — il ritaglio dell'ULTIMA cella disegnata restava attivo per
+   tutto ciò che veniva disegnato dopo in quella stessa chiamata, mai
+   scoperto prima perché la freccia era il primo codice a disegnare
+   qualcosa dopo quel ciclo. Fix: `ConstrainClippingRegion(NULL)`
+   esplicito all'uscita dal ciclo del testo.
+
+Test: `ui/tests/test_autofilter.cpp`, nuovo — 25 controlli: valori
+distinti/ordine, visibilità per valore, AND fra colonne, ripristino di
+un singolo criterio senza toccare gli altri, "Mostra tutto",
+`SetHiddenRows`/`HiddenRows`, geometria della freccia, e i due bug
+sopra verificati a livello di pixel su bitmap offscreen (non solo
+stato interno) — per ciascuno, disattivata temporaneamente la
+correzione durante lo sviluppo per confermare che il test la scopra
+davvero, poi ripristinata. `translators/xlsx/tests/sample.xlsx` esteso
+con `<row r="2" hidden="1"/>` e `<autoFilter ref="A1:D1"/>`. Nessuna
+regressione nelle 34 suite UI.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
