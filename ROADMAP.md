@@ -4319,6 +4319,63 @@ quelle senza `MainWindow` restano tutte verdi; `test-image-alpha`
 proprio perché disegna offscreen, senza dipendere da attivazione
 finestra/fuoco.
 
+### Bug scoperto: le immagini incorporate importate da XLSX finivano nella posizione sbagliata rispetto a Excel
+
+Segnalato dall'utente su un file di gara reale (loghi istituzionali
+ancorati alle prime righe): confrontando lo stesso file aperto in
+Excel vero (screenshot da Windows) con Atomo123, l'immagine risultava
+molto più in basso/sovrapposta al testo, non semplicemente spostata di
+pochi pixel.
+
+Due cause distinte, isolate ispezionando a mano l'XML del `drawing1.xml`
+e del `sheet1.xml` dentro il file XLSX (un semplice archivio zip):
+
+1. **Larghezza di colonna approssimata**. `ExcelColWidthToPixels`
+   (`XlsxTranslator.cpp`) usava `char*7+5`, un'approssimazione diffusa
+   ma non quella vera di Excel (ECMA-376 18.3.1.13: troncamento,
+   `floor(((256*w + floor(128/MDW))/256)*MDW)`, con MDW=7 per il font
+   predefinito Calibri 11). Sulle tre colonne che precedevano
+   l'immagine nel file reale (5.46/45.46/14.46 caratteri) lo scarto era
+   di circa 5 pixel per colonna, ~16px cumulati — sposta a destra
+   qualunque oggetto ancorato dopo diverse colonne, tanto peggio quante
+   più colonne ci sono prima.
+2. **Altezze di riga mai importate**. Il file dichiarava
+   `<row r="1" ht="48.75" customHeight="1">` (riga alta apposta per
+   contenere i loghi) ma `XlsxTranslator.cpp` non aveva NESSUN codice
+   che leggesse l'attributo `ht`: ogni riga restava all'altezza
+   predefinita di `SheetView` (20px). Un'immagine di altezza fissa
+   (73px nell'esempio) ancorata a una riga che nell'originale era alta
+   65px ma in Atomo123 restava a 20px si ritrovava a coprire diverse
+   righe reali sottostanti invece di stare contenuta in una sola —
+   questa, non lo scarto orizzontale, era la causa dominante della
+   sovrapposizione vistosa segnalata dall'utente.
+
+Fix:
+- `ExcelColWidthToPixels` sostituita con la formula esatta (troncamento,
+  non arrotondamento).
+- `SheetStart`/`SheetContext` (parsing di `<row>`, un fratello di `<c>`
+  dentro `<sheetData>`) ora raccoglie le righe con `ht`+`customHeight="1"`
+  espliciti, convertite in pixel con lo stesso fattore 4/3 già usato per
+  `SheetView::kRowHeight` (punti tipografici → pixel a 96 DPI). La
+  sezione "altezze di riga" nel formato ASCD prodotto da questo
+  translator esisteva già (sempre scritta, prima sempre vuota, Fase 10)
+  — bastava popolarla, nessuna modifica al formato file né a
+  `ui/src/AscdIO.cpp` (che la legge già).
+
+Verificato visivamente: screenshot dell'app prima/dopo il fix
+confrontati con lo screenshot reale da Excel su Windows fornito
+dall'utente — dopo il fix i loghi restano contenuti nelle prime due
+righe (ora alte quanto nell'originale) e il testo che segue
+("SOGGETTO PROPONENTE" ecc.) torna a comparire sotto, non più
+sovrapposto.
+
+Test: `translators/xlsx/tests/test_xlsx_translator.cpp` esteso —
+le tre asserzioni sulla larghezza di colonna aggiornate ai valori
+esatti (140/56/56px invece di 145/61/61px dell'approssimazione);
+`tests/sample.xlsx` esteso con `ht="30" customHeight="1"` sulla riga 1
+(30pt → 40px atteso) e nuova asserzione che verifica l'altezza
+importata. 145/145 controlli passati.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
