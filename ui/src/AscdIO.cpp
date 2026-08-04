@@ -59,7 +59,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<std::pair<int, float> >* colWidths,
 	const std::vector<std::pair<int, float> >* rowHeights,
 	const int* frozenRows, const int* frozenCols,
-	const std::vector<EmbeddedImage>* images)
+	const std::vector<EmbeddedImage>* images,
+	const bool* showGrid)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -511,6 +512,16 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione visibilita' griglia, in coda: un solo booleano per
+	// foglio (vedi il commento su AscdSheet::showGrid in AscdIO.h),
+	// stesso principio opzionale delle sezioni sopra -- true di
+	// default se il chiamante non passa nulla.
+	{
+		uint8 sg = (showGrid ? *showGrid : true) ? 1 : 0;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
@@ -519,7 +530,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<std::pair<int, float> >* colWidths,
 	std::vector<std::pair<int, float> >* rowHeights,
 	int* frozenRows, int* frozenCols,
-	std::vector<EmbeddedImage>* images)
+	std::vector<EmbeddedImage>* images,
+	bool* showGrid)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -993,6 +1005,18 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione visibilita' griglia, in coda: un solo byte (Fase
+	// successiva a Fase 12), stesso principio "got != 0" delle sezioni
+	// sopra per distinguere un file scritto prima di questa sezione da
+	// uno davvero troncato/corrotto.
+	{
+		uint8 sg = 1;
+		ssize_t got = source->Read(&sg, sizeof(sg));
+		if (got != 0 && got != (ssize_t)sizeof(sg))
+			return B_BAD_DATA;
+		if (showGrid) *showGrid = sg != 0;
+	}
+
 	return B_OK;
 }
 
@@ -1107,7 +1131,8 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			return B_IO_ERROR;
 
 		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts, &sheet.colWidths,
-			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images);
+			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
+			&sheet.showGrid);
 		if (err != B_OK)
 			return err;
 	}
@@ -1149,7 +1174,8 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
 		sheet.doc = new CContainer(NULL, NULL);
 
 		status_t err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths,
-			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images);
+			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
+			&sheet.showGrid);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

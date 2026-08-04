@@ -691,6 +691,14 @@ void MainWindow::ResetWorkbook(const char* name)
 	AscdSheet sheet;
 	sheet.name = name;
 	sheet.doc = new CContainer(NULL, NULL);
+	// Un foglio nuovo parte dalla preferenza generale dell'utente (lo
+	// stesso interruttore che SheetView legge nel proprio costruttore
+	// per il primissimo foglio all'avvio, vedi SheetView.cpp) -- non
+	// piu' l'unica fonte di verita' pero': una volta creato, questo
+	// valore vive sul foglio stesso (fSheets[i].showGrid) e puo' essere
+	// sovrascritto aprendo un documento che ne porta uno proprio
+	// (nativo .ascd o import XLSX).
+	sheet.showGrid = gPrefs ? (gPrefs->GetPrefInt("showGrid", 1) != 0) : true;
 	fSheets.push_back(sheet);
 
 	fActiveSheetIndex = 0;
@@ -711,6 +719,7 @@ void MainWindow::ResetWorkbook(const char* name)
 		// li' invece di un letterale 0,0 per restare corretto anche se
 		// in futuro ResetWorkbook ricevesse fogli non vuoti.
 		fSheetView->SetFreezePanes(fSheets[0].frozenRows, fSheets[0].frozenCols);
+		fSheetView->SetShowGrid(fSheets[0].showGrid);
 		if (fFreezeMenuItem)
 			fFreezeMenuItem->SetMarked(false);
 	}
@@ -764,6 +773,7 @@ void MainWindow::SwitchToSheet(int index)
 	fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 	fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
 	fSheets[fActiveSheetIndex].frozenCols = fSheetView->FrozenCols();
+	fSheets[fActiveSheetIndex].showGrid = fSheetView->ShowGrid();
 
 	fActiveSheetIndex = index;
 	fDoc = fSheets[index].doc;
@@ -779,6 +789,7 @@ void MainWindow::SwitchToSheet(int index)
 	// colonna corrente di QUESTO foglio.
 	fSheetView->RecalculateWrappedRowHeights();
 	fSheetView->SetFreezePanes(fSheets[index].frozenRows, fSheets[index].frozenCols);
+	fSheetView->SetShowGrid(fSheets[index].showGrid);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	fFormulaBar->SetText("");
 	RebuildSheetTabs();
@@ -918,7 +929,8 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 	// stesso modo, dato che passa dalla stessa funzione. LoadASCDBook
 	// (poco sotto) li passa gia' tutti correttamente.
 	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts, &outSheet->colWidths,
-		&outSheet->rowHeights, &outSheet->frozenRows, &outSheet->frozenCols, &outSheet->images);
+		&outSheet->rowHeights, &outSheet->frozenRows, &outSheet->frozenCols, &outSheet->images,
+		&outSheet->showGrid);
 	if (err != B_OK)
 	{
 		outSheet->doc->Release();
@@ -1025,6 +1037,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	// disponibili).
 	fSheetView->RecalculateWrappedRowHeights();
 	fSheetView->SetFreezePanes(fSheets[0].frozenRows, fSheets[0].frozenCols);
+	fSheetView->SetShowGrid(fSheets[0].showGrid);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	RebuildSheetTabs();
 
@@ -1081,6 +1094,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
 		fSheets[fActiveSheetIndex].frozenCols = fSheetView->FrozenCols();
+		fSheets[fActiveSheetIndex].showGrid = fSheetView->ShowGrid();
 
 		status_t err = SaveASCDBook(fSheets, &file);
 		if (err != B_OK)
@@ -1612,6 +1626,15 @@ void MainWindow::ShowPreferencesWindow()
 void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep)
 {
 	fSheetView->SetShowGrid(showGrid);
+	// showGrid e' ora un attributo per-foglio (vedi AscdSheet::showGrid
+	// in AscdIO.h): va scritto anche sul foglio attivo, non solo sulla
+	// SheetView in vista, altrimenti la scelta si perderebbe al primo
+	// cambio scheda (SwitchToSheet risincronizza da fSheets, non da
+	// SheetView). gPrefs resta comunque aggiornato sotto: serve come
+	// preferenza di default per i PROSSIMI fogli nuovi (ResetWorkbook),
+	// non piu' come unica fonte di verita' per quelli gia' aperti.
+	if (fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size())
+		fSheets[fActiveSheetIndex].showGrid = showGrid;
 	gDecimalPoint = decimalSep;
 	gListSeparator = listSep;
 

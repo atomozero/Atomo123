@@ -65,6 +65,7 @@ int main()
 	std::vector<AscdSheet> sheets;
 	AscdSheet s1; s1.name = "Alfa"; s1.doc = doc1;
 	s1.colWidths.push_back(std::make_pair(1, 200.0f)); // larghezza personalizzata per A
+	s1.showGrid = false; // griglia nascosta, a differenza degli altri due fogli (default true)
 	sheets.push_back(s1);
 	AscdSheet s2; s2.name = "Beta"; s2.doc = doc2; sheets.push_back(s2); // nessuna larghezza personalizzata
 	AscdSheet s3; s3.name = "Gamma"; s3.doc = doc3; sheets.push_back(s3);
@@ -112,6 +113,8 @@ int main()
 	// cambio di foglio.
 	Check(view->CellRect(cell(1, 1)).Width() == 200,
 		"la larghezza di colonna personalizzata di Alfa e' applicata subito dopo l'apertura");
+	Check(!view->ShowGrid(),
+		"la griglia nascosta di Alfa (letta dal file) e' applicata subito dopo l'apertura");
 
 	win->SwitchToSheet(1);
 	Check(win->ActiveSheetIndex() == 1, "SwitchToSheet(1) aggiorna l'indice del foglio attivo");
@@ -122,15 +125,22 @@ int main()
 	Check(view->CellRect(cell(1, 1)).Width() == 80,
 		"Beta (senza larghezze personalizzate) mostra la larghezza predefinita, "
 		"non quella di Alfa");
+	Check(view->ShowGrid(),
+		"Beta (senza preferenza esplicita) mostra la griglia visibile predefinita, "
+		"non quella nascosta di Alfa");
 
-	// Ridimensiona una colonna mentre Beta e' attivo, poi passa a Gamma
-	// e torna a Beta: la larghezza scelta a mano deve sopravvivere al
-	// cambio foglio avanti e indietro, non solo alla singola apertura.
+	// Ridimensiona una colonna e nasconde la griglia mentre Beta e'
+	// attivo, poi passa a Gamma e torna a Beta: entrambe le scelte
+	// devono sopravvivere al cambio foglio avanti e indietro, non solo
+	// alla singola apertura -- stesso principio gia' verificato sopra
+	// per colWidths, ora esteso a showGrid.
 	std::vector<std::pair<int, float> > betaWidth;
 	betaWidth.push_back(std::make_pair(3, 55.0f));
 	view->SetColumnWidths(betaWidth);
 	Check(view->CellRect(cell(3, 1)).Width() == 55,
 		"la larghezza di colonna 3 di Beta e' applicata subito dopo SetColumnWidths");
+	view->SetShowGrid(false);
+	Check(!view->ShowGrid(), "nascondere la griglia su Beta a mano e' applicato subito");
 
 	win->SwitchToSheet(2);
 	win->GetSheetView()->Document()->GetCellFormula(cell(1, 1), text, sizeof(text), false);
@@ -138,11 +148,16 @@ int main()
 		"dopo un secondo cambio SheetView mostra il contenuto del terzo foglio");
 	Check(view->CellRect(cell(3, 1)).Width() == 80,
 		"Gamma non eredita la larghezza personalizzata appena impostata su Beta");
+	Check(view->ShowGrid(),
+		"Gamma non eredita la griglia nascosta appena impostata a mano su Beta");
 
 	win->SwitchToSheet(1);
 	Check(view->CellRect(cell(3, 1)).Width() == 55,
 		"tornando su Beta la larghezza di colonna scelta a mano e' ancora quella (55), "
 		"non e' andata persa nel cambio foglio avanti e indietro");
+	Check(!view->ShowGrid(),
+		"tornando su Beta la griglia e' ancora nascosta, non e' andata persa nel cambio "
+		"foglio avanti e indietro");
 
 	// Torna su Gamma (indice 2) prima dei controlli sotto, che
 	// verificano che un indice fuori dai limiti non sposti il foglio

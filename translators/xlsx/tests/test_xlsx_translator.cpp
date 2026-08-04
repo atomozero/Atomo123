@@ -467,6 +467,17 @@ int main()
 								"sezione immagini incorporate presente (vuota per questo file di prova, Fase 12)");
 						}
 
+						// Visibilita' griglia: sample.xlsx ha
+						// <sheetView showGridLines="0"/> (aggiunto
+						// apposta per questo test) -- un solo byte,
+						// ultima sezione del formato.
+						if (pos + 1 <= ascdLen)
+						{
+							uint8 showGrid = ascdData[pos]; pos += 1;
+							Check(showGrid == 0,
+								"la griglia nascosta (showGridLines=\"0\") e' importata dal file XLSX originale");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte

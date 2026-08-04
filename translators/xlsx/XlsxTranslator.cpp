@@ -80,7 +80,8 @@ static bool ColorsEqual(rgb_color a, rgb_color b)
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
 	const std::vector<EmbeddedImage>* images = NULL,
-	const std::vector<std::pair<int, float> >* rowHeights = NULL)
+	const std::vector<std::pair<int, float> >* rowHeights = NULL,
+	const bool* showGrid = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -518,6 +519,17 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			if (pngLen > 0 && dest->Write(&img.pngData[0], pngLen) != pngLen)
 				return B_IO_ERROR;
 		}
+	}
+
+	// Sezione visibilita' griglia, in coda (vedi ui/src/AscdIO.cpp):
+	// questo translator estrae davvero <sheetView showGridLines="...">
+	// dal file XLSX originale (SheetStart) -- va quindi scritta con il
+	// valore reale, non sempre vera come i file scritti prima di questa
+	// sezione.
+	{
+		uint8 sg = (showGrid ? *showGrid : true) ? 1 : 0;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
 	}
 
 	return B_OK;
@@ -1703,6 +1715,7 @@ struct SheetContext {
 	const std::vector<std::string>* sharedStrings;
 	std::vector<std::pair<int, float> >* colWidths; // opzionale (NULL = non raccolte)
 	std::vector<std::pair<int, float> >* rowHeights; // opzionale (NULL = non raccolte)
+	bool* showGrid; // opzionale (NULL = non raccolto)
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
 	bool date1904; // Fase 12: epoca del sistema data, da <workbookPr>
@@ -1794,6 +1807,23 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 {
 	SheetContext* ctx = (SheetContext*)userData;
 
+	// <sheetView showGridLines="0" .../>, dentro <sheetViews> prima di
+	// <sheetData> -- l'attributo e' assente quando la griglia e'
+	// semplicemente visibile (il default di Excel, "1" implicito, mai
+	// scritto esplicitamente in quel caso): solo "0" esplicito la
+	// nasconde. Bug reale segnalato dall'utente confrontando un file
+	// con Excel: un foglio con la griglia nascosta appositamente
+	// dall'autore (un look pulito da documento ufficiale) veniva
+	// comunque importato con la griglia visibile, perche' prima questo
+	// translator non leggeva affatto l'attributo.
+	if (strcmp(name, "sheetView") == 0 && ctx->showGrid)
+	{
+		bool show = true;
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "showGridLines") == 0)
+				show = atoi(atts[i + 1]) != 0;
+		*ctx->showGrid = show;
+	}
 	// <row r="1" ht="48.75" customHeight="1">...</row>, dentro
 	// <sheetData>, un fratello di <c> (una entry per riga, non per
 	// cella) -- stesso principio di <col> per le larghezze: "ht" e' in
@@ -2120,13 +2150,15 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	const std::vector<ResolvedStyle>* styles,
 	std::vector<CondFormatRule>* condRules = NULL,
 	bool date1904 = false,
-	std::vector<std::pair<int, float> >* rowHeights = NULL)
+	std::vector<std::pair<int, float> >* rowHeights = NULL,
+	bool* showGrid = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
 	ctx.sharedStrings = &sharedStrings;
 	ctx.colWidths = colWidths;
 	ctx.rowHeights = rowHeights;
+	ctx.showGrid = showGrid;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
 	ctx.date1904 = date1904;
@@ -2666,6 +2698,7 @@ struct ParsedSheet {
 	std::vector<std::pair<int, float> > colWidths;
 	std::vector<std::pair<int, float> > rowHeights;
 	std::vector<EmbeddedImage> images;
+	bool showGrid = true;
 };
 
 // Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
@@ -2691,7 +2724,7 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			return B_IO_ERROR;
 
 		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths, &sheets[i].images,
-			&sheets[i].rowHeights);
+			&sheets[i].rowHeights, &sheets[i].showGrid);
 		if (err != B_OK)
 			return err;
 	}
@@ -2864,7 +2897,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		parsed.doc = new CContainer(NULL, NULL);
 		std::vector<CondFormatRule> condRules;
 		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles,
-			&condRules, date1904, &parsed.rowHeights))
+			&condRules, date1904, &parsed.rowHeights, &parsed.showGrid))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;

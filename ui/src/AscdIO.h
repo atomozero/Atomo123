@@ -72,18 +72,25 @@ class CContainer;
 // sezione, i byte vengono comunque sempre consumati se presenti per lo
 // stesso motivo di "charts" (LoadASCDBook concatena piu' blocchi ASCD
 // sullo stesso flusso).
+// "showGrid" segue lo stesso principio di "frozenRows"/"frozenCols"
+// sopra: un solo booleano per foglio (import XLSX da <sheetView
+// showGridLines="...">, o un salvataggio precedente), non una
+// preferenza globale dell'app -- vedi il commento su AscdSheet::
+// showGrid sotto sul perche' e' diventato un attributo per-foglio.
 status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<ChartObject>* charts = NULL,
 	std::vector<std::pair<int, float> >* colWidths = NULL,
 	std::vector<std::pair<int, float> >* rowHeights = NULL,
 	int* frozenRows = NULL, int* frozenCols = NULL,
-	std::vector<EmbeddedImage>* images = NULL);
+	std::vector<EmbeddedImage>* images = NULL,
+	bool* showGrid = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
 	const std::vector<std::pair<int, float> >* rowHeights = NULL,
 	const int* frozenRows = NULL, const int* frozenCols = NULL,
-	const std::vector<EmbeddedImage>* images = NULL);
+	const std::vector<EmbeddedImage>* images = NULL,
+	const bool* showGrid = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -113,6 +120,16 @@ struct AscdSheet {
 	int frozenCols = 0;
 	// Fase 12: vedi il commento sopra LoadASCD/SaveASCD.
 	std::vector<EmbeddedImage> images;
+	// Visibilita' della griglia: era una preferenza GLOBALE dell'app
+	// (gPrefs, un solo interruttore per tutti i documenti) finche' un
+	// file reale confrontato con Excel non ha mostrato il problema --
+	// un foglio con "showGridLines=0" nell'originale (un look pulito da
+	// documento ufficiale, scelto apposta dall'autore) veniva comunque
+	// aperto con la griglia visibile, perche' l'unica preferenza era
+	// quella dell'utente di Atomo123, non quella salvata nel file.
+	// true di default: qualunque documento scritto prima di questo
+	// campo (o creato da capo) mantiene il comportamento di sempre.
+	bool showGrid = true;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di
