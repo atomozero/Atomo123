@@ -4229,6 +4229,45 @@ già aperta: stesso scenario del crash reale, verifica solo che non
 vada in crash (l'esito della scelta colore, asincrono e guidato
 dall'utente, resta fuori scopo). Nessuna regressione nelle 34 suite.
 
+### Bug scoperto: la seconda cifra digitata sostituiva la prima invece di aggiungersi
+
+Segnalato dall'utente: digitando un numero su una cella vuota, con una
+sola cifra funzionava, ma con due o più il risultato era sbagliato —
+"123" diventava "23" (la prima cifra spariva).
+
+Isolato con un programma di prova diretto (variante di
+`test_real_input_edit.cpp`, vedi sopra): il primo tasto vero apre
+l'editor con quel carattere ("1"), corretto; il SECONDO tasto vero,
+consegnato a chi ha davvero il fuoco tastiera a quel punto (l'editor
+appena aperto, non più `SheetView`), **sostituiva** tutto il
+contenuto ("2" invece di "12"); il terzo tasto si comportava di nuovo
+correttamente, aggiungendosi ("23"). Fondamentale aver indirizzato il
+secondo tasto sintetizzato al vero possessore del fuoco: un test che
+avesse richiamato `KeyDown()` due volte direttamente su `SheetView`
+(come `test_editing.cpp` e simili, per i motivi già spiegati nei loro
+commenti) non avrebbe mai riprodotto il bug, perché in quel caso il
+secondo tasto non passa mai dalla `BTextView` dell'editor.
+
+Causa: `SheetView::StartEditing()` chiamava
+`fEditor->TextView()->Select(len, len)` (cursore in fondo al testo,
+nessuna selezione) **prima** di `fEditor->MakeFocus(true)` — ma
+`BTextView` seleziona tutto il proprio contenuto quando acquisisce il
+fuoco per la prima volta (lo stesso comportamento "seleziona tutto" di
+un normale campo di testo), sovrascrivendo subito quella posizione del
+cursore. Il tasto successivo, premuto su un testo interamente
+selezionato, lo sostituiva invece di aggiungersi — proprio come aveva
+intuito l'utente stesso ("perché è tipo selezionata").
+
+Fix: invertito l'ordine, `MakeFocus(true)` prima e `Select(len, len)`
+subito dopo, così la posizione esplicita del cursore è l'ultima parola
+e non viene più sovrascritta dalla selezione automatica del fuoco.
+
+Test: `ui/tests/test_real_input_edit.cpp` esteso con un secondo
+`B_KEY_DOWN` sintetizzato, indirizzato esplicitamente alla `BTextView`
+dell'editor (non a `SheetView`) subito dopo il primo — verifica che il
+testo diventi "78" e non "8", e che il valore scritto nel documento
+dopo la conferma sia 78 e non 8. Nessuna regressione nelle 34 suite.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
