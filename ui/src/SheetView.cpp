@@ -2409,13 +2409,27 @@ void SheetView::StartEditing(cell c, const char* initialText)
 	}
 
 	if (fEditor->TextView())
-	{
 		fEditor->TextView()->AddFilter(new CellEditKeyFilter(this));
+
+	// MakeFocus() PRIMA di Select(): BTextView seleziona tutto il
+	// proprio testo quando acquisisce il fuoco per la prima volta (lo
+	// stesso comportamento "seleziona tutto" di un campo di testo
+	// standard) -- chiamare Select(len, len) prima di MakeFocus()
+	// veniva quindi subito sovrascritto dalla selezione automatica.
+	// Bug reale segnalato dall'utente: digitando un numero di piu'
+	// cifre (es. "123" su una cella vuota, che apre l'editor gia' con
+	// "1" digitato), il primo tasto successivo ("2") sostituiva
+	// l'intero contenuto selezionato invece di aggiungersi, dando
+	// "23" invece di "123" -- solo il terzo tasto in poi si comportava
+	// correttamente, perche' a quel punto non c'era piu' nessuna
+	// selezione residua.
+	fEditor->MakeFocus(true);
+
+	if (fEditor->TextView())
+	{
 		int32 len = (int32)strlen(fEditor->Text());
 		fEditor->TextView()->Select(len, len);
 	}
-
-	fEditor->MakeFocus(true);
 }
 
 void SheetView::CommitEditing(bool cancel)

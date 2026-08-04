@@ -128,6 +128,35 @@ int main()
 	Check(typedText == "7",
 		"l'editor aperto da un vero tasto premuto contiene solo il carattere digitato (sostituisce, non accoda)");
 
+	// Bug reale segnalato dall'utente: digitando un numero di piu'
+	// cifre su una cella vuota (es. "78"), il primo tasto premuto DOPO
+	// che l'editor si e' aperto ("8") sostituiva l'intero contenuto
+	// invece di aggiungersi -- "1" seguito da "2" dava "2", non "12".
+	// Causa: SheetView::StartEditing() chiamava Select(len, len) PRIMA
+	// di MakeFocus(true), ma BTextView seleziona tutto il proprio
+	// testo quando acquisisce il fuoco per la prima volta, sovrascrivendo
+	// subito quella posizione del cursore. Va verificato con un vero
+	// secondo B_KEY_DOWN indirizzato a chi ha DAVVERO il fuoco tastiera
+	// a questo punto -- l'editor appena aperto (la sua BTextView
+	// interna), non piu' SheetView -- altrimenti non si passa dal
+	// percorso di codice reale che ha causato il bug (un test con
+	// KeyDown() chiamato due volte direttamente su SheetView non lo
+	// avrebbe mai scoperto).
+	BMessenger toEditorText(typedEditor->TextView());
+	BMessage secondKeyDown(B_KEY_DOWN);
+	secondKeyDown.AddInt8("byte", '8');
+	secondKeyDown.AddString("bytes", "8");
+	secondKeyDown.AddInt32("modifiers", 0);
+	BMessage secondKeyReply;
+	status_t secondKeySt = toEditorText.SendMessage(&secondKeyDown, &secondKeyReply, 2000000, 2000000);
+	Check(secondKeySt == B_OK, "il secondo B_KEY_DOWN sintetizzato (a chi ha davvero il fuoco: l'editor) viene consegnato");
+
+	win->Lock();
+	BString textAfterSecondKey = typedEditor->Text();
+	win->Unlock();
+	Check(textAfterSecondKey == "78",
+		"il secondo tasto premuto si aggiunge al primo (\"78\"), non lo sostituisce (\"8\")");
+
 	// Conferma con lo stesso messaggio che BTextControl manda da solo
 	// premendo Invio al suo interno (stessa tecnica gia' in uso in
 	// test_editing.cpp per la conferma, non e' quello che questo test
@@ -140,8 +169,8 @@ int main()
 
 	Value b1;
 	doc->GetValue(cell(2, 1), b1);
-	Check(b1.fType == eNumData && (double)b1 == 7.0,
-		"confermando, il valore digitato con un vero tasto viene scritto nel documento (B1=7)");
+	Check(b1.fType == eNumData && (double)b1 == 78.0,
+		"confermando, il valore digitato con due veri tasti viene scritto per intero nel documento (B1=78, non 8)");
 
 	// --- Doppio click: un vero B_MOUSE_DOWN con clicks=2 su C1 (che
 	// contiene gia' "42") deve selezionare quella cella e aprirne
