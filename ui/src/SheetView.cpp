@@ -19,8 +19,10 @@
 #include <BitmapStream.h>
 #include <Cursor.h>
 #include <DataIO.h>
+#include <MenuItem.h>
 #include <MessageFilter.h>
 #include <Messenger.h>
+#include <PopUpMenu.h>
 #include <Region.h>
 #include <ScrollBar.h>
 #include <String.h>
@@ -111,6 +113,7 @@ SheetView::SheetView(CContainer* doc)
 	fDragging(false),
 	fCharts(NULL),
 	fImages(NULL),
+	fHasAutoFilter(false),
 	fEditor(NULL),
 	fEditingCell(1, 1)
 {
@@ -123,6 +126,7 @@ SheetView::SheetView(CContainer* doc)
 	// RebuildRowOffsets).
 	fColWidths.assign(kColCount, kColWidth);
 	fRowHeights.assign(kRowCount, kRowHeight);
+	fRowHidden.assign(kRowCount, false);
 	RebuildColumnOffsets();
 	RebuildRowOffsets();
 
@@ -367,6 +371,227 @@ std::vector<std::pair<int, float> > SheetView::CustomRowHeights() const
 	return result;
 }
 
+void SheetView::SetHiddenRows(const std::vector<int>& rows)
+{
+	fRowHidden.assign(kRowCount, false);
+	for (size_t i = 0; i < rows.size(); i++)
+	{
+		int row = rows[i];
+		if (row >= 1 && row <= kRowCount)
+			fRowHidden[row - 1] = true;
+	}
+	RebuildRowOffsets();
+	UpdateCanvasSize();
+	Invalidate();
+}
+
+std::vector<int> SheetView::HiddenRows() const
+{
+	std::vector<int> result;
+	for (int i = 0; i < kRowCount; i++)
+		if (fRowHidden[i])
+			result.push_back(i + 1);
+	return result;
+}
+
+bool SheetView::IsRowHidden(int row) const
+{
+	if (row < 1 || row > kRowCount)
+		return false;
+	return fRowHidden[row - 1];
+}
+
+BRect SheetView::AutoFilterArrowRect(int col) const
+{
+	BRect r = CellRect(cell(col, fAutoFilterRange.top));
+	return BRect(r.right - 12, r.bottom - 10, r.right - 4, r.bottom - 4);
+}
+
+void SheetView::SetAutoFilter(range headerRange)
+{
+	fHasAutoFilter = true;
+	fAutoFilterRange = headerRange;
+	fFilterHiddenValues.clear();
+	Invalidate();
+}
+
+void SheetView::ClearAutoFilter()
+{
+	fHasAutoFilter = false;
+	fFilterHiddenValues.clear();
+	Invalidate();
+}
+
+int SheetView::AutoFilterDataBottom() const
+{
+	if (!fDoc)
+		return fAutoFilterRange.top;
+	range bounds;
+	fDoc->GetBounds(bounds);
+	int bottom = bounds.bottom;
+	if (bottom < fAutoFilterRange.top)
+		bottom = fAutoFilterRange.top;
+	if (bottom > kRowCount)
+		bottom = kRowCount;
+	return bottom;
+}
+
+std::vector<BString> SheetView::UniqueColumnValues(int col) const
+{
+	std::vector<BString> result;
+	if (!fHasAutoFilter || !fDoc || col < fAutoFilterRange.left || col > fAutoFilterRange.right)
+		return result;
+
+	int bottom = AutoFilterDataBottom();
+	for (int row = fAutoFilterRange.top + 1; row <= bottom; row++)
+	{
+		char text[4096];
+		fDoc->GetCellResult(cell(col, row), text, sizeof(text), true);
+		BString value(text);
+
+		bool found = false;
+		for (size_t i = 0; i < result.size(); i++)
+		{
+			if (result[i] == value)
+			{
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+			result.push_back(value);
+	}
+	return result;
+}
+
+bool SheetView::IsColumnValueVisible(int col, const BString& value) const
+{
+	std::map<int, std::vector<BString> >::const_iterator it = fFilterHiddenValues.find(col);
+	if (it == fFilterHiddenValues.end())
+		return true;
+	for (size_t i = 0; i < it->second.size(); i++)
+	{
+		if (it->second[i] == value)
+			return false;
+	}
+	return true;
+}
+
+void SheetView::SetColumnValueHidden(int col, const BString& value, bool hidden)
+{
+	std::vector<BString>& hiddenValues = fFilterHiddenValues[col];
+
+	int existingIndex = -1;
+	for (size_t i = 0; i < hiddenValues.size(); i++)
+	{
+		if (hiddenValues[i] == value)
+		{
+			existingIndex = (int)i;
+			break;
+		}
+	}
+
+	if (hidden && existingIndex < 0)
+		hiddenValues.push_back(value);
+	else if (!hidden && existingIndex >= 0)
+		hiddenValues.erase(hiddenValues.begin() + existingIndex);
+
+	RecomputeAutoFilterVisibility();
+}
+
+void SheetView::ClearColumnFilters()
+{
+	fFilterHiddenValues.clear();
+	RecomputeAutoFilterVisibility();
+}
+
+// Ripassa ogni riga dei dati filtrati e decide se va nascosta in base
+// a TUTTI i criteri per colonna attivi contemporaneamente (AND fra
+// colonne, come Excel vero: una riga resta nascosta se anche una sola
+// colonna filtrata la esclude) -- richiamata dopo OGNI cambio di
+// criterio invece di limitarsi alle sole righe toccate, altrimenti un
+// criterio su una seconda colonna non potrebbe mai "aggiungersi" a
+// quello gia' attivo su un'altra senza ricalcolare da zero.
+void SheetView::RecomputeAutoFilterVisibility()
+{
+	if (!fHasAutoFilter || !fDoc)
+		return;
+
+	int bottom = AutoFilterDataBottom();
+	for (int row = fAutoFilterRange.top + 1; row <= bottom; row++)
+	{
+		bool hide = false;
+		for (std::map<int, std::vector<BString> >::const_iterator it = fFilterHiddenValues.begin();
+			it != fFilterHiddenValues.end() && !hide; ++it)
+		{
+			if (it->second.empty())
+				continue;
+			char text[4096];
+			fDoc->GetCellResult(cell(it->first, row), text, sizeof(text), true);
+			BString value(text);
+			for (size_t i = 0; i < it->second.size(); i++)
+			{
+				if (it->second[i] == value)
+				{
+					hide = true;
+					break;
+				}
+			}
+		}
+		fRowHidden[row - 1] = hide;
+	}
+	RebuildRowOffsets();
+	UpdateCanvasSize();
+	Invalidate();
+}
+
+void SheetView::ShowAutoFilterMenu(int col, BPoint screenAnchor)
+{
+	std::vector<BString> values = UniqueColumnValues(col);
+
+	BPopUpMenu menu("autofilter");
+	std::vector<BMenuItem*> valueItems;
+	for (size_t i = 0; i < values.size(); i++)
+	{
+		BMenuItem* item = new BMenuItem(values[i].String(), NULL);
+		item->SetMarked(IsColumnValueVisible(col, values[i]));
+		menu.AddItem(item);
+		valueItems.push_back(item);
+	}
+	if (!values.empty())
+		menu.AddSeparatorItem();
+	BMenuItem* clearItem = new BMenuItem("Mostra tutto", NULL);
+	menu.AddItem(clearItem);
+
+	ConvertToScreen(&screenAnchor);
+	// Sincrono (asynchronous=false): Go() blocca finche' l'utente non
+	// sceglie una voce o chiude il menu, restituendo direttamente la
+	// voce scelta (o NULL) -- niente passaggio di messaggi da gestire
+	// altrove in MessageReceived, tutta la logica resta qui.
+	BMenuItem* chosen = menu.Go(screenAnchor, false, false, true);
+	if (!chosen)
+		return;
+
+	if (chosen == clearItem)
+	{
+		ClearColumnFilters();
+		return;
+	}
+	for (size_t i = 0; i < valueItems.size(); i++)
+	{
+		if (valueItems[i] == chosen)
+		{
+			// Un clic su una voce sempre visibile la nasconde e
+			// viceversa -- lo stesso significato di "spuntato" nel
+			// menu (IsColumnValueVisible sopra, usato anche per
+			// SetMarked qualche riga fa).
+			bool wasVisible = IsColumnValueVisible(col, values[i]);
+			SetColumnValueHidden(col, values[i], wasVisible);
+			break;
+		}
+	}
+}
+
 void SheetView::RecalculateWrappedRowHeights()
 {
 	if (!fDoc)
@@ -453,7 +678,15 @@ void SheetView::RebuildRowOffsets()
 	fRowOffsets.resize(kRowCount + 1);
 	fRowOffsets[0] = 0;
 	for (int i = 0; i < kRowCount; i++)
-		fRowOffsets[i + 1] = fRowOffsets[i] + fRowHeights[i];
+	{
+		// Una riga nascosta (AutoFilter o "hidden" da XLSX) occupa zero
+		// spazio a schermo, esattamente come in Excel -- fRowHeights[i]
+		// resta intatta (la sua "altezza vera", ripristinata quando
+		// torna visibile), solo il contributo alla somma cumulativa
+		// diventa zero.
+		float h = fRowHidden[i] ? 0 : fRowHeights[i];
+		fRowOffsets[i + 1] = fRowOffsets[i] + h;
+	}
 }
 
 int SheetView::ColumnAtX(float x) const
@@ -1473,6 +1706,14 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 	{
 		for (int row = firstRow; row <= lastRow; row++)
 		{
+			// Riga nascosta (AutoFilter o "hidden" da XLSX): non
+			// disegna NULLA, esattamente come Excel -- vedi il
+			// commento sul ciclo del testo piu' sotto per il motivo
+			// (bug reale: senza questo salto il testo di una riga
+			// nascosta restava comunque disegnato, sovrapposto alla
+			// riga visibile successiva che ne aveva preso il posto).
+			if (fRowHidden[row - 1])
+				continue;
 			for (int col = firstCol; col <= lastCol; col++)
 			{
 				cell c(col, row);
@@ -1494,8 +1735,12 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 			StrokeLine(BPoint(xOrigin + kHeaderWidth + fColOffsets[col - 1], clipRect.top),
 				BPoint(xOrigin + kHeaderWidth + fColOffsets[col - 1], clipRect.bottom));
 		for (int row = firstRow; row <= lastRow; row++)
+		{
+			if (fRowHidden[row - 1])
+				continue;
 			StrokeLine(BPoint(clipRect.left, yOrigin + kHeaderHeight + fRowOffsets[row - 1]),
 				BPoint(clipRect.right, yOrigin + kHeaderHeight + fRowOffsets[row - 1]));
+		}
 	}
 
 	// Bordi di cella (Fase 11): un lato alla volta, un byte booleano
@@ -1515,6 +1760,8 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 		SetHighColor(0, 0, 0);
 		for (int row = firstRow; row <= lastRow; row++)
 		{
+			if (fRowHidden[row - 1])
+				continue;
 			for (int col = firstCol; col <= lastCol; col++)
 			{
 				cell c(col, row);
@@ -1591,6 +1838,17 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 	{
 		for (int row = firstRow; row <= lastRow; row++)
 		{
+			// Riga nascosta: DrawString non e' vincolato all'altezza
+			// del rettangolo della cella come FillRect/StrokeLine sopra
+			// -- disegna comunque al punto richiesto anche se quel
+			// rettangolo e' ormai alto zero pixel (collassato da
+			// RebuildRowOffsets), finendo sovrapposto al testo della
+			// riga visibile successiva, che ne ha preso il posto. Bug
+			// reale, non solo teorico: scoperto su un file reale con
+			// righe nascoste, dove il testo di molte righe consecutive
+			// appariva illeggibile, ammassato su poche righe visibili.
+			if (fRowHidden[row - 1])
+				continue;
 			for (int col = firstCol; col <= lastCol; col++)
 			{
 				cell c(col, row);
@@ -1717,6 +1975,46 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 		// Draw() -- le intestazioni di riga/colonna, che usano DrawString
 		// a loro volta ma non devono mai ereditare il font di una cella.
 		SetFont(be_plain_font);
+
+		// Bug reale scoperto scrivendo l'AutoFilter sotto (la freccia a
+		// discesa non compariva MAI, ne' su una vera finestra ne' su una
+		// bitmap offscreen, pur essendo il codice che la disegna
+		// geometricamente corretto e sicuramente raggiunto -- verificato
+		// con FillRect() al posto di FillTriangle() e persino con un
+		// rettangolo enorme a copertura di quasi tutta la vista, sempre
+		// senza alcun effetto visibile). Causa: il ciclo del testo sopra
+		// restringe il ritaglio a "textClip" (il solo rettangolo della
+		// cella corrente, riga per riga) a ogni cella non vuota, ma non
+		// lo ripristinava mai fra un'iterazione e l'altra ne' all'uscita
+		// dal ciclo -- restava quindi attivo il ritaglio dell'ULTIMA
+		// cella non vuota disegnata, invisibile finche' nessun codice
+		// disegnava piu' nulla dopo quel ciclo in questa funzione (mai
+		// successo prima d'ora: la freccia sotto e' il primo caso).
+		// Senza questo ripristino esplicito, qualunque cosa disegnata più
+		// sotto (non solo la freccia) sarebbe rimasta invisibile fuori da
+		// quel piccolo rettangolo residuo.
+		ConstrainClippingRegion(NULL);
+	}
+
+	// AutoFilter (import XLSX <autoFilter ref="...">): una piccola
+	// freccia a discesa nell'angolo in basso a destra di ogni cella di
+	// intestazione nell'intervallo di colonne del filtro -- disegnata
+	// SOLO quando la riga di intestazione (fAutoFilterRange.top) cade
+	// dentro la banda corrente, esattamente come Excel la mostra solo
+	// li', non su ogni riga sottostante. MouseDown sotto riconosce un
+	// clic su quest'area con lo stesso rettangolo.
+	if (fHasAutoFilter && fDoc
+		&& fAutoFilterRange.top >= firstRow && fAutoFilterRange.top <= lastRow)
+	{
+		int col1 = std::max(firstCol, (int)fAutoFilterRange.left);
+		int col2 = std::min(lastCol, (int)fAutoFilterRange.right);
+		SetHighColor(90, 90, 90);
+		for (int col = col1; col <= col2; col++)
+		{
+			BRect r = AutoFilterArrowRect(col).OffsetByCopy(xOrigin, yOrigin);
+			FillTriangle(BPoint(r.left, r.top), BPoint(r.right, r.top),
+				BPoint((r.left + r.right) / 2, r.bottom));
+		}
 	}
 
 	ConstrainClippingRegion(NULL);
@@ -1865,6 +2163,17 @@ void SheetView::Draw(BRect updateRect)
 	SetHighColor(0, 0, 0);
 	for (int row = 1; row <= fFrozenRows; row++)
 	{
+		// Riga nascosta: nessuna etichetta (Excel non ne mostra una per
+		// una riga che non occupa spazio a schermo). Bug reale: questa
+		// formula usava fRowHeights[row-1] (l'altezza VERA/di
+		// ripristino della riga, non il suo contributo effettivo alla
+		// somma cumulativa quando nascosta, sempre zero) per posizionare
+		// l'etichetta -- per una riga nascosta che era stata alta
+		// (es. testo a capo su piu' righe) l'etichetta successiva
+		// finiva spinta molto piu' in basso di dove sarebbe dovuta
+		// essere, sovrapposta ad altre etichette gia' disegnate.
+		if (fRowHidden[row - 1])
+			continue;
 		char name[16];
 		snprintf(name, sizeof(name), "%d", row);
 		BPoint pos(rowHeaderLeft + 4,
@@ -1873,6 +2182,8 @@ void SheetView::Draw(BRect updateRect)
 	}
 	for (int row = firstRow; row <= lastRow; row++)
 	{
+		if (fRowHidden[row - 1])
+			continue;
 		char name[16];
 		snprintf(name, sizeof(name), "%d", row);
 		BPoint pos(rowHeaderLeft + 4,
@@ -2115,6 +2426,19 @@ void SheetView::MouseDown(BPoint where)
 		return;
 
 	cell c = CellAt(where);
+
+	// AutoFilter: un clic sulla freccia a discesa dell'intestazione (non
+	// genericamente sulla cella) apre il menu dei valori invece di
+	// selezionare la cella come al solito -- controllato PRIMA della
+	// normale gestione della selezione sotto, stessa precedenza delle
+	// maniglie di ridimensionamento piu' sopra.
+	if (fHasAutoFilter && c.v == fAutoFilterRange.top
+		&& c.h >= fAutoFilterRange.left && c.h <= fAutoFilterRange.right
+		&& AutoFilterArrowRect(c.h).Contains(where))
+	{
+		ShowAutoFilterMenu(c.h, where);
+		return;
+	}
 
 	int32 clicks = 1;
 	int32 mods = 0;

@@ -41,6 +41,7 @@
 #include "Formatter.h"
 #include "Container.h"
 #include "CellParser.h"
+#include "Range.h"
 
 static int gFailures = 0;
 
@@ -74,6 +75,11 @@ int main()
 	bool showGrid = false; // non il default (true): per essere sicuri che sia DAVVERO riletto, non solo lasciato al valore di partenza
 	bool hasTabColor = true;
 	rgb_color tabColor = { 0, 176, 80, 255 }; // verde, lo stesso tabColor del file reale che ha motivato questa fase
+
+	std::vector<int> hiddenRows;
+	hiddenRows.push_back(2); // A2 nascosta (AutoFilter o "nascondi" manuale)
+	bool hasAutoFilter = true;
+	range autoFilterRange(1, 1, 1, 1); // intestazione riga 1, sola colonna A
 
 	// Font non predefinito su A2 (grassetto), sulla famiglia REALE del
 	// font di sistema (vedi il commento in cima al file sul perche').
@@ -166,7 +172,8 @@ int main()
 	{
 		BFile file(path, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 		status_t err = SaveASCD(doc, &file, NULL, NULL, &rowHeights, &frozenRows, &frozenCols,
-			&images, &showGrid, &hasTabColor, &tabColor);
+			&images, &showGrid, &hasTabColor, &tabColor,
+			&hiddenRows, &hasAutoFilter, &autoFilterRange);
 		Check(err == B_OK, "SaveASCD con altezze di riga e Blocca riquadri riesce");
 	}
 	doc->Release();
@@ -178,12 +185,16 @@ int main()
 	bool loadedShowGrid = true; // opposto del valore scritto, per essere sicuri che sia DAVVERO riletto
 	bool loadedHasTabColor = false;
 	rgb_color loadedTabColor = { 0, 0, 0, 255 };
+	std::vector<int> loadedHiddenRows;
+	bool loadedHasAutoFilter = false;
+	range loadedAutoFilterRange;
 
 	{
 		BFile file(path, B_READ_ONLY);
 		status_t err = LoadASCD(&file, reloaded, NULL, NULL,
 			&loadedHeights, &loadedFrozenRows, &loadedFrozenCols, &loadedImages, &loadedShowGrid,
-			&loadedHasTabColor, &loadedTabColor);
+			&loadedHasTabColor, &loadedTabColor,
+			&loadedHiddenRows, &loadedHasAutoFilter, &loadedAutoFilterRange);
 		Check(err == B_OK, "LoadASCD dallo stesso file riesce");
 	}
 
@@ -195,6 +206,12 @@ int main()
 	Check(loadedHasTabColor && loadedTabColor.red == 0 && loadedTabColor.green == 176
 			&& loadedTabColor.blue == 80,
 		"il colore della linguetta del foglio sopravvive al giro di salvataggio/ricarica");
+
+	Check(loadedHiddenRows.size() == 1 && loadedHiddenRows[0] == 2,
+		"la riga nascosta (A2) sopravvive al giro di salvataggio/ricarica");
+	Check(loadedHasAutoFilter && loadedAutoFilterRange.top == 1 && loadedAutoFilterRange.left == 1
+			&& loadedAutoFilterRange.right == 1,
+		"l'intervallo dell'AutoFilter sopravvive al giro di salvataggio/ricarica");
 
 	Check(loadedHeights.size() == 2, "entrambe le altezze di riga personalizzate sopravvivono");
 	bool foundRow1 = false, foundRow3 = false;
@@ -338,16 +355,22 @@ int main()
 	std::vector<std::pair<int, float> > oldHeights;
 	bool oldShowGrid = false; // opposto del default (true): per essere sicuri che il ripiego scatti davvero
 	bool oldHasTabColor = true; // opposto del default (false): stesso motivo
+	bool oldHasAutoFilter = true; // opposto del default (false): stesso motivo
+	std::vector<int> oldHiddenRows;
+	oldHiddenRows.push_back(99); // valore a caso: deve sparire (svuotato da LoadASCD), non restare
 	{
 		BFile file(oldPath, B_READ_ONLY);
 		status_t err = LoadASCD(&file, oldStyleReloaded, NULL, NULL,
-			&oldHeights, &oldFrozenRows, &oldFrozenCols, NULL, &oldShowGrid, &oldHasTabColor);
+			&oldHeights, &oldFrozenRows, &oldFrozenCols, NULL, &oldShowGrid, &oldHasTabColor, NULL,
+			&oldHiddenRows, &oldHasAutoFilter);
 		Check(err == B_OK, "un file senza le nuove sezioni resta leggibile");
 	}
 	Check(oldFrozenRows == 0 && oldFrozenCols == 0 && oldHeights.empty(),
 		"e chi chiede i nuovi campi riceve i valori predefiniti (nessun blocco/altezza)");
 	Check(oldShowGrid, "un file senza la sezione griglia riceve il default (griglia visibile)");
 	Check(!oldHasTabColor, "un file senza la sezione colore linguetta riceve il default (nessun colore)");
+	Check(oldHiddenRows.empty(), "un file senza la sezione righe nascoste riceve il default (nessuna)");
+	Check(!oldHasAutoFilter, "un file senza la sezione AutoFilter riceve il default (nessun filtro)");
 
 	doc = NULL; // gia' rilasciato sopra
 	reloaded->Release();

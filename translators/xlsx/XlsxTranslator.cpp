@@ -82,7 +82,9 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<EmbeddedImage>* images = NULL,
 	const std::vector<std::pair<int, float> >* rowHeights = NULL,
 	const bool* showGrid = NULL,
-	const bool* hasTabColor = NULL, const rgb_color* tabColor = NULL)
+	const bool* hasTabColor = NULL, const rgb_color* tabColor = NULL,
+	const std::vector<int>* hiddenRows = NULL,
+	const bool* hasAutoFilter = NULL, const range* autoFilterRange = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -546,6 +548,37 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		uint8 rgb[3] = { color.red, color.green, color.blue };
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
 			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+
+	// Sezione righe nascoste, in coda (vedi ui/src/AscdIO.cpp): questo
+	// translator estrae davvero <row hidden="1"> dal file XLSX
+	// originale (SheetStart) -- va quindi scritta con i valori reali.
+	{
+		int32 hiddenCount = hiddenRows ? (int32)hiddenRows->size() : 0;
+		if (dest->Write(&hiddenCount, sizeof(hiddenCount)) != (ssize_t)sizeof(hiddenCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < hiddenCount; i++)
+		{
+			int16 row = (int16)(*hiddenRows)[i];
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione AutoFilter, in coda (vedi ui/src/AscdIO.cpp): questo
+	// translator estrae davvero <autoFilter ref="..."/> dal file XLSX
+	// originale (SheetStart) -- va quindi scritta con i valori reali.
+	{
+		uint8 has = (hasAutoFilter && *hasAutoFilter) ? 1 : 0;
+		range r = (has && autoFilterRange) ? *autoFilterRange : range();
+		int16 top = r.top, left = r.left, bottom = r.bottom, right = r.right;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+			|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+			|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+			|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
 			return B_IO_ERROR;
 	}
 
@@ -1735,6 +1768,9 @@ struct SheetContext {
 	bool* showGrid; // opzionale (NULL = non raccolto)
 	bool* hasTabColor; // opzionale (NULL = non raccolto)
 	rgb_color* tabColor; // valido solo se *hasTabColor diventa true
+	std::vector<int>* hiddenRows; // opzionale (NULL = non raccolte)
+	bool* hasAutoFilter; // opzionale (NULL = non raccolto)
+	range* autoFilterRange; // valido solo se *hasAutoFilter diventa true
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
 	bool date1904; // Fase 12: epoca del sistema data, da <workbookPr>
@@ -1858,7 +1894,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				*ctx->hasTabColor = true;
 		}
 	}
-	// <row r="1" ht="48.75" customHeight="1">...</row>, dentro
+	// <row r="1" ht="48.75" customHeight="1" hidden="1">...</row>, dentro
 	// <sheetData>, un fratello di <c> (una entry per riga, non per
 	// cella) -- stesso principio di <col> per le larghezze: "ht" e' in
 	// punti (1/72 di pollice, l'unita' tipografica di Excel per le
@@ -1867,10 +1903,15 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 	// 20px, l'altezza di riga predefinita di SheetView). "customHeight"
 	// distingue un'altezza scelta dall'utente da un semplice suggerimento
 	// di autofit di Excel, stesso principio di "customWidth" per <col>.
-	if (strcmp(name, "row") == 0 && ctx->rowHeights)
+	// "hidden" e' lo STESSO attributo sia per un nascondimento manuale
+	// (tasto destro sull'intestazione > Nascondi) sia per una riga
+	// esclusa da un AutoFilter attivo (vedi <autoFilter> sotto) -- Excel
+	// non li distingue nel file, quindi nemmeno questo import: importa
+	// il risultato (riga nascosta), non il motivo.
+	if (strcmp(name, "row") == 0 && (ctx->rowHeights || ctx->hiddenRows))
 	{
 		int row = 0;
-		bool hasHeight = false, customHeight = false;
+		bool hasHeight = false, customHeight = false, hidden = false;
 		double heightPt = 0;
 		for (int i = 0; atts[i]; i += 2)
 		{
@@ -1883,9 +1924,31 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 			}
 			else if (strcmp(atts[i], "customHeight") == 0)
 				customHeight = atoi(atts[i + 1]) != 0;
+			else if (strcmp(atts[i], "hidden") == 0)
+				hidden = atoi(atts[i + 1]) != 0;
 		}
-		if (row > 0 && hasHeight && customHeight)
+		if (row > 0 && hasHeight && customHeight && ctx->rowHeights)
 			ctx->rowHeights->push_back(std::make_pair(row, (float)(heightPt * 4.0 / 3.0)));
+		if (row > 0 && hidden && ctx->hiddenRows)
+			ctx->hiddenRows->push_back(row);
+	}
+	// <autoFilter ref="A8:N8"/>, dentro <worksheet> (fratello di
+	// <sheetData>, prima o dopo a seconda dello strumento che ha
+	// scritto il file): la riga di intestazione + intervallo di
+	// colonne su cui Excel disegna le frecce a discesa -- riusa
+	// ParseMergeCellRef (definita sopra per <mergeCell ref="...">),
+	// stesso formato "A1:B2". Le eventuali condizioni gia' applicate
+	// (<filterColumn><filters>...) non si leggono qui: il risultato
+	// (quali righe sono nascoste) arriva gia' da "hidden" su <row>
+	// sopra, che basta per mostrare il foglio come in Excel -- limite
+	// dichiarato, vedi ROADMAP.md.
+	else if (strcmp(name, "autoFilter") == 0 && ctx->hasAutoFilter)
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "ref") == 0 && ParseMergeCellRef(atts[i + 1], ctx->autoFilterRange))
+				*ctx->hasAutoFilter = true;
+		}
 	}
 	else if (strcmp(name, "c") == 0)
 	{
@@ -2186,7 +2249,9 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	bool date1904 = false,
 	std::vector<std::pair<int, float> >* rowHeights = NULL,
 	bool* showGrid = NULL,
-	bool* hasTabColor = NULL, rgb_color* tabColor = NULL)
+	bool* hasTabColor = NULL, rgb_color* tabColor = NULL,
+	std::vector<int>* hiddenRows = NULL,
+	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -2196,6 +2261,9 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.showGrid = showGrid;
 	ctx.hasTabColor = hasTabColor;
 	ctx.tabColor = tabColor;
+	ctx.hiddenRows = hiddenRows;
+	ctx.hasAutoFilter = hasAutoFilter;
+	ctx.autoFilterRange = autoFilterRange;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
 	ctx.date1904 = date1904;
@@ -2738,6 +2806,9 @@ struct ParsedSheet {
 	bool showGrid = true;
 	bool hasTabColor = false;
 	rgb_color tabColor = { 0, 0, 0, 255 };
+	std::vector<int> hiddenRows;
+	bool hasAutoFilter = false;
+	range autoFilterRange;
 };
 
 // Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
@@ -2764,7 +2835,8 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 
 		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths, &sheets[i].images,
 			&sheets[i].rowHeights, &sheets[i].showGrid,
-			&sheets[i].hasTabColor, &sheets[i].tabColor);
+			&sheets[i].hasTabColor, &sheets[i].tabColor,
+			&sheets[i].hiddenRows, &sheets[i].hasAutoFilter, &sheets[i].autoFilterRange);
 		if (err != B_OK)
 			return err;
 	}
@@ -2938,7 +3010,8 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		std::vector<CondFormatRule> condRules;
 		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles,
 			&condRules, date1904, &parsed.rowHeights, &parsed.showGrid,
-			&parsed.hasTabColor, &parsed.tabColor))
+			&parsed.hasTabColor, &parsed.tabColor,
+			&parsed.hiddenRows, &parsed.hasAutoFilter, &parsed.autoFilterRange))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;

@@ -61,7 +61,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const int* frozenRows, const int* frozenCols,
 	const std::vector<EmbeddedImage>* images,
 	const bool* showGrid,
-	const bool* hasTabColor, const rgb_color* tabColor)
+	const bool* hasTabColor, const rgb_color* tabColor,
+	const std::vector<int>* hiddenRows,
+	const bool* hasAutoFilter, const range* autoFilterRange)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -538,6 +540,42 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione righe nascoste, in coda: un elenco sparso di indici di
+	// riga (SheetView::HiddenRows), stesso principio di colWidths/
+	// rowHeights sopra ma senza un valore associato -- la sola presenza
+	// nell'elenco vuol dire nascosta.
+	{
+		int32 hiddenCount = hiddenRows ? (int32)hiddenRows->size() : 0;
+		if (dest->Write(&hiddenCount, sizeof(hiddenCount)) != (ssize_t)sizeof(hiddenCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < hiddenCount; i++)
+		{
+			int16 row = (int16)(*hiddenRows)[i];
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione AutoFilter, in coda: un byte "presente si'/no" seguito da
+	// quattro interi (l'intervallo, vedi SheetView::AutoFilterRange) --
+	// sempre scritti, stesso principio delle altre sezioni "singolo
+	// valore" sopra (Blocca riquadri). I CRITERI del filtro (quali
+	// valori sono esclusi per colonna) NON sono qui: vedi il commento
+	// su AscdSheet::hiddenRows in AscdIO.h, solo il risultato
+	// sopravvive al giro salvataggio/ricarica.
+	{
+		uint8 has = (hasAutoFilter && *hasAutoFilter) ? 1 : 0;
+		range r = (has && autoFilterRange) ? *autoFilterRange : range();
+		int16 top = r.top, left = r.left, bottom = r.bottom, right = r.right;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+			|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+			|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+			|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
@@ -548,7 +586,9 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	int* frozenRows, int* frozenCols,
 	std::vector<EmbeddedImage>* images,
 	bool* showGrid,
-	bool* hasTabColor, rgb_color* tabColor)
+	bool* hasTabColor, rgb_color* tabColor,
+	std::vector<int>* hiddenRows,
+	bool* hasAutoFilter, range* autoFilterRange)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1057,6 +1097,48 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione righe nascoste, in coda: vedi il commento in SaveASCD.
+	{
+		std::vector<int> discardedHiddenRows;
+		std::vector<int>* out = hiddenRows ? hiddenRows : &discardedHiddenRows;
+		out->clear();
+
+		int32 hiddenCount = 0;
+		ssize_t got = source->Read(&hiddenCount, sizeof(hiddenCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(hiddenCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < hiddenCount; i++)
+			{
+				int16 row;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row))
+					return B_BAD_DATA;
+				out->push_back(row);
+			}
+		}
+	}
+
+	// Sezione AutoFilter, in coda: vedi il commento in SaveASCD.
+	{
+		uint8 has = 0;
+		int16 top = 0, left = 0, bottom = 0, right = 0;
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has)
+				|| source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+				|| source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+				|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+				|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right))
+				return B_BAD_DATA;
+		}
+		if (hasAutoFilter) *hasAutoFilter = has != 0;
+		if (autoFilterRange)
+			*autoFilterRange = range(left, top, right, bottom);
+	}
+
 	return B_OK;
 }
 
@@ -1172,7 +1254,8 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 
 		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts, &sheet.colWidths,
 			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
-			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor);
+			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
+			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange);
 		if (err != B_OK)
 			return err;
 	}
@@ -1215,7 +1298,8 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
 
 		status_t err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths,
 			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
-			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor);
+			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
+			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

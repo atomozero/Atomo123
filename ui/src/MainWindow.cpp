@@ -720,6 +720,11 @@ void MainWindow::ResetWorkbook(const char* name)
 		// in futuro ResetWorkbook ricevesse fogli non vuoti.
 		fSheetView->SetFreezePanes(fSheets[0].frozenRows, fSheets[0].frozenCols);
 		fSheetView->SetShowGrid(fSheets[0].showGrid);
+		fSheetView->SetHiddenRows(fSheets[0].hiddenRows);
+		if (fSheets[0].hasAutoFilter)
+			fSheetView->SetAutoFilter(fSheets[0].autoFilterRange);
+		else
+			fSheetView->ClearAutoFilter();
 		if (fFreezeMenuItem)
 			fFreezeMenuItem->SetMarked(false);
 	}
@@ -774,6 +779,9 @@ void MainWindow::SwitchToSheet(int index)
 	fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
 	fSheets[fActiveSheetIndex].frozenCols = fSheetView->FrozenCols();
 	fSheets[fActiveSheetIndex].showGrid = fSheetView->ShowGrid();
+	fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
+	fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
+	fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
 
 	fActiveSheetIndex = index;
 	fDoc = fSheets[index].doc;
@@ -790,6 +798,11 @@ void MainWindow::SwitchToSheet(int index)
 	fSheetView->RecalculateWrappedRowHeights();
 	fSheetView->SetFreezePanes(fSheets[index].frozenRows, fSheets[index].frozenCols);
 	fSheetView->SetShowGrid(fSheets[index].showGrid);
+	fSheetView->SetHiddenRows(fSheets[index].hiddenRows);
+	if (fSheets[index].hasAutoFilter)
+		fSheetView->SetAutoFilter(fSheets[index].autoFilterRange);
+	else
+		fSheetView->ClearAutoFilter();
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	fFormulaBar->SetText("");
 	RebuildSheetTabs();
@@ -936,7 +949,8 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 	// (poco sotto) li passa gia' tutti correttamente.
 	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts, &outSheet->colWidths,
 		&outSheet->rowHeights, &outSheet->frozenRows, &outSheet->frozenCols, &outSheet->images,
-		&outSheet->showGrid, &outSheet->hasTabColor, &outSheet->tabColor);
+		&outSheet->showGrid, &outSheet->hasTabColor, &outSheet->tabColor,
+		&outSheet->hiddenRows, &outSheet->hasAutoFilter, &outSheet->autoFilterRange);
 	if (err != B_OK)
 	{
 		outSheet->doc->Release();
@@ -1044,6 +1058,11 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fSheetView->RecalculateWrappedRowHeights();
 	fSheetView->SetFreezePanes(fSheets[0].frozenRows, fSheets[0].frozenCols);
 	fSheetView->SetShowGrid(fSheets[0].showGrid);
+	fSheetView->SetHiddenRows(fSheets[0].hiddenRows);
+	if (fSheets[0].hasAutoFilter)
+		fSheetView->SetAutoFilter(fSheets[0].autoFilterRange);
+	else
+		fSheetView->ClearAutoFilter();
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	RebuildSheetTabs();
 
@@ -1101,6 +1120,9 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
 		fSheets[fActiveSheetIndex].frozenCols = fSheetView->FrozenCols();
 		fSheets[fActiveSheetIndex].showGrid = fSheetView->ShowGrid();
+		fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
+		fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
+		fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
 
 		status_t err = SaveASCDBook(fSheets, &file);
 		if (err != B_OK)

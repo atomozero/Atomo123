@@ -494,6 +494,44 @@ int main()
 								"e' importato dal file XLSX originale");
 						}
 
+						// Righe nascoste: sample.xlsx ha <row r="2"
+						// hidden="1"/> (aggiunta apposta per questo
+						// test) -- una sola riga nascosta.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 hiddenCount;
+							memcpy(&hiddenCount, ascdData + pos, 4); pos += 4;
+							Check(hiddenCount == 1, "una riga nascosta (<row r=\"2\" hidden=\"1\"/>) e' importata");
+
+							bool foundRow2Hidden = false;
+							for (int32 i = 0; i < hiddenCount && pos + 2 <= ascdLen; i++)
+							{
+								int16 row;
+								memcpy(&row, ascdData + pos, 2); pos += 2;
+								if (row == 2)
+									foundRow2Hidden = true;
+							}
+							Check(foundRow2Hidden, "la riga nascosta e' proprio la 2, come nel file XLSX originale");
+						}
+
+						// AutoFilter: sample.xlsx ha <autoFilter
+						// ref="A1:D1"/> (aggiunto apposta per questo
+						// test, la stessa riga di intestazione gia'
+						// usata per le altre sezioni sopra) -- un byte
+						// "presente" seguito da quattro interi,
+						// ultima sezione del formato.
+						if (pos + 9 <= ascdLen)
+						{
+							uint8 hasAutoFilter = ascdData[pos]; pos += 1;
+							int16 top, left, bottom, right;
+							memcpy(&top, ascdData + pos, 2); pos += 2;
+							memcpy(&left, ascdData + pos, 2); pos += 2;
+							memcpy(&bottom, ascdData + pos, 2); pos += 2;
+							memcpy(&right, ascdData + pos, 2); pos += 2;
+							Check(hasAutoFilter == 1 && top == 1 && left == 1 && bottom == 1 && right == 4,
+								"l'intervallo dell'AutoFilter (A1:D1) e' importato dal file XLSX originale");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte

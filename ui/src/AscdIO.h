@@ -89,7 +89,9 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	int* frozenRows = NULL, int* frozenCols = NULL,
 	std::vector<EmbeddedImage>* images = NULL,
 	bool* showGrid = NULL,
-	bool* hasTabColor = NULL, rgb_color* tabColor = NULL);
+	bool* hasTabColor = NULL, rgb_color* tabColor = NULL,
+	std::vector<int>* hiddenRows = NULL,
+	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -97,7 +99,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const int* frozenRows = NULL, const int* frozenCols = NULL,
 	const std::vector<EmbeddedImage>* images = NULL,
 	const bool* showGrid = NULL,
-	const bool* hasTabColor = NULL, const rgb_color* tabColor = NULL);
+	const bool* hasTabColor = NULL, const rgb_color* tabColor = NULL,
+	const std::vector<int>* hiddenRows = NULL,
+	const bool* hasAutoFilter = NULL, const range* autoFilterRange = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -145,6 +149,15 @@ struct AscdSheet {
 	// di SheetTabView.
 	bool hasTabColor = false;
 	rgb_color tabColor = { 0, 0, 0, 255 };
+	// Righe nascoste (AutoFilter o "nascondi" manuale, import XLSX da
+	// <row hidden="1">) e intervallo dell'AutoFilter stesso (import
+	// XLSX da <autoFilter ref="...">) -- vedi il commento sopra
+	// LoadASCD/SaveASCD e SheetView::SetHiddenRows/SetAutoFilter.
+	// hasAutoFilter=false di default: nessun documento scritto prima di
+	// questi campi aveva mai un filtro.
+	std::vector<int> hiddenRows;
+	bool hasAutoFilter = false;
+	range autoFilterRange;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

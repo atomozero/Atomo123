@@ -13,6 +13,7 @@
 #ifndef SHEET_VIEW_H
 #define SHEET_VIEW_H
 
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -282,6 +283,79 @@ public:
 	// cambiano dimensione.
 	void SetImages(const std::vector<EmbeddedImage>* images) { fImages = images; }
 
+	// AutoFilter (import XLSX, <autoFilter ref="...">): l'intervallo
+	// (riga di intestazione + colonne) su cui disegnare le frecce a
+	// tendina nell'intestazione e su cui rispondono i clic. Un solo
+	// filtro attivo alla volta per foglio (come XLSX stesso: un
+	// secondo <autoFilter> su un'altra tabella dello stesso foglio non
+	// e' previsto dallo standard). "range" e' quello del motore (Cell.h),
+	// 1-based, top==bottom perche' l'intestazione e' sempre una riga
+	// sola -- i dati filtrati si intendono da riga top+1 in giu', fino
+	// all'ultima riga con contenuto nell'intervallo di colonne
+	// (GetBounds(), non un secondo limite esplicito: limite dichiarato,
+	// non distingue una tabella vera e propria da altro contenuto sotto
+	// che condivide le stesse colonne).
+	void SetAutoFilter(range headerRange);
+	void ClearAutoFilter();
+	bool HasAutoFilter() const { return fHasAutoFilter; }
+	range AutoFilterRange() const { return fAutoFilterRange; }
+
+	// Valori distinti presenti nella colonna "col" fra i dati filtrati
+	// (GetCellResult, il testo visualizzato -- stesso valore che
+	// comparirebbe nell'elenco a tendina di Excel), in ordine di
+	// comparsa nelle righe -- usata per costruire il menu a tendina.
+	// Vuoto se non c'e' un AutoFilter attivo o "col" e' fuori dal suo
+	// intervallo di colonne.
+	std::vector<BString> UniqueColumnValues(int col) const;
+	// Vero se ALMENO una riga con quel valore in quella colonna e'
+	// attualmente visibile -- usata per lo stato iniziale (spuntato/
+	// no) di ogni voce del menu a tendina.
+	bool IsColumnValueVisible(int col, const BString& value) const;
+	// Nasconde (hidden=true) o mostra (hidden=false) TUTTE le righe dei
+	// dati filtrati il cui valore nella colonna "col" e' esattamente
+	// "value" -- il criterio si combina con quello di altre colonne
+	// gia' filtrate (AND fra colonne, come Excel vero: una riga resta
+	// nascosta se ESCLUSA da almeno una colonna filtrata), non le
+	// sostituisce. Ricalcola SUBITO le righe nascoste/visibili
+	// dell'intero intervallo filtrato, non solo quelle toccate da
+	// questa chiamata (necessario per l'AND fra colonne).
+	void SetColumnValueHidden(int col, const BString& value, bool hidden);
+	// Azzera ogni criterio impostato su ogni colonna e mostra di nuovo
+	// tutte le righe dell'intervallo filtrato -- "Mostra tutto" nel
+	// menu a tendina.
+	void ClearColumnFilters();
+
+	// Righe nascoste (AutoFilter, o import XLSX da <row hidden="1">
+	// indipendentemente dal motivo originale -- un nascondimento manuale
+	// dell'utente in Excel usa lo stesso attributo, questo progetto non
+	// li distingue): un elenco sparso di indici di riga 1-based, non un
+	// campo per cella. "SetHiddenRows" SOSTITUISCE l'intero elenco
+	// (usata da MainWindow dopo Apri/cambio foglio, stesso principio di
+	// SetColumnWidths); "SetColumnValueHidden"/"ClearColumnFilters"
+	// sopra invece lo ricalcolano internamente dai criteri per colonna.
+	void SetHiddenRows(const std::vector<int>& rows);
+	std::vector<int> HiddenRows() const;
+	bool IsRowHidden(int row) const;
+
+	// Rettangolo (coordinate locali della vista, non pinnate: vedi
+	// PinnedCellRect) della freccia a discesa nella cella di
+	// intestazione di "col" -- usato sia da Draw() per disegnarla sia
+	// da MouseDown per riconoscere un clic su di essa, cosi' i due
+	// posti concordano sempre sulla stessa area senza duplicare le
+	// coordinate. Valido solo se HasAutoFilter() e "col" e' nel suo
+	// intervallo di colonne.
+	BRect AutoFilterArrowRect(int col) const;
+	// Costruisce ed apre (bloccante, sincrono) il menu dei valori della
+	// colonna "col" -- MouseDown lo richiama quando riconosce un clic
+	// su AutoFilterArrowRect. Non testabile automaticamente (un vero
+	// BPopUpMenu::Go() sincrono richiede un clic reale dell'utente,
+	// stesso limite gia' documentato altrove in questo progetto per i
+	// dialoghi modali -- vedi test_selection.cpp): la logica vera e
+	// propria (UniqueColumnValues/IsColumnValueVisible/
+	// SetColumnValueHidden sopra) e' invece testabile a parte, chiamata
+	// direttamente senza passare dal menu.
+	void ShowAutoFilterMenu(int col, BPoint screenAnchor);
+
 	// Rettangolo in pixel (a partire da 0,0, intestazioni comprese) che
 	// copre le celle con contenuto -- usato da MainWindow per la stampa
 	// (Print Kit), per sapere quanto foglio serve davvero senza
@@ -313,6 +387,15 @@ private:
 	std::vector<float> fRowHeights;
 	std::vector<float> fColOffsets;
 	std::vector<float> fRowOffsets;
+	// Righe nascoste (AutoFilter o import XLSX <row hidden="1">): un
+	// array denso parallelo a fRowHeights, non sovrapposto ad esso
+	// (un'altezza 0 sarebbe stata riportata al minimo da SetRowHeights
+	// sopra) -- RebuildRowOffsets sotto tratta una riga nascosta come
+	// se avesse altezza 0 SENZA modificare fRowHeights, cosi' torna
+	// alla sua altezza vera (personalizzata o predefinita) quando
+	// mostrata di nuovo, esattamente come Excel ricorda l'altezza di
+	// una riga nascosta.
+	std::vector<bool> fRowHidden;
 	void RebuildColumnOffsets();
 	void RebuildRowOffsets();
 	// Indice di colonna/riga (1-based, sempre in [1, kColCount]/
@@ -414,6 +497,23 @@ private:
 
 	const std::vector<ChartObject>* fCharts;
 	const std::vector<EmbeddedImage>* fImages;
+
+	// AutoFilter: vedi SetAutoFilter/SetColumnValueHidden ecc. sopra.
+	// fFilterHiddenValues e' per-colonna (indice di colonna 1-based),
+	// mai persistito (solo le righe nascoste RISULTANTI lo sono, vedi
+	// fRowHidden sopra e la sezione dedicata in AscdIO.h): riaprire un
+	// file mostra di nuovo le righe giuste, ma il menu a tendina non
+	// "ricorda" quali valori esatti le avevano escluse -- limite
+	// dichiarato, non un bug.
+	bool fHasAutoFilter;
+	range fAutoFilterRange;
+	std::map<int, std::vector<BString> > fFilterHiddenValues;
+	void RecomputeAutoFilterVisibility();
+	// Ultima riga con contenuto in una qualunque colonna dell'intervallo
+	// di colonne di fAutoFilterRange, cercata a partire da GetBounds()
+	// del documento -- il limite inferiore dei "dati filtrati" per
+	// UniqueColumnValues/RecomputeAutoFilterVisibility sopra.
+	int AutoFilterDataBottom() const;
 
 	BTextControl* fEditor;
 	cell fEditingCell;
