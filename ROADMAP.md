@@ -7,15 +7,27 @@ cancella/trova e sostituisci), menu Formato (Generale/Numero/Valuta/
 Percentuale), toolbar, Locale Kit, Print Kit, icona applicazione
 (HVIF, disegnata da zero) ed export CSV — tutti fatti e testati dal
 vivo in una sessione grafica reale. **Fase 5 (packaging/compatibilità)
-in corso** — ricetta HaikuDepot pronta ma non ancora buildabile
-(nessun repository pubblico); licenza **MIT** decisa per il codice
+in corso** — ricetta HaikuDepot pronta ma non ancora buildabile (il
+repository è ormai pubblico su GitHub, manca solo un tag di release
+versionato con checksum reale); licenza **MIT** decisa per il codice
 nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
 la sua licenza BSD originale); export ODS e XLSX aggiunti (oltre a
 CSV) — export XLS legacy escluso deliberatamente (nessun writer
 BIFF/OLE2 su cui appoggiarsi, XLSX copre già l'export verso
-l'ecosistema Excel); resta il test di compatibilità su un corpus di
-file reali, bloccato in attesa di file campione o autorizzazione a
-installare software. **Fase 6 chiusa**: guida utente, funzioni con
+l'ecosistema Excel); test di compatibilità completato su un corpus di
+11 file di lavoro reali dell'utente (mai inclusi nel repository), oltre
+al catalogo di icone HVIF ora collegato per intero alla toolbar
+(formattazione testo compresa) col relativo troppopieno gestito quando
+la finestra si restringe. Nello stesso giro di lavoro, usando l'app dal
+vivo, l'utente ha segnalato e sono stati corretti quattro bug: il
+grassetto su una sola cella che si propagava a tutto il foglio (font
+di default condiviso per errore), la tinta della selezione
+multi-cella non trasparente, l'impossibilità di selezionare
+un'intera riga/colonna dall'intestazione, e un crash reale ("Looper
+must be locked") aprendo Colore sfondo/testo con la finestra già
+aperta — quest'ultimo riprodotto dall'utente stesso con un vero
+rapporto di crash di Haiku. **Fase 6 chiusa**: guida utente, funzioni
+con
 nome nelle formule, grafici a barre e tabelle pivot di base, editing
 in-cella e navigazione da tastiera in stile Excel, SUMIF/COUNTIF/
 AVERAGEIF, correzione della propagazione del ricalcolo alle celle
