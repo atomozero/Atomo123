@@ -4411,6 +4411,51 @@ Nessuna regressione nelle suite UI (a parte il blocco pre-esistente e
 già documentato sopra di `test-paste-range` su questo desktop
 condiviso, indipendente da questa modifica).
 
+### Migliorie di fedeltà XLSX (2/3): colore della linguetta del foglio
+
+Seconda voce dello stesso confronto (tasto destro sulla scheda in
+Excel > "Colore scheda", `<sheetPr><tabColor rgb="FF00B050"/></sheetPr>`
+nel file XML): nessuna traccia in Atomo123, né in lettura né in
+disegno — `SheetTabView` disegnava ogni scheda con due soli colori
+fissi (bianco se attiva, grigio se no), senza alcun posto per un
+colore personalizzato.
+
+Fix: `hasTabColor`/`tabColor` seguono lo stesso schema di `showGrid`
+poco sopra — un campo per foglio in `AscdSheet`, persistito nel
+formato nativo ASCD (sezione opzionale in coda, un byte "presente" più
+tre byte RGB) e importato da XLSX (`HexToColor`, già usata per gli
+stessi colori "rgb=" di font/sfondo cella, riusata qui senza
+duplicazione). `SheetTabView::SetSheets` accetta ora due vettori
+opzionali paralleli ai nomi (colore/presente-o-no per scheda) — resta
+comunque ignara di `AscdSheet`/`MainWindow`, riceve solo colori grezzi,
+stesso principio di disaccoppiamento già in uso per gli altri campi.
+
+Stile di disegno scelto (`SheetTabView::Draw`): la scheda **non**
+attiva con un colore lo mostra a tutta area (si nota anche da lontano,
+esattamente come l'originale in Excel); quella **attiva** resta
+bianca — deve confondersi con il foglio sopra, non spiccare — con solo
+una barra colorata di 3px sul bordo inferiore a ricordare la scelta.
+Nessuna interfaccia per sceglierlo a mano, per ora: solo lettura/
+persistenza/disegno di quello importato.
+
+Test: `ui/tests/test_sheet_tabs.cpp` esteso con un controllo a livello
+di pixel (non di solo stato interno) — disegna `SheetTabView` su una
+vera `BBitmap` offscreen ("accetta viste", la stessa tecnica di
+`test_image_alpha.cpp`) e legge i colori davvero scritti per la
+scheda colorata attiva/non attiva e quella senza colore. Nota tecnica
+scoperta scrivendo questo test: `SetSheets()` (che chiama `GetFont()`/
+`Invalidate()`) va richiamato con la bitmap offscreen **già bloccata**
+(`Lock()`), non solo `Draw()` — chiamato prima manda in crash il
+processo (verificato a parte con un piccolo programma di prova prima
+di correggere il test). `translators/xlsx/tests/sample.xlsx` esteso
+con `<sheetPr><tabColor rgb="FF00B050"/></sheetPr>` (lo stesso verde
+del file reale che ha motivato questa fase) e nuova asserzione nel
+translator; `ui/tests/test_persistence.cpp` esteso con un giro
+salva/ricarica del colore (compreso il caso "file senza questa
+sezione, nessun colore di default"). Nessuna regressione nelle suite
+UI (stesso blocco pre-esistente di `test-paste-range` già documentato
+sopra, indipendente da questa modifica).
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
