@@ -4173,6 +4173,50 @@ screenshot (stesso programma di prova della tinta di selezione sopra,
 clic vero su `MouseDown()` sull'intestazione di colonna): la colonna B
 intera si evidenzia, la vista non salta altrove.
 
+### Bug scoperto: crash reale "Looper must be locked" aprendo Colore sfondo/testo
+
+Primo crash vero riprodotto dall'utente stesso (non in un test), con
+tanto di rapporto di debug di Haiku: cliccando "Colore sfondo" con la
+finestra ColorWindow già aperta, l'app si bloccava con "Looper must
+be locked" dentro `BColorControl::SetValue` → `BView::Invalidate()` →
+`BView::Bounds()`.
+
+Causa: `MainWindow::ShowColorWindow()` chiamava
+`fColorWindow->SetMode(...)` direttamente — una chiamata C++ normale,
+non un `BMessage` — ma `ColorWindow` è una `BWindow` a sé, con un
+thread/`BLooper` proprio (diverso da quello di `MainWindow`).
+`SetMode()` tocca `fColorControl` (una sua `BView`) tramite
+`SetValue()`, che chiama `Invalidate()`: toccare una `BView` di
+un'altra finestra senza aver preso il lock di quella finestra viola le
+regole di threading di Haiku, cosa che il sistema intercetta e blocca
+con un debugger trap invece di corrompere silenziosamente lo stato.
+Capita quando la ColorWindow esiste già (il suo thread è vivo e
+attivo) — proprio lo scenario del crash reale: l'utente l'aveva già
+aperta una volta.
+
+Lo stesso identico schema (chiamata diretta a un metodo di un'altra
+finestra, senza lock) era replicato in altri due punti dello stesso
+file, mai andati in crash finora solo per tempistica più favorevole:
+`MainWindow::RefreshNameWindow()` (`fNameWindow->SetNames(...)`,
+chiamata anche a ogni Aggiungi/Aggiorna/Elimina nome definito, non
+solo aprendo la finestra — probabilità di corsa più alta di
+ColorWindow) e `MainWindow::ShowPreferencesWindow()`
+(`fPreferencesWindow->SetValues(...)`). Il progetto usa già altrove
+nello stesso file (`MainWindow::~MainWindow`, righe 590-636 circa) lo
+schema corretto `finestra->Lock(); finestra->Quit();` per la
+distruzione di queste stesse finestre secondarie — solo queste tre
+chiamate "di aggiornamento" (non di chiusura) non lo seguivano.
+
+Fix: `if (finestra->Lock()) { finestra->SetXxx(...); finestra->Unlock(); }`
+in tutti e tre i punti.
+
+Test: `ui/tests/test_format_toolbar.cpp` esteso — clic reale (tramite
+il pulsante vero della toolbar, non una chiamata diretta) su
+"Colore sfondo" due volte di seguito, la seconda con la ColorWindow
+già aperta: stesso scenario del crash reale, verifica solo che non
+vada in crash (l'esito della scelta colore, asincrono e guidato
+dall'utente, resta fuori scopo). Nessuna regressione nelle 34 suite.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
