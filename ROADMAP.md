@@ -4376,6 +4376,41 @@ esatti (140/56/56px invece di 145/61/61px dell'approssimazione);
 (30pt → 40px atteso) e nuova asserzione che verifica l'altezza
 importata. 145/145 controlli passati.
 
+### Migliorie di fedeltà XLSX (1/3): griglia nascosta per-foglio
+
+Terza voce emersa dallo stesso confronto file reale/Excel delle due
+sopra: il file dichiarava `<sheetView showGridLines="0">` (griglia
+nascosta di proposito, un look pulito da documento ufficiale), ma
+Atomo123 la mostrava comunque. Causa: `SheetView::ShowGrid` era
+pilotata da un'unica preferenza GLOBALE dell'applicazione (`gPrefs`,
+lo stesso interruttore per ogni documento), non da un attributo del
+foglio stesso.
+
+Fix: `showGrid` diventa un campo per-foglio in `AscdSheet` (stesso
+schema di `frozenRows`/`frozenCols`, Fase 10) — persistito nel formato
+nativo ASCD (sezione opzionale in coda, un byte, `true` di default per
+i file scritti prima di questa modifica), importato da XLSX
+(`<sheetView showGridLines="...">`, assente = visibile, il default di
+Excel), e risincronizzato in entrambe le direzioni a ogni cambio
+scheda (`MainWindow::SwitchToSheet`) esattamente come Blocca riquadri.
+La preferenza globale (`gPrefs`) resta, ma solo come valore di partenza
+per un foglio nuovo (`ResetWorkbook`) — non più l'unica fonte di
+verità per un documento già aperto: attivare/disattivare la griglia
+dal pannello Preferenze ora scrive sul foglio attivo, non solo sulla
+vista.
+
+Test: `ui/tests/test_persistence.cpp` esteso con un giro salva/ricarica
+di `showGrid=false` (compreso il caso "file senza questa sezione, il
+default resta `true`"); `translators/xlsx/tests/sample.xlsx` esteso con
+`<sheetView showGridLines="0"/>` e nuova asserzione nel translator;
+`ui/tests/test_multisheet.cpp` esteso — un foglio con griglia nascosta
+in mezzo a due con griglia visibile, verificato che il cambio scheda
+avanti e indietro non la confonda con quella degli altri fogli (stesso
+principio già usato lì per le larghezze di colonna personalizzate).
+Nessuna regressione nelle suite UI (a parte il blocco pre-esistente e
+già documentato sopra di `test-paste-range` su questo desktop
+condiviso, indipendente da questa modifica).
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
