@@ -233,6 +233,15 @@ void SetupDefaultFuncs()
 	gFuncs[kSUMIFFuncNr] = SUMIFFunction;
 	gFuncs[kCOUNTIFFuncNr] = COUNTIFFunction;
 	gFuncs[kAVERAGEIFFuncNr] = AVERAGEIFFunction;
+	gFuncs[kTRIMFuncNr] = TRIMFunction;
+	gFuncs[kUPPERFuncNr] = UPPERFunction;
+	gFuncs[kLOWERFuncNr] = LOWERFunction;
+	gFuncs[kPROPERFuncNr] = PROPERFunction;
+	gFuncs[kFINDFuncNr] = FINDFunction;
+	gFuncs[kSEARCHFuncNr] = SEARCHFunction;
+	gFuncs[kCONCATFuncNr] = CONCATFunction;
+	gFuncs[kMEDIANFuncNr] = MEDIANFunction;
+	gFuncs[kMODEFuncNr] = MODEFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

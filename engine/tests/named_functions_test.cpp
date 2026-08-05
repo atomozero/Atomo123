@@ -19,7 +19,9 @@
 	dell'app vera.
 */
 
+#include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include <Path.h>
 
@@ -65,7 +67,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 89, "InitFunctions carica tutte le 89 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 98, "InitFunctions carica tutte le 98 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -178,6 +180,150 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =SUMIF con operatore: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// TRIM/UPPER/LOWER/PROPER/FIND/SEARCH/CONCAT/MEDIAN/MODE: assenti
+	// dalle funzioni originali di Sum-It, aggiunte in questa sessione
+	// (Fase 13) per colmare il divario con Excel sulle funzioni di
+	// testo/statistiche piu' comuni.
+	TryToParseString("\"  Atomo   123  \"", cell(7, 1), &doc, true);
+	TryToParseString("\"Atomo123\"", cell(7, 2), &doc, true);
+	TryToParseString("\"atomo123\"", cell(7, 3), &doc, true);
+	TryToParseString("\"atomo 123 haiku\"", cell(7, 4), &doc, true);
+
+	try
+	{
+		TryToParseString("=TRIM(G1)", cell(8, 1), &doc, true);
+		doc.CalcCell(cell(8, 1));
+		doc.GetValue(cell(8, 1), v);
+		Check(strcmp((const char *)v, "Atomo 123") == 0,
+			"=TRIM(\"  Atomo   123  \") elimina gli spazi esterni e riduce quelli interni a uno solo");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =TRIM: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=UPPER(G2)", cell(8, 2), &doc, true);
+		doc.CalcCell(cell(8, 2));
+		doc.GetValue(cell(8, 2), v);
+		Check(strcmp((const char *)v, "ATOMO123") == 0, "=UPPER(\"Atomo123\") calcola \"ATOMO123\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =UPPER: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=LOWER(G2)", cell(8, 3), &doc, true);
+		doc.CalcCell(cell(8, 3));
+		doc.GetValue(cell(8, 3), v);
+		Check(strcmp((const char *)v, "atomo123") == 0, "=LOWER(\"Atomo123\") calcola \"atomo123\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =LOWER: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=PROPER(G4)", cell(8, 4), &doc, true);
+		doc.CalcCell(cell(8, 4));
+		doc.GetValue(cell(8, 4), v);
+		Check(strcmp((const char *)v, "Atomo 123 Haiku") == 0,
+			"=PROPER(\"atomo 123 haiku\") calcola \"Atomo 123 Haiku\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =PROPER: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=FIND(\"123\";G2)", cell(9, 1), &doc, true);
+		doc.CalcCell(cell(9, 1));
+		doc.GetValue(cell(9, 1), v);
+		Check((double)v == 6.0, "=FIND(\"123\";\"Atomo123\") calcola 6 (posizione 1-based)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =FIND: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=FIND(\"XYZ\";G2)", cell(9, 2), &doc, true);
+		doc.CalcCell(cell(9, 2));
+		doc.GetValue(cell(9, 2), v);
+		Check(v.fType == eNumData && std::isnan((double)v),
+			"=FIND(\"XYZ\";\"Atomo123\") non trova nulla, restituisce un errore");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =FIND senza corrispondenza: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=SEARCH(\"ATOMO\";G2)", cell(9, 3), &doc, true);
+		doc.CalcCell(cell(9, 3));
+		doc.GetValue(cell(9, 3), v);
+		Check((double)v == 1.0,
+			"=SEARCH(\"ATOMO\";\"Atomo123\") ignora maiuscole/minuscole, calcola 1");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SEARCH: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=CONCAT(\"Foglio \";A1;\" righe\")", cell(9, 4), &doc, true);
+		doc.CalcCell(cell(9, 4));
+		doc.GetValue(cell(9, 4), v);
+		Check(strcmp((const char *)v, "Foglio 10 righe") == 0,
+			"=CONCAT(\"Foglio \";A1;\" righe\") unisce testo e numero in \"Foglio 10 righe\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =CONCAT: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=MEDIAN(A1:A3)", cell(10, 1), &doc, true);
+		doc.CalcCell(cell(10, 1));
+		doc.GetValue(cell(10, 1), v);
+		Check((double)v == 20.0, "=MEDIAN(A1:A3) su 10,20,30 calcola 20");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =MEDIAN: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=MODE(5;7;5;9)", cell(10, 2), &doc, true);
+		doc.CalcCell(cell(10, 2));
+		doc.GetValue(cell(10, 2), v);
+		Check((double)v == 5.0, "=MODE(5;7;5;9) calcola 5 (l'unico valore ripetuto)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =MODE: %s\n", (char *)e);
 		gFailures++;
 	}
 

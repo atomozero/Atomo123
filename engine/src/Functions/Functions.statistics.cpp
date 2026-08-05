@@ -44,6 +44,9 @@
 #include "Functions.h"
 #include "Globals.h"
 
+#include <algorithm>
+#include <vector>
+
 void COUNTAFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	int i;
@@ -174,7 +177,105 @@ void VARIANCEFunction(Value *stack, int argCnt, CContainer *cells)
 		
 		theResult /= countedCells - 1;
 	}
-	
+
 	stack[0] = theResult;
+}
+
+// MEDIAN/MODE (Fase 13): a differenza di AVG/VARIANCE sopra, che
+// accumulano solo somme durante lo scorrimento, qui serve l'elenco
+// completo dei valori (per ordinarli/confrontarli), quindi si
+// raccolgono prima in un std::vector -- gia' usato altrove nel motore
+// (Container.cpp), non un'introduzione nuova per questo file.
+
+static void CollectNumbers(Value *stack, int argCnt, CContainer *cells,
+	std::vector<double> &values, bool &invalidRange)
+{
+	range cRange;
+	cell c;
+	double tmp;
+	Value val;
+
+	invalidRange = false;
+	for (int i = 1; i <= argCnt; i++)
+	{
+		if (GetDoubleArgument(stack, argCnt, i, &tmp))
+			values.push_back(tmp);
+		else if (GetRangeArgument(stack, argCnt, i, &cRange))
+		{
+			if (!cRange.IsValid())
+			{
+				invalidRange = true;
+				return;
+			}
+
+			CCellIterator iter(cells, &cRange);
+			while (iter.NextExisting(c))
+			{
+				cells->GetValue(c, val);
+				if (val.fType == eNumData)
+					values.push_back(val.fDouble);
+			}
+		}
+	}
+}
+
+void MEDIANFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	std::vector<double> values;
+	bool invalidRange;
+
+	CollectNumbers(stack, argCnt, cells, values, invalidRange);
+	if (invalidRange)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+	if (values.empty())
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	std::sort(values.begin(), values.end());
+	size_t n = values.size();
+	stack[0] = (n % 2 == 0)
+		? (values[n / 2 - 1] + values[n / 2]) / 2.0
+		: values[n / 2];
+}
+
+void MODEFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	std::vector<double> values;
+	bool invalidRange;
+
+	CollectNumbers(stack, argCnt, cells, values, invalidRange);
+	if (invalidRange)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+	if (values.empty())
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	std::sort(values.begin(), values.end());
+
+	double bestValue = values[0];
+	int bestCount = 1, currentCount = 1;
+	for (size_t i = 1; i < values.size(); i++)
+	{
+		currentCount = (values[i] == values[i - 1]) ? currentCount + 1 : 1;
+		if (currentCount > bestCount)
+		{
+			bestCount = currentCount;
+			bestValue = values[i];
+		}
+	}
+
+	// Come in Excel: se nessun valore si ripete, MODE non ha una moda
+	// da restituire.
+	stack[0] = (bestCount >= 2) ? bestValue : gValueNan;
 }
 

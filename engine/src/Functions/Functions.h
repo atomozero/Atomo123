@@ -131,6 +131,15 @@ enum {
 	kSUMIFFuncNr,
 	kCOUNTIFFuncNr,
 	kAVERAGEIFFuncNr,
+	kTRIMFuncNr,
+	kUPPERFuncNr,
+	kLOWERFuncNr,
+	kPROPERFuncNr,
+	kFINDFuncNr,
+	kSEARCHFuncNr,
+	kCONCATFuncNr,
+	kMEDIANFuncNr,
+	kMODEFuncNr,
 	kFunctionCount
 };
 
@@ -223,5 +232,14 @@ void COUNTAFunction(Value *stack, int argCnt, CContainer *cells);
 void SUMIFFunction(Value *stack, int argCnt, CContainer *cells);
 void COUNTIFFunction(Value *stack, int argCnt, CContainer *cells);
 void AVERAGEIFFunction(Value *stack, int argCnt, CContainer *cells);
+void TRIMFunction(Value *stack, int argCnt, CContainer *cells);
+void UPPERFunction(Value *stack, int argCnt, CContainer *cells);
+void LOWERFunction(Value *stack, int argCnt, CContainer *cells);
+void PROPERFunction(Value *stack, int argCnt, CContainer *cells);
+void FINDFunction(Value *stack, int argCnt, CContainer *cells);
+void SEARCHFunction(Value *stack, int argCnt, CContainer *cells);
+void CONCATFunction(Value *stack, int argCnt, CContainer *cells);
+void MEDIANFunction(Value *stack, int argCnt, CContainer *cells);
+void MODEFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

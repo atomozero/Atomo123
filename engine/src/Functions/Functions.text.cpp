@@ -44,7 +44,9 @@
 #include "Formatter.h"
 #if __BEOS__ || __HAIKU__
 #include "utf-support.h"
+#include <cstdio>
 #include <cstring>
+#include <cctype>
 #else
 #	define mstrlen strlen
 #	define mstrcpy strncpy
@@ -184,5 +186,207 @@ void RIGHTFunction(Value *stack, int argCnt, CContainer *cells)
 	}
 	else
 		stack[0] = gValueNan;
+}
+
+// TRIM/UPPER/LOWER/PROPER/FIND/SEARCH/CONCAT (Fase 13): a differenza di
+// LEFT/MID/RIGHT sopra, che usano mstrlen/mstrcpy/moffset (UTF-8
+// consapevoli), qui si lavora byte per byte -- non esiste in questo
+// motore una tabella di conversione maiuscolo/minuscolo UTF-8 (vedi
+// utf-support.h: solo lunghezza/offset), quindi una lettera accentata
+// (es. "città") resta invariata invece di convertirsi in UPPER/LOWER/
+// PROPER. Stessa approssimazione gia' accettata altrove per il testo
+// (famiglia del font non cercata all'import XLSX, solo stile/
+// dimensione, vedi Fase 12).
+
+void TRIMFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	char s[256];
+
+	if (GetTextArgument(stack, argCnt, 1, s))
+	{
+		char out[256];
+		int o = 0, len = strlen(s), i = 0;
+		bool pendingSpace = false;
+
+		while (i < len && s[i] == ' ')
+			i++;
+		for (; i < len; i++)
+		{
+			if (s[i] == ' ')
+				pendingSpace = true;
+			else
+			{
+				if (pendingSpace)
+				{
+					out[o++] = ' ';
+					pendingSpace = false;
+				}
+				out[o++] = s[i];
+			}
+		}
+		out[o] = 0;
+		stack[0] = out;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+void UPPERFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	char s[256];
+
+	if (GetTextArgument(stack, argCnt, 1, s))
+	{
+		for (char *p = s; *p; p++)
+			*p = toupper((unsigned char)*p);
+		stack[0] = s;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+void LOWERFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	char s[256];
+
+	if (GetTextArgument(stack, argCnt, 1, s))
+	{
+		for (char *p = s; *p; p++)
+			*p = tolower((unsigned char)*p);
+		stack[0] = s;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+void PROPERFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	char s[256];
+
+	if (GetTextArgument(stack, argCnt, 1, s))
+	{
+		bool startOfWord = true;
+		for (char *p = s; *p; p++)
+		{
+			if (isalpha((unsigned char)*p))
+			{
+				*p = startOfWord ? toupper((unsigned char)*p) : tolower((unsigned char)*p);
+				startOfWord = false;
+			}
+			else
+				startOfWord = true;
+		}
+		stack[0] = s;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+// Trovata solo con l'iniziale minuscola, per lo stesso motivo di
+// SEARCH sotto rispetto a FIND: nessuna wildcard (? e *), a differenza
+// di Excel vero -- approssimazione accettata per restare nello scope
+// di un task "facile" (vedi ROADMAP.md Fase 13).
+static const char* FindCaseInsensitive(const char *haystack, const char *needle)
+{
+	size_t needleLen = strlen(needle);
+	if (needleLen == 0)
+		return haystack;
+	for (const char *p = haystack; *p; p++)
+	{
+		size_t i = 0;
+		while (i < needleLen && p[i] != 0 &&
+			tolower((unsigned char)p[i]) == tolower((unsigned char)needle[i]))
+			i++;
+		if (i == needleLen)
+			return p;
+	}
+	return NULL;
+}
+
+void FINDFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	char findText[256], withinText[256];
+	double startArg;
+	int start = 1;
+
+	if (GetTextArgument(stack, argCnt, 1, findText) &&
+		GetTextArgument(stack, argCnt, 2, withinText))
+	{
+		if (GetDoubleArgument(stack, argCnt, 3, &startArg))
+			start = static_cast<int>(rint(startArg));
+
+		int withinLen = strlen(withinText);
+		if (start < 1 || start > withinLen + 1)
+		{
+			stack[0] = gValueNan;
+			return;
+		}
+
+		const char *found = strstr(withinText + start - 1, findText);
+		stack[0] = found ? (double)(found - withinText + 1) : gValueNan;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+void SEARCHFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	char findText[256], withinText[256];
+	double startArg;
+	int start = 1;
+
+	if (GetTextArgument(stack, argCnt, 1, findText) &&
+		GetTextArgument(stack, argCnt, 2, withinText))
+	{
+		if (GetDoubleArgument(stack, argCnt, 3, &startArg))
+			start = static_cast<int>(rint(startArg));
+
+		int withinLen = strlen(withinText);
+		if (start < 1 || start > withinLen + 1)
+		{
+			stack[0] = gValueNan;
+			return;
+		}
+
+		const char *found = FindCaseInsensitive(withinText + start - 1, findText);
+		stack[0] = found ? (double)(found - withinText + 1) : gValueNan;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+// A differenza di NUM2CFunction sopra, qui non si puo' usare ftoa
+// (Formatter.cpp): internamente chiama BFont::StringWidth, che
+// richiede una connessione app_server -- senza una BApplication vera
+// (come nel test del motore isolato, named_functions_test.cpp, che
+// non ne crea una apposta) resta bloccata in attesa di una risposta
+// che non arriva mai. Il motore deve restare utilizzabile anche senza
+// Interface Kit (vedi il commento in cima a Container.h sullo scopo
+// della libreria isolata), quindi qui si usa una conversione diretta
+// con snprintf invece di appoggiarsi al formattatore grafico.
+static void FormatNumberForConcat(double d, char *out)
+{
+	snprintf(out, 32, "%.10g", d);
+}
+
+void CONCATFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	char out[2048];
+	char arg[256];
+	double d;
+
+	out[0] = 0;
+	for (int i = 1; i <= argCnt; i++)
+	{
+		if (GetTextArgument(stack, argCnt, i, arg))
+			strncat(out, arg, sizeof(out) - strlen(out) - 1);
+		else if (GetDoubleArgument(stack, argCnt, i, &d))
+		{
+			char num[32];
+			FormatNumberForConcat(d, num);
+			strncat(out, num, sizeof(out) - strlen(out) - 1);
+		}
+	}
+	stack[0] = out;
 }
 

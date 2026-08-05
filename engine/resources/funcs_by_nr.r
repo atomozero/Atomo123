@@ -131,6 +131,15 @@ resource 'Func' (128, "Functions")
 		"COUNTA", 65535, 85, 5, //check max argument quantity !!!
 		"SUMIF", 65535, 86, 5,
 		"COUNTIF", 2, 87, 5,
-		"AVERAGEIF", 65535, 88, 5
+		"AVERAGEIF", 65535, 88, 5,
+		"TRIM", 1, 89, 6,
+		"UPPER", 1, 90, 6,
+		"LOWER", 1, 91, 6,
+		"PROPER", 1, 92, 6,
+		"FIND", 65535, 93, 6,
+		"SEARCH", 65535, 94, 6,
+		"CONCAT", 65535, 95, 6,
+		"MEDIAN", 65535, 96, 5,
+		"MODE", 65535, 97, 5
 	}
 };

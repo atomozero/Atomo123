@@ -87,3 +87,12 @@ Number of cells that are not empty also number of arguments that contain values
 Sum of cells matching a criteria
 Count of cells matching a criteria
 Average of cells matching a criteria
+Removes leading/trailing spaces and collapses internal runs of spaces
+Converts text to upper case
+Converts text to lower case
+Capitalizes the first letter of each word
+Position of find_text within within_text, case-sensitive
+Position of find_text within within_text, case-insensitive
+Joins two or more text values into one
+Median (middle value) of a list of numbers
+Most frequently occurring value in a list of numbers
