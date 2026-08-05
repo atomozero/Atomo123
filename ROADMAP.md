@@ -4845,6 +4845,49 @@ Disabilitato temporaneamente il fix durante lo sviluppo per confermare
 che il test lo scopra davvero (3 controlli su 6 falliscono senza),
 poi ripristinato. Nessuna regressione nelle 37 suite UI.
 
+### Bug scoperto: un riquadro "fantasma" restava sullo schermo spostando la selezione via da una cella unita
+
+Segnalato dall'utente subito dopo il fix precedente, con un nuovo
+screenshot sullo stesso file: più riquadri blu comparivano
+contemporaneamente in punti diversi del foglio, come se più celle
+fossero "selezionate" insieme (impossibile nel modello a singola
+selezione di questa app).
+
+Causa: il fix precedente ha esteso il riquadro *disegnato* da `Draw()`
+per una cella unita, ma non l'area *invalidata* quando la selezione si
+sposta — `SetSelection`/`ExtendSelection` continuavano a invalidare
+solo `PinnedCellRect` grezzo (una singola cella), mai l'intervallo
+esteso davvero disegnato. Spostando la selezione via da una cella
+unita, la parte del vecchio riquadro fuori dalla stretta zona
+invalidata non veniva più ridisegnata dall'Interface Kit (che ridisegna
+solo l'area invalidata, non l'intero schermo) — restava visibile come
+residuo, un "fantasma" del riquadro precedente.
+
+Fix: estratto `ActiveCellRect(cell)` (pubblico, stesso principio di
+`ImageFrame`/`AutoFilterArrowRect` — un solo posto per la formula) che
+restituisce il rettangolo di una cella, esteso a tutto l'intervallo se
+è l'angolo di una cella unita. Usato ora sia da `Draw()` (rimuove la
+logica duplicata inline del fix precedente) sia da
+`SetSelection`/`ExtendSelection`, che invalidano l'unione del
+rettangolo attivo *prima* e *dopo* lo spostamento — così qualunque area
+mai disegnata come riquadro esteso viene sempre ripulita.
+
+Test: `ui/tests/test_merge_click.cpp` invariato nel numero di
+controlli (il refactor non cambia il comportamento già verificato),
+ma il meccanismo di invalidazione in sé non è verificabile con lo
+stesso principio delle bitmap offscreen usato altrove in questa
+sessione — nei test `Draw()` viene sempre chiamata a mano con un
+rettangolo esplicito, senza mai passare dal meccanismo reale di
+regione invalidata/ridisegno parziale dell'Interface Kit (che esiste
+solo per una vera finestra sullo schermo). Corretto per costruzione
+(un'unione, mai una riduzione, dell'area già invalidata prima del fix
+— non può quindi invalidare "troppo poco"). Non è stato possibile
+ottenere una verifica visiva dal vivo per questo punto specifico: la
+finestra dell'app restava dietro altre finestre dell'utente sul
+desktop condiviso, senza un modo affidabile per riportarla in primo
+piano da riga di comando in questa sessione. Nessuna regressione nelle
+37 suite UI.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
