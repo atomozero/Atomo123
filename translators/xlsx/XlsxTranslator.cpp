@@ -2187,7 +2187,23 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 					ctx->doc->NewCell(loc, v, NULL);
 				}
 				else
-					TryToParseString(text.c_str(), loc, ctx->doc, false);
+				{
+					// decSep='.'/listSep=',' ESPLICITI, non i valori
+					// predefiniti (0 -> gDecimalPoint/gListSeparator,
+					// globali legati alle preferenze locali dell'utente,
+					// ';' di default per l'Italia -- vedi App.cpp): il
+					// testo di <f> in un file XLSX e' SEMPRE nel formato
+					// canonico ECMA-376, indipendente dalla lingua/locale
+					// con cui e' stato scritto in Excel (che mostra
+					// "=SE(A1>5;100;200)" con SE/punto e virgola in
+					// italiano, ma salva sempre "=IF(A1>5,100,200)" nel
+					// file). Bug reale scoperto su un file reale: OGNI
+					// formula con piu' di un argomento (IF, VLOOKUP,
+					// IFERROR, ecc.) falliva l'analisi grammaticale con
+					// gListSeparator=';' e ripiegava sul testo grezzo
+					// della formula invece di calcolarla.
+					TryToParseString(text.c_str(), loc, ctx->doc, false, '.', ',');
+				}
 			}
 			catch (...)
 			{

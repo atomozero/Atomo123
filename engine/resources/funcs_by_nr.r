@@ -72,10 +72,10 @@ resource 'Func' (128, "Functions")
 		"FRAC", 1, 26, 4,
 		"FV", 3, 27, 3,
 		"HINDEX", 2, 28, 1,
-		"HLOOKUP", 3, 29, 1,
+		"HLOOKUP", 65535, 29, 1, // 65535 = quarto argomento (corrispondenza esatta) opzionale, Fase 13
 		"HOUR", 1, 30, 2,
 		"IF", 3, 31, 7,
-		"IFERR", 3, 32, 7,
+		"IFERR", 65535, 32, 7, // 65535 = secondo/terzo argomento gestiti entrambi da IFERRFunction, Fase 13
 		"INT", 1, 33, 4,
 		"IRR", 2, 34, 3,
 		"ISNULL", 1, 35, 7,
@@ -120,7 +120,7 @@ resource 'Func' (128, "Functions")
 		"TIME2C", 1, 74, 6,
 		"VARIANCE", 65535, 75, 5,
 		"VINDEX", 2, 76, 1,
-		"VLOOKUP", 3, 77, 1,
+		"VLOOKUP", 65535, 77, 1, // 65535 = quarto argomento (corrispondenza esatta) opzionale, Fase 13
 		"YEAR", 1, 78, 2,
 		"TRUE", 0, 79, 7,
 		"OR", 65535, 80, 7,
@@ -140,6 +140,14 @@ resource 'Func' (128, "Functions")
 		"SEARCH", 65535, 94, 6,
 		"CONCAT", 65535, 95, 6,
 		"MEDIAN", 65535, 96, 5,
-		"MODE", 65535, 97, 5
+		"MODE", 65535, 97, 5,
+		// Nome standard Excel (IFERR sopra e' quello storico di Sum-It,
+		// mai usato da un file XLSX vero): stessa IFERRFunction, non una
+		// nuova implementazione -- vedi Functions.h/FunctionUtils.cpp.
+		// Bug reale scoperto su un file reale: ogni cella con IFERROR(...)
+		// veniva mostrata come testo grezzo della formula invece del
+		// valore calcolato, perche' "IFERROR" non esisteva affatto nella
+		// tabella (l'analisi grammaticale falliva con "funzione sconosciuta").
+		"IFERROR", 65535, 98, 7
 	}
 };

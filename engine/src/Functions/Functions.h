@@ -140,6 +140,7 @@ enum {
 	kCONCATFuncNr,
 	kMEDIANFuncNr,
 	kMODEFuncNr,
+	kIFERRORFuncNr,
 	kFunctionCount
 };
 

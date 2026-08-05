@@ -242,6 +242,11 @@ void SetupDefaultFuncs()
 	gFuncs[kCONCATFuncNr] = CONCATFunction;
 	gFuncs[kMEDIANFuncNr] = MEDIANFunction;
 	gFuncs[kMODEFuncNr] = MODEFunction;
+	// Stessa IFERRFunction di kIFERRFuncNr sopra, non una nuova
+	// implementazione: "IFERROR" e' solo il nome standard Excel che un
+	// file XLSX vero usa davvero (vedi il commento sulla voce
+	// "IFERROR" in funcs_by_nr.r).
+	gFuncs[kIFERRORFuncNr] = IFERRFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

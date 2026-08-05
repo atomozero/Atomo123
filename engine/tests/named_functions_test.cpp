@@ -67,7 +67,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 98, "InitFunctions carica tutte le 98 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 99, "InitFunctions carica tutte le 99 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -324,6 +324,120 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =MODE: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// IFERROR/VLOOKUP/HLOOKUP con separatore ',' esplicito (Fase 13):
+	// tre bug reali distinti scoperti su un file XLSX reale (colonna di
+	// codici sparita, formule mostrate come testo grezzo invece del
+	// valore calcolato).
+	//
+	// 1. "IFERROR" (nome standard Excel) non esisteva affatto nella
+	//    tabella funzioni -- solo "IFERR" (nome storico di Sum-It), mai
+	//    usato da un file XLSX vero. Aggiunta come alias della stessa
+	//    IFERRFunction.
+	// 2. VLOOKUP/HLOOKUP avevano argCnt=3 ESATTO nella risorsa 'Func',
+	//    ma il vero VLOOKUP di Excel ha un quarto argomento opzionale
+	//    (corrispondenza esatta/approssimata) che un file reale usa
+	//    quasi sempre esplicitamente -- un parser che rifiuta 4
+	//    argomenti fa fallire l'intera formula.
+	// 3. Il traduttore XLSX chiamava TryToParseString senza mai passare
+	//    decSep='.'/listSep=',' espliciti: il testo di <f> in un file
+	//    XLSX e' SEMPRE nel formato canonico ECMA-376 (virgola fra gli
+	//    argomenti), indipendente dalla lingua con cui e' stato scritto
+	//    in Excel -- con gListSeparator=';' (l'impostazione predefinita
+	//    per l'Italia, vedi App.cpp) OGNI formula con piu' di un
+	//    argomento falliva l'analisi grammaticale e ripiegava sul testo
+	//    grezzo della formula invece di calcolarla. Qui simulato
+	//    passando esplicitamente '.'/',' a TryToParseString, come fa
+	//    ora XlsxTranslator::ParseSheet.
+	//
+	// L1:L3 = colonna chiave (1,2,3), M1:M3 = seconda colonna (valori
+	// di testo), per verificare che VLOOKUP prenda davvero la colonna
+	// giusta (bug indipendente scoperto verificando il punto 2 sopra:
+	// l'aritmetica dello scarto di colonna/riga era sfasata di uno,
+	// restituiva sempre la colonna/riga SUCCESSIVA a quella richiesta
+	// -- mai notato prima perche' nessun test aveva mai controllato il
+	// valore VERO restituito, solo l'assenza di crash).
+	TryToParseString("1", cell(12, 1), &doc, true); // L1
+	TryToParseString("2", cell(12, 2), &doc, true); // L2
+	TryToParseString("3", cell(12, 3), &doc, true); // L3
+	TryToParseString("uno", cell(13, 1), &doc, true); // M1
+	TryToParseString("due", cell(13, 2), &doc, true); // M2
+	TryToParseString("tre", cell(13, 3), &doc, true); // M3
+	TryToParseString("1", cell(12, 4), &doc, true); // L4
+	TryToParseString("2", cell(13, 4), &doc, true); // M4
+	TryToParseString("3", cell(14, 4), &doc, true); // N4
+	TryToParseString("dieci", cell(12, 5), &doc, true); // L5
+	TryToParseString("venti", cell(13, 5), &doc, true); // M5
+	TryToParseString("trenta", cell(14, 5), &doc, true); // N5
+
+	try
+	{
+		TryToParseString("=IFERROR(1/0,99)", cell(14, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(14, 1));
+		doc.GetValue(cell(14, 1), v);
+		Check((double)v == 99.0, "=IFERROR(1/0,99) riconosce il nome standard Excel, calcola 99");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =IFERROR: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=VLOOKUP(2,L1:M3,2,0)", cell(14, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(14, 2));
+		doc.GetValue(cell(14, 2), v);
+		Check(strcmp((const char *)v, "due") == 0,
+			"=VLOOKUP(2,L1:M3,2,0) con quattro argomenti e corrispondenza esatta calcola \"due\" (colonna giusta)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =VLOOKUP esatto: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=VLOOKUP(99,L1:M3,2,0)", cell(14, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(14, 3));
+		doc.GetValue(cell(14, 3), v);
+		Check(v.fType == eNumData && std::isnan((double)v),
+			"=VLOOKUP(99,L1:M3,2,0) senza corrispondenza esatta restituisce un errore, non la riga sbagliata");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =VLOOKUP senza corrispondenza: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=HLOOKUP(2,L4:N5,2,0)", cell(15, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(15, 1));
+		doc.GetValue(cell(15, 1), v);
+		Check(strcmp((const char *)v, "venti") == 0,
+			"=HLOOKUP(2,L4:N5,2,0) con quattro argomenti calcola \"venti\" (riga giusta, L4:N4=1,2,3)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =HLOOKUP: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=IF(1<>2,\"vero\",\"falso\")", cell(14, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(14, 5));
+		doc.GetValue(cell(14, 5), v);
+		Check(strcmp((const char *)v, "vero") == 0,
+			"=IF(1<>2,\"vero\",\"falso\") con virgole esplicite (formato XLSX) calcola \"vero\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =IF con virgole: %s\n", (char *)e);
 		gFailures++;
 	}
 

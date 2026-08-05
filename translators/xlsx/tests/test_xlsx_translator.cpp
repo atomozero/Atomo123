@@ -26,6 +26,7 @@
 #include <File.h>
 #include <DataIO.h>
 #include <Font.h>
+#include <Path.h>
 #include <String.h>
 #include <SupportDefs.h>
 
@@ -36,6 +37,9 @@
 #include "CellIterator.h"
 #include "CellParser.h"
 #include "CellStyle.h"
+#include "FunctionUtils.h"
+#include "Globals.h"
+#include "ResourceManager.h"
 
 static int gFailures = 0;
 
@@ -152,6 +156,20 @@ int main()
 	// arriva mai -- stesso motivo gia' noto in ui/tests/test_ascd_io.cpp
 	// e test_persistence.cpp per lo stesso genere di chiamate.
 	BApplication app("application/x-vnd.Atomo-TestXlsxTranslator");
+
+	// Senza questo, GetFunctionNr tratta OGNI nome di funzione (IF,
+	// VLOOKUP, IFERROR, ecc.) come identificatore sconosciuto
+	// (gFuncCount resta 0): una formula con funzione con nome
+	// importata da un file XLSX reale ripiegherebbe sempre sul testo
+	// grezzo invece del valore calcolato, in questo test come nella
+	// vera app senza App::ReadyToRun -- stesso principio di
+	// engine/tests/named_functions_test.cpp.
+	{
+		BPath funcRsrcPath("tests/named_functions.rsrc");
+		gAppName = funcRsrcPath;
+		if (gResourceManager.SetTo(&funcRsrcPath) == B_OK)
+			InitFunctions();
+	}
 
 	BTranslator *translator = make_nth_translator(0, 0, 0);
 	Check(translator != NULL, "make_nth_translator crea il translator");
@@ -1921,6 +1939,102 @@ int main()
 				"dopo il round-trip, C1 (era una formula) vale 20 -- il valore calcolato, "
 				"non la formula (scelta deliberata dell'export)");
 			Check(reA2, "dopo il round-trip, A2 vale ancora \"Prova export\"");
+		}
+	}
+
+	// Formule con piu' argomenti separati da virgola (Fase 13): bug
+	// reale scoperto su un file reale, tre cause distinte nello stesso
+	// sintomo (una formula mostrata come testo grezzo invece del
+	// valore calcolato) --
+	// 1. "IFERROR" (nome standard Excel) non esisteva affatto nella
+	//    tabella funzioni, solo "IFERR" (nome storico di Sum-It).
+	// 2. VLOOKUP aveva argCnt=3 ESATTO nella risorsa 'Func', ma il
+	//    quarto argomento (corrispondenza esatta/approssimata) e'
+	//    quasi sempre presente in un file reale.
+	// 3. ParseSheet chiamava TryToParseString senza mai passare
+	//    decSep='.'/listSep=',' espliciti: il testo di <f> in un file
+	//    XLSX e' SEMPRE virgola fra gli argomenti (formato canonico
+	//    ECMA-376), indipendente dalla lingua con cui e' stato scritto
+	//    in Excel -- con gListSeparator=';' (il default per l'Italia)
+	//    OGNI formula con piu' di un argomento falliva l'analisi
+	//    grammaticale.
+	// sample_formulas.xlsx (creato con un piccolo script Python, ZIP
+	// minimo scritto a mano sullo stesso modello di sample_numfmt.xlsx
+	// -- nessun Excel/LibreOffice disponibile per generarlo, stesso
+	// principio delle altre fixture di questo file) ha tre formule reali
+	// con virgole: IF/VLOOKUP/IFERROR.
+	{
+		BFile formulasFile("tests/sample_formulas.xlsx", B_READ_ONLY);
+		Check(formulasFile.InitCheck() == B_OK, "apertura di tests/sample_formulas.xlsx riuscita");
+
+		translator_info info;
+		status_t err = translator->Identify(&formulasFile, NULL, NULL, &info, 0);
+		Check(err == B_OK, "Identify riconosce sample_formulas.xlsx");
+
+		formulasFile.Seek(0, SEEK_SET);
+		BMallocIO ascdOut;
+		err = translator->Translate(&formulasFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
+		Check(err == B_OK, "Translate di sample_formulas.xlsx riesce");
+
+		const unsigned char *ascdData = NULL;
+		size_t ascdLen = 0;
+		bool unwrapped = UnwrapFirstSheet((const unsigned char *)ascdOut.Buffer(),
+			ascdOut.BufferLength(), &ascdData, &ascdLen);
+		Check(unwrapped, "l'output di Translate di sample_formulas.xlsx e' un ASCD valido");
+
+		if (unwrapped)
+		{
+			// Le celle si riportano in un CContainer vero (non solo
+			// bytewise) cosi' si puo' davvero CalcCell/GetValue,
+			// esattamente come farebbe MainWindow::OpenFile dopo aver
+			// letto lo stesso ASCD con LoadASCD.
+			CContainer &doc = *new CContainer(NULL, NULL);
+
+			int32 count = 0;
+			if (ascdLen > 12)
+				memcpy(&count, ascdData + 8, 4);
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				memcpy(&col, ascdData + pos, 2); pos += 2;
+				memcpy(&len, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)len > ascdLen)
+					break;
+				std::string text((const char *)ascdData + pos, len);
+				pos += len;
+				cell loc(col, row);
+				// Nessun separatore esplicito qui, a differenza
+				// dell'import XLSX sopra: questo testo arriva dal byte
+				// stream ASCD (scritto da WriteASCD/GetCellFormula/
+				// UnMangle, che usa sempre gListSeparator -- il default
+				// ';' del motore, non ',' come XLSX), quindi va riletto
+				// con lo stesso separatore predefinito, esattamente
+				// come fa LoadASCD nella vera app.
+				TryToParseString(text.c_str(), loc, &doc, false);
+			}
+
+			doc.CalcCell(cell(4, 1)); // D1
+			doc.CalcCell(cell(4, 2)); // D2
+			doc.CalcCell(cell(4, 3)); // D3
+
+			Value v;
+			doc.GetValue(cell(4, 1), v);
+			Check(v.fType == eTextData && strcmp((const char *)v, "falso") == 0,
+				"D1 (IF(C1<>2,\"vero\",\"falso\") con C1=2) calcola \"falso\" dopo il giro completo");
+
+			doc.GetValue(cell(4, 2), v);
+			Check(v.fType == eTextData && strcmp((const char *)v, "due") == 0,
+				"D2 (VLOOKUP(2,A1:B3,2,0) con quattro argomenti) calcola \"due\" dopo il giro completo");
+
+			doc.GetValue(cell(4, 3), v);
+			Check(v.fType == eNumData && (double)v == 99.0,
+				"D3 (IFERROR(1/0,99), nome standard Excel) calcola 99 dopo il giro completo");
+
+			doc.Release();
 		}
 	}
 

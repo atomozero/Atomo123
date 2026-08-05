@@ -293,10 +293,21 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 	double offset;
 	bool handled = false;
 	Value val;
-	
+
 	if (CheckForNanParameters(stack, argCnt))
 		return;
-	
+
+	// Corrispondenza esatta (Fase 13): quarto argomento opzionale
+	// (FALSE/0), come nel vero HLOOKUP di Excel -- vedi il commento
+	// gemello su VLOOKUPFunction sotto per il motivo del fix.
+	bool exactMatch = false;
+	double rangeLookupNum;
+	bool rangeLookupBool;
+	if (GetDoubleArgument(stack, argCnt, 4, &rangeLookupNum))
+		exactMatch = (rangeLookupNum == 0);
+	else if (GetBooleanArgument(stack, argCnt, 4, &rangeLookupBool))
+		exactMatch = !rangeLookupBool;
+
 	if (GetRangeArgument(stack, argCnt, 2, &cRange) &&
 		GetDoubleArgument(stack, argCnt, 3, &offset) &&
 		cRange.IsValid())
@@ -307,7 +318,7 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 		int v = cRange.top;
 		cell c;
 		bool stop = false;
-		
+
 		if (GetDoubleArgument(stack, argCnt, 1, &key) && !isnan(key))
 		{
 			c.h = cRange.left - 1; c.v = v;
@@ -316,13 +327,23 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 				c.h++;
 				cells->GetValue(c, val);
 				if (val.fType == eNumData)
-					stop = (key <= val.fDouble);
+					stop = exactMatch ? (key == val.fDouble) : (key <= val.fDouble);
 			}
 			while (c.h <= cRange.right && !stop);
-			
+
 			if (stop)
 			{
-				c.v += static_cast<short>(rint(offset));
+				// "- 1": c.v e' gia' fermo sulla riga di intestazione
+				// (cRange.top, la PRIMA riga dell'intervallo, indice 1
+				// per la convenzione di Excel row_index_num), quindi
+				// sommare offset senza togliere 1 sbaglia sempre di una
+				// riga (offset=1, "la riga stessa", finiva sulla riga
+				// SUCCESSIVA). Bug reale pre-esistente scoperto
+				// verificando il fix della corrispondenza esatta sopra
+				// con valori noti -- mai notato prima perche' nessun
+				// test aveva mai controllato il valore VERO restituito,
+				// solo che HLOOKUP/VLOOKUP non andassero in crash.
+				c.v += static_cast<short>(rint(offset)) - 1;
 				cells->GetValue(c, stack[0]);
 				handled = true;
 			}
@@ -335,13 +356,13 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 				c.h++;
 				cells->GetValue(c, val);
 				if (val.fType == eTextData)
-					stop = (strcmp(keyS, val.fText) <= 0);
+					stop = exactMatch ? (strcmp(keyS, val.fText) == 0) : (strcmp(keyS, val.fText) <= 0);
 			}
 			while (c.h <= cRange.right && !stop);
-			
+
 			if (stop)
 			{
-				c.v += static_cast<short>(rint(offset)) ;
+				c.v += static_cast<short>(rint(offset)) - 1; // vedi il commento sopra
 				cells->GetValue(c, stack[0]);
 				handled = true;
 			}
@@ -354,19 +375,19 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 				c.h++;
 				cells->GetValue(c, val);
 				if (val.fType == eTimeData)
-					stop = (keyD <= val.fTime);
+					stop = exactMatch ? (keyD == val.fTime) : (keyD <= val.fTime);
 			}
 			while (c.h <= cRange.right && !stop);
-			
+
 			if (stop)
 			{
-				c.v += static_cast<short>( rint(offset) ) ;
+				c.v += static_cast<short>(rint(offset)) - 1; // vedi il commento sopra
 				cells->GetValue(c, stack[0]);
 				handled = true;
 			}
 		}
 	}
-	
+
 	if (!handled)
 		stack[0] = gRefNan;
 }
@@ -546,10 +567,28 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 	range cRange;
 	double offset;
 	bool handled = false;
-	
+
 	if (CheckForNanParameters(stack, argCnt))
 		return;
-	
+
+	// Corrispondenza esatta (Fase 13): quarto argomento opzionale
+	// (FALSE/0), come nel vero VLOOKUP di Excel -- prima non veniva
+	// mai letto, quindi la ricerca era sempre "approssimata" (trova il
+	// primo valore >= chiave, presuppone l'intervallo ordinato per la
+	// colonna chiave), la forma di gran lunga meno comune nei fogli
+	// reali. Bug reale scoperto su un file reale che chiedeva
+	// esplicitamente VLOOKUP(...,4,0) -- corrispondenza esatta su un
+	// intervallo NON ordinato per quella colonna, che con la vecchia
+	// logica avrebbe restituito silenziosamente la riga sbagliata
+	// invece del risultato atteso o di un errore.
+	bool exactMatch = false;
+	double rangeLookupNum;
+	bool rangeLookupBool;
+	if (GetDoubleArgument(stack, argCnt, 4, &rangeLookupNum))
+		exactMatch = (rangeLookupNum == 0);
+	else if (GetBooleanArgument(stack, argCnt, 4, &rangeLookupBool))
+		exactMatch = !rangeLookupBool;
+
 	if (GetRangeArgument(stack, argCnt, 2, &cRange) &&
 		cRange.IsValid() &&
 		GetDoubleArgument(stack, argCnt, 3, &offset))
@@ -561,7 +600,7 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 		cell c;
 		Value val;
 		bool stop = false;
-		
+
 		if (GetDoubleArgument(stack, argCnt, 1, &key))
 		{
 			c.h = h; c.v = cRange.top - 1;
@@ -570,13 +609,18 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 				c.v++;
 				cells->GetValue(c, val);
 				if (val.fType == eNumData)
-					stop = (key <= val.fDouble);
+					stop = exactMatch ? (key == val.fDouble) : (key <= val.fDouble);
 			}
 			while (c.v <= cRange.bottom && !stop);
-			
+
 			if (stop)
 			{
-				c.h += static_cast<short>(rint(offset)) ;
+				// "- 1": c.h e' gia' fermo sulla colonna dell'intervallo
+				// (cRange.left, la PRIMA colonna, indice 1 per la
+				// convenzione di Excel col_index_num) -- vedi lo stesso
+				// commento su HLOOKUPFunction sopra, identico bug pre-
+				// esistente sull'asse opposto.
+				c.h += static_cast<short>(rint(offset)) - 1;
 				cells->GetValue(c, stack[0]);
 				handled = true;
 			}
@@ -589,13 +633,13 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 				c.v++;
 				cells->GetValue(c, val);
 				if (val.fType == eTextData)
-					stop = (strcmp(keyS, val.fText) <= 0);
+					stop = exactMatch ? (strcmp(keyS, val.fText) == 0) : (strcmp(keyS, val.fText) <= 0);
 			}
 			while (c.v <= cRange.bottom && !stop);
-			
+
 			if (stop)
 			{
-				c.h += static_cast<short>(rint(offset)) ;
+				c.h += static_cast<short>(rint(offset)) - 1; // vedi il commento sopra
 				cells->GetValue(c, stack[0]);
 				handled = true;
 			}
@@ -608,19 +652,19 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 				c.v++;
 				cells->GetValue(c, val);
 				if (val.fType == eTimeData)
-					stop = (keyD <= val.fTime);
+					stop = exactMatch ? (keyD == val.fTime) : (keyD <= val.fTime);
 			}
 			while (c.v <= cRange.bottom && !stop);
-			
+
 			if (stop)
 			{
-				c.h += static_cast<short>(rint(offset)) ;
+				c.h += static_cast<short>(rint(offset)) - 1; // vedi il commento sopra
 				cells->GetValue(c, stack[0]);
 				handled = true;
 			}
 		}
 	}
-	
+
 	if (!handled)
 		stack[0] = gRefNan;
 }
