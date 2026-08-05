@@ -2957,6 +2957,20 @@ void SheetView::StartEditing(cell c, const char* initialText)
 	{
 		char text[4096];
 		fDoc->GetCellFormula(c, text, sizeof(text), false);
+
+		// Stesso motivo di MainWindow::SelectionChanged (barra della
+		// formula): GetCellFormula non antepone mai "=", quindi senza
+		// questo il doppio clic su una formula la mostrerebbe qui
+		// identica a un numero/testo normale invece che come "=A1+B1".
+		// TryToParseString (CommitEditing sotto) accetta comunque
+		// entrambe le forme, quindi aggiungerla qui e' sicuro.
+		if (fDoc->GetCellFormula(c) != NULL)
+		{
+			char withEquals[4097];
+			snprintf(withEquals, sizeof(withEquals), "=%s", text);
+			strlcpy(text, withEquals, sizeof(text));
+		}
+
 		fEditor->SetText(text);
 	}
 

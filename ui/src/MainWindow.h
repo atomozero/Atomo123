@@ -71,6 +71,14 @@ public:
 	// verifica diretta senza passare da un vero ciclo di dispatch dei
 	// messaggi di menu.
 	SheetView* GetSheetView() const { return fSheetView; }
+	// Pubblico apposta per essere testabile direttamente (stesso
+	// principio di GetSheetView sopra): verifica che SelectionChanged
+	// anteponga davvero "=" al testo di una cella con formula (vedi il
+	// commento li' sopra). Definito in MainWindow.cpp, non qui: questo
+	// header dichiara solo BTextControl* fFormulaBar in avanti (vedi
+	// SheetView.h), senza il tipo completo -- Text() richiede la
+	// definizione vera di BTextControl.
+	const char* FormulaBarText() const;
 	void CopySelection(bool cut);
 	void PasteSelection();
 	void SetCellFormat(int32 format);

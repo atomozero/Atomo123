@@ -2538,7 +2538,32 @@ void MainWindow::SelectionChanged(cell c)
 		fDoc->GetCellFormula(c, formula, sizeof(formula), false);
 	else
 		formula[0] = 0;
+
+	// GetCellFormula/CFormula::UnMangle non antepongono mai "=" (il
+	// vecchio interruttore storico gWithEqualSign resta sempre a false,
+	// mai davvero collegato a nulla nel porting): senza questo, una
+	// formula appariva identica a un numero/testo normale nella barra
+	// della formula, a differenza di ogni altro foglio di calcolo
+	// (Excel/LibreOffice Calc mostrano sempre "=A1+B1"). Aggiunto qui
+	// (solo per la visualizzazione) invece di riattivare il flag
+	// globale, che influenzerebbe anche l'export XLSX/ODS -- l'elemento
+	// <f> di quei formati non deve mai avere "=", per specifica
+	// ECMA-376/OpenDocument -- e il testo scritto da SaveASCD, dove non
+	// serve (TryToParseString accetta comunque entrambe le forme in
+	// lettura). Segnalato dall'utente su un file reale.
+	if (fDoc && fDoc->GetCellFormula(c) != NULL)
+	{
+		char withEquals[4097];
+		snprintf(withEquals, sizeof(withEquals), "=%s", formula);
+		strlcpy(formula, withEquals, sizeof(formula));
+	}
+
 	fFormulaBar->SetText(formula);
+}
+
+const char* MainWindow::FormulaBarText() const
+{
+	return fFormulaBar->Text();
 }
 
 void MainWindow::MessageReceived(BMessage* message)
