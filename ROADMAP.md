@@ -4799,6 +4799,52 @@ anche dal vivo riaprendo il file reale con l'app: la colonna dei codici
 ATECO ora si vede correttamente. Nessuna regressione nelle suite del
 motore, dei tre translator, né nelle 36 suite UI.
 
+### Bug scoperto: un clic su una cella unita si comportava come se non fosse mai stata unita
+
+Segnalato dall'utente sullo stesso file reale (screenshot): cliccando
+su D4, angolo in alto a sinistra di un intervallo unito D4:F4, il
+riquadro di selezione disegnato restava largo una sola colonna invece
+di estendersi a tutto l'intervallo — visivamente indistinguibile da
+una cella mai unita.
+
+Indagando è emerso un secondo bug, più subdolo, nello stesso punto:
+`SheetView::MouseDown` calcola la cella cliccata con `CellAt(where)`,
+che restituisce sempre la cella *fisica* sotto il puntatore, senza mai
+controllare se fa parte di un intervallo unito — un clic su una
+qualunque cella "nascosta" sotto la fusione (es. E4 o F4 dell'intervallo
+D4:F4, che non portano mai contenuto/stile proprio) selezionava quella
+cella vuota invece dell'angolo D4, che è l'unica a contenere davvero il
+valore. La barra della formula sarebbe apparsa vuota per un clic del
+genere, rinforzando l'impressione "mai unita".
+
+Fix, due parti indipendenti:
+1. `MouseDown` ora controlla `CContainer::GetMergedRange` sulla cella
+   cliccata e, se fa parte di un intervallo, sostituisce la cella con
+   il suo angolo in alto a sinistra prima di procedere alla selezione
+   — stesso principio già in uso per il disegno del contenuto (vedi
+   Fase 12), qui esteso alla selezione.
+2. Il riquadro di selezione in `Draw()` (`activeRect`/`selOuter`), per
+   il caso comune di una selezione a singola cella che risulta essere
+   l'angolo di un intervallo unito, si estende ora all'intero
+   intervallo (`CellRect` dell'angolo unito con quello opposto, stesso
+   schema già in uso per il rettangolo del testo). Limitato
+   deliberatamente al caso di singola cella: un vero trascinamento
+   multi-cella che si sovrappone solo in parte a un intervallo unito è
+   un caso limite già complesso in Excel stesso.
+
+Test: nuovo `ui/tests/test_merge_click.cpp` — verificato che un clic
+sull'angolo D4 selezioni D4, che un clic su F4 (nascosta) selezioni
+comunque D4 (non F4), che una cella normale fuori da qualunque
+intervallo continui a selezionare se stessa, e — su una bitmap
+offscreen, leggendo davvero i pixel del bordo blu di selezione
+(30,100,200), stesso principio già in uso in `test_autofilter.cpp` per
+lo stesso genere di bug "geometricamente corretto ma mai verificato
+sui pixel veri" — che il riquadro arrivi fino al bordo destro
+dell'intero intervallo unito e non più al bordo della sola cella D4.
+Disabilitato temporaneamente il fix durante lo sviluppo per confermare
+che il test lo scopra davvero (3 controlli su 6 falliscono senza),
+poi ripristinato. Nessuna regressione nelle 37 suite UI.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
