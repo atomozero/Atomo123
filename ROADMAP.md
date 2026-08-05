@@ -4604,6 +4604,51 @@ solo al rilascio) e resti relativa al punto di *partenza* del
 trascinamento (non incrementale), e che spostare un'immagine non
 tocchi l'altra. Nessuna regressione nelle 35 suite UI.
 
+### Ridimensionamento con il mouse delle immagini incorporate
+
+Chiesto dall'utente ("posso ridimensionare le immagini?") subito dopo
+aver verificato lo spostamento sul suo file reale: estensione naturale
+dello stesso meccanismo, questa volta su `width`/`height` invece di
+`offsetX`/`offsetY`.
+
+`ImageResizeHandle(img)` (pubblico, stesso motivo di `ImageFrame`: un
+solo posto per la formula, usato sia da `Draw()` per disegnare la
+maniglia sia da `MouseDown` per riconoscere il clic) restituisce un
+piccolo quadrato (8×8px) ancorato all'angolo in basso a destra di
+`ImageFrame(img)`, sempre visibile — non solo al passaggio del mouse,
+stesso motivo già scritto per i puntini di ridimensionamento
+riga/colonna: senza un indizio visivo permanente l'interazione non
+sarebbe scopribile guardando lo schermo.
+
+La maniglia è un bersaglio più piccolo e più specifico del corpo
+dell'immagine, quindi `MouseDown` la controlla PRIMA del trascinamento
+di spostamento già esistente: un clic sulla maniglia ridimensiona,
+un clic altrove nel corpo dell'immagine sposta — i due percorsi restano
+distinti anche se la maniglia è geometricamente contenuta dentro
+`ImageFrame`. Stesso schema esatto dello spostamento (indice + punto di
+partenza + valore di partenza, armati da `MouseDown`, applicati da
+`MouseMoved`), qui su `fResizingImageIndex`/`fResizeImageStart`/
+`fResizeImageStartWidth`/`fResizeImageStartHeight` invece dei campi
+equivalenti per lo spostamento — mai sotto un minimo di 10px (altrimenti
+l'immagine sparirebbe insieme alla maniglia per riallargarla). Segna il
+documento come modificato in `MouseUp` come lo spostamento (cambia
+`width`/`height` nel modello, non solo una preferenza di
+visualizzazione). Cursore a doppia freccia diagonale
+(`B_CURSOR_ID_RESIZE_NORTH_WEST_SOUTH_EAST`) al passaggio del mouse
+sopra la maniglia, controllato prima del cursore di spostamento
+sull'intera immagine per lo stesso motivo di precedenza.
+
+Test: `ui/tests/test_image_resize.cpp`, nuovo — verificato che un clic
+fuori dall'immagine non la ridimensioni, che un clic sulla maniglia
+avvii il ridimensionamento (non lo spostamento: `offsetX`/`offsetY`
+restano invariati) e aggiorni `width`/`height` già al primo
+`MouseMoved` restando relativo al punto di *partenza* del trascinamento
+(non incrementale), che il ridimensionamento non tocchi un'altra
+immagine, che non scenda mai sotto il minimo anche trascinando molto
+oltre, e che un clic dentro l'immagine ma fuori dalla maniglia continui
+a spostare invece di ridimensionare. Nessuna regressione nelle 36 suite
+UI.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
