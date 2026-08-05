@@ -4744,6 +4744,61 @@ Nota: AutoFilter e Blocca riquadri, inizialmente segnalati come
 mancanti da una prima analisi automatica del codice, sono in realtà
 già implementati (vedi le sezioni sopra) — tolti dall'elenco.
 
+### Bug scoperto: un testo tipo codice ("01.11.10") spariva del tutto riaprendo il file
+
+Segnalato dall'utente aprendo una tabella di codici ATECO reale
+(screenshot): la colonna dei codici a sei cifre (formato
+"01.11.10") risultava completamente vuota, mentre la colonna delle
+descrizioni accanto si vedeva bene.
+
+Diagnosi con un programma di ispezione dedicato (compilato al volo
+contro `translators/xlsx/XlsxTranslator.cpp` + `ui/src/AscdIO.cpp`,
+stesso principio già in uso per gli altri bug reali di questa
+sessione): il testo veniva importato CORRETTAMENTE dal file XLSX
+(confermato leggendo il valore subito dopo `TryToParseString` dentro
+`ParseSheet`) e scritto CORRETTAMENTE nel formato nativo intermedio da
+`WriteASCD` — la perdita avveniva solo in lettura, in `LoadASCD`
+(`ui/src/AscdIO.cpp`, chiamata sempre subito dopo qualunque
+import/apertura, anche di un file XLSX: `MainWindow::OpenFile` traduce
+prima in nativo con `BTranslatorRoster`, poi rilegge quei byte con
+`LoadASCD`/`LoadASCDBook`).
+
+Causa: un testo come "01.11.10" (tre gruppi di cifre separati da
+punti) somiglia abbastanza a un'espressione numerica da superare
+l'analisi grammaticale iniziale di `CParser::Parse` (usata da
+`TryToParseString`, `engine/src/Cell/CellParser.cpp`), ma poi fallisce
+a ridursi a un valore vero e proprio — a quel punto
+`TryToParseString`, chiamata con `inWarnIfError=true`, RILANCIA
+l'eccezione invece di ripiegare sul testo originale (il ripiegamento
+esiste già nel codice, ma solo quando `inWarnIfError=false`). `LoadASCD`
+intercetta quell'eccezione con un `catch (...)` pensato per "una
+singola cella corrotta non deve far fallire l'intero caricamento" — ma
+invece di mostrare comunque il testo, la cella spariva senza lasciare
+traccia. Verificato con un secondo programma minimo che chiama
+`TryToParseString("01.11.10", ..., true)` direttamente: l'eccezione
+"Syntax error?" si propaga per davvero, confermando il meccanismo.
+
+Le tre copie locali di questa stessa funzione nei translator (XLSX,
+ODS, CSV — duplicate perché quei translator non linkano contro
+`ui/src/`, vedi il commento in cima a `WriteASCD` in ciascun file)
+hanno lo stesso identico bug nella direzione opposta (esportare un
+file nativo verso un formato esterno): lì il `catch` trasformava
+l'intero export in un fallimento totale (`B_BAD_DATA`) per colpa di
+una sola cella di testo innocua, invece di limitarsi a perderla.
+
+Fix: le quattro chiamate (`LoadASCD` più le tre copie locali)
+usano ora `inWarnIfError=false`, lo stesso valore già usato con
+successo da `ParseSheet` nei tre translator quando importano testo
+direttamente dal formato esterno (XLSX/ODS/CSV) — un parse ambiguo
+ripiega sempre sul testo originale invece di sparire o abortire tutto.
+
+Test: nuovo blocco in `ui/tests/test_ascd_io.cpp` — un giro
+salva→ricarica di tre celle di testo ("01.11.10", "01.12.00",
+"CODICE"), verificato che tutte e tre sopravvivano intatte. Verificato
+anche dal vivo riaprendo il file reale con l'app: la colonna dei codici
+ATECO ora si vede correttamente. Nessuna regressione nelle suite del
+motore, dei tre translator, né nelle 36 suite UI.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
