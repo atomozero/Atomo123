@@ -2137,6 +2137,30 @@ void SheetView::Draw(BRect updateRect)
 	BRect selOuter = PinnedCellRect(selRange.TopLeft()) | PinnedCellRect(selRange.BotRight());
 	BRect activeRect = PinnedCellRect(fSelection);
 
+	// Celle unite: il caso comune, una selezione di una sola cella che
+	// e' l'angolo di un intervallo unito, deve disegnare il riquadro
+	// di selezione esteso a tutto l'intervallo (stesso principio gia'
+	// in uso per il contenuto piu' sotto in questa stessa Draw()) --
+	// altrimenti il riquadro resta largo una sola colonna/riga anche
+	// se la cella e' visivamente unita con altre, facendola sembrare
+	// mai unita. MouseDown sopra gia' fa in modo che fSelection sia
+	// sempre l'angolo (mai una cella "nascosta" a meta' dell'intervallo),
+	// quindi qui basta controllare fSelection stessa. Limitato al caso
+	// di selezione di una sola cella: un vero trascinamento multi-cella
+	// che si sovrappone solo in parte a un intervallo unito e' un caso
+	// limite gia' complesso in Excel stesso, fuori dallo scope di
+	// questo fix.
+	if (fDoc && selRange.left == selRange.right && selRange.top == selRange.bottom)
+	{
+		range mergedRange;
+		if (fDoc->GetMergedRange(fSelection, &mergedRange))
+		{
+			activeRect = PinnedCellRect(cell(mergedRange.left, mergedRange.top))
+				| PinnedCellRect(cell(mergedRange.right, mergedRange.bottom));
+			selOuter = activeRect;
+		}
+	}
+
 	if (selRange.left != selRange.right || selRange.top != selRange.bottom)
 	{
 		// B_OP_ALPHA/B_PIXEL_ALPHA con un colore ad alfa parziale
@@ -2513,6 +2537,21 @@ void SheetView::MouseDown(BPoint where)
 	{
 		ShowAutoFilterMenu(c.h, where);
 		return;
+	}
+
+	// Celle unite: un clic in un punto qualunque dell'intervallo unito
+	// deve selezionare la stessa cella logica (l'angolo in alto a
+	// sinistra, l'unica che porta davvero contenuto/stile -- stesso
+	// principio gia' in uso per il disegno, vedi Draw() sotto) invece
+	// della cella fisica sotto il dito: senza questo, un clic su E4 di
+	// un intervallo unito D4:F4 selezionava E4 (vuota, nessun valore)
+	// invece di D4, facendo sembrare la cella mai unita. Bug reale
+	// segnalato dall'utente su un file reale con celle unite.
+	if (fDoc)
+	{
+		range mergedRange;
+		if (fDoc->GetMergedRange(c, &mergedRange))
+			c = cell(mergedRange.left, mergedRange.top);
 	}
 
 	int32 clicks = 1;
