@@ -4931,6 +4931,94 @@ resti vuota. Disabilitato temporaneamente il fix durante lo sviluppo
 per confermare che il test lo scopra davvero, poi ripristinato.
 Nessuna regressione nelle 38 suite UI.
 
+### Bug scoperto: quattro cause distinte dietro lo stesso sintomo — formule XLSX mostrate come testo grezzo
+
+Segnalato dall'utente confrontando side-by-side lo stesso file aperto
+in Excel vero e in Atomo123 (due screenshot): celle con `IFERROR`,
+`IF` e `VLOOKUP` mostravano il testo grezzo della formula (a volte
+tagliato/sovrapposto fra celle vicine, come un testo lungo qualunque)
+invece del valore calcolato — "IO vedo ancora molta differenza tra i
+due programmi".
+
+Diagnosi in isolamento, un programma di prova alla volta (stesso
+principio già in uso in questa sessione per gli altri bug reali):
+ricostruite esattamente le formule del file reale (`IFERROR(M27*.../
+1000/$L$10,0)`, `IF(M35<>"NO",VLOOKUP($U$10,'CLUSTER Monitoraggio'!
+$A$2:$F$12,4,0),"")`) e verificate passo passo con `TryToParseString`
+diretto, bypassando l'import XLSX per isolare dove esattamente si
+rompeva l'analisi grammaticale. Quattro bug reali distinti, tutti
+convergenti sullo stesso sintomo (parse fallito → ripiego sul testo
+grezzo della formula, comportamento di sicurezza già corretto nella
+sessione precedente per lo stesso motivo):
+
+1. **Separatore degli argomenti mai esplicito nell'import XLSX**: il
+   traduttore chiamava `TryToParseString(text, loc, doc, false)` senza
+   mai passare `decSep`/`listSep`, quindi usava i valori globali
+   `gDecimalPoint`/`gListSeparator` — `';'` di default per l'Italia
+   (`App.cpp`). Ma il testo di `<f>` in un file XLSX è **sempre**
+   nel formato canonico ECMA-376 (virgola fra gli argomenti, punto per
+   i decimali), indipendente dalla lingua con cui è stato scritto in
+   Excel — un Excel italiano mostra "=SE(A1>5;100;200)" nella barra
+   della formula ma salva sempre "=IF(A1>5,100,200)" nel file. Con
+   `gListSeparator=';'` **ogni** formula con più di un argomento
+   (`IF`, `VLOOKUP`, `SUMIF`, praticamente qualunque funzione non
+   banale) falliva l'analisi grammaticale. Probabilmente il bug reale
+   di più ampio impatto scoperto in questa sessione: non specifico di
+   una funzione, ma di ogni formula multi-argomento importata da XLSX.
+   Fix: `TryToParseString(text.c_str(), loc, ctx->doc, false, '.', ',')`
+   in `XlsxTranslator::ParseSheet` — esplicito, non più legato al
+   locale dell'utente.
+2. **"IFERROR" non esisteva nella tabella funzioni**: solo "IFERR"
+   (nome storico di Sum-It, mai usato da un file XLSX vero) era
+   registrato. Aggiunta "IFERROR" come nuova voce in
+   `engine/resources/funcs_by_nr.r` (`funcNr` 98), stessa
+   `IFERRFunction` di "IFERR" — non una nuova implementazione, solo il
+   nome standard che un file reale usa davvero.
+3. **VLOOKUP/HLOOKUP con `argCnt=3` ESATTO nella risorsa**: il vero
+   VLOOKUP di Excel ha un quarto argomento opzionale (corrispondenza
+   esatta/approssimata, `0`/`FALSE` per esatta) che un file reale usa
+   quasi sempre esplicitamente — un parser che rifiuta 4 argomenti
+   fa fallire l'intera formula. `argCnt` cambiato a `65535`
+   (variabile, stesso convenzione già in uso per `SUMIF`/`CONCAT`/
+   ecc.) per entrambe; `VLOOKUPFunction`/`HLOOKUPFunction` ora leggono
+   davvero il quarto argomento (prima veniva semplicemente ignorato,
+   la ricerca era **sempre** approssimata/su intervallo ordinato,
+   anche quando il file chiedeva esplicitamente una corrispondenza
+   esatta su un intervallo non ordinato — avrebbe potuto restituire
+   silenziosamente la riga sbagliata).
+4. **Bug indipendente, scoperto verificando il punto 3 con valori
+   noti**: l'aritmetica dello scarto di colonna/riga di
+   `VLOOKUP`/`HLOOKUP` era sfasata di uno (`c.h += offset` invece di
+   `c.h += offset - 1`, dato che `c.h` parte già sulla prima colonna
+   dell'intervallo) — `VLOOKUP(...,2,...)` restituiva sempre il
+   valore della **terza** colonna invece della seconda. Bug
+   pre-esistente (non introdotto in questa sessione), mai notato prima
+   perché nessun test aveva mai controllato il valore *vero*
+   restituito da un `VLOOKUP`/`HLOOKUP` con offset ≠ 1, solo l'assenza
+   di crash.
+
+Test: nuovi controlli in `engine/tests/named_functions_test.cpp`
+(conteggio funzioni aggiornato a 99, verifica diretta di `IFERROR`/
+`VLOOKUP` con corrispondenza esatta e colonna giusta/sbagliata/
+`HLOOKUP`/`IF` con virgole esplicite). Nuovo
+`translators/xlsx/tests/sample_formulas.xlsx` — fixture ZIP minima
+scritta a mano con uno script Python (nessun Excel/LibreOffice
+disponibile per generarla, stesso principio delle altre fixture di
+questo file) con le tre formule reali (`IF`/`VLOOKUP`/`IFERROR`),
+verificate end-to-end attraverso l'intero `XlsxTranslator::Translate`.
+Scrivendo quest'ultimo test è emerso un buco ulteriore:
+`test_xlsx_translator.cpp` non aveva **mai** chiamato `InitFunctions()`
+in tutta la sua storia — senza, `GetFunctionNr` tratta ogni nome di
+funzione come identificatore sconosciuto (`gFuncCount` resta 0), quindi
+nessuna funzione con nome (non solo quelle di questo fix) veniva mai
+davvero calcolata in questo file di test, solo importata come testo —
+mai notato perché nessun controllo precedente aveva mai verificato il
+*valore calcolato* di una formula con funzione con nome, solo stile e
+formattazione. Aggiunta la stessa risorsa `'Func'` di
+`named_functions_test.cpp` (nuovo target Makefile `named_functions.rsrc`).
+Nessuna regressione nelle suite del motore, dei quattro translator, né
+nelle 38 suite UI.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
