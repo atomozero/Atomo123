@@ -91,7 +91,11 @@ data/ora, tabelle, formattazione condizionale, immagini incorporate)
 ora somiglia a quello che si vede aprendolo con Excel vero su Windows,
 non solo valori e colori grezzi come prima della fase — richiesto
 esplicitamente dall'utente dopo aver riaperto il file di gara reale da
-38 fogli e trovato la resa "ancora carente". Aggiornato ad ogni fase
+38 fogli e trovato la resa "ancora carente". **Fase 5 chiusa** (tutti i
+punti pianificati completati). **Fase 13 (colmare il divario con
+Excel) in corso**: elenco delle funzionalità mancanti rispetto a Excel,
+compilato leggendo il codice reale e ordinato per difficoltà di
+implementazione crescente, non per importanza. Aggiornato ad ogni fase
 completata.
 
 Questo documento traccia le fasi del progetto: un'applicazione foglio di
@@ -4648,6 +4652,71 @@ immagine, che non scenda mai sotto il minimo anche trascinando molto
 oltre, e che un clic dentro l'immagine ma fuori dalla maniglia continui
 a spostare invece di ridimensionare. Nessuna regressione nelle 36 suite
 UI.
+
+## Fase 13 — Colmare il divario con Excel (IN CORSO)
+
+Con la Fase 5 chiusa e nessuna segnalazione pendente su file reali,
+l'utente ha chiesto un confronto sistematico con Excel: cosa manca
+davvero, in ordine di difficoltà crescente (dal più facile al più
+difficile da realizzare in Atomo123, non per importanza). Elenco
+compilato leggendo il codice reale (non a memoria): tabella funzioni
+in `engine/src/Functions/`, grafici in `ui/src/Chart*`, pivot in
+`ui/src/Pivot.h`, gestione fogli in `MainWindow.cpp`/`SheetTabView.cpp`,
+formati file in `translators/`.
+
+- [ ] **Funzioni di testo/statistiche mancanti**: TRIM, UPPER/LOWER/
+      PROPER, FIND/SEARCH, CONCAT (non `CONCATENATE`: il nome supera
+      il limite di 9 caratteri della risorsa `Func`, vedi sotto),
+      MEDIAN, MODE. `SUBSTITUTE` (10 caratteri) rimandato per lo
+      stesso motivo. Puro lavoro nel motore, nessuna UI: stesso schema
+      esatto di ogni funzione già presente in `engine/src/Functions/
+      Functions.<categoria>.cpp`.
+- [ ] **Nuovo/Elimina/Rinomina foglio**: assente (confermato nel
+      codice, `MainWindow.cpp` ha un commento esplicito "in futuro").
+      `SheetTabView` gestisce già il clic sulle schede; serve un menu
+      contestuale e pochi metodi in `MainWindow`.
+- [ ] **Commenti/note sulla cella**: nuovo campo per cella sul modello
+      di quanto già fatto per bordi/colori (Fase 11), più un piccolo
+      popup per editarlo.
+- [ ] **Collegamenti ipertestuali**: stringa URL per cella (stesso
+      schema dei commenti) più apertura con `BUrl` al clic.
+- [ ] **INDEX/MATCH**: lavoro nel motore come il punto 1, ma su
+      intervalli/array invece che su singoli valori — più complesso
+      delle funzioni pure.
+- [ ] **Altri tipi di grafico** (linee, torta): `Chart.h`/`ChartView.cpp`
+      hanno già l'infrastruttura per i grafici a barre; ogni nuovo tipo
+      riusa il framework di disegno ma richiede nuova geometria
+      dedicata.
+- [ ] **Stili di bordo/colore** (oggi solo presenza/assenza, nero
+      fisso): l'infrastruttura c'è già (`CellStyle`), ma tocca disegno,
+      persistenza e import XLSX in più punti.
+- [ ] **Validazione dati** (elenco a discesa, intervallo numerico):
+      nuova finestra di dialogo sullo stile di `PreferencesWindow`/
+      `ColorWindow` già esistenti, più un controllo all'editing della
+      cella.
+- [ ] **Formattazione condizionale viva**: oggi valutata una volta
+      sola all'import XLSX e congelata come colore statico (Fase 12);
+      richiede ricalcolarla a ogni ricalcolo del foglio, non solo
+      leggerla.
+- [ ] **Tabella pivot avanzata**: quella attuale in `Pivot.h` è
+      volutamente minimale (un solo livello di raggruppamento, solo
+      Somma/Conteggio/Media); un vero pivot con più livelli, più
+      misure, filtri, richiede in pratica riscriverla.
+- [ ] **Formule array** (Ctrl+Maiusc+Invio, spill): tocca il modello
+      di valutazione del motore, non un'aggiunta incrementale.
+- [ ] **Goal Seek / Solver**: serve un risolutore numerico iterativo
+      nuovo di zecca, oltre alla UI.
+- [ ] **Scrittura del formato XLS legacy (BIFF/OLE2)**: oggi solo
+      import; scrivere BIFF8 da zero è un formato binario notoriamente
+      ostico, nessuna libreria su cui appoggiarsi (per questo finora
+      escluso deliberatamente, vedi Fase 5).
+- [ ] **Macro/VBA**: richiederebbe un motore di scripting incorporato
+      — il salto più grande di tutti, sostanzialmente un sottoprogetto
+      a sé.
+
+Nota: AutoFilter e Blocca riquadri, inizialmente segnalati come
+mancanti da una prima analisi automatica del codice, sono in realtà
+già implementati (vedi le sezioni sopra) — tolti dall'elenco.
 
 ---
 
