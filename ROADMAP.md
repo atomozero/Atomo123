@@ -4888,6 +4888,49 @@ desktop condiviso, senza un modo affidabile per riportarla in primo
 piano da riga di comando in questa sessione. Nessuna regressione nelle
 37 suite UI.
 
+### Bug scoperto: le formule non mostravano mai il simbolo "=" iniziale
+
+Domanda dell'utente su un file reale ("è normale che le formule non
+abbiano il = all'inizio?"), dopo aver confermato che le celle unite
+ora funzionano correttamente — risposta: no, non è normale, è un
+interruttore storico mai davvero collegato a nulla.
+
+Causa: `CFormula::UnMangle` (`engine/src/Formula/Formula.cpp`), la
+funzione che ricostruisce il testo di una formula per mostrarla,
+antepone "=" solo `if (gWithEqualSign && !rcStyle)`. `gWithEqualSign`
+è un `bool` globale dichiarato ma **mai impostato a `true` da nessuna
+parte in tutto il codice** — resta al valore predefinito C++ per un
+bool globale (`false`), un interruttore ereditato da Sum-It storico
+mai davvero collegato a un'impostazione o a un default sensato durante
+il porting. Il risultato: ogni formula, in ogni cella, veniva sempre
+mostrata identica a un numero/testo normale — non un'abitudine di
+digitazione dell'utente (il motore accetta comunque "=" opzionale in
+ingresso), ma un comportamento fisso di tutta l'app in uscita.
+
+Fix, deliberatamente **non** la riattivazione del flag globale: quello
+influenzerebbe uniformemente OGNI chiamante di `GetCellFormula`,
+inclusi l'export XLSX/ODS (l'elemento `<f>` di quei formati non deve
+mai avere "=", per specifica ECMA-376/OpenDocument — scriverlo
+avrebbe rischiato di produrre file che Excel/LibreOffice veri
+interpretano male) e il testo scritto da `SaveASCD`/round-trip interno
+(dove non serve). Aggiunto "=" solo nei due punti dove l'utente legge
+davvero il contenuto di una cella come formula:
+`MainWindow::SelectionChanged` (barra della formula) e
+`SheetView::StartEditing` (editing in-cella al doppio clic) — usando
+`CContainer::GetCellFormula(cell)` (l'overload che restituisce il
+puntatore `void*` grezzo, `NULL` se non è una formula) per distinguere
+una vera formula da un numero/testo normale, non `CellHasFormula`
+(che restituisce `true` anche per una cella vuota/inesistente, un
+comportamento pensato per altri usi interni, sbagliato qui).
+
+Test: nuovo `ui/tests/test_formula_display.cpp`, con una vera
+`MainWindow` (`FormulaBarText()` esposto pubblicamente apposta) —
+verificato che una formula mostri "=A1+B1", un numero semplice mostri
+"10" senza "=", un testo normale resti invariato, una cella vuota
+resti vuota. Disabilitato temporaneamente il fix durante lo sviluppo
+per confermare che il test lo scopra davvero, poi ripristinato.
+Nessuna regressione nelle 38 suite UI.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
