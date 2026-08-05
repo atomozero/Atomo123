@@ -281,7 +281,13 @@ public:
 	// la posizione a schermo si ricalcola da CellRect(anchor) a ogni
 	// disegno, cosi' l'immagine segue la cella se righe/colonne
 	// cambiano dimensione.
-	void SetImages(const std::vector<EmbeddedImage>* images) { fImages = images; }
+	// Non piu' const: trascinare un'immagine con MouseDown/MouseMoved
+	// sotto scrive direttamente offsetX/offsetY sull'elemento del
+	// vettore -- lo stesso vettore di proprieta' di MainWindow (mai una
+	// copia, vedi il commento sopra), quindi lo spostamento e' gia'
+	// "salvato" nel modello non appena il trascinamento finisce, senza
+	// bisogno di ricopiare nulla indietro verso MainWindow.
+	void SetImages(std::vector<EmbeddedImage>* images) { fImages = images; }
 
 	// AutoFilter (import XLSX, <autoFilter ref="...">): l'intervallo
 	// (riga di intestazione + colonne) su cui disegnare le frecce a
@@ -345,6 +351,14 @@ public:
 	// coordinate. Valido solo se HasAutoFilter() e "col" e' nel suo
 	// intervallo di colonne.
 	BRect AutoFilterArrowRect(int col) const;
+
+	// Rettangolo a schermo di un'immagine incorporata (ancora + scarto,
+	// vedi EmbeddedImage.h): un solo posto per la formula, usata sia da
+	// Draw() per disegnarla sia da MouseDown/MouseMoved per riconoscere
+	// un clic/trascinamento su di essa, cosi' i due non possono
+	// disallinearsi. Pubblico apposta per essere testabile direttamente
+	// (stesso principio di AutoFilterArrowRect sopra).
+	BRect ImageFrame(const EmbeddedImage& img) const;
 	// Costruisce ed apre (bloccante, sincrono) il menu dei valori della
 	// colonna "col" -- MouseDown lo richiama quando riconosce un clic
 	// su AutoFilterArrowRect. Non testabile automaticamente (un vero
@@ -496,7 +510,17 @@ private:
 	void ApplySnapshot(const UndoSnapshot& snap);
 
 	const std::vector<ChartObject>* fCharts;
-	const std::vector<EmbeddedImage>* fImages;
+	std::vector<EmbeddedImage>* fImages;
+	// Trascinamento di un'immagine incorporata (MouseDown/MouseMoved/
+	// MouseUp): stesso schema di fResizingColumn/fResizingRow sopra
+	// (indice + punto di partenza + valore di partenza, la nuova
+	// posizione e' sempre "valore di partenza piu' spostamento del
+	// mouse dall'inizio"), ma qui l'indice puo' essere legittimamente 0
+	// (la prima immagine), quindi -1 vuol dire "nessun trascinamento in
+	// corso", non 0 come per le colonne/righe (1-based, 0 = nessuna).
+	int fDraggingImageIndex;
+	BPoint fDragImageStart;
+	float fDragImageStartOffsetX, fDragImageStartOffsetY;
 
 	// AutoFilter: vedi SetAutoFilter/SetColumnValueHidden ecc. sopra.
 	// fFilterHiddenValues e' per-colonna (indice di colonna 1-based),

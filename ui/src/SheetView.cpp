@@ -113,6 +113,7 @@ SheetView::SheetView(CContainer* doc)
 	fDragging(false),
 	fCharts(NULL),
 	fImages(NULL),
+	fDraggingImageIndex(-1),
 	fHasAutoFilter(false),
 	fEditor(NULL),
 	fEditingCell(1, 1)
@@ -2030,6 +2031,14 @@ BRect SheetView::PinnedCellRect(cell c) const
 	return r;
 }
 
+BRect SheetView::ImageFrame(const EmbeddedImage& img) const
+{
+	BRect anchorRect = CellRect(img.anchor);
+	return BRect(anchorRect.left + img.offsetX, anchorRect.top + img.offsetY,
+		anchorRect.left + img.offsetX + img.width - 1,
+		anchorRect.top + img.offsetY + img.height - 1);
+}
+
 // Decodifica un blob PNG (o qualunque altro formato per cui esista un
 // translator installato) in una BBitmap pronta per DrawBitmap -- di
 // proprieta' del chiamante, che deve fare "delete". Nessuna cache:
@@ -2248,10 +2257,7 @@ void SheetView::Draw(BRect updateRect)
 		for (size_t i = 0; i < fImages->size(); i++)
 		{
 			const EmbeddedImage& img = (*fImages)[i];
-			BRect anchorRect = CellRect(img.anchor);
-			BRect frame(anchorRect.left + img.offsetX, anchorRect.top + img.offsetY,
-				anchorRect.left + img.offsetX + img.width - 1,
-				anchorRect.top + img.offsetY + img.height - 1);
+			BRect frame = ImageFrame(img);
 			if (!frame.Intersects(updateRect))
 				continue;
 
@@ -2425,6 +2431,31 @@ void SheetView::MouseDown(BPoint where)
 	if (where.x < bounds.left + kHeaderWidth || where.y < bounds.top + kHeaderHeight)
 		return;
 
+	// Trascinamento di un'immagine incorporata: un clic dentro il suo
+	// rettangolo (ImageFrame, lo stesso usato da Draw() per disegnarla)
+	// la afferra per spostarla invece di selezionare la cella sotto --
+	// stessa precedenza delle maniglie di ridimensionamento sopra,
+	// controllato PRIMA della selezione normale. Ciclo all'INDIETRO:
+	// un'immagine disegnata sopra un'altra (ultima nell'elenco, vedi
+	// Draw()) deve avere la precedenza su un clic nell'area dove si
+	// sovrappongono.
+	if (fImages)
+	{
+		for (int i = (int)fImages->size() - 1; i >= 0; i--)
+		{
+			const EmbeddedImage& img = (*fImages)[i];
+			if (ImageFrame(img).Contains(where))
+			{
+				fDraggingImageIndex = i;
+				fDragImageStart = where;
+				fDragImageStartOffsetX = img.offsetX;
+				fDragImageStartOffsetY = img.offsetY;
+				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+				return;
+			}
+		}
+	}
+
 	cell c = CellAt(where);
 
 	// AutoFilter: un clic sulla freccia a discesa dell'intestazione (non
@@ -2478,11 +2509,38 @@ void SheetView::MouseUp(BPoint where)
 	fDragging = false;
 	fResizingColumn = 0;
 	fResizingRow = 0;
+	// A differenza del ridimensionamento colonna/riga sopra (una
+	// preferenza di sola visualizzazione, mai salvata), spostare
+	// un'immagine CAMBIA il documento -- lo scarto e' gia' scritto
+	// nell'elemento del vettore (MouseMoved sotto lo fa direttamente,
+	// niente da ricopiare qui), manca solo segnalarlo cosi' il titolo
+	// mostra l'asterisco e "Salva" lo scrive davvero nel file.
+	if (fDraggingImageIndex >= 0)
+		NotifyDocumentChanged();
+	fDraggingImageIndex = -1;
 	BView::MouseUp(where);
 }
 
 void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage)
 {
+	// Trascinamento di un'immagine incorporata in corso (armato da
+	// MouseDown): la nuova posizione e' quella di partenza piu' lo
+	// spostamento del mouse dall'inizio del trascinamento, stesso
+	// principio del ridimensionamento colonna/riga sotto. Scrive
+	// direttamente sull'elemento del vettore di MainWindow (vedi il
+	// commento su SetImages in SheetView.h), quindi il nuovo scarto e'
+	// gia' "nel modello" a ogni fotogramma, non solo al rilascio del
+	// mouse.
+	if (fDraggingImageIndex >= 0 && fImages
+		&& fDraggingImageIndex < (int)fImages->size())
+	{
+		EmbeddedImage& img = (*fImages)[fDraggingImageIndex];
+		img.offsetX = fDragImageStartOffsetX + (where.x - fDragImageStart.x);
+		img.offsetY = fDragImageStartOffsetY + (where.y - fDragImageStart.y);
+		Invalidate();
+		return;
+	}
+
 	// Trascinamento di ridimensionamento in corso (armato da
 	// MouseDown): la nuova larghezza/altezza e' quella di partenza piu'
 	// lo spostamento del mouse dall'inizio del trascinamento, mai sotto
@@ -2534,6 +2592,22 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 			&& where.y >= bounds.top + kHeaderHeight
 			&& RowBoundaryAt(where.y - kHeaderHeight) > 0)
 			hoverCursor = 2;
+		else if (fImages)
+		{
+			// Immagine incorporata: stesso indizio visivo del
+			// ridimensionamento sopra, per lo stesso motivo (segnalato
+			// dall'utente per il ridimensionamento, vale identico qui --
+			// senza, trascinare un'immagine non sarebbe scopribile
+			// guardando lo schermo).
+			for (size_t i = 0; i < fImages->size(); i++)
+			{
+				if (ImageFrame((*fImages)[i]).Contains(where))
+				{
+					hoverCursor = 3;
+					break;
+				}
+			}
+		}
 	}
 
 	if (hoverCursor != fHoverCursor)
@@ -2547,6 +2621,11 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 		else if (hoverCursor == 2)
 		{
 			BCursor cursor(B_CURSOR_ID_RESIZE_NORTH_SOUTH);
+			SetViewCursor(&cursor);
+		}
+		else if (hoverCursor == 3)
+		{
+			BCursor cursor(B_CURSOR_ID_MOVE);
 			SetViewCursor(&cursor);
 		}
 		else
