@@ -4664,13 +4664,39 @@ in `engine/src/Functions/`, grafici in `ui/src/Chart*`, pivot in
 `ui/src/Pivot.h`, gestione fogli in `MainWindow.cpp`/`SheetTabView.cpp`,
 formati file in `translators/`.
 
-- [ ] **Funzioni di testo/statistiche mancanti**: TRIM, UPPER/LOWER/
+- [x] **Funzioni di testo/statistiche mancanti**: TRIM, UPPER/LOWER/
       PROPER, FIND/SEARCH, CONCAT (non `CONCATENATE`: il nome supera
       il limite di 9 caratteri della risorsa `Func`, vedi sotto),
       MEDIAN, MODE. `SUBSTITUTE` (10 caratteri) rimandato per lo
       stesso motivo. Puro lavoro nel motore, nessuna UI: stesso schema
       esatto di ogni funzione già presente in `engine/src/Functions/
-      Functions.<categoria>.cpp`.
+      Functions.<categoria>.cpp`. `funcNr` (posizione nell'array della
+      risorsa `Func`, deve combaciare con l'enum `kXXXFuncNr` in
+      `Functions.h`) assegnati in coda, 89-97 dopo `AVERAGEIF`=88;
+      `argCnt` nella risorsa impostato a `65535` (letto come `short`
+      diventa `-1`, il segnale di "numero di argomenti variabile") per
+      FIND/SEARCH (terzo argomento `start_num` opzionale), CONCAT
+      (numero variabile di argomenti) e MEDIAN/MODE (come SUM/AVG/MAX).
+
+      Bug reale scoperto e corretto implementando CONCAT: `ftoa`
+      (`Formatter.cpp`, già usata da `NUM2C`) chiama internamente
+      `BFont::StringWidth()`, che richiede una connessione app_server
+      — senza una `BApplication` vera (come nel test del motore
+      isolato, `engine/tests/named_functions_test.cpp`, che non ne
+      crea una apposta per restare "isolato, testabile" come da scopo
+      dichiarato di `engine/`) la chiamata resta bloccata
+      indefinitamente in attesa di una risposta che non arriva mai —
+      mai emerso prima perché nessuna funzione testata in quel file
+      aveva mai avuto bisogno di convertire un numero in testo.
+      `CONCAT` ora usa una conversione diretta con `snprintf("%.10g")`
+      invece di appoggiarsi al formattatore grafico.
+
+      Test: `engine/tests/named_functions_test.cpp` esteso con una
+      formula per ciascuna delle nove funzioni (inclusi i casi FIND
+      senza corrispondenza e SEARCH case-insensitive), verificato
+      anche il conteggio totale (`gFuncCount == 98`). Nessuna
+      regressione nelle altre suite del motore (`test`, `test-names`,
+      `test-xsheet`) né nelle 36 suite UI.
 - [ ] **Nuovo/Elimina/Rinomina foglio**: assente (confermato nel
       codice, `MainWindow.cpp` ha un commento esplicito "in futuro").
       `SheetTabView` gestisce già il clic sulle schede; serve un menu
