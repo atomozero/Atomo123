@@ -359,6 +359,15 @@ public:
 	// disallinearsi. Pubblico apposta per essere testabile direttamente
 	// (stesso principio di AutoFilterArrowRect sopra).
 	BRect ImageFrame(const EmbeddedImage& img) const;
+	// Maniglia di ridimensionamento (un piccolo quadrato nell'angolo in
+	// basso a destra di ImageFrame): stesso principio di
+	// AutoFilterArrowRect sopra, un solo posto per la formula usata sia
+	// da Draw() per disegnarla sia da MouseDown per riconoscere il
+	// clic. Sempre visibile (non solo al passaggio del mouse), stesso
+	// motivo gia' scritto per i puntini di ridimensionamento riga/
+	// colonna: senza un indizio visivo permanente l'interazione non
+	// sarebbe scopribile guardando lo schermo.
+	BRect ImageResizeHandle(const EmbeddedImage& img) const;
 	// Costruisce ed apre (bloccante, sincrono) il menu dei valori della
 	// colonna "col" -- MouseDown lo richiama quando riconosce un clic
 	// su AutoFilterArrowRect. Non testabile automaticamente (un vero
@@ -521,6 +530,15 @@ private:
 	int fDraggingImageIndex;
 	BPoint fDragImageStart;
 	float fDragImageStartOffsetX, fDragImageStartOffsetY;
+	// Ridimensionamento di un'immagine incorporata (maniglia nell'angolo
+	// in basso a destra, vedi ImageResizeHandle pubblico sopra): stesso
+	// schema esatto dello spostamento appena sopra, ma su width/height
+	// invece di offsetX/offsetY -- un trascinamento e' o l'uno o
+	// l'altro, mai entrambi insieme (MouseDown controlla prima la
+	// maniglia, poi il corpo dell'immagine, vedi il commento li').
+	int fResizingImageIndex;
+	BPoint fResizeImageStart;
+	float fResizeImageStartWidth, fResizeImageStartHeight;
 
 	// AutoFilter: vedi SetAutoFilter/SetColumnValueHidden ecc. sopra.
 	// fFilterHiddenValues e' per-colonna (indice di colonna 1-based),

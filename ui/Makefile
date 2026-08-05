@@ -415,6 +415,20 @@ test-image-drag: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_image_drag
 
+# Test del ridimensionamento con il mouse di un'immagine incorporata:
+# stessa ragione di test-image-drag, sulla maniglia invece che sul corpo.
+test-image-resize: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_image_resize.cpp -o tests/test_image_resize.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_image_resize tests/test_image_resize.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_image_resize
+
 # Test del supporto multi-foglio in MainWindow (Fase 9): apertura di
 # una cartella di lavoro nativa a piu' fogli, cambio del foglio
 # attivo. Stessa ragione di test-paste-range (serve una vera
@@ -642,6 +656,7 @@ clean:
 		tests/test_resize tests/test_resize.o \
 		tests/test_autofilter tests/test_autofilter.o \
 		tests/test_image_drag tests/test_image_drag.o \
+		tests/test_image_resize tests/test_image_resize.o \
 		tests/test_ascd_book tests/test_ascd_book.o tests/AscdIO_book.o \
 		tests/test_multisheet tests/test_multisheet.o \
 		tests/test_recent_files tests/test_recent_files.o \
@@ -659,4 +674,4 @@ clean:
 		/tmp/test_persistence.ascd /tmp/test_persistence_old.ascd \
 		tests/test_borders tests/test_borders.o
 
-.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-multisheet test-xsheet-formulas test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean
+.PHONY: all run test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-multisheet test-xsheet-formulas test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean

@@ -114,6 +114,7 @@ SheetView::SheetView(CContainer* doc)
 	fCharts(NULL),
 	fImages(NULL),
 	fDraggingImageIndex(-1),
+	fResizingImageIndex(-1),
 	fHasAutoFilter(false),
 	fEditor(NULL),
 	fEditingCell(1, 1)
@@ -2039,6 +2040,17 @@ BRect SheetView::ImageFrame(const EmbeddedImage& img) const
 		anchorRect.top + img.offsetY + img.height - 1);
 }
 
+// Piccolo quadrato nell'angolo in basso a destra di ImageFrame, stesso
+// principio di AutoFilterArrowRect: un solo posto per la formula usata
+// sia da Draw() per disegnarla sia da MouseDown per riconoscere il clic.
+BRect SheetView::ImageResizeHandle(const EmbeddedImage& img) const
+{
+	BRect frame = ImageFrame(img);
+	const float kHandleSize = 8;
+	return BRect(frame.right - kHandleSize, frame.bottom - kHandleSize,
+		frame.right, frame.bottom);
+}
+
 // Decodifica un blob PNG (o qualunque altro formato per cui esista un
 // translator installato) in una BBitmap pronta per DrawBitmap -- di
 // proprieta' del chiamante, che deve fare "delete". Nessuna cache:
@@ -2278,6 +2290,14 @@ void SheetView::Draw(BRect updateRect)
 				SetDrawingMode(B_OP_COPY);
 				delete bitmap;
 			}
+
+			// Maniglia di ridimensionamento: sempre visibile (non solo al
+			// passaggio del mouse), stesso motivo gia' scritto per i
+			// puntini di ridimensionamento riga/colonna -- senza un
+			// indizio visivo permanente l'interazione non sarebbe
+			// scopribile guardando lo schermo.
+			SetHighColor(80, 80, 80);
+			FillRect(ImageResizeHandle(img));
 		}
 	}
 
@@ -2431,6 +2451,30 @@ void SheetView::MouseDown(BPoint where)
 	if (where.x < bounds.left + kHeaderWidth || where.y < bounds.top + kHeaderHeight)
 		return;
 
+	// Ridimensionamento di un'immagine incorporata: la maniglia
+	// (ImageResizeHandle, angolo in basso a destra) e' un bersaglio piu'
+	// piccolo e piu' specifico del corpo dell'immagine, quindi va
+	// controllata PRIMA dello spostamento sotto -- altrimenti un clic
+	// sulla maniglia sposterebbe l'immagine invece di ridimensionarla,
+	// dato che la maniglia e' sempre contenuta nel suo ImageFrame.
+	// Stesso ciclo all'INDIETRO del blocco sotto, stesso motivo.
+	if (fImages)
+	{
+		for (int i = (int)fImages->size() - 1; i >= 0; i--)
+		{
+			const EmbeddedImage& img = (*fImages)[i];
+			if (ImageResizeHandle(img).Contains(where))
+			{
+				fResizingImageIndex = i;
+				fResizeImageStart = where;
+				fResizeImageStartWidth = img.width;
+				fResizeImageStartHeight = img.height;
+				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+				return;
+			}
+		}
+	}
+
 	// Trascinamento di un'immagine incorporata: un clic dentro il suo
 	// rettangolo (ImageFrame, lo stesso usato da Draw() per disegnarla)
 	// la afferra per spostarla invece di selezionare la cella sotto --
@@ -2518,6 +2562,12 @@ void SheetView::MouseUp(BPoint where)
 	if (fDraggingImageIndex >= 0)
 		NotifyDocumentChanged();
 	fDraggingImageIndex = -1;
+	// Stesso motivo del blocco sopra: ridimensionare un'immagine cambia
+	// width/height nel documento, non solo una preferenza di
+	// visualizzazione.
+	if (fResizingImageIndex >= 0)
+		NotifyDocumentChanged();
+	fResizingImageIndex = -1;
 	BView::MouseUp(where);
 }
 
@@ -2537,6 +2587,25 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 		EmbeddedImage& img = (*fImages)[fDraggingImageIndex];
 		img.offsetX = fDragImageStartOffsetX + (where.x - fDragImageStart.x);
 		img.offsetY = fDragImageStartOffsetY + (where.y - fDragImageStart.y);
+		Invalidate();
+		return;
+	}
+
+	// Ridimensionamento di un'immagine incorporata in corso (armato da
+	// MouseDown tramite ImageResizeHandle): stesso principio esatto dello
+	// spostamento appena sopra, ma su width/height invece di offsetX/
+	// offsetY -- mai sotto un minimo (altrimenti l'immagine sparirebbe
+	// insieme alla maniglia per ringrandirla, stesso motivo del minimo
+	// colonna/riga sotto).
+	if (fResizingImageIndex >= 0 && fImages
+		&& fResizingImageIndex < (int)fImages->size())
+	{
+		const float kMinImageSize = 10;
+		EmbeddedImage& img = (*fImages)[fResizingImageIndex];
+		float newWidth = fResizeImageStartWidth + (where.x - fResizeImageStart.x);
+		float newHeight = fResizeImageStartHeight + (where.y - fResizeImageStart.y);
+		img.width = std::max(kMinImageSize, newWidth);
+		img.height = std::max(kMinImageSize, newHeight);
 		Invalidate();
 		return;
 	}
@@ -2599,13 +2668,12 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 			// dall'utente per il ridimensionamento, vale identico qui --
 			// senza, trascinare un'immagine non sarebbe scopribile
 			// guardando lo schermo).
-			for (size_t i = 0; i < fImages->size(); i++)
+			for (size_t i = 0; i < fImages->size() && hoverCursor == 0; i++)
 			{
-				if (ImageFrame((*fImages)[i]).Contains(where))
-				{
+				if (ImageResizeHandle((*fImages)[i]).Contains(where))
+					hoverCursor = 4;
+				else if (ImageFrame((*fImages)[i]).Contains(where))
 					hoverCursor = 3;
-					break;
-				}
 			}
 		}
 	}
@@ -2626,6 +2694,11 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 		else if (hoverCursor == 3)
 		{
 			BCursor cursor(B_CURSOR_ID_MOVE);
+			SetViewCursor(&cursor);
+		}
+		else if (hoverCursor == 4)
+		{
+			BCursor cursor(B_CURSOR_ID_RESIZE_NORTH_WEST_SOUTH_EAST);
 			SetViewCursor(&cursor);
 		}
 		else
