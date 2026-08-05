@@ -18,6 +18,22 @@
 	   bitmap offscreen (stesso principio gia' in uso in
 	   test_autofilter.cpp per lo stesso genere di bug "geometricamente
 	   corretto ma mai verificato sui pixel veri").
+
+	Corretti entrambi, un terzo bug e' emerso subito dopo (segnalato
+	dall'utente con un nuovo screenshot): spostando la selezione via da
+	una cella unita, il vecchio riquadro esteso restava "fantasma" sullo
+	schermo -- SetSelection/ExtendSelection invalidavano ancora solo il
+	rettangolo di una singola cella (PinnedCellRect grezzo), non
+	l'intervallo unito davvero disegnato da Draw() (ActiveCellRect).
+	Fix: la stessa ActiveCellRect (ora un metodo pubblico condiviso,
+	invece di logica duplicata inline in Draw()) usata anche
+	nell'invalidazione. Non testabile con lo stesso principio pixel
+	delle bitmap offscreen sopra: qui Draw() viene sempre chiamata a
+	mano con un rettangolo esplicito nei test, senza passare mai dal
+	meccanismo reale di regione invalidata/ridisegno parziale
+	dell'Interface Kit (che esiste solo per una vera finestra sullo
+	schermo) -- corretto per costruzione (unione, mai una riduzione,
+	dell'area gia' invalidata prima del fix).
 */
 
 #include <cstdio>

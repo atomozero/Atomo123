@@ -368,6 +368,15 @@ public:
 	// colonna: senza un indizio visivo permanente l'interazione non
 	// sarebbe scopribile guardando lo schermo.
 	BRect ImageResizeHandle(const EmbeddedImage& img) const;
+	// Rettangolo della cella attiva, esteso a tutto l'intervallo se "c"
+	// e' l'angolo di una cella unita -- un solo posto per la formula,
+	// usato sia da Draw() per disegnare il riquadro di selezione sia da
+	// SetSelection/ExtendSelection per invalidare la zona giusta quando
+	// la selezione si sposta (altrimenti un vecchio riquadro esteso su
+	// una cella unita non veniva mai cancellato dallo schermo). Pubblico
+	// apposta per essere testabile direttamente (stesso principio di
+	// ImageFrame sopra).
+	BRect ActiveCellRect(cell c) const;
 	// Costruisce ed apre (bloccante, sincrono) il menu dei valori della
 	// colonna "col" -- MouseDown lo richiama quando riconosce un clic
 	// su AutoFilterArrowRect. Non testabile automaticamente (un vero

@@ -785,12 +785,22 @@ void SheetView::SetSelection(cell c)
 	if (c == fSelection && c == fAnchor)
 		return;
 
+	// Catturato PRIMA di sovrascrivere fSelection: se la vecchia cella
+	// attiva era l'angolo di una cella unita, il riquadro disegnato da
+	// Draw() era esteso a tutto l'intervallo (vedi ActiveCellRect) --
+	// invalidare solo CellRect(oldRange) grezzo lascerebbe fuori quella
+	// parte, un "fantasma" del vecchio riquadro blu mai ripulito. Bug
+	// reale segnalato dall'utente subito dopo il fix del clic sulle
+	// celle unite.
+	BRect oldActive = ActiveCellRect(fSelection);
+
 	fSelection = c;
 	fAnchor = c;
 
 	range newRange = SelectionRange();
 	BRect invalid = CellRect(UnionRange(oldRange, newRange).TopLeft());
 	invalid = invalid | CellRect(UnionRange(oldRange, newRange).BotRight());
+	invalid = invalid | oldActive | ActiveCellRect(fSelection);
 	Invalidate(invalid);
 
 	ScrollToShowSelection();
@@ -807,11 +817,14 @@ void SheetView::ExtendSelection(cell c)
 		return;
 
 	range oldRange = SelectionRange();
+	// Vedi il commento in SetSelection sopra, stesso motivo.
+	BRect oldActive = ActiveCellRect(fSelection);
 	fSelection = c;
 	range newRange = SelectionRange();
 
 	BRect invalid = CellRect(UnionRange(oldRange, newRange).TopLeft());
 	invalid = invalid | CellRect(UnionRange(oldRange, newRange).BotRight());
+	invalid = invalid | oldActive | ActiveCellRect(fSelection);
 	Invalidate(invalid);
 
 	ScrollToShowSelection();
@@ -2032,6 +2045,33 @@ BRect SheetView::PinnedCellRect(cell c) const
 	return r;
 }
 
+// Rettangolo della cella attiva, esteso a tutto l'intervallo se "c" e'
+// l'angolo di una cella unita -- un solo posto per la formula, usato
+// sia da Draw() per disegnare il riquadro di selezione sia da
+// SetSelection/ExtendSelection per invalidare la zona giusta quando la
+// selezione si sposta. Prima di questo metodo condiviso, l'invalidazione
+// usava sempre PinnedCellRect grezzo (una sola cella) anche quando
+// Draw() disegnava un riquadro esteso all'intervallo unito: spostando
+// la selezione via da una cella unita, la parte del vecchio riquadro
+// fuori dalla zona invalidata (larga una sola cella) non veniva mai
+// ridisegnata, lasciando un "fantasma" del riquadro blu sullo schermo
+// -- bug reale segnalato dall'utente subito dopo il fix del clic sulle
+// celle unite.
+BRect SheetView::ActiveCellRect(cell c) const
+{
+	BRect r = PinnedCellRect(c);
+	if (fDoc)
+	{
+		range mergedRange;
+		if (fDoc->GetMergedRange(c, &mergedRange))
+		{
+			r = PinnedCellRect(cell(mergedRange.left, mergedRange.top))
+				| PinnedCellRect(cell(mergedRange.right, mergedRange.bottom));
+		}
+	}
+	return r;
+}
+
 BRect SheetView::ImageFrame(const EmbeddedImage& img) const
 {
 	BRect anchorRect = CellRect(img.anchor);
@@ -2135,31 +2175,17 @@ void SheetView::Draw(BRect updateRect)
 	// "esclude se stesso" e non lascia alcuna tinta visibile.
 	range selRange = SelectionRange();
 	BRect selOuter = PinnedCellRect(selRange.TopLeft()) | PinnedCellRect(selRange.BotRight());
-	BRect activeRect = PinnedCellRect(fSelection);
-
-	// Celle unite: il caso comune, una selezione di una sola cella che
-	// e' l'angolo di un intervallo unito, deve disegnare il riquadro
-	// di selezione esteso a tutto l'intervallo (stesso principio gia'
-	// in uso per il contenuto piu' sotto in questa stessa Draw()) --
-	// altrimenti il riquadro resta largo una sola colonna/riga anche
-	// se la cella e' visivamente unita con altre, facendola sembrare
-	// mai unita. MouseDown sopra gia' fa in modo che fSelection sia
-	// sempre l'angolo (mai una cella "nascosta" a meta' dell'intervallo),
-	// quindi qui basta controllare fSelection stessa. Limitato al caso
-	// di selezione di una sola cella: un vero trascinamento multi-cella
-	// che si sovrappone solo in parte a un intervallo unito e' un caso
-	// limite gia' complesso in Excel stesso, fuori dallo scope di
-	// questo fix.
-	if (fDoc && selRange.left == selRange.right && selRange.top == selRange.bottom)
-	{
-		range mergedRange;
-		if (fDoc->GetMergedRange(fSelection, &mergedRange))
-		{
-			activeRect = PinnedCellRect(cell(mergedRange.left, mergedRange.top))
-				| PinnedCellRect(cell(mergedRange.right, mergedRange.bottom));
-			selOuter = activeRect;
-		}
-	}
+	// ActiveCellRect (non PinnedCellRect grezzo): se fSelection e'
+	// l'angolo di una cella unita, il riquadro si estende a tutto
+	// l'intervallo (vedi il commento sul metodo) -- altrimenti resta
+	// largo una sola colonna/riga anche se la cella e' visivamente
+	// unita con altre, facendola sembrare mai unita. Per il caso comune
+	// di selezione a singola cella, selOuter deve combaciare con lo
+	// stesso rettangolo esteso (altrimenti i due StrokeRect sotto
+	// disegnerebbero due riquadri annidati invece di uno solo).
+	BRect activeRect = ActiveCellRect(fSelection);
+	if (selRange.left == selRange.right && selRange.top == selRange.bottom)
+		selOuter = activeRect;
 
 	if (selRange.left != selRange.right || selRange.top != selRange.bottom)
 	{
