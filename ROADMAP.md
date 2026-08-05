@@ -4562,6 +4562,48 @@ davvero, poi ripristinata. `translators/xlsx/tests/sample.xlsx` esteso
 con `<row r="2" hidden="1"/>` e `<autoFilter ref="A1:D1"/>`. Nessuna
 regressione nelle 34 suite UI.
 
+### Spostamento con il mouse delle immagini incorporate
+
+Chiesto dall'utente ("posso spostare le immagini?") dopo aver
+verificato l'AutoFilter: le immagini incorporate (import XLSX) erano
+finora solo visualizzate, mai interattive.
+
+`SheetView::fImages` non è più `const` (era di sola lettura, un
+puntatore al vettore vero di `MainWindow`, mai una copia — vedi il
+commento su `SetImages` in `SheetView.h`): un trascinamento scrive
+direttamente `offsetX`/`offsetY` sull'elemento del vettore, quindi è
+già "nel modello" a ogni fotogramma senza bisogno di ricopiare nulla
+indietro verso `MainWindow` né di una sezione di persistenza nuova
+(`offsetX`/`offsetY` viaggiano già dentro `EmbeddedImage`, già
+salvate/ricaricate da tempo). `ImageFrame(img)` accentra la formula
+già usata da `Draw()` per posizionare l'immagine (prima duplicata
+inline), ora anche da `MouseDown`/`MouseMoved` per riconoscere clic e
+trascinamento — stesso schema già in uso per `AutoFilterArrowRect`,
+un solo posto per la formula così i punti che disegnano/riconoscono un
+clic non possono disallinearsi.
+
+Stesso principio del ridimensionamento riga/colonna già esistente
+(indice + punto di partenza + valore di partenza, armati da
+`MouseDown`, applicati da `MouseMoved`) — con una differenza voluta:
+il ridimensionamento non segna mai il documento come modificato (una
+preferenza di sola visualizzazione), spostare un'immagine sì
+(`NotifyDocumentChanged()` in `MouseUp`, così il titolo mostra
+l'asterisco e "Salva" scrive davvero la nuova posizione). Un clic in
+una zona dove due immagini si sovrappongono afferra quella disegnata
+sopra (l'ultima nell'elenco, ciclo di ricerca all'indietro in
+`MouseDown`), non la prima trovata. Cursore a icona di spostamento
+al passaggio del mouse sopra un'immagine, stesso principio già in uso
+per il ridimensionamento (segnalato a suo tempo dall'utente: senza un
+indizio visivo l'interazione non è scopribile guardando lo schermo).
+
+Test: `ui/tests/test_image_drag.cpp`, nuovo — due immagini
+sovrapposte apposta, verificato che un clic fuori non sposti nulla,
+che la zona di sovrapposizione afferri quella sopra e non quella
+sotto, che la posizione si aggiorni già al primo `MouseMoved` (non
+solo al rilascio) e resti relativa al punto di *partenza* del
+trascinamento (non incrementale), e che spostare un'immagine non
+tocchi l'altra. Nessuna regressione nelle 35 suite UI.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
