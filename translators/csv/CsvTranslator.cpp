@@ -133,7 +133,16 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		cell c(col, row);
 		try
 		{
-			TryToParseString(text, c, doc, true);
+			// inWarnIfError=false, non true: stesso bug e stesso motivo
+			// di LoadASCD in ui/src/AscdIO.cpp -- un valore TESTO che
+			// assomiglia abbastanza a un numero/data da superare
+			// l'analisi grammaticale del parser ma poi fallisce a
+			// ridursi a un valore (es. "01.11.10", un codice ATECO
+			// reale) fa rilanciare l'eccezione invece di ripiegare sul
+			// testo originale, e il catch sotto trasformava l'intero
+			// export in un fallimento totale (B_BAD_DATA) per una sola
+			// cella di testo innocua.
+			TryToParseString(text, c, doc, false);
 		}
 		catch (...)
 		{

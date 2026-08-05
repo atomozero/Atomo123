@@ -104,6 +104,50 @@ int main()
 
 	reloaded.Release();
 
+	// Bug reale scoperto aprendo una tabella di codici ATECO (colonna
+	// di codici come "01.11.10", tre gruppi separati da punti): un
+	// testo che assomiglia abbastanza a un numero/data da superare
+	// l'analisi grammaticale del parser ma poi fallisce a ridursi a un
+	// valore fa lanciare un'eccezione da TryToParseString quando
+	// chiamata con inWarnIfError=true (come faceva LoadASCD prima di
+	// questo fix) -- il testo originale va perso del tutto, la cella
+	// resta vuota, invece di ripiegare sul testo cosi' com'e' (stesso
+	// comportamento di sicurezza gia' in uso dai tre translator XLSX/
+	// ODS/CSV quando importano testo da un formato esterno).
+	{
+		CContainer& ambigDoc = *new CContainer(NULL, NULL);
+		cell f1(1, 1), f2(1, 2), f3(1, 3);
+		TryToParseString("01.11.10", f1, &ambigDoc, false);
+		TryToParseString("01.12.00", f2, &ambigDoc, false);
+		TryToParseString("CODICE", f3, &ambigDoc, false);
+
+		BFile ambigFile("tests/roundtrip_ambiguous_text.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&ambigDoc, &ambigFile) == B_OK,
+			"SaveASCD riesce con un testo ambiguo tipo codice ATECO");
+		ambigDoc.Release();
+
+		BFile ambigReopened("tests/roundtrip_ambiguous_text.ascd", B_READ_ONLY);
+		CContainer& ambigReloaded = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&ambigReopened, &ambigReloaded) == B_OK,
+			"LoadASCD riesce con un testo ambiguo tipo codice ATECO");
+
+		Value v;
+		ambigReloaded.GetValue(f1, v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "01.11.10") == 0,
+			"\"01.11.10\" sopravvive al giro salva->ricarica come testo, non sparisce");
+
+		ambigReloaded.GetValue(f2, v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "01.12.00") == 0,
+			"\"01.12.00\" sopravvive al giro salva->ricarica come testo, non sparisce");
+
+		ambigReloaded.GetValue(f3, v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "CODICE") == 0,
+			"un testo non ambiguo continua a sopravvivere come prima");
+
+		ambigReloaded.Release();
+	}
+
 	// Caso limite scoperto durante lo sviluppo dell'export ODS: una
 	// formula che e' anche la cella piu' a destra/in basso del foglio
 	// (nessun'altra cella "reale" oltre di lei) deve comunque essere

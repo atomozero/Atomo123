@@ -628,7 +628,23 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		cell c(col, row);
 		try
 		{
-			TryToParseString(text, c, doc, true);
+			// inWarnIfError=false, non true: un valore TESTO scritto da
+			// GetCellFormula/FormatValue (sopra in WriteASCD) non porta
+			// mai apici o segni che lo marchino come "sicuramente testo"
+			// -- se assomiglia abbastanza a un numero/data da superare
+			// l'analisi grammaticale del parser ma poi fallisce a
+			// ridursi a un valore (es. "01.11.10", tre gruppi separati
+			// da punti, un codice ATECO reale), con inWarnIfError=true
+			// TryToParseString rilancia l'eccezione invece di ripiegare
+			// sul testo originale: il catch sotto la intercetta e la
+			// cella sparisce del tutto, silenziosamente, invece di
+			// mostrare "01.11.10" come testo. Bug reale scoperto aprendo
+			// una tabella di codici ATECO reale (colonna A vuota dopo
+			// l'apertura, screenshot dell'utente) -- stesso principio
+			// gia' in uso correttamente da ParseSheet nei tre translator
+			// (XLSX/ODS/CSV) per lo stesso identico motivo quando
+			// importano testo da un formato esterno.
+			TryToParseString(text, c, doc, false);
 		}
 		catch (...)
 		{
