@@ -7,7 +7,7 @@ cancella/trova e sostituisci), menu Formato (Generale/Numero/Valuta/
 Percentuale), toolbar, Locale Kit, Print Kit, icona applicazione
 (HVIF, disegnata da zero) ed export CSV — tutti fatti e testati dal
 vivo in una sessione grafica reale. **Fase 5 (packaging/compatibilità)
-in corso** — ricetta HaikuDepot pronta ma non ancora buildabile (il
+chiusa** — ricetta HaikuDepot pronta ma non ancora buildabile (il
 repository è ormai pubblico su GitHub, manca solo un tag di release
 versionato con checksum reale); licenza **MIT** decisa per il codice
 nuovo (vedi LICENSE — il codice storico Sum-It/`engine/` resta sotto
@@ -894,7 +894,7 @@ processo che chiama i metodi C++ della vista (come
 qualunque iniezione di input quando quello che serve è verificare la
 logica, non l'esperienza utente end-to-end.
 
-## Fase 5 — Integrazione, packaging, compatibilità reale (IN CORSO)
+## Fase 5 — Integrazione, packaging, compatibilità reale (CHIUSA)
 
 - [x] Ricetta pacchetto per HaikuDepot: `packaging/atomo123-0.1.0.recipe`,
       formato HaikuPorter reale (verificato contro `haikubench-1.2.0.recipe`,
