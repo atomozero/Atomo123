@@ -10,8 +10,8 @@
 
 static const uint32 kMsgTick = 'tick';
 static const float kTextFadeDuration = 1.6f;	// secondi, ingresso testo
-static const float kBandHeight = 68.0f;		// striscia inferiore, senza stelle
-static const float kBandPadding = 18.0f;		// margine sinistro del testo
+static const float kBandHeight = 100.0f;		// striscia inferiore, senza stelle
+static const float kBandPadding = 28.0f;		// margine sinistro del testo
 static const float kVisibleDuration = 7.0f;	// secondi a schermo intero prima della dissolvenza
 static const float kFadeOutDuration = 1.0f;	// secondi di dissolvenza a nero
 
@@ -89,8 +89,8 @@ AtomGLView::_Init()
 	fQuadric = gluNewQuadric();
 	gluQuadricNormals(fQuadric, GLU_SMOOTH);
 
-	fTitleTex.Build("Atomo123", 40.0f, (rgb_color){255, 255, 255, 255}, true);
-	fSubtitleTex.Build("Sviluppato da StudioBernardi.eu", 15.0f,
+	fTitleTex.Build("Atomo123", 60.0f, (rgb_color){255, 255, 255, 255}, true);
+	fSubtitleTex.Build("Sviluppato da StudioBernardi.eu", 22.0f,
 		(rgb_color){255, 255, 255, 255}, false);
 }
 
@@ -380,7 +380,7 @@ AtomGLView::_DrawText(float width, float height)
 	// Ease-out: il testo si assesta invece di arrivare linearmente.
 	fade = 1.0f - (1.0f - fade) * (1.0f - fade);
 
-	float rise = (1.0f - fade) * 10.0f; // leggera deriva verso l'alto durante la dissolvenza
+	float rise = (1.0f - fade) * 14.0f; // leggera deriva verso l'alto durante la dissolvenza
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
@@ -396,15 +396,15 @@ AtomGLView::_DrawText(float width, float height)
 	// dal bordo sinistro invece che centrati, per leggersi come un
 	// credito a piè di pagina.
 	float bandTop = height - kBandHeight;
-	const float titleHeight = 36.0f;
-	const float subtitleHeight = 15.0f;
+	const float titleHeight = 54.0f;
+	const float subtitleHeight = 22.0f;
 
 	_DrawTexturedQuad(fTitleTex,
 		kBandPadding + titleHeight * fTitleTex.AspectRatio() * 0.5f,
-		bandTop + 21.0f + rise, titleHeight, kTheme.title, fade);
+		bandTop + 32.0f + rise, titleHeight, kTheme.title, fade);
 	_DrawTexturedQuad(fSubtitleTex,
 		kBandPadding + subtitleHeight * fSubtitleTex.AspectRatio() * 0.5f,
-		bandTop + 47.0f + rise * 0.6f, subtitleHeight, kTheme.subtitle, fade);
+		bandTop + 71.0f + rise * 0.6f, subtitleHeight, kTheme.subtitle, fade);
 
 	glDisable(GL_TEXTURE_2D);
 }

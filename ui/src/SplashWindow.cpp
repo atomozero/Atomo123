@@ -4,10 +4,10 @@
 
 #include "AtomGLView.h"
 
-// Versione piccola: 720x440 originale ridotta del 66% mantenendo le
-// proporzioni (18:11), pensata per non dominare lo schermo all'avvio.
-static const float kWidth = 480.0f;
-static const float kHeight = 293.0f;
+// Stessa dimensione della demo standalone (dist/Atomo123Splash):
+// l'utente l'ha vista e preferita alla versione ridotta provata prima.
+static const float kWidth = 720.0f;
+static const float kHeight = 440.0f;
 
 SplashWindow::SplashWindow()
 	:
