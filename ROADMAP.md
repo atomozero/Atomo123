@@ -4802,9 +4802,52 @@ formati file in `translators/`.
       esatto (20,80,200) su tutti e tre i canali. Nessuna regressione
       nelle altre suite del motore, nei tre traduttori né nelle altre
       40 suite UI.
-- [ ] **INDEX/MATCH**: lavoro nel motore come il punto 1, ma su
-      intervalli/array invece che su singoli valori — più complesso
-      delle funzioni pure.
+- [x] **INDEX/MATCH**: `INDEXFunction`/`MATCHFunction` nuove in
+      `Functions.spreadsheet.cpp` (funcNr 99/100, gruppo 1 "lookup"
+      come VLOOKUP/HLOOKUP). Insidia scoperta subito: il motore aveva
+      GIA' `HINDEX`/`VINDEX` (Sum-It storico, funcNr 28/76), ma
+      nonostante il nome fanno una ricerca in stile MATCH
+      approssimato ("posizione del primo valore ≥ chiave", solo
+      ascendente) — non l'INDEX vero di Excel ("valore alla posizione
+      N"). Nomi fuorvianti rispetto alla convenzione moderna, lasciati
+      intatti (codice storico funzionante, altri fogli potrebbero
+      già farci affidamento) e implementate `INDEX`/`MATCH` come
+      funzioni nuove e distinte invece di riusarli o rinominarli.
+
+      `INDEX(intervallo, riga, [colonna])`: riga/colonna 1-based
+      relative all'angolo in alto a sinistra dell'intervallo. Se
+      l'intervallo e' largo una sola riga (o una sola colonna) e
+      viene passato un unico argomento numerico, quello seleziona la
+      dimensione libera (riga=1 fissa se l'intervallo e' orizzontale,
+      e viceversa) — stesso comportamento "opzionale" del vero INDEX
+      di Excel. Se riga o colonna vale 0 (esplicito o omesso su un
+      intervallo davvero bidimensionale), il risultato e' l'INTERA
+      riga/colonna corrispondente come intervallo, non un valore
+      singolo — stesso principio gia' usato da `OFFSET` (un `Value`
+      di tipo range che una funzione che aggrega, es. `SUM`, consuma
+      direttamente: `=SUM(INDEX(A1:C10,0,2))` somma tutta la seconda
+      colonna).
+
+      `MATCH(valore, intervallo, [tipo])`: restituisce la POSIZIONE
+      relativa (1-based), non il valore — l'intervallo deve essere
+      largo una sola riga o una sola colonna. `tipo=0`: corrispondenza
+      esatta (non richiede un intervallo ordinato). `tipo=1`
+      (predefinito, come Excel): ultimo valore ≤ chiave, intervallo
+      assunto crescente. `tipo=-1`: primo valore ≥ chiave, intervallo
+      assunto decrescente — nessun controllo esplicito
+      dell'ordinamento nei casi approssimati, stessa assunzione gia'
+      fatta da VLOOKUP/HLOOKUP.
+
+      Test: `engine/tests/named_functions_test.cpp` (conteggio
+      funzioni 99→101), nove formule nuove — `INDEX` su una colonna
+      sola, su un intervallo bidimensionale con riga/colonna
+      esplicite, su una riga sola (l'unico argomento come colonna),
+      con riga 0 consumato da `SUM`; `MATCH` esatto su numeri e testo,
+      su una riga sola, senza corrispondenza, approssimato; infine
+      `INDEX`+`MATCH` combinati (l'uso reale piu' comune: cerca una
+      chiave in una colonna e restituisce il valore corrispondente in
+      un'altra). Nessuna regressione nelle altre suite del motore, nei
+      tre traduttori né nelle altre 41 suite UI.
 - [ ] **Altri tipi di grafico** (linee, torta): `Chart.h`/`ChartView.cpp`
       hanno già l'infrastruttura per i grafici a barre; ogni nuovo tipo
       riusa il framework di disegno ma richiede nuova geometria
