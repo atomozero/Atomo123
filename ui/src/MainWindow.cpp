@@ -3165,7 +3165,14 @@ void MainWindow::MessageReceived(BMessage* message)
 			{
 				if (!fRenameSheetWindow)
 					fRenameSheetWindow = new RenameSheetWindow(BMessenger(this));
-				fRenameSheetWindow->SetSheet(index, fSheets[index].name.String());
+				// Stesso motivo del lock su fCommentWindow in
+				// kMsgShowCommentWindow piu' sotto in questo stesso
+				// MessageReceived.
+				if (fRenameSheetWindow->Lock())
+				{
+					fRenameSheetWindow->SetSheet(index, fSheets[index].name.String());
+					fRenameSheetWindow->Unlock();
+				}
 				if (fRenameSheetWindow->IsHidden())
 					fRenameSheetWindow->Show();
 				fRenameSheetWindow->Activate();
@@ -3436,7 +3443,17 @@ void MainWindow::MessageReceived(BMessage* message)
 			if (!fCommentWindow)
 				fCommentWindow = new CommentWindow(BMessenger(this));
 			BString current = CellComment(sel.v, sel.h);
-			fCommentWindow->SetCell(sel.v, sel.h, current.String());
+			// SetCell tocca fTextView, una BView che vive sul thread di
+			// fCommentWindow (una BWindow a se'): senza il lock, un
+			// secondo commento aperto su questo stesso thread va in
+			// crash con "Looper must be locked" -- stesso bug reale gia'
+			// corretto per ColorWindow/PreferencesWindow/NameWindow (vedi
+			// ShowColorWindow/ShowPreferencesWindow/ShowNameWindow).
+			if (fCommentWindow->Lock())
+			{
+				fCommentWindow->SetCell(sel.v, sel.h, current.String());
+				fCommentWindow->Unlock();
+			}
 			if (fCommentWindow->IsHidden())
 				fCommentWindow->Show();
 			fCommentWindow->Activate();
@@ -3471,7 +3488,12 @@ void MainWindow::MessageReceived(BMessage* message)
 			if (!fHyperlinkWindow)
 				fHyperlinkWindow = new HyperlinkWindow(BMessenger(this));
 			BString current = CellHyperlink(sel.v, sel.h);
-			fHyperlinkWindow->SetCell(sel.v, sel.h, current.String());
+			// Stesso motivo del lock su fCommentWindow poco sopra.
+			if (fHyperlinkWindow->Lock())
+			{
+				fHyperlinkWindow->SetCell(sel.v, sel.h, current.String());
+				fHyperlinkWindow->Unlock();
+			}
 			if (fHyperlinkWindow->IsHidden())
 				fHyperlinkWindow->Show();
 			fHyperlinkWindow->Activate();
@@ -3515,8 +3537,13 @@ void MainWindow::MessageReceived(BMessage* message)
 			if (!fValidationWindow)
 				fValidationWindow = new ValidationWindow(BMessenger(this));
 			ValidationRule rule = CellValidation(sel.v, sel.h);
-			fValidationWindow->SetCell(sel.v, sel.h, (int)rule.type,
-				rule.list.c_str(), rule.min, rule.max);
+			// Stesso motivo del lock su fCommentWindow piu' sopra.
+			if (fValidationWindow->Lock())
+			{
+				fValidationWindow->SetCell(sel.v, sel.h, (int)rule.type,
+					rule.list.c_str(), rule.min, rule.max);
+				fValidationWindow->Unlock();
+			}
 			if (fValidationWindow->IsHidden())
 				fValidationWindow->Show();
 			fValidationWindow->Activate();

@@ -95,13 +95,23 @@ int main()
 	view->SetSelection(cell(1, 1));
 	view->ExtendSelection(cell(1, 1));
 
-	ClickButton(win, FindToolButton(win, "toolComment"));
-	Check(win->FindView("toolComment") != NULL,
-		"cliccare \"toolComment\" (apre CommentWindow) non va in crash");
+	// Commento cella/collegamento ipertestuale, come colore bordo piu'
+	// sotto: cliccati due volte apposta. Bug reale segnalato dall'utente
+	// (crash "Looper must be locked" in CommentWindow::SetCell, chiamato
+	// da MainWindow::MessageReceived senza bloccare prima il thread di
+	// CommentWindow -- fCommentWindow e' una BWindow a se', il suo
+	// thread parte gia' dal costruttore, non solo da Show()): fix nello
+	// stesso punto di ShowColorWindow/ShowPreferencesWindow/
+	// ShowNameWindow, un Lock()/Unlock() attorno a SetCell().
+	BButton* commentButton = FindToolButton(win, "toolComment");
+	ClickButton(win, commentButton);
+	ClickButton(win, commentButton);
+	Check(true, "cliccare due volte \"toolComment\" (CommentWindow gia' aperta la seconda volta) non va in crash");
 
-	ClickButton(win, FindToolButton(win, "toolHyperlink"));
-	Check(win->FindView("toolHyperlink") != NULL,
-		"cliccare \"toolHyperlink\" (apre HyperlinkWindow) non va in crash");
+	BButton* hyperlinkButton = FindToolButton(win, "toolHyperlink");
+	ClickButton(win, hyperlinkButton);
+	ClickButton(win, hyperlinkButton);
+	Check(true, "cliccare due volte \"toolHyperlink\" (HyperlinkWindow gia' aperta la seconda volta) non va in crash");
 
 	ClickButton(win, FindToolButton(win, "toolGoTo"));
 	Check(win->FindView("toolGoTo") != NULL,
