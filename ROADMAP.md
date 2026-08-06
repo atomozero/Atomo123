@@ -4697,10 +4697,20 @@ formati file in `translators/`.
       anche il conteggio totale (`gFuncCount == 98`). Nessuna
       regressione nelle altre suite del motore (`test`, `test-names`,
       `test-xsheet`) né nelle 36 suite UI.
-- [ ] **Nuovo/Elimina/Rinomina foglio**: assente (confermato nel
-      codice, `MainWindow.cpp` ha un commento esplicito "in futuro").
-      `SheetTabView` gestisce già il clic sulle schede; serve un menu
-      contestuale e pochi metodi in `MainWindow`.
+- [x] **Nuovo/Elimina/Rinomina foglio**: "Nuovo foglio" nel menu Dati
+      (nome libero scelto da solo, "Foglio1"/"Foglio2"/... come
+      Excel/LibreOffice Calc); Rinomina/Elimina dal tasto destro sulla
+      scheda (`SheetTabView`, nuovo menu contestuale sincrono, stesso
+      principio di `SheetView::ShowAutoFilterMenu`). Conferma con un
+      vero `BAlert` per l'eliminazione (rifiuta di eliminare l'unico
+      foglio rimasto); `RenameSheet` rifiuta un nome già usato da un
+      altro foglio (avrebbe reso ambiguo `NomeFoglio!Cella`,
+      `ISheetResolver` cerca per nome esatto). `DeleteSheetNoConfirm`
+      esposto pubblicamente accanto a `DeleteSheet` apposta per
+      restare testabile senza mostrare un vero dialogo di conferma,
+      che bloccherebbe un test automatico in attesa di un clic reale
+      (stesso limite già noto per `ConfirmDiscardChanges`, vedi
+      `test_unsaved_changes.cpp`).
 - [ ] **Commenti/note sulla cella**: nuovo campo per cella sul modello
       di quanto già fatto per bordi/colori (Fase 11), più un piccolo
       popup per editarlo.
@@ -5018,6 +5028,56 @@ formattazione. Aggiunta la stessa risorsa `'Func'` di
 `named_functions_test.cpp` (nuovo target Makefile `named_functions.rsrc`).
 Nessuna regressione nelle suite del motore, dei quattro translator, né
 nelle 38 suite UI.
+
+### Aggiunta: Nuovo/Elimina/Rinomina foglio
+
+Secondo punto della Fase 13 (dopo le funzioni di testo/statistiche):
+assente fin qui, confermato leggendo il codice (`MainWindow.cpp` aveva
+un commento esplicito "in futuro" proprio su questo punto).
+
+"Nuovo foglio" nel menu Dati: sceglie da solo il primo nome libero
+("Foglio1", "Foglio2", ... come Excel/LibreOffice Calc, mai un nome
+già usato — `UniqueSheetName`), lo aggiunge in coda e ci passa subito,
+riusando `SwitchToSheet` per la sincronizzazione UI → `fSheets` invece
+di duplicarla. Rinomina/Elimina invece si scelgono con un clic destro
+sulla scheda del foglio (nuovo menu contestuale in `SheetTabView`,
+stesso schema sincrono già in uso per `SheetView::ShowAutoFilterMenu`:
+`BPopUpMenu::Go` blocca finché l'utente non sceglie, nessun passaggio
+di messaggi da gestire altrove) — un elenco/indice da scegliere in un
+menu fisso sarebbe stato ridondante, dato che il bersaglio è già
+scelto dal clic stesso. "Rinomina" apre una piccola finestra dedicata
+(`RenameSheetWindow`, stesso schema esatto di `GoToWindow`: un campo
+di testo precompilato col nome attuale più un pulsante) invece di
+un'editing in-place della scheda, per restare nello scope di questo
+punto senza toccare `SheetTabView::Draw()`.
+
+Vincoli, entrambi con un vero `BAlert`: non si può eliminare l'unico
+foglio rimasto, e non si può rinominare un foglio con un nome già
+usato da un altro (avrebbe reso ambiguo `NomeFoglio!Cella` nelle
+formule — `ISheetResolver::ResolveSheetByName` cerca per nome esatto,
+il primo che trova). Eliminare il foglio *attivo* passa prima a un
+altro foglio valido (`SwitchToSheet`, così tutta la sincronizzazione
+UI è già gestita) e solo dopo rimuove quello vecchio, evitando di
+lasciare `fDoc`/`fSheetView` a puntare a un `CContainer` appena
+rilasciato.
+
+`DeleteSheetNoConfirm` esposto pubblicamente accanto a `DeleteSheet`
+apposta per essere testabile: `DeleteSheet` mostra un vero `BAlert` di
+conferma, che bloccherebbe un test automatico in attesa di un clic
+reale — stesso limite già noto e documentato per
+`ConfirmDiscardChanges` in `test_unsaved_changes.cpp`. Per lo stesso
+motivo, il caso "nome già usato" di `RenameSheet` (che mostra un
+`BAlert` di errore) non è coperto dal test automatico, solo il
+percorso normale.
+
+Test: nuovo `ui/tests/test_sheet_management.cpp`, con una vera
+`MainWindow` — verificato che `NewSheet` scelga nomi liberi progressivi,
+che scrivere in una cella del foglio appena creato/rinominato funzioni
+normalmente (nessuna corruzione di `fDoc` durante le due operazioni),
+che eliminare un foglio non attivo non sposti la selezione, che
+eliminare il foglio attivo la sposti su un foglio ancora valido, e che
+l'unico foglio rimasto non si possa eliminare. Nessuna regressione
+nelle 39 suite UI.
 
 ---
 
