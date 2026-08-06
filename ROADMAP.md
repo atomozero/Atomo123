@@ -4759,8 +4759,49 @@ formati file in `translators/`.
       equivalga a "si vede davvero"). Nessuna regressione nelle altre
       suite del motore, nei tre traduttori (XLSX/ODS/CSV) né nelle
       altre 39 suite UI.
-- [ ] **Collegamenti ipertestuali**: stringa URL per cella (stesso
-      schema dei commenti) più apertura con `BUrl` al clic.
+- [x] **Collegamenti ipertestuali**: `std::map<cell, std::string>`
+      separato in `CContainer` (`fHyperlinks`), stesso schema esatto
+      dei commenti — inclusa la persistenza nel formato nativo (nuova
+      sezione in coda, dopo quella dei commenti) e la sezione
+      sempre-vuota nell'export XLSX. Editing con una vera finestra
+      `HyperlinkWindow` (stesso schema di `CommentWindow`, ma un
+      `BTextControl` a una riga invece di un `BTextView` multiriga,
+      raggiungibile da Formato → "Collegamento ipertestuale…"), con un
+      pulsante "Apri" per lanciare subito l'URL corrente senza dover
+      prima salvare. Apertura vera e propria con
+      `BUrl::OpenWithPreferredApplication()` (Support Kit, nessuna
+      libreria aggiuntiva) su Ctrl+click sulla cella — non un click
+      semplice: renderebbe altrimenti impossibile selezionare o
+      modificare una cella con un URL senza lanciare ogni volta il
+      browser, stessa scelta di LibreOffice Calc (Excel apre invece
+      con un click semplice, scartato apposta per questo motivo).
+      Indicatore visivo: testo blu e sottolineato, come Excel/
+      LibreOffice Calc — solo per il disegno (non tocca
+      `CellStyle::fHighColor`/`fUnderline` davvero memorizzati, cosi'
+      rimuovere il collegamento in seguito restituisce l'aspetto
+      originale della cella), e solo se la cella ha gia' un valore
+      visibile: un collegamento su una cella vuota non mostra nulla,
+      stesso comportamento di Excel (serve un testo su cui applicare
+      il colore).
+
+      Test: `ui/tests/test_hyperlinks.cpp`, `SetCellHyperlink`/
+      `RemoveCellHyperlink`/`CellHyperlink` resi pubblici apposta
+      (stesso principio dei commenti); `OpenCellHyperlink` NON
+      testato: lancia davvero l'applicazione preferita per l'URL,
+      stesso limite gia' noto di `DeleteSheet`/`RenameSheet` con un
+      vero `BAlert`. Verifica funzionale, round-trip nel formato
+      nativo, e verifica sui pixel veri del testo blu tramite bitmap
+      offscreen. Insidia scoperta scrivendo quest'ultima parte:
+      l'antialiasing subpixel dei font produce, anche sui bordi di
+      testo NERO del tutto normale, pixel con una leggera frangia
+      colorata (es. component blu alto ma verde altrettanto alto) --
+      una soglia larga "componente blu alta" avrebbe scambiato quella
+      frangia per il blu del collegamento (falso positivo osservato
+      proprio su una cella senza nessun collegamento); corretto
+      restringendo la soglia a una fascia stretta intorno al colore
+      esatto (20,80,200) su tutti e tre i canali. Nessuna regressione
+      nelle altre suite del motore, nei tre traduttori né nelle altre
+      40 suite UI.
 - [ ] **INDEX/MATCH**: lavoro nel motore come il punto 1, ma su
       intervalli/array invece che su singoli valori — più complesso
       delle funzioni pure.
