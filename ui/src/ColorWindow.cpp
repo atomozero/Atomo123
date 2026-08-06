@@ -19,7 +19,7 @@ ColorWindow::ColorWindow(BMessenger target)
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target),
-	fBackground(false)
+	fColorTarget(eTextColor)
 {
 	fColorControl = new BColorControl(BPoint(0, 0), B_CELLS_32x8, 8, "colorControl");
 
@@ -36,10 +36,15 @@ ColorWindow::ColorWindow(BMessenger target)
 		.End();
 }
 
-void ColorWindow::SetMode(bool background, rgb_color initial)
+void ColorWindow::SetMode(ColorTarget target, rgb_color initial)
 {
-	fBackground = background;
-	SetTitle(background ? "Colore sfondo" : "Colore testo");
+	fColorTarget = target;
+	switch (target)
+	{
+		case eBackgroundColor: SetTitle("Colore sfondo"); break;
+		case eBorderColor: SetTitle("Colore bordo"); break;
+		default: SetTitle("Colore testo"); break;
+	}
 	fColorControl->SetValue(initial);
 }
 
@@ -50,7 +55,7 @@ void ColorWindow::MessageReceived(BMessage* message)
 		rgb_color color = fColorControl->ValueAsColor();
 		BMessage request(kMsgColorRequest);
 		request.AddData("color", B_RGB_COLOR_TYPE, &color, sizeof(rgb_color));
-		request.AddBool("background", fBackground);
+		request.AddInt32("target", (int32)fColorTarget);
 		fTarget.SendMessage(&request);
 		return;
 	}

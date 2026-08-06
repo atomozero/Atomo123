@@ -20,6 +20,7 @@
 #include "AscdIO.h"
 #include "Cell.h"
 #include "Chart.h"
+#include "ColorWindow.h"
 #include "Container.h"
 
 class BFilePanel;
@@ -128,6 +129,14 @@ public:
 	// ToggleBorder).
 	void ToggleBorder(int side);
 	void ClearBorders();
+
+	// Stile del bordo (Fase 13): SetBorderThickness cambia lo spessore
+	// (1/2/3 = sottile/medio/spesso) di ogni lato GIA' presente sulla
+	// selezione, senza aggiungerne o toglierne -- ToggleBorder resta
+	// l'unico modo di attivare/disattivare un lato. SetBorderColor
+	// cambia CellStyle::fBorderColor, condiviso da tutti i lati.
+	void SetBorderThickness(uchar thickness);
+	void SetBorderColor(rgb_color color);
 
 	// Pubblico per lo stesso motivo di SetCellFormat sopra -- vedi
 	// tests/test_preferences.cpp. showGrid si applica alla sola
@@ -352,7 +361,7 @@ private:
 	void RefreshNameWindow();
 	void ShowPasteSpecialWindow();
 	void ShowGoToWindow();
-	void ShowColorWindow(bool background);
+	void ShowColorWindow(ColorTarget target);
 	void ShowPreferencesWindow();
 };
 

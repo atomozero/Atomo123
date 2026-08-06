@@ -29,6 +29,7 @@
 class BTextControl;
 class CContainer;
 class MainWindow;
+struct CellStyle;
 
 class SheetView : public BView {
 public:
@@ -482,6 +483,12 @@ private:
 	// SULLO SCHERMO (gia' comprensive di xOrigin/yOrigin).
 	void DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 		int firstRow, int lastRow, float xOrigin, float yOrigin);
+	// Disegna i quattro lati del bordo di "r" secondo lo spessore
+	// (0=nessuno/1/2/3) e il colore condiviso di "cs" -- unico punto
+	// condiviso dal ciclo per cella e da quello per cella unita in
+	// Draw(), che avevano prima la stessa sequenza di quattro "if"
+	// duplicata identica (Fase 13).
+	void DrawBorderSides(const CellStyle& cs, BRect r);
 	// CellRect(c), spostato come farebbe DrawCellBand se "c" ricade in
 	// una banda congelata -- usata per il rettangolo di selezione, che
 	// deve restare incollato allo schermo sopra una cella congelata

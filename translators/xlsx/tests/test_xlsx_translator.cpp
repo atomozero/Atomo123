@@ -585,6 +585,17 @@ int main()
 								"nessun grafico in sample.xlsx, il contatore dei tipi e' zero");
 						}
 
+						// Colore del bordo di cella (Fase 13): stesso
+						// principio delle sezioni sopra, ultima sezione del
+						// formato (vedi WriteASCD sopra).
+						if (pos + 4 <= ascdLen)
+						{
+							int32 borderColorCount;
+							memcpy(&borderColorCount, ascdData + pos, 4); pos += 4;
+							Check(borderColorCount == 0,
+								"nessun colore di bordo personalizzato in sample.xlsx, il contatore e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte

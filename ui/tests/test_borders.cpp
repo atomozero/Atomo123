@@ -5,13 +5,22 @@
 	ClearBorders): CellStyle::fTBorderColor/fLBorderColor/
 	fBBorderColor/fRBorderColor, mai implementati ne' nel Sum-It
 	storico ne' nel motore moderno prima d'ora (vedi ROADMAP.md Fase
-	11) -- qui trattati come un byte booleano per lato (0 = nessun
-	bordo, diverso da 0 = bordo nero pieno), non un vero colore
-	nonostante il nome del campo. ToggleBorder si applica a tutto
-	SelectionRange() invertendo lo stato letto dalla sola cella
-	attiva, stesso principio di ToggleBold/ToggleItalic (Fase 7).
-	Richiede una vera MainWindow (i metodi sono pubblici apposta per
-	essere testabili, stesso principio di CopySelection/PasteSelection).
+	11) -- qui trattati come un byte di SPESSORE per lato (0 = nessun
+	bordo, 1/2/3 = sottile/medio/spesso dalla Fase 13 in poi, prima
+	solo 0/1). ToggleBorder si applica a tutto SelectionRange()
+	invertendo lo stato letto dalla sola cella attiva, stesso
+	principio di ToggleBold/ToggleItalic (Fase 7). Richiede una vera
+	MainWindow (i metodi sono pubblici apposta per essere testabili,
+	stesso principio di CopySelection/PasteSelection).
+
+	Fase 13 aggiunge anche il COLORE del bordo (CellStyle::
+	fBorderColor, condiviso da tutti e quattro i lati, predefinito
+	nero) e lo SPESSORE regolabile (MainWindow::SetBorderThickness):
+	verificati sia sul dato (CellStyle dopo la chiamata) sia sul pixel
+	davvero disegnato (bitmap offscreen, stesso principio gia' usato
+	in test_comments.cpp/test_hyperlinks.cpp per non dare per scontato
+	che "il codice per disegnare e' stato eseguito" equivalga a "si
+	vede davvero").
 
 	Include anche il sottolineato (Fase 12, MainWindow::
 	ToggleUnderline): CellStyle::fUnderline, un booleano a parte
@@ -25,6 +34,7 @@
 #include <vector>
 
 #include <Application.h>
+#include <Bitmap.h>
 
 #include "Cell.h"
 #include "Container.h"
@@ -102,6 +112,33 @@ int main()
 	Check(cs.fTBorderColor == 0 && cs.fLBorderColor == 0
 		&& cs.fBBorderColor == 0 && cs.fRBorderColor == 0,
 		"ClearBorders toglie tutti e quattro i lati insieme");
+
+	// Spessore del bordo (Fase 13): SetBorderThickness cambia solo i
+	// lati GIA' presenti, non ne attiva di nuovi.
+	view->SetSelection(cell(1, 1));
+	view->ExtendSelection(cell(1, 1));
+	win->ToggleBorder(0); // superiore, nessun altro lato
+	win->SetBorderThickness(2); // medio
+	doc->GetCellStyle(cell(1, 1), cs);
+	Check(cs.fTBorderColor == 2, "SetBorderThickness cambia lo spessore del lato gia' presente");
+	Check(cs.fLBorderColor == 0 && cs.fBBorderColor == 0 && cs.fRBorderColor == 0,
+		"SetBorderThickness non attiva un lato che non c'era");
+
+	win->SetBorderThickness(3); // spesso
+	doc->GetCellStyle(cell(1, 1), cs);
+	Check(cs.fTBorderColor == 3, "un secondo SetBorderThickness cambia di nuovo lo spessore");
+
+	win->ClearBorders();
+
+	// Colore del bordo (Fase 13): CellStyle::fBorderColor, condiviso
+	// da tutti e quattro i lati -- si applica anche a una cella senza
+	// nessun bordo attivo (il colore resta impostato, pronto per
+	// quando un lato verra' attivato in seguito).
+	rgb_color red = { 220, 40, 40, 255 };
+	win->SetBorderColor(red);
+	doc->GetCellStyle(cell(1, 1), cs);
+	Check(cs.fBorderColor.red == 220 && cs.fBorderColor.green == 40 && cs.fBorderColor.blue == 40,
+		"SetBorderColor imposta CellStyle::fBorderColor sulla selezione");
 
 	// Sottolineato (Fase 12): stesso principio di ToggleBorder sopra,
 	// ma un booleano semplice (nessun "lato").
@@ -218,6 +255,61 @@ int main()
 	}
 
 	win->Unlock();
+
+	// --- Il bordo rosso spesso si vede davvero sui pixel (non solo
+	// "il codice per disegnarlo e' stato eseguito"). ---
+	{
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		CellStyle cs2;
+		doc2->GetCellStyle(cell(3, 3), cs2); // C3
+		cs2.fTBorderColor = 3; // spesso
+		rgb_color borderRed = { 220, 40, 40, 255 };
+		cs2.fBorderColor = borderRed;
+		doc2->SetCellStyle(cell(3, 3), cs2);
+
+		BRect canvasRect(0, 0, 799, 599);
+		BBitmap* canvas = new BBitmap(canvasRect, B_RGB32, true);
+		SheetView* view2 = new SheetView(doc2);
+		view2->ResizeTo(canvasRect.Width(), canvasRect.Height());
+		canvas->AddChild(view2);
+
+		bool locked = canvas->Lock();
+		Check(locked, "la bitmap offscreen per il bordo si blocca per disegnarci sopra");
+
+		view2->Draw(canvasRect);
+		view2->Sync();
+		canvas->Unlock();
+
+		uint8* bits = (uint8*)canvas->Bits();
+		int32 bpr = canvas->BytesPerRow();
+
+		// Scandisce una fascia orizzontale di qualche pixel intorno al
+		// bordo superiore atteso, non un unico pixel esatto: uno
+		// spessore di penna maggiore di 1 viene centrato sulla
+		// coordinata della linea (meta' sopra, meta' sotto), la
+		// posizione esatta non e' un dettaglio da fissare qui.
+		BRect c3 = view2->CellRect(cell(3, 3));
+		bool foundRed = false;
+		for (int32 y = (int32)c3.top - 2; y <= (int32)c3.top + 2 && !foundRed; y++)
+		{
+			uint8* row = bits + y * bpr;
+			for (int32 x = (int32)c3.left + 2; x < (int32)c3.right - 2; x++)
+			{
+				uint8* px = row + x * 4;
+				// B_RGB32 in memoria: B, G, R, A.
+				if (px[2] > 180 && px[0] < 100 && px[1] < 100)
+				{
+					foundRed = true;
+					break;
+				}
+			}
+		}
+		Check(foundRed,
+			"il bordo superiore rosso spesso e' davvero disegnato (pixel rosso lungo il bordo)");
+
+		delete canvas;
+		doc2->Release();
+	}
 
 	win->Lock();
 	win->Quit();

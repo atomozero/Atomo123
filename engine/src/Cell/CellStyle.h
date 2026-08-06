@@ -67,10 +67,21 @@ struct CellStyle {
 	char fAlignment;
 	rgb_color fLowColor;  // colore di sfondo della cella
 	rgb_color fHighColor; // colore del testo della cella
+	// Spessore del bordo per lato (Fase 11/13): il nome "colore" e'
+	// ereditato dal codice storico di Sum-It (mai davvero implementato
+	// ne' li' ne' qui prima della Fase 13) -- 0 = nessun bordo, 1 =
+	// sottile, 2 = medio, 3 = spesso. Un valore gia' scritto da un file
+	// .ascd della Fase 11 (sempre 0 o 1) resta valido cosi' com'e':
+	// nessun cambiamento di formato, solo un significato piu' ampio
+	// per lo stesso byte. Il colore VERO del bordo (uguale per tutti e
+	// quattro i lati di una cella: la stragrande maggioranza dei fogli
+	// reali non ha bisogno di un colore diverso per lato) e' invece
+	// fBorderColor sotto.
 	uchar fTBorderColor;
 	uchar fLBorderColor;
 	uchar fBBorderColor;
 	uchar fRBorderColor;
+	rgb_color fBorderColor; // colore condiviso da tutti i lati con bordo (Fase 13, predefinito nero)
 	bool fUnderline; // BFont non ha un attributo sottolineato nativo (solo stile del font, vedi Fase 12): disegnato a mano in SheetView, non parte della tripla famiglia/stile/dimensione di fFont
 	bool fWrapText; // a-capo del testo per larghezza di colonna (Fase 12): il motore non fa layout di testo, solo la UI (SheetView) sa disegnare piu' righe e far crescere l'altezza di riga di conseguenza
 

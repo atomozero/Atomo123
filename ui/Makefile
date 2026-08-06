@@ -733,7 +733,8 @@ test-names: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 clean:
 	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
 		tests/roundtrip.ascd tests/roundtrip_charts.ascd tests/roundtrip_widths.ascd \
-		tests/roundtrip_colors.ascd tests/roundtrip_ambiguous_text.ascd tests/edge.ascd \
+		tests/roundtrip_colors.ascd tests/roundtrip_border_color.ascd \
+		tests/roundtrip_ambiguous_text.ascd tests/edge.ascd \
 		tests/test_clipboard tests/test_clipboard.o \
 		tests/test_scroll tests/test_scroll.o \
 		tests/test_chart tests/test_chart.o tests/Chart.o \

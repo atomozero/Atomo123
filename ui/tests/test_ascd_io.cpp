@@ -365,6 +365,52 @@ int main()
 		"...e ogni cella resta al colore predefinito (bianco/nero)");
 	oldDoc3.Release();
 
+	// Colore del bordo (Fase 13): CellStyle::fBorderColor, sezione
+	// SEPARATA da quella di presenza/spessore del bordo (vedi il
+	// commento in AscdIO.cpp) -- verificata qui a parte proprio perche'
+	// e' una sezione indipendente, non un'estensione del formato colori
+	// sopra.
+	CContainer& borderColorDoc = *new CContainer(NULL, NULL);
+	CellStyle a1Border;
+	a1Border.fTBorderColor = 3; // spesso
+	a1Border.fBorderColor.red = 220; a1Border.fBorderColor.green = 40;
+	a1Border.fBorderColor.blue = 40; a1Border.fBorderColor.alpha = 255; // rosso
+	borderColorDoc.SetCellStyle(cell(1, 1), a1Border);
+
+	BFile borderColorFile("tests/roundtrip_border_color.ascd",
+		B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	err = SaveASCD(&borderColorDoc, &borderColorFile);
+	Check(err == B_OK, "SaveASCD con un colore di bordo personalizzato riesce");
+	borderColorDoc.Release();
+
+	BFile borderColorReopened("tests/roundtrip_border_color.ascd", B_READ_ONLY);
+	CContainer& borderColorReloaded = *new CContainer(NULL, NULL);
+	err = LoadASCD(&borderColorReopened, &borderColorReloaded);
+	Check(err == B_OK, "LoadASCD con un colore di bordo personalizzato riesce");
+
+	CellStyle reloadedBorder;
+	borderColorReloaded.GetCellStyle(cell(1, 1), reloadedBorder);
+	Check(reloadedBorder.fTBorderColor == 3,
+		"lo spessore del bordo (spesso) sopravvive al giro salva->ricarica");
+	Check(reloadedBorder.fBorderColor.red == 220 && reloadedBorder.fBorderColor.green == 40
+			&& reloadedBorder.fBorderColor.blue == 40,
+		"il colore del bordo (rosso) sopravvive al giro salva->ricarica, sezione separata dallo spessore");
+	borderColorReloaded.Release();
+
+	// Un file scritto senza colori di bordo personalizzati si rilegge
+	// senza errori, con ogni bordo nero -- stessa compatibilita'
+	// all'indietro delle altre sezioni opzionali.
+	BFile oldFormat4("tests/roundtrip.ascd", B_READ_ONLY);
+	CContainer& oldDoc4 = *new CContainer(NULL, NULL);
+	err = LoadASCD(&oldFormat4, &oldDoc4);
+	Check(err == B_OK, "un file senza sezione colore di bordo si rilegge senza errori");
+	CellStyle oldBorderStyle;
+	oldDoc4.GetCellStyle(a1, oldBorderStyle);
+	Check(oldBorderStyle.fBorderColor.red == 0 && oldBorderStyle.fBorderColor.green == 0
+			&& oldBorderStyle.fBorderColor.blue == 0,
+		"...e ogni bordo resta al colore predefinito (nero)");
+	oldDoc4.Release();
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

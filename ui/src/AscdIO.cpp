@@ -648,6 +648,43 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione colore del bordo di cella non predefinito, in coda (Fase
+	// 13): UN colore condiviso da tutti i lati del bordo di una cella
+	// (CellStyle::fBorderColor), non un colore diverso per lato --
+	// stessa scelta di scope gia' fatta per i grafici, vedi
+	// ROADMAP.md. Sezione SEPARATA da quella dei bordi sopra (che
+	// restano un byte di SPESSORE per lato, semantica appena estesa da
+	// presenza/assenza a sottile/medio/spesso ma stesso formato byte
+	// per byte di prima) per non toccare l'allineamento dei file .ascd
+	// gia' scritti.
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, rgb_color> > toWrite;
+		CCellIterator borderColorIter(doc, NULL);
+		cell bcc;
+		while (borderColorIter.NextExisting(bcc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(bcc, cs);
+			if (!ColorsEqual(cs.fBorderColor, defaultStyle.fBorderColor))
+				toWrite.push_back(std::make_pair(bcc, cs.fBorderColor));
+		}
+
+		int32 borderColorCount = (int32)toWrite.size();
+		if (dest->Write(&borderColorCount, sizeof(borderColorCount)) != (ssize_t)sizeof(borderColorCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < borderColorCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			rgb_color color = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&color, sizeof(color)) != (ssize_t)sizeof(color))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1312,6 +1349,37 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					return B_BAD_DATA;
 				if (charts && i < (int32)charts->size())
 					(*charts)[i].type = (ChartType)type;
+			}
+		}
+	}
+
+	// Sezione colore del bordo di cella non predefinito, in coda:
+	// stesso schema EOF-tollerante delle sezioni sopra (vedi il
+	// commento gemello in SaveASCD). Un file scritto prima di questa
+	// modifica lascia ogni bordo nero (CellStyle::fBorderColor
+	// predefinito), stesso aspetto della Fase 11.
+	{
+		int32 borderColorCount = 0;
+		ssize_t got = source->Read(&borderColorCount, sizeof(borderColorCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(borderColorCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < borderColorCount; i++)
+			{
+				int16 row, col;
+				rgb_color color;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&color, sizeof(color)) != (ssize_t)sizeof(color))
+					return B_BAD_DATA;
+
+				cell c(col, row);
+				CellStyle cs;
+				doc->GetCellStyle(c, cs);
+				cs.fBorderColor = color;
+				doc->SetCellStyle(c, cs);
 			}
 		}
 	}

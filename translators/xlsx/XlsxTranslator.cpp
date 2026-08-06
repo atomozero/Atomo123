@@ -617,6 +617,18 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione colore del bordo di cella non predefinito, in coda (vedi
+	// ui/src/AscdIO.cpp): sempre vuota, stesso principio delle sezioni
+	// sopra -- questo translator non estrae ancora il colore del
+	// bordo da un file XLSX vero (solo la presenza/assenza per lato,
+	// vedi ParseStyles), rimandato come le altre sezioni "non ancora
+	// estratte" qui sopra.
+	{
+		int32 borderColorCount = 0;
+		if (dest->Write(&borderColorCount, sizeof(borderColorCount)) != (ssize_t)sizeof(borderColorCount))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 

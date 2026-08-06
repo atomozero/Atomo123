@@ -1696,6 +1696,40 @@ BString SheetView::FormattedCellText(cell c)
 	return BString(text);
 }
 
+// Vedi il commento sui due punti di chiamata in Draw() (cella normale
+// e cella unita): SetPenSize riportato a 1 alla fine, non solo fra un
+// lato e l'altro -- il resto di Draw() (griglia, selezione, ecc.)
+// disegnato dopo si aspetta lo spessore di penna predefinito.
+void SheetView::DrawBorderSides(const CellStyle& cs, BRect r)
+{
+	if (!cs.fTBorderColor && !cs.fLBorderColor
+		&& !cs.fBBorderColor && !cs.fRBorderColor)
+		return;
+
+	SetHighColor(cs.fBorderColor);
+	if (cs.fTBorderColor)
+	{
+		SetPenSize(cs.fTBorderColor);
+		StrokeLine(r.LeftTop(), r.RightTop());
+	}
+	if (cs.fBBorderColor)
+	{
+		SetPenSize(cs.fBBorderColor);
+		StrokeLine(r.LeftBottom(), r.RightBottom());
+	}
+	if (cs.fLBorderColor)
+	{
+		SetPenSize(cs.fLBorderColor);
+		StrokeLine(r.LeftTop(), r.LeftBottom());
+	}
+	if (cs.fRBorderColor)
+	{
+		SetPenSize(cs.fRBorderColor);
+		StrokeLine(r.RightTop(), r.RightBottom());
+	}
+	SetPenSize(1);
+}
+
 // Vedi il commento su fFrozenRows/fFrozenCols in SheetView.h: disegna
 // sfondo, griglia e testo per un blocco di celle [firstCol,lastCol] x
 // [firstRow,lastRow], spostato di (xOrigin, yOrigin) -- (0,0) per il
@@ -1758,21 +1792,21 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 		}
 	}
 
-	// Bordi di cella (Fase 11): un lato alla volta, un byte booleano
-	// ciascuno (CellStyle::fTBorderColor/fLBorderColor/fBBorderColor/
-	// fRBorderColor -- il nome "colore" e' ereditato dal codice storico
-	// di Sum-It, mai davvero implementato ne' li' ne' qui prima d'ora,
-	// vedi ROADMAP.md Fase 11: 0 = nessun bordo, diverso da 0 = un
-	// bordo nero pieno su quel lato). Ciclo a parte, non dentro quello
-	// del testo sotto: una cella vuota puo' comunque avere un bordo
-	// (lo stesso motivo per cui lo sfondo colorato, sopra, non salta le
-	// celle senza contenuto). Disegnato DOPO la griglia sottile (sopra)
-	// cosi' un bordo nero pieno si distingue sempre da un confine di
-	// griglia qualunque, PRIMA del testo (sotto) cosi' un bordo non
-	// copre mai un carattere che vi si sovrapponesse per un pixel.
+	// Bordi di cella (Fase 11/13): un lato alla volta, un byte di
+	// SPESSORE ciascuno (CellStyle::fTBorderColor/fLBorderColor/
+	// fBBorderColor/fRBorderColor -- 0 = nessun bordo, 1/2/3 = sottile/
+	// medio/spesso, vedi il commento in CellStyle.h) piu' un colore
+	// condiviso da tutti i lati (CellStyle::fBorderColor, predefinito
+	// nero -- stesso aspetto della Fase 11 per chi non lo cambia mai).
+	// Ciclo a parte, non dentro quello del testo sotto: una cella vuota
+	// puo' comunque avere un bordo (lo stesso motivo per cui lo sfondo
+	// colorato, sopra, non salta le celle senza contenuto). Disegnato
+	// DOPO la griglia sottile (sopra) cosi' un bordo si distingue
+	// sempre da un confine di griglia qualunque, PRIMA del testo
+	// (sotto) cosi' un bordo non copre mai un carattere che vi si
+	// sovrapponesse per un pixel.
 	if (fDoc)
 	{
-		SetHighColor(0, 0, 0);
 		for (int row = firstRow; row <= lastRow; row++)
 		{
 			if (fRowHidden[row - 1])
@@ -1787,14 +1821,7 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 					continue;
 
 				BRect r = CellRect(c).OffsetByCopy(xOrigin, yOrigin);
-				if (cs.fTBorderColor)
-					StrokeLine(r.LeftTop(), r.RightTop());
-				if (cs.fBBorderColor)
-					StrokeLine(r.LeftBottom(), r.RightBottom());
-				if (cs.fLBorderColor)
-					StrokeLine(r.LeftTop(), r.LeftBottom());
-				if (cs.fRBorderColor)
-					StrokeLine(r.RightTop(), r.RightBottom());
+				DrawBorderSides(cs, r);
 			}
 		}
 	}
@@ -1837,15 +1864,7 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				StrokeRect(full);
 			}
 
-			SetHighColor(0, 0, 0);
-			if (cs.fTBorderColor)
-				StrokeLine(full.LeftTop(), full.RightTop());
-			if (cs.fBBorderColor)
-				StrokeLine(full.LeftBottom(), full.RightBottom());
-			if (cs.fLBorderColor)
-				StrokeLine(full.LeftTop(), full.LeftBottom());
-			if (cs.fRBorderColor)
-				StrokeLine(full.RightTop(), full.RightBottom());
+			DrawBorderSides(cs, full);
 		}
 	}
 

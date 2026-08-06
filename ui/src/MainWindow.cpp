@@ -48,6 +48,7 @@
 #include <FilePanel.h>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
+#include <Menu.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
 #include <Path.h>
@@ -115,6 +116,8 @@ static const uint32 kMsgShowBgColor = 'shbc';
 static const uint32 kMsgShowPreferences = 'shpr';
 static const uint32 kMsgToggleBorder = 'tbrd';
 static const uint32 kMsgClearBorders = 'cbrd';
+static const uint32 kMsgShowBorderColor = 'shbd';
+static const uint32 kMsgSetBorderThickness = 'sbth';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -438,6 +441,11 @@ MainWindow::MainWindow()
 		new BMessage(kMsgShowTextColor)));
 	formatMenu->AddItem(new BMenuItem("Colore sfondo" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgShowBgColor)));
+	// Colore del bordo (Fase 13): condiviso da tutti e quattro i lati
+	// di una cella (CellStyle::fBorderColor), stesso principio di
+	// scope gia' scelto per i grafici -- vedi ROADMAP.md.
+	formatMenu->AddItem(new BMenuItem("Colore bordo" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowBorderColor)));
 	formatMenu->AddSeparatorItem();
 	// Bordi di cella (Fase 11): un lato alla volta, come Grassetto/
 	// Corsivo sopra -- vedi MainWindow::ToggleBorder ("side" nello
@@ -456,6 +464,21 @@ MainWindow::MainWindow()
 	rightBorderMsg->AddInt32("side", 3);
 	formatMenu->AddItem(new BMenuItem("Bordo destro", rightBorderMsg));
 	formatMenu->AddItem(new BMenuItem("Nessun bordo", new BMessage(kMsgClearBorders)));
+	// Spessore del bordo (Fase 13): cambia lo spessore dei lati GIA'
+	// presenti sulla selezione, non ne attiva di nuovi -- vedi
+	// MainWindow::SetBorderThickness. Corrispondenza posizionale con
+	// CellStyle::fTBorderColor ecc: 1/2/3 = sottile/medio/spesso.
+	BMenu* borderThicknessMenu = new BMenu("Spessore bordo");
+	BMessage* thinMsg = new BMessage(kMsgSetBorderThickness);
+	thinMsg->AddInt32("thickness", 1);
+	borderThicknessMenu->AddItem(new BMenuItem("Sottile", thinMsg));
+	BMessage* mediumMsg = new BMessage(kMsgSetBorderThickness);
+	mediumMsg->AddInt32("thickness", 2);
+	borderThicknessMenu->AddItem(new BMenuItem("Medio", mediumMsg));
+	BMessage* thickMsg = new BMessage(kMsgSetBorderThickness);
+	thickMsg->AddInt32("thickness", 3);
+	borderThicknessMenu->AddItem(new BMenuItem("Spesso", thickMsg));
+	formatMenu->AddItem(borderThicknessMenu);
 	formatMenu->AddSeparatorItem();
 	// Celle unite (Fase 12): un rettangolo per foglio (CContainer::
 	// AddMergedRange), non un campo per cella -- vedi MainWindow::
@@ -1776,7 +1799,7 @@ void MainWindow::ShowGoToWindow()
 	fGoToWindow->Activate();
 }
 
-void MainWindow::ShowColorWindow(bool background)
+void MainWindow::ShowColorWindow(ColorTarget target)
 {
 	if (!fColorWindow)
 		fColorWindow = new ColorWindow(BMessenger(this));
@@ -1784,6 +1807,14 @@ void MainWindow::ShowColorWindow(bool background)
 	CellStyle cs;
 	if (fDoc)
 		fDoc->GetCellStyle(fSheetView->Selection(), cs);
+
+	rgb_color initial;
+	switch (target)
+	{
+		case eBackgroundColor: initial = cs.fLowColor; break;
+		case eBorderColor: initial = cs.fBorderColor; break;
+		default: initial = cs.fHighColor; break;
+	}
 
 	// fColorWindow e' una BWindow a se' (thread/BLooper proprio, non
 	// quello di MainWindow): SetMode() tocca fColorControl, una sua
@@ -1795,7 +1826,7 @@ void MainWindow::ShowColorWindow(bool background)
 	// corsa che Haiku intercetta e blocca in debug.
 	if (fColorWindow->Lock())
 	{
-		fColorWindow->SetMode(background, background ? cs.fLowColor : cs.fHighColor);
+		fColorWindow->SetMode(target, initial);
 		fColorWindow->Unlock();
 	}
 
@@ -2091,6 +2122,53 @@ void MainWindow::ClearBorders()
 			CellStyle cs;
 			fDoc->GetCellStyle(c, cs);
 			cs.fTBorderColor = cs.fLBorderColor = cs.fBBorderColor = cs.fRBorderColor = 0;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::SetBorderThickness(uchar thickness)
+{
+	if (!fDoc)
+		return;
+
+	// Solo i lati GIA' presenti cambiano spessore -- un lato a 0
+	// (nessun bordo) resta a 0: cambiare spessore non e' lo stesso di
+	// attivare un lato che non c'era (quello resta compito di
+	// ToggleBorder).
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			bool changed = false;
+			if (cs.fTBorderColor) { cs.fTBorderColor = thickness; changed = true; }
+			if (cs.fLBorderColor) { cs.fLBorderColor = thickness; changed = true; }
+			if (cs.fBBorderColor) { cs.fBBorderColor = thickness; changed = true; }
+			if (cs.fRBorderColor) { cs.fRBorderColor = thickness; changed = true; }
+			if (changed)
+				fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::SetBorderColor(rgb_color color)
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fBorderColor = color;
 			fDoc->SetCellStyle(c, cs);
 		}
 	fSheetView->Invalidate();
@@ -3170,26 +3248,32 @@ void MainWindow::MessageReceived(BMessage* message)
 		}
 
 		case kMsgShowTextColor:
-			ShowColorWindow(false);
+			ShowColorWindow(eTextColor);
 			break;
 
 		case kMsgShowBgColor:
-			ShowColorWindow(true);
+			ShowColorWindow(eBackgroundColor);
+			break;
+
+		case kMsgShowBorderColor:
+			ShowColorWindow(eBorderColor);
 			break;
 
 		case kMsgColorRequest:
 		{
 			rgb_color* color = NULL;
 			ssize_t size = 0;
-			bool background = false;
-			message->FindBool("background", &background);
+			int32 target = eTextColor;
+			message->FindInt32("target", &target);
 			if (message->FindData("color", B_RGB_COLOR_TYPE,
 					(const void**)&color, &size) == B_OK && color)
 			{
-				if (background)
-					SetBackgroundColor(*color);
-				else
-					SetTextColor(*color);
+				switch ((ColorTarget)target)
+				{
+					case eBackgroundColor: SetBackgroundColor(*color); break;
+					case eBorderColor: SetBorderColor(*color); break;
+					default: SetTextColor(*color); break;
+				}
 			}
 			break;
 		}
@@ -3224,6 +3308,14 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgClearBorders:
 			ClearBorders();
 			break;
+
+		case kMsgSetBorderThickness:
+		{
+			int32 thickness = 1;
+			if (message->FindInt32("thickness", &thickness) == B_OK)
+				SetBorderThickness((uchar)thickness);
+			break;
+		}
 
 		case kMsgGoToRequest:
 		{

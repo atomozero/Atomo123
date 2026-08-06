@@ -64,6 +64,10 @@ CellStyle::CellStyle()
 	// fHighColor resta nero (0,0,0) dal memset sopra: solo l'alpha va
 	// impostato esplicitamente.
 	fHighColor.alpha = 255;
+	// fBorderColor resta nero (0,0,0) dal memset sopra, stesso motivo:
+	// stesso aspetto di un bordo Fase 11 (sempre nero) per chi non
+	// sceglie mai un colore diverso.
+	fBorderColor.alpha = 255;
 } // CellStyle::CellStyle
 
 bool CellStyle::operator==(const CellStyle& cs) const
