@@ -620,6 +620,22 @@ test-format-toolbar: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_format_toolbar
 
+# Test dei cinque pulsanti Fase 13 (hyperlink/commento/vai a/intervalli
+# con nome/colore bordo) e della nuova toolbar su piu' righe per
+# categoria: stessa ragione headless-ma-con-vera-MainWindow di
+# test-format-toolbar sopra.
+test-toolbar-phase13: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_toolbar_phase13.cpp -o tests/test_toolbar_phase13.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_toolbar_phase13 tests/test_toolbar_phase13.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_toolbar_phase13
+
 # Test di Blocca riquadri (Fase 7): righe/colonne bloccate restano
 # ferme sullo schermo durante lo scroll, CellAt() risolve un clic
 # sulla banda bloccata alla cella giusta anche a foglio scorso.

@@ -47,6 +47,11 @@ extern const IconData kIconAlignRight;
 extern const IconData kIconWrapText;
 extern const IconData kIconTextColor;
 extern const IconData kIconHighlight;
+extern const IconData kIconHyperlink;
+extern const IconData kIconComment;
+extern const IconData kIconNamedRange;
+extern const IconData kIconGoTo;
+extern const IconData kIconBorderColor;
 
 namespace IconCatalog {
 	// Renderizza "icon" in un BBitmap 16x16 B_RGBA32 di proprieta' del
