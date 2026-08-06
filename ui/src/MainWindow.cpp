@@ -3018,6 +3018,7 @@ void MainWindow::SetCellFormat(int32 format)
 	// colonna/predefinito), quindi non "sporca" con voci vuote le
 	// celle dell'intervallo che restano senza contenuto.
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{

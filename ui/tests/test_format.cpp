@@ -24,6 +24,7 @@
 #include "CellParser.h"
 #include "CellStyle.h"
 #include "FontMetrics.h"
+#include "Formatter.h"
 #include "SheetView.h"
 #include "MainWindow.h"
 
@@ -149,6 +150,20 @@ int main()
 	doc->GetCellStyle(cell(3, 2), cs);
 	Check(cs.fAlignment != eAlignRight,
 		"Annulla dopo SetAlignment(eAlignRight) ripristina l'allineamento precedente su C2");
+
+	// SetCellFormat (Formato > Numero/Valuta/Percentuale/Generale):
+	// stesso bug, trovato durante l'audit successivo al fix di
+	// grassetto/corsivo/ecc. sopra -- mancava SaveUndoState() anche qui.
+	view->SetSelection(cell(3, 3));
+	view->ExtendSelection(cell(3, 3)); // C3
+	win->SetCellFormat(eCurrency);
+	doc->GetCellStyle(cell(3, 3), cs);
+	Check(cs.fFormat == eCurrency, "SetCellFormat(eCurrency) imposta il formato su C3");
+
+	view->Undo();
+	doc->GetCellStyle(cell(3, 3), cs);
+	Check(cs.fFormat != eCurrency,
+		"Annulla dopo SetCellFormat(eCurrency) ripristina il formato precedente su C3");
 
 	win->Unlock();
 
