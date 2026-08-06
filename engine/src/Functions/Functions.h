@@ -141,6 +141,8 @@ enum {
 	kMEDIANFuncNr,
 	kMODEFuncNr,
 	kIFERRORFuncNr,
+	kINDEXFuncNr,
+	kMATCHFuncNr,
 	kFunctionCount
 };
 
@@ -242,5 +244,7 @@ void SEARCHFunction(Value *stack, int argCnt, CContainer *cells);
 void CONCATFunction(Value *stack, int argCnt, CContainer *cells);
 void MEDIANFunction(Value *stack, int argCnt, CContainer *cells);
 void MODEFunction(Value *stack, int argCnt, CContainer *cells);
+void INDEXFunction(Value *stack, int argCnt, CContainer *cells);
+void MATCHFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

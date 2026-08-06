@@ -247,6 +247,8 @@ void SetupDefaultFuncs()
 	// file XLSX vero usa davvero (vedi il commento sulla voce
 	// "IFERROR" in funcs_by_nr.r).
 	gFuncs[kIFERRORFuncNr] = IFERRFunction;
+	gFuncs[kINDEXFuncNr] = INDEXFunction;
+	gFuncs[kMATCHFuncNr] = MATCHFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

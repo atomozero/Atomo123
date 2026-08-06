@@ -148,6 +148,12 @@ resource 'Func' (128, "Functions")
 		// veniva mostrata come testo grezzo della formula invece del
 		// valore calcolato, perche' "IFERROR" non esisteva affatto nella
 		// tabella (l'analisi grammaticale falliva con "funzione sconosciuta").
-		"IFERROR", 65535, 98, 7
+		"IFERROR", 65535, 98, 7,
+		// INDEX/MATCH (Fase 13): non HINDEX/VINDEX sopra, che
+		// nonostante il nome fanno una ricerca in stile MATCH
+		// approssimato -- vedi il commento su INDEXFunction in
+		// Functions.spreadsheet.cpp.
+		"INDEX", 65535, 99, 1,
+		"MATCH", 65535, 100, 1
 	}
 };

@@ -392,6 +392,180 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 		stack[0] = gRefNan;
 }
 
+// INDEX(intervallo, riga [, colonna]) (Fase 13): a differenza di
+// HINDEX/VINDEX sopra (che nonostante il nome fanno una ricerca in
+// stile MATCH approssimato, non "valore alla posizione N" -- retaggio
+// storico di Sum-It, nomi fuorvianti rispetto a Excel), questa e'
+// l'INDEX vero e proprio di Excel: restituisce il valore alla
+// posizione (riga, colonna) DENTRO l'intervallo, 1-based.
+//
+// Riga o colonna omessa: se l'intervallo e' largo una sola colonna
+// (o alto una sola riga), l'unico argomento numerico indica la
+// posizione lungo quella dimensione -- stesso comportamento "opzionale"
+// del vero INDEX quando l'intervallo ha una sola riga/colonna. Se
+// l'intervallo e' davvero bidimensionale e uno dei due indici e' 0 (o
+// del tutto omesso), il risultato e' l'intera riga/colonna
+// corrispondente come INTERVALLO (non un valore singolo) -- stesso
+// principio di OFFSET sopra: un Value di tipo range che una funzione
+// che aggrega (es. SUM) puo' consumare direttamente, es.
+// =SUM(INDEX(A1:C10,0,2)) somma tutta la seconda colonna.
+void INDEXFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range cRange;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 1, &cRange) || !cRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int numRows = cRange.bottom - cRange.top + 1;
+	int numCols = cRange.right - cRange.left + 1;
+
+	double arg2 = 0, arg3 = 0;
+	bool hasArg2 = GetDoubleArgument(stack, argCnt, 2, &arg2);
+	bool hasArg3 = GetDoubleArgument(stack, argCnt, 3, &arg3);
+
+	int rowNum, colNum;
+	if (numRows == 1 && numCols != 1 && hasArg2 && !hasArg3)
+	{
+		// Intervallo a una riga sola, un unico argomento numerico:
+		// seleziona la colonna, non la riga (che puo' essere solo 1).
+		rowNum = 1;
+		colNum = static_cast<int>(rint(arg2));
+	}
+	else
+	{
+		rowNum = hasArg2 ? static_cast<int>(rint(arg2)) : 1;
+		colNum = hasArg3 ? static_cast<int>(rint(arg3)) : (numCols == 1 ? 1 : 0);
+	}
+
+	if (rowNum < 0 || rowNum > numRows || colNum < 0 || colNum > numCols
+		|| (rowNum == 0 && colNum == 0))
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	if (rowNum == 0)
+	{
+		// L'intera colonna colNum.
+		int col = cRange.left + colNum - 1;
+		stack[0] = range(col, cRange.top, col, cRange.bottom);
+		return;
+	}
+	if (colNum == 0)
+	{
+		// L'intera riga rowNum.
+		int row = cRange.top + rowNum - 1;
+		stack[0] = range(cRange.left, row, cRange.right, row);
+		return;
+	}
+
+	cell c(cRange.left + colNum - 1, cRange.top + rowNum - 1);
+	cells->GetValue(c, stack[0]);
+}
+
+// MATCH(valore, intervallo [, tipo]) (Fase 13): restituisce la
+// POSIZIONE relativa (1-based) di "valore" dentro "intervallo", non il
+// valore stesso -- l'intervallo deve essere largo una sola riga o una
+// sola colonna, come nel vero MATCH di Excel. tipo=1 (predefinito,
+// come Excel): ultimo valore <= chiave, intervallo assunto crescente
+// (nessun controllo esplicito dell'ordinamento, stessa assunzione gia'
+// fatta da VLOOKUP/HLOOKUP sopra in modalita' approssimata). tipo=0:
+// corrispondenza esatta, intervallo non necessariamente ordinato.
+// tipo=-1: primo valore >= chiave, intervallo assunto decrescente.
+void MATCHFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range cRange;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 2, &cRange) || !cRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int numRows = cRange.bottom - cRange.top + 1;
+	int numCols = cRange.right - cRange.left + 1;
+	if (numRows != 1 && numCols != 1)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+	bool horizontal = (numRows == 1 && numCols > 1);
+	int count = horizontal ? numCols : numRows;
+
+	double matchTypeArg;
+	int matchType = GetDoubleArgument(stack, argCnt, 3, &matchTypeArg)
+		? static_cast<int>(rint(matchTypeArg)) : 1;
+
+	char keyS[256];
+	double key = 0;
+	time_t keyD = 0;
+	enum { kNumKey, kTextKey, kTimeKey } keyKind;
+
+	if (GetDoubleArgument(stack, argCnt, 1, &key) && !isnan(key))
+		keyKind = kNumKey;
+	else if (GetTextArgument(stack, argCnt, 1, keyS))
+		keyKind = kTextKey;
+	else if (GetTimeArgument(stack, argCnt, 1, &keyD))
+		keyKind = kTimeKey;
+	else
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int foundPos = -1;
+	Value val;
+	for (int i = 0; i < count; i++)
+	{
+		cell c = horizontal ? cell(cRange.left + i, cRange.top) : cell(cRange.left, cRange.top + i);
+		cells->GetValue(c, val);
+
+		if (matchType == 0)
+		{
+			bool eq = (keyKind == kNumKey && val.fType == eNumData && key == val.fDouble)
+				|| (keyKind == kTextKey && val.fType == eTextData && strcmp(keyS, val.fText) == 0)
+				|| (keyKind == kTimeKey && val.fType == eTimeData && keyD == val.fTime);
+			if (eq)
+			{
+				foundPos = i + 1;
+				break;
+			}
+		}
+		else if (matchType > 0)
+		{
+			bool le = (keyKind == kNumKey && val.fType == eNumData && val.fDouble <= key)
+				|| (keyKind == kTextKey && val.fType == eTextData && strcmp(val.fText, keyS) <= 0)
+				|| (keyKind == kTimeKey && val.fType == eTimeData && val.fTime <= keyD);
+			if (!le)
+				break;
+			foundPos = i + 1;
+		}
+		else
+		{
+			bool ge = (keyKind == kNumKey && val.fType == eNumData && val.fDouble >= key)
+				|| (keyKind == kTextKey && val.fType == eTextData && strcmp(val.fText, keyS) >= 0)
+				|| (keyKind == kTimeKey && val.fType == eTimeData && val.fTime >= keyD);
+			if (!ge)
+				break;
+			foundPos = i + 1;
+		}
+	}
+
+	if (foundPos > 0)
+		stack[0] = (double)foundPos;
+	else
+		stack[0] = gRefNan;
+}
+
 void NCOLSFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	range cRange;

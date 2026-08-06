@@ -96,3 +96,5 @@ Position of find_text within within_text, case-insensitive
 Joins two or more text values into one
 Median (middle value) of a list of numbers
 Most frequently occurring value in a list of numbers
+Value at the given row/column position within a range
+Relative position of a value within a range

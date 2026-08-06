@@ -67,7 +67,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 99, "InitFunctions carica tutte le 99 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 101, "InitFunctions carica tutte le 101 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -438,6 +438,161 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =IF con virgole: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// INDEX/MATCH (Fase 13): non HINDEX/VINDEX preesistenti (nonostante
+	// il nome, quelli fanno una ricerca in stile MATCH approssimato,
+	// non "valore alla posizione N" -- vedi il commento su
+	// INDEXFunction in Functions.spreadsheet.cpp). Riusa L1:N5 gia'
+	// popolata sopra per VLOOKUP/HLOOKUP.
+	try
+	{
+		TryToParseString("=INDEX(M1:M3,2)", cell(15, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(15, 2));
+		doc.GetValue(cell(15, 2), v);
+		Check(strcmp((const char *)v, "due") == 0,
+			"=INDEX(M1:M3,2) su una colonna sola calcola \"due\" (seconda riga)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =INDEX su una colonna: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=INDEX(L1:M3,2,2)", cell(15, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(15, 3));
+		doc.GetValue(cell(15, 3), v);
+		Check(strcmp((const char *)v, "due") == 0,
+			"=INDEX(L1:M3,2,2) con riga e colonna esplicite calcola \"due\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =INDEX con riga e colonna: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// L4:N4 = 1,2,3: intervallo a una riga sola, un unico argomento
+		// numerico seleziona la COLONNA, non la riga (che puo' essere
+		// solo 1) -- stesso comportamento "opzionale" del vero INDEX.
+		TryToParseString("=INDEX(L4:N4,2)", cell(15, 4), &doc, true, '.', ',');
+		doc.CalcCell(cell(15, 4));
+		doc.GetValue(cell(15, 4), v);
+		Check((double)v == 2.0,
+			"=INDEX(L4:N4,2) su una riga sola interpreta l'unico argomento come colonna, calcola 2");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =INDEX su una riga: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// riga=0: l'intera colonna 1 di L1:M3 (L1:L3 = 1,2,3) come
+		// INTERVALLO, consumato da SUM -- stesso principio di OFFSET.
+		TryToParseString("=SUM(INDEX(L1:M3,0,1))", cell(15, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(15, 5));
+		doc.GetValue(cell(15, 5), v);
+		Check((double)v == 6.0,
+			"=SUM(INDEX(L1:M3,0,1)) con riga 0 restituisce l'intera colonna come intervallo, somma 6");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =INDEX con riga 0: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=MATCH(2,L1:L3,0)", cell(16, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(16, 1));
+		doc.GetValue(cell(16, 1), v);
+		Check((double)v == 2.0,
+			"=MATCH(2,L1:L3,0) con corrispondenza esatta calcola 2 (posizione, non il valore)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =MATCH esatto numerico: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=MATCH(\"tre\",M1:M3,0)", cell(16, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(16, 2));
+		doc.GetValue(cell(16, 2), v);
+		Check((double)v == 3.0,
+			"=MATCH(\"tre\",M1:M3,0) con corrispondenza esatta su testo calcola 3");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =MATCH esatto testo: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=MATCH(3,L4:N4,0)", cell(16, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(16, 3));
+		doc.GetValue(cell(16, 3), v);
+		Check((double)v == 3.0,
+			"=MATCH(3,L4:N4,0) su un intervallo a una riga sola calcola 3");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =MATCH su una riga: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=MATCH(99,L1:L3,0)", cell(16, 4), &doc, true, '.', ',');
+		doc.CalcCell(cell(16, 4));
+		doc.GetValue(cell(16, 4), v);
+		Check(v.fType == eNumData && std::isnan((double)v),
+			"=MATCH(99,L1:L3,0) senza corrispondenza restituisce un errore");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =MATCH senza corrispondenza: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// L1:L3 = 1,2,3, crescente: tipo=1 (predefinito) trova l'ultimo
+		// valore <= chiave.
+		TryToParseString("=MATCH(2.5,L1:L3,1)", cell(16, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(16, 5));
+		doc.GetValue(cell(16, 5), v);
+		Check((double)v == 2.0,
+			"=MATCH(2.5,L1:L3,1) con corrispondenza approssimata calcola 2 (ultimo valore <= 2.5)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =MATCH approssimato: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// INDEX+MATCH insieme, l'uso combinato piu' comune: cerca "tre"
+		// nella colonna chiave (M1:M3) e restituisce il valore
+		// corrispondente nella colonna L (L1:L3).
+		TryToParseString("=INDEX(L1:L3,MATCH(\"tre\",M1:M3,0))", cell(16, 6), &doc, true, '.', ',');
+		doc.CalcCell(cell(16, 6));
+		doc.GetValue(cell(16, 6), v);
+		Check((double)v == 3.0,
+			"=INDEX(L1:L3,MATCH(\"tre\",M1:M3,0)) combinati restituiscono 3");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =INDEX+MATCH combinati: %s\n", (char *)e);
 		gFailures++;
 	}
 
