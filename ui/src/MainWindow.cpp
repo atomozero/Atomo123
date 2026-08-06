@@ -3123,9 +3123,29 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case B_REFS_RECEIVED:
 		{
+			// Trascinare uno o piu' file direttamente su questa finestra
+			// (non sull'icona dell'applicazione, gia' gestita da
+			// App::RefsReceived con la stessa politica) non deve MAI
+			// sostituire un documento gia' aperto qui -- stessa regola:
+			// il primo file riusa la finestra SOLO se e' ancora vergine
+			// (IsUntouched), ogni altro file apre una finestra nuova.
+			// Bug reale segnalato dall'utente: trascinare un file dentro
+			// una finestra gia' occupata ne cancellava il contenuto
+			// invece di aprirne una seconda.
 			entry_ref ref;
-			if (message->FindRef("refs", &ref) == B_OK)
-				OpenFile(ref);
+			for (int32 i = 0; message->FindRef("refs", i, &ref) == B_OK; i++)
+			{
+				if (IsUntouched())
+				{
+					OpenFile(ref);
+					continue;
+				}
+				MainWindow* target = new MainWindow();
+				target->Show();
+				BMessage oneRef(B_REFS_RECEIVED);
+				oneRef.AddRef("refs", &ref);
+				target->PostMessage(&oneRef);
+			}
 			break;
 		}
 

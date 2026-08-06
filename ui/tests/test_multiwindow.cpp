@@ -7,6 +7,15 @@
 	stessa, unica finestra (fWindow), perdendo il documento gia' aperto
 	(segnalato dall'utente dopo la Fase 9).
 
+	Copre anche lo stesso identico bug per il percorso "drop diretto su
+	una finestra" (trascinare un'icona di file da Tracker dentro una
+	finestra di Atomo123 gia' aperta, non sull'icona dell'applicazione):
+	MainWindow::MessageReceived gestiva B_REFS_RECEIVED chiamando sempre
+	OpenFile() su se stessa, sostituendo un documento gia' aperto invece
+	di aprirne uno nuovo (segnalato dall'utente, Fase 13) -- ora segue
+	la stessa politica di App::RefsReceived (IsUntouched() decide se
+	riusare la finestra o aprirne una nuova).
+
 	Usa la vera classe App (non una BApplication generica) per esercitare
 	la logica reale di selezione della finestra (App::RefsReceived/
 	FindReusableWindow), non una sua reimplementazione qui -- il target
@@ -175,6 +184,32 @@ int main()
 	app.RefsReceived(&refs1Again);
 	Check(CountMainWindows(&app) == 3,
 		"un file in arrivo mentre esiste una finestra vergine la riusa, non ne apre una quarta");
+
+	// Trascinare un file DIRETTAMENTE su una finestra gia' occupata
+	// (non sull'icona dell'applicazione, gia' verificato sopra) deve
+	// aprire una finestra nuova, non sostituire il documento della
+	// finestra bersaglio -- stesso bug segnalato dall'utente
+	// ("trascino un file dentro l'applicazione"), ma per il percorso
+	// "drop diretto sulla finestra" (MainWindow::MessageReceived,
+	// caso B_REFS_RECEIVED) invece di "drop sull'icona dell'app"
+	// (App::RefsReceived, gia' testato sopra). MessageReceived
+	// chiamato direttamente, non tramite PostMessage: stesso motivo
+	// gia' spiegato in cima al file per app.RefsReceived (la
+	// creazione della finestra e' sincrona, solo il caricamento del
+	// file al suo interno resta asincrono).
+	BMessage refs2OnWindow(B_REFS_RECEIVED);
+	refs2OnWindow.AddRef("refs", &ref2);
+	win1->Lock();
+	win1->MessageReceived(&refs2OnWindow);
+	win1->Unlock();
+	Check(CountMainWindows(&app) == 4,
+		"trascinare un file direttamente su una finestra gia' occupata apre una finestra nuova, non la sostituisce");
+
+	win1->Lock();
+	win1->GetSheetView()->Document()->GetCellFormula(cell(1, 1), text, sizeof(text), false);
+	Check(strcmp(text, "Primo file") == 0,
+		"la finestra su cui e' stato trascinato il file mantiene il proprio documento originale");
+	win1->Unlock();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
