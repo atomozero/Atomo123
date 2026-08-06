@@ -1834,9 +1834,17 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				cell c(col, row);
 				CellStyle cs;
 				fDoc->GetCellStyle(c, cs);
-				if (!IsDefaultBg(cs.fLowColor))
+				// La formattazione condizionale viva (vedi Draw()) ha
+				// SEMPRE la precedenza sul colore statico quando scatta,
+				// come il vero Excel -- non solo quando manca un colore
+				// esplicito: e' un livello visivo in piu' sopra lo
+				// sfondo normale, mai una scrittura permanente in
+				// CellStyle.
+				std::map<cell, rgb_color>::const_iterator cf = fCondFormatColors.find(c);
+				rgb_color bg = (cf != fCondFormatColors.end()) ? cf->second : cs.fLowColor;
+				if (!IsDefaultBg(bg))
 				{
-					SetHighColor(cs.fLowColor);
+					SetHighColor(bg);
 					FillRect(CellRect(c).OffsetByCopy(xOrigin, yOrigin));
 				}
 			}
@@ -1921,7 +1929,11 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 			full = full | CellRect(cell(m.right, m.bottom));
 			full.OffsetBy(xOrigin, yOrigin);
 
-			SetHighColor(cs.fLowColor);
+			// Stessa precedenza della formattazione condizionale viva
+			// spiegata sopra, per la cella in alto a sinistra che
+			// "possiede" lo stile dell'intero intervallo unito.
+			std::map<cell, rgb_color>::const_iterator cf = fCondFormatColors.find(topLeft);
+			SetHighColor(cf != fCondFormatColors.end() ? cf->second : cs.fLowColor);
 			FillRect(full);
 
 			if (fShowGrid)
@@ -2245,6 +2257,16 @@ static BBitmap* DecodeImageBytes(const std::vector<uint8>& data)
 
 void SheetView::Draw(BRect updateRect)
 {
+	// Formattazione condizionale VIVA (Fase 13): valutata di nuovo a
+	// ogni ridisegno, contro i valori CORRENTI delle celle -- non una
+	// volta sola all'import come prima (vedi ROADMAP.md). Calcolata
+	// UNA volta qui, non per ogni banda/cella: DrawCellBand puo' essere
+	// chiamata piu' volte in un solo Draw() (riquadro scorrevole piu'
+	// eventuali bande congelate), tutte devono vedere lo stesso
+	// istante di calcolo.
+	fCondFormatColors = fDoc ? fDoc->EvaluateConditionalFormatting()
+		: std::map<cell, rgb_color>();
+
 	SetHighColor(255, 255, 255);
 	FillRect(updateRect);
 

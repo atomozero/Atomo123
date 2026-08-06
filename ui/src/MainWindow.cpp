@@ -19,6 +19,7 @@
 #include "CommentWindow.h"
 #include "HyperlinkWindow.h"
 #include "ValidationWindow.h"
+#include "ConditionalFormatWindow.h"
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
 #include "AboutWindow.h"
@@ -112,6 +113,7 @@ static const uint32 kMsgShowCommentWindow = 'shcw';
 static const uint32 kMsgShowHyperlinkWindow = 'shlw';
 static const uint32 kMsgOpenHyperlink = 'ophl';
 static const uint32 kMsgShowValidationWindow = 'shvw';
+static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 static const uint32 kMsgUnmergeCells = 'umrg';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
@@ -506,6 +508,11 @@ MainWindow::MainWindow()
 	// ApplyValidationToSelection.
 	formatMenu->AddItem(new BMenuItem("Convalida dati" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgShowValidationWindow)));
+	// Formattazione condizionale VIVA (Fase 13): stesso principio della
+	// convalida dati appena sopra -- si applica a tutta la selezione,
+	// vedi MainWindow::ApplyConditionalFormatToSelection.
+	formatMenu->AddItem(new BMenuItem("Formattazione condizionale" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowConditionalFormatWindow)));
 	menuBar->AddItem(formatMenu);
 
 	// Riempi in basso/a destra: copia la prima riga/colonna
@@ -646,6 +653,7 @@ MainWindow::MainWindow()
 	fCommentWindow = NULL;
 	fHyperlinkWindow = NULL;
 	fValidationWindow = NULL;
+	fConditionalFormatWindow = NULL;
 	fColorWindow = NULL;
 	fPreferencesWindow = NULL;
 
@@ -710,6 +718,11 @@ MainWindow::~MainWindow()
 	{
 		fValidationWindow->Lock();
 		fValidationWindow->Quit();
+	}
+	if (fConditionalFormatWindow)
+	{
+		fConditionalFormatWindow->Lock();
+		fConditionalFormatWindow->Quit();
 	}
 	if (fColorWindow)
 	{
@@ -2505,6 +2518,37 @@ void MainWindow::RemoveValidationFromSelection()
 	MarkModified();
 }
 
+void MainWindow::ApplyConditionalFormatToSelection(int type, const char* value, rgb_color color)
+{
+	if (!fDoc)
+		return;
+
+	ConditionalFormatRule rule;
+	rule.type = (type == 1) ? eCondDuplicateValues : eCondCellIsEqual;
+	rule.compareValue = value ? value : "";
+	rule.bgColor = color;
+	rule.ranges.push_back(fSheetView->SelectionRange());
+	fDoc->AddConditionalFormatRule(rule);
+
+	// A differenza di convalida dati/bordi/colori sopra, non c'e'
+	// nessun CellStyle da scrivere: la regola stessa e' il dato, il
+	// colore che ne risulta si ricalcola da solo a ogni ridisegno
+	// (vedi SheetView::Draw/CContainer::EvaluateConditionalFormatting)
+	// -- Invalidate basta, non serve toccare nessuna cella.
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::RemoveAllConditionalFormatRules()
+{
+	if (!fDoc)
+		return;
+
+	fDoc->ClearConditionalFormatRules();
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::HandleGoToRequest(const char* rangeText)
 {
 	range r;
@@ -3435,6 +3479,36 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgValidationRemove:
 			RemoveValidationFromSelection();
+			break;
+
+		case kMsgShowConditionalFormatWindow:
+		{
+			if (!fDoc)
+				break;
+			if (!fConditionalFormatWindow)
+				fConditionalFormatWindow = new ConditionalFormatWindow(BMessenger(this));
+			if (fConditionalFormatWindow->IsHidden())
+				fConditionalFormatWindow->Show();
+			fConditionalFormatWindow->Activate();
+			break;
+		}
+
+		case kMsgCondFormatCommit:
+		{
+			int32 type = 0;
+			BString value;
+			rgb_color* color = NULL;
+			ssize_t size = 0;
+			message->FindInt32("type", &type);
+			message->FindString("value", &value);
+			if (message->FindData("color", B_RGB_COLOR_TYPE,
+					(const void**)&color, &size) == B_OK && color)
+				ApplyConditionalFormatToSelection(type, value.String(), *color);
+			break;
+		}
+
+		case kMsgCondFormatRemoveAll:
+			RemoveAllConditionalFormatRules();
 			break;
 
 		case kMsgSetAlignment:

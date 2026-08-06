@@ -51,6 +51,8 @@
 #include <string>
 #include <vector>
 
+#include <GraphicsDefs.h>
+
 #ifndef   CELL_H
 #include "Cell.h"
 #endif
@@ -118,6 +120,39 @@ public:
 	// (case-sensitive) -- mai un errore fatale, solo un riferimento
 	// che resta non risolto (vedi CFormula::Calculate, valXRef).
 	virtual CContainer* ResolveSheetByName(const char* inName) = 0;
+};
+
+// Formattazione condizionale VIVA (Fase 13): a differenza
+// dell'importazione XLSX di Fase 12 (che valutava le regole una
+// tantum e scriveva il colore risultante come CellStyle::fLowColor
+// statico, congelato per sempre), qui la regola stessa vive nel
+// documento e viene rivalutata a ogni ridisegno contro i valori
+// CORRENTI delle celle (vedi CContainer::EvaluateConditionalFormatting
+// e SheetView::Draw) -- se il valore di una cella cambia, il colore
+// si aggiorna da solo, senza toccare mai CellStyle. Solo due tipi di
+// regola, gli stessi due gia' supportati dall'importazione XLSX (gli
+// unici davvero comuni in un file reale): eCondCellIsEqual (confronto
+// testuale con un letterale) ed eCondDuplicateValues (valore che
+// compare piu' di una volta nello stesso intervallo). Solo il colore
+// di SFONDO (non anche il colore del testo, a differenza del dxf XLSX
+// che puo' portare entrambi): scelta di scope, lo sfondo e' di gran
+// lunga l'uso piu' comune ("evidenzia i duplicati", "evidenzia se >
+// soglia").
+enum CondFormatRuleType {
+	eCondCellIsEqual,
+	eCondDuplicateValues
+};
+
+struct ConditionalFormatRule {
+	CondFormatRuleType type;
+	std::string compareValue; // solo per eCondCellIsEqual
+	rgb_color bgColor;
+	std::vector<range> ranges;
+
+	ConditionalFormatRule() : type(eCondCellIsEqual)
+	{
+		bgColor.red = bgColor.green = bgColor.blue = bgColor.alpha = 255;
+	}
 };
 
 // Validazione dati (Fase 13): eListValidation limita alla lista di
@@ -325,6 +360,22 @@ public:
 	bool HasValidation(cell c) const { return fValidations.find(c) != fValidations.end(); }
 	const std::map<cell, ValidationRule>& GetValidations() const { return fValidations; }
 
+	// Formattazione condizionale viva (Fase 13): un vettore, non una
+	// mappa per cella come commenti/collegamenti/convalida sopra --
+	// una regola si applica a uno o piu' INTERVALLI, non a una singola
+	// cella (stesso schema di ChartObject::dataRange).
+	void AddConditionalFormatRule(const ConditionalFormatRule& rule)
+		{ fCondFormatRules.push_back(rule); }
+	void ClearConditionalFormatRules() { fCondFormatRules.clear(); }
+	const std::vector<ConditionalFormatRule>& GetConditionalFormatRules() const
+		{ return fCondFormatRules; }
+
+	// Rivaluta OGNI regola contro i valori CORRENTI delle celle e
+	// restituisce il colore di sfondo risultante per ogni cella
+	// coinvolta -- MAI memorizzato, chiamata di nuovo a ogni ridisegno
+	// (vedi SheetView::Draw). Non const: GetCellResult sotto non lo e'.
+	std::map<cell, rgb_color> EvaluateConditionalFormatting();
+
 private:
 	void Visit(const cell&, void*);
 	bool GetCellData(const cell&, CellData&);
@@ -347,6 +398,7 @@ private:
 	std::map<cell, std::string> fComments;
 	std::map<cell, std::string> fHyperlinks;
 	std::map<cell, ValidationRule> fValidations;
+	std::vector<ConditionalFormatRule> fCondFormatRules;
 };
 
 inline bool CContainer::WriteLock()

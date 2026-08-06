@@ -40,6 +40,7 @@ class RenameSheetWindow;
 class CommentWindow;
 class HyperlinkWindow;
 class ValidationWindow;
+class ConditionalFormatWindow;
 class ColorWindow;
 class PreferencesWindow;
 
@@ -245,6 +246,16 @@ public:
 	void ApplyValidationToSelection(int type, const char* list, double min, double max);
 	void RemoveValidationFromSelection();
 
+	// Formattazione condizionale VIVA (Fase 13): a differenza di
+	// SetCellValidation sopra (un primitivo per singola cella), qui
+	// non serve un doppio livello -- una regola si applica gia' a un
+	// insieme di intervalli (vedi ConditionalFormatRule::ranges), la
+	// selezione corrente diventa direttamente quell'insieme (un solo
+	// intervallo). Chiamate da ConditionalFormatWindow via
+	// kMsgCondFormatCommit/kMsgCondFormatRemoveAll.
+	void ApplyConditionalFormatToSelection(int type, const char* value, rgb_color color);
+	void RemoveAllConditionalFormatRules();
+
 	// ISheetResolver (Fase 9): risolve "NomeFoglio!Cella" verso il
 	// CContainer corrispondente in fSheets, per nome. Pubblico perche'
 	// la classe lo espone come override di un'interfaccia pubblica, non
@@ -317,6 +328,7 @@ private:
 	CommentWindow* fCommentWindow;
 	HyperlinkWindow* fHyperlinkWindow;
 	ValidationWindow* fValidationWindow;
+	ConditionalFormatWindow* fConditionalFormatWindow;
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
 	std::vector<ChartObject> fCharts;

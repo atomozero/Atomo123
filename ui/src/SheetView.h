@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include <GraphicsDefs.h>
 #include <NumberFormat.h>
 #include <View.h>
 
@@ -571,6 +572,13 @@ private:
 	// file mostra di nuovo le righe giuste, ma il menu a tendina non
 	// "ricorda" quali valori esatti le avevano escluse -- limite
 	// dichiarato, non un bug.
+	// Formattazione condizionale viva (Fase 13): ricalcolata da
+	// Draw() a ogni ridisegno (CContainer::EvaluateConditionalFormatting),
+	// non memorizzata nel documento -- solo una cache per la durata di
+	// UN Draw(), letta da DrawCellBand invece del colore di sfondo
+	// statico quando una regola scatta sulla cella.
+	std::map<cell, rgb_color> fCondFormatColors;
+
 	bool fHasAutoFilter;
 	range fAutoFilterRange;
 	std::map<int, std::vector<BString> > fFilterHiddenValues;

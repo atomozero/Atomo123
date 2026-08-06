@@ -640,6 +640,48 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione formattazione condizionale VIVA, in coda (vedi
+	// ui/src/AscdIO.cpp, STESSO ORDINE -- dopo la convalida dati, non
+	// prima): a differenza delle altre sezioni "non ancora estratte"
+	// qui sopra, questa SI viene popolata da questo translator
+	// (ApplyConditionalFormatting sotto aggiunge le regole vere a
+	// "doc" invece di congelare un colore, vedi il commento li'),
+	// quindi va scritta per davvero, stesso formato di SaveASCD.
+	{
+		const std::vector<ConditionalFormatRule>& rules = doc->GetConditionalFormatRules();
+		int32 ruleCount = (int32)rules.size();
+		if (dest->Write(&ruleCount, sizeof(ruleCount)) != (ssize_t)sizeof(ruleCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < ruleCount; i++)
+		{
+			const ConditionalFormatRule& rule = rules[i];
+			int8 type = (int8)rule.type;
+			int32 valueLen = (int32)rule.compareValue.size();
+			if (dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type)
+				|| dest->Write(&valueLen, sizeof(valueLen)) != (ssize_t)sizeof(valueLen))
+				return B_IO_ERROR;
+			if (valueLen > 0 && dest->Write(rule.compareValue.data(), valueLen) != valueLen)
+				return B_IO_ERROR;
+			if (dest->Write(&rule.bgColor, sizeof(rule.bgColor)) != (ssize_t)sizeof(rule.bgColor))
+				return B_IO_ERROR;
+
+			int32 rangeCount = (int32)rule.ranges.size();
+			if (dest->Write(&rangeCount, sizeof(rangeCount)) != (ssize_t)sizeof(rangeCount))
+				return B_IO_ERROR;
+			for (int32 r = 0; r < rangeCount; r++)
+			{
+				const range& rg = rule.ranges[r];
+				int16 left = rg.left, top = rg.top, right = rg.right, bottom = rg.bottom;
+				if (dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right)
+					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+					return B_IO_ERROR;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -2621,44 +2663,23 @@ static std::string StripQuotes(const std::string& s)
 	return s;
 }
 
-// Applica il colore del dxf referenziato alla cella, solo se non ne
-// ha gia' uno esplicito (stesso principio di ApplyTableBanding sopra
-// -- non sovrascrive un colore scelto apposta nel file originale).
-static void ApplyDxfColor(CContainer* doc, cell c, const DxfInfo& dxf)
-{
-	if (!dxf.hasBg && !dxf.hasFg)
-		return;
-
-	CellStyle defaultStyle;
-	CellStyle cs;
-	doc->GetCellStyle(c, cs);
-	bool changed = false;
-	if (dxf.hasBg && ColorsEqual(cs.fLowColor, defaultStyle.fLowColor))
-	{
-		cs.fLowColor = dxf.bg;
-		changed = true;
-	}
-	if (dxf.hasFg && ColorsEqual(cs.fHighColor, defaultStyle.fHighColor))
-	{
-		cs.fHighColor = dxf.fg;
-		changed = true;
-	}
-	if (changed)
-		doc->SetCellStyle(c, cs);
-}
-
-// Formattazione condizionale (Fase 12): valutata una tantum contro i
-// valori GIA' importati (non un motore di regole vive -- se il
-// valore di una cella cambiasse dopo l'importazione, il colore non si
-// aggiornerebbe piu', limite dichiarato in ROADMAP.md). Solo due tipi
-// di regola gestiti, i piu' comuni: "cellIs"/"equal" (confronto con
-// un letterale, stringa o numero) e "duplicateValues" (celle il cui
+// Formattazione condizionale VIVA (Fase 13, prima Fase 12): non piu'
+// valutata una tantum e congelata come colore statico -- la regola
+// stessa viene convertita e aggiunta al documento
+// (CContainer::AddConditionalFormatRule), rivalutata da SheetView::
+// Draw a ogni ridisegno contro i valori CORRENTI (vedi
+// CContainer::EvaluateConditionalFormatting in Container.styles.cpp).
+// Stessi due tipi di regola gia' gestiti alla Fase 12, gli unici
+// davvero comuni in un file reale: "cellIs"/"equal" (confronto con un
+// letterale, stringa o numero) e "duplicateValues" (celle il cui
 // valore compare piu' di una volta nello stesso intervallo). Gli
 // altri tipi ECMA-376 (containsText, top10, colorScale, dataBar,
-// iconSet, expression con formula arbitraria...) sono ignorati in
-// sicurezza, nessun colore applicato -- richiederebbero un vero
+// iconSet, expression con formula arbitraria...) restano ignorati in
+// sicurezza, nessuna regola aggiunta -- richiederebbero un vero
 // motore di valutazione formule contro un valore ipotetico, fuori
-// scope per un'approssimazione "congelata all'importazione".
+// scope. Solo il colore di SFONDO del dxf (non anche il colore del
+// testo): ConditionalFormatRule dell'engine porta un solo colore,
+// vedi il commento su quello struct in Container.h.
 static void ApplyConditionalFormatting(CContainer* doc,
 	const std::vector<CondFormatRule>& rules, const std::vector<DxfInfo>& dxfs)
 {
@@ -2668,56 +2689,24 @@ static void ApplyConditionalFormatting(CContainer* doc,
 		if (rule.dxfId < 0 || (size_t)rule.dxfId >= dxfs.size())
 			continue;
 		const DxfInfo& dxf = dxfs[rule.dxfId];
+		if (!dxf.hasBg)
+			continue;
+
+		ConditionalFormatRule engineRule;
+		engineRule.ranges = rule.ranges;
+		engineRule.bgColor = dxf.bg;
 
 		if (rule.type == "cellIs" && rule.operatorAttr == "equal")
 		{
-			std::string literal = StripQuotes(rule.formula);
-			for (size_t r = 0; r < rule.ranges.size(); r++)
-			{
-				const range& rg = rule.ranges[r];
-				for (int row = rg.top; row <= rg.bottom; row++)
-				{
-					for (int col = rg.left; col <= rg.right; col++)
-					{
-						cell c(col, row);
-						char text[4096];
-						doc->GetCellResult(c, text, sizeof(text), true);
-						if (literal == text)
-							ApplyDxfColor(doc, c, dxf);
-					}
-				}
-			}
+			engineRule.type = eCondCellIsEqual;
+			engineRule.compareValue = StripQuotes(rule.formula);
 		}
 		else if (rule.type == "duplicateValues")
-		{
-			for (size_t r = 0; r < rule.ranges.size(); r++)
-			{
-				const range& rg = rule.ranges[r];
-				std::map<std::string, int> counts;
-				for (int row = rg.top; row <= rg.bottom; row++)
-				{
-					for (int col = rg.left; col <= rg.right; col++)
-					{
-						char text[4096];
-						doc->GetCellResult(cell(col, row), text, sizeof(text), true);
-						if (text[0] != 0)
-							counts[text]++;
-					}
-				}
-				for (int row = rg.top; row <= rg.bottom; row++)
-				{
-					for (int col = rg.left; col <= rg.right; col++)
-					{
-						cell c(col, row);
-						char text[4096];
-						doc->GetCellResult(c, text, sizeof(text), true);
-						if (text[0] != 0 && counts[text] > 1)
-							ApplyDxfColor(doc, c, dxf);
-					}
-				}
-			}
-		}
-		// altri tipi: ignorati, vedi il commento sopra la funzione.
+			engineRule.type = eCondDuplicateValues;
+		else
+			continue; // altri tipi: ignorati, vedi il commento sopra la funzione.
+
+		doc->AddConditionalFormatRule(engineRule);
 	}
 }
 

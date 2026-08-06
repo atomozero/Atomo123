@@ -178,3 +178,69 @@ int CContainer::CollectStyles(int *styleList)
 	return result;
 } // CContainer::CollectStyles
 
+// Formattazione condizionale viva (Fase 13): stessa identica logica di
+// valutazione gia' scritta per l'importazione XLSX (Fase 12,
+// ApplyConditionalFormatting/XlsxTranslator.cpp) -- solo il risultato
+// cambia, un colore per cella restituito invece di scritto in
+// CellStyle, cosi' chi chiama (SheetView::Draw) puo' rivalutarlo a
+// ogni ridisegno senza corrompere lo stile "vero" della cella.
+std::map<cell, rgb_color> CContainer::EvaluateConditionalFormatting()
+{
+	std::map<cell, rgb_color> result;
+
+	for (size_t i = 0; i < fCondFormatRules.size(); i++)
+	{
+		const ConditionalFormatRule& rule = fCondFormatRules[i];
+
+		if (rule.type == eCondCellIsEqual)
+		{
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						char text[4096];
+						GetCellResult(c, text, sizeof(text), true);
+						if (rule.compareValue == text)
+							result[c] = rule.bgColor;
+					}
+				}
+			}
+		}
+		else if (rule.type == eCondDuplicateValues)
+		{
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+				std::map<std::string, int> counts;
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						char text[4096];
+						GetCellResult(cell(col, row), text, sizeof(text), true);
+						if (text[0] != 0)
+							counts[text]++;
+					}
+				}
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						char text[4096];
+						GetCellResult(c, text, sizeof(text), true);
+						if (text[0] != 0 && counts[text] > 1)
+							result[c] = rule.bgColor;
+					}
+				}
+			}
+		}
+	}
+
+	return result;
+} // CContainer::EvaluateConditionalFormatting
+

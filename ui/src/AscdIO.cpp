@@ -714,6 +714,46 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione formattazione condizionale VIVA, in coda (Fase 13): a
+	// differenza di commenti/collegamenti/convalida sopra, non e' un
+	// dato per cella ma un elenco di REGOLE, ognuna con uno o piu'
+	// intervalli (stesso schema di ChartObject::dataRange) -- stesso
+	// principio EOF-tollerante delle altre sezioni opzionali.
+	{
+		const std::vector<ConditionalFormatRule>& rules = doc->GetConditionalFormatRules();
+		int32 ruleCount = (int32)rules.size();
+		if (dest->Write(&ruleCount, sizeof(ruleCount)) != (ssize_t)sizeof(ruleCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < ruleCount; i++)
+		{
+			const ConditionalFormatRule& rule = rules[i];
+			int8 type = (int8)rule.type;
+			int32 valueLen = (int32)rule.compareValue.size();
+			if (dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type)
+				|| dest->Write(&valueLen, sizeof(valueLen)) != (ssize_t)sizeof(valueLen))
+				return B_IO_ERROR;
+			if (valueLen > 0 && dest->Write(rule.compareValue.data(), valueLen) != valueLen)
+				return B_IO_ERROR;
+			if (dest->Write(&rule.bgColor, sizeof(rule.bgColor)) != (ssize_t)sizeof(rule.bgColor))
+				return B_IO_ERROR;
+
+			int32 rangeCount = (int32)rule.ranges.size();
+			if (dest->Write(&rangeCount, sizeof(rangeCount)) != (ssize_t)sizeof(rangeCount))
+				return B_IO_ERROR;
+			for (int32 r = 0; r < rangeCount; r++)
+			{
+				const range& rg = rule.ranges[r];
+				int16 left = rg.left, top = rg.top, right = rg.right, bottom = rg.bottom;
+				if (dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right)
+					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+					return B_IO_ERROR;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1453,6 +1493,62 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				rule.min = min;
 				rule.max = max;
 				doc->SetValidation(cell(col, row), rule);
+			}
+		}
+	}
+
+	// Sezione formattazione condizionale VIVA, in coda: stesso schema
+	// EOF-tollerante delle sezioni sopra (vedi il commento gemello in
+	// SaveASCD).
+	{
+		int32 ruleCount = 0;
+		ssize_t got = source->Read(&ruleCount, sizeof(ruleCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(ruleCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < ruleCount; i++)
+			{
+				int8 type;
+				int32 valueLen;
+				if (source->Read(&type, sizeof(type)) != (ssize_t)sizeof(type)
+					|| source->Read(&valueLen, sizeof(valueLen)) != (ssize_t)sizeof(valueLen))
+					return B_BAD_DATA;
+
+				std::string compareValue;
+				if (valueLen > 0)
+				{
+					compareValue.resize(valueLen);
+					if (source->Read(&compareValue[0], valueLen) != valueLen)
+						return B_BAD_DATA;
+				}
+
+				rgb_color bgColor;
+				if (source->Read(&bgColor, sizeof(bgColor)) != (ssize_t)sizeof(bgColor))
+					return B_BAD_DATA;
+
+				int32 rangeCount;
+				if (source->Read(&rangeCount, sizeof(rangeCount)) != (ssize_t)sizeof(rangeCount))
+					return B_BAD_DATA;
+
+				ConditionalFormatRule rule;
+				rule.type = (CondFormatRuleType)type;
+				rule.compareValue = compareValue;
+				rule.bgColor = bgColor;
+
+				for (int32 r = 0; r < rangeCount; r++)
+				{
+					int16 left, top, right, bottom;
+					if (source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+						|| source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+						|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right)
+						|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+						return B_BAD_DATA;
+					rule.ranges.push_back(range(left, top, right, bottom));
+				}
+
+				doc->AddConditionalFormatRule(rule);
 			}
 		}
 	}

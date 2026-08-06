@@ -607,6 +607,18 @@ int main()
 								"nessuna convalida dati in sample.xlsx, il contatore e' zero");
 						}
 
+						// Formattazione condizionale (Fase 13): stesso
+						// principio delle sezioni sopra, ultima sezione del
+						// formato (vedi WriteASCD sopra) -- sample.xlsx non
+						// ha nessuna regola.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 ruleCount;
+							memcpy(&ruleCount, ascdData + pos, 4); pos += 4;
+							Check(ruleCount == 0,
+								"nessuna regola di formattazione condizionale in sample.xlsx, il contatore e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
@@ -1758,11 +1770,19 @@ int main()
 		}
 	}
 
-	// Formattazione condizionale (Fase 12): tests/sample_condformat.xlsx
-	// ha due regole -- cellIs/equal "Mancante" su A1:A3 (solo A1
-	// corrisponde, dxf 0 = rgb FFC7CE) e duplicateValues su B1:B3 (B1
-	// e B3 sono entrambe "X", duplicate fra loro; B2 = "Y", unica,
-	// dxf 1 = rgb FFEB9C).
+	// Formattazione condizionale VIVA (Fase 13, prima Fase 12):
+	// tests/sample_condformat.xlsx ha due regole -- cellIs/equal
+	// "Mancante" su A1:A3 (dxf 0 = rgb FFC7CE) e duplicateValues su
+	// B1:B3 (dxf 1 = rgb FFEB9C). Dalla Fase 13 in poi questo
+	// translator non scrive piu' un colore congelato per le celle che
+	// corrispondono ORA (A1, B1, B3): aggiunge invece la REGOLA vera e
+	// propria al documento (CContainer::AddConditionalFormatRule),
+	// verificata qui leggendo la nuova sezione dedicata del formato
+	// nativo -- la valutazione VIVA vera e propria (quali celle
+	// corrispondono, che si aggiorna da sola se il valore cambia) e'
+	// invece verificata in ui/tests/test_ascd_io.cpp, che puo'
+	// collegare ui/src/AscdIO.cpp (una dipendenza che i translator
+	// evitano deliberatamente).
 	{
 		BFile condFile("tests/sample_condformat.xlsx", B_READ_ONLY);
 		Check(condFile.InitCheck() == B_OK, "apertura di tests/sample_condformat.xlsx riuscita");
@@ -1815,42 +1835,208 @@ int main()
 				pos += colWidthCount * (2 + 4);
 			}
 
-			bool haveCellColorCount = false;
-			int32 cellColorCount = 0;
+			// Sezione colori di cella (Fase 7): 0, non piu' 3 come prima
+			// della Fase 13 -- la formattazione condizionale non
+			// congela piu' un colore qui (vedi il commento sopra
+			// ApplyConditionalFormatting in XlsxTranslator.cpp), resta
+			// invece una REGOLA viva, verificata piu' sotto.
+			bool sectionsOk = true;
 			if (pos + 4 <= ascdLen)
 			{
+				int32 cellColorCount;
 				memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
-				haveCellColorCount = true;
+				Check(cellColorCount == 0,
+					"sezione colori di cella: nessuna, la formattazione condizionale non scrive piu' qui");
+				sectionsOk = (cellColorCount == 0);
 			}
-			Check(haveCellColorCount && cellColorCount == 3,
-				"sezione colori di cella: 3 celle colorate dalla formattazione condizionale (A1/B1/B3)");
+			else
+				sectionsOk = false;
 
-			int foundA1Bg = -1, foundB1Bg = -1, foundB3Bg = -1;
-			bool foundA2 = false, foundA3 = false, foundB2 = false;
-			for (int32 i = 0; i < cellColorCount && pos + 4 + 8 <= ascdLen; i++)
+			// Tutte le sezioni "in coda" successive (colori di colonna,
+			// altezze di riga, font/allineamento/bordi/formato/
+			// sottolineato/testo a capo per cella, celle unite,
+			// immagini incorporate) sono elenchi con un contatore --
+			// questo file di prova minimo (solo due colonne di dati e
+			// due regole di formattazione condizionale) non ne popola
+			// nessuna: basta leggere e verificare che il contatore sia
+			// zero per restare allineati, senza bisogno di conoscere
+			// il formato esatto di ogni record (che qui non esiste).
+			const char* kEmptyListSections[] = {
+				"colori di colonna", "altezze di riga", "font di cella",
+				"allineamento di cella", "bordi di cella",
+				"formato numero di cella", "sottolineato di cella",
+				"testo a capo di cella", "celle unite", "immagini incorporate"
+			};
+			for (size_t s = 0; sectionsOk
+					&& s < sizeof(kEmptyListSections) / sizeof(kEmptyListSections[0]); s++)
 			{
-				int16 row, col;
-				memcpy(&row, ascdData + pos, 2); pos += 2;
-				memcpy(&col, ascdData + pos, 2); pos += 2;
+				if (pos + 4 > ascdLen) { sectionsOk = false; break; }
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				BString what;
+				what << "sezione " << kEmptyListSections[s]
+					<< " vuota in sample_condformat.xlsx (allineamento)";
+				Check(n == 0, what.String());
+				sectionsOk = (n == 0);
+			}
+
+			// Blocca riquadri: due interi FISSI (non un elenco).
+			if (sectionsOk && pos + 8 <= ascdLen)
+				pos += 8;
+			else
+				sectionsOk = false;
+
+			// Visibilita' griglia: un solo byte FISSO.
+			if (sectionsOk && pos + 1 <= ascdLen)
+				pos += 1;
+			else
+				sectionsOk = false;
+
+			// Colore della linguetta: presenza + rgb, 4 byte FISSI.
+			if (sectionsOk && pos + 4 <= ascdLen)
+				pos += 4;
+			else
+				sectionsOk = false;
+
+			// Righe nascoste: elenco con contatore, vuoto qui.
+			if (sectionsOk && pos + 4 <= ascdLen)
+			{
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				Check(n == 0, "sezione righe nascoste vuota in sample_condformat.xlsx (allineamento)");
+				sectionsOk = (n == 0);
+			}
+			else
+				sectionsOk = false;
+
+			// AutoFilter: presenza + 4 interi a 16 bit, 9 byte FISSI.
+			if (sectionsOk && pos + 9 <= ascdLen)
+				pos += 9;
+			else
+				sectionsOk = false;
+
+			// Commenti/collegamenti ipertestuali: elenchi a lunghezza
+			// variabile, ma vuoti qui -- basta il contatore.
+			const char* kEmptyVariableSections[] = { "commenti", "collegamenti ipertestuali" };
+			for (size_t s = 0; sectionsOk
+					&& s < sizeof(kEmptyVariableSections) / sizeof(kEmptyVariableSections[0]); s++)
+			{
+				if (pos + 4 > ascdLen) { sectionsOk = false; break; }
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				BString what;
+				what << "sezione " << kEmptyVariableSections[s]
+					<< " vuota in sample_condformat.xlsx (allineamento)";
+				Check(n == 0, what.String());
+				sectionsOk = (n == 0);
+			}
+
+			// Tipo di grafico: un byte per grafico incorporato -- 0
+			// qui (questo file non ne ha nessuno, vedi il chartCount
+			// letto piu' sopra).
+			if (sectionsOk && pos + 4 <= ascdLen)
+			{
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				Check(n == 0, "sezione tipo di grafico vuota in sample_condformat.xlsx (allineamento)");
+				sectionsOk = (n == 0);
+			}
+			else
+				sectionsOk = false;
+
+			// Colore del bordo: elenco, vuoto qui.
+			if (sectionsOk && pos + 4 <= ascdLen)
+			{
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				Check(n == 0, "sezione colore del bordo vuota in sample_condformat.xlsx (allineamento)");
+				sectionsOk = (n == 0);
+			}
+			else
+				sectionsOk = false;
+
+			// Convalida dati: elenco a lunghezza variabile, vuoto qui.
+			if (sectionsOk && pos + 4 <= ascdLen)
+			{
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				Check(n == 0, "sezione convalida dati vuota in sample_condformat.xlsx (allineamento)");
+				sectionsOk = (n == 0);
+			}
+			else
+				sectionsOk = false;
+
+			Check(sectionsOk,
+				"tutte le sezioni intermedie (vuote in questo file minimo) restano allineate "
+				"fino alla formattazione condizionale");
+
+			// Finalmente, la sezione che questo test vuole davvero
+			// verificare: le due regole VIVE importate da
+			// sample_condformat.xlsx (non piu' un colore congelato).
+			int32 ruleCount = 0;
+			if (sectionsOk && pos + 4 <= ascdLen)
+			{
+				memcpy(&ruleCount, ascdData + pos, 4); pos += 4;
+			}
+			Check(ruleCount == 2,
+				"due regole di formattazione condizionale importate da sample_condformat.xlsx");
+
+			bool foundCellIsRule = false, foundDuplicatesRule = false;
+			for (int32 i = 0; i < ruleCount && pos + 1 + 4 <= ascdLen; i++)
+			{
+				int8 type;
+				memcpy(&type, ascdData + pos, 1); pos += 1;
+				int32 valueLen;
+				memcpy(&valueLen, ascdData + pos, 4); pos += 4;
+				if (pos + (size_t)valueLen > ascdLen)
+					break;
+				std::string compareValue((const char*)ascdData + pos, valueLen);
+				pos += valueLen;
+
+				if (pos + 4 > ascdLen)
+					break;
 				rgb_color bg;
 				memcpy(&bg, ascdData + pos, 4); pos += 4;
-				pos += 4; // fg, non verificato qui
-
 				int packed = (bg.red << 16) | (bg.green << 8) | bg.blue;
-				if (row == 1 && col == 1) foundA1Bg = packed;
-				if (row == 1 && col == 2) foundB1Bg = packed;
-				if (row == 3 && col == 2) foundB3Bg = packed;
-				if (row == 2 && col == 1) foundA2 = true;
-				if (row == 3 && col == 1) foundA3 = true;
-				if (row == 2 && col == 2) foundB2 = true;
-			}
 
-			Check(foundA1Bg == 0xFFC7CE, "A1 (\"Mancante\", cellIs/equal) ha lo sfondo del dxf 0");
-			Check(foundB1Bg == 0xFFEB9C, "B1 (\"X\", duplicata con B3) ha lo sfondo del dxf 1");
-			Check(foundB3Bg == 0xFFEB9C, "B3 (\"X\", duplicata con B1) ha lo sfondo del dxf 1");
-			Check(!foundA2, "A2 (\"OK\", nessuna corrispondenza) resta senza colore");
-			Check(!foundA3, "A3 (\"OK2\", nessuna corrispondenza) resta senza colore");
-			Check(!foundB2, "B2 (\"Y\", valore unico) resta senza colore");
+				if (pos + 4 > ascdLen)
+					break;
+				int32 rangeCount;
+				memcpy(&rangeCount, ascdData + pos, 4); pos += 4;
+
+				bool rangeMatchesA1A3 = false, rangeMatchesB1B3 = false;
+				for (int32 r = 0; r < rangeCount && pos + 8 <= ascdLen; r++)
+				{
+					int16 left, top, right, bottom;
+					memcpy(&left, ascdData + pos, 2); pos += 2;
+					memcpy(&top, ascdData + pos, 2); pos += 2;
+					memcpy(&right, ascdData + pos, 2); pos += 2;
+					memcpy(&bottom, ascdData + pos, 2); pos += 2;
+
+					if (left == 1 && right == 1 && top == 1 && bottom == 3)
+						rangeMatchesA1A3 = true;
+					if (left == 2 && right == 2 && top == 1 && bottom == 3)
+						rangeMatchesB1B3 = true;
+				}
+
+				if (type == eCondCellIsEqual && compareValue == "Mancante" && packed == 0xFFC7CE
+					&& rangeMatchesA1A3)
+					foundCellIsRule = true;
+				if (type == eCondDuplicateValues && packed == 0xFFEB9C && rangeMatchesB1B3)
+					foundDuplicatesRule = true;
+			}
+			Check(foundCellIsRule,
+				"la regola cellIs/equal (\"Mancante\", dxf 0 = FFC7CE) e' importata correttamente");
+			Check(foundDuplicatesRule,
+				"la regola duplicateValues (dxf 1 = FFEB9C) e' importata correttamente");
+
+			// La valutazione VIVA vera e propria (il valore di ogni
+			// cella confrontato con la regola, non solo che la regola
+			// sia stata letta) e' verificata a parte in
+			// ui/tests/test_ascd_io.cpp, che puo' ricostruire un
+			// CContainer vero con CContainer::EvaluateConditionalFormatting
+			// -- qui non e' disponibile senza collegare ui/src/AscdIO.cpp,
+			// una dipendenza che i translator evitano deliberatamente.
 		}
 	}
 

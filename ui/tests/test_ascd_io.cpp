@@ -20,6 +20,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -410,6 +411,120 @@ int main()
 			&& oldBorderStyle.fBorderColor.blue == 0,
 		"...e ogni bordo resta al colore predefinito (nero)");
 	oldDoc4.Release();
+
+	// Formattazione condizionale VIVA (Fase 13): a differenza di tutte
+	// le sezioni sopra (dato per cella), qui il dato e' la REGOLA
+	// stessa -- il colore che ne risulta si ricalcola a ogni chiamata
+	// di CContainer::EvaluateConditionalFormatting, mai memorizzato.
+	{
+		CContainer& condDoc = *new CContainer(NULL, NULL);
+		TryToParseString("Mancante", cell(1, 1), &condDoc, true); // A1
+		TryToParseString("OK", cell(1, 2), &condDoc, true);       // A2
+		TryToParseString("X", cell(2, 1), &condDoc, true);        // B1
+		TryToParseString("Y", cell(2, 2), &condDoc, true);        // B2
+		TryToParseString("X", cell(2, 3), &condDoc, true);        // B3
+
+		ConditionalFormatRule cellIsRule;
+		cellIsRule.type = eCondCellIsEqual;
+		cellIsRule.compareValue = "Mancante";
+		cellIsRule.bgColor.red = 255; cellIsRule.bgColor.green = 199;
+		cellIsRule.bgColor.blue = 206; cellIsRule.bgColor.alpha = 255; // FFC7CE
+		cellIsRule.ranges.push_back(range(1, 1, 1, 2)); // A1:A2
+		condDoc.AddConditionalFormatRule(cellIsRule);
+
+		ConditionalFormatRule dupRule;
+		dupRule.type = eCondDuplicateValues;
+		dupRule.bgColor.red = 255; dupRule.bgColor.green = 235;
+		dupRule.bgColor.blue = 156; dupRule.bgColor.alpha = 255; // FFEB9C
+		dupRule.ranges.push_back(range(2, 1, 2, 3)); // B1:B3
+		condDoc.AddConditionalFormatRule(dupRule);
+
+		Check(condDoc.GetConditionalFormatRules().size() == 2,
+			"AddConditionalFormatRule aggiunge davvero entrambe le regole");
+
+		// --- Valutazione VIVA: i colori corrispondono ai valori
+		// CORRENTI, senza che nessuno li abbia mai scritti in
+		// CellStyle. ---
+		std::map<cell, rgb_color> colors = condDoc.EvaluateConditionalFormatting();
+		Check(colors.find(cell(1, 1)) != colors.end() && colors[cell(1, 1)].red == 255
+				&& colors[cell(1, 1)].green == 199 && colors[cell(1, 1)].blue == 206,
+			"A1 (\"Mancante\") ottiene il colore della regola cellIs/equal");
+		Check(colors.find(cell(1, 2)) == colors.end(),
+			"A2 (\"OK\", nessuna corrispondenza) non ottiene nessun colore");
+		Check(colors.find(cell(2, 1)) != colors.end() && colors[cell(2, 1)].red == 255
+				&& colors[cell(2, 1)].green == 235 && colors[cell(2, 1)].blue == 156,
+			"B1 (\"X\", duplicata con B3) ottiene il colore della regola duplicateValues");
+		Check(colors.find(cell(2, 3)) != colors.end(),
+			"B3 (\"X\", duplicata con B1) ottiene anch'essa il colore");
+		Check(colors.find(cell(2, 2)) == colors.end(),
+			"B2 (\"Y\", valore unico nell'intervallo) non ottiene nessun colore");
+
+		// La prova decisiva del "viva": si cambia il valore di una
+		// cella DOPO aver gia' valutato le regole una volta, senza mai
+		// toccare ne' le regole ne' CellStyle -- una nuova chiamata a
+		// EvaluateConditionalFormatting deve riflettere il valore
+		// NUOVO, non quello di prima.
+		TryToParseString("Mancante", cell(1, 2), &condDoc, true); // A2 ora e' anch'essa "Mancante"
+		std::map<cell, rgb_color> colorsAfterEdit = condDoc.EvaluateConditionalFormatting();
+		Check(colorsAfterEdit.find(cell(1, 2)) != colorsAfterEdit.end(),
+			"cambiando A2 in \"Mancante\" DOPO la prima valutazione, la rivalutazione la colora "
+			"da sola, senza nessuna scrittura esplicita in CellStyle (e' questo che la rende viva)");
+
+		condDoc.Release();
+	}
+
+	// Round-trip nel formato nativo: le regole (non un colore
+	// congelato) sopravvivono a salvataggio/ricarica.
+	{
+		CContainer& condSaveDoc = *new CContainer(NULL, NULL);
+		ConditionalFormatRule rule;
+		rule.type = eCondCellIsEqual;
+		rule.compareValue = "Mancante";
+		rule.bgColor.red = 255; rule.bgColor.green = 199;
+		rule.bgColor.blue = 206; rule.bgColor.alpha = 255;
+		rule.ranges.push_back(range(1, 1, 1, 3));
+		rule.ranges.push_back(range(5, 5, 6, 6)); // due intervalli sulla stessa regola
+		condSaveDoc.AddConditionalFormatRule(rule);
+
+		BFile condFile("tests/roundtrip_condformat.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&condSaveDoc, &condFile) == B_OK,
+			"SaveASCD con una regola di formattazione condizionale riesce");
+		condSaveDoc.Release();
+
+		BFile condReopened("tests/roundtrip_condformat.ascd", B_READ_ONLY);
+		CContainer& condReloaded = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&condReopened, &condReloaded) == B_OK,
+			"LoadASCD con una regola di formattazione condizionale riesce");
+
+		const std::vector<ConditionalFormatRule>& reloadedRules
+			= condReloaded.GetConditionalFormatRules();
+		Check(reloadedRules.size() == 1, "la regola sopravvive al giro salva->ricarica");
+		if (reloadedRules.size() == 1)
+		{
+			Check(reloadedRules[0].type == eCondCellIsEqual
+					&& reloadedRules[0].compareValue == "Mancante",
+				"il tipo e il valore di confronto sopravvivono al giro salva->ricarica");
+			Check(reloadedRules[0].bgColor.red == 255 && reloadedRules[0].bgColor.green == 199
+					&& reloadedRules[0].bgColor.blue == 206,
+				"il colore sopravvive al giro salva->ricarica");
+			Check(reloadedRules[0].ranges.size() == 2,
+				"entrambi gli intervalli della stessa regola sopravvivono al giro salva->ricarica");
+		}
+		condReloaded.Release();
+	}
+
+	// Un file scritto senza regole di formattazione condizionale si
+	// rilegge senza errori, con nessuna regola -- stessa
+	// compatibilita' all'indietro delle altre sezioni opzionali.
+	{
+		BFile oldFormat5("tests/roundtrip.ascd", B_READ_ONLY);
+		CContainer& oldDoc5 = *new CContainer(NULL, NULL);
+		status_t err5 = LoadASCD(&oldFormat5, &oldDoc5);
+		Check(err5 == B_OK && oldDoc5.GetConditionalFormatRules().empty(),
+			"un file senza sezione formattazione condizionale si rilegge senza errori e senza regole");
+		oldDoc5.Release();
+	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
