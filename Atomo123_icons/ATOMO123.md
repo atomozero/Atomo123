@@ -10,9 +10,11 @@ serve solo per vedere l'icona durante lo sviluppo.
 
 Le icone di questa selezione entrano nell'app solo quando la funzione
 corrispondente esiste gia' in Atomo123 (un comando vero, non solo
-un'idea) -- vedi `kToolbarRows` in `ui/src/MainWindow.cpp` e il byte
-grezzi in `ui/src/IconData.cpp`. La toolbar e' divisa in cinque righe
-per categoria (File, Modifica, Dati, Celle, Formato). Al momento sono
+un'idea) -- vedi `kToolbarGroups` in `ui/src/MainWindow.cpp` e il byte
+grezzi in `ui/src/IconData.cpp`. I gruppi (File, Modifica, Dati,
+Celle, Formato) si affiancano su un'unica toolbar e vanno a capo per
+intero (mai un pulsante a meta') quando non entrano piu' nella
+larghezza della finestra -- vedi `ToolbarView.h`. Al momento sono
 integrate:
 
 - **File**: Nuovo, Apri, Salva, Stampa
