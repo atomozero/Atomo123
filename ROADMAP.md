@@ -4954,10 +4954,62 @@ formati file in `translators/`.
       senza questa sezione. Nessuna regressione nelle altre suite del
       motore, nei tre traduttori (incluso XLS) né nelle altre 41
       suite UI.
-- [ ] **Validazione dati** (elenco a discesa, intervallo numerico):
-      nuova finestra di dialogo sullo stile di `PreferencesWindow`/
-      `ColorWindow` già esistenti, più un controllo all'editing della
-      cella.
+- [x] **Validazione dati** (elenco a discesa, intervallo numerico):
+      nuovo `struct ValidationRule` (`Container.h`) con due tipi —
+      `eListValidation` (valori separati da virgola) ed
+      `eNumberRangeValidation` (min/max) — non l'intera gamma del vero
+      "Convalida dati" di Excel (niente data/ora/lunghezza testo/
+      formula personalizzata), stesso principio di scope minimo già
+      scelto altrove in questa fase. Sparso per cella
+      (`CContainer::fValidations`, stesso schema di commenti/
+      collegamenti).
+
+      A differenza di commento/collegamento (sempre sulla sola cella
+      attiva), la convalida si applica a tutta la SELEZIONE — come il
+      vero Excel — tramite `MainWindow::ApplyValidationToSelection`/
+      `RemoveValidationFromSelection`, non `SetCellValidation`/
+      `RemoveCellValidation` (quelle restano i primitivi testabili per
+      singola cella). `ValidationWindow` (nuova, sullo stesso schema
+      di `CommentWindow`) non manda riga/colonna nel messaggio di
+      conferma per questo — solo tipo/elenco/min/max.
+
+      Applicazione (`SheetView::CommitEditing`): `MainWindow::
+      ValidateCellValue` controllata PRIMA di scrivere il valore, non
+      dopo — un valore respinto mostra un vero `BAlert` e lascia la
+      cella come stava, esattamente come annullare la modifica, stesso
+      comportamento "Stop" del vero Excel (il valore non entra mai
+      nella cella).
+
+      Novità in più rispetto al minimo indispensabile: una vera
+      freccia a discesa nella cella per `eListValidation` (non solo
+      un controllo silenzioso) — `SheetView::ValidationArrowRect`/
+      `ShowValidationMenu`, stesso schema di `AutoFilterArrowRect`/
+      `ShowAutoFilterMenu` già esistente, un clic sceglie un valore
+      dall'elenco senza doverlo digitare (e senza rischiare di
+      sbagliarlo).
+
+      Persistenza (`AscdIO.cpp`): sezione separata in coda al formato
+      (riga/colonna/tipo/lunghezza-e-testo-dell'elenco/min/max), stesso
+      principio EOF-tollerante già scelto per tipo di grafico/colore
+      del bordo sopra. Stesso principio applicato al `WriteASCD`
+      locale di `XlsxTranslator.cpp` (sezione sempre vuota: questo
+      translator non estrae ancora `<dataValidations>` da un file XLSX
+      vero).
+
+      Test: `ui/tests/test_validation.cpp` — regola impostata/rimossa
+      per singola cella, `ValidateCellValue` diretta (elenco con spazi
+      scartati, intervallo con estremi inclusivi, testo non numerico
+      respinto, nessuna regola sempre accettata), round-trip nel
+      formato nativo con DUE regole di tipo diverso (a verifica che
+      l'indice resti allineato alla cella giusta), e verifica sui
+      pixel veri della freccia a discesa tramite bitmap offscreen.
+      L'aggancio vero e proprio in `SheetView::CommitEditing` NON è
+      testato: `StartEditing`/`CommitEditing` sono privati apposta
+      (solo un vero clic/tastiera li invoca), e un valore respinto
+      mostrerebbe un vero `BAlert::Go()` — stesso limite già noto di
+      `DeleteSheet`/`RenameSheet`. Nessuna regressione nelle altre
+      suite del motore, nei tre traduttori (incluso XLS) né nelle
+      altre 42 suite UI.
 - [ ] **Formattazione condizionale viva**: oggi valutata una volta
       sola all'import XLSX e congelata come colore statico (Fase 12);
       richiede ricalcolarla a ogni ricalcolo del foglio, non solo
