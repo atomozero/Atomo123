@@ -8,8 +8,10 @@
 
 #include <Font.h>
 #include <Looper.h>
+#include <MenuItem.h>
 #include <Message.h>
 #include <Messenger.h>
+#include <PopUpMenu.h>
 #include <Region.h>
 #include <Window.h>
 
@@ -271,15 +273,48 @@ void SheetTabView::MouseDown(BPoint where)
 		}
 	}
 
+	// Tasto destro: menu contestuale (Fase 13) invece del cambio scheda
+	// -- stesso principio di "buttons"/"modifiers" gia' letti da
+	// MainWindow su Window()->CurrentMessage() per Maiusc+click, qui
+	// per il tasto secondario invece del tasto di Maiuscole. Sincrono
+	// (asynchronous=false), stesso schema di
+	// SheetView::ShowAutoFilterMenu: Go() blocca finche' l'utente non
+	// sceglie una voce, restituendola direttamente, niente passaggio
+	// di messaggi da gestire altrove.
+	int32 buttons = 0;
+	BMessage* msg = Window() ? Window()->CurrentMessage() : NULL;
+	if (msg)
+		msg->FindInt32("buttons", &buttons);
+
 	for (size_t i = 0; i < fVisible.size(); i++)
 	{
 		if (fVisible[i].rect.Contains(where))
 		{
-			if (fTarget)
+			if (buttons & B_SECONDARY_MOUSE_BUTTON)
 			{
-				BMessage msg(fSwitchWhat);
-				msg.AddInt32("index", fVisible[i].index);
-				BMessenger(fTarget).SendMessage(&msg);
+				BPopUpMenu menu("sheetTabContext");
+				BMenuItem* renameItem = new BMenuItem("Rinomina foglio" B_UTF8_ELLIPSIS, NULL);
+				menu.AddItem(renameItem);
+				BMenuItem* deleteItem = new BMenuItem("Elimina foglio", NULL);
+				menu.AddItem(deleteItem);
+
+				BPoint screenAnchor = where;
+				ConvertToScreen(&screenAnchor);
+				BMenuItem* chosen = menu.Go(screenAnchor, false, false, true);
+
+				if (chosen && fTarget)
+				{
+					BMessage request(chosen == renameItem
+						? kMsgRenameSheetRequest : kMsgDeleteSheetRequest);
+					request.AddInt32("index", fVisible[i].index);
+					BMessenger(fTarget).SendMessage(&request);
+				}
+			}
+			else if (fTarget)
+			{
+				BMessage switchMsg(fSwitchWhat);
+				switchMsg.AddInt32("index", fVisible[i].index);
+				BMessenger(fTarget).SendMessage(&switchMsg);
 			}
 			break;
 		}

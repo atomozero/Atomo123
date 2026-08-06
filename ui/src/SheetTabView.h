@@ -19,6 +19,14 @@
 
 #include <vector>
 
+// Inviati da un clic destro su una scheda (Fase 13), entrambi con un
+// campo int32 "index" -- stesso principio di kMsgSwitchSheet sotto,
+// esportati qui (non definiti dentro MainWindow.cpp) cosi' questa
+// vista resta ignara di AscdSheet/MainWindow pur avendo un "what"
+// stabile da inviare.
+const uint32 kMsgRenameSheetRequest = 'rnsr';
+const uint32 kMsgDeleteSheetRequest = 'dlsr';
+
 class SheetTabView : public BView {
 public:
 	// switchWhat e' il "what" del BMessage inviato a target quando si

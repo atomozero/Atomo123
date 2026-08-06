@@ -35,6 +35,7 @@ class PivotWindow;
 class NameWindow;
 class PasteSpecialWindow;
 class GoToWindow;
+class RenameSheetWindow;
 class ColorWindow;
 class PreferencesWindow;
 
@@ -170,6 +171,27 @@ public:
 	const char* SheetName(int index) const { return fSheets[index].name.String(); }
 	void SwitchToSheet(int index);
 
+	// Nuovo/Elimina/Rinomina foglio (Fase 13): pubblici per lo stesso
+	// motivo di CopySelection/PasteSelection sopra -- testabili
+	// direttamente senza passare da un vero clic destro sulla scheda.
+	// NewSheet() sceglie da sola un nome libero ("Foglio1", "Foglio2",
+	// ... come Excel/LibreOffice Calc, mai un nome gia' usato).
+	// DeleteSheet() chiede conferma con un vero BAlert (stesso schema
+	// di ConfirmDiscardChanges) prima di chiamare DeleteSheetNoConfirm
+	// sotto -- quest'ultima e' pubblica APPOSTA per essere testabile
+	// senza mostrare un vero BAlert, che bloccherebbe un test
+	// automatico in attesa di un clic reale (stesso limite noto gia'
+	// documentato in tests/test_unsaved_changes.cpp per
+	// ConfirmDiscardChanges). RenameSheet() rifiuta un nome gia' usato
+	// da un altro foglio (stesso vincolo di Excel), con un BAlert solo
+	// in quel caso di errore (non nel percorso normale, quindi
+	// testabile senza problemi).
+	void NewSheet();
+	void DeleteSheet(int index);
+	void DeleteSheetNoConfirm(int index);
+	void RenameSheet(int index, const char* newName);
+	BString UniqueSheetName(const char* prefix) const;
+
 	// ISheetResolver (Fase 9): risolve "NomeFoglio!Cella" verso il
 	// CContainer corrispondente in fSheets, per nome. Pubblico perche'
 	// la classe lo espone come override di un'interfaccia pubblica, non
@@ -238,6 +260,7 @@ private:
 	NameWindow* fNameWindow;
 	PasteSpecialWindow* fPasteSpecialWindow;
 	GoToWindow* fGoToWindow;
+	RenameSheetWindow* fRenameSheetWindow;
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
 	std::vector<ChartObject> fCharts;

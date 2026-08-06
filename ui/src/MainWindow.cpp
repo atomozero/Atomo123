@@ -15,6 +15,7 @@
 #include "NameWindow.h"
 #include "PasteSpecialWindow.h"
 #include "GoToWindow.h"
+#include "RenameSheetWindow.h"
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
 #include "AboutWindow.h"
@@ -88,6 +89,7 @@ static const uint32 kMsgDeleteColumns = 'adlc';
 static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
 static const uint32 kMsgSwitchSheet = 'swsh';
+static const uint32 kMsgNewSheet = 'nwsh';
 static const uint32 kMsgSetFormat = 'stfm';
 static const uint32 kMsgShowChart = 'shch';
 static const uint32 kMsgShowPivot = 'shpv';
@@ -489,6 +491,16 @@ MainWindow::MainWindow()
 	dataMenu->AddItem(new BMenuItem("Elimina riga", new BMessage(kMsgDeleteRows)));
 	dataMenu->AddItem(new BMenuItem("Elimina colonna", new BMessage(kMsgDeleteColumns)));
 	dataMenu->AddSeparatorItem();
+	// Elimina/Rinomina foglio non compaiono qui apposta: si scelgono
+	// col tasto destro sulla scheda del foglio (SheetTabView), dove il
+	// foglio bersaglio e' scelto dal clic stesso -- un elenco/indice da
+	// scegliere qui sarebbe ridondante e piu' scomodo. "Nuovo foglio"
+	// invece non ha un bersaglio da scegliere (aggiunge sempre in
+	// coda), quindi qui nel menu ha senso quanto la maniglia "+" di
+	// Excel/LibreOffice Calc dopo l'ultima scheda -- non implementata
+	// per restare nello scope di questo punto della Fase 13.
+	dataMenu->AddItem(new BMenuItem("Nuovo foglio", new BMessage(kMsgNewSheet)));
+	dataMenu->AddSeparatorItem();
 	// Blocca tutto cio' che sta sopra/a sinistra della cella attiva
 	// (come Excel): voce con segno di spunta, sincronizzato a ogni
 	// attivazione/cambio foglio -- vedi SheetView::ToggleFreezePanes.
@@ -580,6 +592,7 @@ MainWindow::MainWindow()
 	fNameWindow = NULL;
 	fPasteSpecialWindow = NULL;
 	fGoToWindow = NULL;
+	fRenameSheetWindow = NULL;
 	fColorWindow = NULL;
 	fPreferencesWindow = NULL;
 
@@ -624,6 +637,11 @@ MainWindow::~MainWindow()
 	{
 		fGoToWindow->Lock();
 		fGoToWindow->Quit();
+	}
+	if (fRenameSheetWindow)
+	{
+		fRenameSheetWindow->Lock();
+		fRenameSheetWindow->Quit();
 	}
 	if (fColorWindow)
 	{
@@ -824,6 +842,130 @@ void MainWindow::RebuildSheetTabs()
 	}
 
 	fSheetTabView->SetSheets(names, fActiveSheetIndex, &hasColor, &colors);
+}
+
+BString MainWindow::UniqueSheetName(const char* prefix) const
+{
+	// "Foglio1", "Foglio2", ... come Excel/LibreOffice Calc: il primo
+	// numero libero, non necessariamente fSheets.size()+1 (un foglio
+	// di mezzo puo' essere stato rinominato o eliminato, lasciando
+	// "buchi" nella numerazione).
+	for (int n = 1; ; n++)
+	{
+		BString candidate;
+		candidate << prefix << n;
+		bool taken = false;
+		for (size_t i = 0; i < fSheets.size(); i++)
+		{
+			if (fSheets[i].name == candidate)
+			{
+				taken = true;
+				break;
+			}
+		}
+		if (!taken)
+			return candidate;
+	}
+}
+
+void MainWindow::NewSheet()
+{
+	AscdSheet sheet;
+	sheet.name = UniqueSheetName("Foglio");
+	sheet.doc = new CContainer(NULL, NULL);
+	sheet.showGrid = gPrefs ? (gPrefs->GetPrefInt("showGrid", 1) != 0) : true;
+	fSheets.push_back(sheet);
+
+	// SwitchToSheet sincronizza gia' da sola lo stato UI del foglio
+	// PRECEDENTEMENTE attivo in fSheets prima di passare al nuovo,
+	// esattamente come un cambio scheda scelto dall'utente -- nessuna
+	// duplicazione di quella logica necessaria qui.
+	SwitchToSheet((int)fSheets.size() - 1);
+	AttachSheetResolver();
+	MarkModified();
+}
+
+void MainWindow::DeleteSheet(int index)
+{
+	if (index < 0 || index >= (int)fSheets.size())
+		return;
+
+	if (fSheets.size() <= 1)
+	{
+		BAlert* alert = new BAlert("Elimina foglio",
+			"Non è possibile eliminare l'unico foglio della cartella di lavoro.",
+			"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+		alert->Go();
+		return;
+	}
+
+	BString msg;
+	msg << "Eliminare il foglio \"" << fSheets[index].name
+		<< "\"? L'operazione non può essere annullata.";
+	BAlert* alert = new BAlert("Elimina foglio", msg.String(),
+		"Annulla", "Elimina", NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+	alert->SetShortcut(0, B_ESCAPE);
+	if (alert->Go() != 1)
+		return;
+
+	DeleteSheetNoConfirm(index);
+}
+
+void MainWindow::DeleteSheetNoConfirm(int index)
+{
+	if (index < 0 || index >= (int)fSheets.size() || fSheets.size() <= 1)
+		return;
+
+	if (index == fActiveSheetIndex)
+	{
+		// Passa a un altro foglio PRIMA di eliminare quello attivo,
+		// cosi' SwitchToSheet gestisce gia' da sola tutta la
+		// sincronizzazione UI -> fSheets (il risultato scritto per
+		// l'indice che stiamo per eliminare viene scartato subito
+		// dopo, ma e' innocuo): a destra se c'e' un foglio dopo,
+		// altrimenti a sinistra (era l'ultimo della lista).
+		int target = (index + 1 < (int)fSheets.size()) ? index + 1 : index - 1;
+		SwitchToSheet(target);
+	}
+
+	fSheets[index].doc->Release();
+	fSheets.erase(fSheets.begin() + index);
+	// Ogni indice DOPO quello appena eliminato scala di uno per via
+	// dell'erase(): se il foglio attivo era dopo, il suo indice va
+	// aggiornato di conseguenza (se era proprio quello eliminato, il
+	// blocco sopra l'ha gia' spostato altrove PRIMA dell'erase, quindi
+	// a questo punto e' sempre != index).
+	if (fActiveSheetIndex > index)
+		fActiveSheetIndex--;
+
+	RebuildSheetTabs();
+	MarkModified();
+}
+
+void MainWindow::RenameSheet(int index, const char* newName)
+{
+	if (index < 0 || index >= (int)fSheets.size() || !newName || !newName[0])
+		return;
+
+	// Stesso vincolo di Excel/LibreOffice Calc: due fogli con lo
+	// stesso nome nella stessa cartella di lavoro renderebbero
+	// ambiguo "NomeFoglio!Cella" (ISheetResolver cerca per nome
+	// esatto, vedi ResolveSheetByName sopra).
+	for (size_t i = 0; i < fSheets.size(); i++)
+	{
+		if ((int)i != index && fSheets[i].name == newName)
+		{
+			BAlert* alert = new BAlert("Rinomina foglio",
+				"Esiste già un foglio con questo nome.",
+				"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+			alert->Go();
+			return;
+		}
+	}
+
+	fSheets[index].name = newName;
+	RebuildSheetTabs();
+	MarkModified();
 }
 
 std::vector<BString> MainWindow::LoadRecentFiles()
@@ -2579,6 +2721,43 @@ void MainWindow::MessageReceived(BMessage* message)
 			int32 index;
 			if (message->FindInt32("index", &index) == B_OK)
 				SwitchToSheet(index);
+			break;
+		}
+
+		case kMsgNewSheet:
+			NewSheet();
+			break;
+
+		case kMsgDeleteSheetRequest:
+		{
+			int32 index;
+			if (message->FindInt32("index", &index) == B_OK)
+				DeleteSheet(index);
+			break;
+		}
+
+		case kMsgRenameSheetRequest:
+		{
+			int32 index;
+			if (message->FindInt32("index", &index) == B_OK && index >= 0 && index < (int)fSheets.size())
+			{
+				if (!fRenameSheetWindow)
+					fRenameSheetWindow = new RenameSheetWindow(BMessenger(this));
+				fRenameSheetWindow->SetSheet(index, fSheets[index].name.String());
+				if (fRenameSheetWindow->IsHidden())
+					fRenameSheetWindow->Show();
+				fRenameSheetWindow->Activate();
+			}
+			break;
+		}
+
+		case kMsgRenameSheetCommit:
+		{
+			int32 index;
+			BString name;
+			if (message->FindInt32("index", &index) == B_OK
+				&& message->FindString("name", &name) == B_OK)
+				RenameSheet(index, name.String());
 			break;
 		}
 
