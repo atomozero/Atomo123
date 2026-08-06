@@ -5,9 +5,12 @@
 	catalogo HVIF li copre (collegamento ipertestuale, commento cella,
 	intervalli con nome, vai a, colore bordo -- vedi kNavigateToolbarButtons/
 	kAnnotateToolbarButtons/kFormatToolbarButtons in MainWindow.cpp e
-	Atomo123_icons/ATOMO123.md per la selezione delle icone), oltre alla
-	nuova struttura della toolbar su piu' righe per categoria (kToolbarRows).
-	Stesso principio di test_format_toolbar.cpp: qui interessa solo che il
+	Atomo123_icons/ATOMO123.md per la selezione delle icone). Il
+	comportamento "a capo" della toolbar (gruppi affiancati, un gruppo
+	intero va a capo quando non entra piu') e' invece testato a fondo in
+	tests/test_toolbar_view.cpp, che lavora direttamente su ToolbarView
+	senza bisogno di una vera MainWindow. Stesso principio di
+	test_format_toolbar.cpp: qui interessa solo che il
 	pulsante esista, sia targettato su MainWindow e che cliccarlo apra la
 	finestra giusta senza crash -- l'effetto delle singole finestre
 	(CommentWindow, HyperlinkWindow, NameWindow, GoToWindow, ColorWindow) e'
@@ -88,20 +91,6 @@ int main()
 	Check(allFound, "i cinque pulsanti Fase 13 (hyperlink/commento/vai a/"
 		"intervalli con nome/colore bordo) esistono tutti nella toolbar");
 	Check(allTargeted, "tutti hanno MainWindow come target (SetTarget), non un handler a caso");
-
-	// Le cinque righe della nuova toolbar (kToolbarRows in MainWindow.cpp)
-	// esistono davvero come viste distinte, non solo come pulsanti nella
-	// stessa riga di prima -- la restrutturazione su piu' righe e' proprio
-	// quello che l'utente ha chiesto, non solo l'aggiunta di icone.
-	bool allRowsFound = true;
-	for (int r = 0; r < 5; r++)
-	{
-		BString rowName("toolbarRow");
-		rowName << r;
-		if (!win->FindView(rowName.String()))
-			allRowsFound = false;
-	}
-	Check(allRowsFound, "la toolbar e' davvero divisa in cinque righe distinte (una per categoria)");
 
 	view->SetSelection(cell(1, 1));
 	view->ExtendSelection(cell(1, 1));

@@ -198,8 +198,7 @@ static const ToolbarButtonDef kDataToolbarButtons[] = {
 // Vai a/Intervalli con nome (gia' voci di menu) promossi a pulsante ora
 // che il catalogo HVIF li copre (compass/tag, vedi IconData.cpp):
 // gruppo separato da Ordina A-Z/Z-A qui sopra perche' sono comandi di
-// navigazione, non di riordino dati, ma restano nella stessa riga
-// "Dati" della toolbar (vedi kToolbarRows piu' sotto).
+// navigazione, non di riordino dati (vedi kToolbarGroups piu' sotto).
 static const ToolbarButtonDef kNavigateToolbarButtons[] = {
 	{ "toolGoTo", "Vai a", kMsgShowGoTo, &kIconGoTo },
 	{ "toolNamedRanges", "Intervalli con nome", kMsgShowNames, &kIconNamedRange },
@@ -244,67 +243,43 @@ static const ToolbarButtonDef kFormatToolbarButtons[] = {
 
 #define TOOLBAR_GROUP(buttons) { buttons, sizeof(buttons) / sizeof((buttons)[0]) }
 
-// Una riga per "tipologia" di comando (chiesto dall'utente dopo aver
-// visto tutta la toolbar schiacciata su un'unica riga sempre piu'
-// affollata): ogni riga puo' comunque contenere piu' gruppi separati da
-// un divisore verticale, la riga in se' li separa su un livello in piu'
-// -- vedi BuildToolbar sotto.
-static const ToolbarGroupDef kFileRowGroups[] = { TOOLBAR_GROUP(kFileToolbarButtons) };
-static const ToolbarGroupDef kEditRowGroups[] = { TOOLBAR_GROUP(kEditToolbarButtons) };
-static const ToolbarGroupDef kDataRowGroups[] = {
+// Un unico ToolbarView con tutti i gruppi affiancati in ordine: e' lui
+// stesso a mandare a capo un gruppo intero su una nuova riga quando non
+// entra piu' nella larghezza disponibile (vedi ToolbarView.h) -- niente
+// piu' righe fisse per categoria (provate prima, scartate: un gruppo
+// tagliato a meta' fra una riga e la successiva era peggio di una sola
+// riga).
+static const ToolbarGroupDef kToolbarGroups[] = {
+	TOOLBAR_GROUP(kFileToolbarButtons),
+	TOOLBAR_GROUP(kEditToolbarButtons),
 	TOOLBAR_GROUP(kDataToolbarButtons),
 	TOOLBAR_GROUP(kNavigateToolbarButtons),
-};
-static const ToolbarGroupDef kCellsRowGroups[] = {
 	TOOLBAR_GROUP(kInsertToolbarButtons),
 	TOOLBAR_GROUP(kAnnotateToolbarButtons),
+	TOOLBAR_GROUP(kFormatToolbarButtons),
 };
-static const ToolbarGroupDef kFormatRowGroups[] = { TOOLBAR_GROUP(kFormatToolbarButtons) };
 
 #undef TOOLBAR_GROUP
 
-struct ToolbarRowDef {
-	const ToolbarGroupDef* groups;
-	size_t groupCount;
-};
-
-#define TOOLBAR_ROW(groups) { groups, sizeof(groups) / sizeof((groups)[0]) }
-
-static const ToolbarRowDef kToolbarRows[] = {
-	TOOLBAR_ROW(kFileRowGroups),
-	TOOLBAR_ROW(kEditRowGroups),
-	TOOLBAR_ROW(kDataRowGroups),
-	TOOLBAR_ROW(kCellsRowGroups),
-	TOOLBAR_ROW(kFormatRowGroups),
-};
-
-#undef TOOLBAR_ROW
-
-// Costruisce una singola riga della toolbar dai gruppi indicati: un
-// BButton per voce, con la sua icona HVIF (IconCatalog::Render --
-// SetIcon ne copia i bit al suo interno, quindi il BBitmap temporaneo
-// va eliminato subito dopo, altrimenti perde solo memoria senza
-// benefici), e un separatore verticale fra un gruppo e il successivo
-// nella stessa riga. "target" riceve i messaggi di tutti i pulsanti
-// (sempre "this" per MainWindow, passato esplicitamente solo per non
-// legare questa funzione libera a una particolare istanza). Il
-// contenitore e' un ToolbarView (non un semplice BGroupView) apposta:
-// quando la finestra si restringe e i pulsanti non entrano piu' tutti,
-// nasconde quelli in eccesso dietro un pulsante ">>" con un menu --
-// vedi ToolbarView.h, stesso principio di SheetTabView per le schede
-// dei fogli. Ogni riga ha il proprio troppopieno indipendente dalle
-// altre.
-static ToolbarView* BuildToolbarRow(const char* name, const ToolbarGroupDef* groups,
-	size_t groupCount, BHandler* target)
+// Costruisce l'intera toolbar dalla tabella sopra: un BButton per voce,
+// con la sua icona HVIF (IconCatalog::Render -- SetIcon ne copia i bit
+// al suo interno, quindi il BBitmap temporaneo va eliminato subito
+// dopo, altrimenti perde solo memoria senza benefici), e un gruppo
+// nuovo (AddSeparator) per ogni voce di kToolbarGroups. "target" riceve
+// i messaggi di tutti i pulsanti (sempre "this" per MainWindow, passato
+// esplicitamente solo per non legare questa funzione libera a una
+// particolare istanza).
+static BView* BuildToolbar(BHandler* target)
 {
-	ToolbarView* row = new ToolbarView(name);
+	ToolbarView* toolbar = new ToolbarView("toolbar");
 
+	size_t groupCount = sizeof(kToolbarGroups) / sizeof(kToolbarGroups[0]);
 	for (size_t g = 0; g < groupCount; g++)
 	{
 		if (g > 0)
-			row->AddSeparator();
+			toolbar->AddSeparator();
 
-		const ToolbarGroupDef& group = groups[g];
+		const ToolbarGroupDef& group = kToolbarGroups[g];
 		for (size_t i = 0; i < group.count; i++)
 		{
 			const ToolbarButtonDef& def = group.buttons[i];
@@ -338,36 +313,11 @@ static ToolbarView* BuildToolbarRow(const char* name, const ToolbarGroupDef* gro
 				delete icon;
 			}
 
-			row->AddButton(button, def.label);
+			toolbar->AddButton(button, def.label);
 		}
 	}
 
-	return row;
-}
-
-// Impila una riga per categoria (kToolbarRows sopra), ciascuna col
-// proprio troppopieno indipendente, separate da un divisore
-// orizzontale sottile -- stesso principio della riga sotto la barra
-// menu, ma ripetuto fra le righe invece che una volta sola.
-static BView* BuildToolbar(BHandler* target)
-{
-	BGroupView* stack = new BGroupView(B_VERTICAL, 0);
-
-	size_t rowCount = sizeof(kToolbarRows) / sizeof(kToolbarRows[0]);
-	for (size_t r = 0; r < rowCount; r++)
-	{
-		if (r > 0)
-			stack->AddChild(new BSeparatorView(B_HORIZONTAL));
-
-		const ToolbarRowDef& rowDef = kToolbarRows[r];
-		BString rowName("toolbarRow");
-		rowName << (int32)r;
-		ToolbarView* row = BuildToolbarRow(rowName.String(), rowDef.groups,
-			rowDef.groupCount, target);
-		stack->AddChild(row);
-	}
-
-	return stack;
+	return toolbar;
 }
 
 // Stessa logica di SheetView::ColumnName (vedi li' per il perche'
