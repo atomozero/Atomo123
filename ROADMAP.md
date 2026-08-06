@@ -4848,10 +4848,54 @@ formati file in `translators/`.
       chiave in una colonna e restituisce il valore corrispondente in
       un'altra). Nessuna regressione nelle altre suite del motore, nei
       tre traduttori né nelle altre 41 suite UI.
-- [ ] **Altri tipi di grafico** (linee, torta): `Chart.h`/`ChartView.cpp`
-      hanno già l'infrastruttura per i grafici a barre; ogni nuovo tipo
-      riusa il framework di disegno ma richiede nuova geometria
-      dedicata.
+- [x] **Altri tipi di grafico** (linee, torta): nuovo `enum ChartType`
+      (`eBarChart`/`eLineChart`/`ePieChart`) in `Chart.h`, con
+      `eBarChart = 0` deliberato — un `ChartObject` letto da un file
+      `.ascd` scritto prima di questa modifica (solo grafici a barre,
+      nessun campo tipo nel formato) deve continuare a disegnarsi come
+      barra senza bisogno di nessuna sezione nel file. `ComputeLineLayout`/
+      `DrawLineChart` e `ComputePieLayout`/`DrawPieChart` nuove, stesso
+      schema "calcolo puro separato dal disegno" già seguito da
+      `ComputeBarLayout`/`DrawBarChart` (verificabile senza `BView`/
+      `Draw`). Un unico punto di ingresso condiviso, `DrawChart`, smista
+      secondo il tipo — usato sia da `ChartView` (anteprima in
+      `ChartWindow`) sia da `SheetView` (grafico incorporato nel
+      foglio), stesso principio già seguito da `DrawBarChart` prima di
+      questa modifica.
+
+      Torta: ogni spicchio è una categoria diversa nello STESSO
+      grafico (a differenza di barre/linee, una sola serie con un solo
+      colore) — tavolozza fissa di 8 colori, ciclica oltre quella
+      soglia, più una legenda a fianco (le etichette non stanno sotto
+      ogni spicchio: uno spicchio piccolo non ha spazio per il testo).
+      Un valore non positivo non occupa nessuno spicchio (ampiezza
+      zero) ma resta al suo posto nell'elenco, per non disallineare
+      indice/colore/etichetta degli spicchi successivi.
+
+      `ChartWindow`: nuovo `BPopUpMenu` "Tipo:" (Barre/Linee/Torta,
+      corrispondenza posizionale con l'enum), cambia subito l'anteprima
+      e viaggia con `kMsgChartInsert` fino a `MainWindow::HandleChartInsert`.
+
+      Persistenza (`AscdIO.cpp`): il tipo NON è un campo dentro il
+      record fisso di ogni grafico (che vive PRIMA di altre sezioni nel
+      formato — colonne, altezze, ecc.) perché inserirlo lì
+      romperebbe l'allineamento byte per byte dei file `.ascd` già
+      scritti con un grafico. È invece una sezione SEPARATA in coda al
+      formato (un byte per grafico, nello stesso ordine dell'array già
+      scritto), stesso schema EOF-tollerante di commenti/collegamenti —
+      un file senza questa sezione lascia ogni `ChartObject` al tipo
+      predefinito. Stesso principio applicato al `WriteASCD` locale di
+      `XlsxTranslator.cpp` (sezione sempre vuota, questo translator non
+      crea mai un grafico).
+
+      Test: `ui/tests/test_chart.cpp` esteso con `ComputeLineLayout`/
+      `ComputePieLayout` (ordine dei punti, altezza proporzionale al
+      valore, angoli proporzionali al peso sul totale, serie vuota o
+      con soli valori non positivi); `ui/tests/test_ascd_io.cpp` con
+      un round-trip a due grafici di tipo diverso, a verifica che
+      l'indice della sezione tipi resti allineato al grafico giusto.
+      Nessuna regressione nelle altre suite del motore, nei tre
+      traduttori né nelle altre 41 suite UI.
 - [ ] **Stili di bordo/colore** (oggi solo presenza/assenza, nero
       fisso): l'infrastruttura c'è già (`CellStyle`), ma tocca disegno,
       persistenza e import XLSX in più punti.
