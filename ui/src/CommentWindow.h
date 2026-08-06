@@ -34,6 +34,16 @@ public:
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
+	// MakeFocus(true) chiamato una sola volta nel costruttore (prima di
+	// qualunque Show()) imposta il fuoco solo lato BView -- il caret
+	// lampeggia (BTextView::Draw guarda IsFocus(), puramente locale),
+	// ma l'app_server non ha ancora un motivo per instradarci davvero
+	// gli eventi tastiera finche' la finestra non diventa attiva per
+	// davvero. Bug reale segnalato dall'utente: cursore visibile, ma
+	// digitare non scriveva nulla. Riaffermare il fuoco qui, che scatta
+	// a ogni vera attivazione (anche le successive, non solo la prima
+	// Show()), risolve sia il primo utilizzo sia i riusi seguenti.
+	virtual void WindowActivated(bool active);
 
 private:
 	BTextView* fTextView;

@@ -26,6 +26,19 @@ CommentWindow::CommentWindow(BMessenger target)
 {
 	fTextView = new BTextView("commentText");
 	fTextView->SetWordWrap(true);
+	// Esplicito invece di fidarsi dei valori predefiniti: modificabile e
+	// selezionabile (dovrebbero gia' esserlo di default, ma qui e' l'unica
+	// BTextView "nuda" di tutto il progetto -- ogni altro punto che
+	// serve testo modificabile usa BTextControl, che gestisce questi
+	// dettagli da se').
+	fTextView->MakeEditable(true);
+	fTextView->MakeSelectable(true);
+	// Senza queste due righe il colore di sfondo resta quello ereditato
+	// di default (grigio pannello, non bianco): sembra un riquadro
+	// spento invece di un campo di testo modificabile -- bug reale
+	// segnalato dall'utente insieme al fuoco tastiera qui sotto.
+	fTextView->SetViewColor(255, 255, 255);
+	fTextView->SetLowColor(255, 255, 255);
 	BScrollView* scroll = new BScrollView("scroll", fTextView,
 		B_FOLLOW_ALL, 0, false, true, B_FANCY_BORDER);
 
@@ -56,6 +69,13 @@ void CommentWindow::SetCell(int row, int col, const char* currentComment)
 	fCol = col;
 	fTextView->SetText(currentComment ? currentComment : "");
 	fTextView->SelectAll();
+	// Richiamato di nuovo qui (oltre che nel costruttore), ora che
+	// MainWindow chiama SetCell() DOPO Show()/Activate() invece che
+	// prima -- vedi il commento in MainWindow::MessageReceived,
+	// kMsgShowCommentWindow. MakeFocus() chiamato mentre la finestra non
+	// era ancora mai stata mostrata non bastava a far arrivare gli
+	// eventi tastiera per davvero.
+	fTextView->MakeFocus(true);
 }
 
 void CommentWindow::MessageReceived(BMessage* message)
@@ -94,4 +114,11 @@ bool CommentWindow::QuitRequested()
 	// Stessa regola di GoToWindow/FindWindow: resta nascosta e riusabile.
 	Hide();
 	return false;
+}
+
+void CommentWindow::WindowActivated(bool active)
+{
+	BWindow::WindowActivated(active);
+	if (active)
+		fTextView->MakeFocus(true);
 }
