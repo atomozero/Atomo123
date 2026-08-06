@@ -5043,10 +5043,74 @@ nell'albero dei sorgenti, altrimenti l'app vera (che carica i
 translator dalla cartella installata, non da quella dei sorgenti)
 resta silenziosamente disallineata anche quando ogni test automatico
 continua a passare.
-- [ ] **Formattazione condizionale viva**: oggi valutata una volta
-      sola all'import XLSX e congelata come colore statico (Fase 12);
-      richiede ricalcolarla a ogni ricalcolo del foglio, non solo
-      leggerla.
+- [x] **Formattazione condizionale viva**: non piu' valutata una volta
+      sola all'import XLSX e congelata come colore statico (Fase 12) —
+      la REGOLA stessa vive nel documento (nuovo
+      `std::vector<ConditionalFormatRule>` in `CContainer`, non una
+      mappa per cella come commenti/collegamenti/convalida: una regola
+      si applica a uno o piu' INTERVALLI, stesso schema di
+      `ChartObject::dataRange`) e viene rivalutata a ogni ridisegno
+      contro i valori CORRENTI (`CContainer::
+      EvaluateConditionalFormatting`, chiamata da `SheetView::Draw`) —
+      MAI scritta in `CellStyle`. Aggirato interamente l'ostacolo che
+      la Fase 12 dava per scontato ("richiederebbe... una valutazione
+      ad ogni `CalcCell`, un'estensione del motore molto più grande di
+      tutto il resto della fase insieme"): la valutazione non serve
+      affatto nel motore di calcolo, basta farla nel livello di
+      disegno, che gia' rilegge il valore corrente di ogni cella
+      visibile a ogni `Draw()` — nessuna estensione del grafo delle
+      dipendenze, nessun hook in `CalcCell`.
+
+      Stessi due tipi di regola gia' supportati dall'import XLSX (Fase
+      12), gli unici davvero comuni in un file reale: `eCondCellIsEqual`
+      (confronto testuale con un letterale) ed `eCondDuplicateValues`
+      (valore che compare più di una volta nello stesso intervallo).
+      Solo il colore di SFONDO (non anche quello del testo, a
+      differenza del `dxf` XLSX che può portare entrambi) — scelta di
+      scope, lo sfondo è di gran lunga l'uso più comune.
+
+      L'import XLSX (`XlsxTranslator.cpp`) non congela più un colore:
+      `ApplyConditionalFormatting` ora traduce ogni `cfRule`/`dxf` in
+      una `ConditionalFormatRule` vera e la aggiunge al documento —
+      stesso identico ciclo di valutazione di prima, ma il risultato è
+      una regola, non una scrittura in `CellStyle`. UI nuova (prima
+      non esisteva nessun modo di crearne una direttamente in
+      Atomo123, solo import): `ConditionalFormatWindow` (Formato →
+      "Formattazione condizionale…"), applicata a tutta la SELEZIONE
+      corrente come il vero Excel — non solo alla cella attiva come
+      commento/collegamento — tramite `MainWindow::
+      ApplyConditionalFormatToSelection`/`RemoveAllConditionalFormatRules`
+      (quest'ultimo toglie l'intero elenco insieme: nessun editing per
+      singola regola già esistente, stessa semplicità di scope scelta
+      per il resto di questo punto).
+
+      Persistenza (`AscdIO.cpp`): sezione separata in coda al formato
+      (tipo/valore di confronto/colore/uno o più intervalli per
+      regola), stesso principio EOF-tollerante già scelto per
+      convalida dati/colore del bordo. Stesso principio applicato al
+      `WriteASCD` locale di `XlsxTranslator.cpp` — con una differenza
+      dalle altre sezioni "non ancora estratte" del translator: questa
+      *viene* popolata per davvero (le regole vere, non un contatore
+      sempre a zero), quindi va scritta per davvero, nello stesso
+      ordine di sezione di `SaveASCD`.
+
+      Test: `ui/tests/test_ascd_io.cpp` con la prova decisiva del
+      "viva" — una rivalutazione dopo aver cambiato il valore di una
+      cella, senza mai toccare la regola né `CellStyle`, riflette da
+      sola il valore nuovo — più il round-trip di persistenza (due
+      intervalli sulla stessa regola). `ui/tests/test_condformat.cpp`
+      verifica `ApplyConditionalFormatToSelection`/
+      `RemoveAllConditionalFormatRules` e, sui pixel veri di una
+      bitmap offscreen, la stessa prova del "viva" a livello di
+      disegno. `translators/xlsx/tests/test_xlsx_translator.cpp`
+      riscritto: il vecchio test decodificava a mano 3 celle colorate
+      dalla sezione condivisa "colori di cella" (ora sempre 0, la
+      formattazione condizionale non scrive più lì) — sostituito da un
+      cammino sezione-per-sezione fino alla nuova sezione dedicata,
+      che decodifica le due regole vere e ne verifica tipo/valore/
+      colore/intervallo. Nessuna regressione nelle altre suite del
+      motore, nei tre traduttori (incluso XLS) né nelle altre 43 suite
+      UI.
 - [ ] **Tabella pivot avanzata**: quella attuale in `Pivot.h` è
       volutamente minimale (un solo livello di raggruppamento, solo
       Somma/Conteggio/Media); un vero pivot con più livelli, più
