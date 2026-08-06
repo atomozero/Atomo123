@@ -8,6 +8,8 @@
 
 #include <cstring>
 #include <fcntl.h>
+#include <map>
+#include <string>
 
 #include "Cell.h"
 #include "CellStyle.h"
@@ -574,6 +576,31 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
 			|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
 			return B_IO_ERROR;
+	}
+
+	// Sezione commenti/note per cella, in coda (Fase 13): stesso
+	// principio delle celle unite sopra -- CContainer::GetComments,
+	// non un campo per cella nella sezione principale (la stragrande
+	// maggioranza delle celle non avra' mai un commento, vedi il
+	// commento su CContainer::fComments in Container.h).
+	{
+		const std::map<cell, std::string>& comments = doc->GetComments();
+		int32 commentCount = (int32)comments.size();
+		if (dest->Write(&commentCount, sizeof(commentCount)) != (ssize_t)sizeof(commentCount))
+			return B_IO_ERROR;
+
+		for (std::map<cell, std::string>::const_iterator it = comments.begin();
+			it != comments.end(); ++it)
+		{
+			int16 row = it->first.v, col = it->first.h;
+			int32 len = (int32)it->second.size();
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(it->second.data(), len) != len)
+				return B_IO_ERROR;
+		}
 	}
 
 	return B_OK;
@@ -1153,6 +1180,39 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		if (hasAutoFilter) *hasAutoFilter = has != 0;
 		if (autoFilterRange)
 			*autoFilterRange = range(left, top, right, bottom);
+	}
+
+	// Sezione commenti/note per cella, in coda: vedi il commento in
+	// SaveASCD. Stesso principio "got != 0" delle altre sezioni
+	// opzionali sopra (un file scritto prima che questa sezione
+	// esistesse si rilegge comunque senza errori, senza commenti).
+	{
+		int32 commentCount = 0;
+		ssize_t got = source->Read(&commentCount, sizeof(commentCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(commentCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < commentCount; i++)
+			{
+				int16 row, col;
+				int32 len;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+
+				std::string text;
+				if (len > 0)
+				{
+					text.resize(len);
+					if (source->Read(&text[0], len) != len)
+						return B_BAD_DATA;
+				}
+				doc->SetComment(cell(col, row), text);
+			}
+		}
 	}
 
 	return B_OK;

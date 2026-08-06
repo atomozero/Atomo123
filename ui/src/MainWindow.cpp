@@ -16,6 +16,7 @@
 #include "PasteSpecialWindow.h"
 #include "GoToWindow.h"
 #include "RenameSheetWindow.h"
+#include "CommentWindow.h"
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
 #include "AboutWindow.h"
@@ -102,6 +103,7 @@ static const uint32 kMsgToggleItalic = 'tita';
 static const uint32 kMsgToggleUnderline = 'tund';
 static const uint32 kMsgToggleWrapText = 'twrp';
 static const uint32 kMsgMergeCells = 'mrgc';
+static const uint32 kMsgShowCommentWindow = 'shcw';
 static const uint32 kMsgUnmergeCells = 'umrg';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
@@ -456,6 +458,14 @@ MainWindow::MainWindow()
 	// MergeCells/UnmergeCells.
 	formatMenu->AddItem(new BMenuItem("Unisci celle", new BMessage(kMsgMergeCells)));
 	formatMenu->AddItem(new BMenuItem("Dividi celle", new BMessage(kMsgUnmergeCells)));
+	formatMenu->AddSeparatorItem();
+	// Commento cella (Fase 13): opera sempre sulla sola cella attiva
+	// (fSelection), mai sull'intero intervallo selezionato come
+	// Taglia/Copia/Incolla/Formato -- un commento e' un'annotazione su
+	// UNA cella precisa, non un'operazione che ha senso ripetere su
+	// piu' celle in un colpo solo.
+	formatMenu->AddItem(new BMenuItem("Commento cella" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowCommentWindow)));
 	menuBar->AddItem(formatMenu);
 
 	// Riempi in basso/a destra: copia la prima riga/colonna
@@ -593,6 +603,7 @@ MainWindow::MainWindow()
 	fPasteSpecialWindow = NULL;
 	fGoToWindow = NULL;
 	fRenameSheetWindow = NULL;
+	fCommentWindow = NULL;
 	fColorWindow = NULL;
 	fPreferencesWindow = NULL;
 
@@ -642,6 +653,11 @@ MainWindow::~MainWindow()
 	{
 		fRenameSheetWindow->Lock();
 		fRenameSheetWindow->Quit();
+	}
+	if (fCommentWindow)
+	{
+		fCommentWindow->Lock();
+		fCommentWindow->Quit();
 	}
 	if (fColorWindow)
 	{
@@ -2187,6 +2203,31 @@ void MainWindow::UnmergeCells()
 	MarkModified();
 }
 
+void MainWindow::SetCellComment(int row, int col, const char* text)
+{
+	if (!fDoc)
+		return;
+	fDoc->SetComment(cell(col, row), text ? text : "");
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::RemoveCellComment(int row, int col)
+{
+	if (!fDoc)
+		return;
+	fDoc->SetComment(cell(col, row), ""); // stringa vuota = nessun commento, vedi CContainer::SetComment
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+BString MainWindow::CellComment(int row, int col) const
+{
+	if (!fDoc)
+		return BString();
+	return BString(fDoc->GetComment(cell(col, row)).c_str());
+}
+
 void MainWindow::HandleGoToRequest(const char* rangeText)
 {
 	range r;
@@ -2985,6 +3026,41 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgUnmergeCells:
 			UnmergeCells();
 			break;
+
+		case kMsgShowCommentWindow:
+		{
+			if (!fDoc)
+				break;
+			cell sel = fSheetView->Selection();
+			if (!fCommentWindow)
+				fCommentWindow = new CommentWindow(BMessenger(this));
+			BString current = CellComment(sel.v, sel.h);
+			fCommentWindow->SetCell(sel.v, sel.h, current.String());
+			if (fCommentWindow->IsHidden())
+				fCommentWindow->Show();
+			fCommentWindow->Activate();
+			break;
+		}
+
+		case kMsgCommentCommit:
+		{
+			int32 row, col;
+			BString text;
+			if (message->FindInt32("row", &row) == B_OK
+				&& message->FindInt32("col", &col) == B_OK
+				&& message->FindString("text", &text) == B_OK)
+				SetCellComment(row, col, text.String());
+			break;
+		}
+
+		case kMsgCommentRemove:
+		{
+			int32 row, col;
+			if (message->FindInt32("row", &row) == B_OK
+				&& message->FindInt32("col", &col) == B_OK)
+				RemoveCellComment(row, col);
+			break;
+		}
 
 		case kMsgSetAlignment:
 		{

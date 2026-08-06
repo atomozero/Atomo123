@@ -550,6 +550,18 @@ int main()
 								"l'intervallo dell'AutoFilter (A1:D1) e' importato dal file XLSX originale");
 						}
 
+						// Commenti/note per cella (Fase 13): sample.xlsx
+						// non ne ha nessuno, quindi solo il contatore a
+						// zero, ultima sezione del formato (vedi
+						// WriteASCD sopra).
+						if (pos + 4 <= ascdLen)
+						{
+							int32 commentCount;
+							memcpy(&commentCount, ascdData + pos, 4); pos += 4;
+							Check(commentCount == 0,
+								"nessun commento in sample.xlsx, il contatore e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte

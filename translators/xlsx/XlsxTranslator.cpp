@@ -582,6 +582,21 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione commenti/note per cella, in coda (Fase 13, vedi
+	// ui/src/AscdIO.cpp): questo translator non estrae ancora
+	// <comments>/<legacyDrawing> da un file XLSX vero (rimandato, vedi
+	// ROADMAP.md), quindi qui e' sempre vuota -- scritta comunque,
+	// stesso principio delle altre sezioni "sempre presenti anche se
+	// vuote" sopra: senza, il flusso prodotto da questo WriteASCD non
+	// sarebbe piu' allineato con quanto ReadASCD/LoadASCD si aspettano
+	// di leggere per QUALUNQUE altro foglio scritto dopo di questo in
+	// una cartella di lavoro multi-foglio.
+	{
+		int32 commentCount = 0;
+		if (dest->Write(&commentCount, sizeof(commentCount)) != (ssize_t)sizeof(commentCount))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 

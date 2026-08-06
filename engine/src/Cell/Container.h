@@ -48,6 +48,7 @@
  ***/
 
 #include <map>
+#include <string>
 #include <vector>
 
 #ifndef   CELL_H
@@ -243,6 +244,31 @@ public:
 	// sulla cella in alto a sinistra.
 	bool GetMergedRange(cell c, range* outRange) const;
 
+	// Commenti/note per cella (Fase 13): std::map sparso come
+	// fMergedRanges sopra, non un campo diretto in CellData -- quella
+	// struct porta gia' un'unione+puntatori per OGNI cella, anche le
+	// migliaia che non avranno mai un commento, stesso ragionamento
+	// gia' scritto per le celle unite. std::string, non BString:
+	// Cell.h/Range.h/CellData.h non hanno mai avuto una dipendenza dal
+	// Support Kit finora, restare cosi' anche qui. Un testo vuoto
+	// rimuove il commento invece di lasciarne uno vuoto in giro (un
+	// commento vuoto e "nessun commento" sono la stessa cosa agli
+	// effetti pratici).
+	void SetComment(cell c, const std::string& text)
+	{
+		if (text.empty())
+			fComments.erase(c);
+		else
+			fComments[c] = text;
+	}
+	std::string GetComment(cell c) const
+	{
+		std::map<cell, std::string>::const_iterator it = fComments.find(c);
+		return (it != fComments.end()) ? it->second : std::string();
+	}
+	bool HasComment(cell c) const { return fComments.find(c) != fComments.end(); }
+	const std::map<cell, std::string>& GetComments() const { return fComments; }
+
 private:
 	void Visit(const cell&, void*);
 	bool GetCellData(const cell&, CellData&);
@@ -262,6 +288,7 @@ private:
 	cell fCalculatingCell;
 	ISheetResolver *fSheetResolver;
 	std::vector<range> fMergedRanges;
+	std::map<cell, std::string> fComments;
 };
 
 inline bool CContainer::WriteLock()

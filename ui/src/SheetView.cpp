@@ -1878,6 +1878,24 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				if (isMerged && (mergedRange.top != row || mergedRange.left != col))
 					continue;
 
+				// Indicatore di commento (Fase 13): piccolo triangolo
+				// rosso nell'angolo in alto a destra, come
+				// Excel/LibreOffice Calc -- disegnato PRIMA di
+				// "continue" per una cella senza testo, perche' una
+				// cella puo' avere un commento senza avere nessun
+				// altro contenuto (il "continue" sotto e' solo per il
+				// resto del disegno, testo compreso).
+				if (fDoc->HasComment(c))
+				{
+					BRect cr = CellRect(c);
+					cr.OffsetBy(xOrigin, yOrigin);
+					SetHighColor(200, 40, 40);
+					BPoint p1(cr.right - 6, cr.top + 1);
+					BPoint p2(cr.right, cr.top + 1);
+					BPoint p3(cr.right, cr.top + 7);
+					FillTriangle(p1, p2, p3);
+				}
+
 				BString cellTextStr = FormattedCellText(c);
 				if (cellTextStr.Length() == 0)
 					continue;

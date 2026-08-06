@@ -36,6 +36,7 @@ class NameWindow;
 class PasteSpecialWindow;
 class GoToWindow;
 class RenameSheetWindow;
+class CommentWindow;
 class ColorWindow;
 class PreferencesWindow;
 
@@ -192,6 +193,16 @@ public:
 	void RenameSheet(int index, const char* newName);
 	BString UniqueSheetName(const char* prefix) const;
 
+	// Commenti/note per cella (Fase 13): pubblici per lo stesso motivo
+	// di NewSheet/RenameSheet sopra -- CommentWindow (un vero BWindow,
+	// come RenameSheetWindow) inoltra a MainWindow il testo digitato
+	// tramite kMsgCommentCommit/kMsgCommentRemove invece di toccare
+	// fDoc direttamente, ma SetCellComment/RemoveCellComment restano
+	// comunque testabili senza passare da una vera finestra.
+	void SetCellComment(int row, int col, const char* text);
+	void RemoveCellComment(int row, int col);
+	BString CellComment(int row, int col) const;
+
 	// ISheetResolver (Fase 9): risolve "NomeFoglio!Cella" verso il
 	// CContainer corrispondente in fSheets, per nome. Pubblico perche'
 	// la classe lo espone come override di un'interfaccia pubblica, non
@@ -261,6 +272,7 @@ private:
 	PasteSpecialWindow* fPasteSpecialWindow;
 	GoToWindow* fGoToWindow;
 	RenameSheetWindow* fRenameSheetWindow;
+	CommentWindow* fCommentWindow;
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
 	std::vector<ChartObject> fCharts;
