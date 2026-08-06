@@ -34,7 +34,7 @@ resource file_types message {
 
 resource app_version {
 	major  = 0,
-	middle = 1,
+	middle = 9,
 	minor  = 0,
 
 	variety = B_APPV_DEVELOPMENT,
