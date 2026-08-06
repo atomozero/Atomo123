@@ -413,6 +413,15 @@ MainWindow::MainWindow()
 	fSheetTabView = NULL;
 	fFreezeMenuItem = NULL; // stesso motivo di fSheetView/fSheetTabView sopra
 	fRecentMenu = NULL; // stesso motivo, azzerato prima di essere creato piu' sotto
+	// Letto da gPrefs PRIMA di RebuildRecentMenu() piu' sotto (usa
+	// fMaxRecentFiles per decidere quante voci mostrare): gPrefs puo'
+	// essere NULL in un test senza una vera App::App(), stesso motivo di
+	// LoadRecentFiles/SaveRecentFiles sotto.
+	fMaxRecentFiles = gPrefs ? gPrefs->GetPrefInt("maxRecentFiles", 5) : 5;
+	if (fMaxRecentFiles < 1)
+		fMaxRecentFiles = 1;
+	if (fMaxRecentFiles > kMaxRecentFilesLimit)
+		fMaxRecentFiles = kMaxRecentFilesLimit;
 	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
 	ResetWorkbook("Foglio1");
 	fModified = false;
@@ -1132,7 +1141,7 @@ std::vector<BString> MainWindow::LoadRecentFiles()
 	if (!gPrefs) // vedi il commento sui test senza una vera App::App() altrove in questo file
 		return result;
 
-	for (int i = 0; i < kMaxRecentFiles; i++)
+	for (int i = 0; i < kMaxRecentFilesLimit; i++)
 	{
 		char key[16];
 		sprintf(key, "recentFile%d", i);
@@ -1148,7 +1157,7 @@ void MainWindow::SaveRecentFiles(const std::vector<BString>& paths)
 	if (!gPrefs)
 		return;
 
-	for (int i = 0; i < kMaxRecentFiles; i++)
+	for (int i = 0; i < kMaxRecentFilesLimit; i++)
 	{
 		char key[16];
 		sprintf(key, "recentFile%d", i);
@@ -1160,7 +1169,8 @@ void MainWindow::SaveRecentFiles(const std::vector<BString>& paths)
 // Aggiunge/sposta "ref" in cima all'elenco (piu' recente per primo),
 // senza duplicati (confronto sul percorso completo, non sul solo nome:
 // due file con lo stesso nome in cartelle diverse restano voci
-// separate) e troncato a kMaxRecentFiles.
+// separate) e troncato a fMaxRecentFiles (scelto dall'utente in
+// Preferenze, non piu' un numero fisso).
 void MainWindow::AddToRecentFiles(const entry_ref& ref)
 {
 	BPath path;
@@ -1177,8 +1187,8 @@ void MainWindow::AddToRecentFiles(const entry_ref& ref)
 		}
 	}
 	recent.insert(recent.begin(), path.Path());
-	if (recent.size() > (size_t)kMaxRecentFiles)
-		recent.resize(kMaxRecentFiles);
+	if (recent.size() > (size_t)fMaxRecentFiles)
+		recent.resize(fMaxRecentFiles);
 
 	SaveRecentFiles(recent);
 	RebuildRecentMenu();
@@ -1193,6 +1203,13 @@ void MainWindow::RebuildRecentMenu()
 		delete item;
 
 	std::vector<BString> recent = LoadRecentFiles();
+	// Troncato a fMaxRecentFiles anche qui, non solo in AddToRecentFiles:
+	// se l'utente ha appena abbassato il numero in Preferenze, l'elenco
+	// gia' salvato su disco puo' averne ancora di piu' finche' non si
+	// apre un altro file (che lo tronca da solo sopra) -- qui si vede
+	// subito l'effetto della nuova preferenza, senza aspettare quel giro.
+	if (recent.size() > (size_t)fMaxRecentFiles)
+		recent.resize(fMaxRecentFiles);
 	if (recent.empty())
 	{
 		BMenuItem* none = new BMenuItem("(nessuno)", NULL);
@@ -1950,7 +1967,8 @@ void MainWindow::ShowPreferencesWindow()
 	// thread.
 	if (fPreferencesWindow->Lock())
 	{
-		fPreferencesWindow->SetValues(fSheetView->ShowGrid(), gDecimalPoint, gListSeparator);
+		fPreferencesWindow->SetValues(fSheetView->ShowGrid(), gDecimalPoint, gListSeparator,
+			fMaxRecentFiles);
 		fPreferencesWindow->Unlock();
 	}
 
@@ -1959,7 +1977,8 @@ void MainWindow::ShowPreferencesWindow()
 	fPreferencesWindow->Activate();
 }
 
-void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep)
+void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep,
+	int maxRecentFiles)
 {
 	fSheetView->SetShowGrid(showGrid);
 	// showGrid e' ora un attributo per-foglio (vedi AscdSheet::showGrid
@@ -1974,6 +1993,18 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 	gDecimalPoint = decimalSep;
 	gListSeparator = listSep;
 
+	if (maxRecentFiles < 1)
+		maxRecentFiles = 1;
+	if (maxRecentFiles > kMaxRecentFilesLimit)
+		maxRecentFiles = kMaxRecentFilesLimit;
+	fMaxRecentFiles = maxRecentFiles;
+	// Rifa' subito l'elenco visibile: se l'utente ha appena abbassato il
+	// numero, RebuildRecentMenu tronca la visualizzazione da solo (vedi
+	// il commento li'), ma i file "in eccesso" restano su disco finche'
+	// non si apre un altro file -- non serve troncarli qui, solo
+	// rinfrescare il menu con la nuova preferenza appena impostata.
+	RebuildRecentMenu();
+
 	// gPrefs (Preferences.h) puo' essere NULL in un test che non passa
 	// da App::App() (vedi il commento li'): l'effetto in memoria sopra
 	// resta comunque valido e testabile, solo la persistenza su disco
@@ -1985,6 +2016,7 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 		gPrefs->SetPrefString("decimalSeparator", decStr);
 		gPrefs->SetPrefString("listSeparator", listStr);
 		gPrefs->SetPrefInt("showGrid", showGrid ? 1 : 0);
+		gPrefs->SetPrefInt("maxRecentFiles", fMaxRecentFiles);
 		try { gPrefs->WritePrefFile(); }
 		catch (CErr&) { }
 	}
@@ -3639,10 +3671,13 @@ void MainWindow::MessageReceived(BMessage* message)
 		{
 			bool showGrid = true;
 			int8 decimalSep = '.', listSep = ';';
+			int32 maxRecentFiles = fMaxRecentFiles;
 			message->FindBool("showGrid", &showGrid);
 			message->FindInt8("decimalSeparator", &decimalSep);
 			message->FindInt8("listSeparator", &listSep);
-			HandlePreferencesRequest(showGrid, (char)decimalSep, (char)listSep);
+			message->FindInt32("maxRecentFiles", &maxRecentFiles);
+			HandlePreferencesRequest(showGrid, (char)decimalSep, (char)listSep,
+				(int)maxRecentFiles);
 			break;
 		}
 

@@ -1,17 +1,18 @@
 /*
 	test_preferences.cpp
 
-	Verifica la finestra Preferenze (Fase 7,
+	Verifica la finestra Preferenze (Fase 7, sezioni ampliate in Fase 13,
 	MainWindow::HandlePreferencesRequest): mostra/nascondi griglia
-	(SheetView::ShowGrid, per-vista) e i separatori decimale/di elenco
+	(SheetView::ShowGrid, per-vista), i separatori decimale/di elenco
 	usati dal parser di formule (gDecimalPoint/gListSeparator, globali
-	al motore -- vedi CParser/TryToParseString). Non copre la
-	persistenza su disco tramite gPrefs (Preferences.h): in questo
-	harness, come tutti gli altri test UI, gPrefs resta NULL (nessuna
-	App::App() reale, solo una BApplication semplice), quindi
-	HandlePreferencesRequest applica l'effetto in memoria e basta --
-	verificato esplicitamente qui sotto, cosi' non resta un ramo di
-	codice mai testato in questo file.
+	al motore -- vedi CParser/TryToParseString), e il numero di file
+	recenti da ricordare (MainWindow::fMaxRecentFiles, prima un limite
+	fisso nel codice). Non copre la persistenza su disco tramite gPrefs
+	(Preferences.h): in questo harness, come tutti gli altri test UI,
+	gPrefs resta NULL (nessuna App::App() reale, solo una BApplication
+	semplice), quindi HandlePreferencesRequest applica l'effetto in
+	memoria e basta -- verificato esplicitamente qui sotto, cosi' non
+	resta un ramo di codice mai testato in questo file.
 */
 
 #include <cstdio>
@@ -55,7 +56,7 @@ int main()
 	char originalDecimal = gDecimalPoint;
 	char originalList = gListSeparator;
 
-	win->HandlePreferencesRequest(false, ',', ',');
+	win->HandlePreferencesRequest(false, ',', ',', 5);
 	Check(!view->ShowGrid(), "HandlePreferencesRequest(showGrid=false) nasconde la griglia");
 	Check(gDecimalPoint == ',', "HandlePreferencesRequest imposta il separatore decimale globale");
 	Check(gListSeparator == ',', "HandlePreferencesRequest imposta il separatore di elenco globale");
@@ -69,10 +70,29 @@ int main()
 	Check(v.fType == eNumData && (double)v == 1.5,
 		"col nuovo separatore decimale (virgola), \"1,5\" si interpreta come 1.5, non come testo");
 
-	win->HandlePreferencesRequest(true, '.', ';');
+	win->HandlePreferencesRequest(true, '.', ';', 5);
 	Check(view->ShowGrid(), "un secondo HandlePreferencesRequest riattiva la griglia");
 	Check(gDecimalPoint == '.' && gListSeparator == ';',
 		"e ripristina i separatori originali");
+
+	// Numero di file recenti da ricordare (prima MainWindow::
+	// kMaxRecentFiles fisso a 5, ora scelto in Preferenze): fuori
+	// range viene bloccato ai limiti [1, kMaxRecentFilesLimit] invece
+	// di accettare valori assurdi (0, negativi, o oltre gli slot
+	// riservati in gPrefs).
+	win->HandlePreferencesRequest(true, '.', ';', 10);
+	Check(win->MaxRecentFiles() == 10,
+		"HandlePreferencesRequest accetta un numero di file recenti valido (10)");
+
+	win->HandlePreferencesRequest(true, '.', ';', 0);
+	Check(win->MaxRecentFiles() == 1,
+		"un numero di file recenti troppo basso (0) viene riportato al minimo (1)");
+
+	win->HandlePreferencesRequest(true, '.', ';', 999);
+	Check(win->MaxRecentFiles() == 15,
+		"un numero di file recenti troppo alto (999) viene riportato al massimo (kMaxRecentFilesLimit)");
+
+	win->HandlePreferencesRequest(true, '.', ';', 5); // ripristina il predefinito
 
 	// Ripristina i globali com'erano prima del test: sono processo-globali
 	// al motore, non locali a questo documento, e questo processo di test

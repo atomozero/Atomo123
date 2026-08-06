@@ -6,18 +6,27 @@
 
 #include "PreferencesWindow.h"
 
+#include <Box.h>
 #include <Button.h>
 #include <CheckBox.h>
 #include <LayoutBuilder.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
+#include <StringView.h>
 
 static const uint32 kMsgApplyLocal = 'aplp';
 
+// Scelte proposte per "numero di file recenti": stessi valori
+// dell'equivalente in altre app Haiku (Tracker, WebPositive), piu' un
+// valore alto per chi tiene molti documenti aperti in rotazione.
+// MainWindow::kMaxRecentFilesLimit (15) e' il tetto degli slot
+// riservati in gPrefs -- deve restare >= all'ultimo valore qui.
+static const int kRecentChoices[] = { 3, 5, 10, 15 };
+
 PreferencesWindow::PreferencesWindow(BMessenger target)
 	:
-	BWindow(BRect(180, 180, 460, 320), "Preferenze",
+	BWindow(BRect(180, 180, 460, 360), "Preferenze",
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
@@ -37,26 +46,75 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 	listMenu->ItemAt(0)->SetMarked(true);
 	fListField = new BMenuField("listField", "Separatore di elenco:", listMenu);
 
+	// Generale: vista del foglio e interpretazione dei numeri digitati
+	// nelle formule -- le tre preferenze originali di Fase 7.
+	BBox* generalBox = new BBox("generalBox");
+	generalBox->SetLabel("Generale");
+	BLayoutBuilder::Group<>(generalBox, B_VERTICAL, 6)
+		.SetInsets(8, generalBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fShowGridBox)
+		.Add(fDecimalField)
+		.Add(fListField);
+
+	BPopUpMenu* recentMenu = new BPopUpMenu("recent");
+	for (size_t i = 0; i < sizeof(kRecentChoices) / sizeof(kRecentChoices[0]); i++)
+	{
+		BString label;
+		label << kRecentChoices[i];
+		recentMenu->AddItem(new BMenuItem(label.String(), NULL));
+	}
+	recentMenu->ItemAt(1)->SetMarked(true); // 5, il valore predefinito
+	fRecentField = new BMenuField("recentField", "File recenti da ricordare:", recentMenu);
+
+	// File: comportamento del menu File > "Apri recenti" -- prima un
+	// numero fisso nel codice (MainWindow::kMaxRecentFiles = 5), ora
+	// scelto qui (vedi MainWindow::fMaxRecentFiles).
+	BBox* fileBox = new BBox("fileBox");
+	fileBox->SetLabel("File");
+	BLayoutBuilder::Group<>(fileBox, B_VERTICAL, 6)
+		.SetInsets(8, fileBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fRecentField);
+
 	BButton* applyButton = new BButton("apply", "Applica", new BMessage(kMsgApplyLocal));
 	applyButton->SetTarget(this);
 	applyButton->MakeDefault(true);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
 		.SetInsets(8, 8, 8, 8)
-		.Add(fShowGridBox)
-		.Add(fDecimalField)
-		.Add(fListField)
+		.Add(generalBox)
+		.Add(fileBox)
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
 			.Add(applyButton)
 		.End();
 }
 
-void PreferencesWindow::SetValues(bool showGrid, char decimalSep, char listSep)
+void PreferencesWindow::SetValues(bool showGrid, char decimalSep, char listSep,
+	int maxRecentFiles)
 {
 	fShowGridBox->SetValue(showGrid ? B_CONTROL_ON : B_CONTROL_OFF);
 	fDecimalField->Menu()->ItemAt(decimalSep == ',' ? 1 : 0)->SetMarked(true);
 	fListField->Menu()->ItemAt(listSep == ',' ? 1 : 0)->SetMarked(true);
+
+	// Segna la scelta piu' vicina fra quelle proposte: se gPrefs
+	// contiene un valore non elencato (es. modificato a mano nel file
+	// di preferenze), non deve lasciare il menu senza nessuna voce
+	// marcata.
+	size_t count = sizeof(kRecentChoices) / sizeof(kRecentChoices[0]);
+	size_t closest = 0;
+	int bestDiff = -1;
+	for (size_t i = 0; i < count; i++)
+	{
+		int diff = maxRecentFiles - kRecentChoices[i];
+		if (diff < 0)
+			diff = -diff;
+		if (bestDiff < 0 || diff < bestDiff)
+		{
+			bestDiff = diff;
+			closest = i;
+		}
+	}
+	fRecentField->Menu()->ItemAt(closest)->SetMarked(true);
 }
 
 void PreferencesWindow::MessageReceived(BMessage* message)
@@ -71,10 +129,19 @@ void PreferencesWindow::MessageReceived(BMessage* message)
 		char listSep = (markedList
 			&& fListField->Menu()->IndexOf(markedList) == 1) ? ',' : ';';
 
+		BMenuItem* markedRecent = fRecentField->Menu()->FindMarked();
+		int32 recentIndex = markedRecent
+			? fRecentField->Menu()->IndexOf(markedRecent) : 1;
+		int maxRecentFiles = kRecentChoices[1];
+		if (recentIndex >= 0
+			&& (size_t)recentIndex < sizeof(kRecentChoices) / sizeof(kRecentChoices[0]))
+			maxRecentFiles = kRecentChoices[recentIndex];
+
 		BMessage request(kMsgPreferencesRequest);
 		request.AddBool("showGrid", fShowGridBox->Value() == B_CONTROL_ON);
 		request.AddInt8("decimalSeparator", decimalSep);
 		request.AddInt8("listSeparator", listSep);
+		request.AddInt32("maxRecentFiles", maxRecentFiles);
 		fTarget.SendMessage(&request);
 		return;
 	}

@@ -77,6 +77,10 @@ public:
 	// verifica diretta senza passare da un vero ciclo di dispatch dei
 	// messaggi di menu.
 	SheetView* GetSheetView() const { return fSheetView; }
+	// Pubblico apposta per essere testabile senza passare da una vera
+	// PreferencesWindow (stesso principio di GetSheetView sopra): vedi
+	// tests/test_preferences.cpp.
+	int MaxRecentFiles() const { return fMaxRecentFiles; }
 	// Pubblico apposta per essere testabile direttamente (stesso
 	// principio di GetSheetView sopra): verifica che SelectionChanged
 	// anteponga davvero "=" al testo di una cella con formula (vedi il
@@ -147,7 +151,7 @@ public:
 	// TryToParseString quando non si passa un separatore esplicito),
 	// quindi valgono per l'intera applicazione, non solo per il
 	// documento corrente -- stesso comportamento di Sum-It storico.
-	void HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep);
+	void HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep, int maxRecentFiles);
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che
@@ -300,15 +304,19 @@ public:
 
 private:
 	// Elenco degli ultimi file aperti (menu File > "Apri recenti"),
-	// persistito in gPrefs come 5 chiavi "recentFileN" (N=0..4, la piu'
-	// recente per prima) -- CPreferences non ha un tipo lista, solo
+	// persistito in gPrefs come chiavi "recentFileN" (N=0..kMaxRecentFilesLimit-1,
+	// la piu' recente per prima) -- CPreferences non ha un tipo lista, solo
 	// stringa/intero/double (vedi Preferences.h), da qui lo slot fisso
-	// invece di una singola stringa con separatore.
-	static const int kMaxRecentFiles = 5;
+	// invece di una singola stringa con separatore. kMaxRecentFilesLimit e'
+	// solo il tetto di slot riservati in gPrefs (abbastanza alto da coprire
+	// l'opzione piu' grande della finestra Preferenze); quanti se ne
+	// mostrano/tengono davvero e' fMaxRecentFiles, scelto dall'utente.
+	static const int kMaxRecentFilesLimit = 15;
 	static std::vector<BString> LoadRecentFiles();
 	static void SaveRecentFiles(const std::vector<BString>& paths);
 	void AddToRecentFiles(const entry_ref& ref);
 	void RebuildRecentMenu();
+	int fMaxRecentFiles;
 
 	SheetView* fSheetView;
 	BMenuItem* fFreezeMenuItem;
