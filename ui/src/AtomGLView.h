@@ -61,6 +61,12 @@ private:
 	GLUquadric*				fQuadric;
 	TextTexture				fTitleTex;
 	TextTexture				fSubtitleTex;
+	// Numero di versione (es. "v0.9.0"), letto da BAppFileInfo invece
+	// che scritto qui a mano -- resta sempre allineato a quello vero
+	// del binario in esecuzione, non a un valore facile da dimenticare
+	// di aggiornare a ogni release. Allineato a destra nel footer,
+	// speculare a titolo/credito a sinistra.
+	TextTexture				fVersionTex;
 
 	static const int		kStarCount = 160;
 	Star					fStars[kStarCount];

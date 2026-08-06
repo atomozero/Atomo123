@@ -38,7 +38,8 @@ public:
 	// MainWindow prima di mostrare la finestra) -- altrimenti, alla
 	// seconda apertura, mostrerebbe ancora i valori scelti la prima
 	// volta invece di quelli davvero in vigore.
-	void SetValues(bool showGrid, char decimalSep, char listSep, int maxRecentFiles);
+	void SetValues(bool showGrid, char decimalSep, char listSep, int maxRecentFiles,
+		bool showSplash);
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
@@ -48,6 +49,7 @@ private:
 	BMenuField* fDecimalField;
 	BMenuField* fListField;
 	BMenuField* fRecentField;
+	BCheckBox* fShowSplashBox;
 	BMessenger fTarget;
 };
 

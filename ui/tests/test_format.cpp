@@ -121,6 +121,35 @@ int main()
 	Check(cs.fLowColor.red == 0 && cs.fLowColor.green == 0 && cs.fLowColor.blue == 255,
 		"SetBackgroundColor(blu) imposta il colore di sfondo di A1, indipendente dal testo");
 
+	// Annulla/Ripeti sulla formattazione (bug reale segnalato
+	// dall'utente: "Annulla" non toccava affatto lo stile, solo i
+	// valori delle celle -- vedi SheetView::UndoCellSnapshot). Riparte
+	// da una cella pulita apposta, per non dipendere dalle chiamate
+	// sopra.
+	view->SetSelection(cell(3, 1));
+	view->ExtendSelection(cell(3, 1)); // C1, mai toccata finora
+	Check(!StyleHas(doc, cell(3, 1), "Bold"), "C1 non e' in grassetto prima del test annulla/ripeti");
+
+	win->ToggleBold();
+	Check(StyleHas(doc, cell(3, 1), "Bold"), "ToggleBold mette C1 in grassetto");
+
+	view->Undo();
+	Check(!StyleHas(doc, cell(3, 1), "Bold"),
+		"Annulla dopo ToggleBold toglie di nuovo il grassetto da C1 -- prima di questo fix non succedeva nulla");
+
+	view->Redo();
+	Check(StyleHas(doc, cell(3, 1), "Bold"), "Ripeti dopo Annulla rimette C1 in grassetto");
+
+	// Stessa verifica per l'allineamento, giusto per non fidarsi che
+	// funzioni solo perche' funziona per grassetto/corsivo.
+	view->SetSelection(cell(3, 2));
+	view->ExtendSelection(cell(3, 2)); // C2
+	win->SetAlignment(eAlignRight);
+	view->Undo();
+	doc->GetCellStyle(cell(3, 2), cs);
+	Check(cs.fAlignment != eAlignRight,
+		"Annulla dopo SetAlignment(eAlignRight) ripristina l'allineamento precedente su C2");
+
 	win->Unlock();
 
 	win->Lock();

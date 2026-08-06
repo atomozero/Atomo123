@@ -2,11 +2,15 @@
 
 #include <GL/glu.h>
 
+#include <AppFileInfo.h>
+#include <Application.h>
+#include <File.h>
 #include <Message.h>
 #include <Window.h>
 
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 static const uint32 kMsgTick = 'tick';
 static const float kTextFadeDuration = 1.6f;	// secondi, ingresso testo
@@ -19,6 +23,30 @@ static inline void
 glColorRGBA(rgb_color c, float alpha)
 {
 	glColor4f(c.red / 255.0f, c.green / 255.0f, c.blue / 255.0f, alpha);
+}
+
+// "v0.9.0" ecc., letta dalla vera risorsa app_version del binario in
+// esecuzione (Atomo123.rdef) invece che scritta qui a mano: resta
+// sempre allineata alla release vera, non a un numero facile da
+// dimenticare di aggiornare. Stringa vuota (nessun testo disegnato) se
+// per qualche motivo l'informazione non e' disponibile (es. eseguito
+// senza risorse allegate) -- non deve mai bloccare lo splash.
+static void
+GetVersionString(char* out, size_t outSize)
+{
+	out[0] = 0;
+	app_info info;
+	if (!be_app || be_app->GetAppInfo(&info) != B_OK)
+		return;
+
+	BFile file(&info.ref, B_READ_ONLY);
+	BAppFileInfo appFileInfo(&file);
+	version_info versionInfo;
+	if (appFileInfo.GetVersionInfo(&versionInfo, B_APP_VERSION_KIND) != B_OK)
+		return;
+
+	snprintf(out, outSize, "v%" B_PRIu32 ".%" B_PRIu32 ".%" B_PRIu32,
+		versionInfo.major, versionInfo.middle, versionInfo.minor);
 }
 
 
@@ -92,6 +120,11 @@ AtomGLView::_Init()
 	fTitleTex.Build("Atomo123", 60.0f, (rgb_color){255, 255, 255, 255}, true);
 	fSubtitleTex.Build("Sviluppato da StudioBernardi.eu", 22.0f,
 		(rgb_color){255, 255, 255, 255}, false);
+
+	char versionStr[32];
+	GetVersionString(versionStr, sizeof(versionStr));
+	if (versionStr[0])
+		fVersionTex.Build(versionStr, 22.0f, (rgb_color){255, 255, 255, 255}, false);
 }
 
 
@@ -405,6 +438,18 @@ AtomGLView::_DrawText(float width, float height)
 	_DrawTexturedQuad(fSubtitleTex,
 		kBandPadding + subtitleHeight * fSubtitleTex.AspectRatio() * 0.5f,
 		bandTop + 71.0f + rise * 0.6f, subtitleHeight, kTheme.subtitle, fade);
+
+	// Versione, speculare al titolo/credito: allineata a destra invece
+	// che a sinistra, stesso margine kBandPadding, centrata in verticale
+	// nella striscia invece di impilata su due righe (e' una sola riga
+	// corta, non ha bisogno di altro spazio).
+	if (fVersionTex.IsValid())
+	{
+		const float versionHeight = 22.0f;
+		float w = versionHeight * fVersionTex.AspectRatio();
+		_DrawTexturedQuad(fVersionTex, width - kBandPadding - w * 0.5f,
+			bandTop + kBandHeight * 0.5f + rise * 0.6f, versionHeight, kTheme.subtitle, fade);
+	}
 
 	glDisable(GL_TEXTURE_2D);
 }

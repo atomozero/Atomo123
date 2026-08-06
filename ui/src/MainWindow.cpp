@@ -1917,8 +1917,9 @@ void MainWindow::ShowPreferencesWindow()
 	// thread.
 	if (fPreferencesWindow->Lock())
 	{
+		bool showSplash = gPrefs ? (gPrefs->GetPrefInt("showSplash", 1) != 0) : true;
 		fPreferencesWindow->SetValues(fSheetView->ShowGrid(), gDecimalPoint, gListSeparator,
-			fMaxRecentFiles);
+			fMaxRecentFiles, showSplash);
 		fPreferencesWindow->Unlock();
 	}
 
@@ -1928,7 +1929,7 @@ void MainWindow::ShowPreferencesWindow()
 }
 
 void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep,
-	int maxRecentFiles)
+	int maxRecentFiles, bool showSplash)
 {
 	fSheetView->SetShowGrid(showGrid);
 	// showGrid e' ora un attributo per-foglio (vedi AscdSheet::showGrid
@@ -1967,6 +1968,11 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 		gPrefs->SetPrefString("listSeparator", listStr);
 		gPrefs->SetPrefInt("showGrid", showGrid ? 1 : 0);
 		gPrefs->SetPrefInt("maxRecentFiles", fMaxRecentFiles);
+		// Letta solo da App::ReadyToRun al prossimo avvio (vedi il
+		// commento li'): non c'e' nessuno stato "vivo" da aggiornare qui
+		// nella finestra corrente, a differenza di showGrid/separatori/
+		// file recenti sopra.
+		gPrefs->SetPrefInt("showSplash", showSplash ? 1 : 0);
 		try { gPrefs->WritePrefFile(); }
 		catch (CErr&) { }
 	}
@@ -2032,6 +2038,12 @@ void MainWindow::ToggleBold()
 	if (!fDoc)
 		return;
 
+	// Bug reale segnalato dall'utente: "Annulla" non toccava affatto la
+	// formattazione, solo i valori delle celle -- SaveUndoState cattura
+	// ora anche CellStyle (vedi SheetView::UndoCellSnapshot), qui come
+	// nelle altre funzioni di formattazione sotto.
+	fSheetView->SaveUndoState(fSheetView->SelectionRange());
+
 	CellStyle cs;
 	fDoc->GetCellStyle(fSheetView->Selection(), cs);
 	font_family family;
@@ -2069,6 +2081,9 @@ void MainWindow::ToggleItalic()
 	if (!fDoc)
 		return;
 
+	// Stesso motivo di ToggleBold sopra.
+	fSheetView->SaveUndoState(fSheetView->SelectionRange());
+
 	CellStyle cs;
 	fDoc->GetCellStyle(fSheetView->Selection(), cs);
 	font_family family;
@@ -2102,6 +2117,7 @@ void MainWindow::SetAlignment(char alignment)
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{
@@ -2121,6 +2137,7 @@ void MainWindow::SetTextColor(rgb_color color)
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{
@@ -2140,6 +2157,7 @@ void MainWindow::SetBackgroundColor(rgb_color color)
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{
@@ -2183,6 +2201,7 @@ void MainWindow::ToggleBorder(int side)
 	uchar newValue = hadBorder ? 0 : 1;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{
@@ -2202,6 +2221,7 @@ void MainWindow::ClearBorders()
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{
@@ -2225,6 +2245,7 @@ void MainWindow::SetBorderThickness(uchar thickness)
 	// attivare un lato che non c'era (quello resta compito di
 	// ToggleBorder).
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{
@@ -2249,6 +2270,7 @@ void MainWindow::SetBorderColor(rgb_color color)
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{
@@ -2277,6 +2299,7 @@ void MainWindow::ToggleUnderline()
 	bool newValue = !activeStyle.fUnderline;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{
@@ -2308,6 +2331,7 @@ void MainWindow::ToggleWrapText()
 	bool newValue = !activeStyle.fWrapText;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 		{
@@ -2347,6 +2371,15 @@ static std::vector<range> RemoveOverlappingMerges(const std::vector<range>& exis
 // DrawCellBand): scelta deliberata per restare non distruttiva senza
 // una finestra di conferma dedicata -- Dividi celle lo farebbe
 // ricomparire.
+//
+// Non ancora annullabile con Annulla/Ripeti (a differenza delle
+// funzioni di formattazione sopra, corrette per lo stesso motivo):
+// GetMergedRanges/AddMergedRange sono per foglio, non per cella, e non
+// rientrano nel formato di UndoSnapshot (SheetView.h) -- includerli
+// li' richiederebbe salvare l'intero elenco a ogni istantanea, con il
+// rischio concreto di annullare anche unioni successive scorrelate
+// quando si annulla un'altra modifica nel frattempo. Limite noto,
+// lasciato esplicito qui invece di un mezzo fix silenzioso.
 void MainWindow::MergeCells()
 {
 	if (!fDoc)
@@ -3443,6 +3476,17 @@ void MainWindow::MessageReceived(BMessage* message)
 			if (!fCommentWindow)
 				fCommentWindow = new CommentWindow(BMessenger(this));
 			BString current = CellComment(sel.v, sel.h);
+			// Show()/Activate() PRIMA di SetCell(), non dopo: il fuoco
+			// tastiera si stabilisce davvero solo quando la finestra e'
+			// gia' attiva sul serio (bug reale segnalato dall'utente --
+			// il cursore lampeggiava ma i tasti non scrivevano nulla,
+			// perche' MakeFocus() nel costruttore avveniva prima che la
+			// finestra fosse mai mostrata). SetCell() sotto chiama di
+			// nuovo MakeFocus() alla fine, ora che l'ordine e' quello
+			// giusto.
+			if (fCommentWindow->IsHidden())
+				fCommentWindow->Show();
+			fCommentWindow->Activate();
 			// SetCell tocca fTextView, una BView che vive sul thread di
 			// fCommentWindow (una BWindow a se'): senza il lock, un
 			// secondo commento aperto su questo stesso thread va in
@@ -3454,9 +3498,6 @@ void MainWindow::MessageReceived(BMessage* message)
 				fCommentWindow->SetCell(sel.v, sel.h, current.String());
 				fCommentWindow->Unlock();
 			}
-			if (fCommentWindow->IsHidden())
-				fCommentWindow->Show();
-			fCommentWindow->Activate();
 			break;
 		}
 
@@ -3649,12 +3690,14 @@ void MainWindow::MessageReceived(BMessage* message)
 			bool showGrid = true;
 			int8 decimalSep = '.', listSep = ';';
 			int32 maxRecentFiles = fMaxRecentFiles;
+			bool showSplash = true;
 			message->FindBool("showGrid", &showGrid);
 			message->FindInt8("decimalSeparator", &decimalSep);
 			message->FindInt8("listSeparator", &listSep);
 			message->FindInt32("maxRecentFiles", &maxRecentFiles);
+			message->FindBool("showSplash", &showSplash);
 			HandlePreferencesRequest(showGrid, (char)decimalSep, (char)listSep,
-				(int)maxRecentFiles);
+				(int)maxRecentFiles, showSplash);
 			break;
 		}
 

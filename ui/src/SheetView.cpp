@@ -1323,7 +1323,11 @@ SheetView::UndoSnapshot SheetView::CaptureSnapshot(range r) const
 	{
 		char text[4096];
 		fDoc->GetCellFormula(c, text, sizeof(text), false);
-		snap.cells.push_back(std::make_pair(c, std::string(text)));
+		UndoCellSnapshot cs;
+		cs.c = c;
+		cs.text = text;
+		fDoc->GetCellStyle(c, cs.style);
+		snap.cells.push_back(cs);
 	}
 
 	return snap;
@@ -1344,8 +1348,8 @@ void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 
 	for (size_t i = 0; i < snap.cells.size(); i++)
 	{
-		const cell& c = snap.cells[i].first;
-		const std::string& text = snap.cells[i].second;
+		const cell& c = snap.cells[i].c;
+		const std::string& text = snap.cells[i].text;
 		if (!text.empty())
 		{
 			try
@@ -1356,6 +1360,14 @@ void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 			{
 			}
 		}
+		// Lo stile va riapplicato SEMPRE, non solo se il testo non era
+		// vuoto: una cella puo' essere formattata (es. sfondo colorato)
+		// senza contenere nulla. SetCellStyle prende CellStyle& non
+		// const, da qui la copia locale -- e' comunque un no-op se lo
+		// stile catturato era quello predefinito e la cella non esiste
+		// piu' (vedi CContainer::SetCellStyleNr).
+		CellStyle style = snap.cells[i].style;
+		fDoc->SetCellStyle(c, style);
 	}
 
 	RecalculateOwningWorkbook();

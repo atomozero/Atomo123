@@ -56,7 +56,7 @@ int main()
 	char originalDecimal = gDecimalPoint;
 	char originalList = gListSeparator;
 
-	win->HandlePreferencesRequest(false, ',', ',', 5);
+	win->HandlePreferencesRequest(false, ',', ',', 5, true);
 	Check(!view->ShowGrid(), "HandlePreferencesRequest(showGrid=false) nasconde la griglia");
 	Check(gDecimalPoint == ',', "HandlePreferencesRequest imposta il separatore decimale globale");
 	Check(gListSeparator == ',', "HandlePreferencesRequest imposta il separatore di elenco globale");
@@ -70,7 +70,7 @@ int main()
 	Check(v.fType == eNumData && (double)v == 1.5,
 		"col nuovo separatore decimale (virgola), \"1,5\" si interpreta come 1.5, non come testo");
 
-	win->HandlePreferencesRequest(true, '.', ';', 5);
+	win->HandlePreferencesRequest(true, '.', ';', 5, true);
 	Check(view->ShowGrid(), "un secondo HandlePreferencesRequest riattiva la griglia");
 	Check(gDecimalPoint == '.' && gListSeparator == ';',
 		"e ripristina i separatori originali");
@@ -80,19 +80,25 @@ int main()
 	// range viene bloccato ai limiti [1, kMaxRecentFilesLimit] invece
 	// di accettare valori assurdi (0, negativi, o oltre gli slot
 	// riservati in gPrefs).
-	win->HandlePreferencesRequest(true, '.', ';', 10);
+	win->HandlePreferencesRequest(true, '.', ';', 10, true);
 	Check(win->MaxRecentFiles() == 10,
 		"HandlePreferencesRequest accetta un numero di file recenti valido (10)");
 
-	win->HandlePreferencesRequest(true, '.', ';', 0);
+	win->HandlePreferencesRequest(true, '.', ';', 0, true);
 	Check(win->MaxRecentFiles() == 1,
 		"un numero di file recenti troppo basso (0) viene riportato al minimo (1)");
 
-	win->HandlePreferencesRequest(true, '.', ';', 999);
+	win->HandlePreferencesRequest(true, '.', ';', 999, true);
 	Check(win->MaxRecentFiles() == 15,
 		"un numero di file recenti troppo alto (999) viene riportato al massimo (kMaxRecentFilesLimit)");
 
-	win->HandlePreferencesRequest(true, '.', ';', 5); // ripristina il predefinito
+	win->HandlePreferencesRequest(true, '.', ';', 5, true); // ripristina il predefinito
+
+	// showSplash (Fase 13): non tocca nessuno stato di MainWindow (letta
+	// solo da App::ReadyToRun al prossimo avvio, vedi il commento li'),
+	// quindi qui interessa solo che passare false non causi un crash.
+	win->HandlePreferencesRequest(true, '.', ';', 5, false);
+	Check(true, "HandlePreferencesRequest accetta showSplash=false senza crash");
 
 	// Ripristina i globali com'erano prima del test: sono processo-globali
 	// al motore, non locali a questo documento, e questo processo di test

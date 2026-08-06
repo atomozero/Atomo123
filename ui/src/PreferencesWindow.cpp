@@ -75,6 +75,17 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 		.SetInsets(8, fileBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fRecentField);
 
+	// Avvio: solo lo splash screen per ora -- letta direttamente da
+	// App::ReadyToRun (non riguarda un documento gia' aperto, a
+	// differenza delle altre preferenze qui sopra, quindi non serve
+	// nessun MainWindow::fXxx a specchio, solo gPrefs).
+	fShowSplashBox = new BCheckBox("showSplash", "Mostra lo splash screen all'avvio", NULL);
+	BBox* startupBox = new BBox("startupBox");
+	startupBox->SetLabel("Avvio");
+	BLayoutBuilder::Group<>(startupBox, B_VERTICAL, 6)
+		.SetInsets(8, startupBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fShowSplashBox);
+
 	BButton* applyButton = new BButton("apply", "Applica", new BMessage(kMsgApplyLocal));
 	applyButton->SetTarget(this);
 	applyButton->MakeDefault(true);
@@ -83,6 +94,7 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 		.SetInsets(8, 8, 8, 8)
 		.Add(generalBox)
 		.Add(fileBox)
+		.Add(startupBox)
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
 			.Add(applyButton)
@@ -90,9 +102,10 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 }
 
 void PreferencesWindow::SetValues(bool showGrid, char decimalSep, char listSep,
-	int maxRecentFiles)
+	int maxRecentFiles, bool showSplash)
 {
 	fShowGridBox->SetValue(showGrid ? B_CONTROL_ON : B_CONTROL_OFF);
+	fShowSplashBox->SetValue(showSplash ? B_CONTROL_ON : B_CONTROL_OFF);
 	fDecimalField->Menu()->ItemAt(decimalSep == ',' ? 1 : 0)->SetMarked(true);
 	fListField->Menu()->ItemAt(listSep == ',' ? 1 : 0)->SetMarked(true);
 
@@ -142,6 +155,7 @@ void PreferencesWindow::MessageReceived(BMessage* message)
 		request.AddInt8("decimalSeparator", decimalSep);
 		request.AddInt8("listSeparator", listSep);
 		request.AddInt32("maxRecentFiles", maxRecentFiles);
+		request.AddBool("showSplash", fShowSplashBox->Value() == B_CONTROL_ON);
 		fTarget.SendMessage(&request);
 		return;
 	}

@@ -107,18 +107,31 @@ void App::ReadyToRun()
 
 	RegisterFileTypes();
 
-	fSplashWindow = new SplashWindow();
-	fSplashWindow->Show();
+	// Preferenza "Mostra lo splash screen all'avvio" (finestra
+	// Preferenze, sezione Avvio): se disattivata, si salta sia lo
+	// splash sia l'attesa di kSplashDelay -- chi lo disabilita lo fa
+	// apposta per un avvio piu' rapido, aspettare comunque non avrebbe
+	// senso.
+	bool showSplash = gPrefs ? (gPrefs->GetPrefInt("showSplash", 1) != 0) : true;
+	if (showSplash)
+	{
+		fSplashWindow = new SplashWindow();
+		fSplashWindow->Show();
 
-	// La MainWindow compare solo dopo kSplashDelay (vedi
-	// MessageReceived/ShowMainWindowIfNeeded) -- MA se un file era gia'
-	// pronto all'avvio (RefsReceived puo' arrivare prima o dopo
-	// ReadyToRun, ordine non garantito, comportamento standard di
-	// BApplication), quella finestra puo' comparire prima del timer:
-	// ShowMainWindowIfNeeded() lo gestisce comunque, vedi il commento
-	// li'.
-	BMessage msg(kMsgShowMainWindow);
-	fShowMainWindowTimer = new BMessageRunner(BMessenger(this), &msg, kSplashDelay, 1);
+		// La MainWindow compare solo dopo kSplashDelay (vedi
+		// MessageReceived/ShowMainWindowIfNeeded) -- MA se un file era
+		// gia' pronto all'avvio (RefsReceived puo' arrivare prima o dopo
+		// ReadyToRun, ordine non garantito, comportamento standard di
+		// BApplication), quella finestra puo' comparire prima del timer:
+		// ShowMainWindowIfNeeded() lo gestisce comunque, vedi il
+		// commento li'.
+		BMessage msg(kMsgShowMainWindow);
+		fShowMainWindowTimer = new BMessageRunner(BMessenger(this), &msg, kSplashDelay, 1);
+	}
+	else
+	{
+		ShowMainWindowIfNeeded();
+	}
 }
 
 void App::MessageReceived(BMessage* message)

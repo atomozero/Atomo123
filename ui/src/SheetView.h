@@ -23,6 +23,7 @@
 #include <View.h>
 
 #include "Cell.h"
+#include "CellStyle.h"
 #include "Chart.h"
 #include "EmbeddedImage.h"
 #include "Range.h"
@@ -30,7 +31,6 @@
 class BTextControl;
 class CContainer;
 class MainWindow;
-struct CellStyle;
 
 class SheetView : public BView {
 public:
@@ -522,21 +522,30 @@ private:
 	bool fDragging;
 
 	// Vedi SaveUndoState/Undo/Redo: un'istantanea e' l'intervallo
-	// coinvolto piu' il testo grezzo delle sole celle che esistevano
-	// davvero al suo interno nel momento in cui e' stata catturata
-	// (non un blocco denso con una voce anche per le celle vuote --
-	// per un intervallo piccolo come quelli di Riempi/Ordina la
-	// differenza e' irrilevante, ma Inserisci/Elimina riga o colonna
+	// coinvolto piu' testo grezzo E CellStyle delle sole celle che
+	// esistevano davvero al suo interno nel momento in cui e' stata
+	// catturata (non un blocco denso con una voce anche per le celle
+	// vuote -- per un intervallo piccolo come quelli di Riempi/Ordina
+	// la differenza e' irrilevante, ma Inserisci/Elimina riga o colonna
 	// deve poter catturare l'INTERO documento, dato che una formula
 	// sopra il punto di inserimento puo' comunque riferirsi a una
 	// cella sotto che si sposta: un blocco denso su kColCount x
 	// kRowCount sarebbe milioni di celle anche per un foglio quasi
 	// vuoto). Ripristinare svuota prima ogni cella che esiste ora
 	// nell'intervallo (CCellIterator, non un doppio ciclo su ogni
-	// posizione), poi riscrive solo le celle catturate.
+	// posizione), poi riscrive solo le celle catturate. Lo stile e'
+	// incluso (non solo testo/formula) da quando Grassetto/Corsivo/
+	// Allinea/Bordi/Colori/Unisci celle ecc. sono diventati annullabili
+	// anche loro (Fase 13, bug reale segnalato dall'utente: "Annulla"
+	// non toccava affatto la formattazione).
+	struct UndoCellSnapshot {
+		cell c;
+		std::string text;
+		CellStyle style;
+	};
 	struct UndoSnapshot {
 		range r;
-		std::vector<std::pair<cell, std::string> > cells;
+		std::vector<UndoCellSnapshot> cells;
 	};
 	std::vector<UndoSnapshot> fUndoStack;
 	std::vector<UndoSnapshot> fRedoStack;

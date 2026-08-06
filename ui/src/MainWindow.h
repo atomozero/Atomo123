@@ -151,7 +151,8 @@ public:
 	// TryToParseString quando non si passa un separatore esplicito),
 	// quindi valgono per l'intera applicazione, non solo per il
 	// documento corrente -- stesso comportamento di Sum-It storico.
-	void HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep, int maxRecentFiles);
+	void HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep, int maxRecentFiles,
+		bool showSplash);
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che
