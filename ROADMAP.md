@@ -4711,9 +4711,54 @@ formati file in `translators/`.
       che bloccherebbe un test automatico in attesa di un clic reale
       (stesso limite già noto per `ConfirmDiscardChanges`, vedi
       `test_unsaved_changes.cpp`).
-- [ ] **Commenti/note sulla cella**: nuovo campo per cella sul modello
-      di quanto già fatto per bordi/colori (Fase 11), più un piccolo
-      popup per editarlo.
+- [x] **Commenti/note sulla cella**: nuovo `std::map<cell, std::string>`
+      sparso in `CContainer` (`fComments`, stesso schema di
+      `fMergedRanges` per le celle unite in Fase 12 — la stragrande
+      maggioranza delle celle non avrà mai un commento, non ha senso
+      un campo diretto in `CellData` per ognuna). `std::string`, non
+      `BString`: `Cell.h`/`Range.h`/`CellData.h`/`Container.h` non
+      hanno mai avuto una dipendenza dal Support Kit, conversione a
+      `BString` solo al confine con la UI. Editing tramite una vera
+      finestra `CommentWindow` (stesso schema di `GoToWindow`/
+      `RenameSheetWindow`: un `BTextView` multiriga più "Salva"/
+      "Rimuovi commento", raggiungibile da Formato → "Commento
+      cella…"). Indicatore visivo: piccolo triangolo rosso nell'angolo
+      in alto a destra della cella, come Excel/LibreOffice Calc.
+      Persistenza nel formato nativo (sezione in coda a `SaveASCD`/
+      `LoadASCD`, stesso schema di AutoFilter in Fase precedente) e
+      sezione sempre-vuota nell'export XLSX (`WriteASCD` locale di
+      `XlsxTranslator.cpp`): l'export scrive solo valori calcolati,
+      mai formule né metadati come i commenti, stessa scelta già presa
+      per le formule.
+
+      Problema reale scoperto implementando questo punto — non un bug
+      di codice ma di build incrementale, inizialmente scambiato per
+      un blocco indefinito dentro un semplice inserimento in una
+      `std::map` vuota
+      (`fComments[c] = text`): `engine/libengine.a` non era stata
+      ricompilata dopo l'ultima modifica a `Container.h`, quindi il
+      costruttore di `CContainer` compilato nella libreria allocava
+      ancora il `sizeof` *precedente* (senza `fComments`), mentre gli
+      oggetti UI ricompilati (`MainWindow.o` ecc.) scrivevano secondo
+      il nuovo layout più grande — un `new CContainer(...)` che
+      allocava troppo poco, con conseguente corruzione dell'heap alla
+      prima scrittura oltre il buffer realmente allocato. Il Makefile
+      non traccia le dipendenze dagli header del motore per gli
+      oggetti della UI, quindi un cambiamento come questo richiede una
+      ricompilazione pulita di `engine/` prima di quella di `ui/`.
+
+      Test: `ui/tests/test_comments.cpp`, `SetCellComment`/
+      `RemoveCellComment`/`CellComment` resi pubblici apposta (stesso
+      principio di `NewSheet`/`RenameSheet`), verifica funzionale
+      (imposta/sostituisce/rimuove, stringa vuota equivale a nessun
+      commento), round-trip nel formato nativo
+      (`SaveASCD`/`LoadASCD`), e verifica sui pixel veri del
+      triangolo rosso tramite bitmap offscreen (stesso principio già
+      usato in `test_merge_click.cpp`/`test_autofilter.cpp` per non
+      dare per scontato che "il codice per disegnare è stato eseguito"
+      equivalga a "si vede davvero"). Nessuna regressione nelle altre
+      suite del motore, nei tre traduttori (XLSX/ODS/CSV) né nelle
+      altre 39 suite UI.
 - [ ] **Collegamenti ipertestuali**: stringa URL per cella (stesso
       schema dei commenti) più apertura con `BUrl` al clic.
 - [ ] **INDEX/MATCH**: lavoro nel motore come il punto 1, ma su
