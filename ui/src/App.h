@@ -15,15 +15,28 @@
 #include <Application.h>
 
 class MainWindow;
+class SplashWindow;
+class BMessageRunner;
 
 class App : public BApplication {
 public:
 	App();
+	virtual ~App();
 
 	virtual void ReadyToRun();
 	virtual void RefsReceived(BMessage* message);
+	virtual void MessageReceived(BMessage* message);
 
 private:
+	// Mostrata subito da ReadyToRun, la MainWindow arriva solo dopo
+	// kSplashDelay (vedi ReadyToRun/MessageReceived): un file gia'
+	// pronto all'avvio (RefsReceived, vedi sotto) puo' pero' crearne una
+	// prima che il timer scada, quindi questo passo va sempre attraverso
+	// lo stesso controllo "esiste gia' una MainWindow?" invece di creare
+	// alla cieca.
+	void ShowMainWindowIfNeeded();
+
+
 	// Registra Atomo123 come applicazione preferita per i tipi MIME
 	// che sa aprire (vedi Atomo123.rdef, risorsa file_types), ma SOLO
 	// per un tipo che non ne ha ancora una -- mai forzare una scelta
@@ -43,6 +56,19 @@ private:
 	// RefsReceived ne apre sempre una nuova senza mai rimpiazzare un
 	// documento gia' aperto.
 	MainWindow* FindReusableWindow() const;
+
+	// Puntatore "di comodo" solo per riattivarla (portarla di nuovo
+	// davanti) dopo che ShowMainWindowIfNeeded() ha mostrato la prima
+	// MainWindow -- vedi il commento su B_NORMAL_WINDOW_FEEL in
+	// SplashWindow.cpp. Si chiude sempre da sola (AtomGLView::_Tick()),
+	// non c'e' nessun Quit()/delete esplicito da fare qui.
+	SplashWindow* fSplashWindow;
+	// Timer una tantum (kSplashDelay in App.cpp) che invia
+	// kMsgShowMainWindow: l'oggetto BMessageRunner sopravvive al primo
+	// (e unico) invio finche' non lo si cancella esplicitamente, quindi
+	// va eliminato nel distruttore invece di lasciarlo penzolante per
+	// tutta la durata dell'applicazione.
+	BMessageRunner* fShowMainWindowTimer;
 };
 
 #endif

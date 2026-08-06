@@ -554,6 +554,7 @@ test-multiwindow: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
 		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o \
+		src/SplashWindow.o src/AtomGLView.o src/AtomTheme.o src/TextTexture.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_multiwindow
 

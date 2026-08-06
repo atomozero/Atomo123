@@ -9,6 +9,7 @@
 #include "SplashWindow.h"
 
 #include <Entry.h>
+#include <MessageRunner.h>
 #include <Mime.h>
 #include <Path.h>
 #include <Roster.h>
@@ -22,6 +23,14 @@
 #include "ResourceManager.h"
 
 static const char* kAppSignature = "application/x-vnd.Atomo-Atomo123";
+
+static const uint32 kMsgShowMainWindow = 'shmw';
+// Quanto restare sullo splash prima che compaia la MainWindow (chiesto
+// dall'utente): lo splash stesso resta a schermo piu' a lungo di
+// cosi' (AtomGLView::kVisibleDuration + kFadeOutDuration, circa 8s) e
+// continua la propria animazione/dissolvenza per conto suo, la
+// MainWindow compare sotto di lui a meta' di quella durata.
+static const bigtime_t kSplashDelay = 3000000; // 3s
 
 // Stessi tipi elencati nella risorsa file_types di Atomo123.rdef (che
 // serve solo a farli comparire nella lista "Apri con..." di Tracker):
@@ -39,7 +48,9 @@ static const char* kSupportedTypes[] = {
 
 App::App()
 	:
-	BApplication(kAppSignature)
+	BApplication(kAppSignature),
+	fSplashWindow(NULL),
+	fShowMainWindowTimer(NULL)
 {
 	// gPrefs (Preferences.h) e' dichiarata nel motore ma non era mai
 	// stata istanziata da nessuna parte della UI moderna -- restava
@@ -59,6 +70,11 @@ App::App()
 
 	gDecimalPoint = gPrefs->GetPrefString("decimalSeparator", ".")[0];
 	gListSeparator = gPrefs->GetPrefString("listSeparator", ";")[0];
+}
+
+App::~App()
+{
+	delete fShowMainWindowTimer;
 }
 
 void App::ReadyToRun()
@@ -91,18 +107,37 @@ void App::ReadyToRun()
 
 	RegisterFileTypes();
 
-	SplashWindow* splash = new SplashWindow();
-	splash->Show();
+	fSplashWindow = new SplashWindow();
+	fSplashWindow->Show();
 
-	// Se un file era gia' pronto all'avvio (RefsReceived sotto puo'
-	// arrivare prima di ReadyToRun quando Tracker lancia l'app con un
-	// file, comportamento standard di BApplication), quella finestra
-	// esiste gia': non se ne crea una seconda vuota. Se invece
-	// RefsReceived arrivasse dopo (ordine non garantito), la trovera'
-	// comunque vergine e la riusera' -- vedi FindReusableWindow().
+	// La MainWindow compare solo dopo kSplashDelay (vedi
+	// MessageReceived/ShowMainWindowIfNeeded) -- MA se un file era gia'
+	// pronto all'avvio (RefsReceived puo' arrivare prima o dopo
+	// ReadyToRun, ordine non garantito, comportamento standard di
+	// BApplication), quella finestra puo' comparire prima del timer:
+	// ShowMainWindowIfNeeded() lo gestisce comunque, vedi il commento
+	// li'.
+	BMessage msg(kMsgShowMainWindow);
+	fShowMainWindowTimer = new BMessageRunner(BMessenger(this), &msg, kSplashDelay, 1);
+}
+
+void App::MessageReceived(BMessage* message)
+{
+	if (message->what == kMsgShowMainWindow)
+	{
+		ShowMainWindowIfNeeded();
+		return;
+	}
+
+	BApplication::MessageReceived(message);
+}
+
+void App::ShowMainWindowIfNeeded()
+{
 	// Si cerca esplicitamente una MainWindow (non CountWindows() puro)
-	// perche' lo SplashWindow appena mostrato sopra e' gia' una finestra
-	// dell'app ma non va mai scambiato per quella.
+	// perche' lo SplashWindow e' gia' una finestra dell'app ma non va
+	// mai scambiato per quella -- e RefsReceived puo' averne gia'
+	// creata una nel frattempo (vedi il commento in ReadyToRun).
 	bool hasMainWindow = false;
 	for (int32 i = 0; i < CountWindows(); i++)
 	{
@@ -122,8 +157,11 @@ void App::ReadyToRun()
 	// davanti allo splash (B_NORMAL_WINDOW_FEEL per entrambe, vedi il
 	// commento in SplashWindow.cpp sul perche' non e' B_FLOATING_APP_
 	// WINDOW_FEEL): riattivare lo splash qui lo rimette in primo piano,
-	// dove resta finche' non si chiude da solo (AtomGLView::_Tick()).
-	splash->Activate();
+	// dove resta finche' non si chiude da solo (AtomGLView::_Tick()) --
+	// ancora vivo di sicuro a questo punto, la sua durata totale (circa
+	// 8s) e' piu' lunga di kSplashDelay (3s).
+	if (fSplashWindow)
+		fSplashWindow->Activate();
 }
 
 void App::RegisterFileTypes()
