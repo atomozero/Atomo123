@@ -4896,9 +4896,64 @@ formati file in `translators/`.
       l'indice della sezione tipi resti allineato al grafico giusto.
       Nessuna regressione nelle altre suite del motore, nei tre
       traduttori né nelle altre 41 suite UI.
-- [ ] **Stili di bordo/colore** (oggi solo presenza/assenza, nero
-      fisso): l'infrastruttura c'è già (`CellStyle`), ma tocca disegno,
-      persistenza e import XLSX in più punti.
+- [x] **Stili di bordo/colore** (prima solo presenza/assenza, nero
+      fisso): `CellStyle::fTBorderColor`/`fLBorderColor`/
+      `fBBorderColor`/`fRBorderColor` restano `uchar`, un byte per
+      lato — solo il SIGNIFICATO si allarga da 0/1 (assente/presente)
+      a 0/1/2/3 (assente/sottile/medio/spesso), stesso formato byte
+      per byte di prima: un file `.ascd` della Fase 11 (sempre 0 o 1)
+      resta valido cosi' com'e', nessuna migrazione necessaria. Nuovo
+      `CellStyle::fBorderColor` (un `rgb_color`, predefinito nero)
+      condiviso da tutti e quattro i lati di una cella — non un
+      colore diverso per lato: la stragrande maggioranza dei fogli
+      reali non ne ha bisogno, stessa scelta di scope gia' fatta per
+      i grafici.
+
+      Disegno (`SheetView.cpp`): nuovo `DrawBorderSides`, unico punto
+      condiviso dai due cicli che disegnavano i bordi (cella normale e
+      cella unita, prima con la stessa sequenza di quattro `if`
+      duplicata identica) — `SetPenSize` secondo lo spessore,
+      riportato a 1 alla fine (il resto di `Draw()` disegnato dopo si
+      aspetta lo spessore di penna predefinito).
+
+      UI (`MainWindow`/`ColorWindow`): nuovo sottomenu "Spessore
+      bordo" (Sottile/Medio/Spesso) che cambia lo spessore dei lati
+      GIA' presenti sulla selezione senza attivarne di nuovi — restano
+      un compito separato di `ToggleBorder`. `ColorWindow` (Fase 7,
+      finora solo testo/sfondo) esteso con un terzo modo "Colore
+      bordo" (`ColorTarget`, non più un semplice `bool background`).
+
+      Persistenza (`AscdIO.cpp`): il colore NON è un campo dentro il
+      record fisso di ogni bordo (quattro byte di spessore, invariati)
+      ma una sezione SEPARATA in coda al formato — stesso principio
+      EOF-tollerante già scelto per il tipo di grafico appena sopra,
+      per non toccare l'allineamento dei file `.ascd` già scritti.
+      Stesso principio applicato al `WriteASCD` locale di
+      `XlsxTranslator.cpp` (sezione sempre vuota: questo translator
+      importa solo la presenza/assenza del bordo da un file XLSX vero,
+      non ancora il colore — rimandato come le altre sezioni "non
+      ancora estratte", vedi commenti nel codice).
+
+      Nessuna modifica necessaria in `Excel.pass1.cpp` (XLS legacy)
+      né negli altri translator: scrivevano già solo 0/1 in quei
+      campi, che restano valori di spessore validi (0=nessuno,
+      1=sottile) — compatibilità automatica, verificata dall'intera
+      suite XLS che continua a passare invariata.
+
+      Test: `ui/tests/test_borders.cpp` esteso con
+      `SetBorderThickness`/`SetBorderColor` (spessore cambiato solo
+      sui lati già presenti, colore condiviso applicato alla
+      selezione) più una verifica sui pixel veri di un bordo rosso
+      spesso tramite bitmap offscreen (stesso principio già usato per
+      i commenti/collegamenti — con un'insidia in più: lo spessore
+      della penna >1 centra il tratto sulla coordinata della linea,
+      quindi la verifica scandisce una fascia di pixel intorno al
+      bordo atteso, non un singolo pixel esatto). `ui/tests/
+      test_ascd_io.cpp` con un round-trip completo (spessore + colore,
+      sezioni separate) e la compatibilità all'indietro di un file
+      senza questa sezione. Nessuna regressione nelle altre suite del
+      motore, nei tre traduttori (incluso XLS) né nelle altre 41
+      suite UI.
 - [ ] **Validazione dati** (elenco a discesa, intervallo numerico):
       nuova finestra di dialogo sullo stile di `PreferencesWindow`/
       `ColorWindow` già esistenti, più un controllo all'editing della
