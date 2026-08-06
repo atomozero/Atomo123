@@ -5010,6 +5010,39 @@ formati file in `translators/`.
       `DeleteSheet`/`RenameSheet`. Nessuna regressione nelle altre
       suite del motore, nei tre traduttori (incluso XLS) né nelle
       altre 42 suite UI.
+
+### Crash reale su un file XLS vero (dopo la Fase 13): translator installati non riallineati
+
+Segnalato dall'utente con un vero crash report di Haiku (segnalazione
+di violazione di segmento) aprendo un file `.xls` reale: lo stack di
+chiamata mostrava il crollo dentro il distruttore di
+`std::map<cell, ValidationRule>` (`CContainer::~CContainer`), chiamato
+da `CXlsTranslator::Translate`.
+
+Stessa classe di bug già scoperta implementando i commenti (vedi
+sopra) — `new CContainer(...)` compilato con un layout più vecchio,
+piccolo (senza `fValidations`/`fBorderColor`, aggiunti in punti
+successivi di questa stessa Fase), corrompe l'heap alla prima
+scrittura oltre il buffer davvero allocato — ma stavolta non nella
+libreria/nei binari dentro l'albero dei sorgenti (già ricompilati e
+testati più volte oggi), bensì nei **translator installati**
+(`~/config/non-packaged/add-ons/Translators/`, il percorso da cui
+`BTranslatorRoster` li carica DAVVERO a runtime): venivano ricostruiti
+e testati nell'albero dei sorgenti a ogni punto di questa fase, ma mai
+reinstallati con `make install` in ciascuna cartella di
+`translators/`, quindi restavano allineati al layout di `CContainer`
+di alcuni giorni prima, mentre il motore/l'app vera sono stati
+ricompilati più volte da allora.
+
+Corretto ricompilando da zero e reinstallando tutti e quattro i
+translator (XLS/XLSX/CSV/ODS). Nessun cambiamento di codice: è un
+promemoria operativo, non un bug applicativo — un cambiamento al
+layout di `CContainer`/`CellStyle` richiede `make install` in ognuna
+delle quattro cartelle di `translators/`, non solo ricompilare/testare
+nell'albero dei sorgenti, altrimenti l'app vera (che carica i
+translator dalla cartella installata, non da quella dei sorgenti)
+resta silenziosamente disallineata anche quando ogni test automatico
+continua a passare.
 - [ ] **Formattazione condizionale viva**: oggi valutata una volta
       sola all'import XLSX e congelata come colore statico (Fase 12);
       richiede ricalcolarla a ogni ricalcolo del foglio, non solo
