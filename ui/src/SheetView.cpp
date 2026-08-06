@@ -409,6 +409,12 @@ BRect SheetView::AutoFilterArrowRect(int col) const
 	return BRect(r.right - 12, r.bottom - 10, r.right - 4, r.bottom - 4);
 }
 
+BRect SheetView::ValidationArrowRect(cell c) const
+{
+	BRect r = CellRect(c);
+	return BRect(r.right - 14, r.top + 2, r.right - 2, r.bottom - 2);
+}
+
 void SheetView::SetAutoFilter(range headerRange)
 {
 	fHasAutoFilter = true;
@@ -592,6 +598,66 @@ void SheetView::ShowAutoFilterMenu(int col, BPoint screenAnchor)
 			break;
 		}
 	}
+}
+
+void SheetView::ShowValidationMenu(cell c, BPoint screenAnchor)
+{
+	if (!fDoc)
+		return;
+	ValidationRule rule = fDoc->GetValidation(c);
+	if (rule.type != eListValidation)
+		return;
+
+	// Stesso schema di split di MainWindow::ValidateCellValue (virgola
+	// come separatore, spazi ai bordi scartati).
+	std::vector<BString> values;
+	BString candidates(rule.list.c_str());
+	int32 start = 0;
+	while (start <= candidates.Length())
+	{
+		int32 comma = candidates.FindFirst(',', start);
+		BString piece;
+		if (comma < 0)
+		{
+			candidates.CopyInto(piece, start, candidates.Length() - start);
+			start = candidates.Length() + 1;
+		}
+		else
+		{
+			candidates.CopyInto(piece, start, comma - start);
+			start = comma + 1;
+		}
+		piece.Trim();
+		if (piece.Length() > 0)
+			values.push_back(piece);
+	}
+	if (values.empty())
+		return;
+
+	BPopUpMenu menu("validationList");
+	for (size_t i = 0; i < values.size(); i++)
+		menu.AddItem(new BMenuItem(values[i].String(), NULL));
+
+	ConvertToScreen(&screenAnchor);
+	BMenuItem* chosen = menu.Go(screenAnchor, false, false, true);
+	if (!chosen)
+		return;
+
+	// Scrive direttamente il valore scelto, senza passare da un vero
+	// editor a schermo -- gia' convalidato per costruzione (viene
+	// dalla stessa lista), TryToParseString non ha bisogno di nessun
+	// controllo aggiuntivo qui.
+	SaveUndoState(c);
+	try
+	{
+		TryToParseString(chosen->Label(), c, fDoc, true);
+	}
+	catch (...)
+	{
+	}
+	RecalculateOwningWorkbook();
+	NotifyDocumentChanged();
+	Invalidate(CellRect(c));
 }
 
 void SheetView::RecalculateWrappedRowHeights()
@@ -1915,6 +1981,22 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 					FillTriangle(p1, p2, p3);
 				}
 
+				// Freccia a discesa della convalida dati (Fase 13): solo
+				// per eListValidation (un intervallo numerico non ha
+				// nessun elenco da mostrare) -- stesso motivo del
+				// commento sopra, disegnata PRIMA di "continue" per una
+				// cella senza testo.
+				if (fDoc->GetValidation(c).type == eListValidation)
+				{
+					BRect ar = ValidationArrowRect(c);
+					ar.OffsetBy(xOrigin, yOrigin);
+					SetHighColor(90, 90, 90);
+					BPoint p1(ar.left, ar.top + 2);
+					BPoint p2(ar.right, ar.top + 2);
+					BPoint p3((ar.left + ar.right) / 2, ar.bottom - 2);
+					FillTriangle(p1, p2, p3);
+				}
+
 				BString cellTextStr = FormattedCellText(c);
 				if (cellTextStr.Length() == 0)
 					continue;
@@ -2612,6 +2694,17 @@ void SheetView::MouseDown(BPoint where)
 		return;
 	}
 
+	// Convalida dati (Fase 13): stessa precedenza dell'AutoFilter
+	// sopra -- un clic sulla freccia apre l'elenco invece di
+	// selezionare la cella. Solo per eListValidation: un intervallo
+	// numerico non ha nessun elenco da mostrare in un menu.
+	if (fDoc && fDoc->GetValidation(c).type == eListValidation
+		&& ValidationArrowRect(c).Contains(where))
+	{
+		ShowValidationMenu(c, where);
+		return;
+	}
+
 	// Celle unite: un clic in un punto qualunque dell'intervallo unito
 	// deve selezionare la stessa cella logica (l'angolo in alto a
 	// sinistra, l'unica che porta davvero contenuto/stile -- stesso
@@ -3068,6 +3161,26 @@ void SheetView::CommitEditing(bool cancel)
 	BTextControl* editor = fEditor;
 	cell editedCell = fEditingCell;
 	fEditor = NULL;
+
+	// Convalida dati (Fase 13): controllata PRIMA di scrivere davvero
+	// il valore, non dopo -- un valore respinto lascia la cella come
+	// stava, esattamente come annullare la modifica (stesso
+	// comportamento "Stop" del vero Convalida dati di Excel: il
+	// valore non entra mai nella cella).
+	if (!cancel && fDoc)
+	{
+		MainWindow* win = dynamic_cast<MainWindow*>(Window());
+		if (win)
+		{
+			BString errorMessage;
+			if (!win->ValidateCellValue(editedCell.v, editedCell.h, editor->Text(), &errorMessage))
+			{
+				BAlert* alert = new BAlert("Convalida dati", errorMessage.String(), "OK");
+				alert->Go();
+				cancel = true;
+			}
+		}
+	}
 
 	if (!cancel && fDoc)
 	{

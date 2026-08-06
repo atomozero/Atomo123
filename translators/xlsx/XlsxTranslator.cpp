@@ -629,6 +629,17 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione convalida dati, in coda (vedi ui/src/AscdIO.cpp): sempre
+	// vuota, stesso principio delle sezioni sopra -- questo translator
+	// non estrae la convalida dati (<dataValidations>) da un file XLSX
+	// vero, rimandato come le altre sezioni "non ancora estratte" qui
+	// sopra.
+	{
+		int32 validationCount = 0;
+		if (dest->Write(&validationCount, sizeof(validationCount)) != (ssize_t)sizeof(validationCount))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 

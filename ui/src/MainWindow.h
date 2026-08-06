@@ -39,6 +39,7 @@ class GoToWindow;
 class RenameSheetWindow;
 class CommentWindow;
 class HyperlinkWindow;
+class ValidationWindow;
 class ColorWindow;
 class PreferencesWindow;
 
@@ -223,6 +224,27 @@ public:
 	BString CellHyperlink(int row, int col) const;
 	void OpenCellHyperlink(int row, int col);
 
+	// Convalida dati (Fase 13): stesso schema esatto dei commenti
+	// sopra. ValidateCellValue e' chiamata da SheetView::CommitEditing
+	// PRIMA di scrivere davvero il nuovo valore nella cella -- separata
+	// da SetCellValidation/CellValidation (che leggono/scrivono la
+	// REGOLA, non verificano un valore contro di essa) cosi' resta
+	// testabile senza passare da un vero editing sullo schermo.
+	void SetCellValidation(int row, int col, int type, const char* list,
+		double min, double max);
+	void RemoveCellValidation(int row, int col);
+	ValidationRule CellValidation(int row, int col) const;
+	bool ValidateCellValue(int row, int col, const char* text, BString* errorMessage) const;
+
+	// A differenza di commento/collegamento sopra (SEMPRE sulla sola
+	// cella attiva), la convalida dati si applica a tutto
+	// SelectionRange() -- stesso principio di SetTextColor/
+	// SetBorderColor, non quello di SetCellComment/SetCellHyperlink.
+	// Chiamate da ValidationWindow via kMsgValidationCommit/
+	// kMsgValidationRemove.
+	void ApplyValidationToSelection(int type, const char* list, double min, double max);
+	void RemoveValidationFromSelection();
+
 	// ISheetResolver (Fase 9): risolve "NomeFoglio!Cella" verso il
 	// CContainer corrispondente in fSheets, per nome. Pubblico perche'
 	// la classe lo espone come override di un'interfaccia pubblica, non
@@ -294,6 +316,7 @@ private:
 	RenameSheetWindow* fRenameSheetWindow;
 	CommentWindow* fCommentWindow;
 	HyperlinkWindow* fHyperlinkWindow;
+	ValidationWindow* fValidationWindow;
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
 	std::vector<ChartObject> fCharts;

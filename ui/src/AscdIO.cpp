@@ -685,6 +685,35 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione convalida dati, in coda (Fase 13): stesso schema sparso
+	// di commenti/collegamenti sopra -- eNoValidation (nessuna regola)
+	// non finisce mai in questa mappa, vedi CContainer::SetValidation.
+	{
+		const std::map<cell, ValidationRule>& validations = doc->GetValidations();
+		int32 validationCount = (int32)validations.size();
+		if (dest->Write(&validationCount, sizeof(validationCount)) != (ssize_t)sizeof(validationCount))
+			return B_IO_ERROR;
+
+		for (std::map<cell, ValidationRule>::const_iterator it = validations.begin();
+			it != validations.end(); ++it)
+		{
+			int16 row = it->first.v, col = it->first.h;
+			int8 type = (int8)it->second.type;
+			int32 len = (int32)it->second.list.size();
+			double min = it->second.min, max = it->second.max;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(it->second.list.data(), len) != len)
+				return B_IO_ERROR;
+			if (dest->Write(&min, sizeof(min)) != (ssize_t)sizeof(min)
+				|| dest->Write(&max, sizeof(max)) != (ssize_t)sizeof(max))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1380,6 +1409,50 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				doc->GetCellStyle(c, cs);
 				cs.fBorderColor = color;
 				doc->SetCellStyle(c, cs);
+			}
+		}
+	}
+
+	// Sezione convalida dati, in coda: stesso schema EOF-tollerante
+	// delle sezioni sopra (vedi il commento gemello in SaveASCD).
+	{
+		int32 validationCount = 0;
+		ssize_t got = source->Read(&validationCount, sizeof(validationCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(validationCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < validationCount; i++)
+			{
+				int16 row, col;
+				int8 type;
+				int32 len;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&type, sizeof(type)) != (ssize_t)sizeof(type)
+					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+
+				std::string list;
+				if (len > 0)
+				{
+					list.resize(len);
+					if (source->Read(&list[0], len) != len)
+						return B_BAD_DATA;
+				}
+
+				double min, max;
+				if (source->Read(&min, sizeof(min)) != (ssize_t)sizeof(min)
+					|| source->Read(&max, sizeof(max)) != (ssize_t)sizeof(max))
+					return B_BAD_DATA;
+
+				ValidationRule rule;
+				rule.type = (ValidationType)type;
+				rule.list = list;
+				rule.min = min;
+				rule.max = max;
+				doc->SetValidation(cell(col, row), rule);
 			}
 		}
 	}

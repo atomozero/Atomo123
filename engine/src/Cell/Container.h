@@ -120,6 +120,26 @@ public:
 	virtual CContainer* ResolveSheetByName(const char* inName) = 0;
 };
 
+// Validazione dati (Fase 13): eListValidation limita alla lista di
+// valori in "list" (separati da virgola, es. "Rosso,Verde,Blu"),
+// eNumberRangeValidation limita a [min, max] -- stesso schema minimo
+// dei due tipi piu' comuni del vero "Convalida dati" di Excel
+// (l'elenco a discesa e l'intervallo numerico), non l'intera gamma
+// (data, ora, lunghezza testo, formula personalizzata).
+enum ValidationType {
+	eNoValidation,
+	eListValidation,
+	eNumberRangeValidation
+};
+
+struct ValidationRule {
+	ValidationType type;
+	std::string list;	// eListValidation
+	double min, max;	// eNumberRangeValidation
+
+	ValidationRule() : type(eNoValidation), min(0), max(0) {}
+};
+
 class CContainer : public BLocker {
 	friend class CCellIterator;
 	friend class CCalculateJob;
@@ -287,6 +307,24 @@ public:
 	bool HasHyperlink(cell c) const { return fHyperlinks.find(c) != fHyperlinks.end(); }
 	const std::map<cell, std::string>& GetHyperlinks() const { return fHyperlinks; }
 
+	// Validazione dati (Fase 13): stesso schema sparso di commenti/
+	// collegamenti sopra -- eNoValidation equivale a "nessuna regola",
+	// rimuove la voce invece di lasciarne una vuota in giro.
+	void SetValidation(cell c, const ValidationRule& rule)
+	{
+		if (rule.type == eNoValidation)
+			fValidations.erase(c);
+		else
+			fValidations[c] = rule;
+	}
+	ValidationRule GetValidation(cell c) const
+	{
+		std::map<cell, ValidationRule>::const_iterator it = fValidations.find(c);
+		return (it != fValidations.end()) ? it->second : ValidationRule();
+	}
+	bool HasValidation(cell c) const { return fValidations.find(c) != fValidations.end(); }
+	const std::map<cell, ValidationRule>& GetValidations() const { return fValidations; }
+
 private:
 	void Visit(const cell&, void*);
 	bool GetCellData(const cell&, CellData&);
@@ -308,6 +346,7 @@ private:
 	std::vector<range> fMergedRanges;
 	std::map<cell, std::string> fComments;
 	std::map<cell, std::string> fHyperlinks;
+	std::map<cell, ValidationRule> fValidations;
 };
 
 inline bool CContainer::WriteLock()

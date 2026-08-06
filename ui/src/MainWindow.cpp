@@ -18,6 +18,7 @@
 #include "RenameSheetWindow.h"
 #include "CommentWindow.h"
 #include "HyperlinkWindow.h"
+#include "ValidationWindow.h"
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
 #include "AboutWindow.h"
@@ -34,6 +35,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -109,6 +111,7 @@ static const uint32 kMsgMergeCells = 'mrgc';
 static const uint32 kMsgShowCommentWindow = 'shcw';
 static const uint32 kMsgShowHyperlinkWindow = 'shlw';
 static const uint32 kMsgOpenHyperlink = 'ophl';
+static const uint32 kMsgShowValidationWindow = 'shvw';
 static const uint32 kMsgUnmergeCells = 'umrg';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
@@ -497,6 +500,12 @@ MainWindow::MainWindow()
 	// commento cella appena sopra -- un URL per UNA cella precisa.
 	formatMenu->AddItem(new BMenuItem("Collegamento ipertestuale" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgShowHyperlinkWindow)));
+	// Convalida dati (Fase 13): a differenza dei due sopra, si applica
+	// a tutta la selezione (come il vero "Convalida dati" di Excel),
+	// non solo alla cella attiva -- vedi MainWindow::
+	// ApplyValidationToSelection.
+	formatMenu->AddItem(new BMenuItem("Convalida dati" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowValidationWindow)));
 	menuBar->AddItem(formatMenu);
 
 	// Riempi in basso/a destra: copia la prima riga/colonna
@@ -636,6 +645,7 @@ MainWindow::MainWindow()
 	fRenameSheetWindow = NULL;
 	fCommentWindow = NULL;
 	fHyperlinkWindow = NULL;
+	fValidationWindow = NULL;
 	fColorWindow = NULL;
 	fPreferencesWindow = NULL;
 
@@ -695,6 +705,11 @@ MainWindow::~MainWindow()
 	{
 		fHyperlinkWindow->Lock();
 		fHyperlinkWindow->Quit();
+	}
+	if (fValidationWindow)
+	{
+		fValidationWindow->Lock();
+		fValidationWindow->Quit();
 	}
 	if (fColorWindow)
 	{
@@ -2360,6 +2375,136 @@ void MainWindow::OpenCellHyperlink(int row, int col)
 	bUrl.OpenWithPreferredApplication(false);
 }
 
+void MainWindow::SetCellValidation(int row, int col, int type, const char* list,
+	double min, double max)
+{
+	if (!fDoc)
+		return;
+	ValidationRule rule;
+	rule.type = (type >= 0 && type <= 2) ? (ValidationType)type : eNoValidation;
+	rule.list = list ? list : "";
+	rule.min = min;
+	rule.max = max;
+	fDoc->SetValidation(cell(col, row), rule);
+	MarkModified();
+}
+
+void MainWindow::RemoveCellValidation(int row, int col)
+{
+	if (!fDoc)
+		return;
+	fDoc->SetValidation(cell(col, row), ValidationRule()); // eNoValidation = nessuna regola, vedi CContainer::SetValidation
+	MarkModified();
+}
+
+ValidationRule MainWindow::CellValidation(int row, int col) const
+{
+	if (!fDoc)
+		return ValidationRule();
+	return fDoc->GetValidation(cell(col, row));
+}
+
+// Confronto testuale esatto (case-sensitive) con uno dei valori
+// dell'elenco separati da virgola -- stessa semplicita' di scope gia'
+// scelta per l'intervallo numerico sotto (niente jolly/espressioni
+// regolari, niente elenco preso da un intervallo di celle come
+// permette anche il vero Excel).
+bool MainWindow::ValidateCellValue(int row, int col, const char* text, BString* errorMessage) const
+{
+	if (!fDoc)
+		return true;
+
+	ValidationRule rule = fDoc->GetValidation(cell(col, row));
+
+	if (rule.type == eListValidation)
+	{
+		BString candidates(rule.list.c_str());
+		BString value(text);
+		int32 start = 0;
+		while (start <= candidates.Length())
+		{
+			int32 comma = candidates.FindFirst(',', start);
+			BString piece;
+			if (comma < 0)
+			{
+				candidates.CopyInto(piece, start, candidates.Length() - start);
+				start = candidates.Length() + 1;
+			}
+			else
+			{
+				candidates.CopyInto(piece, start, comma - start);
+				start = comma + 1;
+			}
+			piece.Trim();
+			if (piece == value)
+				return true;
+		}
+		if (errorMessage)
+		{
+			errorMessage->SetTo("\"");
+			errorMessage->Append(text);
+			errorMessage->Append("\" non è uno dei valori ammessi:\n");
+			errorMessage->Append(rule.list.c_str());
+		}
+		return false;
+	}
+
+	if (rule.type == eNumberRangeValidation)
+	{
+		char* end = NULL;
+		double v = strtod(text, &end);
+		bool isNumber = end != text && *end == 0;
+		if (!isNumber || v < rule.min || v > rule.max)
+		{
+			if (errorMessage)
+			{
+				char buf[128];
+				snprintf(buf, sizeof(buf),
+					"\"%s\" non è un numero compreso fra %g e %g.", text, rule.min, rule.max);
+				errorMessage->SetTo(buf);
+			}
+			return false;
+		}
+		return true;
+	}
+
+	return true; // eNoValidation
+}
+
+void MainWindow::ApplyValidationToSelection(int type, const char* list, double min, double max)
+{
+	if (!fDoc)
+		return;
+
+	ValidationRule rule;
+	rule.type = (type >= 0 && type <= 2) ? (ValidationType)type : eNoValidation;
+	rule.list = list ? list : "";
+	rule.min = min;
+	rule.max = max;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+			fDoc->SetValidation(cell(col, row), rule);
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::RemoveValidationFromSelection()
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+			fDoc->SetValidation(cell(col, row), ValidationRule());
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::HandleGoToRequest(const char* rangeText)
 {
 	range r;
@@ -3238,6 +3383,39 @@ void MainWindow::MessageReceived(BMessage* message)
 				OpenCellHyperlink(row, col);
 			break;
 		}
+
+		case kMsgShowValidationWindow:
+		{
+			if (!fDoc)
+				break;
+			cell sel = fSheetView->Selection();
+			if (!fValidationWindow)
+				fValidationWindow = new ValidationWindow(BMessenger(this));
+			ValidationRule rule = CellValidation(sel.v, sel.h);
+			fValidationWindow->SetCell(sel.v, sel.h, (int)rule.type,
+				rule.list.c_str(), rule.min, rule.max);
+			if (fValidationWindow->IsHidden())
+				fValidationWindow->Show();
+			fValidationWindow->Activate();
+			break;
+		}
+
+		case kMsgValidationCommit:
+		{
+			int32 type = 0;
+			BString list;
+			double min = 0, max = 0;
+			message->FindInt32("type", &type);
+			message->FindString("list", &list);
+			message->FindDouble("min", &min);
+			message->FindDouble("max", &max);
+			ApplyValidationToSelection(type, list.String(), min, max);
+			break;
+		}
+
+		case kMsgValidationRemove:
+			RemoveValidationFromSelection();
+			break;
 
 		case kMsgSetAlignment:
 		{

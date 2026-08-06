@@ -389,6 +389,14 @@ public:
 	// direttamente senza passare dal menu.
 	void ShowAutoFilterMenu(int col, BPoint screenAnchor);
 
+	// Convalida dati (Fase 13): stesso principio di AutoFilterArrowRect
+	// sopra, ma per singola cella (non un'intera colonna) -- valido
+	// solo se la cella ha una regola di tipo eListValidation. Il menu
+	// e' sincrono come ShowAutoFilterMenu, stesso limite di test
+	// automatico.
+	BRect ValidationArrowRect(cell c) const;
+	void ShowValidationMenu(cell c, BPoint screenAnchor);
+
 	// Rettangolo in pixel (a partire da 0,0, intestazioni comprese) che
 	// copre le celle con contenuto -- usato da MainWindow per la stampa
 	// (Print Kit), per sapere quanto foglio serve davvero senza
