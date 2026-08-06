@@ -91,7 +91,8 @@ void App::ReadyToRun()
 
 	RegisterFileTypes();
 
-	(new SplashWindow())->Show();
+	SplashWindow* splash = new SplashWindow();
+	splash->Show();
 
 	// Se un file era gia' pronto all'avvio (RefsReceived sotto puo'
 	// arrivare prima di ReadyToRun quando Tracker lancia l'app con un
@@ -116,6 +117,13 @@ void App::ReadyToRun()
 		MainWindow* window = new MainWindow();
 		window->Show();
 	}
+
+	// Show()/l'attivazione della MainWindow appena sopra la porta
+	// davanti allo splash (B_NORMAL_WINDOW_FEEL per entrambe, vedi il
+	// commento in SplashWindow.cpp sul perche' non e' B_FLOATING_APP_
+	// WINDOW_FEEL): riattivare lo splash qui lo rimette in primo piano,
+	// dove resta finche' non si chiude da solo (AtomGLView::_Tick()).
+	splash->Activate();
 }
 
 void App::RegisterFileTypes()
