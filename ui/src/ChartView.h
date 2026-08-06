@@ -22,11 +22,13 @@ public:
 	ChartView();
 
 	void SetData(const std::vector<ChartSeries>& data);
+	void SetChartType(ChartType type);
 
 	virtual void Draw(BRect updateRect);
 
 private:
 	std::vector<ChartSeries> fData;
+	ChartType fType;
 };
 
 #endif

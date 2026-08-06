@@ -198,6 +198,17 @@ int main()
 	obj.frame.Set(100, 200, 400, 380);
 	saved.push_back(obj);
 
+	// Un secondo grafico di tipo diverso (Fase 13, linee/torta): la
+	// sezione dei tipi vive in una sezione SEPARATA in coda al
+	// formato (vedi il commento in AscdIO.cpp), non dentro il record
+	// fisso di ogni grafico -- verifica che l'ordine resti allineato
+	// con due grafici, non solo uno.
+	ChartObject obj2;
+	obj2.dataRange.Set(1, 1, 2, 3);
+	obj2.frame.Set(50, 50, 200, 150);
+	obj2.type = ePieChart;
+	saved.push_back(obj2);
+
 	BFile chartFile("tests/roundtrip_charts.ascd", B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 	err = SaveASCD(&chartDoc, &chartFile, &saved);
 	Check(err == B_OK, "SaveASCD con un grafico incorporato riesce");
@@ -208,14 +219,18 @@ int main()
 	std::vector<ChartObject> loaded;
 	err = LoadASCD(&chartReopened, &chartReloaded, &loaded);
 	Check(err == B_OK, "LoadASCD con un grafico incorporato riesce");
-	Check(loaded.size() == 1, "il grafico sopravvive al giro salva->ricarica");
-	if (loaded.size() == 1)
+	Check(loaded.size() == 2, "entrambi i grafici sopravvivono al giro salva->ricarica");
+	if (loaded.size() == 2)
 	{
 		Check(loaded[0].dataRange.left == 1 && loaded[0].dataRange.top == 1
 				&& loaded[0].dataRange.right == 2 && loaded[0].dataRange.bottom == 5,
-			"l'intervallo dati del grafico e' preservato");
+			"l'intervallo dati del primo grafico e' preservato");
 		Check(loaded[0].frame == BRect(100, 200, 400, 380),
-			"la posizione del grafico e' preservata");
+			"la posizione del primo grafico e' preservata");
+		Check(loaded[0].type == eBarChart,
+			"il primo grafico resta a barre (tipo predefinito)");
+		Check(loaded[1].type == ePieChart,
+			"il tipo del secondo grafico (torta) e' preservato, allineato al grafico giusto");
 	}
 	chartReloaded.Release();
 

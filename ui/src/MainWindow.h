@@ -346,7 +346,7 @@ private:
 	void ShowChartWindow();
 	void ShowPivotWindow();
 	void HandleChartRequest(const char* rangeText);
-	void HandleChartInsert(const char* rangeText, const char* destText);
+	void HandleChartInsert(const char* rangeText, const char* destText, ChartType type = eBarChart);
 	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg);
 	void ShowNameWindow();
 	void RefreshNameWindow();

@@ -607,6 +607,16 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione tipo di grafico incorporato, in coda (vedi
+	// ui/src/AscdIO.cpp): sempre vuota, stesso principio delle sezioni
+	// commenti/collegamenti appena sopra -- il chartCount scritto piu'
+	// sopra e' gia' sempre zero per questo translator.
+	{
+		int32 chartTypeCount = 0;
+		if (dest->Write(&chartTypeCount, sizeof(chartTypeCount)) != (ssize_t)sizeof(chartTypeCount))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 

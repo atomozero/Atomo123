@@ -573,6 +573,18 @@ int main()
 								"nessun collegamento ipertestuale in sample.xlsx, il contatore e' zero");
 						}
 
+						// Tipo di grafico incorporato (Fase 13): stesso
+						// principio delle sezioni commenti/collegamenti
+						// appena sopra, ultima sezione del formato (vedi
+						// WriteASCD sopra).
+						if (pos + 4 <= ascdLen)
+						{
+							int32 chartTypeCount;
+							memcpy(&chartTypeCount, ascdData + pos, 4); pos += 4;
+							Check(chartTypeCount == 0,
+								"nessun grafico in sample.xlsx, il contatore dei tipi e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte

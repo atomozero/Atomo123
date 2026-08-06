@@ -97,6 +97,63 @@ int main()
 			"tutte le barre poggiano sulla stessa base");
 	}
 
+	// ComputeLineLayout (Fase 13): stesso principio di ComputeBarLayout
+	// sopra, un punto invece di una barra.
+	std::vector<LinePoint> points;
+	ComputeLineLayout(layoutData, bounds, points);
+
+	Check(points.size() == 2, "ComputeLineLayout produce un punto per voce");
+	if (points.size() == 2)
+	{
+		Check(points[0].point.x < points[1].point.x,
+			"i punti sono ordinati da sinistra a destra come i dati");
+		Check(points[1].point.y < points[0].point.y,
+			"il punto col valore maggiore (B=20) sta piu' in alto (y minore) di quello con A=10");
+	}
+
+	std::vector<LinePoint> emptyPoints;
+	std::vector<ChartSeries> noData;
+	ComputeLineLayout(noData, bounds, emptyPoints);
+	Check(emptyPoints.empty(), "ComputeLineLayout su una serie vuota non produce punti");
+
+	// ComputePieLayout (Fase 13): angoli proporzionali al peso di ogni
+	// valore sul totale, non alla posizione nell'elenco.
+	std::vector<ChartSeries> pieData;
+	ChartSeries p1; p1.label = "P1"; p1.value = 25;
+	ChartSeries p2; p2.label = "P2"; p2.value = 75;
+	pieData.push_back(p1);
+	pieData.push_back(p2);
+
+	std::vector<PieSlice> slices;
+	ComputePieLayout(pieData, slices);
+
+	Check(slices.size() == 2, "ComputePieLayout produce uno spicchio per voce");
+	if (slices.size() == 2)
+	{
+		Check(slices[0].startAngle == 0.0f,
+			"il primo spicchio parte da 0 gradi");
+		Check(slices[0].sweepAngle == 90.0f,
+			"il primo spicchio (25 su 100) occupa 90 gradi (un quarto del cerchio)");
+		Check(slices[1].startAngle == 90.0f,
+			"il secondo spicchio inizia dove finisce il primo");
+		Check(slices[1].sweepAngle == 270.0f,
+			"il secondo spicchio (75 su 100) occupa 270 gradi (tre quarti)");
+	}
+
+	std::vector<PieSlice> emptySlices;
+	ComputePieLayout(noData, emptySlices);
+	Check(emptySlices.empty(), "ComputePieLayout su una serie vuota non produce spicchi");
+
+	// Una serie con solo valori non positivi non ha nessuno spicchio
+	// disegnabile (una torta non ha senso senza un totale positivo).
+	std::vector<ChartSeries> negativeData;
+	ChartSeries neg; neg.label = "Neg"; neg.value = -5;
+	negativeData.push_back(neg);
+	std::vector<PieSlice> negativeSlices;
+	ComputePieLayout(negativeData, negativeSlices);
+	Check(negativeSlices.empty(),
+		"ComputePieLayout su una serie con solo valori non positivi non produce spicchi");
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();

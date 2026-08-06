@@ -2332,7 +2332,7 @@ void SheetView::Draw(BRect updateRect)
 
 			std::vector<ChartSeries> series;
 			BuildChartSeries(fDoc, obj.dataRange, series);
-			DrawBarChart(this, obj.frame, series);
+			DrawChart(this, obj.frame, series, obj.type);
 		}
 	}
 

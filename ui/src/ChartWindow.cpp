@@ -10,15 +10,19 @@
 
 #include <Button.h>
 #include <LayoutBuilder.h>
+#include <MenuField.h>
+#include <MenuItem.h>
+#include <PopUpMenu.h>
 #include <String.h>
 #include <TextControl.h>
 
 static const uint32 kMsgDrawLocal = 'drlc';
 static const uint32 kMsgInsertLocal = 'inlc';
+static const uint32 kMsgTypeChangedLocal = 'tpcl';
 
 ChartWindow::ChartWindow(BMessenger target)
 	:
-	BWindow(BRect(180, 180, 580, 500), "Grafico a barre",
+	BWindow(BRect(180, 180, 580, 500), "Grafico",
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target)
@@ -30,6 +34,17 @@ ChartWindow::ChartWindow(BMessenger target)
 
 	BButton* drawButton = new BButton("draw", "Disegna", new BMessage(kMsgDrawLocal));
 	drawButton->SetTarget(this);
+
+	// Barre come voce predefinita (indice 0), stesso ordine dei valori
+	// dell'enum ChartType in Chart.h -- SelectedType() sotto si basa
+	// su questa corrispondenza posizionale.
+	BPopUpMenu* typeMenu = new BPopUpMenu("typeMenu");
+	typeMenu->AddItem(new BMenuItem("Barre", new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->AddItem(new BMenuItem("Linee", new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->AddItem(new BMenuItem("Torta", new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->ItemAt(0)->SetMarked(true);
+	fTypeField = new BMenuField("type", "Tipo:", typeMenu);
+	fTypeField->Menu()->SetTargetForItems(this);
 
 	fChartView = new ChartView();
 
@@ -44,6 +59,7 @@ ChartWindow::ChartWindow(BMessenger target)
 		.SetInsets(8, 8, 8, 8)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fRangeField)
+			.Add(fTypeField)
 			.Add(drawButton)
 		.End()
 		.Add(fChartView)
@@ -52,6 +68,20 @@ ChartWindow::ChartWindow(BMessenger target)
 			.AddGlue()
 			.Add(insertButton)
 		.End();
+}
+
+ChartType ChartWindow::SelectedType() const
+{
+	// Corrispondenza posizionale con l'ordine di inserimento in
+	// BPopUpMenu sopra (0=Barre, 1=Linee, 2=Torta) e con i valori
+	// dell'enum ChartType in Chart.h -- niente da cercare per nome.
+	int32 index = fTypeField->Menu()->IndexOf(fTypeField->Menu()->FindMarked());
+	switch (index)
+	{
+		case 1: return eLineChart;
+		case 2: return ePieChart;
+		default: return eBarChart;
+	}
 }
 
 void ChartWindow::MessageReceived(BMessage* message)
@@ -66,11 +96,16 @@ void ChartWindow::MessageReceived(BMessage* message)
 			return;
 		}
 
+		case kMsgTypeChangedLocal:
+			fChartView->SetChartType(SelectedType());
+			return;
+
 		case kMsgInsertLocal:
 		{
 			BMessage request(kMsgChartInsert);
 			request.AddString("range", fRangeField->Text());
 			request.AddString("dest", fDestField->Text());
+			request.AddInt32("type", (int32)SelectedType());
 			fTarget.SendMessage(&request);
 			return;
 		}

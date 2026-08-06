@@ -625,6 +625,29 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione tipo di grafico incorporato, in coda (Fase 13): un byte
+	// per grafico, nello STESSO ordine dell'array "charts" scritto
+	// sopra -- non un campo dentro il record fisso di ogni grafico
+	// (che vive PRIMA di altre sezioni nel formato, vedi sopra):
+	// inserire un campo li' romperebbe l'allineamento byte per byte
+	// dei file .ascd gia' scritti con un grafico, che oggi hanno solo
+	// grafici a barre. Un file .ascd scritto PRIMA di questa modifica
+	// (o senza questa sezione) lascia ogni ChartObject al tipo
+	// predefinito (eBarChart, gia' impostato dal costruttore in
+	// Chart.h), stesso schema EOF-tollerante delle altre sezioni
+	// opzionali sopra.
+	{
+		int32 chartTypeCount = charts ? (int32)charts->size() : 0;
+		if (dest->Write(&chartTypeCount, sizeof(chartTypeCount)) != (ssize_t)sizeof(chartTypeCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < chartTypeCount; i++)
+		{
+			int8 type = (int8)(*charts)[i].type;
+			if (dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1264,6 +1287,31 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						return B_BAD_DATA;
 				}
 				doc->SetHyperlink(cell(col, row), text);
+			}
+		}
+	}
+
+	// Sezione tipo di grafico incorporato, in coda: stesso schema
+	// EOF-tollerante delle sezioni sopra. Assegna nello STESSO ordine
+	// dell'array charts gia' popolato piu' sopra in questa funzione
+	// (vedi il commento gemello in SaveASCD) -- un file scritto prima
+	// di questa modifica (o senza questa sezione) lascia ogni
+	// ChartObject al tipo predefinito (eBarChart).
+	{
+		int32 chartTypeCount = 0;
+		ssize_t got = source->Read(&chartTypeCount, sizeof(chartTypeCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartTypeCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartTypeCount; i++)
+			{
+				int8 type;
+				if (source->Read(&type, sizeof(type)) != (ssize_t)sizeof(type))
+					return B_BAD_DATA;
+				if (charts && i < (int32)charts->size())
+					(*charts)[i].type = (ChartType)type;
 			}
 		}
 	}
