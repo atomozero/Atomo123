@@ -597,6 +597,16 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione collegamenti ipertestuali, in coda: stesso principio
+	// della sezione commenti appena sopra -- questo translator non
+	// estrae ancora <hyperlinks> da un file XLSX vero (rimandato,
+	// vedi ROADMAP.md), quindi sempre vuota.
+	{
+		int32 linkCount = 0;
+		if (dest->Write(&linkCount, sizeof(linkCount)) != (ssize_t)sizeof(linkCount))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 

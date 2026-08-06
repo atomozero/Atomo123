@@ -562,6 +562,17 @@ int main()
 								"nessun commento in sample.xlsx, il contatore e' zero");
 						}
 
+						// Collegamenti ipertestuali (Fase 13): stesso
+						// principio della sezione commenti appena sopra,
+						// ultima sezione del formato (vedi WriteASCD sopra).
+						if (pos + 4 <= ascdLen)
+						{
+							int32 linkCount;
+							memcpy(&linkCount, ascdData + pos, 4); pos += 4;
+							Check(linkCount == 0,
+								"nessun collegamento ipertestuale in sample.xlsx, il contatore e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte

@@ -17,6 +17,7 @@
 #include "GoToWindow.h"
 #include "RenameSheetWindow.h"
 #include "CommentWindow.h"
+#include "HyperlinkWindow.h"
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
 #include "AboutWindow.h"
@@ -59,6 +60,7 @@
 #include <TextControl.h>
 #include <TranslatorRoster.h>
 #include <TranslationDefs.h>
+#include <Url.h>
 
 #include "CellStyle.h"
 #include "Container.h"
@@ -104,6 +106,8 @@ static const uint32 kMsgToggleUnderline = 'tund';
 static const uint32 kMsgToggleWrapText = 'twrp';
 static const uint32 kMsgMergeCells = 'mrgc';
 static const uint32 kMsgShowCommentWindow = 'shcw';
+static const uint32 kMsgShowHyperlinkWindow = 'shlw';
+static const uint32 kMsgOpenHyperlink = 'ophl';
 static const uint32 kMsgUnmergeCells = 'umrg';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
@@ -466,6 +470,10 @@ MainWindow::MainWindow()
 	// piu' celle in un colpo solo.
 	formatMenu->AddItem(new BMenuItem("Commento cella" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgShowCommentWindow)));
+	// Collegamento ipertestuale (Fase 13): stesso principio del
+	// commento cella appena sopra -- un URL per UNA cella precisa.
+	formatMenu->AddItem(new BMenuItem("Collegamento ipertestuale" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowHyperlinkWindow)));
 	menuBar->AddItem(formatMenu);
 
 	// Riempi in basso/a destra: copia la prima riga/colonna
@@ -604,6 +612,7 @@ MainWindow::MainWindow()
 	fGoToWindow = NULL;
 	fRenameSheetWindow = NULL;
 	fCommentWindow = NULL;
+	fHyperlinkWindow = NULL;
 	fColorWindow = NULL;
 	fPreferencesWindow = NULL;
 
@@ -658,6 +667,11 @@ MainWindow::~MainWindow()
 	{
 		fCommentWindow->Lock();
 		fCommentWindow->Quit();
+	}
+	if (fHyperlinkWindow)
+	{
+		fHyperlinkWindow->Lock();
+		fHyperlinkWindow->Quit();
 	}
 	if (fColorWindow)
 	{
@@ -2228,6 +2242,46 @@ BString MainWindow::CellComment(int row, int col) const
 	return BString(fDoc->GetComment(cell(col, row)).c_str());
 }
 
+void MainWindow::SetCellHyperlink(int row, int col, const char* url)
+{
+	if (!fDoc)
+		return;
+	fDoc->SetHyperlink(cell(col, row), url ? url : "");
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::RemoveCellHyperlink(int row, int col)
+{
+	if (!fDoc)
+		return;
+	fDoc->SetHyperlink(cell(col, row), ""); // stringa vuota = nessun collegamento, vedi CContainer::SetHyperlink
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+BString MainWindow::CellHyperlink(int row, int col) const
+{
+	if (!fDoc)
+		return BString();
+	return BString(fDoc->GetHyperlink(cell(col, row)).c_str());
+}
+
+void MainWindow::OpenCellHyperlink(int row, int col)
+{
+	if (!fDoc)
+		return;
+	BString url = CellHyperlink(row, col);
+	if (url.Length() == 0)
+		return;
+	// Non testabile in automatico: lancia davvero l'applicazione
+	// preferita per l'URL (browser, client di posta per "mailto:",
+	// ecc.), stesso limite gia' noto di DeleteSheet/RenameSheet con un
+	// vero BAlert -- i test verificano solo Set/Remove/CellHyperlink.
+	BUrl bUrl(url.String(), false);
+	bUrl.OpenWithPreferredApplication(false);
+}
+
 void MainWindow::HandleGoToRequest(const char* rangeText)
 {
 	range r;
@@ -3059,6 +3113,50 @@ void MainWindow::MessageReceived(BMessage* message)
 			if (message->FindInt32("row", &row) == B_OK
 				&& message->FindInt32("col", &col) == B_OK)
 				RemoveCellComment(row, col);
+			break;
+		}
+
+		case kMsgShowHyperlinkWindow:
+		{
+			if (!fDoc)
+				break;
+			cell sel = fSheetView->Selection();
+			if (!fHyperlinkWindow)
+				fHyperlinkWindow = new HyperlinkWindow(BMessenger(this));
+			BString current = CellHyperlink(sel.v, sel.h);
+			fHyperlinkWindow->SetCell(sel.v, sel.h, current.String());
+			if (fHyperlinkWindow->IsHidden())
+				fHyperlinkWindow->Show();
+			fHyperlinkWindow->Activate();
+			break;
+		}
+
+		case kMsgHyperlinkCommit:
+		{
+			int32 row, col;
+			BString url;
+			if (message->FindInt32("row", &row) == B_OK
+				&& message->FindInt32("col", &col) == B_OK
+				&& message->FindString("url", &url) == B_OK)
+				SetCellHyperlink(row, col, url.String());
+			break;
+		}
+
+		case kMsgHyperlinkRemove:
+		{
+			int32 row, col;
+			if (message->FindInt32("row", &row) == B_OK
+				&& message->FindInt32("col", &col) == B_OK)
+				RemoveCellHyperlink(row, col);
+			break;
+		}
+
+		case kMsgOpenHyperlink:
+		{
+			int32 row, col;
+			if (message->FindInt32("row", &row) == B_OK
+				&& message->FindInt32("col", &col) == B_OK)
+				OpenCellHyperlink(row, col);
 			break;
 		}
 

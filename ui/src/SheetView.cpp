@@ -1916,6 +1916,16 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				SetHighColor(cs.fHighColor);
 				SetLowColor(cs.fLowColor);
 
+				// Collegamenti ipertestuali (Fase 13): blu e
+				// sottolineato, come Excel/LibreOffice Calc -- solo per
+				// il disegno di questa cella, non tocca cs.fHighColor/
+				// cs.fUnderline realmente memorizzati (un collegamento
+				// rimosso in seguito deve poter tornare all'aspetto
+				// originale della cella).
+				bool isHyperlink = fDoc->HasHyperlink(c);
+				if (isHyperlink)
+					SetHighColor(20, 80, 200);
+
 				// Grassetto/Corsivo (Fase 7): CellStyle::fFont e' un
 				// indice in gFontSizeTable (mai un flag diretto), quindi
 				// va applicato alla vista prima di disegnare -- e prima
@@ -1992,7 +2002,7 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 					// cella come i bordi in DrawCellBand, solo la
 					// larghezza del testo davvero disegnato su
 					// quella riga.
-					if (cs.fUnderline && lineText[0] != 0)
+					if ((cs.fUnderline || isHyperlink) && lineText[0] != 0)
 					{
 						float textWidth = StringWidth(lineText);
 						float y = pos.y + 2;
@@ -2605,6 +2615,21 @@ void SheetView::MouseDown(BPoint where)
 	{
 		msg->FindInt32("clicks", &clicks);
 		msg->FindInt32("modifiers", &mods);
+	}
+
+	// Collegamenti ipertestuali (Fase 13): Ctrl+click apre il
+	// collegamento della cella, come LibreOffice Calc -- non un click
+	// semplice, che resterebbe altrimenti impossibile da usare per
+	// selezionare/modificare una cella con un URL senza lanciare ogni
+	// volta il browser. Seleziona comunque la cella prima di uscire,
+	// stesso comportamento di un click normale.
+	if ((mods & B_CONTROL_KEY) && fDoc && fDoc->HasHyperlink(c))
+	{
+		SetSelection(c);
+		MainWindow* win = dynamic_cast<MainWindow*>(Window());
+		if (win)
+			win->OpenCellHyperlink(c.v, c.h);
+		return;
 	}
 
 	// Maiusc+click estende la selezione dall'ancora corrente (come

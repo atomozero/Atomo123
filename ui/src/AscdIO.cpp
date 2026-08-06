@@ -603,6 +603,28 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione collegamenti ipertestuali, in coda (Fase 13): stesso
+	// schema esatto dei commenti sopra.
+	{
+		const std::map<cell, std::string>& links = doc->GetHyperlinks();
+		int32 linkCount = (int32)links.size();
+		if (dest->Write(&linkCount, sizeof(linkCount)) != (ssize_t)sizeof(linkCount))
+			return B_IO_ERROR;
+
+		for (std::map<cell, std::string>::const_iterator it = links.begin();
+			it != links.end(); ++it)
+		{
+			int16 row = it->first.v, col = it->first.h;
+			int32 len = (int32)it->second.size();
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(it->second.data(), len) != len)
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1211,6 +1233,37 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						return B_BAD_DATA;
 				}
 				doc->SetComment(cell(col, row), text);
+			}
+		}
+	}
+
+	// Sezione collegamenti ipertestuali, in coda: stesso schema esatto
+	// dei commenti sopra.
+	{
+		int32 linkCount = 0;
+		ssize_t got = source->Read(&linkCount, sizeof(linkCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(linkCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < linkCount; i++)
+			{
+				int16 row, col;
+				int32 len;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+
+				std::string text;
+				if (len > 0)
+				{
+					text.resize(len);
+					if (source->Read(&text[0], len) != len)
+						return B_BAD_DATA;
+				}
+				doc->SetHyperlink(cell(col, row), text);
 			}
 		}
 	}

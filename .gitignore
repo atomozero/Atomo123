@@ -27,6 +27,8 @@ ui/Atomo123.rsrc
 # Copie del binario rinominate con l'hash del commit (invece di
 # cancellarle con "make clean"), vedi CLAUDE.md/istruzioni di sessione
 ui/Atomo123-*
+ui/examples/generate_demo
+ui/examples/atomo123_demo.ascd
 
 # Compiled binaries produced by the legacy build (not source)
 legacy/opensumit/bsl/bsl

@@ -269,6 +269,24 @@ public:
 	bool HasComment(cell c) const { return fComments.find(c) != fComments.end(); }
 	const std::map<cell, std::string>& GetComments() const { return fComments; }
 
+	// Collegamenti ipertestuali (Fase 13): stesso schema esatto dei
+	// commenti sopra -- un URL vuoto rimuove il collegamento invece di
+	// lasciarne uno vuoto in giro.
+	void SetHyperlink(cell c, const std::string& url)
+	{
+		if (url.empty())
+			fHyperlinks.erase(c);
+		else
+			fHyperlinks[c] = url;
+	}
+	std::string GetHyperlink(cell c) const
+	{
+		std::map<cell, std::string>::const_iterator it = fHyperlinks.find(c);
+		return (it != fHyperlinks.end()) ? it->second : std::string();
+	}
+	bool HasHyperlink(cell c) const { return fHyperlinks.find(c) != fHyperlinks.end(); }
+	const std::map<cell, std::string>& GetHyperlinks() const { return fHyperlinks; }
+
 private:
 	void Visit(const cell&, void*);
 	bool GetCellData(const cell&, CellData&);
@@ -289,6 +307,7 @@ private:
 	ISheetResolver *fSheetResolver;
 	std::vector<range> fMergedRanges;
 	std::map<cell, std::string> fComments;
+	std::map<cell, std::string> fHyperlinks;
 };
 
 inline bool CContainer::WriteLock()

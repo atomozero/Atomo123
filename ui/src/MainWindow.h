@@ -37,6 +37,7 @@ class PasteSpecialWindow;
 class GoToWindow;
 class RenameSheetWindow;
 class CommentWindow;
+class HyperlinkWindow;
 class ColorWindow;
 class PreferencesWindow;
 
@@ -203,6 +204,16 @@ public:
 	void RemoveCellComment(int row, int col);
 	BString CellComment(int row, int col) const;
 
+	// Collegamenti ipertestuali (Fase 13): stesso schema esatto dei
+	// commenti sopra. OpenCellHyperlink lancia davvero l'URL con BUrl
+	// (non testabile in automatico, stesso limite gia' noto di
+	// DeleteSheet/RenameSheet con un vero BAlert -- i test verificano
+	// solo Set/Remove/CellHyperlink).
+	void SetCellHyperlink(int row, int col, const char* url);
+	void RemoveCellHyperlink(int row, int col);
+	BString CellHyperlink(int row, int col) const;
+	void OpenCellHyperlink(int row, int col);
+
 	// ISheetResolver (Fase 9): risolve "NomeFoglio!Cella" verso il
 	// CContainer corrispondente in fSheets, per nome. Pubblico perche'
 	// la classe lo espone come override di un'interfaccia pubblica, non
@@ -273,6 +284,7 @@ private:
 	GoToWindow* fGoToWindow;
 	RenameSheetWindow* fRenameSheetWindow;
 	CommentWindow* fCommentWindow;
+	HyperlinkWindow* fHyperlinkWindow;
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
 	std::vector<ChartObject> fCharts;
