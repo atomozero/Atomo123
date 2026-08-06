@@ -19,7 +19,7 @@ ENGINE_SRCDIRS := $(ENGINE_DIR)/src/Cell $(ENGINE_DIR)/src/Formula \
 	$(ENGINE_DIR)/src/Metrowerks $(ENGINE_DIR)/src/Stubs
 INCLUDES := $(addprefix -I, $(ENGINE_SRCDIRS)) -Isrc
 
-LIBS := -L$(ENGINE_DIR) -lengine -lbe -ltranslation -ltracker
+LIBS := -L$(ENGINE_DIR) -lengine -lbe -ltranslation -ltracker -lGL -lGLU
 
 APP := Atomo123
 SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/SheetTabView.cpp \
@@ -32,7 +32,8 @@ SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/SheetTabView.cpp
 	src/ValidationWindow.cpp \
 	src/ConditionalFormatWindow.cpp \
 	src/ColorWindow.cpp \
-	src/PreferencesWindow.cpp src/AboutWindow.cpp src/ClickableStringView.cpp
+	src/PreferencesWindow.cpp src/AboutWindow.cpp src/ClickableStringView.cpp \
+	src/SplashWindow.cpp src/AtomGLView.cpp src/AtomTheme.cpp src/TextTexture.cpp
 OBJECTS := $(SOURCES:.cpp=.o)
 RDEF := Atomo123.rdef
 RSRC := Atomo123.rsrc

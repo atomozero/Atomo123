@@ -6,6 +6,7 @@
 
 #include "App.h"
 #include "MainWindow.h"
+#include "SplashWindow.h"
 
 #include <Entry.h>
 #include <Mime.h>
@@ -90,13 +91,27 @@ void App::ReadyToRun()
 
 	RegisterFileTypes();
 
+	(new SplashWindow())->Show();
+
 	// Se un file era gia' pronto all'avvio (RefsReceived sotto puo'
 	// arrivare prima di ReadyToRun quando Tracker lancia l'app con un
 	// file, comportamento standard di BApplication), quella finestra
 	// esiste gia': non se ne crea una seconda vuota. Se invece
 	// RefsReceived arrivasse dopo (ordine non garantito), la trovera'
 	// comunque vergine e la riusera' -- vedi FindReusableWindow().
-	if (CountWindows() == 0)
+	// Si cerca esplicitamente una MainWindow (non CountWindows() puro)
+	// perche' lo SplashWindow appena mostrato sopra e' gia' una finestra
+	// dell'app ma non va mai scambiato per quella.
+	bool hasMainWindow = false;
+	for (int32 i = 0; i < CountWindows(); i++)
+	{
+		if (dynamic_cast<MainWindow*>(WindowAt(i)))
+		{
+			hasMainWindow = true;
+			break;
+		}
+	}
+	if (!hasMainWindow)
 	{
 		MainWindow* window = new MainWindow();
 		window->Show();
