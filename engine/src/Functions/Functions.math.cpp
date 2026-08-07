@@ -656,6 +656,58 @@ void COUNTIFFunction(Value *stack, int argCnt, CContainer *cells)
 	stack[0] = (double)count;
 } /* COUNTIFFunction */
 
+// COUNTIFS(intervallo1, criterio1, [intervallo2, criterio2], ...): a
+// differenza di COUNTIF sopra (un solo intervallo/criterio), conta le
+// posizioni dove OGNI coppia intervallo/criterio corrisponde -- un AND
+// fra tutte le coppie, non una somma separata. Stesso MatchesCriteria
+// gia' usato da SUMIF/COUNTIF/AVERAGEIF, applicato a ogni intervallo
+// alla STESSA posizione relativa del primo (Excel richiede che tutti
+// gli intervalli abbiano la stessa forma -- non verificato
+// esplicitamente qui: una forma diversa semplicemente non trova mai
+// nulla alla posizione corrispondente, comportamento sicuro invece di
+// un errore bloccante).
+void COUNTIFSFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	const int kMaxPairs = 12; // vedi kMaxStackHeight in Formula.h: mai piu' di ~12 coppie in una formula reale
+	if (argCnt < 2 || argCnt % 2 != 0 || argCnt / 2 > kMaxPairs)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int pairCount = argCnt / 2;
+	range ranges[kMaxPairs];
+	for (int p = 0; p < pairCount; p++)
+	{
+		if (!GetRangeArgument(stack, argCnt, 2 * p + 1, &ranges[p]) || !ranges[p].IsValid())
+		{
+			stack[0] = gRefNan;
+			return;
+		}
+	}
+
+	long count = 0;
+	CCellIterator iter(cells, &ranges[0]);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		bool allMatch = true;
+		for (int p = 0; p < pairCount && allMatch; p++)
+		{
+			cell target(ranges[p].left + (c.h - ranges[0].left),
+				ranges[p].top + (c.v - ranges[0].top));
+			Value val;
+			cells->GetValue(target, val);
+			if (!MatchesCriteria(val, stack[2 * p + 1]))
+				allMatch = false;
+		}
+		if (allMatch)
+			count++;
+	}
+
+	stack[0] = (double)count;
+} /* COUNTIFSFunction */
+
 void AVERAGEIFFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	range criteriaRange, sumRange;

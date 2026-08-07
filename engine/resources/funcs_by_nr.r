@@ -161,6 +161,10 @@ resource 'Func' (128, "Functions")
 		// (gli ultimi tre opzionali), IFS da 2 in su (coppie
 		// condizione/valore).
 		"XLOOKUP", 65535, 101, 1,
-		"IFS", 65535, 102, 7
+		"IFS", 65535, 102, 7,
+		// COUNTIFS (Fase 14): vedi il commento su kCOUNTIFSFuncNr in
+		// Functions.h. 65535 = numero di coppie intervallo/criterio
+		// variabile, come SUMIF/COUNTIF sopra.
+		"COUNTIFS", 65535, 103, 5
 	}
 };

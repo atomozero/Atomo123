@@ -150,6 +150,10 @@ enum {
 	// letterale della formula invece del valore calcolato.
 	kXLOOKUPFuncNr,
 	kIFSFuncNr,
+	// COUNTIFS (Fase 14): a differenza di COUNTIF sopra (un solo
+	// intervallo/criterio), conta un AND fra piu' coppie intervallo/
+	// criterio -- vedi COUNTIFSFunction in Functions.math.cpp.
+	kCOUNTIFSFuncNr,
 	kFunctionCount
 };
 
@@ -241,6 +245,7 @@ void ATAN2Function(Value *stack, int argCnt, CContainer *cells);
 void COUNTAFunction(Value *stack, int argCnt, CContainer *cells);
 void SUMIFFunction(Value *stack, int argCnt, CContainer *cells);
 void COUNTIFFunction(Value *stack, int argCnt, CContainer *cells);
+void COUNTIFSFunction(Value *stack, int argCnt, CContainer *cells);
 void AVERAGEIFFunction(Value *stack, int argCnt, CContainer *cells);
 void TRIMFunction(Value *stack, int argCnt, CContainer *cells);
 void UPPERFunction(Value *stack, int argCnt, CContainer *cells);

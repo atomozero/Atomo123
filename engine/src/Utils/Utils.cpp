@@ -45,6 +45,7 @@
 
 #ifndef   CONTAINER_H
 #include "Container.h"
+#include "Functions.h"
 #endif
 
 #ifndef   FUNCTIONUTILS_H
@@ -139,6 +140,28 @@ int GetFunctionNr(const char *name)
 	}
 	if (hasXlfnPrefix)
 		name += kXlfnPrefixLen;
+
+	// "CEILING.MATH" (12 caratteri) non entra affatto nel campo
+	// funcName[10] della risorsa 'Func' (9 caratteri utili piu' il
+	// terminatore, vedi il commento sotto) -- allargare quel formato
+	// binario condiviso da ogni altra funzione solo per questa non
+	// vale il rischio. Alias diretto verso CEILING invece: nell'unico
+	// uso reale visto finora (CEILING.MATH con un solo argomento,
+	// senza significativita'/modalita' esplicite) i due si comportano
+	// identici (arrotondano per eccesso all'intero piu' vicino, vedi
+	// CEILINGFunction) -- se un file dovesse mai usare CEILING.MATH con
+	// piu' di un argomento, l'analisi grammaticale lo rifiuta comunque
+	// (CEILING accetta un solo argomento), non calcola silenziosamente
+	// un risultato sbagliato.
+	{
+		static const char kCeilingMath[] = "CEILING.MATH";
+		const int kCeilingMathLen = sizeof(kCeilingMath) - 1;
+		bool isCeilingMath = (long)strlen(name) == kCeilingMathLen;
+		for (i = 0; isCeilingMath && i < kCeilingMathLen; i++)
+			isCeilingMath = (toupper(name[i]) == kCeilingMath[i]);
+		if (isCeilingMath)
+			return kCEILINGFuncNr;
+	}
 
 	sLen = strlen(name);
 

@@ -67,7 +67,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 103, "InitFunctions carica tutte le 103 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 104, "InitFunctions carica tutte le 104 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -180,6 +180,51 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =SUMIF con operatore: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// COUNTIFS (Fase 14): bug reale scoperto analizzando un file XLSX
+	// reale (18 formule COUNTIFS mostrate come testo grezzo, funzione
+	// del tutto assente dalla tabella). Colonna 22 (V) in poi, del
+	// tutto separata dalle celle usate altrove in questo file (nessuna
+	// dipendenza dall'ordine in cui le sezioni vengono eseguite).
+	// V1:V4 = disponibilita' (Si/No), stesse righe di D1:D4/E1:E4
+	// sopra -- solo la riga 1 (Mela, Si) soddisfa ENTRAMBI i criteri
+	// (riga 3 e' Mela ma "No").
+	TryToParseString("Si", cell(22, 1), &doc, true);
+	TryToParseString("Si", cell(22, 2), &doc, true);
+	TryToParseString("No", cell(22, 3), &doc, true);
+	TryToParseString("Si", cell(22, 4), &doc, true);
+
+	try
+	{
+		TryToParseString("=COUNTIFS(D1:D4;\"Mela\";V1:V4;\"Si\")", cell(23, 1), &doc, true);
+		doc.CalcCell(cell(23, 1));
+		doc.GetValue(cell(23, 1), v);
+		Check((double)v == 1.0,
+			"=COUNTIFS(D1:D4;\"Mela\";V1:V4;\"Si\") conta solo la riga 1 (Mela E Si, non la riga 3 che e' Mela ma No)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =COUNTIFS: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// CEILING.MATH (Fase 14): altro bug reale scoperto sullo stesso
+	// file (2 formule, sempre con un solo argomento -- vedi
+	// GetFunctionNr in Utils.cpp sul perche' e' un alias diretto di
+	// CEILING invece di una vera nuova funzione).
+	try
+	{
+		TryToParseString("=_xlfn.CEILING.MATH(7.35+2+1.8)", cell(23, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(23, 2));
+		doc.GetValue(cell(23, 2), v);
+		Check((double)v == 12.0,
+			"=_xlfn.CEILING.MATH(7.35+2+1.8) (11.15) arrotonda per eccesso a 12, come nel file reale che ha fatto scoprire il bug");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =_xlfn.CEILING.MATH: %s\n", (char *)e);
 		gFailures++;
 	}
 
