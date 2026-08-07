@@ -7,7 +7,13 @@ enum {
 	// identificatore semplice -- vedi lexer.cpp (stati 40-41, stesso
 	// principio delle virgolette doppie di TEXT) e il commento su
 	// CParser::ParseSheetReference sotto.
-	QIDENT
+	QIDENT,
+	// Riferimento a tabella strutturata di Excel ("Tabella12[Codice]"):
+	// il nome della colonna fra "[" "]", che puo' contenere spazi o
+	// punti (es. "u.m.") -- stesso principio di QIDENT sopra (testo
+	// grezzo delimitato), vedi lexer.cpp stati 60-61 e
+	// CParser::ParseTableReference.
+	TBLCOL
 };
 
 class CParser
@@ -53,6 +59,18 @@ class CParser
 	// nome incorporato cosi' com'e' (mai un indice, vedi il commento
 	// su ISheetResolver in Container.h).
 	void ParseSheetReference(const char *inName);
+
+	// Riferimento a tabella strutturata di Excel ("Tabella12[Codice]",
+	// Fase 14): chiamato da Factor() con il nome della tabella gia'
+	// riconosciuto (IDENT) e il nome della colonna come prossimo
+	// lookahead (TBLCOL, vedi lexer.cpp stati 60-61) -- stesso schema
+	// di ParseSheetReference sopra, ma il risultato e' un normale
+	// valName ("Tabella12[Codice]" cosi' com'e'), non un valXRef/
+	// valXRange: la tabella si risolve solo in fase di calcolo (vedi
+	// CContainer::ResolveName), zero altre modifiche necessarie a
+	// Formula.IO.cpp/Formula.iter.cpp/Formula.refs.cpp, che trattano
+	// valName come una stringa opaca.
+	void ParseTableReference(const char *inName);
 
 	void Match(int expected);
 	

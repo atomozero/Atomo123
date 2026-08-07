@@ -682,6 +682,56 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione tabelle strutturate di Excel, in coda (Fase 14, vedi
+	// ui/src/AscdIO.cpp, STESSO ORDINE -- dopo la formattazione
+	// condizionale). A differenza delle sezioni "non ancora estratte"
+	// sopra, QUESTA si popola per davvero (RegisterTable, chiamato da
+	// ParseSheet quando il foglio ha <tableParts>): senza scriverla qui,
+	// MainWindow::OpenFile leggerebbe un CContainer del tutto nuovo
+	// senza nessuna tabella registrata (i byte ASCD sono la SOLA cosa
+	// che sopravvive oltre questa funzione, vedi il commento gemello in
+	// SaveASCD), e ogni "Tabella12[Colonna]" tornerebbe a calcolare
+	// gNameNan invece del valore vero -- avrebbe vanificato XLOOKUP su
+	// una vera Tabella Excel, lo scenario reale che ha fatto scoprire
+	// questa fase.
+	{
+		const std::map<std::string, CTableDef>& tables = doc->GetTables();
+		int32 tableCount = (int32)tables.size();
+		if (dest->Write(&tableCount, sizeof(tableCount)) != (ssize_t)sizeof(tableCount))
+			return B_IO_ERROR;
+
+		for (std::map<std::string, CTableDef>::const_iterator it = tables.begin();
+			it != tables.end(); ++it)
+		{
+			int32 nameLen = (int32)it->first.size();
+			if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+				return B_IO_ERROR;
+			if (nameLen > 0 && dest->Write(it->first.data(), nameLen) != nameLen)
+				return B_IO_ERROR;
+
+			const CTableDef& def = it->second;
+			int16 left = def.dataRange.left, top = def.dataRange.top,
+				right = def.dataRange.right, bottom = def.dataRange.bottom;
+			if (dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+				|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+				|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right)
+				|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+				return B_IO_ERROR;
+
+			int32 columnCount = (int32)def.columnNames.size();
+			if (dest->Write(&columnCount, sizeof(columnCount)) != (ssize_t)sizeof(columnCount))
+				return B_IO_ERROR;
+			for (int32 c = 0; c < columnCount; c++)
+			{
+				int32 colLen = (int32)def.columnNames[c].size();
+				if (dest->Write(&colLen, sizeof(colLen)) != (ssize_t)sizeof(colLen))
+					return B_IO_ERROR;
+				if (colLen > 0 && dest->Write(def.columnNames[c].data(), colLen) != colLen)
+					return B_IO_ERROR;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -2582,6 +2632,14 @@ struct TableInfo {
 	range tableRange;
 	bool hasRange;
 	bool showStripes;
+	// Nome della tabella (Fase 14, "Tabella12[Codice]" nelle formule) e
+	// nomi di colonna nello stesso ordine di <tableColumns> (sinistra a
+	// destra in tableRange) -- vedi CContainer::AddTable/ResolveName in
+	// Container.h/.cpp. "name", non "displayName": e' l'attributo che
+	// le formule usano davvero (i due di norma coincidono, ma solo
+	// "name" e' garantito dallo standard ECMA-376).
+	std::string name;
+	std::vector<std::string> columnNames;
 };
 
 static void XMLCALL TableStart(void* userData, const char* name, const char** atts)
@@ -2590,8 +2648,18 @@ static void XMLCALL TableStart(void* userData, const char* name, const char** at
 	if (strcmp(name, "table") == 0)
 	{
 		for (int i = 0; atts[i]; i += 2)
+		{
 			if (strcmp(atts[i], "ref") == 0)
 				info->hasRange = ParseMergeCellRef(atts[i + 1], &info->tableRange);
+			else if (strcmp(atts[i], "name") == 0)
+				info->name = atts[i + 1];
+		}
+	}
+	else if (strcmp(name, "tableColumn") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "name") == 0)
+				info->columnNames.push_back(atts[i + 1]);
 	}
 	else if (strcmp(name, "tableStyleInfo") == 0)
 	{
@@ -2605,6 +2673,8 @@ static bool ParseTableInfo(const std::vector<unsigned char>& xml, TableInfo* out
 {
 	out->hasRange = false;
 	out->showStripes = false;
+	out->name.clear();
+	out->columnNames.clear();
 	if (xml.empty())
 		return false;
 
@@ -2651,6 +2721,32 @@ static void ApplyTableBanding(CContainer* doc, const range& tableRange)
 			doc->SetCellStyle(c, cs);
 		}
 	}
+}
+
+// Registra una tabella strutturata per i riferimenti nelle formule
+// (Fase 14, "Tabella12[Codice]") -- vedi CContainer::AddTable/
+// ResolveName. tableRange (da TableInfo::ref) include la riga di
+// intestazione, CTableDef::dataRange no: un riferimento a colonna
+// indica solo i dati, mai il nome della colonna stesso. Se il numero
+// di colonne non torna con l'intervallo (file corrotto/non standard),
+// la tabella semplicemente non si registra -- un riferimento a un nome
+// mai registrato resta comunque una formula viva (gNameNan), stesso
+// principio di un nome di intervallo indefinito, non un errore fatale
+// per l'intera importazione.
+static void RegisterTable(CContainer* doc, const TableInfo& info)
+{
+	if (info.name.empty() || info.columnNames.empty())
+		return;
+	if ((int)info.columnNames.size() != info.tableRange.right - info.tableRange.left + 1)
+		return;
+	if (info.tableRange.top >= info.tableRange.bottom)
+		return; // nessuna riga dati sotto l'intestazione, solo l'intestazione stessa
+
+	CTableDef def;
+	def.dataRange = info.tableRange;
+	def.dataRange.top += 1; // esclude la riga di intestazione
+	def.columnNames = info.columnNames;
+	doc->AddTable(info.name, def);
 }
 
 // Toglie le virgolette che racchiudono un letterale stringa in una
@@ -3130,8 +3226,12 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 						std::vector<unsigned char> tableXml;
 						TableInfo info;
 						if (zip.ReadEntry(tablePath.c_str(), tableXml)
-							&& ParseTableInfo(tableXml, &info) && info.showStripes)
-							ApplyTableBanding(parsed.doc, info.tableRange);
+							&& ParseTableInfo(tableXml, &info))
+						{
+							if (info.showStripes)
+								ApplyTableBanding(parsed.doc, info.tableRange);
+							RegisterTable(parsed.doc, info);
+						}
 					}
 					else if (target.compare(0, 9, "drawings/") == 0)
 					{

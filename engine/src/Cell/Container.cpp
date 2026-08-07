@@ -644,6 +644,43 @@ range CContainer::ResolveName(const char *name)
 			return i->second;
 	}
 
+	// Riferimento a tabella strutturata di Excel ("Tabella12[Codice]",
+	// Fase 14): riconosciuto dalla presenza di "[" -- un nome di
+	// intervallo normale non puo' mai contenerne uno (nel lessico, "["
+	// avvia sempre e solo un token TBLCOL, vedi lexer.cpp). Il nome
+	// della tabella e' tutto cio' che precede "[", il nome della
+	// colonna tutto cio' che sta fra "[" e "]" (CParser::
+	// ParseTableReference li ha gia' concatenati esattamente cosi').
+	// Tabella o colonna inesistenti: stesso errKeyNotFound di un nome
+	// di intervallo non trovato sopra, che risale a gNameNan in
+	// Formula.cpp -- nessun nuovo tipo di errore, un riferimento a una
+	// tabella non ancora importata/rinominata resta comunque una
+	// formula, non degrada a testo puro.
+	const char *bracket = strchr(name, '[');
+	if (bracket)
+	{
+		std::string tableName(name, bracket - name);
+		std::map<std::string, CTableDef>::const_iterator ti = fTables.find(tableName);
+		if (ti != fTables.end())
+		{
+			std::string colName(bracket + 1);
+			if (!colName.empty() && colName[colName.size() - 1] == ']')
+				colName.erase(colName.size() - 1);
+
+			const CTableDef& def = ti->second;
+			for (size_t ci = 0; ci < def.columnNames.size(); ci++)
+			{
+				if (colName == def.columnNames[ci])
+				{
+					range r = def.dataRange;
+					int col = r.left + (int)ci;
+					r.left = r.right = col;
+					return r;
+				}
+			}
+		}
+	}
+
 	THROW((errKeyNotFound));
 } /* CContainer::ResolveName */
 

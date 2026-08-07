@@ -154,6 +154,13 @@ resource 'Func' (128, "Functions")
 		// approssimato -- vedi il commento su INDEXFunction in
 		// Functions.spreadsheet.cpp.
 		"INDEX", 65535, 99, 1,
-		"MATCH", 65535, 100, 1
+		"MATCH", 65535, 100, 1,
+		// XLOOKUP/IFS (Fase 14): vedi il commento su kXLOOKUPFuncNr in
+		// Functions.h. 65535 = numero di argomenti variabile, come
+		// VLOOKUP/HLOOKUP sopra -- XLOOKUP accetta da 3 a 6 argomenti
+		// (gli ultimi tre opzionali), IFS da 2 in su (coppie
+		// condizione/valore).
+		"XLOOKUP", 65535, 101, 1,
+		"IFS", 65535, 102, 7
 	}
 };

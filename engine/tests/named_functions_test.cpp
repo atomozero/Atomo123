@@ -67,7 +67,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 101, "InitFunctions carica tutte le 101 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 103, "InitFunctions carica tutte le 103 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -593,6 +593,95 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =INDEX+MATCH combinati: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// XLOOKUP/IFS (Fase 14): funzioni Excel piu' recenti del formato
+	// dichiarato del file, scritte con "_xlfn." davanti nei file XLSX
+	// veri -- bug reale segnalato dall'utente, un file XLSX reale con
+	// XLOOKUP su colonne di una Tabella Excel mostrava il testo
+	// letterale della formula invece del valore calcolato. Riusa
+	// L1:M3 gia' popolata sopra per VLOOKUP/INDEX/MATCH.
+	try
+	{
+		TryToParseString("=XLOOKUP(2,L1:L3,M1:M3)", cell(17, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(17, 1));
+		doc.GetValue(cell(17, 1), v);
+		Check(strcmp((const char *)v, "due") == 0,
+			"=XLOOKUP(2,L1:L3,M1:M3) trova 2 in L1:L3 e restituisce \"due\" da M1:M3 (stessa posizione)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =XLOOKUP: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=XLOOKUP(99,L1:L3,M1:M3,\"non trovato\")", cell(17, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(17, 2));
+		doc.GetValue(cell(17, 2), v);
+		Check(strcmp((const char *)v, "non trovato") == 0,
+			"=XLOOKUP(99,L1:L3,M1:M3,\"non trovato\") senza corrispondenza usa il quarto argomento (if_not_found)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =XLOOKUP senza corrispondenza: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=IFS(A1>100;\"alto\";A1>5;\"medio\";TRUE;\"basso\")", cell(17, 3), &doc, true);
+		doc.CalcCell(cell(17, 3));
+		doc.GetValue(cell(17, 3), v);
+		Check(strcmp((const char *)v, "medio") == 0,
+			"=IFS(...) con A1=10 sceglie la prima condizione vera (\"medio\"), non la prima in assoluto (\"alto\" e' falsa)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =IFS: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// Scenario reale (screenshot dell'utente): "+_xlfn.XLOOKUP(B5,
+	// Tabella12[Codice],Tabella12[Descrizione])" su una vera Tabella
+	// Excel (ListObject) -- combina TUTTI i pezzi di questa fase: il
+	// "+" unario (gia' testato altrove, vedi ui/tests/
+	// test_unary_plus.cpp), il prefisso "_xlfn." (identificatore
+	// punteggiato nel lessico), e il riferimento a tabella strutturata
+	// (vedi engine/tests/table_refs_test.cpp per ResolveName da solo).
+	// Qui verificato insieme, end-to-end, con una vera XLOOKUPFunction
+	// a leggere il risultato -- la prova diretta che il bug segnalato
+	// e' risolto.
+	TryToParseString("Codice", cell(19, 1), &doc, true);      // S1 (intestazione)
+	TryToParseString("Descrizione", cell(20, 1), &doc, true); // T1
+	TryToParseString("ABC", cell(19, 2), &doc, true);         // S2
+	TryToParseString("Primo articolo", cell(20, 2), &doc, true); // T2
+	TryToParseString("XYZ", cell(19, 3), &doc, true);         // S3
+	TryToParseString("Secondo articolo", cell(20, 3), &doc, true); // T3
+	{
+		CTableDef table;
+		table.dataRange = range(19, 2, 20, 3); // S2:T3, intestazione esclusa
+		table.columnNames.push_back("Codice");
+		table.columnNames.push_back("Descrizione");
+		doc.AddTable("Tabella12", table);
+	}
+	TryToParseString("XYZ", cell(21, 1), &doc, true); // U1 (valore cercato, come B5 nel file reale)
+
+	try
+	{
+		TryToParseString("=+_xlfn.XLOOKUP(U1,Tabella12[Codice],Tabella12[Descrizione])",
+			cell(21, 2), &doc, true, '.', ','); // U2
+		doc.CalcCell(cell(21, 2));
+		doc.GetValue(cell(21, 2), v);
+		Check(strcmp((const char *)v, "Secondo articolo") == 0,
+			"\"+_xlfn.XLOOKUP(U1,Tabella12[Codice],Tabella12[Descrizione])\" (scenario reale) "
+			"calcola \"Secondo articolo\", non resta testo letterale");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL scenario reale +_xlfn.XLOOKUP su Tabella[...]: %s\n", (char *)e);
 		gFailures++;
 	}
 

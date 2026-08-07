@@ -80,7 +80,15 @@ test-names: $(LIB)
 	$(CXX) -o tests/named_ranges_test $(OBJDIR)/named_ranges_test.o -L. -lengine -lbe
 	./tests/named_ranges_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test
+# Test dei riferimenti a tabella strutturata di Excel (Fase 14,
+# "Tabella12[Codice]"): CContainer::AddTable/ResolveName -- vedi il
+# commento in cima a table_refs_test.cpp.
+test-tables: $(LIB)
+	$(CXX) -c tests/table_refs_test.cpp -o $(OBJDIR)/table_refs_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/table_refs_test $(OBJDIR)/table_refs_test.o -L. -lengine -lbe
+	./tests/table_refs_test
 
-.PHONY: all clean test test-functions test-xsheet test-names
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test
+
+.PHONY: all clean test test-functions test-xsheet test-names test-tables

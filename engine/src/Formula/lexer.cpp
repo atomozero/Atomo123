@@ -141,6 +141,16 @@ int CParser::GetNextToken(bool acceptTime)
 					// "'" non ha nessun altro significato in questa
 					// grammatica.
 					state = 40;
+				else if (ch == '[')
+					// Nome di colonna di un riferimento a tabella
+					// strutturata di Excel ("Tabella12[Codice]"): il nome
+					// della colonna puo' contenere spazi o punti (es.
+					// "u.m."), quindi va catturato cosi' com'e' fra "[" e
+					// "]" -- stesso principio del nome di foglio fra
+					// apici sopra, mai raggiungibile dalla sintassi R1C1
+					// (stati 300-309), che richiede sempre una "R" o "C"
+					// prima di ogni "[".
+					state = 60;
 				else
 					RESTART;
 				break;
@@ -283,6 +293,17 @@ int CParser::GetNextToken(bool acceptTime)
 				GETNEXTCHAR;
 				if (isalnum(ch) || ch == '$' || ch == '_')
 					state = 10;
+				else if (ch == '.')
+					// Nome punteggiato ("_xlfn.XLOOKUP", "CEILING.MATH",
+					// il prefisso di compatibilita' che Excel scrive
+					// davanti a ogni funzione piu' recente del formato
+					// dichiarato del file): un "." SEGUITO DA una lettera
+					// fa parte del nome, altrimenti no (vedi stato 42
+					// sotto) -- senza questo, "_xlfn.XLOOKUP" si
+					// spezzava in tre token separati (IDENT "_xlfn", '.'
+					// grezzo, IDENT "XLOOKUP") e GetFunctionNr non vedeva
+					// mai la stringa intera da riconoscere.
+					state = 42;
 				else
 					state = 11;
 				break;
@@ -290,6 +311,27 @@ int CParser::GetNextToken(bool acceptTime)
 			case 11:
 				RETRACT;
 				token = IDENT;
+				break;
+
+			case 42:
+				GETNEXTCHAR;
+				if (isalpha(ch))
+					// Si', il "." fa parte del nome: resta gia' nel
+					// buffer cosi' com'e' (accodato da GETNEXTCHAR come
+					// ogni altro carattere), si torna solo a continuare
+					// la scansione normale dell'identificatore.
+					state = 10;
+				else
+				{
+					// No: ne' questo carattere ne' il "." appena letto
+					// fanno parte del nome (es. un intervallo scritto
+					// "Nome..Altro", o un "." isolato dopo il nome) --
+					// vanno restituiti entrambi al flusso, non solo
+					// l'ultimo come farebbe lo stato 11 sopra.
+					RETRACT;
+					RETRACT;
+					token = IDENT;
+				}
 				break;
 
 			case 200:
@@ -727,6 +769,34 @@ int CParser::GetNextToken(bool acceptTime)
 				strcpy(mToken, t + 1);
 				break;
 
+			// Nome di colonna di una tabella strutturata ("[Codice]"):
+			// stesso identico schema degli stati 40-41 sopra per QIDENT,
+			// con "[" "]" al posto degli apici singoli -- il nome puo'
+			// contenere qualunque carattere (spazi, punti come "u.m.",
+			// accenti), catturato cosi' com'e' senza nessuna interpretazione.
+			case 60:
+				GETNEXTCHAR;
+				if (te >= tm)
+					THROW((errTokenLength, t));
+				if (ch == ']')
+					state = 61;
+				else if (ch == 0)
+				{
+					RETRACT;
+					state = 61;
+				}
+				else
+					state = 60;
+				break;
+
+			case 61:
+				token = TBLCOL;
+				if (te[-1] == ']')
+					te[-1] = 0;
+
+				strcpy(mToken, t + 1);
+				break;
+
 			case 100:
 				GETNEXTCHAR;
 					// fprintf( stderr, "100/%c(%d)\n", ch,ch ) ;
@@ -801,12 +871,13 @@ int CParser::GetNextToken(bool acceptTime)
 			token = BOOL;
 		}
 	}
-	else if (token != TEXT && token != QIDENT)
-		// TEXT (stato 30) e QIDENT (stato 41) scrivono gia' mToken da
-		// soli, senza le virgolette che delimitano il token grezzo in
-		// "buf" -- questo ramo va escluso per entrambi, altrimenti
-		// sovrascriverebbe quel risultato gia' corretto con "buf" cosi'
-		// com'e' (bug reale scoperto proprio cosi': un nome di foglio
+	else if (token != TEXT && token != QIDENT && token != TBLCOL)
+		// TEXT (stato 30), QIDENT (stato 41) e TBLCOL (stato 61)
+		// scrivono gia' mToken da soli, senza i delimitatori che
+		// racchiudono il token grezzo in "buf" -- questo ramo va escluso
+		// per tutti e tre, altrimenti sovrascriverebbe quel risultato
+		// gia' corretto con "buf" cosi'
+		// com'e' (bug reale scoperto cosi': un nome di foglio
 		// fra apici risultava ancora con l'apice di apertura davanti).
 		strcpy(mToken, buf);
 

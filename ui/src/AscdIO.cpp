@@ -754,6 +754,57 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione tabelle strutturate di Excel, in coda (Fase 14,
+	// "Tabella12[Codice]"): stesso schema EOF-tollerante delle sezioni
+	// sopra. Senza questa sezione, un file .xlsm con XLOOKUP su una
+	// Tabella Excel calcolerebbe correttamente SOLO nella sessione di
+	// importazione in memoria (dove CContainer::AddTable e' gia' stato
+	// chiamato dal traduttore) -- MainWindow::OpenFile pero' passa
+	// SEMPRE dai byte ASCD (anche per un file .xlsm appena tradotto,
+	// non solo un .ascd nativo riaperto), che ricreano un CContainer
+	// del tutto nuovo: senza persistere fTables qui, quel nuovo
+	// documento non avrebbe alcuna tabella registrata, e ogni
+	// riferimento "Tabella12[Colonna]" tornerebbe a calcolare gNameNan
+	// (visibile come "non trovato") invece del valore vero -- bug reale
+	// che avrebbe vanificato tutto il resto di questa fase.
+	{
+		const std::map<std::string, CTableDef>& tables = doc->GetTables();
+		int32 tableCount = (int32)tables.size();
+		if (dest->Write(&tableCount, sizeof(tableCount)) != (ssize_t)sizeof(tableCount))
+			return B_IO_ERROR;
+
+		for (std::map<std::string, CTableDef>::const_iterator it = tables.begin();
+			it != tables.end(); ++it)
+		{
+			int32 nameLen = (int32)it->first.size();
+			if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+				return B_IO_ERROR;
+			if (nameLen > 0 && dest->Write(it->first.data(), nameLen) != nameLen)
+				return B_IO_ERROR;
+
+			const CTableDef& def = it->second;
+			int16 left = def.dataRange.left, top = def.dataRange.top,
+				right = def.dataRange.right, bottom = def.dataRange.bottom;
+			if (dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+				|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+				|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right)
+				|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+				return B_IO_ERROR;
+
+			int32 columnCount = (int32)def.columnNames.size();
+			if (dest->Write(&columnCount, sizeof(columnCount)) != (ssize_t)sizeof(columnCount))
+				return B_IO_ERROR;
+			for (int32 c = 0; c < columnCount; c++)
+			{
+				int32 colLen = (int32)def.columnNames[c].size();
+				if (dest->Write(&colLen, sizeof(colLen)) != (ssize_t)sizeof(colLen))
+					return B_IO_ERROR;
+				if (colLen > 0 && dest->Write(def.columnNames[c].data(), colLen) != colLen)
+					return B_IO_ERROR;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1596,6 +1647,76 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				}
 
 				doc->AddConditionalFormatRule(rule);
+			}
+		}
+	}
+
+	// Sezione tabelle strutturate di Excel, in coda: stesso schema
+	// EOF-tollerante delle sezioni sopra (vedi il commento gemello in
+	// SaveASCD sul perche' questa sezione e' essenziale, non solo per
+	// coerenza col resto del formato).
+	{
+		int32 tableCount = 0;
+		ssize_t got = source->Read(&tableCount, sizeof(tableCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(tableCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < tableCount; i++)
+			{
+				int32 nameLen;
+				if (source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_BAD_DATA;
+				// Stesso tetto e stesso motivo della sezione commenti piu' sopra.
+				if (nameLen < 0 || nameLen > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+
+				std::string name;
+				if (nameLen > 0)
+				{
+					name.resize(nameLen);
+					if (source->Read(&name[0], nameLen) != nameLen)
+						return B_BAD_DATA;
+				}
+
+				int16 left, top, right, bottom;
+				if (source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right)
+					|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+					return B_BAD_DATA;
+
+				int32 columnCount;
+				if (source->Read(&columnCount, sizeof(columnCount)) != (ssize_t)sizeof(columnCount))
+					return B_BAD_DATA;
+				// Stesso tetto delle celle "count" all'inizio del file: una
+				// tabella con milioni di colonne dichiarate e' certamente un
+				// file manomesso/corrotto, non un'allocazione da tentare.
+				if (columnCount < 0 || columnCount > kColCount)
+					return B_BAD_DATA;
+
+				CTableDef def;
+				def.dataRange = range(left, top, right, bottom);
+				for (int32 c = 0; c < columnCount; c++)
+				{
+					int32 colLen;
+					if (source->Read(&colLen, sizeof(colLen)) != (ssize_t)sizeof(colLen))
+						return B_BAD_DATA;
+					if (colLen < 0 || colLen > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+
+					std::string colName;
+					if (colLen > 0)
+					{
+						colName.resize(colLen);
+						if (source->Read(&colName[0], colLen) != colLen)
+							return B_BAD_DATA;
+					}
+					def.columnNames.push_back(colName);
+				}
+
+				doc->AddTable(name, def);
 			}
 		}
 	}

@@ -249,6 +249,8 @@ void SetupDefaultFuncs()
 	gFuncs[kIFERRORFuncNr] = IFERRFunction;
 	gFuncs[kINDEXFuncNr] = INDEXFunction;
 	gFuncs[kMATCHFuncNr] = MATCHFunction;
+	gFuncs[kXLOOKUPFuncNr] = XLOOKUPFunction;
+	gFuncs[kIFSFuncNr] = IFSFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

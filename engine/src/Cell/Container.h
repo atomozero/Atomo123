@@ -175,6 +175,19 @@ struct ValidationRule {
 	ValidationRule() : type(eNoValidation), min(0), max(0) {}
 };
 
+// Tabella strutturata di Excel (Fase 14, "Tabella12[Codice]"): popolata
+// SOLO dall'importazione XLSX (vedi Excel.cpp), mai dalla UI (nessuna
+// finestra per creare/modificare tabelle esiste ancora). dataRange
+// esclude sempre la riga di intestazione (dove Excel scrive i nomi di
+// colonna) -- un riferimento a colonna come "Tabella12[Codice]" indica
+// solo i dati, mai l'intestazione stessa. columnNames e' nello stesso
+// ordine delle colonne di dataRange da sinistra a destra (indice 0 =
+// dataRange.left).
+struct CTableDef {
+	range dataRange;
+	std::vector<std::string> columnNames;
+};
+
 class CContainer : public BLocker {
 	friend class CCellIterator;
 	friend class CCalculateJob;
@@ -376,6 +389,20 @@ public:
 	// (vedi SheetView::Draw). Non const: GetCellResult sotto non lo e'.
 	std::map<cell, rgb_color> EvaluateConditionalFormatting();
 
+	// Tabelle strutturate di Excel (Fase 14): vedi CTableDef sopra --
+	// stesso schema sparso di fComments/fHyperlinks/fValidations, ma
+	// indicizzato per nome invece che per cella (un nome di tabella e'
+	// unico nel foglio che la contiene, come un nome di intervallo).
+	// ResolveName() sotto la interroga da sola quando un valName
+	// contiene "[" -- non serve nessun metodo pubblico dedicato a
+	// "risolvi un riferimento a tabella", solo a registrarle
+	// (AddTable, chiamato dall'importazione XLSX) e a elencarle
+	// (GetTables, usato dalla UI per un eventuale elenco/autocompletamento
+	// futuro, non ancora collegato a nulla).
+	void AddTable(const std::string& name, const CTableDef& def)
+		{ fTables[name] = def; }
+	const std::map<std::string, CTableDef>& GetTables() const { return fTables; }
+
 private:
 	void Visit(const cell&, void*);
 	bool GetCellData(const cell&, CellData&);
@@ -399,6 +426,7 @@ private:
 	std::map<cell, std::string> fHyperlinks;
 	std::map<cell, ValidationRule> fValidations;
 	std::vector<ConditionalFormatRule> fCondFormatRules;
+	std::map<std::string, CTableDef> fTables;
 };
 
 inline bool CContainer::WriteLock()

@@ -119,6 +119,27 @@ int GetFunctionNr(const char *name)
 	char myFunc[10];
 	int d;
 
+	// Prefisso di compatibilita' che Excel scrive davanti a ogni
+	// funzione piu' recente del formato dichiarato del file (es.
+	// "_xlfn.XLOOKUP", "_xlfn.IFS"): la funzione nella tabella si
+	// chiama comunque "XLOOKUP"/"IFS", quindi va saltato per il
+	// confronto -- richiede che il lessico riconosca "_xlfn.XLOOKUP"
+	// come un unico identificatore (vedi lexer.cpp, stato 42) prima
+	// che questa stringa completa arrivi qui.
+	static const char kXlfnPrefix[] = "_XLFN.";
+	const int kXlfnPrefixLen = sizeof(kXlfnPrefix) - 1;
+	bool hasXlfnPrefix = true;
+	for (i = 0; i < kXlfnPrefixLen; i++)
+	{
+		if (name[i] == 0 || toupper(name[i]) != kXlfnPrefix[i])
+		{
+			hasXlfnPrefix = false;
+			break;
+		}
+	}
+	if (hasXlfnPrefix)
+		name += kXlfnPrefixLen;
+
 	sLen = strlen(name);
 
 	// myFunc[10] ospita fino a 9 caratteri piu' il terminatore: il

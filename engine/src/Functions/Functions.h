@@ -143,6 +143,13 @@ enum {
 	kIFERRORFuncNr,
 	kINDEXFuncNr,
 	kMATCHFuncNr,
+	// XLOOKUP/IFS (Fase 14): funzioni Excel piu' recenti del formato
+	// dichiarato del file, scritte da Excel col prefisso "_xlfn."
+	// davanti (vedi GetFunctionNr in Utils.cpp) -- bug reale segnalato
+	// dall'utente, un file XLSX reale con XLOOKUP mostrava il testo
+	// letterale della formula invece del valore calcolato.
+	kXLOOKUPFuncNr,
+	kIFSFuncNr,
 	kFunctionCount
 };
 
@@ -246,5 +253,7 @@ void MEDIANFunction(Value *stack, int argCnt, CContainer *cells);
 void MODEFunction(Value *stack, int argCnt, CContainer *cells);
 void INDEXFunction(Value *stack, int argCnt, CContainer *cells);
 void MATCHFunction(Value *stack, int argCnt, CContainer *cells);
+void XLOOKUPFunction(Value *stack, int argCnt, CContainer *cells);
+void IFSFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

@@ -169,6 +169,47 @@ int main()
 		doc->SetCellStyle(cell(1, 3), cs);
 	}
 
+	// Tabelle strutturate di Excel (Fase 14, "Tabella12[Codice]"): a
+	// differenza delle altre sezioni sopra, questa non e' solo una
+	// preferenza estetica -- MainWindow::OpenFile passa SEMPRE da un
+	// giro SaveASCD/LoadASCD completo (anche per un file .xlsm appena
+	// tradotto, non solo un .ascd nativo riaperto), che ricrea un
+	// CContainer da zero: senza persistere CContainer::fTables qui,
+	// ogni "Tabella12[Colonna]" tornerebbe a calcolare gNameNan (invece
+	// del valore vero) alla riapertura, anche se l'importazione XLSX lo
+	// aveva registrato correttamente in memoria durante la traduzione
+	// -- bug reale che avrebbe vanificato XLOOKUP su una vera Tabella
+	// Excel non appena l'utente riapriva il file.
+	TryToParseString("Codice", cell(6, 1), doc, true); // F1 (intestazione)
+	TryToParseString("ABC", cell(6, 2), doc, true);    // F2, unica riga dati
+	{
+		// Una sola riga dati apposta (F2:F2): un riferimento a colonna su
+		// piu' righe resta un vero intervallo (eRangeData, mai un valore
+		// scalare da solo) -- stesso principio gia' verificato a fondo in
+		// engine/tests/table_refs_test.cpp, qui interessa solo che la
+		// REGISTRAZIONE sopravviva al giro, non riverificare quella
+		// meccanica.
+		CTableDef table;
+		table.dataRange = range(6, 2, 6, 2); // F2:F2, intestazione esclusa
+		table.columnNames.push_back("Codice");
+		doc->AddTable("TabellaProva", table);
+	}
+	// Fra parentesi, non un riferimento NUDO ("=TabellaProva[Codice]"
+	// da solo): questo e' lo stesso schema di bytecode di un vero uso
+	// reale come "+_xlfn.XLOOKUP(...,Tabella12[Codice],...)" (una
+	// funzione/operatore attorno, mai un valName isolato che finisce
+	// per essere l'UNICO token della formula) -- vedi CFormula::
+	// ReduceToValue: SOLO un valName isolato (nessun altro token
+	// prima/dopo, nemmeno "+" unario, che non emette bytecode proprio)
+	// puo' venire ridotto EAGER a testo letterale gia' dentro
+	// TryToParseString stessa, ben PRIMA che LoadASCD arrivi a leggere
+	// la sezione tabelle qui sotto (in coda al formato, come ogni altra
+	// sezione opzionale) -- limite noto, condiviso identico dai nomi di
+	// intervallo (mai persistiti affatto in questo formato), non
+	// affrontato qui: nessuna formula reale vista finora e' un
+	// riferimento a tabella completamente nudo.
+	TryToParseString("=(TabellaProva[Codice])", cell(7, 1), doc, true); // G1
+
 	{
 		BFile file(path, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 		status_t err = SaveASCD(doc, &file, NULL, NULL, &rowHeights, &frozenRows, &frozenCols,
@@ -212,6 +253,35 @@ int main()
 	Check(loadedHasAutoFilter && loadedAutoFilterRange.top == 1 && loadedAutoFilterRange.left == 1
 			&& loadedAutoFilterRange.right == 1,
 		"l'intervallo dell'AutoFilter sopravvive al giro di salvataggio/ricarica");
+
+	// Tabelle strutturate: vedi il commento sopra, prima di SaveASCD.
+	{
+		const std::map<std::string, CTableDef>& loadedTables = reloaded->GetTables();
+		std::map<std::string, CTableDef>::const_iterator it = loadedTables.find("TabellaProva");
+		Check(it != loadedTables.end(), "la tabella \"TabellaProva\" sopravvive al giro di salvataggio/ricarica");
+		if (it != loadedTables.end())
+		{
+			Check(it->second.dataRange.TopLeft() == cell(6, 2) && it->second.dataRange.BotRight() == cell(6, 2),
+				"l'intervallo dati della tabella (F2:F2, intestazione esclusa) e' quello corretto dopo il giro");
+			Check(it->second.columnNames.size() == 1 && it->second.columnNames[0] == "Codice",
+				"il nome della colonna (\"Codice\") sopravvive al giro");
+		}
+
+		// La prova decisiva: una formula "(TabellaProva[Codice])"
+		// ricalcolata SUL DOCUMENTO RICARICATO (non su quello originale)
+		// trova ancora la tabella -- esattamente il percorso che
+		// MainWindow::OpenFile segue per un file .xlsm appena tradotto
+		// (LoadASCD gia' fa un primo giro di ricalcolo tutto suo,
+		// RecalculateAll, ma PRIMA di leggere questa sezione: il
+		// ricalcolo esplicito qui sotto e' lo stesso che l'app vera fa
+		// di suo subito dopo l'apertura, vedi RecalculateActiveWorkbook).
+		reloaded->CalcCell(cell(7, 1));
+		Value tableRefValue;
+		reloaded->GetValue(cell(7, 1), tableRefValue);
+		Check(tableRefValue.fType == eTextData && strcmp((const char*)tableRefValue, "ABC") == 0,
+			"\"(TabellaProva[Codice])\" ricalcolata DOPO il giro trova ancora la tabella, calcola \"ABC\" "
+			"(non gNameNan: la registrazione sopravvive davvero, non solo nella sessione di importazione)");
+	}
 
 	Check(loadedHeights.size() == 2, "entrambe le altezze di riga personalizzate sopravvivono");
 	bool foundRow1 = false, foundRow3 = false;

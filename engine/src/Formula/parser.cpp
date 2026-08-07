@@ -275,6 +275,22 @@ void CParser::ParseSheetReference(const char *inName)
 	}
 } // CParser::ParseSheetReference
 
+// Fase 14: "Tabella12[Codice]" -- il nome della colonna e' gia' un
+// token TBLCOL completo (lookahead corrente, contenuto in mToken senza
+// le parentesi quadre, vedi lexer.cpp stati 60-61) quando questo
+// metodo viene chiamato da Factor(). Combina tabella e colonna in
+// un'unica stringa "Tabella12[Codice]" che viaggia come un normale
+// valName -- vedi il commento su ParseTableReference in parser.h per
+// il perche'.
+void CParser::ParseTableReference(const char *inName)
+{
+	char buf[512];
+	snprintf(buf, sizeof(buf), "%s[%s]", inName, mToken);
+	mIsFormula = true;
+	Match(TBLCOL);
+	AddToken(valName, buf);
+} // CParser::ParseTableReference
+
 void CParser::Factor()
 {
 	switch (mLookahead)
@@ -395,6 +411,18 @@ void CParser::Factor()
 				// caratteri non validi in un identificatore semplice
 				// vedi il caso QIDENT sotto ('Nome Foglio'!A1).
 				ParseSheetReference(name);
+			}
+			else if (mLookahead == TBLCOL)
+			{
+				// Riferimento a tabella strutturata di Excel
+				// ("Tabella12[Codice]", Fase 14): "IDENT [" non ha
+				// nessun altro significato in questa grammatica (le
+				// parentesi quadre non compaiono mai altrove fuori
+				// dalla sintassi R1C1, che il lessico riconosce solo
+				// subito dopo una "R"/"C", vedi lexer.cpp), quindi
+				// trattarlo sempre come riferimento a tabella non e'
+				// ambiguo -- stessa precedenza di "!" sopra.
+				ParseTableReference(name);
 			}
 			else
 			{

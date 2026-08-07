@@ -619,6 +619,18 @@ int main()
 								"nessuna regola di formattazione condizionale in sample.xlsx, il contatore e' zero");
 						}
 
+						// Tabelle strutturate (Fase 14): stesso principio delle
+						// sezioni sopra, ultima sezione del formato (vedi
+						// WriteASCD sopra) -- sample.xlsx non ha nessuna
+						// tabella (nessun <tableParts> nei suoi fogli).
+						if (pos + 4 <= ascdLen)
+						{
+							int32 tableCount;
+							memcpy(&tableCount, ascdData + pos, 4); pos += 4;
+							Check(tableCount == 0,
+								"nessuna tabella strutturata in sample.xlsx, il contatore e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
@@ -1767,6 +1779,157 @@ int main()
 
 			Check(foundA2 && foundB2 && foundA4 && foundB4 && colorsCorrect,
 				"A2/B2 (prima riga dati) e A4/B4 (terza) hanno il colore di banda grigio chiaro");
+
+			// Tutte le sezioni "in coda" successive fino ad AutoFilter
+			// (colori di colonna, altezze di riga, font/allineamento/
+			// bordi/formato/sottolineato/testo a capo per cella, celle
+			// unite, immagini incorporate): sample_table.xlsx non ne
+			// popola nessuna -- stesso identico elenco/ordine gia'
+			// verificato nel blocco di sample_condformat.xlsx piu' sotto,
+			// qui interessa solo restare allineati fino alla sezione
+			// tabelle, non riverificarle una per una in questo file.
+			bool sectionsOk = true;
+			const char* kEmptyListSections[] = {
+				"colori di colonna", "altezze di riga", "font di cella",
+				"allineamento di cella", "bordi di cella",
+				"formato numero di cella", "sottolineato di cella",
+				"testo a capo di cella", "celle unite", "immagini incorporate"
+			};
+			for (size_t s = 0; sectionsOk
+					&& s < sizeof(kEmptyListSections) / sizeof(kEmptyListSections[0]); s++)
+			{
+				if (pos + 4 > ascdLen) { sectionsOk = false; break; }
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			Check(sectionsOk, "le sezioni fra i colori di cella e Blocca riquadri restano allineate in sample_table.xlsx");
+
+			// Blocca riquadri: due interi FISSI (non un elenco).
+			if (sectionsOk && pos + 8 <= ascdLen)
+				pos += 8;
+			else
+				sectionsOk = false;
+
+			// Visibilita' griglia: un solo byte FISSO.
+			if (sectionsOk && pos + 1 <= ascdLen)
+				pos += 1;
+			else
+				sectionsOk = false;
+
+			// Colore della linguetta: presenza + rgb, 4 byte FISSI.
+			if (sectionsOk && pos + 4 <= ascdLen)
+				pos += 4;
+			else
+				sectionsOk = false;
+
+			// Righe nascoste: elenco con contatore, vuoto qui.
+			if (sectionsOk && pos + 4 <= ascdLen)
+			{
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			else
+				sectionsOk = false;
+
+			// AutoFilter: presenza + 4 interi a 16 bit, 9 byte FISSI --
+			// sample_table.xlsx non ha <autoFilter> nel foglio stesso
+			// (solo dentro la tabella, un'altra sezione, letta piu'
+			// sotto), quindi "has" e' sempre 0 qui.
+			if (sectionsOk && pos + 9 <= ascdLen)
+				pos += 9;
+			else
+				sectionsOk = false;
+
+			// Commenti/collegamenti/tipo di grafico/colore del bordo/
+			// convalida dati, in coda: tutti contatori a 4 byte, sempre
+			// zero per questo file.
+			for (int s = 0; sectionsOk && s < 5 && pos + 4 <= ascdLen; s++)
+			{
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			Check(sectionsOk, "le sezioni fra Blocca riquadri e la formattazione condizionale restano allineate in sample_table.xlsx");
+
+			// Formattazione condizionale VIVA: sample_table.xlsx non ha
+			// nessuna regola.
+			if (sectionsOk && pos + 4 <= ascdLen)
+			{
+				int32 ruleCount;
+				memcpy(&ruleCount, ascdData + pos, 4); pos += 4;
+				sectionsOk = (ruleCount == 0);
+			}
+			else
+				sectionsOk = false;
+			Check(sectionsOk, "nessuna regola di formattazione condizionale in sample_table.xlsx, resta allineato");
+
+			// Tabelle strutturate (Fase 14): sample_table.xlsx ha una vera
+			// <table name="Tabella1" ref="A1:B4"><tableColumns>...
+			// Codice...Descrizione...</tableColumns></table> -- la prova
+			// che RegisterTable legge davvero l'XML di Excel, non solo un
+			// CTableDef costruito a mano nei test del motore (vedi
+			// engine/tests/table_refs_test.cpp).
+			bool haveTableCount = false;
+			int32 tableCount = 0;
+			if (sectionsOk && pos + 4 <= ascdLen)
+			{
+				memcpy(&tableCount, ascdData + pos, 4); pos += 4;
+				haveTableCount = true;
+			}
+			Check(haveTableCount && tableCount == 1,
+				"una tabella strutturata (\"Tabella1\") registrata da sample_table.xlsx");
+
+			if (haveTableCount && tableCount == 1 && pos + 4 <= ascdLen)
+			{
+				int32 nameLen = 0;
+				memcpy(&nameLen, ascdData + pos, 4); pos += 4;
+				std::string name;
+				if (nameLen > 0 && pos + (size_t)nameLen <= ascdLen)
+				{
+					name.assign((const char *)(ascdData + pos), nameLen);
+					pos += nameLen;
+				}
+				Check(name == "Tabella1", "il nome della tabella (\"Tabella1\") e' quello corretto");
+
+				int16 tLeft = 0, tTop = 0, tRight = 0, tBottom = 0;
+				if (pos + 8 <= ascdLen)
+				{
+					memcpy(&tLeft, ascdData + pos, 2); pos += 2;
+					memcpy(&tTop, ascdData + pos, 2); pos += 2;
+					memcpy(&tRight, ascdData + pos, 2); pos += 2;
+					memcpy(&tBottom, ascdData + pos, 2); pos += 2;
+				}
+				// A1:B4 nel file originale, intestazione (riga 1) esclusa
+				// da CTableDef::dataRange: A2:B4.
+				Check(tLeft == 1 && tTop == 2 && tRight == 2 && tBottom == 4,
+					"l'intervallo dati (A2:B4, intestazione esclusa) e' quello corretto");
+
+				int32 columnCount = 0;
+				if (pos + 4 <= ascdLen)
+				{
+					memcpy(&columnCount, ascdData + pos, 4); pos += 4;
+				}
+				Check(columnCount == 2, "due colonne registrate (Codice, Descrizione)");
+
+				std::string col0, col1;
+				for (int32 c = 0; c < columnCount && pos + 4 <= ascdLen; c++)
+				{
+					int32 colLen = 0;
+					memcpy(&colLen, ascdData + pos, 4); pos += 4;
+					std::string colName;
+					if (colLen > 0 && pos + (size_t)colLen <= ascdLen)
+					{
+						colName.assign((const char *)(ascdData + pos), colLen);
+						pos += colLen;
+					}
+					if (c == 0) col0 = colName;
+					if (c == 1) col1 = colName;
+				}
+				Check(col0 == "Codice" && col1 == "Descrizione",
+					"i nomi delle colonne (\"Codice\", \"Descrizione\") sono nell'ordine giusto");
+			}
 		}
 	}
 

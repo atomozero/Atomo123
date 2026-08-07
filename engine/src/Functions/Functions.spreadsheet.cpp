@@ -566,6 +566,157 @@ void MATCHFunction(Value *stack, int argCnt, CContainer *cells)
 		stack[0] = gRefNan;
 }
 
+// XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found],
+// [match_mode], [search_mode]) -- Fase 14, nome standard Excel piu'
+// recente del formato dichiarato del file (scritto con "_xlfn."
+// davanti nei file XLSX veri, vedi GetFunctionNr in Utils.cpp). Bug
+// reale segnalato dall'utente: un file XLSX reale con XLOOKUP su
+// colonne di una Tabella (ListObject) Excel (vedi CTableDef in
+// Container.h/CContainer::ResolveName) mostrava il testo letterale
+// della formula invece del valore calcolato.
+//
+// Stesso schema esatto di MATCHFunction sopra (lookup_array a una
+// riga/colonna sola, scansione posizionale), ma con due intervalli
+// paralleli invece di uno solo -- il risultato e' il valore di
+// return_array alla STESSA posizione dove lookup_array corrisponde,
+// non la posizione stessa. Solo corrispondenza esatta (match_mode 0,
+// il valore di default e il piu' comune): le modalita' approssimata/
+// carattere jolly del vero XLOOKUP di Excel non sono implementate --
+// limite dichiarato, non un bug (nessuna formula reale vista finora le
+// usa). search_mode (ultimo argomento, ordine di scansione) ignorato
+// allo stesso modo: una scansione dal primo all'ultimo elemento resta
+// corretta anche su dati non ordinati, solo piu' lenta di una ricerca
+// binaria che qui non serve.
+void XLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range lookupRange, returnRange;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 2, &lookupRange) || !lookupRange.IsValid() ||
+		!GetRangeArgument(stack, argCnt, 3, &returnRange) || !returnRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int lookupRows = lookupRange.bottom - lookupRange.top + 1;
+	int lookupCols = lookupRange.right - lookupRange.left + 1;
+	if (lookupRows != 1 && lookupCols != 1)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+	bool horizontal = (lookupRows == 1 && lookupCols > 1);
+	int count = horizontal ? lookupCols : lookupRows;
+
+	// return_array deve avere la STESSA lunghezza di lookup_array lungo
+	// lo stesso verso (una colonna se lookup_array e' verticale, una
+	// riga se orizzontale) -- stesso principio del vero XLOOKUP di
+	// Excel, che segnala un errore se le dimensioni non corrispondono.
+	int returnRows = returnRange.bottom - returnRange.top + 1;
+	int returnCols = returnRange.right - returnRange.left + 1;
+	int returnCount = horizontal ? returnCols : returnRows;
+	if (returnCount != count)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	char keyS[256];
+	double key = 0;
+	time_t keyD = 0;
+	enum { kNumKey, kTextKey, kTimeKey } keyKind;
+
+	if (GetDoubleArgument(stack, argCnt, 1, &key) && !isnan(key))
+		keyKind = kNumKey;
+	else if (GetTextArgument(stack, argCnt, 1, keyS))
+		keyKind = kTextKey;
+	else if (GetTimeArgument(stack, argCnt, 1, &keyD))
+		keyKind = kTimeKey;
+	else
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int foundPos = -1;
+	Value val;
+	for (int i = 0; i < count; i++)
+	{
+		cell c = horizontal ? cell(lookupRange.left + i, lookupRange.top)
+			: cell(lookupRange.left, lookupRange.top + i);
+		cells->GetValue(c, val);
+
+		bool eq = (keyKind == kNumKey && val.fType == eNumData && key == val.fDouble)
+			|| (keyKind == kTextKey && val.fType == eTextData && strcmp(keyS, val.fText) == 0)
+			|| (keyKind == kTimeKey && val.fType == eTimeData && keyD == val.fTime);
+		if (eq)
+		{
+			foundPos = i;
+			break;
+		}
+	}
+
+	if (foundPos >= 0)
+	{
+		cell c = horizontal ? cell(returnRange.left + foundPos, returnRange.top)
+			: cell(returnRange.left, returnRange.top + foundPos);
+		cells->GetValue(c, stack[0]);
+	}
+	else if (argCnt >= 4)
+		// if_not_found (quarto argomento, opzionale): qualunque valore
+		// grezzo passato cosi' com'e', stesso schema di IFERR/IF sopra
+		// per il ramo "vero"/"falso" -- puo' essere un numero, testo,
+		// o qualunque altra cosa, non solo gRefNan.
+		stack[0] = stack[3];
+	else
+		stack[0] = gRefNan;
+}
+
+// IFS(condizione1, valore1, [condizione2, valore2], ...) -- Fase 14,
+// stesso nome/comportamento standard Excel di XLOOKUP sopra (prefisso
+// "_xlfn." nei file XLSX veri). La prima coppia con condizione vera
+// decide il risultato, come una catena di IF() innestati -- stesso
+// schema di IFFunction sopra, ripetuto per ogni coppia.
+void IFSFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	bool b;
+
+	for (int i = 1; i + 1 <= argCnt; i += 2)
+	{
+		if (GetBooleanArgument(stack, argCnt, i, &b))
+		{
+			if (b)
+			{
+				stack[0] = stack[i]; // il valore appaiato (argomento i+1, 0-based stack[i])
+				return;
+			}
+		}
+		else
+		{
+			// Una condizione non booleana (es. un errore propagato)
+			// interrompe la valutazione, come farebbe IF() con lo
+			// stesso argomento.
+			double d;
+			if (GetDoubleArgument(stack, argCnt, i, &d) && isnan(d))
+			{
+				stack[0] = d;
+				return;
+			}
+			stack[0] = gRefNan;
+			return;
+		}
+	}
+
+	// Nessuna condizione vera: come il vero IFS di Excel ("nessun
+	// risultato"), non un valore di sole zero/vuoto -- gRefNan, stesso
+	// sentinella di errore gia' usato da VLOOKUP/MATCH/XLOOKUP sopra
+	// per "non trovato" (nessun tipo di errore dedicato nel motore).
+	stack[0] = gRefNan;
+}
+
 void NCOLSFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	range cRange;
