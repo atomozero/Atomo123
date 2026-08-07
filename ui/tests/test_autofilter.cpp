@@ -353,6 +353,72 @@ int main()
 		doc2->Release();
 	}
 
+	// --- Bug reale scoperto durante l'audit: Ordina/Inserisci riga/
+	// Elimina riga/Inserisci colonna/Elimina colonna spostano il
+	// CONTENUTO delle righe senza mai far seguire fRowHidden -- una
+	// riga nascosta prima restava nascosta dopo (indice giusto,
+	// contenuto ormai sbagliato) invece di seguire i dati, esattamente
+	// come gli intervalli uniti prima che AdjustMergedRanges fosse
+	// chiamata da questi stessi comandi. ---
+	{
+		CContainer* doc4 = new CContainer(NULL, NULL);
+		TryToParseString("Zona", cell(1, 5), doc4, true);
+		TryToParseString("Valore", cell(2, 5), doc4, true);
+		TryToParseString("Nord", cell(1, 6), doc4, true);
+		TryToParseString("10", cell(2, 6), doc4, true);
+		TryToParseString("Sud", cell(1, 7), doc4, true);
+		TryToParseString("20", cell(2, 7), doc4, true);
+		TryToParseString("Nord", cell(1, 8), doc4, true);
+		TryToParseString("30", cell(2, 8), doc4, true);
+		TryToParseString("Est", cell(1, 9), doc4, true);
+		TryToParseString("40", cell(2, 9), doc4, true);
+		TryToParseString("Sud", cell(1, 10), doc4, true);
+		TryToParseString("50", cell(2, 10), doc4, true);
+
+		TestWindow* win4 = new TestWindow();
+		SheetView* view4 = new SheetView(doc4);
+		BScrollView* scroll4 = new BScrollView("scroll4", view4, B_FOLLOW_ALL, 0, true, true);
+		scroll4->ResizeTo(600, 500);
+		BLayoutBuilder::Group<>(win4, B_VERTICAL, 0).Add(scroll4);
+		win4->Show();
+		win4->Lock();
+
+		view4->SetAutoFilter(range(1, 5, 2, 5));
+		view4->SetColumnValueHidden(1, "Nord", true);
+		Check(view4->IsRowHidden(6) && view4->IsRowHidden(8) && !view4->IsRowHidden(7),
+			"prima di Ordina: le righe Nord (6 e 8) sono nascoste, come nel test principale sopra");
+
+		// Ordina crescente per Zona (Est < Nord < Sud alfabeticamente):
+		// dopo l'ordinamento la riga 6 e' Est/40, 7 e 8 sono le due
+		// Nord (10 e 30), 9 e 10 le due Sud (20 e 50) -- le righe
+		// nascoste devono seguire "Nord" alle sue NUOVE posizioni (7 e
+		// 8), non restare ferme alle vecchie (6 e 8).
+		view4->SetSelection(cell(1, 6));
+		view4->ExtendSelection(cell(2, 10));
+		view4->SortSelection(true);
+
+		Check(!view4->IsRowHidden(6), "dopo Ordina: la riga 6 (ora Est) NON e' piu' nascosta");
+		Check(view4->IsRowHidden(7) && view4->IsRowHidden(8),
+			"dopo Ordina: le righe 7 e 8 (ora le due Nord) SONO nascoste, alle nuove posizioni");
+		Check(!view4->IsRowHidden(9) && !view4->IsRowHidden(10),
+			"dopo Ordina: le righe 9 e 10 (ora le due Sud) restano visibili");
+
+		// Inserire una riga sopra la zona filtrata sposta tutto in giu'
+		// di uno SENZA cambiare il contenuto di ogni riga: le righe
+		// nascoste devono seguire lo stesso contenuto alla sua nuova
+		// posizione (7 e 8 diventano 8 e 9).
+		view4->SetSelection(cell(1, 6));
+		view4->ExtendSelection(cell(2, 6));
+		view4->InsertRows();
+		Check(!view4->IsRowHidden(7), "dopo Inserisci riga: la vecchia riga 7 (Est, spostata a 7) NON e' nascosta");
+		Check(view4->IsRowHidden(8) && view4->IsRowHidden(9),
+			"dopo Inserisci riga: le due Nord (spostate a 8 e 9) restano nascoste alle nuove posizioni");
+
+		win4->Unlock();
+		win4->Lock();
+		win4->Quit();
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

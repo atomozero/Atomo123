@@ -1136,6 +1136,13 @@ void SheetView::SortSelection(bool ascending)
 	}
 
 	RecalculateOwningWorkbook();
+	// Le righe filtrate nascoste (fRowHidden) sono decise dal
+	// CONTENUTO di ogni riga, che Ordina ha appena rimescolato: senza
+	// questo, la riga nascosta prima dell'ordinamento resta nascosta
+	// dopo (contenuto sbagliato, indice giusto) invece di seguire i
+	// dati -- bug reale trovato durante l'audit, stesso principio di
+	// AdjustMergedRanges sotto per gli intervalli uniti.
+	RecomputeAutoFilterVisibility();
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -1271,6 +1278,11 @@ void SheetView::InsertRows()
 	}
 
 	RecalculateOwningWorkbook();
+	// Vedi il commento gemello alla fine di SortSelection sopra: le
+	// righe filtrate nascoste vanno ricalcolate anche qui, non solo
+	// quando l'utente cambia un criterio -- inserire righe sposta il
+	// contenuto senza aggiornare fRowHidden da solo.
+	RecomputeAutoFilterVisibility();
 	Invalidate();
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -1322,6 +1334,8 @@ void SheetView::InsertColumns()
 	}
 
 	RecalculateOwningWorkbook();
+	// Vedi il commento gemello alla fine di SortSelection sopra.
+	RecomputeAutoFilterVisibility();
 	Invalidate();
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -1374,6 +1388,8 @@ void SheetView::DeleteRows()
 	}
 
 	RecalculateOwningWorkbook();
+	// Vedi il commento gemello alla fine di SortSelection sopra.
+	RecomputeAutoFilterVisibility();
 	Invalidate();
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -1419,6 +1435,8 @@ void SheetView::DeleteColumns()
 	}
 
 	RecalculateOwningWorkbook();
+	// Vedi il commento gemello alla fine di SortSelection sopra.
+	RecomputeAutoFilterVisibility();
 	Invalidate();
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
