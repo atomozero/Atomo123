@@ -2893,6 +2893,13 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 		return;
 	}
 
+	// Trovato durante l'audit: mancava SaveUndoState, a differenza di
+	// ogni altra scrittura di celle vere (incolla, riempi, ordina,
+	// formattazione...) -- a differenza di grafici/celle unite (fuori
+	// dallo scope di UndoSnapshot per motivi architetturali, vedi
+	// MainWindow::MergeCells), qui i dati scritti sono celle normali,
+	// perfettamente nello scope di CaptureSnapshot/ApplySnapshot.
+	fSheetView->SaveUndoState(destRange);
 	WritePivotTable(fDoc, dest, rows, (PivotAggFunc)agg);
 	fSheetView->Invalidate();
 	MarkModified();
