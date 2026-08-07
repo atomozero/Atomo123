@@ -285,6 +285,25 @@ void CParser::Factor()
 			AddToken(opNegate);
 			break;
 
+		case '+':
+			// Piu' unario (Excel lo accetta come prefisso no-op davanti a
+			// un numero o un riferimento: "+A1", "+'Foglio con spazi'!A1",
+			// "+SUM(F27)"...) -- comunissimo nei file XLSX reali (abitudine
+			// ereditata da vecchie versioni di Excel/Lotus 1-2-3). Prima
+			// di questo case mancava del tutto: qualunque formula con
+			// questo prefisso falliva il parsing e TryToParseString la
+			// degradava silenziosamente a testo puro invece che a formula
+			// -- bug reale segnalato dall'utente (formule mostrate come
+			// testo letterale invece che calcolate), trovato in un file
+			// reale dove riguardava il 59% di TUTTE le formule del file.
+			// A differenza di "-" sopra, non emette nessun operatore: un
+			// "+" davanti a un valore non lo nega ne' lo raddoppia, serve
+			// solo a consumare il token e continuare ad analizzare il
+			// fattore che segue.
+			Match('+');
+			Factor();
+			break;
+
 		case NUMBER:
 		{
 			double d = mNum;

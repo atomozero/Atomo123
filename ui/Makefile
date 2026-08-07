@@ -100,6 +100,17 @@ test: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
 	./tests/test_ascd_io
 
+# Test del "+" unario davanti a un fattore di formula (bug reale
+# scoperto in un file XLSX reale, vedi tests/test_unary_plus.cpp):
+# comportamento del parser dell'engine, stessa ragione headless di
+# "test" sopra (serve solo l'engine e libbe per BApplication/CFormatter).
+test-unary-plus: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_unary_plus.cpp -o tests/test_unary_plus.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_unary_plus tests/test_unary_plus.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
+	./tests/test_unary_plus
+
 # Test del formato "cartella di lavoro" multi-foglio (Fase 9): stessa
 # ragione headless di "test" sopra (serve solo BApplication, non una
 # finestra).
