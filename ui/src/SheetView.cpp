@@ -1049,6 +1049,32 @@ void SheetView::SortSelection(bool ascending)
 	if (sel.top == sel.bottom)
 		return; // una sola riga: niente da ordinare
 
+	// Un intervallo unito dentro la selezione non segue le celle che
+	// riordina (e' per foglio, non per cella, vedi il commento su
+	// MainWindow::MergeCells): ordinare lo lascerebbe puntare a righe
+	// ormai occupate da altro contenuto -- bug reale di corruzione dati
+	// trovato in un audit. Come Excel vero ("This operation requires
+	// the merged cells to be identically sized"), si rifiuta invece di
+	// tentare un riordino "consapevole" delle celle unite, che
+	// richiederebbe trattarle come blocco atomico -- fuori scopo qui.
+	{
+		const std::vector<range>& merges = fDoc->GetMergedRanges();
+		for (size_t i = 0; i < merges.size(); i++)
+		{
+			const range& m = merges[i];
+			bool overlaps = m.left <= sel.right && m.right >= sel.left
+				&& m.top <= sel.bottom && m.bottom >= sel.top;
+			if (overlaps)
+			{
+				BAlert* alert = new BAlert("Ordina",
+					"Non si puo' ordinare: la selezione contiene una cella unita. "
+					"Dividi le celle prima di ordinare.", "OK");
+				alert->Go();
+				return;
+			}
+		}
+	}
+
 	SaveUndoState(sel);
 
 	int numRows = sel.bottom - sel.top + 1;
