@@ -1445,8 +1445,39 @@ SheetView::UndoSnapshot SheetView::CaptureSnapshot(range r) const
 	return snap;
 }
 
+SheetView::UndoSnapshot SheetView::CaptureImageSnapshot(int imageIndex) const
+{
+	UndoSnapshot snap;
+	snap.imageIndex = imageIndex;
+	if (fImages && imageIndex >= 0 && imageIndex < (int)fImages->size())
+	{
+		const EmbeddedImage& img = (*fImages)[imageIndex];
+		snap.imageOffsetX = img.offsetX;
+		snap.imageOffsetY = img.offsetY;
+		snap.imageWidth = img.width;
+		snap.imageHeight = img.height;
+	}
+	return snap;
+}
+
 void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 {
+	// Istantanea di un'immagine incorporata (vedi SaveImageUndoState),
+	// non di celle: riscrive solo offsetX/Y/width/height dell'immagine
+	// all'indice catturato, niente a che fare con fDoc sotto.
+	if (snap.imageIndex >= 0)
+	{
+		if (fImages && snap.imageIndex < (int)fImages->size())
+		{
+			EmbeddedImage& img = (*fImages)[snap.imageIndex];
+			img.offsetX = snap.imageOffsetX;
+			img.offsetY = snap.imageOffsetY;
+			img.width = snap.imageWidth;
+			img.height = snap.imageHeight;
+		}
+		return;
+	}
+
 	// Svuota prima tutto cio' che esiste ORA nell'intervallo (non solo
 	// le celle catturate): una cella vuota al momento della cattura ma
 	// scritta nel frattempo deve tornare vuota, non restare com'e'.
@@ -1510,6 +1541,19 @@ void SheetView::Undo()
 	UndoSnapshot toRestore = fUndoStack.back();
 	fUndoStack.pop_back();
 
+	// Istantanea di un'immagine incorporata: stesso scambio simmetrico
+	// del ramo di celle sotto (cattura lo stato attuale per il "ripeti"
+	// PRIMA di applicare quello vecchio), ma senza selezione di celle
+	// ne' CellRect, che non hanno senso qui.
+	if (toRestore.imageIndex >= 0)
+	{
+		fRedoStack.push_back(CaptureImageSnapshot(toRestore.imageIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
 	fRedoStack.push_back(CaptureSnapshot(toRestore.r));
 	ApplySnapshot(toRestore);
 
@@ -1528,6 +1572,16 @@ void SheetView::Redo()
 	UndoSnapshot toRestore = fRedoStack.back();
 	fRedoStack.pop_back();
 
+	// Vedi il commento nel ramo equivalente di Undo() sopra.
+	if (toRestore.imageIndex >= 0)
+	{
+		fUndoStack.push_back(CaptureImageSnapshot(toRestore.imageIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
 	fUndoStack.push_back(CaptureSnapshot(toRestore.r));
 	ApplySnapshot(toRestore);
 
@@ -1536,6 +1590,30 @@ void SheetView::Redo()
 	Invalidate(CellRect(toRestore.r.TopLeft()) | CellRect(toRestore.r.BotRight()));
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
+}
+
+void SheetView::SaveImageUndoState(int imageIndex, float beforeOffsetX, float beforeOffsetY,
+	float beforeWidth, float beforeHeight)
+{
+	if (!fImages || imageIndex < 0 || imageIndex >= (int)fImages->size())
+		return;
+
+	// A differenza di SaveUndoState(range) sopra (chiamato PRIMA di
+	// mutare, cattura da solo lo stato corrente), qui lo stato "prima"
+	// e' gia' passato esplicitamente: MouseUp lo chiama a trascinamento
+	// GIA' concluso (fDragImageStart*/fResizeImageStart* di MouseDown),
+	// cosi' non serve un'istantanea intermedia a MouseDown -- che
+	// pusherebbe un annulla anche per un semplice clic sull'immagine
+	// senza nessuno spostamento reale (vedi il confronto in MouseUp).
+	UndoSnapshot snap;
+	snap.imageIndex = imageIndex;
+	snap.imageOffsetX = beforeOffsetX;
+	snap.imageOffsetY = beforeOffsetY;
+	snap.imageWidth = beforeWidth;
+	snap.imageHeight = beforeHeight;
+	fUndoStack.push_back(snap);
+	// Vedi il motivo nell'omonimo SaveUndoState(range) sopra.
+	fRedoStack.clear();
 }
 
 BRect SheetView::CellRect(cell c) const
@@ -2925,14 +3003,40 @@ void SheetView::MouseUp(BPoint where)
 	// nell'elemento del vettore (MouseMoved sotto lo fa direttamente,
 	// niente da ricopiare qui), manca solo segnalarlo cosi' il titolo
 	// mostra l'asterisco e "Salva" lo scrive davvero nel file.
+	// SaveImageUndoState solo se la posizione e' DAVVERO cambiata: un
+	// semplice clic sull'immagine (MouseDown poi MouseUp senza
+	// trascinare) non deve riempire la pila di Annulla con un'istantanea
+	// che non farebbe nulla di visibile se ripristinata.
 	if (fDraggingImageIndex >= 0)
+	{
+		if (fImages && fDraggingImageIndex < (int)fImages->size())
+		{
+			const EmbeddedImage& img = (*fImages)[fDraggingImageIndex];
+			if (img.offsetX != fDragImageStartOffsetX || img.offsetY != fDragImageStartOffsetY)
+			{
+				SaveImageUndoState(fDraggingImageIndex, fDragImageStartOffsetX,
+					fDragImageStartOffsetY, img.width, img.height);
+			}
+		}
 		NotifyDocumentChanged();
+	}
 	fDraggingImageIndex = -1;
 	// Stesso motivo del blocco sopra: ridimensionare un'immagine cambia
 	// width/height nel documento, non solo una preferenza di
 	// visualizzazione.
 	if (fResizingImageIndex >= 0)
+	{
+		if (fImages && fResizingImageIndex < (int)fImages->size())
+		{
+			const EmbeddedImage& img = (*fImages)[fResizingImageIndex];
+			if (img.width != fResizeImageStartWidth || img.height != fResizeImageStartHeight)
+			{
+				SaveImageUndoState(fResizingImageIndex, img.offsetX, img.offsetY,
+					fResizeImageStartWidth, fResizeImageStartHeight);
+			}
+		}
 		NotifyDocumentChanged();
+	}
 	fResizingImageIndex = -1;
 	BView::MouseUp(where);
 }

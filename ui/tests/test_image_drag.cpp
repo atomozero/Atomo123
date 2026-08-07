@@ -142,6 +142,36 @@ int main()
 	Check(images[1].offsetX == 70 && images[1].offsetY == 45,
 		"trascinare la prima immagine non tocca la seconda");
 
+	// --- Annulla/Ripristina (bug reale trovato durante l'audit di
+	// Annulla: uno spostamento di immagine non lasciava nessuna traccia
+	// nella pila di Annulla). Il blocco sopra e' un UNICO trascinamento
+	// (un solo MouseDown/MouseUp, i due MouseMoved intermedi non creano
+	// istantanee separate): Annulla riporta quindi allo scarto di PRIMA
+	// del MouseDown (10,5), non a quello intermedio (15,5). ---
+	Check(view->CanUndo(), "dopo aver trascinato un'immagine, Annulla e' disponibile");
+	view->Undo();
+	Check(images[0].offsetX == 10 && images[0].offsetY == 5,
+		"Annulla riporta la prima immagine allo scarto di PRIMA dell'intero trascinamento (10,5), non a uno intermedio");
+	Check(view->CanRedo(), "dopo Annulla, Ripristina e' disponibile");
+	view->Redo();
+	Check(images[0].offsetX == 22 && images[0].offsetY == 13,
+		"Ripristina riapplica lo spostamento appena annullato");
+
+	// --- Un semplice clic sull'immagine SENZA trascinarla non deve
+	// riempire la pila di Annulla con un'istantanea inutile: verificato
+	// annullando di nuovo subito dopo e controllando che si torni
+	// comunque allo scarto originale (10,5), non a uno "intermedio"
+	// creato dal clic stesso. ---
+	BRect frame0Final = view->ImageFrame(images[0]);
+	BPoint insideFirstNow(frame0Final.left + 5, frame0Final.top + 5);
+	view->MouseDown(insideFirstNow);
+	view->MouseMoved(insideFirstNow, B_INSIDE_VIEW, NULL); // stesso punto, nessuno spostamento
+	view->MouseUp(insideFirstNow);
+	view->Undo();
+	Check(images[0].offsetX == 10 && images[0].offsetY == 5,
+		"un clic senza trascinare non ha aggiunto un'istantanea: Annulla salta dritto al trascinamento vero precedente");
+	view->Redo();
+
 	win->Unlock();
 
 	win->Lock();

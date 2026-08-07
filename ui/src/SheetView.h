@@ -153,6 +153,16 @@ public:
 	// cambiato.
 	void SaveUndoState(range affected);
 	void SaveUndoState(cell affected);
+	// Stesso principio, ma per lo spostamento/ridimensionamento di
+	// un'immagine incorporata (indice in fImages): non e' una mutazione
+	// di celle, quindi non passa da CaptureSnapshot/range come sopra
+	// (vedi UndoSnapshot::imageIndex sotto) -- bug reale trovato durante
+	// l'audit di Annulla/Ripristina, prima non c'era alcun modo di
+	// annullare un trascinamento o ridimensionamento di immagine. Lo
+	// stato "prima" va passato esplicitamente (chiamato da MouseUp a
+	// trascinamento concluso, solo se qualcosa e' davvero cambiato).
+	void SaveImageUndoState(int imageIndex, float beforeOffsetX, float beforeOffsetY,
+		float beforeWidth, float beforeHeight);
 	bool CanUndo() const { return !fUndoStack.empty(); }
 	bool CanRedo() const { return !fRedoStack.empty(); }
 	void Undo();
@@ -546,10 +556,19 @@ private:
 	struct UndoSnapshot {
 		range r;
 		std::vector<UndoCellSnapshot> cells;
+		// Trascinamento/ridimensionamento di un'immagine incorporata (vedi
+		// SaveImageUndoState): -1 vuol dire "istantanea normale di celle"
+		// come sopra (r/cells), un indice >= 0 vuol dire invece "solo
+		// questa immagine, ignora r/cells" -- le due cose non capitano mai
+		// insieme in una singola istantanea.
+		int imageIndex = -1;
+		float imageOffsetX = 0, imageOffsetY = 0;
+		float imageWidth = 0, imageHeight = 0;
 	};
 	std::vector<UndoSnapshot> fUndoStack;
 	std::vector<UndoSnapshot> fRedoStack;
 	UndoSnapshot CaptureSnapshot(range r) const;
+	UndoSnapshot CaptureImageSnapshot(int imageIndex) const;
 	void ApplySnapshot(const UndoSnapshot& snap);
 
 	const std::vector<ChartObject>* fCharts;

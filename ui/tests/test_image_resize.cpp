@@ -125,6 +125,23 @@ int main()
 		&& images[1].offsetX == 10 && images[1].offsetY == 5,
 		"ridimensionare la prima immagine non tocca la seconda");
 
+	// --- Annulla/Ripristina (bug reale trovato durante l'audit di
+	// Annulla: ridimensionare un'immagine non lasciava nessuna traccia
+	// nella pila di Annulla, stesso problema dello spostamento gia'
+	// coperto in test_image_drag.cpp). Il blocco sopra e' un UNICO
+	// trascinamento (un solo MouseDown/MouseUp, i due MouseMoved
+	// intermedi non creano istantanee separate): Annulla riporta quindi
+	// alla dimensione di PRIMA del MouseDown (60x40), non a quella
+	// intermedia (75x50). ---
+	Check(view->CanUndo(), "dopo aver ridimensionato un'immagine, Annulla e' disponibile");
+	view->Undo();
+	Check(images[0].width == 60 && images[0].height == 40,
+		"Annulla riporta la prima immagine alla dimensione di PRIMA dell'intero ridimensionamento (60x40), non a una intermedia");
+	Check(view->CanRedo(), "dopo Annulla, Ripristina e' disponibile");
+	view->Redo();
+	Check(images[0].width == 85 && images[0].height == 45,
+		"Ripristina riapplica il ridimensionamento appena annullato");
+
 	// --- Il ridimensionamento non puo' andare sotto un minimo: trascinare
 	// la maniglia verso l'alto/sinistra oltre il minimo blocca width/
 	// height al minimo invece di farle diventare negative o nulle. ---
