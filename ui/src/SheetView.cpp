@@ -1115,6 +1115,84 @@ void SheetView::SortSelection(bool ascending)
 	NotifyDocumentChanged();
 }
 
+// Aggiusta gli intervalli uniti (CContainer::fMergedRanges, per foglio
+// non per cella -- vedi il commento su MainWindow::MergeCells) quando
+// si inseriscono/eliminano righe o colonne: senza questo, un intervallo
+// unito dopo il punto di inserimento restava ancorato alle vecchie
+// coordinate mentre il contenuto sotto di lui si spostava, e uno
+// attraversato da un'eliminazione continuava a riferirsi a righe/
+// colonne ormai occupate da altro contenuto -- bug reale di
+// corruzione dati trovato in un audit (non solo un buco di Annulla:
+// capita anche senza mai toccare Annulla/Ripeti). "count" positivo =
+// "count" righe/colonne inserite a partire da "first"; negativo =
+// "-count" eliminate a partire da "first" -- stessa convenzione di
+// MoveCell usato da InsertRows/InsertColumns/DeleteRows/DeleteColumns
+// sotto. "vertical" sceglie se toccare top/bottom (righe) o left/right
+// (colonne).
+static void AdjustMergedRanges(CContainer* doc, int first, int count, bool vertical)
+{
+	if (!doc || count == 0)
+		return;
+
+	std::vector<range> existing = doc->GetMergedRanges();
+	std::vector<range> kept;
+
+	if (count > 0)
+	{
+		// Inserimento: un bordo GIA' oltre il punto di inserimento si
+		// sposta in avanti; uno prima resta fermo; un intervallo
+		// attraversato dal punto (bordo iniziale prima, bordo finale
+		// dopo) si allarga per includere le righe/colonne nuove, senza
+		// bisogno di un caso a parte -- vale per entrambi i bordi presi
+		// singolarmente.
+		for (size_t i = 0; i < existing.size(); i++)
+		{
+			range r = existing[i];
+			int top = vertical ? r.top : r.left;
+			int bottom = vertical ? r.bottom : r.right;
+			if (top >= first)
+				top += count;
+			if (bottom >= first)
+				bottom += count;
+			if (vertical)
+				kept.push_back(range(r.left, top, r.right, bottom));
+			else
+				kept.push_back(range(top, r.top, bottom, r.bottom));
+		}
+	}
+	else
+	{
+		int last = first - count - 1; // count e' negativo: -count righe/colonne eliminate, [first, last]
+		for (size_t i = 0; i < existing.size(); i++)
+		{
+			range r = existing[i];
+			int top = vertical ? r.top : r.left;
+			int bottom = vertical ? r.bottom : r.right;
+
+			if (top >= first && bottom <= last)
+				continue; // interamente dentro la zona eliminata: sparisce
+
+			if (top > last)
+				top += count; // count negativo, sottrae
+			else if (top >= first)
+				top = first; // il bordo iniziale collassa al punto di eliminazione
+			if (bottom > last)
+				bottom += count;
+			else if (bottom >= first)
+				bottom = first - 1; // il bordo finale collassa appena prima
+
+			if (vertical)
+				kept.push_back(range(r.left, top, r.right, bottom));
+			else
+				kept.push_back(range(top, r.top, bottom, r.bottom));
+		}
+	}
+
+	doc->ClearMergedRanges();
+	for (size_t i = 0; i < kept.size(); i++)
+		doc->AddMergedRange(kept[i]);
+}
+
 void SheetView::InsertRows()
 {
 	if (!fDoc)
@@ -1144,6 +1222,8 @@ void SheetView::InsertRows()
 	fDoc->GetBounds(bounds);
 	if (bounds.right >= 1 && bounds.bottom >= 1)
 		SaveUndoState(bounds);
+
+	AdjustMergedRanges(fDoc, first, count, true);
 
 	// Scandisce le righe dal basso verso l'alto: una formula sopra il
 	// punto di inserimento puo' riferirsi a una cella sotto (che si
@@ -1196,6 +1276,8 @@ void SheetView::InsertColumns()
 	if (bounds.right >= 1 && bounds.bottom >= 1)
 		SaveUndoState(bounds);
 
+	AdjustMergedRanges(fDoc, first, count, false);
+
 	// Le righe sono indipendenti fra loro per uno spostamento di
 	// colonne, quindi l'ordine fra righe non conta -- conta pero'
 	// l'ordine ALL'INTERNO di ogni riga: da destra verso sinistra
@@ -1235,6 +1317,8 @@ void SheetView::DeleteRows()
 		return; // foglio vuoto: niente da eliminare
 
 	SaveUndoState(bounds);
+
+	AdjustMergedRanges(fDoc, first, -count, true);
 
 	// Le celle dentro le righe eliminate spariscono (nessuna
 	// destinazione valida per loro, a differenza di quelle sotto, che
@@ -1285,6 +1369,8 @@ void SheetView::DeleteColumns()
 		return; // foglio vuoto: niente da eliminare
 
 	SaveUndoState(bounds);
+
+	AdjustMergedRanges(fDoc, first, -count, false);
 
 	{
 		range deletedZone(first, 1, last, kRowCount);

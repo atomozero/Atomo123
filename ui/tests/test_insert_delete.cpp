@@ -202,6 +202,96 @@ int main()
 	// funzionava per una fortuita coincidenza ambientale, non perche'
 	// fosse davvero sicuro chiamarlo cosi'.
 
+	// --- Inserire/eliminare righe o colonne aggiorna anche gli
+	// intervalli uniti (CContainer::fMergedRanges), non solo le celle
+	// -- bug reale di corruzione dati trovato in un audit: prima un
+	// intervallo unito restava ancorato alle vecchie coordinate mentre
+	// il contenuto sotto/accanto a lui si spostava. ---
+	{
+		// Inserire righe SOPRA un intervallo unito lo sposta in basso
+		// per intero, senza cambiarne la forma.
+		doc->AddMergedRange(range(1, 40, 2, 41)); // A40:B41
+		view->SetSelection(cell(1, 38));
+		view->ExtendSelection(cell(1, 38)); // riga 38, sopra l'intervallo
+		view->InsertRows();
+
+		std::vector<range> merges = doc->GetMergedRanges();
+		bool foundShifted = false;
+		for (size_t i = 0; i < merges.size(); i++)
+			if (merges[i].left == 1 && merges[i].right == 2
+					&& merges[i].top == 41 && merges[i].bottom == 42)
+				foundShifted = true;
+		Check(foundShifted,
+			"Inserisci riga sopra un intervallo unito lo sposta in basso per intero (A40:B41 -> A41:B42)");
+
+		// Inserire righe DENTRO un intervallo unito (non sul suo primo
+		// bordo, che sposterebbe l'intero intervallo come sopra, ma su
+		// una riga successiva) lo allarga per includere le righe
+		// nuove, invece di spezzarlo o lasciarlo fermo.
+		view->SetSelection(cell(1, 42)); // seconda riga del nuovo A41:B42
+		view->ExtendSelection(cell(1, 42));
+		view->InsertRows();
+
+		merges = doc->GetMergedRanges();
+		bool foundGrown = false;
+		for (size_t i = 0; i < merges.size(); i++)
+			if (merges[i].left == 1 && merges[i].right == 2
+					&& merges[i].top == 41 && merges[i].bottom == 43)
+				foundGrown = true;
+		Check(foundGrown,
+			"Inserisci riga dentro un intervallo unito lo allarga (A41:B42 -> A41:B43), non lo sposta soltanto");
+
+		// Eliminare righe che contengono per intero un intervallo unito
+		// lo fa sparire, invece di lasciarlo puntare a righe ormai
+		// occupate da altro contenuto.
+		view->SetSelection(cell(1, 41));
+		view->ExtendSelection(cell(1, 43)); // tutte e tre le righe dell'intervallo
+		view->DeleteRows();
+
+		merges = doc->GetMergedRanges();
+		bool stillThere = false;
+		for (size_t i = 0; i < merges.size(); i++)
+			if (merges[i].left == 1 && merges[i].right == 2)
+				stillThere = true;
+		Check(!stillThere,
+			"Eliminare tutte le righe di un intervallo unito lo fa sparire, non lo lascia orfano");
+	}
+
+	{
+		// Stessa verifica sulle colonne: inserire colonne dentro un
+		// intervallo unito (non sulla sua prima colonna, che sposterebbe
+		// l'intero intervallo come per le righe sopra) lo allarga in
+		// orizzontale.
+		doc->AddMergedRange(range(10, 50, 11, 51)); // J50:K51
+		view->SetSelection(cell(11, 50)); // seconda colonna dell'intervallo
+		view->ExtendSelection(cell(11, 50));
+		view->InsertColumns();
+
+		std::vector<range> merges = doc->GetMergedRanges();
+		bool foundGrownCols = false;
+		for (size_t i = 0; i < merges.size(); i++)
+			if (merges[i].top == 50 && merges[i].bottom == 51
+					&& merges[i].left == 10 && merges[i].right == 12)
+				foundGrownCols = true;
+		Check(foundGrownCols,
+			"Inserisci colonna dentro un intervallo unito lo allarga in orizzontale (J50:K51 -> J50:L51)");
+
+		// Eliminare una colonna PRIMA dell'intervallo lo sposta a
+		// sinistra per intero, senza cambiarne la forma.
+		view->SetSelection(cell(1, 50));
+		view->ExtendSelection(cell(1, 50));
+		view->DeleteColumns();
+
+		merges = doc->GetMergedRanges();
+		bool foundShiftedCols = false;
+		for (size_t i = 0; i < merges.size(); i++)
+			if (merges[i].top == 50 && merges[i].bottom == 51
+					&& merges[i].left == 9 && merges[i].right == 11)
+				foundShiftedCols = true;
+		Check(foundShiftedCols,
+			"Eliminare una colonna prima di un intervallo unito lo sposta a sinistra per intero");
+	}
+
 	win->Unlock();
 
 	win->Lock();
