@@ -160,28 +160,6 @@ int GetFunctionNr(const char *name)
 	if (hasXlfnPrefix)
 		name += kXlfnPrefixLen;
 
-	// "CEILING.MATH" (12 caratteri) non entra affatto nel campo
-	// funcName[10] della risorsa 'Func' (9 caratteri utili piu' il
-	// terminatore, vedi il commento sotto) -- allargare quel formato
-	// binario condiviso da ogni altra funzione solo per questa non
-	// vale il rischio. Alias diretto verso CEILING invece: nell'unico
-	// uso reale visto finora (CEILING.MATH con un solo argomento,
-	// senza significativita'/modalita' esplicite) i due si comportano
-	// identici (arrotondano per eccesso all'intero piu' vicino, vedi
-	// CEILINGFunction) -- se un file dovesse mai usare CEILING.MATH con
-	// piu' di un argomento, l'analisi grammaticale lo rifiuta comunque
-	// (CEILING accetta un solo argomento), non calcola silenziosamente
-	// un risultato sbagliato.
-	if (MatchesFuncNameAlias(name, "CEILING.MATH"))
-		return kCEILINGFuncNr;
-
-	// "CONCATENATE" (11 caratteri) ha lo stesso problema di
-	// "CEILING.MATH" sopra: alias diretto verso CONCAT, gia' esistente
-	// -- stesso comportamento di concatenazione testo/numeri, solo il
-	// nome storico di Excel invece di quello moderno.
-	if (MatchesFuncNameAlias(name, "CONCATENATE"))
-		return kCONCATFuncNr;
-
 	sLen = strlen(name);
 
 	// myFunc[10] ospita fino a 9 caratteri piu' il terminatore: il
@@ -192,17 +170,55 @@ int GetFunctionNr(const char *name)
 	// caratteri), trattato come identificatore sconosciuto invece che
 	// come funzione nonostante fosse nella tabella. Nessuno degli 86
 	// nomi originali di Sum-It arrivava a 9 caratteri, quindi il bug
-	// non si era mai manifestato prima.
-	if (sLen >= (long)sizeof(myFunc))
-		return -1;
+	// non si era mai manifestato prima. Non si applica agli alias
+	// sotto (CEILING.MATH/CONCATENATE, piu' lunghi di 9 caratteri per
+	// definizione): controllata solo DOPO di loro.
 
 	/* Se la tabella delle funzioni non e' mai stata caricata (nessuno
 	   ha chiamato InitFunctions(), che la popola da una risorsa 'Func'
 	   — caso normale nella libreria engine isolata, che non allega
 	   ancora risorse), gFuncArrayByName resta NULL e gFuncCount resta
 	   0. Senza questo controllo la ricerca binaria sottostante
-	   dereferenzia un puntatore nullo. */
+	   dereferenzia un puntatore nullo -- e cosi' farebbero anche gli
+	   alias sotto, che restituiscono un funcNr valido (es. 7 per
+	   CEILING) SENZA passare da quella ricerca: parser.cpp indicizza
+	   comunque gFuncArrayByNr[funcNr] subito dopo per leggere argCnt,
+	   quindi un funcNr "valido" ma con la tabella non caricata e'
+	   ESATTAMENTE cosi' pericoloso quanto uno trovato dalla ricerca
+	   binaria stessa. Bug reale: mandava in crash (non solo "funzione
+	   sconosciuta") l'apertura di un file XLSX vero con
+	   "_xlfn.CEILING.MATH" nel translator XLSX, che ha una propria
+	   copia di gFuncArrayByNr separata da quella dell'app (add-on
+	   caricato dinamicamente, non collegato staticamente come nei
+	   test) -- MAI inizializzata dall'app stessa, vedi il commento su
+	   InitFunctions() in XlsxTranslator.cpp.
+	*/
 	if (gFuncCount <= 0)
+		return -1;
+
+	// "CEILING.MATH" (12 caratteri) non entra affatto nel campo
+	// funcName[10] della risorsa 'Func' (9 caratteri utili piu' il
+	// terminatore) -- allargare quel formato binario condiviso da ogni
+	// altra funzione solo per questa non vale il rischio. Alias diretto
+	// verso CEILING invece: nell'unico uso reale visto finora
+	// (CEILING.MATH con un solo argomento, senza significativita'/
+	// modalita' esplicite) i due si comportano identici (arrotondano
+	// per eccesso all'intero piu' vicino, vedi CEILINGFunction) -- se
+	// un file dovesse mai usare CEILING.MATH con piu' di un argomento,
+	// l'analisi grammaticale lo rifiuta comunque (CEILING accetta un
+	// solo argomento), non calcola silenziosamente un risultato
+	// sbagliato.
+	if (MatchesFuncNameAlias(name, "CEILING.MATH"))
+		return kCEILINGFuncNr;
+
+	// "CONCATENATE" (11 caratteri) ha lo stesso problema di
+	// "CEILING.MATH" sopra: alias diretto verso CONCAT, gia' esistente
+	// -- stesso comportamento di concatenazione testo/numeri, solo il
+	// nome storico di Excel invece di quello moderno.
+	if (MatchesFuncNameAlias(name, "CONCATENATE"))
+		return kCONCATFuncNr;
+
+	if (sLen >= (long)sizeof(myFunc))
 		return -1;
 
 	for (i = 0; i < sLen; i++)

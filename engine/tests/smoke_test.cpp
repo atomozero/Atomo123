@@ -81,6 +81,34 @@ int main()
 	doc.GetValue(b4, v);
 	Check((double)v == 0.1, "B4 (=A1%, un riferimento a cella, non un numero letterale) calcola 0.1 (10/100)");
 
+	// Bug reale scoperto da un crash report dell'utente: GetFunctionNr
+	// (Utils.cpp) risolveva "_xlfn.CEILING.MATH"/"CONCATENATE" (alias
+	// verso CEILING/CONCAT, Fase 14) PRIMA di controllare se la tabella
+	// delle funzioni fosse mai stata caricata (gFuncCount<=0, come qui
+	// -- questo file non chiama mai InitFunctions() apposta) --
+	// restituiva comunque un funcNr "valido", che parser.cpp indicizzava
+	// subito dopo in gFuncArrayByNr[funcNr] per leggere argCnt: con
+	// gFuncArrayByNr ancora NULL, un puntatore nullo dereferenziato, un
+	// crash vero (non solo "funzione sconosciuta") -- capitato
+	// nell'app vera quando il translator XLSX (un add-on caricato
+	// dinamicamente, con la propria copia di questi globali separata
+	// da quella dell'app) analizzava una formula prima che
+	// App::ReadyToRun avesse gia' chiamato InitFunctions() la' dentro.
+	// Qui riprodotto direttamente: nessuna InitFunctions() mai chiamata
+	// in questo file, quindi gFuncCount resta 0 -- il solo fatto che
+	// TryToParseString ritorni (invece di far crashare l'intero test)
+	// e' gia' la prova che il fix funziona.
+	try
+	{
+		TryToParseString("=_xlfn.CEILING.MATH(1+2)", cell(2, 5), &doc, false);
+		TryToParseString("=CONCATENATE(\"a\";\"b\")", cell(2, 6), &doc, false);
+		Check(true, "\"_xlfn.CEILING.MATH\"/\"CONCATENATE\" senza InitFunctions() non crashano (gFuncCount resta 0)");
+	}
+	catch (...)
+	{
+		Check(false, "\"_xlfn.CEILING.MATH\"/\"CONCATENATE\" senza InitFunctions() non crashano (gFuncCount resta 0)");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();
