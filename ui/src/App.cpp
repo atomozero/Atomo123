@@ -15,6 +15,7 @@
 #include <Roster.h>
 
 #include <cstdio>
+#include <unistd.h>
 
 #include "FunctionUtils.h"
 #include "Globals.h"
@@ -263,6 +264,21 @@ int main()
 {
 	App app;
 	app.Run();
-	return 0;
+
+	// _exit(), non "return 0": un bug pre-esistente del Locale Kit di
+	// Haiku (non del codice di Atomo123, confermato riproducendolo
+	// anche con una build di settimane fa) manda in crash
+	// BPrivate::DefaultCatalog::~DefaultCatalog() -- chiamato dai
+	// distruttori statici C++ che "return 0" innescherebbe tramite
+	// __cxa_finalize/exit() -- ogni volta che il processo termina, con
+	// un "General protection fault" che genera un report di crash su
+	// ogni singola chiusura. _exit() salta quel giro di distruttori
+	// statici del tutto (il sistema operativo recupera comunque tutta
+	// la memoria del processo alla sua terminazione): nessuna perdita
+	// di dati, dato che salvataggio file e preferenze avvengono gia'
+	// esplicitamente PRIMA di questo punto (BFile diretto, mai
+	// rimandato a un distruttore), non e' qualcosa da cui questo salto
+	// dipenda.
+	_exit(0);
 }
 #endif
