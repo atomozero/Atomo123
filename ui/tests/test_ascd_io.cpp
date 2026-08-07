@@ -526,6 +526,75 @@ int main()
 		oldDoc5.Release();
 	}
 
+	// --- Un file .ascd con la colonna di un commento manomessa (fuori
+	// dall'intervallo valido) viene rifiutato con B_BAD_DATA invece di
+	// causare una lettura fuori dai limiti. Bug reale trovato durante
+	// un audit: "col"/"row" letti grezzi dal file finivano dritti in
+	// cell/GetColumnStyleNr (fColumnStyles[col] ecc.) senza nessun
+	// controllo in una build di rilascio -- ASSERT esiste solo in
+	// debug. Qui si manomette un file scritto da SaveASCD invece di
+	// costruirne uno a mano, cosi' il resto del formato resta valido e
+	// l'unica differenza e' il campo sotto test. ---
+	{
+		CContainer* corruptDoc = new CContainer(NULL, NULL);
+		corruptDoc->SetComment(cell(3, 5), "prova"); // colonna 3, riga 5
+
+		BFile corruptFile("tests/roundtrip.ascd", B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(corruptDoc, &corruptFile) == B_OK,
+			"SaveASCD con un commento (di prova, per la manomissione sotto) riesce");
+		corruptDoc->Release();
+		corruptFile.Unset();
+
+		BFile readBack("tests/roundtrip.ascd", B_READ_ONLY);
+		off_t size = 0;
+		readBack.GetSize(&size);
+		std::vector<char> bytes((size_t)size);
+		readBack.Read(&bytes[0], (size_t)size);
+		readBack.Unset();
+
+		// Cerca la sequenza riga(int16)=5, colonna(int16)=3,
+		// lunghezza(int32)=5 (la lunghezza di "prova"): la combinazione
+		// degli otto byte insieme e' praticamente unica nel file,
+		// molto meno probabile di una singola coppia riga/colonna da
+		// sola a comparire per caso altrove nei dati binari.
+		int16 targetRow = 5, targetCol = 3;
+		int32 targetLen = 5;
+		int32 found = -1;
+		for (size_t i = 0; i + 8 <= bytes.size(); i++)
+		{
+			int16 r, c;
+			int32 len;
+			memcpy(&r, &bytes[i], 2);
+			memcpy(&c, &bytes[i + 2], 2);
+			memcpy(&len, &bytes[i + 4], 4);
+			if (r == targetRow && c == targetCol && len == targetLen)
+			{
+				found = (int32)i;
+				break;
+			}
+		}
+		Check(found >= 0,
+			"i byte riga/colonna/lunghezza del commento di prova si trovano nel file salvato");
+
+		if (found >= 0)
+		{
+			int16 badCol = 30000; // ben oltre kColCount
+			memcpy(&bytes[found + 2], &badCol, 2);
+
+			BFile tampered("tests/roundtrip.ascd", B_WRITE_ONLY | B_ERASE_FILE);
+			tampered.Write(&bytes[0], bytes.size());
+			tampered.Unset();
+
+			BFile reopenTampered("tests/roundtrip.ascd", B_READ_ONLY);
+			CContainer* reloadedTampered = new CContainer(NULL, NULL);
+			status_t err = LoadASCD(&reopenTampered, reloadedTampered);
+			Check(err == B_BAD_DATA,
+				"un file con la colonna del commento manomessa (30000, fuori dall'intervallo valido) "
+				"viene rifiutato con B_BAD_DATA, non causa una lettura fuori dai limiti");
+			reloadedTampered->Release();
+		}
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

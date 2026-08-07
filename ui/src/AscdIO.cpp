@@ -932,6 +932,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 				CellStyle cs;
 				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
 				doc->GetCellStyle(loc, cs);
 				cs.fLowColor = bg;
 				cs.fHighColor = fg;
@@ -957,6 +959,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| !ReadColorEntry(source, &bg, &fg))
 					return B_BAD_DATA;
+				if (col < 1 || col > kColCount)
+					return B_BAD_DATA; // "col" grezzo dal file, non ancora validato
 
 				CellStyle cs;
 				doc->GetColumnStyle(col, cs);
@@ -1037,6 +1041,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 				CellStyle cs;
 				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
 				doc->GetCellStyle(loc, cs);
 				cs.fFont = (int)gFontSizeTable.GetFontID(family, style, size);
 				doc->SetCellStyle(loc, cs);
@@ -1064,6 +1070,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 				CellStyle cs;
 				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
 				doc->GetCellStyle(loc, cs);
 				cs.fAlignment = (char)alignment;
 				doc->SetCellStyle(loc, cs);
@@ -1092,6 +1100,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 				CellStyle cs;
 				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
 				doc->GetCellStyle(loc, cs);
 				cs.fTBorderColor = sides[0];
 				cs.fLBorderColor = sides[1];
@@ -1123,6 +1133,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 				CellStyle cs;
 				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
 				doc->GetCellStyle(loc, cs);
 				cs.fFormat = (int)format;
 				doc->SetCellStyle(loc, cs);
@@ -1150,6 +1162,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 				CellStyle cs;
 				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
 				doc->GetCellStyle(loc, cs);
 				cs.fUnderline = true;
 				doc->SetCellStyle(loc, cs);
@@ -1177,6 +1191,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 				CellStyle cs;
 				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
 				doc->GetCellStyle(loc, cs);
 				cs.fWrapText = true;
 				doc->SetCellStyle(loc, cs);
@@ -1235,7 +1251,15 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
 					|| source->Read(&pngLen, sizeof(pngLen)) != (ssize_t)sizeof(pngLen))
 					return B_BAD_DATA;
-				if (pngLen < 0)
+				if (!cell(col, row).IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
+				// Tetto ampio ma finito (200 MiB): un PNG incorporato
+				// legittimo non si avvicina lontanamente a questa
+				// dimensione, ma senza un tetto un "pngLen" enorme in un
+				// file corrotto/malevolo forzerebbe un tentativo di
+				// allocazione gigantesco (bad_alloc) prima ancora che la
+				// Read() sottostante possa fallire da sola.
+				if (pngLen < 0 || pngLen > 200 * 1024 * 1024)
 					return B_BAD_DATA;
 
 				EmbeddedImage img;
@@ -1353,6 +1377,16 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 					return B_BAD_DATA;
+				if (!cell(col, row).IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
+				// Tetto ampio ma finito (16 MiB): nessun commento vero si
+				// avvicina a questa dimensione, ma senza un tetto un
+				// "len" enorme in un file corrotto forzerebbe
+				// un'allocazione gigantesca prima che la Read()
+				// sottostante possa fallire da sola (stesso principio
+				// del tetto su pngLen piu' sopra).
+				if (len < 0 || len > 16 * 1024 * 1024)
+					return B_BAD_DATA;
 
 				std::string text;
 				if (len > 0)
@@ -1383,6 +1417,11 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+				if (!cell(col, row).IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
+				// Stesso tetto e stesso motivo della sezione commenti sopra.
+				if (len < 0 || len > 16 * 1024 * 1024)
 					return B_BAD_DATA;
 
 				std::string text;
@@ -1473,6 +1512,11 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&type, sizeof(type)) != (ssize_t)sizeof(type)
 					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 					return B_BAD_DATA;
+				if (!cell(col, row).IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
+				// Stesso tetto e stesso motivo della sezione commenti piu' sopra.
+				if (len < 0 || len > 16 * 1024 * 1024)
+					return B_BAD_DATA;
 
 				std::string list;
 				if (len > 0)
@@ -1514,6 +1558,9 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				int32 valueLen;
 				if (source->Read(&type, sizeof(type)) != (ssize_t)sizeof(type)
 					|| source->Read(&valueLen, sizeof(valueLen)) != (ssize_t)sizeof(valueLen))
+					return B_BAD_DATA;
+				// Stesso tetto e stesso motivo della sezione commenti piu' sopra.
+				if (valueLen < 0 || valueLen > 16 * 1024 * 1024)
 					return B_BAD_DATA;
 
 				std::string compareValue;
