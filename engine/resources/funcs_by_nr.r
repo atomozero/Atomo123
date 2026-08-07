@@ -165,6 +165,12 @@ resource 'Func' (128, "Functions")
 		// COUNTIFS (Fase 14): vedi il commento su kCOUNTIFSFuncNr in
 		// Functions.h. 65535 = numero di coppie intervallo/criterio
 		// variabile, come SUMIF/COUNTIF sopra.
-		"COUNTIFS", 65535, 103, 5
+		"COUNTIFS", 65535, 103, 5,
+		// ROUNDUP/ROUNDDOWN/TEXT (Fase 14): vedi il commento su
+		// kROUNDUPFuncNr in Functions.h. Due argomenti esatti (numero,
+		// cifre), come ROUND gia' esistente.
+		"ROUNDUP", 2, 104, 5,
+		"ROUNDDOWN", 2, 105, 5,
+		"TEXT", 2, 106, 6
 	}
 };

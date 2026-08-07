@@ -372,14 +372,25 @@ static void FormatNumberForConcat(double d, char *out)
 void CONCATFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	char out[2048];
-	char arg[256];
 	double d;
 
+	// stack[i-1].fText direttamente, non GetTextArgument in un buffer
+	// intermedio fisso (char arg[256] prima di questo fix): GetTextArgument
+	// fa una strcpy SENZA limite di lunghezza nel buffer del chiamante,
+	// assumendo che sia "abbastanza grande" -- un testo di cella reale
+	// piu' lungo di 255 caratteri (comunissimo, il limite vero di Excel
+	// e' 32767) scriveva oltre la fine di quello scratch buffer sullo
+	// stack, corrompendo la memoria in un modo che si manifestava altrove
+	// come un errore completamente slegato ("errInsufficientMemory" da un
+	// MALLOC successivo, mai dove il danno era davvero avvenuto) -- bug
+	// preesistente in CONCAT, mai raggiunto prima su un testo cosi' lungo
+	// finche' l'alias CONCATENATE non ha reso raggiungibile questo
+	// percorso su un file XLSX reale con descrizioni lunghe.
 	out[0] = 0;
 	for (int i = 1; i <= argCnt; i++)
 	{
-		if (GetTextArgument(stack, argCnt, i, arg))
-			strncat(out, arg, sizeof(out) - strlen(out) - 1);
+		if (stack[i - 1].fType == eTextData)
+			strncat(out, stack[i - 1].fText, sizeof(out) - strlen(out) - 1);
 		else if (GetDoubleArgument(stack, argCnt, i, &d))
 		{
 			char num[32];

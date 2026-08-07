@@ -154,6 +154,15 @@ enum {
 	// intervallo/criterio), conta un AND fra piu' coppie intervallo/
 	// criterio -- vedi COUNTIFSFunction in Functions.math.cpp.
 	kCOUNTIFSFuncNr,
+	// ROUNDUP/ROUNDDOWN/TEXT (Fase 14): assenti dalle funzioni
+	// originali, scoperte mancanti analizzando altri file XLSX reali
+	// dell'utente (analisi_funzioni_xls.md). CONCATENATE (11
+	// caratteri, non entra nel campo a lunghezza fissa della risorsa
+	// 'Func', stesso limite di CEILING.MATH) e' un alias diretto di
+	// CONCAT, gia' esistente -- non serve una voce propria qui.
+	kROUNDUPFuncNr,
+	kROUNDDOWNFuncNr,
+	kTEXTFuncNr,
 	kFunctionCount
 };
 
@@ -246,6 +255,9 @@ void COUNTAFunction(Value *stack, int argCnt, CContainer *cells);
 void SUMIFFunction(Value *stack, int argCnt, CContainer *cells);
 void COUNTIFFunction(Value *stack, int argCnt, CContainer *cells);
 void COUNTIFSFunction(Value *stack, int argCnt, CContainer *cells);
+void ROUNDUPFunction(Value *stack, int argCnt, CContainer *cells);
+void ROUNDDOWNFunction(Value *stack, int argCnt, CContainer *cells);
+void TEXTFunction(Value *stack, int argCnt, CContainer *cells);
 void AVERAGEIFFunction(Value *stack, int argCnt, CContainer *cells);
 void TRIMFunction(Value *stack, int argCnt, CContainer *cells);
 void UPPERFunction(Value *stack, int argCnt, CContainer *cells);

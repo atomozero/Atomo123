@@ -233,6 +233,9 @@ void SetupDefaultFuncs()
 	gFuncs[kSUMIFFuncNr] = SUMIFFunction;
 	gFuncs[kCOUNTIFFuncNr] = COUNTIFFunction;
 	gFuncs[kCOUNTIFSFuncNr] = COUNTIFSFunction;
+	gFuncs[kROUNDUPFuncNr] = ROUNDUPFunction;
+	gFuncs[kROUNDDOWNFuncNr] = ROUNDDOWNFunction;
+	gFuncs[kTEXTFuncNr] = TEXTFunction;
 	gFuncs[kAVERAGEIFFuncNr] = AVERAGEIFFunction;
 	gFuncs[kTRIMFuncNr] = TRIMFunction;
 	gFuncs[kUPPERFuncNr] = UPPERFunction;

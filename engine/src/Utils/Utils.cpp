@@ -114,6 +114,25 @@ void NumToAString(long num, char *s)
 	}
 } /* NumToAString */
 
+// Confronto senza distinguere maiuscole/minuscole, lunghezza esatta
+// (non un prefisso) -- usato solo per i nomi Excel troppo lunghi per
+// entrare nel campo funcName[10] a lunghezza fissa della risorsa
+// 'Func' condivisa da ogni altra funzione (vedi il commento sotto in
+// GetFunctionNr), che quindi non possono passare dalla normale ricerca
+// binaria su quella tabella.
+static bool MatchesFuncNameAlias(const char *name, const char *alias)
+{
+	size_t aliasLen = strlen(alias);
+	if (strlen(name) != aliasLen)
+		return false;
+	for (size_t i = 0; i < aliasLen; i++)
+	{
+		if (toupper(name[i]) != alias[i])
+			return false;
+	}
+	return true;
+} /* MatchesFuncNameAlias */
+
 int GetFunctionNr(const char *name)
 {
 	long l, R, i, sLen;
@@ -153,15 +172,15 @@ int GetFunctionNr(const char *name)
 	// piu' di un argomento, l'analisi grammaticale lo rifiuta comunque
 	// (CEILING accetta un solo argomento), non calcola silenziosamente
 	// un risultato sbagliato.
-	{
-		static const char kCeilingMath[] = "CEILING.MATH";
-		const int kCeilingMathLen = sizeof(kCeilingMath) - 1;
-		bool isCeilingMath = (long)strlen(name) == kCeilingMathLen;
-		for (i = 0; isCeilingMath && i < kCeilingMathLen; i++)
-			isCeilingMath = (toupper(name[i]) == kCeilingMath[i]);
-		if (isCeilingMath)
-			return kCEILINGFuncNr;
-	}
+	if (MatchesFuncNameAlias(name, "CEILING.MATH"))
+		return kCEILINGFuncNr;
+
+	// "CONCATENATE" (11 caratteri) ha lo stesso problema di
+	// "CEILING.MATH" sopra: alias diretto verso CONCAT, gia' esistente
+	// -- stesso comportamento di concatenazione testo/numeri, solo il
+	// nome storico di Excel invece di quello moderno.
+	if (MatchesFuncNameAlias(name, "CONCATENATE"))
+		return kCONCATFuncNr;
 
 	sLen = strlen(name);
 

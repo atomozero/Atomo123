@@ -126,12 +126,21 @@ void IFFunction(Value *stack, int argCnt, CContainer *cells)
 
 	if (GetBooleanArgument(stack, argCnt, 1, &b))
 	{
-		if (b && (argCnt >= 2)) 
+		if (b && (argCnt >= 2))
 			stack[0] = stack[1];
-		else if (!b && (argCnt >= 3)) 
+		else if (!b && (argCnt >= 3))
 			stack[0] = stack[2];
-		else
-			stack[0].Clear();
+		// altrimenti: stack[0] resta la condizione originale (il
+		// booleano stesso), NON va azzerato -- stesso principio
+		// difensivo di IFERRFunction sotto (dove "Clear()" qui perdeva
+		// davvero un valore valido, bug reale scoperto su un file
+		// XLSX reale). Per IF questo ramo non e' raggiungibile
+		// dall'analisi grammaticale vera (argCnt e' fissato
+		// esattamente a 3 nella risorsa 'Func', vedi funcs_by_nr.r:
+		// "IF(condizione)" con un solo argomento non passa nemmeno il
+		// parsing) -- corretto comunque per coerenza con IFERRFunction
+		// e come difesa in caso IF diventasse mai a argomenti
+		// variabili.
 	}
 	else if (GetDoubleArgument(stack, argCnt, 1, &d) && isnan(d))
 		stack[0] = d;
@@ -144,12 +153,19 @@ void IFERRFunction(Value *stack, int argCnt, CContainer *cells)
 	double d;
 
 	if (GetDoubleArgument(stack, argCnt, 1, &d) && isnan(d) &&
-	   (argCnt >= 2)) 
+	   (argCnt >= 2))
 		stack[0] = stack[1];
-	else if (argCnt >= 3) 
+	else if (argCnt >= 3)
 		stack[0] = stack[2];
-	else
-		stack[0].Clear();
+	// altrimenti (Excel: IFERROR(valore, valore_se_errore) a due
+	// argomenti, senza errore): stack[0] resta il valore originale
+	// cosi' com'e', NON va azzerato -- bug reale scoperto su un file
+	// XLSX reale con "=IFERROR(CONCAT(...);"")": "valore" (il
+	// risultato di CONCAT, testo) non e' mai un numero NaN
+	// controllabile da isnan(), quindi finiva sempre in questo ramo, e
+	// "Clear()" perdeva il risultato buono di CONCAT invece di
+	// lasciarlo passare -- IFERROR "senza errore" restituisce sempre
+	// "valore" stesso in Excel vero, qualunque sia il suo tipo.
 }
 
 void ISNULLFunction(Value *stack, int, CContainer *)

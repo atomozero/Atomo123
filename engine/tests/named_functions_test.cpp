@@ -67,7 +67,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 104, "InitFunctions carica tutte le 104 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 107, "InitFunctions carica tutte le 107 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -225,6 +225,67 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =_xlfn.CEILING.MATH: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// CONCATENATE/ROUNDUP/ROUNDDOWN/TEXT (Fase 14): scoperti mancanti
+	// analizzando altri file XLSX reali dell'utente (non lo stesso file
+	// di XLOOKUP/COUNTIFS sopra). CONCATENATE e' un alias diretto di
+	// CONCAT (stesso motivo di CEILING.MATH sopra, nome troppo lungo
+	// per la risorsa 'Func' a lunghezza fissa).
+	try
+	{
+		TryToParseString("=CONCATENATE(\"Totale: \";A1)", cell(23, 3), &doc, true);
+		doc.CalcCell(cell(23, 3));
+		doc.GetValue(cell(23, 3), v);
+		Check(strcmp((const char *)v, "Totale: 10") == 0,
+			"=CONCATENATE(\"Totale: \";A1) (nome storico Excel) calcola \"Totale: 10\", come CONCAT");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =CONCATENATE: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ROUNDUP(3.21,1)", cell(23, 4), &doc, true, '.', ',');
+		doc.CalcCell(cell(23, 4));
+		doc.GetValue(cell(23, 4), v);
+		Check((double)v == 3.3, "=ROUNDUP(3.21,1) arrotonda SEMPRE per eccesso a 3.3, non al piu' vicino");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUNDUP: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ROUNDDOWN(3.29,1)", cell(23, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(23, 5));
+		doc.GetValue(cell(23, 5), v);
+		Check((double)v == 3.2, "=ROUNDDOWN(3.29,1) tronca SEMPRE verso lo zero a 3.2, non al piu' vicino");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUNDDOWN: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// Stesso formato ("000", zero-riempimento) visto nel file reale
+		// che ha fatto scoprire il bug (analisi_funzioni_xls.md).
+		TryToParseString("=TEXT(7;\"000\")", cell(23, 6), &doc, true);
+		doc.CalcCell(cell(23, 6));
+		doc.GetValue(cell(23, 6), v);
+		Check(strcmp((const char *)v, "007") == 0,
+			"=TEXT(7,\"000\") riempie di zeri a 3 cifre (\"007\"), come nel file reale che ha fatto scoprire il bug");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =TEXT: %s\n", (char *)e);
 		gFailures++;
 	}
 
@@ -427,6 +488,39 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =IFERROR: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// Bug reale scoperto su un file XLSX reale (analisi_funzioni_xls.md,
+	// "=IFERROR(CONCAT(...);\"\")", comunissimo li'): quando "valore"
+	// (primo argomento) NON e' un numero controllabile con isnan() --
+	// cioe' non un errore rilevabile da questo motore, che non ha un
+	// vero tipo di errore -- IFERROR con SOLO due argomenti finiva
+	// sempre nel ramo "else stack[0].Clear();" di IFERRFunction,
+	// perdendo il risultato buono invece di restituirlo cosi' com'e'
+	// (come fa il vero IFERROR di Excel). Peggio ancora, Value::Clear()
+	// non azzerava fType insieme a fText: una Value gia' eTextData
+	// restava "eTextData" con fText=NULL dopo Clear(), e
+	// CellData::operator=(Value&) (Container.cpp) chiamava STRDUP(NULL)
+	// su quel puntatore nullo -- FailNil() lanciava un'eccezione
+	// (errInsufficientMemory) che sembrava scollegata dalla causa reale,
+	// mai catturata da CalcCell ne' da RecalculateAll, mandando in
+	// crash l'intera importazione del file reale. Qui riprodotto con
+	// CONCAT (non CONCATENATE, per verificare che il bug sia in
+	// IFERROR/Value::Clear(), non nell'alias) su un argomento testo
+	// vero, non un errore.
+	try
+	{
+		TryToParseString("=IFERROR(CONCAT(\"a\";\"b\");\"fallback\")", cell(23, 7), &doc, true);
+		doc.CalcCell(cell(23, 7));
+		doc.GetValue(cell(23, 7), v);
+		Check(v.fType == eTextData && strcmp((const char *)v, "ab") == 0,
+			"=IFERROR(CONCAT(\"a\";\"b\");\"fallback\") con un risultato valido (non un errore) "
+			"restituisce \"ab\", non lo perde ne' va in crash");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =IFERROR(CONCAT(...)): %s\n", (char *)e);
 		gFailures++;
 	}
 

@@ -382,10 +382,23 @@ void Value::operator=(const range& r)
 
 void Value::Clear()
 {
+	// fType andava resettato anche lui, non solo fText: senza questo,
+	// una Value gia' a eTextData (es. il risultato di una funzione
+	// annidata, come CONCAT dentro IFERROR) restava "fType==eTextData"
+	// con "fText==NULL" dopo Clear() -- non "nessun valore" come il
+	// nome del metodo promette, ma un valore TESTO fasullo con un
+	// puntatore nullo. CellData::operator=(Value&) (Container.cpp)
+	// prende quel fType alla lettera e chiama STRDUP(NULL), che
+	// restituisce NULL: FailNil() lancia errInsufficientMemory subito
+	// dopo -- un crash che sembrava scollegato dalla causa reale,
+	// scoperto su un file XLSX reale con "=IFERROR(CONCAT(...);"")"
+	// (IFFunction/IFERRFunction chiamano proprio Clear() quando nessun
+	// ramo corrisponde, vedi Functions.spreadsheet.cpp).
 	if (fType == eTextData && fText && fTextIsCopy)
 	{
 		FREE(fText);
 		fText = NULL;
 	}
+	fType = eNoData;
 	fTextIsCopy = false;
 }

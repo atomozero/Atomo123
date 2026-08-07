@@ -38,6 +38,7 @@
 
 */
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -523,6 +524,115 @@ void ROUNDFunction(Value *stack, int argCnt, CContainer *cells)
 	}
 	else
 		stack[0] = gValueNan;
+}
+
+// ROUNDUP/ROUNDDOWN (Fase 14): a differenza di ROUND sopra (arrotonda
+// al piu' vicino, met-a'-pari va all'intero pari, cosiddetto "banker's
+// rounding"), qui non importa la cifra scartata -- ROUNDUP arrotonda
+// SEMPRE lontano dallo zero, ROUNDDOWN SEMPRE verso lo zero (tronca).
+// Stessa validazione di ROUND (num_digits fra -15 e 15, NaN propagato).
+void ROUNDUPFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double d, n;
+
+	if (GetDoubleArgument(stack, argCnt, 1, &d) &&
+		GetDoubleArgument(stack, argCnt, 2, &n))
+	{
+		if (isnan(d))
+			;
+		else if (isnan(n))
+			d = n;
+		else if (n > 15 || n < -15)
+			d = gValueNan;
+		else
+		{
+			double factor = pow(10.0, n);
+			d = (d >= 0) ? ceil(d * factor) / factor : floor(d * factor) / factor;
+		}
+		stack[0] = d;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+void ROUNDDOWNFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double d, n;
+
+	if (GetDoubleArgument(stack, argCnt, 1, &d) &&
+		GetDoubleArgument(stack, argCnt, 2, &n))
+	{
+		if (isnan(d))
+			;
+		else if (isnan(n))
+			d = n;
+		else if (n > 15 || n < -15)
+			d = gValueNan;
+		else
+		{
+			double factor = pow(10.0, n);
+			d = (d >= 0) ? floor(d * factor) / factor : ceil(d * factor) / factor;
+		}
+		stack[0] = d;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+// TEXT(numero, formato) (Fase 14): solo il caso comune visto in file
+// reali finora (TEXT(L36,"000"), zero-riempimento a N cifre) -- un
+// formato fatto SOLO di placeholder di cifra ('0'/'#'), al massimo un
+// punto decimale. Formati con separatore delle migliaia, percentuale,
+// valuta o data (tutt'altra sintassi in Excel) non sono riconosciuti:
+// restituiscono il numero cosi' com'e' senza applicare alcun formato
+// (comportamento sicuro, non un errore bloccante) invece di un
+// crash o un risultato silenziosamente sbagliato.
+void TEXTFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double d;
+	char fmt[256];
+
+	if (!GetDoubleArgument(stack, argCnt, 1, &d) || !GetTextArgument(stack, argCnt, 2, fmt))
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+	if (isnan(d))
+	{
+		stack[0] = d;
+		return;
+	}
+
+	int intDigits = 0, decDigits = 0;
+	bool afterDot = false;
+	bool recognized = true;
+	for (const char *p = fmt; *p; p++)
+	{
+		if (*p == '.' && !afterDot)
+			afterDot = true;
+		else if (*p == '0' || *p == '#')
+		{
+			if (afterDot)
+				decDigits++;
+			else
+				intDigits++;
+		}
+		else
+		{
+			recognized = false;
+			break;
+		}
+	}
+
+	char out[64];
+	if (!recognized || (intDigits == 0 && decDigits == 0))
+		snprintf(out, sizeof(out), "%.10g", d);
+	else
+	{
+		int width = intDigits + (decDigits > 0 ? decDigits + 1 : 0);
+		snprintf(out, sizeof(out), "%0*.*f", width, decDigits, d);
+	}
+	stack[0] = out;
 }
 
 // SUMIF/COUNTIF/AVERAGEIF: assenti dalle funzioni originali di
