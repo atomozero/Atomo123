@@ -121,13 +121,14 @@ int main()
 	Check(win->FindView("toolNamedRanges") != NULL,
 		"cliccare \"toolNamedRanges\" (apre NameWindow) non va in crash");
 
-	// Colore bordo apre una vera ColorWindow asincrona (stesso principio
-	// di toolTextColor/toolHighlight in test_format_toolbar.cpp): cliccato
+	// "toolBorderColor" apre la finestra Bordo cella (BorderWindow, Fase
+	// 13 successiva -- il nome del pulsante e' rimasto quello storico,
+	// vedi il commento su kToolbarGroups in MainWindow.cpp): cliccato
 	// due volte apposta, la seconda volta la finestra esiste gia'.
 	BButton* borderColorButton = FindToolButton(win, "toolBorderColor");
 	ClickButton(win, borderColorButton);
 	ClickButton(win, borderColorButton);
-	Check(true, "cliccare due volte \"toolBorderColor\" (ColorWindow gia' aperta la seconda volta) non va in crash");
+	Check(true, "cliccare due volte \"toolBorderColor\" (BorderWindow gia' aperta la seconda volta) non va in crash");
 
 	win->Unlock();
 

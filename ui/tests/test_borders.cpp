@@ -254,6 +254,46 @@ int main()
 			"riga 10 (testo a capo dentro una cella unita su tre colonne strette) resta bassa (al piu' due righe), non gonfiata contando solo la larghezza della prima colonna");
 	}
 
+	// --- BorderWindow (Fase 13): HandleBorderFormatRequest imposta
+	// lati/spessore/colore insieme, in un solo passo di Annulla -- a
+	// differenza di ToggleBorder/SetBorderThickness/SetBorderColor
+	// sopra (un lato/aspetto alla volta). ---
+	{
+		view->SetSelection(cell(9, 12));
+		view->ExtendSelection(cell(9, 12)); // I12, mai toccata finora
+
+		rgb_color green = { 40, 160, 40, 255 };
+		win->HandleBorderFormatRequest(true, false, true, false, 3, green);
+
+		CellStyle cs;
+		doc->GetCellStyle(cell(9, 12), cs);
+		Check(cs.fTBorderColor == 3 && cs.fBBorderColor == 3,
+			"HandleBorderFormatRequest attiva superiore/inferiore allo spessore scelto (3)");
+		Check(cs.fLBorderColor == 0 && cs.fRBorderColor == 0,
+			"HandleBorderFormatRequest non tocca i lati non selezionati (sinistro/destro restano a 0)");
+		Check(cs.fBorderColor.green == 160 && cs.fBorderColor.red == 40,
+			"HandleBorderFormatRequest imposta anche il colore condiviso dei lati");
+
+		// Un solo Annulla ripristina tutti e quattro i lati insieme (un
+		// solo passo, non quattro): la cella torna com'era prima, senza
+		// bordi.
+		view->Undo();
+		doc->GetCellStyle(cell(9, 12), cs);
+		Check(cs.fTBorderColor == 0 && cs.fLBorderColor == 0
+				&& cs.fBBorderColor == 0 && cs.fRBorderColor == 0,
+			"Annulla dopo HandleBorderFormatRequest toglie tutti e quattro i lati in un solo passo");
+
+		// Una seconda chiamata SOSTITUISCE lo stato dei lati invece di
+		// alternarlo (a differenza di ToggleBorder): partendo da
+		// superiore/inferiore gia' attivi, scegliere solo sinistro li
+		// spegne entrambi e accende solo quello.
+		win->HandleBorderFormatRequest(true, false, true, false, 1, green);
+		win->HandleBorderFormatRequest(false, true, false, false, 1, green);
+		doc->GetCellStyle(cell(9, 12), cs);
+		Check(cs.fLBorderColor != 0 && cs.fTBorderColor == 0 && cs.fBBorderColor == 0,
+			"una seconda HandleBorderFormatRequest sostituisce lo stato dei lati, non lo alterna");
+	}
+
 	win->Unlock();
 
 	// --- Il bordo rosso spesso si vede davvero sui pixel (non solo

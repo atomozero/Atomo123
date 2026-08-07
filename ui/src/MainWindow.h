@@ -43,6 +43,7 @@ class ValidationWindow;
 class ConditionalFormatWindow;
 class ColorWindow;
 class PreferencesWindow;
+class BorderWindow;
 
 // MainWindow implementa ISheetResolver (Container.h, Fase 9) perche'
 // e' lei a possedere fSheets, l'unico elenco di "nome foglio -> CContainer*"
@@ -143,6 +144,13 @@ public:
 	// cambia CellStyle::fBorderColor, condiviso da tutti i lati.
 	void SetBorderThickness(uchar thickness);
 	void SetBorderColor(rgb_color color);
+	// Applica lati/spessore/colore del bordo insieme, in un solo passo
+	// di Annulla -- vedi BorderWindow.h. A differenza dei metodi sopra
+	// (un lato/aspetto alla volta, restano come scorciatoie rapide dal
+	// menu Formato) qui i quattro lati vengono SOSTITUITI dallo stato
+	// scelto nella finestra, non alternati rispetto a quello attuale.
+	void HandleBorderFormatRequest(bool top, bool left, bool bottom, bool right,
+		int thickness, rgb_color color);
 
 	// Pubblico per lo stesso motivo di SetCellFormat sopra -- vedi
 	// tests/test_preferences.cpp. showGrid si applica alla sola
@@ -340,6 +348,7 @@ private:
 	ConditionalFormatWindow* fConditionalFormatWindow;
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
+	BorderWindow* fBorderWindow;
 	std::vector<ChartObject> fCharts;
 	std::vector<EmbeddedImage> fImages;
 
@@ -407,6 +416,7 @@ private:
 	void ShowGoToWindow();
 	void ShowColorWindow(ColorTarget target);
 	void ShowPreferencesWindow();
+	void ShowBorderWindow();
 };
 
 #endif

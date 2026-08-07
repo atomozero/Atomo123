@@ -22,6 +22,7 @@
 #include "ConditionalFormatWindow.h"
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
+#include "BorderWindow.h"
 #include "AboutWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
@@ -123,6 +124,7 @@ static const uint32 kMsgToggleBorder = 'tbrd';
 static const uint32 kMsgClearBorders = 'cbrd';
 static const uint32 kMsgShowBorderColor = 'shbd';
 static const uint32 kMsgSetBorderThickness = 'sbth';
+static const uint32 kMsgShowBorderWindow = 'shbw';
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -238,7 +240,10 @@ static const ToolbarButtonDef kFormatToolbarButtons[] = {
 	// Colore bordo (Fase 13): stesso gruppo "Colore" degli altri due
 	// sopra, icona a tavolozza (kIconBorderColor) per distinguerla dai
 	// pittogrammi "A"/pennello gia' usati da testo/sfondo.
-	{ "toolBorderColor", "Colore bordo", kMsgShowBorderColor, &kIconBorderColor },
+	// Icona di "colore bordo" riusata: apre pero' la finestra completa
+	// (lati/spessore/colore insieme), non solo il colore -- vedi
+	// BorderWindow.h e il commento su kMsgShowBorderColor piu' sotto.
+	{ "toolBorderColor", "Bordo cella", kMsgShowBorderWindow, &kIconBorderColor },
 };
 
 #define TOOLBAR_GROUP(buttons) { buttons, sizeof(buttons) / sizeof((buttons)[0]) }
@@ -488,6 +493,12 @@ MainWindow::MainWindow()
 	formatMenu->AddItem(new BMenuItem("Colore bordo" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgShowBorderColor)));
 	formatMenu->AddSeparatorItem();
+	// Bordo cella (Fase 13): lati/spessore/colore insieme, con
+	// anteprima -- vedi BorderWindow.h. Le voci sotto (un lato/aspetto
+	// alla volta) restano come scorciatoie rapide, non sostituite.
+	formatMenu->AddItem(new BMenuItem("Bordo cella" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowBorderWindow)));
+	formatMenu->AddSeparatorItem();
 	// Bordi di cella (Fase 11): un lato alla volta, come Grassetto/
 	// Corsivo sopra -- vedi MainWindow::ToggleBorder ("side" nello
 	// stesso ordine di CellStyle::fTBorderColor/fLBorderColor/
@@ -692,6 +703,7 @@ MainWindow::MainWindow()
 	fConditionalFormatWindow = NULL;
 	fColorWindow = NULL;
 	fPreferencesWindow = NULL;
+	fBorderWindow = NULL;
 
 	UpdateTitle();
 }
@@ -769,6 +781,11 @@ MainWindow::~MainWindow()
 	{
 		fPreferencesWindow->Lock();
 		fPreferencesWindow->Quit();
+	}
+	if (fBorderWindow)
+	{
+		fBorderWindow->Lock();
+		fBorderWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -1907,6 +1924,37 @@ void MainWindow::ShowColorWindow(ColorTarget target)
 	fColorWindow->Activate();
 }
 
+void MainWindow::ShowBorderWindow()
+{
+	if (!fBorderWindow)
+		fBorderWindow = new BorderWindow(BMessenger(this));
+
+	CellStyle cs;
+	if (fDoc)
+		fDoc->GetCellStyle(fSheetView->Selection(), cs);
+
+	// Spessore da mostrare in anteprima: il primo lato gia' presente
+	// (se nessuno ce l'ha, 1/Sottile come punto di partenza normale).
+	int thickness = 1;
+	if (cs.fTBorderColor) thickness = cs.fTBorderColor;
+	else if (cs.fLBorderColor) thickness = cs.fLBorderColor;
+	else if (cs.fBBorderColor) thickness = cs.fBBorderColor;
+	else if (cs.fRBorderColor) thickness = cs.fRBorderColor;
+
+	// Stesso motivo di fNameWindow/fColorWindow sopra: SetInitial tocca
+	// le BView interne di BorderWindow, che vive sul proprio thread.
+	if (fBorderWindow->Lock())
+	{
+		fBorderWindow->SetInitial(cs.fTBorderColor != 0, cs.fLBorderColor != 0,
+			cs.fBBorderColor != 0, cs.fRBorderColor != 0, thickness, cs.fBorderColor);
+		fBorderWindow->Unlock();
+	}
+
+	if (fBorderWindow->IsHidden())
+		fBorderWindow->Show();
+	fBorderWindow->Activate();
+}
+
 void MainWindow::ShowPreferencesWindow()
 {
 	if (!fPreferencesWindow)
@@ -2277,6 +2325,41 @@ void MainWindow::SetBorderColor(rgb_color color)
 			cell c(col, row);
 			CellStyle cs;
 			fDoc->GetCellStyle(c, cs);
+			cs.fBorderColor = color;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+void MainWindow::HandleBorderFormatRequest(bool top, bool left, bool bottom, bool right,
+	int thickness, rgb_color color)
+{
+	if (!fDoc)
+		return;
+
+	if (thickness < 1)
+		thickness = 1;
+	if (thickness > 3)
+		thickness = 3;
+
+	// A differenza di ToggleBorder/SetBorderThickness/SetBorderColor
+	// sopra (un lato/aspetto alla volta, alternato rispetto allo stato
+	// attuale), qui i quattro lati vengono SOSTITUITI dallo stato
+	// scelto in BorderWindow -- un solo passo di Annulla per l'intera
+	// scelta, non quattro.
+	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveUndoState(sel);
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fTBorderColor = top ? thickness : 0;
+			cs.fLBorderColor = left ? thickness : 0;
+			cs.fBBorderColor = bottom ? thickness : 0;
+			cs.fRBorderColor = right ? thickness : 0;
 			cs.fBorderColor = color;
 			fDoc->SetCellStyle(c, cs);
 		}
@@ -3658,6 +3741,29 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgShowBorderColor:
 			ShowColorWindow(eBorderColor);
 			break;
+
+		case kMsgShowBorderWindow:
+			ShowBorderWindow();
+			break;
+
+		case kMsgBorderFormatRequest:
+		{
+			bool top = false, left = false, bottom = false, right = false;
+			int32 thickness = 1;
+			rgb_color* color = NULL;
+			ssize_t size = 0;
+			message->FindBool("top", &top);
+			message->FindBool("left", &left);
+			message->FindBool("bottom", &bottom);
+			message->FindBool("right", &right);
+			message->FindInt32("thickness", &thickness);
+			rgb_color chosen = { 0, 0, 0, 255 };
+			if (message->FindData("color", B_RGB_COLOR_TYPE,
+					(const void**)&color, &size) == B_OK && color)
+				chosen = *color;
+			HandleBorderFormatRequest(top, left, bottom, right, (int)thickness, chosen);
+			break;
+		}
 
 		case kMsgColorRequest:
 		{
