@@ -1035,6 +1035,121 @@ int main()
 		wc.Release();
 	}
 
+	// Argomenti-intervallo fra fogli diversi (Fase 16, es.
+	// "SUM(Foglio!A1:A3)", "MATCH(x,Foglio!A:A,0)"): prima di questo
+	// fix, CFormula::Calculate (caso valXRange) rinunciava del tutto
+	// per un vero intervallo multi-cella fra fogli (eNoData), e le
+	// funzioni di aggregazione (SUM/AVG/COUNT/MAX/MATCH/HINDEX/VINDEX/
+	// NPV/IRR/...) leggevano comunque dal CContainer della formula
+	// stessa invece che da quello risolto -- entrambi i lati del bug
+	// dovevano essere corretti insieme (vedi memoria
+	// project_xlsx_formula_gaps_20260808). E' proprio il pattern del
+	// file reale che ha motivato la scoperta: "INDEX(Foglio!$D:$F,
+	// MATCH(x,Foglio!$A:$A,0),1)" con la tabella di appoggio su un
+	// foglio DATI separato da quello con la formula.
+	{
+		class RangeResolver : public ISheetResolver {
+		public:
+			CContainer *dataSheet;
+			CContainer *ResolveSheetByName(const char *name)
+			{
+				return (strcmp(name, "Dati") == 0) ? dataSheet : NULL;
+			}
+			CContainer *FindSheetWithTable(const std::string &) { return NULL; }
+		};
+
+		CContainer &formulaSheet = *new CContainer(NULL, NULL);
+		CContainer &dataSheet2 = *new CContainer(NULL, NULL);
+
+		RangeResolver resolver;
+		resolver.dataSheet = &dataSheet2;
+		formulaSheet.SetSheetResolver(&resolver);
+		dataSheet2.SetSheetResolver(&resolver);
+
+		TryToParseString("100", cell(1, 1), &dataSheet2, true); // Dati!A1
+		TryToParseString("200", cell(1, 2), &dataSheet2, true); // Dati!A2
+		TryToParseString("300", cell(1, 3), &dataSheet2, true); // Dati!A3
+		TryToParseString("uno", cell(4, 1), &dataSheet2, true); // Dati!D1
+		TryToParseString("due", cell(4, 2), &dataSheet2, true); // Dati!D2
+		TryToParseString("tre", cell(4, 3), &dataSheet2, true); // Dati!D3
+
+		TryToParseString("=SUM(Dati!A1:A3)", cell(10, 1), &formulaSheet, true, '.', ',');
+		formulaSheet.CalcCell(cell(10, 1));
+		formulaSheet.GetValue(cell(10, 1), v);
+		Check(v.fType == eNumData && (double)v == 600.0,
+			"SUM(Dati!A1:A3) somma le celle vere sull'altro foglio (100+200+300), non 0");
+
+		TryToParseString("=AVG(Dati!A1:A3)", cell(10, 2), &formulaSheet, true, '.', ',');
+		formulaSheet.CalcCell(cell(10, 2));
+		formulaSheet.GetValue(cell(10, 2), v);
+		Check(v.fType == eNumData && (double)v == 200.0,
+			"AVG(Dati!A1:A3) calcola la media vera (200), non 0");
+
+		TryToParseString("=COUNT(Dati!A1:A3)", cell(10, 3), &formulaSheet, true, '.', ',');
+		formulaSheet.CalcCell(cell(10, 3));
+		formulaSheet.GetValue(cell(10, 3), v);
+		Check(v.fType == eNumData && (double)v == 3.0,
+			"COUNT(Dati!A1:A3) conta le tre celle vere, non 0");
+
+		TryToParseString("=MAX(Dati!A1:A3)", cell(10, 4), &formulaSheet, true, '.', ',');
+		formulaSheet.CalcCell(cell(10, 4));
+		formulaSheet.GetValue(cell(10, 4), v);
+		Check(v.fType == eNumData && (double)v == 300.0,
+			"MAX(Dati!A1:A3) trova il massimo vero (300), non 0");
+
+		TryToParseString("=MATCH(200,Dati!A1:A3,0)", cell(10, 5), &formulaSheet, true, '.', ',');
+		formulaSheet.CalcCell(cell(10, 5));
+		formulaSheet.GetValue(cell(10, 5), v);
+		Check(v.fType == eNumData && (double)v == 2.0,
+			"MATCH(200,Dati!A1:A3,0) trova la posizione vera (2), non NaN");
+
+		TryToParseString("=INDEX(Dati!A1:A3,2)", cell(10, 6), &formulaSheet, true, '.', ',');
+		formulaSheet.CalcCell(cell(10, 6));
+		formulaSheet.GetValue(cell(10, 6), v);
+		Check(v.fType == eNumData && (double)v == 200.0,
+			"INDEX(Dati!A1:A3,2) legge la cella vera (200), non NaN");
+
+		// Colonna intera fra fogli (Fase 15+16 insieme): stesso
+		// meccanismo, con l'intervallo che copre tutte le righe.
+		TryToParseString("=MATCH(200,Dati!$A:$A,0)", cell(10, 7), &formulaSheet, true, '.', ',');
+		formulaSheet.CalcCell(cell(10, 7));
+		formulaSheet.GetValue(cell(10, 7), v);
+		Check(v.fType == eNumData && (double)v == 2.0,
+			"MATCH(200,Dati!$A:$A,0) funziona anche con una colonna intera fra fogli");
+
+		// Il pattern reale che ha motivato la scoperta: INDEX/MATCH
+		// con la tabella di appoggio su un foglio dati separato,
+		// entrambi gli intervalli a colonna intera.
+		try
+		{
+			TryToParseString(
+				"=IFERROR(INDEX(Dati!$D:$F,MATCH(200,Dati!$A:$A,0),1),\"errore\")",
+				cell(10, 8), &formulaSheet, true, '.', ',');
+			formulaSheet.CalcCell(cell(10, 8));
+			formulaSheet.GetValue(cell(10, 8), v);
+			Check(v.fType == eTextData && strcmp((const char *)v, "due") == 0,
+				"INDEX(Dati!$D:$F,MATCH(200,Dati!$A:$A,0),1) (scenario reale) trova \"due\", "
+				"non l'errore di fallback");
+		}
+		catch (CErr &e)
+		{
+			printf("FAIL INDEX/MATCH fra fogli con colonna intera: %s\n", (char *)e);
+			gFailures++;
+		}
+
+		// Non regressione: lo stesso identico intervallo SULLO STESSO
+		// foglio (nessun "Foglio!" davanti) deve continuare a
+		// funzionare esattamente come prima.
+		TryToParseString("=SUM(A1:A1)", cell(10, 9), &dataSheet2, true, '.', ',');
+		dataSheet2.CalcCell(cell(10, 9));
+		dataSheet2.GetValue(cell(10, 9), v);
+		Check(v.fType == eNumData && (double)v == 100.0,
+			"SUM(A1:A1) sullo stesso foglio non e' regredito (100)");
+
+		formulaSheet.Release();
+		dataSheet2.Release();
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();

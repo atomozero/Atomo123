@@ -85,11 +85,17 @@ void SUMFunction(Value *stack, int argCnt, CContainer *cells)
 				break;
 			}
 			
-			CCellIterator iter(cells, &cRange);
+			// Fase 16: se l'intervallo e' stato risolto su un
+			// altro foglio (es. "SUM(Foglio!A:A)"),
+			// GetRangeContainer restituisce quel documento invece
+			// di "cells" -- vedi il commento su
+			// Value::fRangeContainer in Value.h.
+			CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+			CCellIterator iter(rangeCells, &cRange);
 			while (iter.NextExisting(c))
 			{
-				cells->GetValue(c, val);
-				if (val.fType == eNumData) 
+				rangeCells->GetValue(c, val);
+				if (val.fType == eNumData)
 					theResult += val.fDouble;
 			}
 		}
@@ -324,10 +330,11 @@ void AVGFunction(Value *stack, int argCnt, CContainer *cells)
 				break;
 			}
 			
-			CCellIterator iter(cells, &cRange);
+			CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+			CCellIterator iter(rangeCells, &cRange);
 			while (iter.NextExisting(c))
 			{
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eNumData)
 				{
 					theResult += val.fDouble;
@@ -382,11 +389,12 @@ void COUNTFunction(Value *stack, int argCnt, CContainer *cells)
 				return;
 			}
 			
-			CCellIterator iter(cells, &cRange);
+			CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+			CCellIterator iter(rangeCells, &cRange);
 			while (iter.NextExisting(c))
 			{
-				cells->GetValue(c, val);
-				if (val.fType == eNumData) 
+				rangeCells->GetValue(c, val);
+				if (val.fType == eNumData)
 					countedCells++;
 			}
 		}
@@ -433,11 +441,12 @@ void MAXFunction(Value *stack, int argCnt, CContainer *cells)
 				break;
 			}
 			
-			CCellIterator iter(cells, &cRange);
+			CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+			CCellIterator iter(rangeCells, &cRange);
 			while (iter.NextExisting(c))
 			{
-				cells->GetValue(c, val);
-				if (val.fType == eNumData) 
+				rangeCells->GetValue(c, val);
+				if (val.fType == eNumData)
 					if (!foundFirst || theResult < val.fDouble)
 					{
 						theResult = val.fDouble;
@@ -478,11 +487,12 @@ void MINFunction(Value *stack, int argCnt, CContainer *cells)
 				break;
 			}
 			
-			CCellIterator iter(cells, &cRange);
+			CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+			CCellIterator iter(rangeCells, &cRange);
 			while (iter.NextExisting(c))
 			{
-				cells->GetValue(c, val);
-				if (val.fType == eNumData) 
+				rangeCells->GetValue(c, val);
+				if (val.fType == eNumData)
 					if (!foundFirst || theResult > val.fDouble)
 					{
 						theResult = val.fDouble;
@@ -719,13 +729,20 @@ void SUMIFFunction(Value *stack, int argCnt, CContainer *cells)
 	else
 		sumRange = criteriaRange;
 
+	// Fase 16: i due intervalli possono vivere su fogli diversi
+	// (es. "SUMIF(Foglio1!A:A,">5",Foglio2!B:B)"), ciascuno risolto
+	// per conto proprio -- vedi il commento su Value::fRangeContainer
+	// in Value.h.
+	CContainer *criteriaCells = GetRangeContainer(stack, 1, cells);
+	CContainer *sumCells = (argCnt >= 3) ? GetRangeContainer(stack, 3, cells) : criteriaCells;
+
 	double result = 0.0;
-	CCellIterator iter(cells, &criteriaRange);
+	CCellIterator iter(criteriaCells, &criteriaRange);
 	cell c;
 	while (iter.NextExisting(c))
 	{
 		Value val;
-		cells->GetValue(c, val);
+		criteriaCells->GetValue(c, val);
 		if (!MatchesCriteria(val, stack[1]))
 			continue;
 
@@ -733,7 +750,7 @@ void SUMIFFunction(Value *stack, int argCnt, CContainer *cells)
 		cell target(sumRange.left + (c.h - criteriaRange.left),
 			sumRange.top + (c.v - criteriaRange.top));
 		Value sumVal;
-		cells->GetValue(target, sumVal);
+		sumCells->GetValue(target, sumVal);
 		if (sumVal.fType == eNumData)
 			result += sumVal.fDouble;
 	}
@@ -752,13 +769,15 @@ void COUNTIFFunction(Value *stack, int argCnt, CContainer *cells)
 		return;
 	}
 
+	CContainer *criteriaCells = GetRangeContainer(stack, 1, cells);
+
 	long count = 0;
-	CCellIterator iter(cells, &criteriaRange);
+	CCellIterator iter(criteriaCells, &criteriaRange);
 	cell c;
 	while (iter.NextExisting(c))
 	{
 		Value val;
-		cells->GetValue(c, val);
+		criteriaCells->GetValue(c, val);
 		if (MatchesCriteria(val, stack[1]))
 			count++;
 	}
@@ -787,6 +806,7 @@ void COUNTIFSFunction(Value *stack, int argCnt, CContainer *cells)
 
 	int pairCount = argCnt / 2;
 	range ranges[kMaxPairs];
+	CContainer *rangeCells[kMaxPairs];
 	for (int p = 0; p < pairCount; p++)
 	{
 		if (!GetRangeArgument(stack, argCnt, 2 * p + 1, &ranges[p]) || !ranges[p].IsValid())
@@ -794,10 +814,13 @@ void COUNTIFSFunction(Value *stack, int argCnt, CContainer *cells)
 			stack[0] = gRefNan;
 			return;
 		}
+		// Fase 16: ogni coppia intervallo/criterio puo' vivere su un
+		// foglio diverso dalle altre, risolta per conto proprio.
+		rangeCells[p] = GetRangeContainer(stack, 2 * p + 1, cells);
 	}
 
 	long count = 0;
-	CCellIterator iter(cells, &ranges[0]);
+	CCellIterator iter(rangeCells[0], &ranges[0]);
 	cell c;
 	while (iter.NextExisting(c))
 	{
@@ -807,7 +830,7 @@ void COUNTIFSFunction(Value *stack, int argCnt, CContainer *cells)
 			cell target(ranges[p].left + (c.h - ranges[0].left),
 				ranges[p].top + (c.v - ranges[0].top));
 			Value val;
-			cells->GetValue(target, val);
+			rangeCells[p]->GetValue(target, val);
 			if (!MatchesCriteria(val, stack[2 * p + 1]))
 				allMatch = false;
 		}
@@ -840,21 +863,24 @@ void AVERAGEIFFunction(Value *stack, int argCnt, CContainer *cells)
 	else
 		sumRange = criteriaRange;
 
+	CContainer *criteriaCells = GetRangeContainer(stack, 1, cells);
+	CContainer *sumCells = (argCnt >= 3) ? GetRangeContainer(stack, 3, cells) : criteriaCells;
+
 	double sum = 0.0;
 	long count = 0;
-	CCellIterator iter(cells, &criteriaRange);
+	CCellIterator iter(criteriaCells, &criteriaRange);
 	cell c;
 	while (iter.NextExisting(c))
 	{
 		Value val;
-		cells->GetValue(c, val);
+		criteriaCells->GetValue(c, val);
 		if (!MatchesCriteria(val, stack[1]))
 			continue;
 
 		cell target(sumRange.left + (c.h - criteriaRange.left),
 			sumRange.top + (c.v - criteriaRange.top));
 		Value sumVal;
-		cells->GetValue(target, sumVal);
+		sumCells->GetValue(target, sumVal);
 		if (sumVal.fType == eNumData)
 		{
 			sum += sumVal.fDouble;

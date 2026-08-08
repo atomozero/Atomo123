@@ -87,11 +87,12 @@ void COUNTAFunction(Value *stack, int argCnt, CContainer *cells)
 				return;
 			}
 			
-			CCellIterator iter(cells, &cRange);
+			CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+			CCellIterator iter(rangeCells, &cRange);
 			while (iter.NextExisting(c))
 			{
-				cells->GetValue(c, val);
-				if (val.fType != eNoData) 
+				rangeCells->GetValue(c, val);
+				if (val.fType != eNoData)
 					countedCells++;
 			}
 		}
@@ -137,10 +138,11 @@ void VARIANCEFunction(Value *stack, int argCnt, CContainer *cells)
 				break;
 			}
 		
-			CCellIterator iter(cells, &cRange);
+			CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+			CCellIterator iter(rangeCells, &cRange);
 			while (iter.NextExisting(c))
 			{
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eNumData)
 				{
 					average += val.fDouble;
@@ -149,7 +151,7 @@ void VARIANCEFunction(Value *stack, int argCnt, CContainer *cells)
 			}
 		}
 	}
-	
+
 	if (countedCells)
 	{
 		average /= countedCells;
@@ -165,10 +167,11 @@ void VARIANCEFunction(Value *stack, int argCnt, CContainer *cells)
 					theResult = gRefNan;
 					break;
 				}
-				CCellIterator iter(cells, &cRange);
+				CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+				CCellIterator iter(rangeCells, &cRange);
 				while (iter.NextExisting(c))
 				{
-					cells->GetValue(c, val);
+					rangeCells->GetValue(c, val);
 					if (val.fType == eNumData)
 						theResult += (val.fDouble - average) * (val.fDouble - average);
 				}
@@ -208,10 +211,11 @@ static void CollectNumbers(Value *stack, int argCnt, CContainer *cells,
 				return;
 			}
 
-			CCellIterator iter(cells, &cRange);
+			CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+			CCellIterator iter(rangeCells, &cRange);
 			while (iter.NextExisting(c))
 			{
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eNumData)
 					values.push_back(val.fDouble);
 			}

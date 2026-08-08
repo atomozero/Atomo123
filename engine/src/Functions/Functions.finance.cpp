@@ -208,7 +208,7 @@ void NPVFunction(Value *stack, int argCnt, CContainer *cells)
 	
 	if (GetDoubleArgument(stack, argCnt, 1, &rate) &&
 	    GetRangeArgument(stack, argCnt, 2, &flows))
-		stack[0] = NetPresentValue(cells, flows, rate);
+		stack[0] = NetPresentValue(GetRangeContainer(stack, 2, cells), flows, rate);
 	else
 		stack[0] = gRefNan;
 }
@@ -227,33 +227,34 @@ void IRRFunction(Value *stack, int argCnt, CContainer *cells)
 	{
 		try
 		{
+			CContainer *flowCells = GetRangeContainer(stack, 2, cells);
 			double res, mint, maxt, minr, maxr;
 			int i = 0;
-			
+
 			minr = maxr = 0;
 			mint = maxt = 0;
-			
+
 			i = 0;
 			while (minr >= 0)
 			{
 				mint += 1;
-				minr = NetPresentValue(cells, flows, mint);
+				minr = NetPresentValue(flowCells, flows, mint);
 				if (++i >= 100) throw gFinanceNan;
 			}
-	
-			i = 0;		
+
+			i = 0;
 			while (maxr <= 0)
 			{
 				maxt -= 1;
-				maxr = NetPresentValue(cells, flows, maxt);
+				maxr = NetPresentValue(flowCells, flows, maxt);
 				if (++i >= 100) throw gFinanceNan;
 			}
-	
+
 			i = 0;
 			while (true)
 			{
 				if (i++ >= 40) throw gFinanceNan;
-				res = NetPresentValue(cells, flows, estimate);
+				res = NetPresentValue(flowCells, flows, estimate);
 				if (fabs(res) <= 0.00000001)
 				{
 					stack[0] = estimate;

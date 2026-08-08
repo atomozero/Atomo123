@@ -242,6 +242,7 @@ void HINDEXFunction(Value *stack, int argCnt, CContainer *cells)
 	
 	if (GetRangeArgument(stack, argCnt, 2, &cRange) && cRange.IsValid())
 	{
+		CContainer *rangeCells = GetRangeContainer(stack, 2, cells);
 		char keyS[256];
 		double key;
 		time_t keyD;
@@ -249,19 +250,19 @@ void HINDEXFunction(Value *stack, int argCnt, CContainer *cells)
 		cell c;
 		Value val;
 		bool stop = false;
-		
+
 		if (GetDoubleArgument(stack, argCnt, 1, &key) && !isnan(key))
 		{
 			c.h = cRange.left - 1; c.v = v;
 			do
 			{
 				c.h++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eNumData)
 					stop = (key <= val.fDouble);
 			}
 			while (c.h < cRange.right && !stop);
-			
+
 			stack[0] = (double)(c.h - cRange.left + 1);
 			if (!stop)
 				stack[0].fDouble += 1;
@@ -272,12 +273,12 @@ void HINDEXFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.h++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eTextData)
 					stop = (strcmp(keyS, val.fText) <= 0);
 			}
 			while (c.h <= cRange.right && !stop);
-			
+
 			stack[0] = (double)(c.h - cRange.left + 1);
 			if (!stop)
 				stack[0].fDouble += 1;
@@ -288,13 +289,13 @@ void HINDEXFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.h++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eTimeData)
 //					stop = memcmp(&keyD, &val.dTime, sizeof(LongDateTime)) <= 0;
 					stop = (keyD <= val.fTime);
 			}
 			while (c.h <= cRange.right && !stop);
-			
+
 			stack[0] = (double)(c.h - cRange.left + 1);
 			if (!stop)
 				stack[0].fDouble += 1;
@@ -549,12 +550,14 @@ void MATCHFunction(Value *stack, int argCnt, CContainer *cells)
 		return;
 	}
 
+	CContainer *rangeCells = GetRangeContainer(stack, 2, cells);
+
 	int foundPos = -1;
 	Value val;
 	for (int i = 0; i < count; i++)
 	{
 		cell c = horizontal ? cell(cRange.left + i, cRange.top) : cell(cRange.left, cRange.top + i);
-		cells->GetValue(c, val);
+		rangeCells->GetValue(c, val);
 
 		if (matchType == 0)
 		{
@@ -861,6 +864,7 @@ void VINDEXFunction(Value *stack, int argCnt, CContainer *cells)
 	
 	if (GetRangeArgument(stack, argCnt, 2, &cRange) && cRange.IsValid())
 	{
+		CContainer *rangeCells = GetRangeContainer(stack, 2, cells);
 		char keyS[256];
 		double key;
 		time_t keyD;
@@ -868,19 +872,19 @@ void VINDEXFunction(Value *stack, int argCnt, CContainer *cells)
 		cell c;
 		Value val;
 		bool stop = false;
-		
+
 		if (GetDoubleArgument(stack, argCnt, 1, &key))
 		{
 			c.h = h; c.v = cRange.top - 1;
 			do
 			{
 				c.v++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eNumData)
 					stop = (key <= val.fDouble);
 			}
 			while (c.v <= cRange.bottom && !stop);
-			
+
 			stack[0] = (double)(c.v - cRange.top + 1);
 			if (!stop)
 				stack[0].fDouble += 1;
@@ -891,12 +895,12 @@ void VINDEXFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.v++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eTextData)
 					stop = (strcmp(keyS, val.fText) <= 0);
 			}
 			while (c.v <= cRange.bottom && !stop);
-			
+
 			stack[0] = (double)(c.v - cRange.top + 1);
 			if (!stop)
 				stack[0].fDouble += 1;
@@ -907,12 +911,12 @@ void VINDEXFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.v++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eTimeData)
 					stop = (keyD <= val.fTime);
 			}
 			while (c.v <= cRange.bottom && !stop);
-			
+
 			stack[0] = (double)(c.v - cRange.top + 1);
 			if (!stop)
 				stack[0].fDouble += 1;

@@ -366,9 +366,19 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 			case valRange:
 				stackIndx++;
 				theRange = *((range *)(fString + indx));
-				
+
 				if (theRange.TopLeft() == theRange.BotRight())
-					inContainer->GetValue(theRange.TopLeft(), stack[stackIndx]);
+					// Bug reale (Fase 16, scoperto sistemando gli
+					// argomenti-intervallo fra fogli): TopLeft() qui
+					// e' ancora l'offset relativo grezzo del
+					// bytecode, non una cella assoluta -- serve
+					// GetFlatCell(inLocation), esattamente come
+					// valCell sopra, altrimenti un intervallo
+					// "degenere" a una sola cella (es. "A1:A1", che
+					// puo' capitare scritto direttamente o prodotto
+					// da un'altra funzione) legge una cella
+					// completamente sbagliata invece di quella vera.
+					inContainer->GetValue(theRange.TopLeft().GetFlatCell(inLocation), stack[stackIndx]);
 				else
 				{
 					stack[stackIndx].fType = eRangeData;
@@ -470,23 +480,36 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 				CContainer *sheet = inContainer && inContainer->GetSheetResolver()
 					? inContainer->GetSheetResolver()->ResolveSheetByName(sheetName) : NULL;
 
-				if (sheet && target.TopLeft() == target.BotRight())
+				if (!sheet)
+					stack[stackIndx].fType = eNoData;
+				else if (target.TopLeft() == target.BotRight())
 					// Un solo punto (es. "Foglio!A1:A1", che Excel
 					// normalizza comunque a un riferimento singolo):
-					// stesso trattamento di valXRef sopra.
-					sheet->GetValue(target.TopLeft(), stack[stackIndx]);
+					// stesso trattamento di valXRef sopra --
+					// GetFlatCell(inLocation) e' necessario, vedi il
+					// commento sul bug analogo nel caso valRange sopra.
+					sheet->GetValue(target.TopLeft().GetFlatCell(inLocation), stack[stackIndx]);
 				else
-					// Un vero intervallo multi-cella fra fogli (per
-					// una funzione come SUM) non e' ancora supportato:
-					// le funzioni di aggregazione leggono un range dal
-					// CContainer "corrente" passato alla funzione
-					// (inContainer sopra in opFunc), non da un
-					// CContainer arbitrario -- servirebbe estendere
-					// anche quel meccanismo, non ancora progettato.
-					// eNoData invece di sommare/leggere solo la prima
-					// cella: un valore silenziosamente parziale
-					// sarebbe peggio di uno chiaramente non risolto.
-					stack[stackIndx].fType = eNoData;
+				{
+					// Un vero intervallo multi-cella fra fogli (Fase
+					// 16, es. "SUM(Foglio!A1:A3)" o
+					// "MATCH(x,Foglio!A:A,0)"): stesso meccanismo gia'
+					// in uso per un riferimento a tabella strutturata
+					// risolto su un altro foglio (vedi il caso
+					// valName sopra e il commento su
+					// Value::fRangeContainer in Value.h) -- le
+					// funzioni che sanno gia' leggere fRangeContainer
+					// (FunctionUtils::GetRangeContainer, usato da
+					// XLOOKUP/VLOOKUP/HLOOKUP/MATCH/INDEX/SUM/AVG/
+					// COUNT/...) leggono le celle vere dal foglio
+					// giusto invece che da quello in cui vive questa
+					// formula. Prima di questo cambiamento restava
+					// sempre eNoData (bug reale scoperto sistemando i
+					// riferimenti a colonna intera fra fogli, vedi
+					// memoria project_xlsx_formula_gaps_20260808).
+					stack[stackIndx] = target.GetFlatRange(inLocation);
+					stack[stackIndx].fRangeContainer = sheet;
+				}
 				break;
 			}
 
