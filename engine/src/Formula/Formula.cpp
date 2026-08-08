@@ -540,131 +540,131 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 			switch(nextOpcode)
 			{
 				case opLT:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "<");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "<", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opLE:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "<=");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "<=", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opEQ:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "=");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "=", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opGE:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, ">=");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, ">=", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opGT:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, ">");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, ">", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opNE:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "<>");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "<>", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 				
 				case opNOT:
-					strcpy(outString, "!");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx], outString);
+					strlcpy(outString, "!", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 				
 				case opAND:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "&");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "&", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opOR:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "|");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "|", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opRaise:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "^");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "^", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opMul:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "*");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "*", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opDiv:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "/");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "/", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opPlus:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "+");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "+", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opMinus:
-					strcpy(outString, stack[stackIndx - 1]);
-					strcat(outString, "-");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx - 1], outString);
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, "-", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
 	
 				case opNegate:
-					strcpy(outString, "-");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx], outString);
+					strlcpy(outString, "-", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 
 				case opPercent:
-					strcpy(outString, stack[stackIndx]);
-					strcat(outString, "%");
-					strcpy(stack[stackIndx], outString);
+					strlcpy(outString, stack[stackIndx], kMaxStringLength);
+					strlcat(outString, "%", kMaxStringLength);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 
 				case opRoot:
-					strcpy(outString, "√");
-					strcat(outString, stack[stackIndx]);
-					strcpy(stack[stackIndx], outString);
+					strlcpy(outString, "√", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 	
 				case opParen:
@@ -682,9 +682,9 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 	
 					if (theFuncData.funcNr >= 0 &&
 						theFuncData.funcNr < gFuncCount)
-						strcpy(outString, gFuncArrayByNr[theFuncData.funcNr].funcName);
+						strlcpy(outString, gFuncArrayByNr[theFuncData.funcNr].funcName, kMaxStringLength);
 					else
-						sprintf(outString, GetIndString(1, 19), theFuncData.funcNr);
+						snprintf(outString, kMaxStringLength, GetIndString(1, 19), theFuncData.funcNr);
 						
 					stackIndx -= theFuncData.argCnt - 1;
 	
@@ -697,7 +697,7 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 						THROW((errIllPFString, name));
 					}
 
-					strcat(outString, "(");
+					strlcat(outString, "(", kMaxStringLength);
 					for(i = 0; i < theFuncData.argCnt; i++)
 					{
 						if (i)
@@ -708,13 +708,13 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 							else
 								s[0] = gListSeparator;
 							s[1] = 0;
-							strcat(outString, s);
+							strlcat(outString, s, kMaxStringLength);
 						}
-						strcat(outString, stack[stackIndx + i]);
+						strlcat(outString, stack[stackIndx + i], kMaxStringLength);
 					}
-					strcat(outString, ")");
+					strlcat(outString, ")", kMaxStringLength);
 	
-					strcpy(stack[stackIndx], outString);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 				}
 	
@@ -735,10 +735,10 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					}
 	
 					if (nextOpcode == valPerc)
-						strcat(outString, "%");
+						strlcat(outString, "%", kMaxStringLength);
 	
 					stackIndx++;
-					strcpy(stack[stackIndx], outString);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 	
 				case valTime:
@@ -753,9 +753,9 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 	
 				case valStr:
 					stackIndx++;
-					strcpy(stack[stackIndx], "\"");
-					strcat(stack[stackIndx], (char *)(fString + indx));
-					strcat(stack[stackIndx], "\"");
+					strlcpy(stack[stackIndx], "\"", kMaxStringLength);
+					strlcat(stack[stackIndx], (char *)(fString + indx), kMaxStringLength);
+					strlcat(stack[stackIndx], "\"", kMaxStringLength);
 					sLen = 1 + strlen((char *)(fString + indx));
 					if (sLen & kPFAlignBits)
 						sLen = (sLen & ~kPFAlignBits) + kPFWordSize;
@@ -769,7 +769,7 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					else
 						theCell.GetFormulaName(outString, inLocation);
 					stackIndx++;
-					strcpy(stack[stackIndx], outString);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					indx += sizeof(cell) / kPFWordSize;
 					break;
 	
@@ -780,13 +780,13 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					else
 						theRange.GetFormulaName(outString, inLocation);
 					stackIndx++;
-					strcpy(stack[stackIndx], outString);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					indx += sizeof(range) / kPFWordSize;
 					break;
 				
 				case valName:
 					stackIndx++;
-					strcpy(stack[stackIndx], (char *)(fString + indx));
+					strlcpy(stack[stackIndx], (char *)(fString + indx), kMaxStringLength);
 					sLen = 1 + strlen((char *)(fString + indx));
 					if (sLen & kPFAlignBits)
 						sLen = (sLen & ~kPFAlignBits) + kPFWordSize;
@@ -817,9 +817,9 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					// (vedi QIDENT in parser.h/.cpp) -- fondamentale per il
 					// giro testuale di AscdIO::SaveASCD/LoadASCD (UnMangle poi
 					// TryToParseString), non solo per la barra formule.
-					sprintf(outString, "'%s'!%s", sheetName, cellName);
+					snprintf(outString, kMaxStringLength, "'%s'!%s", sheetName, cellName);
 					stackIndx++;
-					strcpy(stack[stackIndx], outString);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 				}
 
@@ -840,9 +840,9 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					else
 						target.GetFormulaName(rangeName, inLocation);
 
-					sprintf(outString, "'%s'!%s", sheetName, rangeName);
+					snprintf(outString, kMaxStringLength, "'%s'!%s", sheetName, rangeName);
 					stackIndx++;
-					strcpy(stack[stackIndx], outString);
+					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 				}
 
@@ -878,15 +878,15 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 	
 		if (gWithEqualSign && !rcStyle)
 		{
-			strcpy(outString, "=");
-			strcat(outString, stack[0]);
+			strlcpy(outString, "=", kMaxStringLength);
+			strlcat(outString, stack[0], kMaxStringLength);
 		}
 		else
-			strcpy(outString, stack[0]);
+			strlcpy(outString, stack[0], kMaxStringLength);
 	}
 	catch (CErr& e)
 	{
-		strcpy(outString, e);
+		strlcpy(outString, e, kMaxStringLength);
 	}
 	
 	FREE(p);

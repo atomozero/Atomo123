@@ -12,6 +12,7 @@
 */
 
 #include <cstdio>
+#include <string>
 
 #include "Cell.h"
 #include "Value.h"
@@ -107,6 +108,43 @@ int main()
 	catch (...)
 	{
 		Check(false, "\"_xlfn.CEILING.MATH\"/\"CONCATENATE\" senza InitFunctions() non crashano (gFuncCount resta 0)");
+	}
+
+	// Bug reale scoperto durante l'audit di Annulla/Ripristina (un
+	// crash allo spegnimento, apparentemente scollegato, ha portato
+	// fin qui): CFormula::UnMangle (chiamata da GetCellFormula, usata
+	// da SaveUndoState a OGNI comando annullabile) accumulava il
+	// risultato di ogni operatore (qui "&", concatenazione testo) in
+	// uno slot fisso da 4096 byte (kMaxStringLength) con strcpy/strcat
+	// SENZA ALCUN controllo di lunghezza -- un solo token e' limitato
+	// a 255 caratteri dal lessico (MAXTOKENLENGTH, vedi lexer.cpp),
+	// ma concatenarne abbastanza (qui 400 pezzi da 10 caratteri,
+	// 4000+ caratteri totali) fa comunque superare i 4096 byte dello
+	// slot durante il riassemblaggio, sovrascrivendo la memoria oltre
+	// lo slot -- corruzione dell'heap che si manifesta molto piu'
+	// tardi, altrove (esattamente il pattern del crash che ha fatto
+	// scoprire questo bug). Corretto con strlcpy/strlcat ovunque in
+	// UnMangle: qui una prova diretta che una concatenazione
+	// lunghissima non crasha piu', anche se il risultato via
+	// GetCellFormula puo' restare troncato (meglio di una corruzione
+	// silenziosa).
+	{
+		std::string formula = "=\"AAAAAAAAAA\"";
+		for (int i = 0; i < 400; i++)
+			formula += "&\"AAAAAAAAAA\"";
+		cell c7(2, 7);
+		try
+		{
+			TryToParseString(formula.c_str(), c7, &doc, true);
+			doc.CalcCell(c7);
+			char buf[8192];
+			doc.GetCellFormula(c7, buf, sizeof(buf));
+			Check(true, "una formula con ~400 concatenazioni di testo (oltre 4000 caratteri assemblati) non crasha (GetCellFormula/UnMangle)");
+		}
+		catch (...)
+		{
+			Check(false, "una formula con ~400 concatenazioni di testo (oltre 4000 caratteri assemblati) non crasha (GetCellFormula/UnMangle)");
+		}
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
