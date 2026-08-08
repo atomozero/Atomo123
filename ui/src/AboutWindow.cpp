@@ -28,8 +28,10 @@
 
 static const uint32 kMsgClose = 'clse';
 static const uint32 kMsgOpenLink = 'olnk';
+static const uint32 kMsgOpenCoffeeLink = 'ocfl';
 
 static const char* kProjectUrl = "https://github.com/atomozero/Atomo123";
+static const char* kCoffeeUrl = "https://buymeacoffee.com/atomozero";
 
 // Stessa identica tavolozza della finestra Informazioni di Brube2000
 // (banner blu-ardesia con sfumatura), per coerenza visiva fra le due
@@ -194,12 +196,18 @@ AboutWindow::AboutWindow()
 	features->SetFont(&small);
 	features->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.7));
 
-	BStringView* author = new BStringView("author", "di atomozero");
+	BStringView* author = new BStringView("author", "di Andrea Bernardi");
 	BFont bold(be_bold_font);
 	author->SetFont(&bold);
 
 	ClickableStringView* link = new ClickableStringView("link", kProjectUrl);
 	link->SetClickMessage(new BMessage(kMsgOpenLink));
+
+	// Stesso link "Buy Me A Coffee" gia' presente nel README, stesso
+	// meccanismo click-per-aprire del link al progetto sopra.
+	ClickableStringView* coffeeLink = new ClickableStringView("coffeeLink",
+		"Offrimi un caffe' \xE2\x98\x95");
+	coffeeLink->SetClickMessage(new BMessage(kMsgOpenCoffeeLink));
 
 	BStringView* thanks = new BStringView("thanks",
 		"Icone della barra strumenti da hvif-store.art \xE2\x80\x94 grazie!");
@@ -224,6 +232,7 @@ AboutWindow::AboutWindow()
 			.AddStrut(B_USE_SMALL_SPACING)
 			.Add(author)
 			.Add(link)
+			.Add(coffeeLink)
 			.AddStrut(B_USE_SMALL_SPACING)
 			.Add(thanks)
 			.Add(license)
@@ -253,6 +262,13 @@ void AboutWindow::MessageReceived(BMessage* message)
 		case kMsgOpenLink:
 		{
 			const char* arg = kProjectUrl;
+			be_roster->Launch("application/x-vnd.Be.URL.https", 1, const_cast<char**>(&arg));
+			break;
+		}
+
+		case kMsgOpenCoffeeLink:
+		{
+			const char* arg = kCoffeeUrl;
 			be_roster->Launch("application/x-vnd.Be.URL.https", 1, const_cast<char**>(&arg));
 			break;
 		}
