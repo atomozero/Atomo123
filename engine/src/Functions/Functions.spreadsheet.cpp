@@ -31,9 +31,10 @@
 */
 /*
 	Functions.spreadsheet.c
-	
+
 	Copyright 1995 - 1997, Hekkelman Programmatuur
-	
+	Portions Copyright 2026 Andrea Bernardi
+
 	Part of Sum-It for the BeBox version 1.1.
 
 */
