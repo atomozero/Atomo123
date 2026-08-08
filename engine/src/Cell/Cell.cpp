@@ -152,6 +152,39 @@ int cell::GetFormulaCell(const char *inName, cell& inRef, cell& outCell)
 	return inName - p;
 } /* GetFormulaCell */
 
+int cell::GetFormulaColumn(const char *inName, bool& outAbs, int& outCol)
+{
+	const char *p = inName;
+
+	outAbs = false;
+	outCol = 0;
+
+	if (*inName == '$')
+	{
+		outAbs = true;
+		inName++;
+	}
+
+	while (*inName && isalpha(*inName))
+	{
+		outCol *= 26;
+		outCol += *inName & 0xDF - '@';
+		inName++;
+	}
+
+	if (outCol <= 0 || outCol > kColCount)
+		return 0;
+
+	if (*inName != 0)
+		// Resta qualcos'altro dopo le lettere (tipicamente un numero
+		// di riga, es. "A1"): non e' un riferimento a colonna pura,
+		// e' una cella vera -- GetFormulaCell sopra e' la funzione
+		// giusta per quel caso.
+		return 0;
+
+	return inName - p;
+} /* GetFormulaColumn */
+
 void cell::GetName(char *name) const
 {
 	ASSERT(v > 0 && h > 0);
@@ -212,6 +245,32 @@ void cell::GetFormulaName(char *name, cell loc) const
 		t.GetName(name);
 } /* GetFormulaName */
 
+void cell::GetFormulaColumnName(char *name, cell loc) const
+{
+	// Stessa risoluzione relativo->assoluto della colonna in
+	// GetFormulaName sopra, ma senza toccare affatto la riga (le
+	// righe di un intervallo a colonna intera sono sempre 1..
+	// kRowCount, non hanno bisogno di essere stampate -- vedi
+	// range::GetFormulaName).
+	int H = abs(h);
+	int col;
+
+	if (H & HFIXED)
+		col = h & FMASK;
+	else if (h < 0)
+		col = loc.h - (H & FMASK);
+	else
+		col = loc.h + (H & FMASK);
+
+	if (H & HFIXED)
+		strcpy(name, "$");
+	else
+		name[0] = 0;
+
+	char s[10];
+	NumToAString(col, s);
+	strcat(name, s);
+} /* GetFormulaColumnName */
 
 cell cell::GetFlatCell(cell loc) const
 {

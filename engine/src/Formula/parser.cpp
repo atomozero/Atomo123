@@ -246,13 +246,56 @@ void CParser::Term2()
 // quando un foglio viene ri-analizzato da solo durante il caricamento
 // di un file (vedi ISheetResolver in Container.h -- bug reale scoperto
 // proprio cosi', vedi ui/tests/test_xsheet_formulas.cpp).
+bool CParser::ParseColumnOnlyToken(int& outCol, bool& outAbs)
+{
+	if (mLookahead != IDENT)
+		return false;
+
+	char name[256];
+	strcpy(name, mToken);
+	if (cell::GetFormulaColumn(name, outAbs, outCol) == 0)
+		return false;
+
+	Match(IDENT);
+	return true;
+} // CParser::ParseColumnOnlyToken
+
+void CParser::MakeWholeColumnEndpoint(cell& out, int col, bool colAbs, bool isTop)
+{
+	out.h = colAbs ? col : col - mLoc.h;
+	out.v = isTop ? 1 : kRowCount;
+	out.h ^= VFIXED;
+	if (colAbs)
+		out.h ^= HFIXED;
+} // CParser::MakeWholeColumnEndpoint
+
 void CParser::ParseSheetReference(const char *inName)
 {
 	Match('!');
 
 	range r;
-	r.TopLeft() = mCell;
-	Match(CELL);
+	bool wholeCol = false;
+	int col1;
+	bool col1Abs;
+
+	if (mLookahead == CELL)
+	{
+		r.TopLeft() = mCell;
+		Match(CELL);
+	}
+	else if (ParseColumnOnlyToken(col1, col1Abs))
+	{
+		// Riferimento a colonna intera su un altro foglio
+		// ("Foglio!$A:$A", Fase 15) -- il caso piu' comune nei file
+		// XLSX reali per questa sintassi (INDEX/MATCH su un'intera
+		// colonna di un foglio dati separato), vedi memoria
+		// project_xlsx_formula_gaps_20260808.
+		MakeWholeColumnEndpoint(r.TopLeft(), col1, col1Abs, true);
+		wholeCol = true;
+	}
+	else
+		Match(CELL); // nessuno dei due: stesso errore "atteso CELL" di prima
+
 	mIsFormula = true;
 
 	char buf[256 + sizeof(range)];
@@ -262,13 +305,34 @@ void CParser::ParseSheetReference(const char *inName)
 	if (mLookahead == RANGE)
 	{
 		Match(RANGE);
-		r.BotRight() = mCell;
-		Match(CELL);
+
+		if (wholeCol)
+		{
+			int col2;
+			bool col2Abs;
+			if (!ParseColumnOnlyToken(col2, col2Abs))
+				throw CParseErr(mTokenStart - mExprStart, strlen(mToken),
+					errSyntaxError, mToken);
+			MakeWholeColumnEndpoint(r.BotRight(), col2, col2Abs, false);
+		}
+		else
+		{
+			r.BotRight() = mCell;
+			Match(CELL);
+		}
+
 		memcpy(buf + nameLen, &r, sizeof(range));
 		AddToken(valXRange, buf);
 	}
 	else
 	{
+		if (wholeCol)
+			// "Foglio!A" da sola (senza ":altra colonna") non e'
+			// sintassi valida: una colonna intera esiste solo come
+			// intervallo, mai come singola cella.
+			throw CParseErr(mTokenStart - mExprStart, strlen(mToken),
+				errSyntaxError, mToken);
+
 		cell c = r.TopLeft();
 		memcpy(buf + nameLen, &c, sizeof(cell));
 		AddToken(valXRef, buf);
@@ -423,6 +487,41 @@ void CParser::Factor()
 				// trattarlo sempre come riferimento a tabella non e'
 				// ambiguo -- stessa precedenza di "!" sopra.
 				ParseTableReference(name);
+			}
+			else if (mLookahead == RANGE)
+			{
+				// Riferimento a colonna intera ("A:A", "$A:$C", Fase
+				// 15): "IDENT :" non ha nessun altro significato
+				// valido in questa grammatica quando "name" e' un
+				// nome di colonna puro (solo lettere, "$" opzionale
+				// davanti, senza numero di riga) -- un vero
+				// intervallo con nome seguito da un altro operatore
+				// non e' comunque sintassi valida, quindi trattarlo
+				// sempre cosi' non e' ambiguo. 795 celle interessate
+				// in un file xlsx reale (vedi memoria
+				// project_xlsx_formula_gaps_20260808). Le righe
+				// dell'intervallo risultante sono sempre 1..kRowCount
+				// (VFIXED, come se fossero scritte "$1"/"$16384"):
+				// vedi range::GetFormulaName per come si ristampano
+				// come "A:A" invece che "A1..A16384".
+				bool col1Abs;
+				int col1;
+				if (cell::GetFormulaColumn(name, col1Abs, col1) == 0)
+					throw CParseErr(s, strlen(name), errSyntaxError, name);
+
+				Match(RANGE);
+
+				int col2;
+				bool col2Abs;
+				if (!ParseColumnOnlyToken(col2, col2Abs))
+					throw CParseErr(mTokenStart - mExprStart, strlen(mToken),
+						errSyntaxError, mToken);
+
+				range r;
+				MakeWholeColumnEndpoint(r.TopLeft(), col1, col1Abs, true);
+				MakeWholeColumnEndpoint(r.BotRight(), col2, col2Abs, false);
+
+				AddToken(valRange, &r);
 			}
 			else
 			{

@@ -72,6 +72,20 @@ class CParser
 	// valName come una stringa opaca.
 	void ParseTableReference(const char *inName);
 
+	// Riferimento a colonna intera ("A:A", "$A:$C", Fase 15): usati
+	// sia da Factor() (per "A:A" semplice) sia da ParseSheetReference
+	// (per "Foglio!$A:$A", il caso piu' comune nei file XLSX reali --
+	// vedi memoria project_xlsx_formula_gaps_20260808) per evitare di
+	// duplicare la stessa analisi due volte. ParseColumnOnlyToken
+	// consuma il lookahead SOLO se e' davvero un riferimento a
+	// colonna pura (torna false senza consumare nulla altrimenti, per
+	// lasciare al chiamante la scelta del messaggio d'errore).
+	// MakeWholeColumnEndpoint costruisce l'estremo di range risultante
+	// (riga 1 o kRowCount, sempre assoluta -- vedi il commento nel
+	// ramo RANGE di Factor() per il perche').
+	bool ParseColumnOnlyToken(int& outCol, bool& outAbs);
+	void MakeWholeColumnEndpoint(cell& out, int col, bool colAbs, bool isTop);
+
 	void Match(int expected);
 	
 	void AddToken(int token, void *data = NULL)

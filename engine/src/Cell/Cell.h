@@ -78,7 +78,12 @@ struct cell {
 	void GetName(char *) const;
 	void GetRCName(char *) const;
 	void GetFormulaName(char *, cell) const;
-	
+	// Come GetFormulaName, ma stampa solo le lettere di colonna (con
+	// l'eventuale "$"), senza numero di riga -- usata da
+	// range::GetFormulaName per il caso di colonna intera ("A:A",
+	// Fase 15), vedi Cell.cpp per i dettagli.
+	void GetFormulaColumnName(char *, cell) const;
+
 	cell GetFlatCell(cell loc) const;
 	cell GetRefCell(cell loc) const;
 	cell GetMacCell(cell loc) const;
@@ -99,6 +104,16 @@ struct cell {
 
 	static int GetCell(const char *inName, cell& outCell);
 	static int GetFormulaCell(const char *inName, cell& inRef, cell& outCell);
+	// Riferimento a colonna intera ("A:A", "$A:$C", Fase 15): analogo
+	// a GetFormulaCell ma SENZA numero di riga (solo lettere,
+	// opzionale "$" davanti) -- inName deve consistere ESATTAMENTE in
+	// questo, nient'altro dopo, altrimenti fallisce (0), cosi' un vero
+	// riferimento a cella come "A1" o un nome con lettere e numeri non
+	// viene mai scambiato per una colonna. outCol e' il numero di
+	// colonna assoluto (1-based), non un'offset relativo: a differenza
+	// di GetFormulaCell, il chiamante (CParser::Factor) decide da solo
+	// come incorporarlo nel token in base a outAbs.
+	static int GetFormulaColumn(const char *inName, bool& outAbs, int& outCol);
 };
 
 /*

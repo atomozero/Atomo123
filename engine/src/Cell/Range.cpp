@@ -63,6 +63,28 @@ void range::GetName(char *outString) const
 
 void range::GetFormulaName(char *outString, cell inLocation) const
 {
+	// Colonna intera ("A:A", "$A:$C", Fase 15): se l'intervallo copre
+	// esattamente tutte le righe del foglio (riga 1 assoluta fino a
+	// riga kRowCount assoluta -- cosi' lo costruisce sempre
+	// CParser::Factor per questa sintassi, vedi il commento li'), si
+	// mostrano solo le lettere di colonna, senza numeri di riga --
+	// stessa convenzione di Excel, che collassa "A1:A16384" in "A:A".
+	if (TopLeft().v == 1 && TopLeft().V_Fixed() &&
+		BotRight().v == kRowCount && BotRight().V_Fixed())
+	{
+		char t[12];
+		TopLeft().GetFormulaColumnName(outString, inLocation);
+		BotRight().GetFormulaColumnName(t, inLocation);
+		// A differenza del caso generale sotto (che collassa una
+		// cella singola omettendo la seconda meta'), una colonna
+		// intera si mostra SEMPRE come "A:A" anche per una sola
+		// colonna -- "A" da sola non e' sintassi valida di colonna
+		// intera, si rianalizzerebbe come nome/cella.
+		strcat(outString, ":");
+		strcat(outString, t);
+		return;
+	}
+
 	TopLeft().GetFormulaName(outString, inLocation);
 	if (!(TopLeft() == BotRight()))
 	{

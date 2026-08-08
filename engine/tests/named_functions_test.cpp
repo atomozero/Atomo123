@@ -980,6 +980,61 @@ int main()
 			"due celle vuote diverse (Y1 e Y6) restano uguali fra loro (Value::operator== eNoData/eNoData)");
 	}
 
+	// Riferimenti a colonna intera ("A:A", "$A:$C", Fase 15): sintassi
+	// Excel valida, prima di questo fix il parser falliva del tutto
+	// (nessun grammatica accettava un identificatore senza numero di
+	// riga seguito da ":") -- 795 celle interessate in un file XLSX
+	// reale (vedi memoria project_xlsx_formula_gaps_20260808).
+	// Contenitore isolato (come dataSheet/summarySheet sopra): un vero
+	// SUM(A:A) su "doc" sommerebbe anche tutti i dati scritti da ogni
+	// altro test in questo file nella stessa colonna A.
+	{
+		CContainer &wc = *new CContainer(NULL, NULL);
+
+		TryToParseString("10", cell(1, 1), &wc, true); // A1
+		TryToParseString("20", cell(1, 2), &wc, true); // A2
+		TryToParseString("30", cell(1, 8000), &wc, true); // A8000, lontanissima: verifica che l'iteratore resti sparso
+
+		TryToParseString("=SUM(A:A)", cell(5, 1), &wc, true);
+		wc.CalcCell(cell(5, 1));
+		wc.GetValue(cell(5, 1), v);
+		Check(v.fType == eNumData && (double)v == 60.0,
+			"SUM(A:A) somma tutta la colonna A, comprese righe sparse lontane (10+20+30=60)");
+
+		char formula[256];
+		wc.GetCellFormula(cell(5, 1), formula, sizeof(formula), false);
+		Check(strstr(formula, "A:A") != NULL,
+			"SUM(A:A) si ridisegna ancora come A:A, non come A1..A16384");
+
+		// $A:$C assoluto, multi-colonna: B e C restano vuote, la somma
+		// e' identica a prima.
+		TryToParseString("=SUM($A:$C)", cell(5, 2), &wc, true);
+		wc.CalcCell(cell(5, 2));
+		wc.GetValue(cell(5, 2), v);
+		Check(v.fType == eNumData && (double)v == 60.0,
+			"SUM($A:$C) somma A (B e C sono vuote), gestisce anche la sintassi assoluta multi-colonna");
+
+		char formula2[256];
+		wc.GetCellFormula(cell(5, 2), formula2, sizeof(formula2), false);
+		Check(strstr(formula2, "$A:$C") != NULL,
+			"SUM($A:$C) si ridisegna ancora come $A:$C");
+
+		// Un intervallo normale (con righe esplicite) non deve
+		// diventare accidentalmente un riferimento a colonna intera.
+		TryToParseString("=SUM(A1:A2)", cell(5, 3), &wc, true);
+		wc.CalcCell(cell(5, 3));
+		wc.GetValue(cell(5, 3), v);
+		Check(v.fType == eNumData && (double)v == 30.0,
+			"SUM(A1:A2) resta un intervallo normale (10+20=30, non tutta la colonna)");
+
+		char formula3[256];
+		wc.GetCellFormula(cell(5, 3), formula3, sizeof(formula3), false);
+		Check(strcmp(formula3, "SUM(A1..A2)") == 0,
+			"SUM(A1:A2) si ridisegna ancora come A1..A2, non come colonna intera");
+
+		wc.Release();
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();
