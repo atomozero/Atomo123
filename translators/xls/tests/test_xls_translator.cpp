@@ -103,6 +103,16 @@ int main()
 		sstErr = translator->Translate(&sstFile, &sstInfo, NULL, kAtomoNativeFormat, &sstOut);
 		Check(sstErr == B_OK, "Translate di sample_sst.xls riesce");
 
+		// Bug reale, crash vero di Tracker catturato in un .report: il
+		// thumbnail worker chiama BTranslatorRoster::Translate() con
+		// info=NULL per ogni file mentre genera le anteprime (significa
+		// "identifica tu stesso il formato sorgente", documentato nel
+		// Translation Kit), senza mai passare da Identify() prima.
+		sstFile.Seek(0, SEEK_SET);
+		BMallocIO sstOutNullInfo;
+		status_t sstErrNullInfo = translator->Translate(&sstFile, NULL, NULL, kAtomoNativeFormat, &sstOutNullInfo);
+		Check(sstErrNullInfo == B_OK, "Translate con info=NULL (come fa Tracker per le anteprime) non crasha, si identifica da solo");
+
 		if (sstErr == B_OK)
 		{
 			const unsigned char *data = (const unsigned char *)sstOut.Buffer();

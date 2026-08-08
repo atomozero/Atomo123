@@ -303,6 +303,20 @@ status_t CCsvTranslator::Translate(BPositionIO* source,
 	const translator_info* info, BMessage* extension, uint32 outType,
 	BPositionIO* destination)
 {
+	// info puo' essere NULL (documentato nel Translation Kit: significa
+	// "identifica tu stesso il formato sorgente") -- un vero crash reale
+	// di Tracker, non solo teorico: il thumbnail worker chiama
+	// BTranslatorRoster::Translate() cosi' per ogni file mentre genera
+	// le anteprime, senza mai passare da Identify() prima. Senza questo
+	// controllo, "info->type" sotto leggeva un indirizzo qualunque.
+	translator_info localInfo;
+	if (!info)
+	{
+		if (Identify(source, NULL, extension, &localInfo, outType) != B_OK)
+			return B_NO_TRANSLATOR;
+		info = &localInfo;
+	}
+
 	if (outType == 0)
 		outType = kAtomoNativeFormat;
 

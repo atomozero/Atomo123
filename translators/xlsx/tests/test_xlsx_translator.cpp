@@ -187,6 +187,18 @@ int main()
 	err = translator->Translate(&xlsxFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
 	Check(err == B_OK, "Translate XLSX -> ASCD riesce");
 
+	// Bug reale, crash vero di Tracker catturato in un .report: il
+	// thumbnail worker chiama BTranslatorRoster::Translate() con
+	// info=NULL per ogni file mentre genera le anteprime (significa
+	// "identifica tu stesso il formato sorgente", documentato nel
+	// Translation Kit), senza mai passare da Identify() prima --
+	// "info->type" letto senza controllo faceva crashare Tracker
+	// stesso, non solo Atomo123.
+	xlsxFile.Seek(0, SEEK_SET);
+	BMallocIO ascdOutNullInfo;
+	status_t errNullInfo = translator->Translate(&xlsxFile, NULL, NULL, kAtomoNativeFormat, &ascdOutNullInfo);
+	Check(errNullInfo == B_OK, "Translate con info=NULL (come fa Tracker per le anteprime) non crasha, si identifica da solo");
+
 	// Rilegge l'ASCD prodotto per verificare i valori importati: si
 	// riusa lo stesso formato del translator CSV, quindi basta
 	// controllare che il testo delle celle (formula o valore

@@ -111,6 +111,16 @@ int main()
 	err = translator->Translate(&odsFile, &info, NULL, kAtomoNativeFormat, &ascdOut);
 	Check(err == B_OK, "Translate ODS -> ASCD riesce");
 
+	// Bug reale, crash vero di Tracker catturato in un .report: il
+	// thumbnail worker chiama BTranslatorRoster::Translate() con
+	// info=NULL per ogni file mentre genera le anteprime (significa
+	// "identifica tu stesso il formato sorgente", documentato nel
+	// Translation Kit), senza mai passare da Identify() prima.
+	odsFile.Seek(0, SEEK_SET);
+	BMallocIO ascdOutNullInfo;
+	status_t errNullInfo = translator->Translate(&odsFile, NULL, NULL, kAtomoNativeFormat, &ascdOutNullInfo);
+	Check(errNullInfo == B_OK, "Translate con info=NULL (come fa Tracker per le anteprime) non crasha, si identifica da solo");
+
 	const unsigned char *ascdData = (const unsigned char *)ascdOut.Buffer();
 	size_t ascdLen = ascdOut.BufferLength();
 
