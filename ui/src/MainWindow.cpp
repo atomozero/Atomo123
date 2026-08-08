@@ -55,6 +55,7 @@
 #include <Menu.h>
 #include <MenuBar.h>
 #include <MenuItem.h>
+#include <MessageRunner.h>
 #include <Path.h>
 #include <PrintJob.h>
 #include <ScrollView.h>
@@ -97,6 +98,8 @@ static const uint32 kMsgDeleteColumns = 'adlc';
 static const uint32 kMsgPrint = 'aprt';
 static const uint32 kMsgFind = 'afnd';
 static const uint32 kMsgSwitchSheet = 'swsh';
+// Un solo colpo, poco dopo Show(): vedi MainWindow::Show() per il perche'.
+static const uint32 kMsgFixupScrollBars = 'fscb';
 static const uint32 kMsgNewSheet = 'nwsh';
 static const uint32 kMsgSetFormat = 'stfm';
 static const uint32 kMsgShowChart = 'shch';
@@ -646,19 +649,33 @@ MainWindow::MainWindow()
 	fSheetView = new SheetView(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetImages(&fImages);
-	BScrollView* scroll = new BScrollView("scroll", fSheetView,
-		B_FOLLOW_ALL, 0, true, true);
 
-	// BScrollView, costruita con questa forma classica, eredita di
-	// default la dimensione (enorme: il canvas virtuale del foglio,
-	// vedi SheetView::FullCanvasFrame) del suo target, invece di farsi
-	// vincolare dal layout -- un ResizeTo() esplicito subito dopo la
-	// costruzione la "sgancia" da quella dimensione ereditata, cosi'
-	// il layout puo' poi ridimensionarla liberamente in base allo
-	// spazio disponibile nella finestra. La dimensione qui non conta
-	// molto (il layout la corregge subito al primo giro), serve solo
-	// a rompere l'eredita' iniziale dal target.
+	// horizontal=false, vertical=false: NON le barre automatiche di
+	// BScrollView (usata qui solo per il bordo e il ritaglio). Le due
+	// barre create da BScrollView sarebbero SUE figlie private,
+	// posizionate in base al Frame() (l'intero canvas virtuale, vedi
+	// SheetView::FullCanvasFrame) del bersaglio invece che alla vera
+	// area visibile -- bug reale segnalato dall'utente ("non si vedono
+	// le barre di scorrimento"): le barre finivano fuori schermo (o,
+	// anche riposizionate a mano, sempre RIDISEGNATE SOPRA da
+	// SheetView, che le considera comunque dentro al proprio Frame()
+	// enorme). Le due barre VERE sono costruite subito sotto, come
+	// view indipendenti nel layout della finestra (mai figlie di
+	// "scroll"), cosi' l'ordine di disegno fra fratelli le mette
+	// correttamente sopra, non sotto, alla griglia.
+	BScrollView* scroll = new BScrollView("scroll", fSheetView,
+		B_FOLLOW_ALL, 0, false, false);
 	scroll->ResizeTo(400, 300);
+
+	// BScrollBar::BScrollBar(name, target, min, max, orientation)
+	// registra "fSheetView" come bersaglio indipendentemente da chi
+	// sia il genitore nella gerarchia delle view (vedi BView::
+	// fVerScroller/fHorScroller) -- SheetView::FixupScrollBars()
+	// continua a trovarle tramite ScrollBar(B_HORIZONTAL/VERTICAL)
+	// esattamente come se fossero ancora figlie automatiche di una
+	// BScrollView.
+	fVScrollBar = new BScrollBar("vscroll", fSheetView, 0, 0, B_VERTICAL);
+	fHScrollBar = new BScrollBar("hscroll", fSheetView, 0, 0, B_HORIZONTAL);
 
 	// Striscia di schede del foglio attivo, come Excel/LibreOffice
 	// Calc, in basso sotto la griglia -- sostituisce il menu a tendina
@@ -690,7 +707,13 @@ MainWindow::MainWindow()
 			.Add(fCellLabel)
 			.Add(fFormulaBar)
 		.End()
-		.Add(scroll)
+		.AddGroup(B_HORIZONTAL, 0)
+			.AddGroup(B_VERTICAL, 0)
+				.Add(scroll)
+				.Add(fHScrollBar)
+			.End()
+			.Add(fVScrollBar)
+		.End()
 		.Add(fSheetTabView)
 		.Add(new BSeparatorView(B_HORIZONTAL))
 		.AddGroup(B_HORIZONTAL, 4)
@@ -3331,6 +3354,14 @@ void MainWindow::MessageReceived(BMessage* message)
 			NewDocument();
 			break;
 
+		case kMsgFixupScrollBars:
+			if (fSheetView)
+			{
+				fSheetView->FixupScrollBars();
+				fSheetView->Invalidate();
+			}
+			break;
+
 		case kMsgSwitchSheet:
 		{
 			int32 index;
@@ -3971,6 +4002,24 @@ void MainWindow::MessageReceived(BMessage* message)
 			BWindow::MessageReceived(message);
 			break;
 	}
+}
+
+void MainWindow::FrameResized(float width, float height)
+{
+	BWindow::FrameResized(width, height);
+	if (fSheetView)
+		fSheetView->FixupScrollBars();
+}
+
+void MainWindow::Show()
+{
+	BWindow::Show();
+
+	// BMessageRunner "spara e dimentica" (count=1, un solo colpo): non
+	// serve tenerne il puntatore, vedi il commento sulla dichiarazione
+	// in MainWindow.h per il motivo del ritardo.
+	new BMessageRunner(BMessenger(this), new BMessage(kMsgFixupScrollBars),
+		200000, 1);
 }
 
 bool MainWindow::QuitRequested()

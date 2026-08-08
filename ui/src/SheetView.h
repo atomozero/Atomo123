@@ -71,6 +71,16 @@ public:
 	// legge da "nessuna selezione multipla in corso".
 	range SelectionRange() const;
 
+	// Pubblico apposta: SheetView ha B_FOLLOW_NONE (il suo Frame() e'
+	// l'intero canvas virtuale, mai ridimensionato dal genitore, vedi
+	// il commento su FullCanvasFrame() sotto), quindi FrameResized()
+	// qui non scatta mai quando e' la FINESTRA a ridimensionarsi --
+	// solo quando cambia il canvas virtuale stesso (righe/colonne). Le
+	// due barre di scorrimento vanno invece riposizionate ogni volta
+	// che la vera area visibile (la BScrollView) cambia dimensione:
+	// MainWindow::FrameResized la richiama esplicitamente per questo.
+	void FixupScrollBars();
+
 	// Seleziona l'intero foglio con dati (menu Modifica > "Seleziona
 	// tutto" in MainWindow, non una scorciatoia da tastiera -- vedi il
 	// commento in HandleKey per il perche' Ctrl+A non e' praticabile
@@ -415,6 +425,18 @@ public:
 	BRect ContentRect() const;
 
 private:
+	// Ultima area visibile (Parent()->Bounds(), la vera BScrollView)
+	// per cui le barre di scorrimento sono state posizionate --
+	// confrontata a ogni Draw() per richiamare FixupScrollBars() da
+	// sola quando cambia, vedi il commento li' sopra sul perche'
+	// FrameResized() da solo (di questa SheetView o della finestra)
+	// non basta a coprire ogni caso (soprattutto il primo giro di
+	// layout della finestra, che non genera mai un vero evento di
+	// ridimensionamento perche' la finestra nasce gia' alla sua
+	// dimensione finale). BRect vuoto (mai confrontabile con un vero
+	// Bounds()) di default, cosi' il primo Draw() scatta sempre.
+	BRect fLastScrollBarViewport;
+
 	// Larghezza/altezza di ogni colonna/riga: un array denso (non
 	// sparso) indicizzato da 0 a kColCount-1/kRowCount-1, inizializzato
 	// a kColWidth/kRowHeight per tutti e modificato solo dove l'utente
@@ -654,7 +676,6 @@ private:
 	// NotifySelectionChanged/NotifyDocumentChanged (dynamic_cast su
 	// Window()).
 	void RecalculateOwningWorkbook();
-	void FixupScrollBars();
 
 	// Il Frame() della view copre l'intero intervallo virtuale del
 	// motore (kColCount x kRowCount celle), non solo l'area visibile a

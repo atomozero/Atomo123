@@ -262,6 +262,18 @@ void SheetView::FixupScrollBars()
 	// visibile e' quella del genitore (la BScrollView stessa).
 	BRect viewport = Parent() ? Parent()->Bounds() : Bounds();
 
+	// Posizione/dimensione delle due barre: MAI competenza di questa
+	// funzione. Sono view indipendenti (MainWindow::fVScrollBar/
+	// fHScrollBar), fratelli di "scroll" nel layout della finestra,
+	// non figlie automatiche di una BScrollView -- BLayoutBuilder le
+	// sistema da solo (vedi MainWindow::MainWindow per il perche' di
+	// questa scelta: le barre automatiche di BScrollView si
+	// posizionano in base al Frame() del bersaglio, l'intero canvas
+	// virtuale di questa stessa SheetView, mai in base alla vera area
+	// visibile -- bug reale segnalato dall'utente, "non si vedono le
+	// barre di scorrimento"). Qui resta solo l'intervallo/proporzione
+	// di scorrimento, sempre legato alla vera area visibile
+	// (viewport, calcolata sopra).
 	float maxH = totalWidth - viewport.Width();
 	if (maxH < 0)
 		maxH = 0;
@@ -2477,6 +2489,23 @@ static BBitmap* DecodeImageBytes(const std::vector<uint8>& data)
 
 void SheetView::Draw(BRect updateRect)
 {
+	// Autocorrezione delle barre di scorrimento (vedi il commento su
+	// fLastScrollBarViewport in SheetView.h): AttachedToWindow() e
+	// FrameResized() da soli non garantiscono di girare DOPO che la
+	// finestra ha raggiunto la sua dimensione finale (che nasce gia'
+	// tale, senza un vero evento di ridimensionamento, vedi
+	// MainWindow::MainWindow) -- Draw() invece scatta SEMPRE dopo,
+	// mai prima, che l'area visibile sia quella vera.
+	if (Parent())
+	{
+		BRect viewport = Parent()->Bounds();
+		if (viewport != fLastScrollBarViewport)
+		{
+			fLastScrollBarViewport = viewport;
+			FixupScrollBars();
+		}
+	}
+
 	// Formattazione condizionale VIVA (Fase 13): valutata di nuovo a
 	// ogni ridisegno, contro i valori CORRENTI delle celle -- non una
 	// volta sola all'import come prima (vedi ROADMAP.md). Calcolata

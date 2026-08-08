@@ -24,6 +24,7 @@
 #include "Container.h"
 
 class BFilePanel;
+class BScrollBar;
 class BMenu;
 class BMenuItem;
 class BTextControl;
@@ -57,6 +58,24 @@ public:
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
+
+	// Riposiziona le due barre di scorrimento di fSheetView ogni volta
+	// che la finestra (quindi la vera area visibile della griglia)
+	// cambia dimensione -- SheetView::FrameResized da solo non basta,
+	// vedi il commento su SheetView::FixupScrollBars.
+	virtual void FrameResized(float width, float height);
+
+	// La finestra nasce gia' alla sua dimensione finale (BWindow(
+	// BRect(80,80,900,700), ...) nel costruttore, vedi sotto): il
+	// primo giro di layout del Layout Kit (che sistema "scroll" alla
+	// sua dimensione vera, diversa da quella temporanea data da
+	// ResizeTo(400,300) subito dopo la sua costruzione) puo' finire
+	// DOPO che Show() e' gia' tornata, non prima -- un solo
+	// FixupScrollBars() chiamato qui rischierebbe quindi di vedere
+	// ancora l'area visibile sbagliata. BMessageRunner con un piccolo
+	// ritardo (kMsgFixupScrollBars) da' al Layout Kit il tempo di
+	// sistemarsi per davvero prima del colpo buono.
+	virtual void Show();
 	// BWindow la chiama subito prima di mostrare/tracciare un menu
 	// qualunque della finestra: punto comodo per ricostruire "Apri
 	// recenti" con l'elenco aggiornato al momento, senza dover
@@ -341,6 +360,16 @@ private:
 	int fMaxRecentFiles;
 
 	SheetView* fSheetView;
+	// Barre di scorrimento ESPLICITE, mai quelle create in automatico
+	// da BScrollView (vedi il commento sulla costruzione di "scroll"
+	// in MainWindow::MainWindow per il perche'): due semplici membri
+	// di layout, fratelli di "scroll" invece che suoi figli privati,
+	// posizionati correttamente da BLayoutBuilder come ogni altra
+	// view -- SheetView::ScrollBar(orientation) le trova comunque
+	// (BScrollBar registra il bersaglio passato al costruttore
+	// indipendentemente da chi sia il suo genitore nella gerarchia).
+	BScrollBar* fVScrollBar;
+	BScrollBar* fHScrollBar;
 	BMenuItem* fFreezeMenuItem;
 	BMenu* fRecentMenu;
 	BTextControl* fFormulaBar;
