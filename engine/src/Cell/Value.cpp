@@ -310,6 +310,29 @@ bool Value::operator>=(Value &v)
 		return kCompareTypes[fType][v.fType] >= 0;
 }
 
+// Una cella VUOTA (eNoData) confrontata con "=" o "<>" contro un
+// numero/testo/booleano equivale al valore predefinito di quel tipo
+// (0, "", FALSO), esattamente come in Excel -- bug reale scoperto
+// analizzando file XLSX veri: il pattern comunissimo
+// "=IF(cella=0;"";calcolo)" per nascondere una riga finche' la cella
+// non e' compilata prendeva sempre il ramo sbagliato, perche' prima
+// di questo fix kCompareTypes trattava eNoData come "diverso da
+// chiunque" (in realta' pensato per un altro scopo: ordinare le
+// celle vuote sempre per ultime in un Ordina, comportamento voluto e
+// NON toccato qui -- vedi operator</<=/>/>= sotto, invariati). Solo
+// "="/"<>" hanno un significato pratico per il confronto con un
+// valore predefinito; "<"/">" restano ordinamento puro.
+static bool NoDataEqualsDefault(Value &v)
+{
+	switch (v.fType)
+	{
+		case eNumData:  return v.fDouble == 0.0;
+		case eBoolData: return v.fBool == false;
+		case eTextData: return v.fText == NULL || v.fText[0] == 0;
+		default:        return false;
+	}
+}
+
 bool Value::operator==(Value &v)
 {
 	if (fType == eNumData && v.fType == eNumData)
@@ -320,6 +343,12 @@ bool Value::operator==(Value &v)
 		return fTime == v.fTime;
 	else if (fType == eBoolData && v.fType == eBoolData)
 		return fBool == v.fBool;
+	else if (fType == eNoData && v.fType == eNoData)
+		return true;
+	else if (fType == eNoData)
+		return NoDataEqualsDefault(v);
+	else if (v.fType == eNoData)
+		return NoDataEqualsDefault(*this);
 	else
 		return kCompareTypes[fType][v.fType] == 0;
 }
@@ -334,6 +363,12 @@ bool Value::operator!=(Value &v)
 		return fTime != v.fTime;
 	else if (fType == eBoolData && v.fType == eBoolData)
 		return fBool != v.fBool;
+	else if (fType == eNoData && v.fType == eNoData)
+		return false;
+	else if (fType == eNoData)
+		return !NoDataEqualsDefault(v);
+	else if (v.fType == eNoData)
+		return !NoDataEqualsDefault(*this);
 	else
 		return kCompareTypes[fType][v.fType] != 0;
 }

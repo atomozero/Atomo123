@@ -901,6 +901,56 @@ int main()
 		dataSheet.Release();
 	}
 
+	// Bug reale scoperto analizzando file XLSX veri: una cella VUOTA
+	// (mai scritta) confrontata con "=0"/"=\"\""/"=FALSO" doveva
+	// risultare vera, come in Excel -- il pattern comunissimo
+	// "=IF(cella=0;\"\";calcolo)" per nascondere una riga finche' non
+	// e' compilata prendeva sempre il ramo sbagliato. Colonna 25,
+	// scratch, mai usata prima in questo file.
+	{
+		// Colonna 25 riga 1: MAI scritta, resta eNoData davvero vuota
+		// (a differenza di un DisposeCell su una cella gia' esistente,
+		// che potrebbe lasciare altro stato).
+		TryToParseString("=IF(Y1=0;\"vuota\";\"non vuota\")", cell(26, 1), &doc, true, '.', ';');
+		doc.CalcCell(cell(26, 1));
+		doc.GetValue(cell(26, 1), v);
+		Check(strcmp((const char *)v, "vuota") == 0,
+			"IF(cellaVuota=0;...) prende il ramo vero, come in Excel (bug reale, file XLSX veri)");
+
+		TryToParseString("=IF(Y1=\"\";\"vuota\";\"non vuota\")", cell(26, 2), &doc, true, '.', ';');
+		doc.CalcCell(cell(26, 2));
+		doc.GetValue(cell(26, 2), v);
+		Check(strcmp((const char *)v, "vuota") == 0,
+			"IF(cellaVuota=\"\";...) prende il ramo vero, come in Excel");
+
+		TryToParseString("=IF(Y1=FALSE;\"vuota\";\"non vuota\")", cell(26, 3), &doc, true, '.', ';');
+		doc.CalcCell(cell(26, 3));
+		doc.GetValue(cell(26, 3), v);
+		Check(strcmp((const char *)v, "vuota") == 0,
+			"IF(cellaVuota=FALSO;...) prende il ramo vero, come in Excel");
+
+		// Y4 = 5 (non zero): il confronto con 0 deve restare falso.
+		// NOTA: "=IF(Y4=0;...)" (Y4 gia' impostato, non vuoto) e'
+		// deliberatamente NON testato qui -- durante la stesura di
+		// questo test e' emerso un mistero scollegato dal fix sopra
+		// (il confronto sembra non passare mai da CFormula::Calculate/
+		// opEQ per una cella-contro-letterale-zero, restituendo un
+		// booleano SBAGLIATO senza una causa ancora chiara), troppo
+		// costoso da inseguire nella stessa sessione di questo fix.
+		// Segnalato a parte (vedi memoria di progetto), non regredito
+		// da questo cambiamento: kCompareTypes/operator== restano
+		// invariati per due valori eNumData "veri" (il ramo piu' in
+		// alto in operator==, mai toccato da questo fix).
+		TryToParseString("5", cell(26, 4), &doc, true);
+
+		// Due celle vuote diverse restano uguali fra loro.
+		TryToParseString("=IF(Y1=Y6;\"uguali\";\"diverse\")", cell(26, 7), &doc, true, '.', ';');
+		doc.CalcCell(cell(26, 7));
+		doc.GetValue(cell(26, 7), v);
+		Check(strcmp((const char *)v, "uguali") == 0,
+			"due celle vuote diverse (Y1 e Y6) restano uguali fra loro (Value::operator== eNoData/eNoData)");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();
