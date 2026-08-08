@@ -90,6 +90,13 @@ public:
 	// SheetView.h), senza il tipo completo -- Text() richiede la
 	// definizione vera di BTextControl.
 	const char* FormulaBarText() const;
+
+	// Footer Somma/Media/Massimo/Conteggio della selezione (stesso
+	// motivo/limite di FormulaBarText sopra: BStringView non e' un
+	// tipo completo qui). Vuota se la selezione non contiene nessun
+	// valore numerico.
+	const char* SelectionStatsText() const;
+
 	void CopySelection(bool cut);
 	void PasteSelection();
 	void SetCellFormat(int32 format);
@@ -338,6 +345,7 @@ private:
 	BMenu* fRecentMenu;
 	BTextControl* fFormulaBar;
 	BStringView* fCellLabel;
+	BStringView* fSelectionStats;
 	CContainer* fDoc;
 	BFilePanel* fOpenPanel;
 	BFilePanel* fSavePanel;

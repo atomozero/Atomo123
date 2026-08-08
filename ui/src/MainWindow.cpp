@@ -671,6 +671,13 @@ MainWindow::MainWindow()
 	// scheda, in futuro Inserisci/Elimina/Rinomina foglio).
 	fSheetTabView = new SheetTabView("sheetTabs", kMsgSwitchSheet, this);
 
+	// Footer con Somma/Media/Massimo della selezione corrente, come
+	// Excel/LibreOffice Calc: vuoto con una sola cella selezionata (o
+	// nessun valore numerico dentro), aggiornato da SelectionChanged
+	// sotto insieme a fCellLabel/fFormulaBar.
+	fSelectionStats = new BStringView("selectionStats", "");
+	fSelectionStats->SetAlignment(B_ALIGN_RIGHT);
+
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.Add(toolbar)
@@ -684,7 +691,12 @@ MainWindow::MainWindow()
 			.Add(fFormulaBar)
 		.End()
 		.Add(scroll)
-		.Add(fSheetTabView);
+		.Add(fSheetTabView)
+		.Add(new BSeparatorView(B_HORIZONTAL))
+		.AddGroup(B_HORIZONTAL, 4)
+			.SetInsets(4, 2, 4, 2)
+			.Add(fSelectionStats)
+		.End();
 
 	RebuildSheetTabs();
 
@@ -3234,6 +3246,45 @@ void MainWindow::SelectionChanged(cell c)
 	}
 	fCellLabel->SetText(name);
 
+	// Somma/Media/Massimo della selezione (footer, come Excel/
+	// LibreOffice Calc): solo le celle NUMERICHE contano, esattamente
+	// come lo stesso status bar di Excel -- testo/vuoto/errore vengono
+	// ignorati, mai contati come zero (altrimenti la media sarebbe
+	// sbagliata). Vuoto (nessun testo) se la selezione non contiene
+	// nessun valore numerico, per non mostrare "Somma: 0" su una
+	// selezione di sole etichette testuali.
+	if (fDoc)
+	{
+		double sum = 0.0, max = 0.0;
+		int count = 0;
+		for (int v = sel.top; v <= sel.bottom; v++)
+		{
+			for (int h = sel.left; h <= sel.right; h++)
+			{
+				Value val;
+				fDoc->GetValue(cell(h, v), val);
+				if (val.fType == eNumData && !val.IsNan())
+				{
+					double d = (double)val;
+					if (count == 0 || d > max)
+						max = d;
+					sum += d;
+					count++;
+				}
+			}
+		}
+
+		if (count > 0)
+		{
+			char stats[256];
+			snprintf(stats, sizeof(stats), "Somma: %g   Media: %g   Massimo: %g   Conteggio: %d",
+				sum, sum / count, max, count);
+			fSelectionStats->SetText(stats);
+		}
+		else
+			fSelectionStats->SetText("");
+	}
+
 	char formula[4096];
 	if (fDoc)
 		fDoc->GetCellFormula(c, formula, sizeof(formula), false);
@@ -3265,6 +3316,11 @@ void MainWindow::SelectionChanged(cell c)
 const char* MainWindow::FormulaBarText() const
 {
 	return fFormulaBar->Text();
+}
+
+const char* MainWindow::SelectionStatsText() const
+{
+	return fSelectionStats->Text();
 }
 
 void MainWindow::MessageReceived(BMessage* message)
