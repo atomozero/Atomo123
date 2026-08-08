@@ -404,6 +404,13 @@ public:
 	void ClearConditionalFormatRules() { fCondFormatRules.clear(); }
 	const std::vector<ConditionalFormatRule>& GetConditionalFormatRules() const
 		{ return fCondFormatRules; }
+	// Fase 15 (Annulla/Ripristina per la formattazione condizionale,
+	// bug reale: nessuno dei comandi che applicano/rimuovono regole
+	// chiamava mai SaveUndoState): ripristina l'intero elenco in un
+	// solo colpo, l'unico modo sensato di "annullare" una mutazione
+	// che non riguarda un intervallo di celle ma l'intero documento.
+	void SetConditionalFormatRules(const std::vector<ConditionalFormatRule>& rules)
+		{ fCondFormatRules = rules; }
 
 	// Rivaluta OGNI regola contro i valori CORRENTI delle celle e
 	// restituisce il colore di sfondo risultante per ogni cella

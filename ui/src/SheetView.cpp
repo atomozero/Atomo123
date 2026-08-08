@@ -1490,6 +1490,28 @@ SheetView::UndoSnapshot SheetView::CaptureImageSnapshot(int imageIndex) const
 	return snap;
 }
 
+SheetView::UndoSnapshot SheetView::CaptureValidationSnapshot(range r) const
+{
+	UndoSnapshot snap;
+	snap.isValidationSnapshot = true;
+	snap.validationRange = r;
+	// Denso apposta (vedi il commento sul campo in SheetView.h): una
+	// voce per OGNI cella dell'intervallo, valore predefinito compreso
+	// per le celle senza convalida propria.
+	for (int row = r.top; row <= r.bottom; row++)
+		for (int col = r.left; col <= r.right; col++)
+			snap.validationBefore.push_back(fDoc->GetValidation(cell(col, row)));
+	return snap;
+}
+
+SheetView::UndoSnapshot SheetView::CaptureCondFormatSnapshot() const
+{
+	UndoSnapshot snap;
+	snap.isCondFormatSnapshot = true;
+	snap.condFormatBefore = fDoc->GetConditionalFormatRules();
+	return snap;
+}
+
 void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 {
 	// Istantanea di un'immagine incorporata (vedi SaveImageUndoState),
@@ -1505,6 +1527,26 @@ void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 			img.width = snap.imageWidth;
 			img.height = snap.imageHeight;
 		}
+		return;
+	}
+
+	// Istantanea di convalida dati: ripristina la regola di OGNI cella
+	// dell'intervallo catturato (vedi CaptureValidationSnapshot sopra),
+	// niente testo/stile/formattazione condizionale.
+	if (snap.isValidationSnapshot)
+	{
+		size_t i = 0;
+		for (int row = snap.validationRange.top; row <= snap.validationRange.bottom; row++)
+			for (int col = snap.validationRange.left; col <= snap.validationRange.right; col++)
+				fDoc->SetValidation(cell(col, row), snap.validationBefore[i++]);
+		return;
+	}
+
+	// Istantanea di formattazione condizionale: ripristina l'intero
+	// elenco di regole del documento in un solo colpo.
+	if (snap.isCondFormatSnapshot)
+	{
+		fDoc->SetConditionalFormatRules(snap.condFormatBefore);
 		return;
 	}
 
@@ -1563,6 +1605,24 @@ void SheetView::SaveUndoState(cell affected)
 	SaveUndoState(range(affected.h, affected.v, affected.h, affected.v));
 }
 
+void SheetView::SaveValidationUndoState(range affected)
+{
+	if (!fDoc)
+		return;
+
+	fUndoStack.push_back(CaptureValidationSnapshot(affected));
+	fRedoStack.clear();
+}
+
+void SheetView::SaveCondFormatUndoState()
+{
+	if (!fDoc)
+		return;
+
+	fUndoStack.push_back(CaptureCondFormatSnapshot());
+	fRedoStack.clear();
+}
+
 void SheetView::Undo()
 {
 	if (fUndoStack.empty() || !fDoc)
@@ -1578,6 +1638,27 @@ void SheetView::Undo()
 	if (toRestore.imageIndex >= 0)
 	{
 		fRedoStack.push_back(CaptureImageSnapshot(toRestore.imageIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
+	// Convalida dati/formattazione condizionale: stesso scambio
+	// simmetrico, ne' selezione di celle ne' CellRect (la convalida
+	// non cambia il contenuto visibile della cella, la formattazione
+	// condizionale si ridisegna da sola a ogni Draw()).
+	if (toRestore.isValidationSnapshot)
+	{
+		fRedoStack.push_back(CaptureValidationSnapshot(toRestore.validationRange));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+	if (toRestore.isCondFormatSnapshot)
+	{
+		fRedoStack.push_back(CaptureCondFormatSnapshot());
 		ApplySnapshot(toRestore);
 		Invalidate();
 		NotifyDocumentChanged();
@@ -1606,6 +1687,22 @@ void SheetView::Redo()
 	if (toRestore.imageIndex >= 0)
 	{
 		fUndoStack.push_back(CaptureImageSnapshot(toRestore.imageIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+	if (toRestore.isValidationSnapshot)
+	{
+		fUndoStack.push_back(CaptureValidationSnapshot(toRestore.validationRange));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+	if (toRestore.isCondFormatSnapshot)
+	{
+		fUndoStack.push_back(CaptureCondFormatSnapshot());
 		ApplySnapshot(toRestore);
 		Invalidate();
 		NotifyDocumentChanged();

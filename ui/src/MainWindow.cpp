@@ -2719,6 +2719,7 @@ void MainWindow::ApplyValidationToSelection(int type, const char* list, double m
 	rule.max = max;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveValidationUndoState(sel);
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 			fDoc->SetValidation(cell(col, row), rule);
@@ -2733,6 +2734,7 @@ void MainWindow::RemoveValidationFromSelection()
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	fSheetView->SaveValidationUndoState(sel);
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
 			fDoc->SetValidation(cell(col, row), ValidationRule());
@@ -2746,6 +2748,7 @@ void MainWindow::ApplyConditionalFormatToSelection(int type, const char* value, 
 	if (!fDoc)
 		return;
 
+	fSheetView->SaveCondFormatUndoState();
 	ConditionalFormatRule rule;
 	rule.type = (type == 1) ? eCondDuplicateValues : eCondCellIsEqual;
 	rule.compareValue = value ? value : "";
@@ -2767,6 +2770,7 @@ void MainWindow::RemoveAllConditionalFormatRules()
 	if (!fDoc)
 		return;
 
+	fSheetView->SaveCondFormatUndoState();
 	fDoc->ClearConditionalFormatRules();
 	fSheetView->Invalidate();
 	MarkModified();

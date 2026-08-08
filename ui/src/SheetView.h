@@ -25,6 +25,7 @@
 #include "Cell.h"
 #include "CellStyle.h"
 #include "Chart.h"
+#include "Container.h"
 #include "EmbeddedImage.h"
 #include "Range.h"
 
@@ -173,6 +174,13 @@ public:
 	// trascinamento concluso, solo se qualcosa e' davvero cambiato).
 	void SaveImageUndoState(int imageIndex, float beforeOffsetX, float beforeOffsetY,
 		float beforeWidth, float beforeHeight);
+	// Stesso principio di SaveImageUndoState sopra, per convalida dati
+	// e formattazione condizionale (Fase 15, bug reale: erano gli
+	// unici comandi mutanti mai annullabili -- vedi il commento su
+	// UndoSnapshot::isValidationSnapshot/isCondFormatSnapshot).
+	// Chiamati PRIMA di mutare, come SaveUndoState(range) sopra.
+	void SaveValidationUndoState(range affected);
+	void SaveCondFormatUndoState();
 	bool CanUndo() const { return !fUndoStack.empty(); }
 	bool CanRedo() const { return !fRedoStack.empty(); }
 	void Undo();
@@ -586,11 +594,35 @@ private:
 		int imageIndex = -1;
 		float imageOffsetX = 0, imageOffsetY = 0;
 		float imageWidth = 0, imageHeight = 0;
+		// Convalida dati (Fase 15, bug reale: Applica/Rimuovi convalida
+		// non erano mai annullabili -- unico comando mutante, insieme a
+		// formattazione condizionale sotto, senza SaveUndoState). Non
+		// riusa r/cells sopra: ApplyValidationToSelection tocca OGNI
+		// cella dell'intervallo (anche quelle senza contenuto/stile
+		// proprio, il caso comune -- convalida su celle ancora vuote in
+		// attesa di essere compilate), che CaptureSnapshot invece
+		// ignora (CCellIterator scorre solo le celle "esistenti").
+		// validationRange/validationBefore sono quindi un array DENSO
+		// (una voce per ogni cella dell'intervallo, valore predefinito
+		// compreso), non sparso come cells sopra -- accettabile perche'
+		// la convalida si applica sempre a selezioni ragionevoli, mai
+		// all'intero foglio.
+		bool isValidationSnapshot = false;
+		range validationRange;
+		std::vector<ValidationRule> validationBefore;
+		// Formattazione condizionale (stesso bug reale di cui sopra):
+		// un elenco di regole a livello di INTERO documento (vedi
+		// CContainer::fCondFormatRules), non un intervallo di celle --
+		// annullare vuol dire ripristinare l'elenco intero cosi' com'era.
+		bool isCondFormatSnapshot = false;
+		std::vector<ConditionalFormatRule> condFormatBefore;
 	};
 	std::vector<UndoSnapshot> fUndoStack;
 	std::vector<UndoSnapshot> fRedoStack;
 	UndoSnapshot CaptureSnapshot(range r) const;
 	UndoSnapshot CaptureImageSnapshot(int imageIndex) const;
+	UndoSnapshot CaptureValidationSnapshot(range r) const;
+	UndoSnapshot CaptureCondFormatSnapshot() const;
 	void ApplySnapshot(const UndoSnapshot& snap);
 
 	const std::vector<ChartObject>* fCharts;

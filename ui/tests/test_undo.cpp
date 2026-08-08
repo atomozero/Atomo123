@@ -172,6 +172,63 @@ int main()
 	view->Undo();
 	Check(!view->CanUndo(), "annullare oltre l'inizio della pila non fa nulla di male");
 
+	// Convalida dati: SaveValidationUndoState() prima della modifica,
+	// come ApplyValidationToSelection/RemoveValidationFromSelection in
+	// MainWindow.cpp -- bug reale scoperto durante l'audit dei comandi,
+	// Annulla non faceva nulla per questo tipo di modifica.
+	Check(!view->CanUndo(), "pila vuota prima dei test di convalida dati");
+
+	view->SetSelection(cell(2, 1));
+	view->ExtendSelection(cell(2, 3));
+	range validationSel(2, 1, 2, 3);
+
+	view->SaveValidationUndoState(validationSel);
+	ValidationRule vrule;
+	vrule.type = eListValidation;
+	vrule.list = "Rosso,Verde,Blu";
+	for (int row = validationSel.top; row <= validationSel.bottom; row++)
+		doc->SetValidation(cell(2, row), vrule);
+	Check(doc->GetValidation(cell(2, 2)).type == eListValidation,
+		"la regola di convalida elenco e' stata applicata a C2");
+
+	view->Undo();
+	Check(doc->GetValidation(cell(2, 2)).type == eNoValidation,
+		"Annulla dopo l'applicazione di convalida dati la toglie di nuovo");
+
+	view->Redo();
+	Check(doc->GetValidation(cell(2, 2)).type == eListValidation,
+		"Ripeti dopo l'annullamento la riapplica");
+
+	// Formattazione condizionale: SaveCondFormatUndoState() prima
+	// della modifica, come ApplyConditionalFormatToSelection/
+	// RemoveAllConditionalFormatRules in MainWindow.cpp -- stesso bug
+	// dell'audit, Annulla non faceva nulla nemmeno qui.
+	view->Undo(); // torna a "nessuna regola di convalida" per non sporcare CanUndo() sotto
+	while (view->CanRedo())
+		view->Redo();
+
+	Check(doc->GetConditionalFormatRules().empty(),
+		"nessuna regola di formattazione condizionale prima del test");
+
+	view->SaveCondFormatUndoState();
+	ConditionalFormatRule crule;
+	crule.type = eCondCellIsEqual;
+	crule.compareValue = "X";
+	doc->AddConditionalFormatRule(crule);
+	Check(doc->GetConditionalFormatRules().size() == 1,
+		"la regola di formattazione condizionale e' stata aggiunta");
+
+	view->Undo();
+	Check(doc->GetConditionalFormatRules().empty(),
+		"Annulla dopo l'aggiunta di una regola condizionale la toglie di nuovo");
+
+	view->Redo();
+	Check(doc->GetConditionalFormatRules().size() == 1,
+		"Ripeti dopo l'annullamento la riaggiunge");
+
+	while (view->CanUndo())
+		view->Undo();
+
 	// SetDocument() (apertura di un nuovo file) svuota le pile: le
 	// istantanee si riferiscono al documento precedente.
 	CContainer* doc2 = new CContainer(NULL, NULL);
