@@ -5456,6 +5456,103 @@ eliminare il foglio attivo la sposti su un foglio ancora valido, e che
 l'unico foglio rimasto non si possa eliminare. Nessuna regressione
 nelle 39 suite UI.
 
+### Audit completo dei comandi e chiusura di tutti i gap di formule reali trovati su file XLSX veri
+
+Dopo aver sistemato lo splash screen (versione disattivabile dalle
+preferenze, numero di versione mostrato nel footer) e verificato
+Annulla/Ripristina, l'utente ha chiesto un giro completo: riverificare
+ogni singolo comando alla ricerca di bug, aggiungere un footer con
+Somma/Media/Massimo della selezione (come Excel/LibreOffice Calc),
+delle vere barre di scorrimento orizzontale/verticale, e far verificare
+in autonomia ogni formula di tutti i file XLSX reali dell'utente in
+`/boot/home/Desktop/xls` (mai inclusi nel repository).
+
+**Barre di scorrimento** (bug reale, scoperto dall'utente stesso, tre
+iterazioni per il fix): `BScrollView` con un target dal `Frame()`
+deliberatamente enorme (il canvas virtuale scrollato via `ScrollTo()`,
+~56000×328000px) ancora le proprie barre automatiche al bordo del
+TARGET, non del proprio viewport — risultato, barre fuori
+dall'area visibile. Risolto sostituendo le barre automatiche con vere
+`BScrollBar` indipendenti nel layout, non gestite da `BScrollView`.
+Aggiunti anche `MainWindow::FrameResized` e un controllo di
+autoguarigione in `SheetView::Draw()`, perché la finestra "nasce già
+alla dimensione finale" e quindi non genera mai un vero evento
+`FrameResized` durante l'assestamento iniziale del layout.
+
+**Buffer overflow reale in `CFormula::UnMangle`**: ogni chiamata a
+`SaveUndoState` (quindi ogni comando annullabile) ricostruisce il
+testo della formula per l'istantanea, e circa 57 siti usavano
+`strcpy`/`strcat` non delimitati su un buffer condiviso da 4096
+byte — probabile causa di un crash reale in chiusura scoperto per
+caso. Convertiti tutti a `strlcpy`/`strlcat`/`snprintf`.
+
+**Quattro gap reali nelle formule**, trovati facendo importare a un
+agent dedicato tutti i 9 file XLSX/XLSM reali attraverso la vera
+pipeline di importazione e confrontando ogni cella calcolata:
+
+1. Confronto cella-vuota-vs-zero (`Value::operator==`/`!=`): una cella
+   mai scritta confrontata con `0`/`""`/`FALSO` doveva risultare vera,
+   come in Excel — bug dominante, oltre 10.000 celle in un solo file.
+2. `IF` a due argomenti (terzo omesso, sottintende FALSO): la risorsa
+   `Func` fissava `argCnt` di IF esattamente a 3, nessuna sintassi a
+   due argomenti passava l'analisi grammaticale — 1.529 celle in un
+   file.
+3. Riferimenti a colonna intera (`A:A`, `$A:$C`, anche fra fogli
+   `Foglio!$A:$A`): il parser non riconosceva affatto un riferimento
+   senza numero di riga — 795 celle in un file. Le righe risultanti
+   sono sempre assolute 1..16384, quindi l'iteratore resta sparso
+   (nessun rallentamento su una colonna quasi vuota) e la formula si
+   ridisegna come "A:A", non "A1..A16384".
+4. Riferimenti a tabella strutturata composti,
+   `Tabella[[#This Row],[Colonna]]` (riga della formula, una colonna)
+   e `Tabella[[Colonna1]:[Colonna2]]` (intervallo multi-colonna) — 554
+   celle in un file. Il lessico ora conta la profondità delle
+   parentesi quadre invece di fermarsi alla prima trovata, altrimenti
+   la sintassi annidata si spezzava a metà.
+
+Sistemando il punto 3, è emerso un **quinto gap indipendente e più
+profondo**: gli argomenti-intervallo fra fogli diversi passati a una
+funzione (`SUM(Foglio!A1:A3)`, `MATCH(x,Foglio!$A:$A,0)`) restituivano
+sempre un risultato sbagliato (0 o NaN), perché ogni funzione che
+consuma un intervallo (SUM/AVG/COUNT/MAX/MIN/STDDEV/VARIANCE/MEDIAN/
+MODE/SUMIF/COUNTIF/COUNTIFS/AVERAGEIF/MATCH/HINDEX/VINDEX/NPV/IRR)
+leggeva le celle dal documento della formula stessa, mai da quello
+vero del foglio referenziato — proprio il blocco reale dietro al
+pattern più comune del file che aveva motivato l'intera indagine
+(`INDEX(Foglio!$D:$F,MATCH(...,Foglio!$A:$A,0),...)` su un foglio dati
+separato). Risolto riusando `Value::fRangeContainer`, lo stesso
+meccanismo già in uso per le tabelle strutturate fra fogli. Trovato e
+corretto nello stesso giro anche un bug indipendente più vecchio: un
+intervallo degenere a una sola cella (`A1:A1`) leggeva la cella
+sbagliata (offset relativo mai reso assoluto) se calcolato lontano da
+dove era stato scritto.
+
+**Un "mistero" di una sessione precedente risolto**: `=Y4=0` sembrava
+dare il ramo sbagliato con Y4 impostata a un valore non zero — non era
+un bug del motore, il test stesso scriveva nella colonna sbagliata
+(Z invece di Y).
+
+**Tre bug reali nei comandi**, trovati da un audit dedicato del
+dispatch dei comandi contro la copertura di `ui/tests/`: Annulla/
+Ripristina non funzionava per Convalida dati/Formattazione
+condizionale (i quattro comandi che li applicano non chiamavano mai
+`SaveUndoState`); Incolla speciale > Dividi scriveva silenziosamente
+`0` invece di `#DIV/0!` quando il divisore era zero; "Blocca riquadri"
+non fa nulla se la cella attiva è A1, verificato NON essere un bug
+(replica esattamente Excel: non c'è nulla sopra/a sinistra da
+bloccare).
+
+**Copertura test aggiunta** dove mancava del tutto: Trova successivo/
+Sostituisci/Sostituisci tutto, Inserisci grafico come vero comando
+(distinto dalla sola anteprima). `PrintDocument` resta senza test
+automatico, deliberatamente: avvolge un vero dialogo di stampa di
+sistema bloccante, stesso limite già noto per le conferme `BAlert`.
+
+Nessuna regressione in nessuna suite (motore, quattro translator, UI)
+in nessuno dei passaggi. Ogni fix verificato anche dal vivo con l'app
+compilata, incluso il caricamento di ogni file XLSX/XLS/XLSM reale
+dell'utente senza crash.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
