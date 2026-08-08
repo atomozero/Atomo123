@@ -15,6 +15,7 @@
 #include "CellParser.h"
 #include "CellIterator.h"
 #include "Text2Cells.h"
+#include "FunctionUtils.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -317,6 +318,14 @@ status_t CCsvTranslator::Translate(BPositionIO* source,
 			err = ReadASCD(source, doc);
 		else
 		{
+			// Stesso bug reale gia' corretto per XLSX/ODS (vedi il
+			// commento su EnsureFunctionsInitialized in FunctionUtils.h/
+			// .cpp): un campo CSV che comincia per "=" e usa una
+			// funzione con nome (es. "=SUM(A1:A3)") passa da CParser
+			// esattamente come una formula XLSX, con lo stesso bisogno
+			// della tabella delle funzioni caricata.
+			EnsureFunctionsInitialized();
+
 			range r(1, 1, 1, 1);
 			CTextConverter conv(*source, doc);
 			conv.SetFieldSeparator(',');

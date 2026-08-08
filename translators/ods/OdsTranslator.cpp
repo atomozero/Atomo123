@@ -19,6 +19,7 @@
 #include "Container.h"
 #include "CellIterator.h"
 #include "CellParser.h"
+#include "FunctionUtils.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -638,6 +639,14 @@ status_t COdsTranslator::Translate(BPositionIO* source,
 		err = ReadASCD(source, doc);
 	else
 	{
+		// Stesso bug reale gia' corretto per XLSX (vedi il commento su
+		// EnsureFunctionsInitialized in FunctionUtils.h/.cpp): questo
+		// translator .so ha la propria copia INDIPENDENTE di
+		// gFuncCount, mai popolata da App::ReadyToRun -- senza questa
+		// chiamata, ogni formula con funzione con nome (SUM, IF, ecc.)
+		// importata da un file ODS reale resta testo grezzo.
+		EnsureFunctionsInitialized();
+
 		CZipReader zip;
 		if (!zip.Open(source))
 			err = B_BAD_DATA;

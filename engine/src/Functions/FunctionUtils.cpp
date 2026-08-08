@@ -71,7 +71,10 @@
 #include "Globals.h"
 #endif
 
+#include <AppFileInfo.h>
+#include <Application.h>
 #include <Path.h>
+#include <Roster.h>
 #include <kernel/image.h>
 
 #include <cstdlib>
@@ -120,6 +123,49 @@ void InitFunctions()
 
 	SetupDefaultFuncs();
 } /* InitFunctions */
+
+void EnsureFunctionsInitialized()
+{
+	if (gFuncCount > 0 || be_app == NULL)
+		return;
+
+	// be_app riflette sempre il VERO processo in esecuzione (Atomo123,
+	// che ha la risorsa 'Func' allegata al proprio eseguibile) anche
+	// quando questo codice gira dentro un add-on caricato in-process
+	// (un translator .so, con la propria copia STATICA di libengine.a
+	// e quindi una propria istanza SEPARATA di gFuncCount/
+	// gFuncArrayByNr/ecc., mai popolata da App::ReadyToRun) -- stesso
+	// principio e stesso codice gia' in uso in Excel.cpp per lo stesso
+	// identico bug sul lato import XLS legacy, consolidato qui perche'
+	// XLSX/ODS avevano bisogno esattamente dello stesso fix.
+	app_info info;
+	if (be_app->GetAppInfo(&info) != B_OK)
+		return;
+
+	BPath path(&info.ref);
+	if (path.InitCheck() != B_OK)
+		return;
+
+	// gAppName va impostato PRIMA di InitFunctions(): la usa
+	// LoadPlugIns() per cercare un'eventuale cartella "Functions/"
+	// accanto al binario -- omettendola lascerebbe gAppName al suo
+	// BPath vuoto predefinito, il cui Path() restituisce NULL (bug
+	// reale gia' scoperto una volta per Excel.cpp: comportamento
+	// indefinito invece dell'eccezione pulita attesa).
+	gAppName = path;
+	gResourceManager.SetTo(&path);
+	try
+	{
+		InitFunctions();
+	}
+	catch (CErr &e)
+	{
+		// Stesso comportamento di App::ReadyToRun: un fallimento qui
+		// (binario senza la risorsa 'Func', percorso inatteso) non
+		// deve impedire l'importazione -- si degrada a nessuna
+		// funzione con nome disponibile, non a un crash.
+	}
+} /* EnsureFunctionsInitialized */
 
 int Compare(const void *e1, const void *e2)
 {

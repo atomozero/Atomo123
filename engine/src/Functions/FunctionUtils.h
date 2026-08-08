@@ -58,6 +58,26 @@ extern const char	**gFuncDescriptions, **gFuncPasteStrings;
 
 void InitFunctions();
 
+// Fase 16 (bug reale, XLOOKUP/SUM/IF/ecc. mostrati come testo grezzo
+// invece che calcolati SOLO nei file importati dal vero
+// BTranslatorRoster, mai nei test che compilano il translator
+// direttamente nell'eseguibile di prova): engine/ e' una libreria
+// STATICA (.a), collegata separatamente sia nell'eseguibile
+// principale (che chiama InitFunctions() in App::ReadyToRun) sia in
+// ogni translator .so caricato dinamicamente -- ciascuno riceve la
+// propria copia INDIPENDENTE di gFuncCount/gFuncArrayByNr/gAppName,
+// mai condivisa. App::ReadyToRun() inizializza solo la copia
+// dell'eseguibile: ogni translator deve chiamare questa funzione da
+// solo, per conto proprio, prima di analizzare qualunque formula.
+// Trova il proprio file immagine (il file .so del translator stesso,
+// non quello dell'app ospite) risalendo dall'indirizzo di questa
+// stessa funzione con get_next_image_info -- funziona identicamente
+// se chiamata dall'eseguibile principale (trova se stesso) o da un
+// add-on (trova l'add-on), quindi e' sicura da richiamare ovunque.
+// Non fa nulla se gFuncCount e' gia' impostato (idempotente, sicura
+// da richiamare a ogni Translate()).
+_EXPORT void EnsureFunctionsInitialized();
+
 _EXPORT bool GetDoubleArgument(Value *inStack, int inArgCnt,
 	int inArgNr, double *outDouble);
 _EXPORT bool GetTextArgument(Value *inStack, int inArgCnt,

@@ -31,6 +31,8 @@
 #include "EmbeddedImage.h"
 #include "Formatter.h"
 #include "FontMetrics.h"
+#include "FunctionUtils.h"
+#include "Globals.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -3160,6 +3162,20 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		doc->Release();
 		return err;
 	}
+
+	// Bug reale (Fase 16): engine/ e' una libreria statica, collegata
+	// separatamente sia nell'eseguibile principale sia in questo
+	// stesso translator .so -- ciascuno ha la propria copia
+	// INDIPENDENTE di gFuncCount, mai condivisa. App::ReadyToRun()
+	// inizializza solo la copia dell'eseguibile: senza questa
+	// chiamata, GetFunctionNr tratta ogni funzione con nome (SUM, IF,
+	// XLOOKUP, tutte) come sconosciuta SOLO quando il file passa da
+	// qui (il vero BTranslatorRoster dell'app in esecuzione), mai nei
+	// test che compilano questo stesso file direttamente in un
+	// eseguibile di prova (che condivide un'unica copia dei globali,
+	// mascherando il problema) -- vedi il commento su
+	// EnsureFunctionsInitialized in FunctionUtils.h.
+	EnsureFunctionsInitialized();
 
 	// XLSX -> ASCD/ASCB (importazione): legge TUTTI i fogli della
 	// cartella di lavoro (Fase 9), non solo il primo -- xl/workbook.xml

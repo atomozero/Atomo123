@@ -117,45 +117,12 @@ CExcel5Filter::CExcel5Filter(BPositionIO& inStream, CCellView *cellView, CContai
 	// sia il testo della formula ricostruito (UnMangle, "(G23..G36)"
 	// invece di "SUM(G23:G36)", poi ri-analizzato cosi' com'e' al
 	// caricamento del formato nativo) risultavano sbagliati/vuoti.
-	// be_app riflette sempre il VERO processo in esecuzione (Atomo123,
-	// che ha la risorsa 'Func' allegata al proprio eseguibile) anche
-	// quando questo codice gira dentro l'add-on caricato in-process,
-	// quindi GetAppInfo trova comunque il binario giusto -- stesso
-	// principio, stesso fallback silenzioso di App::ReadyToRun per un
-	// binario senza quella risorsa (es. un test headless).
-	if (gFuncCount <= 0 && be_app != NULL)
-	{
-		app_info info;
-		if (be_app->GetAppInfo(&info) == B_OK)
-		{
-			BPath path(&info.ref);
-			if (path.InitCheck() == B_OK)
-			{
-				// gAppName va impostato PRIMA di InitFunctions(): la
-				// usa LoadPlugIns() per cercare un'eventuale cartella
-				// "Functions/" accanto al binario -- omettendola
-				// lascerebbe gAppName al suo BPath vuoto predefinito
-				// (mai impostato in questo processo separato
-				// dell'add-on), il cui Path() restituisce NULL: bug
-				// reale scoperto dal vivo (blocco indefinito
-				// dell'intera app aprendo un file .xls reale),
-				// strcpy(path, NULL) dentro LoadPlugIns() con
-				// comportamento indefinito invece dell'eccezione
-				// pulita che ci si aspetterebbe. Stesso ordine di
-				// App::ReadyToRun() e di
-				// engine/tests/named_functions_test.cpp.
-				gAppName = path;
-				gResourceManager.SetTo(&path);
-				try
-				{
-					InitFunctions();
-				}
-				catch (CErr&)
-				{
-				}
-			}
-		}
-	}
+	// Stesso identico bug si e' ripresentato per XLSX/ODS (formule
+	// come XLOOKUP mostrate come testo grezzo importando un file XLSX
+	// reale): consolidato in un'unica funzione condivisa,
+	// EnsureFunctionsInitialized (FunctionUtils.h/.cpp), invece di
+	// duplicare qui lo stesso codice per ogni translator.
+	EnsureFunctionsInitialized();
 
 	inStream.Seek(0, SEEK_SET);
 	FailOSErr(GetBookStream(inStream), "Failed to open Excel File (err: %d)");

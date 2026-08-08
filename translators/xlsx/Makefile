@@ -31,6 +31,16 @@ SOURCES := XlsxTranslator.cpp MiniZip.cpp
 # verificato il VALORE calcolato di una formula con funzione con nome,
 # solo stile/formattazione. Stesso principio di engine/Makefile
 # (FUNC_TEST_RSRC).
+#
+# Sul VERO add-on installato (non solo nel test) serve lo stesso fix,
+# ma non un secondo file di risorsa: questo translator .so ha la
+# propria copia INDIPENDENTE di gFuncCount rispetto all'eseguibile
+# principale (engine/ e' una libreria statica), ma EnsureFunctionsInitialized
+# (FunctionUtils.h/.cpp, chiamata da Translate() prima di analizzare
+# qualunque formula) trova da sola l'eseguibile ospite tramite be_app
+# e riusa la SUA risorsa 'Func' (Atomo123.rsrc) -- stesso principio
+# gia' in uso per il vecchio import XLS in Excel.cpp, prima che questo
+# stesso bug si ripresentasse identico per XLSX.
 LEGACY_DIR := ../../legacy/opensumit
 REZ := $(LEGACY_DIR)/rez/rez
 BSL := $(LEGACY_DIR)/bsl/bsl
