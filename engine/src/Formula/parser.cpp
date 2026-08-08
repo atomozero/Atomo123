@@ -48,6 +48,7 @@ CParser::CParser(CContainer *inContainer,
 	, mLookahead(0)
 	, mRelop(0)
 	, mOffset(0)
+	, mBracketDepth(0)
 	, mIsFormula(false)
 	, mExpr(NULL)
 	, mExprStart(NULL)
@@ -339,17 +340,74 @@ void CParser::ParseSheetReference(const char *inName)
 	}
 } // CParser::ParseSheetReference
 
-// Fase 14: "Tabella12[Codice]" -- il nome della colonna e' gia' un
+// Fase 14/16: "Tabella12[Codice]" -- il nome della colonna e' gia' un
 // token TBLCOL completo (lookahead corrente, contenuto in mToken senza
 // le parentesi quadre, vedi lexer.cpp stati 60-61) quando questo
 // metodo viene chiamato da Factor(). Combina tabella e colonna in
 // un'unica stringa "Tabella12[Codice]" che viaggia come un normale
 // valName -- vedi il commento su ParseTableReference in parser.h per
 // il perche'.
+//
+// Fase 16: due sintassi composte in piu' (entrambe trovate in file
+// XLSX reali, 554 celle in un solo file -- vedi memoria
+// project_xlsx_formula_gaps_20260808):
+//   "Tabella12[[#This Row],[Prezzo]]" -- riga della formula stessa,
+//   colonna specifica (una sola cella, non l'intera colonna).
+//   "Tabella12[[Col1]:[Col2]]" -- intervallo multi-colonna (tutte le
+//   righe dati, da Col1 a Col2).
+// Grazie al conteggio di profondita' in lexer.cpp (stato 60), mToken
+// per questi due casi contiene ancora le parentesi quadre INTERNE,
+// gia' spogliato solo di quella esterna: "[#This Row],[Prezzo]" o
+// "[Col1]:[Col2]". Qui si riconosce la forma e si ricodifica in un
+//'unica stringa piu' semplice che CContainer::ResolveName sa
+// interpretare senza dover rifare l'analisi sintattica: "#Prezzo" per
+// riga corrente + colonna (il "#" iniziale non e' mai un vero nome di
+// colonna, ne' in Excel ne' qui), "Col1:Col2" per l'intervallo (i nomi
+// di colonna reali non contengono mai ":"). Il caso semplice "[Col]"
+// (mToken non inizia con "[") resta invariato.
 void CParser::ParseTableReference(const char *inName)
 {
 	char buf[512];
-	snprintf(buf, sizeof(buf), "%s[%s]", inName, mToken);
+
+	if (mToken[0] == '[')
+	{
+		const char *p = mToken + 1;
+		const char *end1 = strchr(p, ']');
+		if (!end1 || (end1[1] != ':' && end1[1] != ',') || end1[2] != '[')
+			throw CParseErr(mTokenStart - mExprStart, strlen(mToken),
+				errSyntaxError, mToken);
+
+		std::string part1(p, end1 - p);
+		char sep = end1[1];
+		const char *p2 = end1 + 3;
+		const char *end2 = strchr(p2, ']');
+		if (!end2)
+			throw CParseErr(mTokenStart - mExprStart, strlen(mToken),
+				errSyntaxError, mToken);
+		std::string part2(p2, end2 - p2);
+
+		if (sep == ':')
+			// "[[Col1]:[Col2]]" -> "Tabella12[Col1:Col2]"
+			snprintf(buf, sizeof(buf), "%s[%s:%s]", inName, part1.c_str(), part2.c_str());
+		else if (strcasecmp(part1.c_str(), "#This Row") == 0)
+			// "[[#This Row],[Col]]" -> "Tabella12[#Col]"
+			snprintf(buf, sizeof(buf), "%s[#%s]", inName, part2.c_str());
+		else
+			// Altri selettori speciali di Excel ("[#Headers]",
+			// "[#Totals]", "[#Data]" abbinati a una colonna, o un
+			// riferimento "[@Colonna]" scritto per esteso come
+			// "[[Colonna1],[Colonna2]]" per piu' colonne): nessuno di
+			// questi e' comparso nei file reali che hanno motivato
+			// questo lavoro (vedi memoria project_xlsx_formula_gaps_
+			// 20260808) -- non implementati, errore di sintassi
+			// esplicito invece di un risultato silenziosamente
+			// sbagliato.
+			throw CParseErr(mTokenStart - mExprStart, strlen(mToken),
+				errSyntaxError, mToken);
+	}
+	else
+		snprintf(buf, sizeof(buf), "%s[%s]", inName, mToken);
+
 	mIsFormula = true;
 	Match(TBLCOL);
 	AddToken(valName, buf);

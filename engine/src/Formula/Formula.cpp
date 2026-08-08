@@ -406,7 +406,7 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 				{
 					FailNil(inContainer);
 					CContainer *owner = inContainer;
-					stack[stackIndx] = inContainer->ResolveName(s, &owner);
+					stack[stackIndx] = inContainer->ResolveName(s, inLocation, &owner);
 					range r = stack[stackIndx];
 					if (r.TopLeft() == r.BotRight())
 						owner->GetValue(r.TopLeft(), stack[stackIndx]);
@@ -1129,7 +1129,22 @@ bool CFormula::ReduceToValue(Value& val, CContainer *inContainer) const
 					val = (char *)(fString + 1);
 					return true;
 				}
-				
+
+				// "Tabella[#Col]" (Fase 16, riga della formula stessa,
+				// vedi CParser::ParseTableReference/CContainer::
+				// ResolveName): questa funzione non riceve MAI la
+				// posizione della formula (ReduceToValue e' pensata per
+				// valori indipendenti dalla cella, come un intervallo
+				// con nome), quindi risolverebbe sempre con una
+				// posizione fittizia (riga 0) e fallirebbe SEMPRE, anche
+				// per un riferimento perfettamente valido -- degradando
+				// una formula viva a testo morto. Si salta la verifica
+				// (si assume risolvibile, come una tabella/colonna
+				// normale gia' trovata) e si lascia a CalcCell la
+				// verifica vera, con la posizione reale.
+				if (strstr((char *)(fString + 1), "[#") != NULL)
+					return false;
+
 				try
 				{
 					inContainer->ResolveName((char *)(fString + 1));

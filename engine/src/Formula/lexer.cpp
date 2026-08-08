@@ -142,6 +142,7 @@ int CParser::GetNextToken(bool acceptTime)
 					// grammatica.
 					state = 40;
 				else if (ch == '[')
+				{
 					// Nome di colonna di un riferimento a tabella
 					// strutturata di Excel ("Tabella12[Codice]"): il nome
 					// della colonna puo' contenere spazi o punti (es.
@@ -149,8 +150,13 @@ int CParser::GetNextToken(bool acceptTime)
 					// "]" -- stesso principio del nome di foglio fra
 					// apici sopra, mai raggiungibile dalla sintassi R1C1
 					// (stati 300-309), che richiede sempre una "R" o "C"
-					// prima di ogni "[".
+					// prima di ogni "[". mBracketDepth=1 conta anche
+					// questa "[" appena letta -- serve per i riferimenti
+					// composti annidati ("[[#This Row],[Col]]",
+					// "[[Col1]:[Col2]]", Fase 16), vedi stato 60 sotto.
+					mBracketDepth = 1;
 					state = 60;
+				}
 				else
 					RESTART;
 				break;
@@ -774,12 +780,33 @@ int CParser::GetNextToken(bool acceptTime)
 			// con "[" "]" al posto degli apici singoli -- il nome puo'
 			// contenere qualunque carattere (spazi, punti come "u.m.",
 			// accenti), catturato cosi' com'e' senza nessuna interpretazione.
+			// mBracketDepth (Fase 16) tiene conto dell'annidamento per i
+			// riferimenti composti di Excel ("[[#This Row],[Col]]" per
+			// "questa riga, colonna X", "[[Col1]:[Col2]]" per un
+			// intervallo multi-colonna): un "]" chiude solo quando la
+			// profondita' torna a 0, non al primo che si incontra,
+			// altrimenti "[[#This Row],[Col]]" si spezzerebbe al primo
+			// "]" interno invece che al vero "]]" finale. Per il caso
+			// semplice "[Codice]" (nessuna parentesi interna) il
+			// comportamento resta identico a prima. CParser::
+			// ParseTableReference interpreta poi il contenuto catturato
+			// (mToken inizia con "[" solo nel caso composto).
 			case 60:
 				GETNEXTCHAR;
 				if (te >= tm)
 					THROW((errTokenLength, t));
-				if (ch == ']')
-					state = 61;
+				if (ch == '[')
+				{
+					mBracketDepth++;
+					state = 60;
+				}
+				else if (ch == ']')
+				{
+					if (--mBracketDepth == 0)
+						state = 61;
+					else
+						state = 60;
+				}
 				else if (ch == 0)
 				{
 					RETRACT;

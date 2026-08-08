@@ -628,7 +628,7 @@ bool CContainer::RefersToNamedRange(const char *inName)
 	return false;
 } /* CContainer::RefersToNamedRange */
 
-range CContainer::ResolveName(const char *name, CContainer **outOwner)
+range CContainer::ResolveName(const char *name, cell inLocation, CContainer **outOwner)
 {
 	if (outOwner)
 		*outOwner = this;
@@ -662,19 +662,79 @@ range CContainer::ResolveName(const char *name, CContainer **outOwner)
 		std::map<std::string, CTableDef>::const_iterator ti = fTables.find(tableName);
 		if (ti != fTables.end())
 		{
-			std::string colName(bracket + 1);
-			if (!colName.empty() && colName[colName.size() - 1] == ']')
-				colName.erase(colName.size() - 1);
+			std::string colSpec(bracket + 1);
+			if (!colSpec.empty() && colSpec[colSpec.size() - 1] == ']')
+				colSpec.erase(colSpec.size() - 1);
 
 			const CTableDef& def = ti->second;
-			for (size_t ci = 0; ci < def.columnNames.size(); ci++)
+
+			// "Tabella[#Col]" (Fase 16, codifica di
+			// "Tabella[[#This Row],[Col]]" fatta da
+			// CParser::ParseTableReference): riga della FORMULA
+			// stessa (inLocation), non l'intera colonna -- "#" non e'
+			// mai il primo carattere di un vero nome di colonna (ne'
+			// in Excel ne' qui), quindi non e' ambiguo. Se la riga
+			// della formula cade fuori dai dati della tabella (la
+			// formula e' stata copiata/spostata fuori dalla tabella),
+			// resta semplicemente non risolto, come un nome
+			// inesistente.
+			if (!colSpec.empty() && colSpec[0] == '#')
 			{
-				if (colName == def.columnNames[ci])
+				std::string colName = colSpec.substr(1);
+				if (inLocation.v >= def.dataRange.top && inLocation.v <= def.dataRange.bottom)
 				{
-					range r = def.dataRange;
-					int col = r.left + (int)ci;
-					r.left = r.right = col;
-					return r;
+					for (size_t ci = 0; ci < def.columnNames.size(); ci++)
+					{
+						if (colName == def.columnNames[ci])
+						{
+							int col = def.dataRange.left + (int)ci;
+							return range(col, inLocation.v, col, inLocation.v);
+						}
+					}
+				}
+			}
+			else
+			{
+				// "Tabella[Col1:Col2]" (Fase 16, codifica di
+				// "Tabella[[Col1]:[Col2]]"): intervallo multi-colonna,
+				// tutte le righe dati della tabella -- un vero nome di
+				// colonna non contiene mai ":", quindi la presenza di
+				// ":" distingue senza ambiguita' questo caso dalla
+				// colonna singola sotto.
+				size_t colon = colSpec.find(':');
+				if (colon != std::string::npos)
+				{
+					std::string col1Name = colSpec.substr(0, colon);
+					std::string col2Name = colSpec.substr(colon + 1);
+					int idx1 = -1, idx2 = -1;
+					for (size_t ci = 0; ci < def.columnNames.size(); ci++)
+					{
+						if (col1Name == def.columnNames[ci])
+							idx1 = (int)ci;
+						if (col2Name == def.columnNames[ci])
+							idx2 = (int)ci;
+					}
+					if (idx1 >= 0 && idx2 >= 0)
+					{
+						range r = def.dataRange;
+						r.left = def.dataRange.left + std::min(idx1, idx2);
+						r.right = def.dataRange.left + std::max(idx1, idx2);
+						return r;
+					}
+				}
+				else
+				{
+					// Colonna singola (Fase 14, comportamento originale).
+					for (size_t ci = 0; ci < def.columnNames.size(); ci++)
+					{
+						if (colSpec == def.columnNames[ci])
+						{
+							range r = def.dataRange;
+							int col = r.left + (int)ci;
+							r.left = r.right = col;
+							return r;
+						}
+					}
 				}
 			}
 		}
@@ -693,7 +753,7 @@ range CContainer::ResolveName(const char *name, CContainer **outOwner)
 		{
 			CContainer *owner = fSheetResolver->FindSheetWithTable(tableName);
 			if (owner && owner != this)
-				return owner->ResolveName(name, outOwner);
+				return owner->ResolveName(name, inLocation, outOwner);
 		}
 	}
 

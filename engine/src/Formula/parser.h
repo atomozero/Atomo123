@@ -95,6 +95,13 @@ class CParser
 	int				mLookahead;
 	int 			mRelop;
 	int 			mOffset;
+	// Profondita' di annidamento delle parentesi quadre mentre si
+	// scandisce un token TBLCOL (stato 60 in lexer.cpp): un
+	// riferimento a tabella strutturata composto ("[[#This Row],[Col]]"
+	// o "[[Col1]:[Col2]]", Fase 16) ha parentesi annidate, a differenza
+	// del semplice "[Col]" gia' supportato -- vedi il commento in
+	// lexer.cpp sullo stato 60 per i dettagli.
+	int				mBracketDepth;
 	
 	bool			mIsFormula;
 	const char		*mExpr, *mExprStart, *mTokenStart;

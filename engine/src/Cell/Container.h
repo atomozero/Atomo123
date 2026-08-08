@@ -302,7 +302,15 @@ public:
 	// normale, che restano sempre locali al foglio, vedi il commento
 	// su fNames sotto). Chi chiama deve leggere le celle del range
 	// restituito da *outOwner, non da "this", se sono diversi.
-	range ResolveName(const char *name, CContainer **outOwner = NULL);
+	// inLocation (Fase 16): la cella che contiene la formula --
+	// serve SOLO per "Tabella[#Col]" (codifica di "Tabella[[#This
+	// Row],[Col]]", vedi CParser::ParseTableReference), che risolve a
+	// una singola cella sulla riga della formula stessa, non
+	// all'intera colonna della tabella. Il valore di default (cell(),
+	// riga/colonna 0) va bene per ogni altro chiamante che non passa
+	// mai un nome con quel formato (es. MainWindow::HandleGoToRequest,
+	// mai dentro una formula).
+	range ResolveName(const char *name, cell inLocation = cell(), CContainer **outOwner = NULL);
 
 	long CountCells(range *inRange = NULL);
 	bool Exists(const cell& c);

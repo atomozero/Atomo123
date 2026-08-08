@@ -134,6 +134,70 @@ int main()
 	Check(missing.fType == eNumData && missing.IsNan(),
 		"un riferimento a colonna inesistente dentro un'espressione piu' grande calcola gNameNan (NaN), formula viva, non testo morto");
 
+	// Riferimenti composti (Fase 16): "Tabella12[[#This Row],[Col]]"
+	// (riga della formula, una colonna specifica) e
+	// "Tabella12[[Col1]:[Col2]]" (intervallo multi-colonna) -- 554
+	// celle interessate in un file XLSX reale (vedi memoria
+	// project_xlsx_formula_gaps_20260808). Scritti qui con la vera
+	// sintassi di Excel (parentesi annidate), non con la codifica
+	// interna semplificata ("Tabella12[#Col]"/"Tabella12[Col1:Col2]")
+	// che CParser::ParseTableReference produce internamente -- questa
+	// e' esattamente la sintassi che compare nei file reali.
+	TryToParseString("=Tabella12[[#This Row],[Descrizione]]", cell(4, 2), &doc, true, '.', ',');
+	doc.CalcCell(cell(4, 2));
+	Value thisRow2;
+	doc.GetValue(cell(4, 2), thisRow2);
+	Check(thisRow2.fType == eTextData && strcmp((const char *)thisRow2, "Primo articolo") == 0,
+		"Tabella12[[#This Row],[Descrizione]] scritto sulla riga 2 legge \"Primo articolo\" (quella riga)");
+
+	// Stessa formula, riga 3: deve leggere QUELLA riga, non ripetere il
+	// valore della riga 2 (verifica che la riga sia davvero presa dalla
+	// posizione della formula, non da un indice fisso).
+	TryToParseString("=Tabella12[[#This Row],[Descrizione]]", cell(4, 3), &doc, true, '.', ',');
+	doc.CalcCell(cell(4, 3));
+	Value thisRow3;
+	doc.GetValue(cell(4, 3), thisRow3);
+	Check(thisRow3.fType == eTextData && strcmp((const char *)thisRow3, "Secondo articolo") == 0,
+		"la stessa formula sulla riga 3 legge \"Secondo articolo\", segue la riga della formula");
+
+	// Fuori dalle righe dati della tabella (riga 1, l'intestazione):
+	// resta non risolto (gNameNan), non legge una riga a caso.
+	TryToParseString("=Tabella12[[#This Row],[Descrizione]]&\"\"", cell(4, 1), &doc, true, '.', ',');
+	doc.CalcCell(cell(4, 1));
+	Value thisRowOutside;
+	doc.GetValue(cell(4, 1), thisRowOutside);
+	Check(thisRowOutside.fType != eTextData || strlen((const char *)thisRowOutside) == 0,
+		"Tabella12[[#This Row],[Descrizione]] scritto FUORI dalle righe dati della tabella non risolve a nulla");
+
+	// Intervallo multi-colonna: [[Descrizione]:[u.m.]] -> B2:C3 (due
+	// colonne, tutte le righe dati).
+	range descToUm = doc.ResolveName("Tabella12[Descrizione:u.m.]", cell(5, 1));
+	Check(descToUm.TopLeft() == cell(2, 2) && descToUm.BotRight() == cell(3, 3),
+		"Tabella12[Descrizione:u.m.] (codifica interna di [[Descrizione]:[u.m.]]) risolve a B2:C3");
+
+	// Stessa cosa, ma facendola davvero analizzare a CParser (sintassi
+	// Excel con parentesi annidate) invece di richiamare direttamente
+	// ResolveName con la codifica interna gia' pronta -- verifica che
+	// il lessico/l'analizzatore producano davvero "Descrizione:u.m."
+	// (non "Descrizione:u" o simili, dato che il nome contiene un
+	// punto). Nessuna funzione con nome coinvolta (SUM/COUNTA
+	// richiederebbero InitFunctions(), mai chiamata in questo file --
+	// vedi named_functions_test.cpp per la verifica di calcolo vera
+	// con funzioni con nome su questa stessa sintassi), quindi si
+	// legge il bytecode risultante con GetCellFormula invece di
+	// calcolare.
+	TryToParseString("=Tabella12[[Descrizione]:[u.m.]]", cell(8, 1), &doc, true, '.', ',');
+	char multiColFormula[256];
+	doc.GetCellFormula(cell(8, 1), multiColFormula, sizeof(multiColFormula), false);
+	Check(strcmp(multiColFormula, "Tabella12[Descrizione:u.m.]") == 0,
+		"Tabella12[[Descrizione]:[u.m.]] analizzato da CParser produce Tabella12[Descrizione:u.m.]");
+
+	// Non regressione: la colonna singola gia' esistente resta
+	// invariata dopo tutte queste aggiunte.
+	range codiceColAgain = doc.ResolveName("Tabella12[Codice]");
+	Check(codiceColAgain.TopLeft() == cell(1, 2) && codiceColAgain.BotRight() == cell(1, 3),
+		"Tabella12[Codice] (colonna singola) non e' regredito dopo aver aggiunto i riferimenti composti");
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();
