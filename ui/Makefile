@@ -789,6 +789,38 @@ test-sheet-management: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_sheet_management
 
+# Test di Trova successivo/Sostituisci/Sostituisci tutto (Fase 16):
+# nessuna copertura esisteva prima (vedi memoria
+# project_command_audit_20260808), stessa ragione di test-sheet-management
+# sopra (serve una vera MainWindow).
+test-find-replace: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_find_replace.cpp -o tests/test_find_replace.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_find_replace tests/test_find_replace.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_find_replace
+
+# Test di Inserisci Grafico come vero comando di MainWindow (Fase 16,
+# distinto da test-chart sopra, che verifica solo Chart.h/.cpp senza
+# mai passare da MainWindow::HandleChartInsert): nessuna copertura
+# esisteva prima (vedi memoria project_command_audit_20260808).
+test-insert-chart: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_insert_chart.cpp -o tests/test_insert_chart.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_insert_chart tests/test_insert_chart.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_insert_chart
+
 # Test di "Vai a" (Fase 7): sposta la selezione su una cella singola
 # o un intervallo digitato, un testo non valido non fa nulla. Stessa
 # ragione di test-paste-range (serve una vera MainWindow).
@@ -859,6 +891,8 @@ clean:
 		tests/test_paste_special tests/test_paste_special.o \
 		tests/test_goto tests/test_goto.o \
 		tests/test_sheet_management tests/test_sheet_management.o \
+		tests/test_find_replace tests/test_find_replace.o \
+		tests/test_insert_chart tests/test_insert_chart.o \
 		tests/test_comments tests/test_comments.o tests/roundtrip_comments.ascd \
 		tests/test_hyperlinks tests/test_hyperlinks.o tests/roundtrip_hyperlinks.ascd \
 		tests/test_validation tests/test_validation.o tests/roundtrip_validation.ascd \
@@ -873,4 +907,4 @@ clean:
 		examples/generate_demo examples/generate_demo.o examples/AscdIO_demo.o \
 		examples/atomo123_demo.ascd
 
-.PHONY: all run demo test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-merge-click test-multisheet test-xsheet-formulas test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-sheet-management test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean
+.PHONY: all run demo test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-merge-click test-multisheet test-xsheet-formulas test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean

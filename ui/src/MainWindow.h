@@ -97,6 +97,23 @@ public:
 	// verifica diretta senza passare da un vero ciclo di dispatch dei
 	// messaggi di menu.
 	SheetView* GetSheetView() const { return fSheetView; }
+	// Pubblico apposta per essere testabile senza passare da un vero
+	// ridisegno di SheetView (stesso principio di GetSheetView sopra):
+	// vedi tests/test_insert_chart.cpp.
+	const std::vector<ChartObject>& Charts() const { return fCharts; }
+	// Esposti pubblicamente apposta per essere testabili direttamente
+	// (stesso principio di CopySelection/HandlePasteSpecialRequest
+	// sopra): a differenza di PrintDocument (mostra un vero dialogo di
+	// stampa bloccante, resta privato), nessuno di questi mostra un
+	// dialogo bloccante sul percorso principale -- ReplaceAll ne mostra
+	// uno solo INFORMATIVO alla fine, dopo che la modifica vera e'
+	// gia' avvenuta, vedi tests/test_find_replace.cpp. HandleChartInsert
+	// (Inserisci Grafico, distinto da HandleChartRequest che e' solo
+	// l'anteprima) vedi tests/test_insert_chart.cpp.
+	void FindNext(const char* searchText);
+	void ReplaceCurrent(const char* searchText, const char* replaceText);
+	void ReplaceAll(const char* searchText, const char* replaceText);
+	void HandleChartInsert(const char* rangeText, const char* destText, ChartType type = eBarChart);
 	// Pubblico apposta per essere testabile senza passare da una vera
 	// PreferencesWindow (stesso principio di GetSheetView sopra): vedi
 	// tests/test_preferences.cpp.
@@ -445,13 +462,9 @@ private:
 	void DeleteSelection();
 	void PrintDocument();
 	void ShowFindWindow();
-	void FindNext(const char* searchText);
-	void ReplaceCurrent(const char* searchText, const char* replaceText);
-	void ReplaceAll(const char* searchText, const char* replaceText);
 	void ShowChartWindow();
 	void ShowPivotWindow();
 	void HandleChartRequest(const char* rangeText);
-	void HandleChartInsert(const char* rangeText, const char* destText, ChartType type = eBarChart);
 	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg);
 	void ShowNameWindow();
 	void RefreshNameWindow();
