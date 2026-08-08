@@ -74,7 +74,7 @@ resource 'Func' (128, "Functions")
 		"HINDEX", 2, 28, 1,
 		"HLOOKUP", 65535, 29, 1, // 65535 = quarto argomento (corrispondenza esatta) opzionale, Fase 13
 		"HOUR", 1, 30, 2,
-		"IF", 3, 31, 7,
+		"IF", 65535, 31, 7, // 65535 = terzo argomento (valore_se_falso) opzionale, come in Excel -- IFFunction (Fase 13/14, Functions.spreadsheet.cpp) gestisce gia' argCnt==2 correttamente, era gia' pronta in attesa di questo cambiamento
 		"IFERR", 65535, 32, 7, // 65535 = secondo/terzo argomento gestiti entrambi da IFERRFunction, Fase 13
 		"INT", 1, 33, 4,
 		"IRR", 2, 34, 3,

@@ -943,6 +943,35 @@ int main()
 		// alto in operator==, mai toccato da questo fix).
 		TryToParseString("5", cell(26, 4), &doc, true);
 
+		// IF(condizione;valore_se_vero) a DUE argomenti (sintassi
+		// Excel valida, il terzo argomento -- valore_se_falso -- e'
+		// opzionale e sottintende FALSO): bug reale scoperto
+		// analizzando file XLSX veri, 1.529 celle in un solo file
+		// mostravano il testo grezzo della formula invece del
+		// risultato, perche' funcs_by_nr.r fissava l'argCnt di IF
+		// esattamente a 3 (nessuna sintassi a 2 argomenti passava
+		// nemmeno l'analisi grammaticale). IFFunction (Functions.
+		// spreadsheet.cpp) gestiva gia' correttamente argCnt==2 --
+		// bastava sbloccare il parser (argCnt -1/65535, come XLOOKUP).
+		TryToParseString("=IF(1<>1;\"vero\")", cell(26, 8), &doc, true, '.', ';');
+		doc.CalcCell(cell(26, 8));
+		doc.GetValue(cell(26, 8), v);
+		Check(v.fType == eBoolData && (bool)v == false,
+			"IF(condizione falsa;valore) a due argomenti, senza terzo, calcola FALSO (come in Excel), non un errore di sintassi");
+
+		TryToParseString("=IF(1=1;\"vero\")", cell(26, 9), &doc, true, '.', ';');
+		doc.CalcCell(cell(26, 9));
+		doc.GetValue(cell(26, 9), v);
+		Check(v.fType == eTextData && strcmp((const char *)v, "vero") == 0,
+			"IF(condizione vera;valore) a due argomenti calcola ancora il valore_se_vero normalmente");
+
+		// La forma a TRE argomenti (la piu' comune) resta invariata.
+		TryToParseString("=IF(1=1;\"vero\";\"falso\")", cell(26, 12), &doc, true, '.', ';');
+		doc.CalcCell(cell(26, 12));
+		doc.GetValue(cell(26, 12), v);
+		Check(strcmp((const char *)v, "vero") == 0,
+			"IF a tre argomenti (la forma piu' comune) resta invariato dopo aver sbloccato il parser");
+
 		// Due celle vuote diverse restano uguali fra loro.
 		TryToParseString("=IF(Y1=Y6;\"uguali\";\"diverse\")", cell(26, 7), &doc, true, '.', ';');
 		doc.CalcCell(cell(26, 7));
