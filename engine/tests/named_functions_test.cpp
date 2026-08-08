@@ -930,18 +930,24 @@ int main()
 			"IF(cellaVuota=FALSO;...) prende il ramo vero, come in Excel");
 
 		// Y4 = 5 (non zero): il confronto con 0 deve restare falso.
-		// NOTA: "=IF(Y4=0;...)" (Y4 gia' impostato, non vuoto) e'
-		// deliberatamente NON testato qui -- durante la stesura di
-		// questo test e' emerso un mistero scollegato dal fix sopra
-		// (il confronto sembra non passare mai da CFormula::Calculate/
-		// opEQ per una cella-contro-letterale-zero, restituendo un
-		// booleano SBAGLIATO senza una causa ancora chiara), troppo
-		// costoso da inseguire nella stessa sessione di questo fix.
-		// Segnalato a parte (vedi memoria di progetto), non regredito
-		// da questo cambiamento: kCompareTypes/operator== restano
-		// invariati per due valori eNumData "veri" (il ramo piu' in
-		// alto in operator==, mai toccato da questo fix).
-		TryToParseString("5", cell(26, 4), &doc, true);
+		// Risolto un "mistero" di una sessione precedente qui (vedi
+		// memoria project_cellref_equals_literal_mystery): NON era un
+		// bug del motore, era il test stesso a scrivere per sbaglio in
+		// "cell(26, 4)" (colonna 26 = Z) invece di "cell(25, 4)"
+		// (colonna 25 = Y, la Y di "Y4" nel testo della formula) --
+		// "Y4" restava quindi davvero vuota, e IF(Y4=0;...) prendeva
+		// correttamente il ramo "vuota" (per lo stesso motivo dei test
+		// sopra), solo che sembrava sbagliato perche' ci si aspettava
+		// Y4=5. Isolato con cell::GetCell("Y4", ...) per conferma.
+		cell y4;
+		cell::GetCell("Y4", y4); // colonna 25, riga 4 -- MAI cell(26, 4)
+		TryToParseString("5", y4, &doc, true);
+
+		TryToParseString("=IF(Y4=0;\"vuota\";\"non vuota\")", cell(26, 4), &doc, true, '.', ';');
+		doc.CalcCell(cell(26, 4));
+		doc.GetValue(cell(26, 4), v);
+		Check(strcmp((const char *)v, "non vuota") == 0,
+			"IF(Y4=0;...) con Y4 davvero impostata a 5 (non vuota) prende il ramo falso, come atteso");
 
 		// IF(condizione;valore_se_vero) a DUE argomenti (sintassi
 		// Excel valida, il terzo argomento -- valore_se_falso -- e'
