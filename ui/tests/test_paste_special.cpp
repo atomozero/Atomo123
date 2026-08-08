@@ -107,6 +107,23 @@ int main()
 	view->Undo();
 	Check(NumAt(doc, 6, 1) == 15.0, "Annulla dopo Dividi ripristina il valore precedente (15)");
 
+	// Dividi per una sorgente 0: prima del fix scriveva silenziosamente
+	// 0 nella cella di destinazione (bug reale trovato nell'audit dei
+	// comandi, Fase 15) -- deve invece mostrare l'errore #DIV/0!, come
+	// una formula "=A1/0".
+	TryToParseString("0", cell(1, 5), doc, true); // A5, la "sorgente" da copiare
+	view->SetSelection(cell(1, 5));
+	win->CopySelection(false);
+
+	TryToParseString("42", cell(6, 5), doc, true); // F5
+	view->SetSelection(cell(6, 5));
+	win->HandlePasteSpecialRequest(0, 4 /* Dividi */, false);
+
+	Value divResult;
+	doc->GetValue(cell(6, 5), divResult);
+	Check(divResult.fType == eNumData && divResult.IsNan(),
+		"Incolla speciale > Dividi per una sorgente 0 produce l'errore #DIV/0!, non scrive 0");
+
 	// Trasponi: copiare A1:B1 (10, 30) e incollarlo trasposto su H1
 	// deve produrre una colonna (H1=10, H2=30), non una riga.
 	view->SetSelection(cell(1, 1));

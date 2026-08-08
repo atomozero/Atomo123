@@ -1804,6 +1804,7 @@ void MainWindow::HandlePasteSpecialRequest(int32 content, int32 operation, bool 
 						? (double)destVal : 0.0;
 
 					double result = srcValue;
+					bool divByZero = false;
 					switch (operation)
 					{
 						case 1: result = destValue + srcValue; break;
@@ -1812,10 +1813,16 @@ void MainWindow::HandlePasteSpecialRequest(int32 content, int32 operation, bool 
 						case 4:
 							if (srcValue != 0.0)
 								result = destValue / srcValue;
+							else
+								divByZero = true;
 							break;
 					}
 
-					fDoc->NewCell(dest, Value(result), NULL);
+					// Divisione per zero: come una formula =A1/0, la cella
+					// mostra l'errore #DIV/0! (gDivNan) invece di scrivere
+					// silenziosamente 0 -- bug reale trovato nell'audit dei
+					// comandi (Fase 15).
+					fDoc->NewCell(dest, divByZero ? Value(gDivNan) : Value(result), NULL);
 				}
 			}
 		}
