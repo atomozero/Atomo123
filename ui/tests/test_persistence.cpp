@@ -446,6 +446,54 @@ int main()
 	reloaded->Release();
 	oldStyleReloaded->Release();
 
+	// Bug reale scoperto verificando XLOOKUP su una tabella strutturata
+	// vera (colonna Codice di "opere_elettriche"): un valore TESTO come
+	// "P-EL-a" (tre nomi non definiti concatenati da un "meno") e'
+	// un'espressione sintatticamente valida quanto una vera formula.
+	// SaveASCD scriveva il testo grezzo (via GetCellFormula/FormatValue,
+	// che non antepongono mai "="), e LoadASCD lo ripassava SEMPRE per
+	// TryToParseString: "P-EL-a" veniva accettato come "P - EL - a" (tre
+	// nomi non definiti), diventando una formula viva che calcola NaN --
+	// il testo originale spariva silenziosamente. Il byte "kind" (Fase
+	// 15, versione 2 del formato) toglie l'ambiguita' scrivendo se la
+	// cella era davvero una formula prima ancora di serializzarla.
+	const char* ambigPath = "/tmp/test_persistence_ambiguous_text.ascd";
+	CContainer* ambigDoc = new CContainer(NULL, NULL);
+	// NewCell diretto, MAI TryToParseString: e' esattamente cosi' che i
+	// tre translator (XLSX/ODS/CSV) scrivono un valore TESTO importato
+	// da un formato esterno (vedi lo stesso principio in
+	// XlsxTranslator.cpp), proprio per non incappare in questa stessa
+	// ambiguita' PRIMA ancora di arrivare a SaveASCD/LoadASCD --
+	// TryToParseString qui corromperebbe gia' da sola "P-EL-a" in una
+	// formula "P - EL - a", vanificando la verifica del giro ASCD.
+	ambigDoc->NewCell(cell(1, 1), Value("P-EL-a"), NULL);
+	TryToParseString("=1+2", cell(1, 2), ambigDoc, true);
+	ambigDoc->CalcCell(cell(1, 2));
+	{
+		BFile file(ambigPath, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		status_t err = SaveASCD(ambigDoc, &file);
+		Check(err == B_OK, "SaveASCD con un valore testo ambiguo (\"P-EL-a\") riesce");
+	}
+	ambigDoc->Release();
+
+	CContainer* ambigReloaded = new CContainer(NULL, NULL);
+	{
+		BFile file(ambigPath, B_READ_ONLY);
+		status_t err = LoadASCD(&file, ambigReloaded);
+		Check(err == B_OK, "LoadASCD dallo stesso file riesce");
+	}
+	{
+		Value v;
+		ambigReloaded->GetValue(cell(1, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "P-EL-a") == 0,
+			"\"P-EL-a\" sopravvive al giro come testo letterale, non come formula che calcola NaN");
+
+		ambigReloaded->GetValue(cell(1, 2), v);
+		Check(v.fType == eNumData && !v.IsNan() && (double)v == 3.0,
+			"\"=1+2\" (una vera formula) resta comunque una formula viva e ricalcola 3 dopo il giro");
+	}
+	ambigReloaded->Release();
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

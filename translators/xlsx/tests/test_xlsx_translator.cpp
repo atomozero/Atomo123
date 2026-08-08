@@ -225,6 +225,7 @@ int main()
 			memcpy(&row, ascdData + pos, 2); pos += 2;
 			memcpy(&col, ascdData + pos, 2); pos += 2;
 			memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 			if (pos + len > ascdLen)
 				break;
 
@@ -694,6 +695,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				std::string text((const char *)ascdData + pos, len);
@@ -832,6 +834,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				pos += len;
@@ -948,6 +951,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				pos += len;
@@ -1060,6 +1064,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				pos += len;
@@ -1181,6 +1186,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				pos += len;
@@ -1301,6 +1307,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				pos += len;
@@ -1437,6 +1444,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				pos += len;
@@ -1576,6 +1584,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				pos += len;
@@ -1728,6 +1737,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				pos += len;
@@ -1980,6 +1990,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				pos += len;
@@ -2249,6 +2260,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				std::string text((const char *)ascdData + pos, len);
@@ -2328,6 +2340,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&tlen, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + tlen > len)
 					break;
 				std::string text((const char *)data + pos, tlen);
@@ -2408,6 +2421,7 @@ int main()
 				memcpy(&row, ascdData + pos, 2); pos += 2;
 				memcpy(&col, ascdData + pos, 2); pos += 2;
 				memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
 				if (pos + (size_t)len > ascdLen)
 					break;
 				std::string text((const char *)ascdData + pos, len);

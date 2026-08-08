@@ -21,7 +21,23 @@
 #include "Formatter.h"
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
-static const int32 kASCDVersion = 1;
+// Versione 2 (era 1): aggiunge un byte "kind" per cella subito dopo
+// "len" (vedi SaveASCD/LoadASCD sotto) -- un file versione 1 resta
+// leggibile esattamente come prima (ramo a parte in LoadASCD), non
+// serve alcuna migrazione. Bug reale: un valore TESTO che assomiglia
+// a un'espressione valida (es. "P-EL-a", tre nomi non definiti
+// concatenati da un "meno") veniva scritto come testo grezzo e poi
+// SEMPRE ri-analizzato da TryToParseString in lettura, che lo
+// trasformava silenziosamente in una formula viva che calcola NaN --
+// scoperto verificando XLOOKUP su una tabella strutturata reale, la
+// cui colonna Codice conteneva proprio questo genere di codici. Il
+// byte "kind" toglie l'ambiguita' alla radice: dice a LoadASCD se la
+// cella era davvero una formula (analizzarla come sempre) o un
+// valore testo letterale (scriverlo cosi' com'e', mai passarlo per
+// Parse()) -- stesso principio gia' in uso in XlsxTranslator.cpp per
+// lo stesso identico bug all'importazione diretta da un file XLSX.
+static const int32 kASCDVersion = 2;
+enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 static const char kASCDBookMagic[4] = { 'A', 'S', 'C', 'B' };
 
 bool IsASCDFile(BPositionIO* source)
@@ -96,11 +112,31 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);
 
+		// "kind" (Fase 15, versione 2 del formato -- vedi il commento
+		// su kASCDVersion sopra): GetCellFormula(cell) (l'overload che
+		// restituisce il puntatore grezzo, non il testo) e' l'unico
+		// modo affidabile di sapere se questa cella e' davvero una
+		// formula, esattamente come gia' fa MainWindow::UpdateSelection
+		// per la barra della formula -- il TESTO da solo (senza "=",
+		// perche' gWithEqualSign resta sempre a false in questo porting)
+		// non lo direbbe mai in modo certo.
+		uint8 kind;
+		if (doc->GetCellFormula(c) != NULL)
+			kind = kAscdCellFormula;
+		else
+		{
+			Value v;
+			doc->GetValue(c, v);
+			kind = (v.fType == eTextData) ? kAscdCellLiteralText : kAscdCellLiteralOther;
+		}
+
 		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
 			return B_IO_ERROR;
 		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
 			return B_IO_ERROR;
 		if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (dest->Write(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
 			return B_IO_ERROR;
 		if (len > 0 && dest->Write(text, len) != len)
 			return B_IO_ERROR;
@@ -828,7 +864,12 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	if (version != kASCDVersion)
+	// versione 1 (mai il byte "kind" per cella) e versione 2 (Fase 15,
+	// vedi il commento su kASCDVersion sopra) restano ENTRAMBE
+	// leggibili -- un file scritto da una versione precedente di
+	// questo formato non deve smettere di aprirsi solo perche' questo
+	// binario e' piu' recente.
+	if (version != 1 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -847,6 +888,10 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 			return B_BAD_DATA;
 
+		uint8 kind = kAscdCellFormula;
+		if (version >= 2 && source->Read(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
+			return B_BAD_DATA;
+
 		char text[4096];
 		if (len < 0 || len >= (int32)sizeof(text))
 			return B_BAD_DATA;
@@ -855,30 +900,50 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		text[len] = 0;
 
 		cell c(col, row);
-		try
+
+		// Un valore TESTO letterale (kind scritto da una versione 2 di
+		// SaveASCD, vedi sopra) non passa MAI per TryToParseString/
+		// Parse(): un codice come "P-EL-a" (tre nomi non definiti
+		// concatenati da un "meno") e' un'espressione sintatticamente
+		// valida quanto una vera formula, e Parse() non ha modo di
+		// distinguerli guardando solo il testo -- da qui il bisogno del
+		// byte "kind", scritto quando l'informazione (la cella era o
+		// non era una formula) era ancora disponibile. Un file versione
+		// 1 non ha questo byte (kind resta kAscdCellFormula sopra) e
+		// passa quindi per il ramo TryToParseString esattamente come
+		// sempre, stesso comportamento identico a prima di questo fix.
+		if (kind == kAscdCellLiteralText)
 		{
-			// inWarnIfError=false, non true: un valore TESTO scritto da
-			// GetCellFormula/FormatValue (sopra in WriteASCD) non porta
-			// mai apici o segni che lo marchino come "sicuramente testo"
-			// -- se assomiglia abbastanza a un numero/data da superare
-			// l'analisi grammaticale del parser ma poi fallisce a
-			// ridursi a un valore (es. "01.11.10", tre gruppi separati
-			// da punti, un codice ATECO reale), con inWarnIfError=true
-			// TryToParseString rilancia l'eccezione invece di ripiegare
-			// sul testo originale: il catch sotto la intercetta e la
-			// cella sparisce del tutto, silenziosamente, invece di
-			// mostrare "01.11.10" come testo. Bug reale scoperto aprendo
-			// una tabella di codici ATECO reale (colonna A vuota dopo
-			// l'apertura, screenshot dell'utente) -- stesso principio
-			// gia' in uso correttamente da ParseSheet nei tre translator
-			// (XLSX/ODS/CSV) per lo stesso identico motivo quando
-			// importano testo da un formato esterno.
-			TryToParseString(text, c, doc, false);
+			Value v(text);
+			doc->NewCell(c, v, NULL);
 		}
-		catch (...)
+		else
 		{
-			// Una singola cella corrotta non deve far fallire l'intero
-			// caricamento: viene semplicemente saltata.
+			try
+			{
+				// inWarnIfError=false, non true: un valore TESTO scritto da
+				// GetCellFormula/FormatValue (sopra in WriteASCD) non porta
+				// mai apici o segni che lo marchino come "sicuramente testo"
+				// -- se assomiglia abbastanza a un numero/data da superare
+				// l'analisi grammaticale del parser ma poi fallisce a
+				// ridursi a un valore (es. "01.11.10", tre gruppi separati
+				// da punti, un codice ATECO reale), con inWarnIfError=true
+				// TryToParseString rilancia l'eccezione invece di ripiegare
+				// sul testo originale: il catch sotto la intercetta e la
+				// cella sparisce del tutto, silenziosamente, invece di
+				// mostrare "01.11.10" come testo. Bug reale scoperto aprendo
+				// una tabella di codici ATECO reale (colonna A vuota dopo
+				// l'apertura, screenshot dell'utente) -- stesso principio
+				// gia' in uso correttamente da ParseSheet nei tre translator
+				// (XLSX/ODS/CSV) per lo stesso identico motivo quando
+				// importano testo da un formato esterno.
+				TryToParseString(text, c, doc, false);
+			}
+			catch (...)
+			{
+				// Una singola cella corrotta non deve far fallire l'intero
+				// caricamento: viene semplicemente saltata.
+			}
 		}
 	}
 

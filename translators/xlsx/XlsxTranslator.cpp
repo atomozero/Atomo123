@@ -53,7 +53,11 @@ static const translation_format sOutputFormats[] = {
 };
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
-static const int32 kASCDVersion = 1;
+// Versione 2 (era 1): aggiunge un byte "kind" per cella, vedi il
+// commento su kASCDVersion in ui/src/AscdIO.cpp (stesso identico
+// motivo, duplicato qui per lo stesso motivo di WriteASCD sotto).
+static const int32 kASCDVersion = 2;
+enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // Formato "cartella di lavoro" multi-foglio (Fase 9): duplicato da
 // ui/src/AscdIO.h/.cpp (magic "ASCB", conteggio fogli, poi per
 // ciascuno nome + un blocco ASCD completo), stesso motivo della
@@ -115,11 +119,32 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);
 
+		// "kind": vedi lo stesso identico commento in ui/src/AscdIO.cpp
+		// (SaveASCD) -- senza questo byte, un valore testo importato da
+		// questo stesso translator (es. "P-EL-a" nella colonna Codice di
+		// una tabella strutturata) sopravviveva all'importazione in
+		// memoria (vedi il ramo dedicato appena sopra in SheetEnd) ma
+		// tornava a corrompersi in una formula NaN non appena questo
+		// WriteASCD lo serializzava e ui/src/AscdIO.cpp::LoadASCD lo
+		// rileggeva, perche' il testo grezzo da solo non basta a
+		// distinguere "era gia' una formula" da "era solo testo".
+		uint8 kind;
+		if (doc->GetCellFormula(c) != NULL)
+			kind = kAscdCellFormula;
+		else
+		{
+			Value v;
+			doc->GetValue(c, v);
+			kind = (v.fType == eTextData) ? kAscdCellLiteralText : kAscdCellLiteralOther;
+		}
+
 		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
 			return B_IO_ERROR;
 		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
 			return B_IO_ERROR;
 		if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (dest->Write(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
 			return B_IO_ERROR;
 		if (len > 0 && dest->Write(text, len) != len)
 			return B_IO_ERROR;
@@ -751,7 +776,10 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	if (version != kASCDVersion)
+	// versione 1 e versione 2 (con il byte "kind" per cella, vedi
+	// WriteASCD sopra e il commento su kASCDVersion) restano entrambe
+	// leggibili -- stesso motivo di LoadASCD in ui/src/AscdIO.cpp.
+	if (version != 1 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -770,6 +798,10 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 			return B_BAD_DATA;
 
+		uint8 kind = kAscdCellFormula;
+		if (version >= 2 && source->Read(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
+			return B_BAD_DATA;
+
 		char text[4096];
 		if (len < 0 || len >= (int32)sizeof(text))
 			return B_BAD_DATA;
@@ -778,6 +810,17 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		text[len] = 0;
 
 		cell c(col, row);
+
+		// Stesso principio di LoadASCD in ui/src/AscdIO.cpp: un valore
+		// testo letterale (kind scritto da una versione 2 di WriteASCD)
+		// non passa MAI per TryToParseString/Parse().
+		if (kind == kAscdCellLiteralText)
+		{
+			Value v(text);
+			doc->NewCell(c, v, NULL);
+			continue;
+		}
+
 		try
 		{
 			// inWarnIfError=false, non true: stesso bug e stesso motivo
@@ -2336,7 +2379,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 					Value v(ExcelSerialToTime(serial, ctx->date1904));
 					ctx->doc->NewCell(loc, v, NULL);
 				}
-				else
+				else if (!ctx->formula.empty())
 				{
 					// decSep='.'/listSep=',' ESPLICITI, non i valori
 					// predefiniti (0 -> gDecimalPoint/gListSeparator,
@@ -2353,6 +2396,37 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 					// gListSeparator=';' e ripiegava sul testo grezzo
 					// della formula invece di calcolarla.
 					TryToParseString(text.c_str(), loc, ctx->doc, false, '.', ',');
+				}
+				else
+				{
+					// Valore diretto, MAI una formula (XLSX lo dice
+					// esplicitamente: nessun <f> su questa cella) -- non
+					// passa MAI per TryToParseString/Parse(), che tenta di
+					// interpretare come espressione QUALSIASI stringa
+					// anche senza "=" iniziale (comportamento storico di
+					// Sum-It, utile quando l'utente digita "A1+A2" a
+					// mano). Bug reale scoperto verificando XLOOKUP su una
+					// tabella strutturata vera: un codice come "P-EL-b" si
+					// tokenizza come "P meno EL meno b" (tre nomi non
+					// definiti concatenati da un meno), un'espressione
+					// sintatticamente valida -- Parse() la accettava e la
+					// trasformava in una formula viva che calcola NaN,
+					// corrompendo silenziosamente il testo della colonna
+					// Codice all'importazione (XLOOKUP non trovava piu'
+					// nessuna corrispondenza).
+					Value v;
+					if (ctx->cellType == "s" || ctx->cellType == "inlineStr" || ctx->cellType == "e")
+						v = text.c_str();
+					else
+					{
+						char* numEnd = NULL;
+						double num = strtod(text.c_str(), &numEnd);
+						if (numEnd != text.c_str() && *numEnd == 0)
+							v = num;
+						else
+							v = text.c_str();
+					}
+					ctx->doc->NewCell(loc, v, NULL);
 				}
 			}
 			catch (...)
