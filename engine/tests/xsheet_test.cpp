@@ -24,6 +24,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include <DataIO.h>
@@ -60,6 +61,14 @@ public:
 		for (size_t i = 0; i < names.size(); i++)
 			if (strcmp(names[i], name) == 0)
 				return sheets[i];
+		return NULL;
+	}
+
+	// Fase 15: nessun riferimento a tabella fra fogli in questo file
+	// (vedi table_refs_test.cpp per quelli) -- solo per soddisfare
+	// l'interfaccia, mai chiamata qui.
+	CContainer *FindSheetWithTable(const std::string &)
+	{
 		return NULL;
 	}
 };

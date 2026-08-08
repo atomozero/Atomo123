@@ -68,6 +68,16 @@ _EXPORT bool GetTimeArgument(Value *inStack, int inArgCnt,
 _EXPORT bool GetRangeArgument(Value *inStack, int inArgCnt,
 	int inArgNr, range *outRange);
 
+// Fase 15 (riferimenti a tabella strutturata fra fogli diversi): il
+// CContainer da cui leggere DAVVERO le celle del range restituito da
+// GetRangeArgument sopra per lo stesso argomento -- "inFallback" (di
+// norma "cells", il documento della formula stessa) per un range
+// locale (il caso comune), il documento del foglio che possiede la
+// tabella per un riferimento risolto altrove (vedi Value::
+// fRangeContainer/CContainer::ResolveName). Va chiamata SOLO dopo che
+// GetRangeArgument per lo stesso argomento ha gia' restituito true.
+_EXPORT CContainer* GetRangeContainer(Value *inStack, int inArgNr, CContainer *inFallback);
+
 _EXPORT void Return(Value *stack, ValueType type, void *data);
 
 _EXPORT bool CheckForNanParameters(Value *inStack, int inArgCnt);

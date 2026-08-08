@@ -73,23 +73,27 @@
 Value::Value()
 {
 	fType = eNoData;
+	fRangeContainer = NULL;
 }
 
 Value::Value(double d)
 {
 	fType = eNumData;
 	fDouble = d;
+	fRangeContainer = NULL;
 }
 
 Value::Value(time_t t)
 {
 	fType = eTimeData;
 	fTime = t;
+	fRangeContainer = NULL;
 }
 
 Value::Value(const char *inString, bool inCopy)
 {
 	fType = eTextData;
+	fRangeContainer = NULL;
 	if ((fTextIsCopy = inCopy) == true)
 	{
 		fText = STRDUP(inString);
@@ -103,6 +107,7 @@ Value::Value(bool b)
 {
 	fType = eBoolData;
 	fBool = b;
+	fRangeContainer = NULL;
 }
 
 Value::Value(CellData& cd)
@@ -338,6 +343,7 @@ void Value::operator=(const char *inString)
 	fType = eTextData;
 	fText = STRDUP(inString);
 	fTextIsCopy = true;
+	fRangeContainer = NULL;
 }
 
 void Value::operator=(const Value &inValue)
@@ -350,6 +356,13 @@ void Value::operator=(const Value &inValue)
 	}
 	else
 		fDouble = inValue.fDouble;
+	// Fase 15: va copiato esplicitamente, non fa parte dell'union sopra
+	// (fDouble/fRange condividono la stessa memoria, fRangeContainer no)
+	// -- senza questo, un range risolto su un altro foglio (vedi
+	// Formula.cpp, caso valName) perdeva quell'informazione ogni volta
+	// che veniva copiato da uno slot all'altro dello stack di calcolo
+	// (es. "stack[0] = stack[i];" in IFS/IFERROR).
+	fRangeContainer = inValue.fRangeContainer;
 }
 
 void Value::operator=(const double d)
@@ -357,6 +370,7 @@ void Value::operator=(const double d)
 	Clear();
 	fType = eNumData;
 	fDouble = d;
+	fRangeContainer = NULL;
 }
 
 void Value::operator=(const bool b)
@@ -364,6 +378,7 @@ void Value::operator=(const bool b)
 	Clear();
 	fType = eBoolData;
 	fBool = b;
+	fRangeContainer = NULL;
 }
 
 void Value::operator=(const time_t& t)
@@ -371,6 +386,7 @@ void Value::operator=(const time_t& t)
 	Clear();
 	fType = eTimeData;
 	fTime = t;
+	fRangeContainer = NULL;
 }
 
 void Value::operator=(const range& r)
@@ -378,6 +394,12 @@ void Value::operator=(const range& r)
 	Clear();
 	fType = eRangeData;
 	fRange = r;
+	// Locale di default (lo stesso CContainer che il chiamante gia' usa
+	// per leggere le celle) -- chi risolve un riferimento a tabella su
+	// un ALTRO foglio (Formula.cpp, caso valName) lo imposta esplicitamente
+	// SUBITO DOPO questa assegnazione, vedi il commento su fRangeContainer
+	// in Value.h.
+	fRangeContainer = NULL;
 }
 
 void Value::Clear()
@@ -401,4 +423,5 @@ void Value::Clear()
 	}
 	fType = eNoData;
 	fTextIsCopy = false;
+	fRangeContainer = NULL;
 }

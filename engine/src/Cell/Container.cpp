@@ -627,8 +627,11 @@ bool CContainer::RefersToNamedRange(const char *inName)
 	return false;
 } /* CContainer::RefersToNamedRange */
 
-range CContainer::ResolveName(const char *name)
+range CContainer::ResolveName(const char *name, CContainer **outOwner)
 {
+	if (outOwner)
+		*outOwner = this;
+
 	// (*fNames)[name] (std::map::operator[]) inserirebbe silenziosamente
 	// una voce vuota per un nome inesistente invece di segnalare
 	// l'errore -- find() e' l'unico modo corretto di interrogare la
@@ -651,11 +654,6 @@ range CContainer::ResolveName(const char *name)
 	// della tabella e' tutto cio' che precede "[", il nome della
 	// colonna tutto cio' che sta fra "[" e "]" (CParser::
 	// ParseTableReference li ha gia' concatenati esattamente cosi').
-	// Tabella o colonna inesistenti: stesso errKeyNotFound di un nome
-	// di intervallo non trovato sopra, che risale a gNameNan in
-	// Formula.cpp -- nessun nuovo tipo di errore, un riferimento a una
-	// tabella non ancora importata/rinominata resta comunque una
-	// formula, non degrada a testo puro.
 	const char *bracket = strchr(name, '[');
 	if (bracket)
 	{
@@ -679,8 +677,31 @@ range CContainer::ResolveName(const char *name)
 				}
 			}
 		}
+		// Tabella non registrata su QUESTO foglio (Fase 15): a
+		// differenza di un nome/intervallo normale (sempre locale al
+		// foglio, vedi fNames sopra), il nome di una tabella Excel e'
+		// unico in tutta la cartella di lavoro -- una formula puo'
+		// legittimamente referenziarla da un foglio riepilogativo
+		// diverso da quello che possiede davvero i dati (bug reale:
+		// XLOOKUP su un foglio "Indice" verso una tabella definita su
+		// un foglio dati separato restituiva sempre NaN). fSheetResolver
+		// e' NULL per un documento a un solo foglio (mai collegato a
+		// una cartella multi-foglio): in quel caso, come sempre, il
+		// riferimento semplicemente non si risolve, nessun crash.
+		if (fSheetResolver)
+		{
+			CContainer *owner = fSheetResolver->FindSheetWithTable(tableName);
+			if (owner && owner != this)
+				return owner->ResolveName(name, outOwner);
+		}
 	}
 
+	// Tabella o colonna inesistenti (su questo foglio o su ogni altro
+	// foglio collegato): stesso errKeyNotFound di un nome di intervallo
+	// non trovato sopra, che risale a gNameNan in Formula.cpp -- nessun
+	// nuovo tipo di errore, un riferimento a una tabella non ancora
+	// importata/rinominata resta comunque una formula, non degrada a
+	// testo puro.
 	THROW((errKeyNotFound));
 } /* CContainer::ResolveName */
 

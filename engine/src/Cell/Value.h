@@ -59,6 +59,7 @@
 #include <ctime>
 
 struct CellData;
+class CContainer;
 
 extern double gValueNan;
 
@@ -128,6 +129,19 @@ struct Value {
 	bool 		fTextIsCopy;
 //	ValueType 	fType			: 8;
 //	bool 		fTextIsCopy		: 8;
+
+	// Fase 15 (riferimenti a tabella strutturata fra fogli diversi):
+	// NULL nel caso comune (fRange, quando valido, va letto dal
+	// CContainer che la funzione/il calcolo gia' ha sotto mano -- lo
+	// stesso "cells"/"inContainer" di sempre). Diventa non-NULL SOLO
+	// quando CContainer::ResolveName risolve "Tabella[Colonna]" su un
+	// foglio diverso da quello della formula (vedi Formula.cpp, caso
+	// valName): dice a chi consuma il range (XLOOKUP/VLOOKUP/HLOOKUP/
+	// MATCH/INDEX/COUNTIFS, vedi FunctionUtils::GetRangeContainer) da
+	// quale documento leggere DAVVERO le celle del range, non da quello
+	// in cui la formula stessa vive. Puntatore preso in prestito, MAI
+	// posseduto da Value (stesso principio di CContainer::fSheetResolver).
+	CContainer*	fRangeContainer;
 };
 
 /*

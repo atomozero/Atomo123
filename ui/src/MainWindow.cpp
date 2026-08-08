@@ -897,6 +897,19 @@ CContainer* MainWindow::ResolveSheetByName(const char* inName)
 	return NULL;
 }
 
+// ISheetResolver (Fase 15): a differenza di ResolveSheetByName sopra
+// (cerca per nome DI FOGLIO), qui si cerca per nome DI TABELLA fra le
+// tabelle registrate su ciascun foglio (CContainer::GetTables) -- il
+// primo foglio che ce l'ha, dato che il nome di una tabella e' unico
+// in tutta la cartella di lavoro (come in Excel).
+CContainer* MainWindow::FindSheetWithTable(const std::string& tableName)
+{
+	for (size_t i = 0; i < fSheets.size(); i++)
+		if (fSheets[i].doc->GetTables().count(tableName))
+			return fSheets[i].doc;
+	return NULL;
+}
+
 void MainWindow::AttachSheetResolver()
 {
 	for (size_t i = 0; i < fSheets.size(); i++)

@@ -394,10 +394,21 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 				try
 				{
 					FailNil(inContainer);
-					stack[stackIndx] = inContainer->ResolveName(s);
+					CContainer *owner = inContainer;
+					stack[stackIndx] = inContainer->ResolveName(s, &owner);
 					range r = stack[stackIndx];
 					if (r.TopLeft() == r.BotRight())
-						inContainer->GetValue(r.TopLeft(), stack[stackIndx]);
+						owner->GetValue(r.TopLeft(), stack[stackIndx]);
+					else if (owner != inContainer)
+						// Riferimento a tabella strutturata risolto su un
+						// ALTRO foglio (Fase 15, vedi CContainer::
+						// ResolveName): un intervallo multi-cella vero
+						// (colonna di piu' righe, consumato da una
+						// funzione come XLOOKUP/VLOOKUP/MATCH/INDEX, vedi
+						// FunctionUtils::GetRangeContainer) deve restare
+						// legato al documento che possiede DAVVERO quelle
+						// celle, non a quello in cui vive questa formula.
+						stack[stackIndx].fRangeContainer = owner;
 				}
 				catch(CErr& e)
 				{

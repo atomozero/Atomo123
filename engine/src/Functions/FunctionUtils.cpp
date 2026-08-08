@@ -411,7 +411,7 @@ bool GetTimeArgument(Value *inStack, int inArgCnt,
 bool GetRangeArgument(Value *inStack, int inArgCnt,
 	int inArgNr, range *outRange)
 {
-	
+
 	if (inArgNr <= inArgCnt && inStack[inArgNr - 1].fType == eRangeData)
 	{
 		*outRange = inStack[inArgNr - 1].fRange;
@@ -419,6 +419,12 @@ bool GetRangeArgument(Value *inStack, int inArgCnt,
 	}
 	return false;
 } /* GetRangeArgument */
+
+CContainer* GetRangeContainer(Value *inStack, int inArgNr, CContainer *inFallback)
+{
+	CContainer *owner = inStack[inArgNr - 1].fRangeContainer;
+	return owner ? owner : inFallback;
+} /* GetRangeContainer */
 
 void Return(Value *stack, ValueType type, void *data)
 {

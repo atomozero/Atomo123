@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #include <Path.h>
 
@@ -822,6 +823,82 @@ int main()
 	{
 		printf("FAIL scenario reale +_xlfn.XLOOKUP su Tabella[...]: %s\n", (char *)e);
 		gFailures++;
+	}
+
+	// Fase 15 (bug reale scoperto verificando questo stesso scenario
+	// contro un file reale): a differenza del test sopra (tabella e
+	// formula sullo STESSO foglio), un file XLSX vero ha spesso un
+	// foglio "Indice"/riepilogo con XLOOKUP verso una Tabella Excel
+	// definita su un foglio DATI separato -- CContainer::ResolveName
+	// cercava la tabella solo in fTables locale, mai negli altri fogli
+	// della cartella di lavoro, quindi restituiva sempre NaN. Qui
+	// riprodotto con due CContainer distinti collegati da un
+	// ISheetResolver minimale, come farebbe MainWindow nell'app vera.
+	{
+		class TableResolver : public ISheetResolver {
+		public:
+			CContainer *dataSheet;
+			CContainer *ResolveSheetByName(const char *) { return NULL; }
+			CContainer *FindSheetWithTable(const std::string &tableName)
+			{
+				return (tableName == "opere_elettriche") ? dataSheet : NULL;
+			}
+		};
+
+		CContainer &summarySheet = *new CContainer(NULL, NULL);
+		CContainer &dataSheet = *new CContainer(NULL, NULL);
+
+		TableResolver resolver;
+		resolver.dataSheet = &dataSheet;
+		summarySheet.SetSheetResolver(&resolver);
+		dataSheet.SetSheetResolver(&resolver);
+
+		// opere_elettriche vive SOLO su dataSheet, mai su summarySheet.
+		// NewCell diretto per i codici "P-EL-a"/"P-EL-b" (MAI
+		// TryToParseString): sono tre nomi non definiti concatenati da
+		// un "meno", un'espressione sintatticamente valida quanto una
+		// vera formula (bug reale, vedi ui/src/AscdIO.cpp e
+		// XlsxTranslator.cpp per lo stesso identico motivo) -- qui
+		// servono come semplice testo letterale di prova.
+		TryToParseString("Codice", cell(1, 1), &dataSheet, true);
+		TryToParseString("Descrizione", cell(2, 1), &dataSheet, true);
+		dataSheet.NewCell(cell(1, 2), Value("P-EL-a"), NULL);
+		TryToParseString("Quadro elettrico", cell(2, 2), &dataSheet, true);
+		dataSheet.NewCell(cell(1, 3), Value("P-EL-b"), NULL);
+		TryToParseString("Interruttori sezionatori", cell(2, 3), &dataSheet, true);
+		{
+			CTableDef table;
+			table.dataRange = range(1, 2, 2, 3); // A2:B3, intestazione esclusa
+			table.columnNames.push_back("Codice");
+			table.columnNames.push_back("Descrizione");
+			dataSheet.AddTable("opere_elettriche", table);
+		}
+
+		// La chiave di ricerca (B33 nel file reale) e la formula vivono
+		// sul foglio riepilogativo, MAI su dataSheet. NewCell diretto,
+		// stesso motivo del commento sopra.
+		summarySheet.NewCell(cell(2, 33), Value("P-EL-b"), NULL);
+
+		try
+		{
+			TryToParseString("=+_xlfn.XLOOKUP(B33,opere_elettriche[Codice],opere_elettriche[Descrizione])",
+				cell(3, 33), &summarySheet, true, '.', ',');
+			summarySheet.CalcCell(cell(3, 33));
+			Value crossValue;
+			summarySheet.GetValue(cell(3, 33), crossValue);
+			Check(crossValue.fType == eTextData
+					&& strcmp((const char *)crossValue, "Interruttori sezionatori") == 0,
+				"XLOOKUP su una tabella definita su un ALTRO foglio calcola \"Interruttori sezionatori\", "
+				"non NaN (bug reale, tabella e formula su fogli diversi)");
+		}
+		catch (CErr &e)
+		{
+			printf("FAIL XLOOKUP su tabella fra fogli diversi: %s\n", (char *)e);
+			gFailures++;
+		}
+
+		summarySheet.Release();
+		dataSheet.Release();
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

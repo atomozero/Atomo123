@@ -276,6 +276,12 @@ public:
 	// per come i CContainer dei fogli ne ricevono il puntatore.
 	CContainer* ResolveSheetByName(const char* inName);
 
+	// ISheetResolver (Fase 15): trova il foglio che possiede DAVVERO
+	// una tabella strutturata Excel per nome, per una formula come
+	// XLOOKUP che la referenzia da un foglio diverso -- vedi il
+	// commento su ISheetResolver::FindSheetWithTable in Container.h.
+	CContainer* FindSheetWithTable(const std::string& tableName);
+
 	// Pubblico per lo stesso motivo di CopySelection/PasteSelection
 	// sopra -- vedi tests/test_xsheet.cpp. Ricalcola l'intera cartella
 	// di lavoro (tutti i fogli, non solo quello attivo) se ne esiste

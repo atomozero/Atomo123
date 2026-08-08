@@ -120,6 +120,19 @@ public:
 	// (case-sensitive) -- mai un errore fatale, solo un riferimento
 	// che resta non risolto (vedi CFormula::Calculate, valXRef).
 	virtual CContainer* ResolveSheetByName(const char* inName) = 0;
+
+	// Riferimenti a tabella strutturata di Excel ("Tabella12[Colonna]",
+	// Fase 14) fra fogli diversi (Fase 15): a differenza di
+	// ResolveSheetByName sopra (che cerca per NOME del foglio, la
+	// sintassi esplicita "Foglio!Cella"), un riferimento a tabella non
+	// nomina mai il foglio -- in Excel come qui il nome della tabella
+	// e' unico in tutta la cartella di lavoro, quindi la ricerca deve
+	// scorrere i fogli finche' non trova quello che l'ha registrata
+	// (CContainer::AddTable, chiamato una sola volta dal translator XLSX
+	// sul foglio che possiede davvero i dati). NULL se nessun foglio
+	// (ancora, o piu') ha una tabella con questo nome esatto -- stesso
+	// principio di ResolveSheetByName, mai un errore fatale.
+	virtual CContainer* FindSheetWithTable(const std::string& tableName) = 0;
 };
 
 // Formattazione condizionale VIVA (Fase 13): a differenza
@@ -280,7 +293,15 @@ public:
 	// esplicitamente al costruttore.
 	CNameTable *GetOrCreateNameTable();
 
-	range ResolveName(const char *name);
+	// outOwner (Fase 15, riferimenti a tabella fra fogli): se non NULL,
+	// riceve il CContainer che possiede DAVVERO il nome risolto --
+	// "this" per un nome/intervallo/tabella locale (il caso comune),
+	// un foglio diverso SOLO per una tabella trovata tramite
+	// ISheetResolver::FindSheetWithTable (mai per un nome/intervallo
+	// normale, che restano sempre locali al foglio, vedi il commento
+	// su fNames sotto). Chi chiama deve leggere le celle del range
+	// restituito da *outOwner, non da "this", se sono diversi.
+	range ResolveName(const char *name, CContainer **outOwner = NULL);
 
 	long CountCells(range *inRange = NULL);
 	bool Exists(const cell& c);

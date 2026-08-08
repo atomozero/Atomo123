@@ -328,6 +328,8 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 		GetDoubleArgument(stack, argCnt, 3, &offset) &&
 		cRange.IsValid())
 	{
+		// Fase 15: vedi lo stesso commento su VLOOKUPFunction sotto.
+		CContainer *rangeCells = GetRangeContainer(stack, 2, cells);
 		char keyS[256];
 		double key;
 		time_t keyD;
@@ -341,7 +343,7 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.h++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eNumData)
 					stop = exactMatch ? (key == val.fDouble) : (key <= val.fDouble);
 			}
@@ -360,7 +362,7 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 				// test aveva mai controllato il valore VERO restituito,
 				// solo che HLOOKUP/VLOOKUP non andassero in crash.
 				c.v += static_cast<short>(rint(offset)) - 1;
-				cells->GetValue(c, stack[0]);
+				rangeCells->GetValue(c, stack[0]);
 				handled = true;
 			}
 		}
@@ -370,7 +372,7 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.h++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eTextData)
 					stop = exactMatch ? (strcmp(keyS, val.fText) == 0) : (strcmp(keyS, val.fText) <= 0);
 			}
@@ -379,7 +381,7 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			if (stop)
 			{
 				c.v += static_cast<short>(rint(offset)) - 1; // vedi il commento sopra
-				cells->GetValue(c, stack[0]);
+				rangeCells->GetValue(c, stack[0]);
 				handled = true;
 			}
 		}
@@ -389,7 +391,7 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.h++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eTimeData)
 					stop = exactMatch ? (keyD == val.fTime) : (keyD <= val.fTime);
 			}
@@ -398,7 +400,7 @@ void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			if (stop)
 			{
 				c.v += static_cast<short>(rint(offset)) - 1; // vedi il commento sopra
-				cells->GetValue(c, stack[0]);
+				rangeCells->GetValue(c, stack[0]);
 				handled = true;
 			}
 		}
@@ -466,11 +468,18 @@ void INDEXFunction(Value *stack, int argCnt, CContainer *cells)
 		return;
 	}
 
+	// Fase 15: la tabella di partenza (arg 1) puo' vivere su un altro
+	// foglio -- il range/la cella restituiti restano sempre dentro
+	// QUELLA STESSA tabella, mai in "cells" (il documento della formula
+	// che chiama INDEX, che potrebbe essere un foglio diverso).
+	CContainer *rangeCells = GetRangeContainer(stack, 1, cells);
+
 	if (rowNum == 0)
 	{
 		// L'intera colonna colNum.
 		int col = cRange.left + colNum - 1;
 		stack[0] = range(col, cRange.top, col, cRange.bottom);
+		stack[0].fRangeContainer = rangeCells;
 		return;
 	}
 	if (colNum == 0)
@@ -478,11 +487,12 @@ void INDEXFunction(Value *stack, int argCnt, CContainer *cells)
 		// L'intera riga rowNum.
 		int row = cRange.top + rowNum - 1;
 		stack[0] = range(cRange.left, row, cRange.right, row);
+		stack[0].fRangeContainer = rangeCells;
 		return;
 	}
 
 	cell c(cRange.left + colNum - 1, cRange.top + rowNum - 1);
-	cells->GetValue(c, stack[0]);
+	rangeCells->GetValue(c, stack[0]);
 }
 
 // MATCH(valore, intervallo [, tipo]) (Fase 13): restituisce la
@@ -657,13 +667,21 @@ void XLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 		return;
 	}
 
+	// Fase 15: lookup_array e return_array possono venire da tabelle
+	// strutturate su DUE fogli diversi (o entrambe da un foglio diverso
+	// da quello di questa formula, il caso piu' comune) -- vedi
+	// GetRangeContainer/Value::fRangeContainer. "cells" resta il
+	// ripiego per un range locale, come sempre.
+	CContainer *lookupCells = GetRangeContainer(stack, 2, cells);
+	CContainer *returnCells = GetRangeContainer(stack, 3, cells);
+
 	int foundPos = -1;
 	Value val;
 	for (int i = 0; i < count; i++)
 	{
 		cell c = horizontal ? cell(lookupRange.left + i, lookupRange.top)
 			: cell(lookupRange.left, lookupRange.top + i);
-		cells->GetValue(c, val);
+		lookupCells->GetValue(c, val);
 
 		bool eq = (keyKind == kNumKey && val.fType == eNumData && key == val.fDouble)
 			|| (keyKind == kTextKey && val.fType == eTextData && strcmp(keyS, val.fText) == 0)
@@ -679,7 +697,7 @@ void XLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 	{
 		cell c = horizontal ? cell(returnRange.left + foundPos, returnRange.top)
 			: cell(returnRange.left, returnRange.top + foundPos);
-		cells->GetValue(c, stack[0]);
+		returnCells->GetValue(c, stack[0]);
 	}
 	else if (argCnt >= 4)
 		// if_not_found (quarto argomento, opzionale): qualunque valore
@@ -934,6 +952,12 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 		cRange.IsValid() &&
 		GetDoubleArgument(stack, argCnt, 3, &offset))
 	{
+		// Fase 15: la tabella puo' vivere su un altro foglio (vedi
+		// XLOOKUPFunction sopra per lo stesso principio) -- la colonna
+		// di ritorno (c.h += offset piu' sotto) resta sempre dentro
+		// QUESTA STESSA tabella, quindi un solo container basta per
+		// tutta la funzione.
+		CContainer *rangeCells = GetRangeContainer(stack, 2, cells);
 		char keyS[256];
 		double key;
 		time_t keyD;
@@ -948,7 +972,7 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.v++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eNumData)
 					stop = exactMatch ? (key == val.fDouble) : (key <= val.fDouble);
 			}
@@ -962,7 +986,7 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 				// commento su HLOOKUPFunction sopra, identico bug pre-
 				// esistente sull'asse opposto.
 				c.h += static_cast<short>(rint(offset)) - 1;
-				cells->GetValue(c, stack[0]);
+				rangeCells->GetValue(c, stack[0]);
 				handled = true;
 			}
 		}
@@ -972,7 +996,7 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.v++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eTextData)
 					stop = exactMatch ? (strcmp(keyS, val.fText) == 0) : (strcmp(keyS, val.fText) <= 0);
 			}
@@ -981,7 +1005,7 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			if (stop)
 			{
 				c.h += static_cast<short>(rint(offset)) - 1; // vedi il commento sopra
-				cells->GetValue(c, stack[0]);
+				rangeCells->GetValue(c, stack[0]);
 				handled = true;
 			}
 		}
@@ -991,7 +1015,7 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			do
 			{
 				c.v++;
-				cells->GetValue(c, val);
+				rangeCells->GetValue(c, val);
 				if (val.fType == eTimeData)
 					stop = exactMatch ? (keyD == val.fTime) : (keyD <= val.fTime);
 			}
@@ -1000,7 +1024,7 @@ void VLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 			if (stop)
 			{
 				c.h += static_cast<short>(rint(offset)) - 1; // vedi il commento sopra
-				cells->GetValue(c, stack[0]);
+				rangeCells->GetValue(c, stack[0]);
 				handled = true;
 			}
 		}

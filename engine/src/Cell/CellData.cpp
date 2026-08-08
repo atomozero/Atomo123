@@ -147,6 +147,8 @@ void Value::operator=(const CellData &cd)
 		case eNumData:	*this = cd.mDouble; break;
 		case eBoolData:	*this = cd.mBool; break;
 		case eTimeData:	*this = cd.mTime; break;
-		default: fType = eNoData;
+		default:
+			fType = eNoData;
+			fRangeContainer = NULL;
 	}
 } /* Value::operator= */
