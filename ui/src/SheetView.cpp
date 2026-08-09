@@ -2,6 +2,9 @@
 	SheetView.cpp
 
 	Vedi SheetView.h.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include "SheetView.h"
@@ -3491,6 +3494,12 @@ void SheetView::StartEditing(cell c, const char* initialText)
 	if (fEditor)
 		CommitEditing(false);
 
+	// "Modifica" nel footer (Fase 17, come Excel), spento di nuovo in
+	// CommitEditing sotto -- stesso schema di NotifySelectionChanged.
+	MainWindow* modeWin = dynamic_cast<MainWindow*>(Window());
+	if (modeWin)
+		modeWin->SetCellMode(true);
+
 	fEditingCell = c;
 
 	BRect r = CellRect(c);
@@ -3555,6 +3564,13 @@ void SheetView::CommitEditing(bool cancel)
 	BTextControl* editor = fEditor;
 	cell editedCell = fEditingCell;
 	fEditor = NULL;
+
+	// "Pronto" nel footer (Fase 17): sia che il valore venga scritto
+	// sia che l'editing venga annullato, l'editor in-cella e' comunque
+	// chiuso a questo punto -- stesso schema di StartEditing sopra.
+	MainWindow* modeWin = dynamic_cast<MainWindow*>(Window());
+	if (modeWin)
+		modeWin->SetCellMode(false);
 
 	// Convalida dati (Fase 13): controllata PRIMA di scrivere davvero
 	// il valore, non dopo -- un valore respinto lascia la cella come

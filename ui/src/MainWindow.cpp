@@ -2,6 +2,9 @@
 	MainWindow.cpp
 
 	Vedi MainWindow.h.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include "MainWindow.h"
@@ -57,6 +60,7 @@
 #include <MenuItem.h>
 #include <MessageRunner.h>
 #include <Path.h>
+#include <PopUpMenu.h>
 #include <PrintJob.h>
 #include <ScrollView.h>
 #include <SeparatorView.h>
@@ -128,6 +132,95 @@ static const uint32 kMsgClearBorders = 'cbrd';
 static const uint32 kMsgShowBorderColor = 'shbd';
 static const uint32 kMsgSetBorderThickness = 'sbth';
 static const uint32 kMsgShowBorderWindow = 'shbw';
+static const uint32 kMsgFormulaModified = 'afmd';
+static const uint32 kMsgToggleFooterStat = 'tfst';
+
+// Footer stile Excel (Fase 17): un bit per statistica (MainWindow::
+// FooterStat, nell'header -- serve anche ai test), personalizzabile col
+// tasto destro sul footer (vedi FooterStatsView sotto) -- stesso elenco
+// e stesso ordine del vero menu contestuale dello status bar di Excel.
+// "Conteggio" conta ogni cella non vuota della selezione (anche testo),
+// "Conteggio numerico" solo quelle con un valore numerico: distinzione
+// reale di Excel, non ridondante (una selezione di sole etichette
+// testuali mostra un Conteggio ma nessun Conteggio numerico).
+//
+// Default = esattamente il default reale di Excel (Media/Conteggio/
+// Somma attivi, Conteggio numerico/Minimo/Massimo disattivi finche'
+// l'utente non li accende dal menu contestuale).
+static const int kDefaultFooterStats =
+	MainWindow::kStatAverage | MainWindow::kStatCount | MainWindow::kStatSum;
+
+// Aggiunge "Etichetta: valore" al testo del footer, con "   " come
+// separatore fra una statistica e la successiva (solo se il testo non
+// e' gia' vuoto) -- stesso identico spaziamento del vecchio testo fisso
+// "Somma: %g   Media: %g   ..." che questa funzione sostituisce.
+static void AppendFooterStat(BString& text, const char* label, double value)
+{
+	char buf[128];
+	snprintf(buf, sizeof(buf), "%s%s: %g", text.IsEmpty() ? "" : "   ", label, value);
+	text << buf;
+}
+
+static void AppendFooterStatInt(BString& text, const char* label, int value)
+{
+	char buf[128];
+	snprintf(buf, sizeof(buf), "%s%s: %d", text.IsEmpty() ? "" : "   ", label, value);
+	text << buf;
+}
+
+// BStringView del footer con le statistiche di selezione: a differenza
+// di ClickableStringView (clic sinistro, apre un link) risponde al
+// tasto DESTRO con un menu contestuale per accendere/spegnere ogni
+// statistica -- esattamente il comportamento del vero status bar di
+// Excel (mai fisso, sempre personalizzabile). "fTarget" e' la
+// MainWindow proprietaria: unica fonte di verita' per la maschera
+// corrente (FooterStatsMask) e destinataria di kMsgToggleFooterStat.
+class FooterStatsView : public BStringView {
+public:
+	FooterStatsView(const char* name, MainWindow* target)
+		:
+		BStringView(name, ""),
+		fTarget(target)
+	{
+	}
+
+	virtual void MouseDown(BPoint where)
+	{
+		uint32 buttons = 0;
+		if (Window() != NULL && Window()->CurrentMessage() != NULL)
+			Window()->CurrentMessage()->FindInt32("buttons", (int32*)&buttons);
+
+		if (!(buttons & B_SECONDARY_MOUSE_BUTTON) || fTarget == NULL)
+			return;
+
+		static const struct { int bit; const char* label; } kItems[] = {
+			{ MainWindow::kStatAverage,  "Media" },
+			{ MainWindow::kStatCount,    "Conteggio" },
+			{ MainWindow::kStatNumCount, "Conteggio numerico" },
+			{ MainWindow::kStatMin,      "Minimo" },
+			{ MainWindow::kStatMax,      "Massimo" },
+			{ MainWindow::kStatSum,      "Somma" },
+		};
+
+		BPopUpMenu* menu = new BPopUpMenu("footerStatsMenu", false, false);
+		int mask = fTarget->FooterStatsMask();
+		for (size_t i = 0; i < sizeof(kItems) / sizeof(kItems[0]); i++)
+		{
+			BMessage* itemMsg = new BMessage(kMsgToggleFooterStat);
+			itemMsg->AddInt32("bit", kItems[i].bit);
+			BMenuItem* item = new BMenuItem(kItems[i].label, itemMsg);
+			item->SetMarked((mask & kItems[i].bit) != 0);
+			menu->AddItem(item);
+		}
+		menu->SetTargetForItems(fTarget);
+
+		ConvertToScreen(&where);
+		menu->Go(where, true, true, true);
+	}
+
+private:
+	MainWindow* fTarget;
+};
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
@@ -645,6 +738,11 @@ MainWindow::MainWindow()
 
 	fFormulaBar = new BTextControl("formula", NULL, "", new BMessage(kMsgFormulaCommit));
 	fFormulaBar->SetTarget(this);
+	// "Modifica" nel footer appena si digita nella barra formula (senza
+	// dover prima fare doppio clic sulla cella) -- BTextControl invia
+	// questo messaggio a ogni tasto premuto, a differenza del messaggio
+	// normale (solo su Invio/Tab), esattamente per questo scopo.
+	fFormulaBar->SetModificationMessage(new BMessage(kMsgFormulaModified));
 
 	fSheetView = new SheetView(fDoc);
 	fSheetView->SetCharts(&fCharts);
@@ -688,11 +786,20 @@ MainWindow::MainWindow()
 	// scheda, in futuro Inserisci/Elimina/Rinomina foglio).
 	fSheetTabView = new SheetTabView("sheetTabs", kMsgSwitchSheet, this);
 
-	// Footer con Somma/Media/Massimo della selezione corrente, come
-	// Excel/LibreOffice Calc: vuoto con una sola cella selezionata (o
-	// nessun valore numerico dentro), aggiornato da SelectionChanged
-	// sotto insieme a fCellLabel/fFormulaBar.
-	fSelectionStats = new BStringView("selectionStats", "");
+	// Indicatore di modalita' ("Pronto"/"Modifica") a sinistra del
+	// footer, come Excel: aggiornato da SetCellMode, chiamata da
+	// SheetView::StartEditing/CommitEditing (editing in-cella) e dal
+	// messaggio di modifica della barra formula sotto.
+	fCellMode = new BStringView("cellMode", "Pronto");
+
+	// Footer con le statistiche della selezione corrente, come Excel:
+	// vuoto con una sola cella selezionata senza valore numerico dentro
+	// (o senza contenuto per Conteggio), aggiornato da SelectionChanged
+	// sotto insieme a fCellLabel/fFormulaBar. Quali statistiche
+	// compaiono e' scelto dall'utente col tasto destro (FooterStatsView
+	// sopra), non piu' fisso: fFooterStatsMask persiste in gPrefs.
+	fFooterStatsMask = gPrefs ? gPrefs->GetPrefInt("footerStats", kDefaultFooterStats) : kDefaultFooterStats;
+	fSelectionStats = new FooterStatsView("selectionStats", this);
 	fSelectionStats->SetAlignment(B_ALIGN_RIGHT);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
@@ -718,6 +825,8 @@ MainWindow::MainWindow()
 		.Add(new BSeparatorView(B_HORIZONTAL))
 		.AddGroup(B_HORIZONTAL, 4)
 			.SetInsets(4, 2, 4, 2)
+			.Add(fCellMode)
+			.AddGlue()
 			.Add(fSelectionStats)
 		.End();
 
@@ -3249,10 +3358,35 @@ void MainWindow::CommitFormulaBar()
 	}
 	RecalculateActiveWorkbook();
 	fSheetView->Invalidate();
+	SetCellMode(false);
+}
+
+void MainWindow::SetCellMode(bool editing)
+{
+	if (fCellMode)
+		fCellMode->SetText(editing ? "Modifica" : "Pronto");
+}
+
+void MainWindow::ToggleFooterStat(int statBit)
+{
+	fFooterStatsMask ^= statBit;
+	if (gPrefs)
+	{
+		gPrefs->SetPrefInt("footerStats", fFooterStatsMask);
+		try { gPrefs->WritePrefFile(); } catch (...) { /* preferenze non salvabili: non bloccante */ }
+	}
+	SelectionChanged(fSheetView->Selection());
 }
 
 void MainWindow::SelectionChanged(cell c)
 {
+	// Spostare la selezione esce sempre da "Modifica" (come Excel: un
+	// clic su un'altra cella non lascia mai il footer bloccato su
+	// "Modifica" -- SheetView::CommitEditing/CommitFormulaBar chiamano
+	// gia' SetCellMode(false) sul percorso normale, questo e' solo la
+	// rete di sicurezza per ogni altro modo di cambiare selezione).
+	SetCellMode(false);
+
 	char name[32];
 	ColumnName(c.h, name);
 	int len = strlen(name);
@@ -3280,43 +3414,53 @@ void MainWindow::SelectionChanged(cell c)
 	}
 	fCellLabel->SetText(name);
 
-	// Somma/Media/Massimo della selezione (footer, come Excel/
-	// LibreOffice Calc): solo le celle NUMERICHE contano, esattamente
-	// come lo stesso status bar di Excel -- testo/vuoto/errore vengono
-	// ignorati, mai contati come zero (altrimenti la media sarebbe
-	// sbagliata). Vuoto (nessun testo) se la selezione non contiene
-	// nessun valore numerico, per non mostrare "Somma: 0" su una
-	// selezione di sole etichette testuali.
+	// Statistiche della selezione (footer, come Excel): Somma/Media/
+	// Minimo/Massimo/Conteggio numerico contano solo le celle
+	// NUMERICHE -- testo/vuoto/errore vengono ignorati, mai contati
+	// come zero (altrimenti la media sarebbe sbagliata). Conteggio
+	// invece conta ogni cella non vuota, testo compreso, esattamente
+	// come il vero status bar di Excel. Quali di queste compaiono e'
+	// scelto dall'utente col tasto destro (fFooterStatsMask, vedi
+	// FooterStatsView sopra), non piu' fisso.
 	if (fDoc)
 	{
-		double sum = 0.0, max = 0.0;
-		int count = 0;
+		double sum = 0.0, min = 0.0, max = 0.0;
+		int numCount = 0, count = 0;
 		for (int v = sel.top; v <= sel.bottom; v++)
 		{
 			for (int h = sel.left; h <= sel.right; h++)
 			{
 				Value val;
 				fDoc->GetValue(cell(h, v), val);
+				if (val.fType != eNoData)
+					count++;
 				if (val.fType == eNumData && !val.IsNan())
 				{
 					double d = (double)val;
-					if (count == 0 || d > max)
+					if (numCount == 0 || d < min)
+						min = d;
+					if (numCount == 0 || d > max)
 						max = d;
 					sum += d;
-					count++;
+					numCount++;
 				}
 			}
 		}
 
-		if (count > 0)
-		{
-			char stats[256];
-			snprintf(stats, sizeof(stats), "Somma: %g   Media: %g   Massimo: %g   Conteggio: %d",
-				sum, sum / count, max, count);
-			fSelectionStats->SetText(stats);
-		}
-		else
-			fSelectionStats->SetText("");
+		BString stats;
+		if ((fFooterStatsMask & kStatAverage) && numCount > 0)
+			AppendFooterStat(stats, "Media", sum / numCount);
+		if ((fFooterStatsMask & kStatCount) && count > 0)
+			AppendFooterStatInt(stats, "Conteggio", count);
+		if ((fFooterStatsMask & kStatNumCount) && numCount > 0)
+			AppendFooterStatInt(stats, "Conteggio numerico", numCount);
+		if ((fFooterStatsMask & kStatMin) && numCount > 0)
+			AppendFooterStat(stats, "Minimo", min);
+		if ((fFooterStatsMask & kStatMax) && numCount > 0)
+			AppendFooterStat(stats, "Massimo", max);
+		if ((fFooterStatsMask & kStatSum) && numCount > 0)
+			AppendFooterStat(stats, "Somma", sum);
+		fSelectionStats->SetText(stats.String());
 	}
 
 	char formula[4096];
@@ -3355,6 +3499,11 @@ const char* MainWindow::FormulaBarText() const
 const char* MainWindow::SelectionStatsText() const
 {
 	return fSelectionStats->Text();
+}
+
+const char* MainWindow::CellModeText() const
+{
+	return fCellMode->Text();
 }
 
 void MainWindow::MessageReceived(BMessage* message)
@@ -3507,6 +3656,18 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgFormulaCommit:
 			CommitFormulaBar();
 			break;
+
+		case kMsgFormulaModified:
+			SetCellMode(true);
+			break;
+
+		case kMsgToggleFooterStat:
+		{
+			int32 bit;
+			if (message->FindInt32("bit", &bit) == B_OK)
+				ToggleFooterStat(bit);
+			break;
+		}
 
 		case kMsgUndo:
 			fSheetView->Undo();

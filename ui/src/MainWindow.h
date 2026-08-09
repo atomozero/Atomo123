@@ -6,6 +6,9 @@
 	dal Translation Kit (BTranslatorRoster), che sceglie
 	automaticamente il translator installato adatto (CSV/XLS/XLSX/
 	ODS/ASCD nativo) in base al contenuto del file.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef MAIN_WINDOW_H
@@ -88,6 +91,40 @@ public:
 	void OpenFile(const entry_ref& ref);
 	void SelectionChanged(cell c);
 
+	// Footer stile Excel (Fase 17): indicatore di modalita' ("Pronto"/
+	// "Modifica") a sinistra del footer, pubblico per lo stesso motivo
+	// di SelectionChanged sopra -- chiamato sia da SheetView (editing
+	// in-cella, vedi StartEditing/CommitEditing) sia dalla barra
+	// formula di questa finestra (digitazione diretta, senza doppio
+	// clic sulla cella).
+	void SetCellMode(bool editing);
+
+	// Quali statistiche mostrare nel footer (Somma/Media/Conteggio/
+	// Conteggio numerico/Minimo/Massimo), un bit per statistica --
+	// personalizzabile con il tasto destro sul footer, esattamente
+	// come il vero status bar di Excel. Pubblico perche' letto dal
+	// menu contestuale (FooterStatsView, definita in MainWindow.cpp)
+	// per marcare le voci gia' attive.
+	int FooterStatsMask() const { return fFooterStatsMask; }
+
+	// Un bit per statistica, nell'header (non file-local in
+	// MainWindow.cpp) apposta perche' sia FooterStatsView sia i test
+	// (vedi tests/test_selection_stats.cpp) devono poterli nominare.
+	enum FooterStat {
+		kStatAverage	= 1 << 0,
+		kStatCount		= 1 << 1,
+		kStatNumCount	= 1 << 2,
+		kStatMin		= 1 << 3,
+		kStatMax		= 1 << 4,
+		kStatSum		= 1 << 5,
+	};
+	// Pubblico per lo stesso motivo di CopySelection/PasteSelection
+	// sopra -- vedi tests/test_selection_stats.cpp. Accende/spegne UNA
+	// statistica (XOR sul bit) e ridisegna subito il footer; chiamato
+	// sia dal menu contestuale (kMsgToggleFooterStat) sia direttamente
+	// dai test, senza dover passare da un vero clic destro.
+	void ToggleFooterStat(int statBit);
+
 	// Esposti pubblicamente apposta per essere testabili direttamente
 	// (stesso principio di SheetView::SortSelection ecc. -- vedi
 	// tests/test_paste_range.cpp): Taglia/Copia/Incolla e il formato
@@ -127,11 +164,15 @@ public:
 	// definizione vera di BTextControl.
 	const char* FormulaBarText() const;
 
-	// Footer Somma/Media/Massimo/Conteggio della selezione (stesso
-	// motivo/limite di FormulaBarText sopra: BStringView non e' un
-	// tipo completo qui). Vuota se la selezione non contiene nessun
-	// valore numerico.
+	// Footer con le statistiche della selezione (stesso motivo/limite di
+	// FormulaBarText sopra: BStringView non e' un tipo completo qui).
+	// Vuota se la selezione non contiene nessun valore numerico (o, per
+	// Conteggio, nessun contenuto).
 	const char* SelectionStatsText() const;
+
+	// Indicatore di modalita' ("Pronto"/"Modifica") a sinistra del
+	// footer -- stesso motivo/limite di SelectionStatsText sopra.
+	const char* CellModeText() const;
 
 	void CopySelection(bool cut);
 	void PasteSelection();
@@ -391,7 +432,9 @@ private:
 	BMenu* fRecentMenu;
 	BTextControl* fFormulaBar;
 	BStringView* fCellLabel;
+	BStringView* fCellMode;
 	BStringView* fSelectionStats;
+	int fFooterStatsMask;
 	CContainer* fDoc;
 	BFilePanel* fOpenPanel;
 	BFilePanel* fSavePanel;
