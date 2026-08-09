@@ -165,6 +165,35 @@ int main()
 	Check(cs.fFormat != eCurrency,
 		"Annulla dopo SetCellFormat(eCurrency) ripristina il formato precedente su C3");
 
+	// Riscrivere il valore di una cella gia' formattata NON deve
+	// azzerarne lo stile (bug reale segnalato dall'utente con
+	// screenshot: una cella C-SP-a.01 formattata a valuta, dopo aver
+	// digitato un nuovo numero, mostrava il valore grezzo senza piu'
+	// simbolo di valuta ne' grassetto -- CContainer::NewCell azzerava
+	// mStyle a fDefaultCellStyle invece di conservare quello della
+	// cella esistente). D4, mai toccata finora.
+	view->SetSelection(cell(4, 4));
+	view->ExtendSelection(cell(4, 4)); // D4
+	TryToParseString("1", cell(4, 4), doc, true);
+	win->ToggleBold();
+	win->SetCellFormat(eCurrency);
+	doc->GetCellStyle(cell(4, 4), cs);
+	Check(StyleHas(doc, cell(4, 4), "Bold") && cs.fFormat == eCurrency,
+		"D4 e' grassetto e in formato valuta prima di riscriverne il valore");
+
+	char digit = '2';
+	view->KeyDown(&digit, 1);
+	BMessage commitFormatMsg('cedt'); // kMsgCellEditCommit, privato in SheetView.cpp
+	view->MessageReceived(&commitFormatMsg);
+
+	Value newValue;
+	doc->GetValue(cell(4, 4), newValue);
+	doc->GetCellStyle(cell(4, 4), cs);
+	Check(newValue.fType == eNumData && (double)newValue == 2,
+		"digitare \"2\" su D4 (sovrascrivendo l'1 precedente) scrive davvero il nuovo valore");
+	Check(StyleHas(doc, cell(4, 4), "Bold") && cs.fFormat == eCurrency,
+		"D4 resta grassetto e in formato valuta dopo aver riscritto il suo valore, non torna al formato predefinito");
+
 	win->Unlock();
 
 	win->Lock();

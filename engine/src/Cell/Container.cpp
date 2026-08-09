@@ -184,10 +184,21 @@ void CContainer::NewCell(const cell& inLocation, const Value& inValue, void *inF
 {	CHECKLOCK
 	CellData data;
 
+	// Se la cella esiste gia' (nuovo valore scritto su una cella che ha
+	// gia' un formato -- es. digitare su una cella valuta/grassetto/
+	// colorata), conserva il suo mStyle invece di azzerarlo a
+	// fDefaultCellStyle: bug reale segnalato dall'utente con
+	// screenshot, ogni riscrittura del valore perdeva completamente la
+	// formattazione della cella. Una cella davvero nuova (nessuna voce
+	// preesistente) resta col comportamento di sempre.
+	cellmap::iterator existing = fCellData.find(inLocation);
+	int preservedStyle = (existing != fCellData.end())
+		? (*existing).second.mStyle : fDefaultCellStyle;
+
 	data = inValue;
 	data.mFormula = inFormula;
 	data.mConstant = !inFormula || CFormula(inFormula).IsConstant();
-	data.mStyle = fDefaultCellStyle;
+	data.mStyle = preservedStyle;
 
 	fCellData[inLocation] = data;
 } /* NewCell */
