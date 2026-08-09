@@ -5598,6 +5598,31 @@ confermato NON essere una regressione introdotta in questa sessione
 (stesso blocco anche su un checkout pulito, prima di ogni modifica).
 Da verificare dal vivo su un sistema Haiku reale.
 
+## Localizzazione dell'interfaccia (non ancora iniziata)
+
+**Stato attuale: una sola lingua, l'italiano, scritta a mano.** Tutte
+le stringhe dell'interfaccia (menu, finestre, messaggi, la guida
+stessa) sono testo italiano cablato direttamente nel codice sorgente
+— nessun inglese, nessuna lingua di ripiego. Verificato su
+`MainWindow.cpp` (l'intera barra dei menu: "Nuovo", "Apri…", "Salva
+con nome…", "Annulla", "Taglia", "Trova e sostituisci…", ecc.),
+`AboutWindow.cpp`, `PreferencesWindow.cpp`.
+
+**Nessuna infrastruttura di localizzazione presente**: niente
+`Catalog.h`/`BCatalog`/`B_TRANSLATE(...)` del Locale Kit di Haiku,
+nessun file `.catkeys`, nessuna cartella `locales/`. Il progetto usa
+gia' il Locale Kit ma solo per la formattazione (separatore
+decimale/delle migliaia, simbolo di valuta — vedi Preferenze →
+Locale), non per tradurre l'interfaccia stessa.
+
+**Cosa servirebbe per aggiungere altre lingue**: avvolgere ogni
+stringa visibile in `B_TRANSLATE()`, includere `Catalog.h`, generare i
+`.catkeys` con gli strumenti `collectcatkeys`/`linkcatkeys` di Haiku e
+integrarli nel build (`ui/Makefile`), poi tradurre almeno l'inglese
+(lingua di riferimento per HaikuPorts) oltre all'italiano gia'
+esistente. Lavoro non ancora iniziato, non stimato: coinvolge
+praticamente ogni file `ui/src/*Window.cpp`.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
