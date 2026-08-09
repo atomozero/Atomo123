@@ -123,6 +123,42 @@ int main()
 	Check(afterCancel.h == 1 && afterCancel.v == 3,
 		"annullare con Escape non fa avanzare la selezione (resta su A3)");
 
+	// Tab durante l'editing in-cella (bug segnalato dall'utente: Tab
+	// non confermava affatto il valore, la BTextView interna lo
+	// trattava come normale spostamento del fuoco tastiera -- vedi
+	// CellEditKeyFilter): come Invio scrive il valore, ma sposta la
+	// selezione a destra invece che in basso.
+	static const uint32 kMsgCellEditCommitTabRight = 'cetr';
+	static const uint32 kMsgCellEditCommitTabLeft = 'cetl';
+	view->SetSelection(cell(1, 5));	// A5
+	char digitTab = '8';
+	view->KeyDown(&digitTab, 1);
+	BMessage tabRight(kMsgCellEditCommitTabRight);
+	view->MessageReceived(&tabRight);
+
+	doc->GetValue(cell(1, 5), v);
+	Check(v.fType == eNumData && (double)v == 8.0,
+		"Tab durante l'editing scrive il valore nella cella, non solo Invio");
+
+	cell afterTab = view->Selection();
+	Check(afterTab.h == 2 && afterTab.v == 5,
+		"confermando con Tab la selezione avanza a destra (A5 -> B5), non in basso");
+
+	// Maiusc+Tab sposta a sinistra invece che a destra, stessa
+	// direzione gia' usata da Tab fuori dall'editing in-cella.
+	char digitShiftTab = '3';
+	view->KeyDown(&digitShiftTab, 1);
+	BMessage tabLeft(kMsgCellEditCommitTabLeft);
+	view->MessageReceived(&tabLeft);
+
+	doc->GetValue(cell(2, 5), v);
+	Check(v.fType == eNumData && (double)v == 3.0,
+		"Maiusc+Tab durante l'editing scrive comunque il valore (in B5, dove si era avanzati con Tab)");
+
+	cell afterShiftTab = view->Selection();
+	Check(afterShiftTab.h == 1 && afterShiftTab.v == 5,
+		"confermando con Maiusc+Tab la selezione torna a sinistra (B5 -> A5)");
+
 	// Propagazione a celle dipendenti: CContainer non tiene un grafo
 	// delle dipendenze, quindi modificare una cella referenziata da
 	// una formula altrove (qui B1="=A1+5") deve ricalcolare anche

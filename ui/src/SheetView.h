@@ -725,7 +725,12 @@ private:
 	static BRect FullCanvasFrame();
 
 	void StartEditing(cell c, const char* initialText = NULL);
-	void CommitEditing(bool cancel);
+	// moveH/moveV: dove va la selezione dopo un commit riuscito (non
+	// cancel) -- il default (giu' di una riga) e' quello di sempre
+	// (Invio), Tab/Maiusc+Tab durante l'editing in-cella passano invece
+	// (+1, 0)/(-1, 0), stesso spostamento gia' usato da HandleKey
+	// quando Tab e' premuto FUORI dall'editing.
+	void CommitEditing(bool cancel, int moveH = 0, int moveV = 1);
 };
 
 #endif

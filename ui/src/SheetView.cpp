@@ -51,6 +51,13 @@
 
 static const uint32 kMsgCellEditCommit = 'cedt';
 static const uint32 kMsgCellEditCancel = 'cedc';
+// Tab/Maiusc+Tab durante l'editing in-cella (vedi CellEditKeyFilter):
+// come Invio, confermano il valore, ma spostano la selezione a
+// destra/sinistra invece che in basso -- stesso comportamento di
+// Excel/LibreOffice Calc, e stessa direzione gia' usata da HandleKey
+// per Tab/Maiusc+Tab quando non si sta editando.
+static const uint32 kMsgCellEditCommitTabRight = 'cetr';
+static const uint32 kMsgCellEditCommitTabLeft = 'cetl';
 
 // Definita piu' sotto (vicino a IsDefaultBg), usata sia da
 // RecalculateWrappedRowHeights che da Draw() -- dichiarata qui perche'
@@ -93,6 +100,20 @@ public:
 		if (rawChar == B_RETURN)
 		{
 			BMessenger(fTarget).SendMessage(kMsgCellEditCommit);
+			return B_SKIP_MESSAGE;
+		}
+		if (rawChar == B_TAB)
+		{
+			// Segnalato dall'utente: Tab durante l'editing in-cella non
+			// confermava affatto il valore (la BTextView interna lo
+			// trattava come normale spostamento del fuoco tastiera, non
+			// come conferma) -- stessa intercettazione esplicita gia'
+			// usata sopra per Invio/Escape, per lo stesso motivo (vedi
+			// il commento in cima al file).
+			int32 modifiers = 0;
+			message->FindInt32("modifiers", &modifiers);
+			BMessenger(fTarget).SendMessage((modifiers & B_SHIFT_KEY)
+				? kMsgCellEditCommitTabLeft : kMsgCellEditCommitTabRight);
 			return B_SKIP_MESSAGE;
 		}
 		return B_DISPATCH_MESSAGE;
@@ -3484,6 +3505,12 @@ void SheetView::MessageReceived(BMessage* message)
 		case kMsgCellEditCancel:
 			CommitEditing(true);
 			break;
+		case kMsgCellEditCommitTabRight:
+			CommitEditing(false, 1, 0);
+			break;
+		case kMsgCellEditCommitTabLeft:
+			CommitEditing(false, -1, 0);
+			break;
 		default:
 			BView::MessageReceived(message);
 			break;
@@ -3560,7 +3587,7 @@ void SheetView::StartEditing(cell c, const char* initialText)
 	}
 }
 
-void SheetView::CommitEditing(bool cancel)
+void SheetView::CommitEditing(bool cancel, int moveH, int moveV)
 {
 	if (!fEditor)
 		return;
@@ -3617,16 +3644,18 @@ void SheetView::CommitEditing(bool cancel)
 
 	if (!cancel)
 	{
-		// Come Excel/LibreOffice Calc: confermando con Invio la
-		// selezione avanza alla cella sotto, invece di restare ferma
-		// -- altrimenti, dopo aver scritto un valore, sembra che non
-		// sia successo nulla (segnalato dall'utente) anche se il
-		// valore e' stato scritto correttamente. fSelection e'
-		// ancora editedCell a questo punto (mai cambiata durante
-		// l'editing), quindi SetSelection si occupa gia' da sola di
-		// invalidare/notificare/scorrere se la riga sotto e' fuori
-		// dall'area visibile -- non serve piu' farlo qui a mano.
-		cell next(editedCell.h, editedCell.v + 1);
+		// Come Excel/LibreOffice Calc: confermando la selezione avanza
+		// (in basso per Invio, a destra/sinistra per Tab/Maiusc+Tab --
+		// vedi moveH/moveV, passati dai chiamanti in MessageReceived),
+		// invece di restare ferma -- altrimenti, dopo aver scritto un
+		// valore, sembra che non sia successo nulla (segnalato
+		// dall'utente) anche se il valore e' stato scritto
+		// correttamente. fSelection e' ancora editedCell a questo
+		// punto (mai cambiata durante l'editing), quindi SetSelection
+		// si occupa gia' da sola di invalidare/notificare/scorrere se
+		// la cella di destinazione e' fuori dall'area visibile -- non
+		// serve piu' farlo qui a mano.
+		cell next(editedCell.h + moveH, editedCell.v + moveV);
 		SetSelection(next);
 	}
 	else
