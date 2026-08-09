@@ -9,6 +9,9 @@
 	proprio thread), con l'aggiunta dell'indice del foglio da
 	rinominare (SetSheet, chiamato da MainWindow subito prima di
 	Show()/Activate() -- stesso principio di ColorWindow::SetMode).
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef RENAME_SHEET_WINDOW_H

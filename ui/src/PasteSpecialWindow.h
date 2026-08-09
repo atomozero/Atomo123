@@ -10,6 +10,9 @@
 	colonne. Stessa regola sui thread di FindWindow/PivotWindow: non
 	tocca mai il documento direttamente, inoltra solo una richiesta a
 	MainWindow via BMessage.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef PASTE_SPECIAL_WINDOW_H

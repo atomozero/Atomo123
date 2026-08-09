@@ -6,6 +6,9 @@
 // titolo/sottotitolo come quad texturizzati sopra la scena 3D usando
 // queste texture -- non c'e' disegno di testo via BView possibile una
 // volta che BGLView possiede l'intera finestra.
+//
+// Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+// radice del repository).
 
 #ifndef TEXT_TEXTURE_H
 #define TEXT_TEXTURE_H

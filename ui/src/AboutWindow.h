@@ -8,6 +8,9 @@
 	Informazioni di Brube2000, altro progetto nativo Haiku dello stesso
 	autore, riproposto qui su richiesta esplicita per coerenza visiva
 	fra le due app.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef ABOUT_WINDOW_H

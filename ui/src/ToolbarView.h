@@ -16,6 +16,9 @@
 	della finestra si sposta di conseguenza -- non serve piu' un
 	pulsante ">>" di troppopieno, ogni pulsante resta sempre visibile da
 	qualche parte nella toolbar.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef TOOLBAR_VIEW_H

@@ -12,6 +12,9 @@
 	gia' definito dal translator CSV (translators/csv/CsvTranslator.h),
 	cosi' i due translator sono componibili: import XLS -> ASCD ->
 	(in futuro) qualunque altro formato che sappia leggere ASCD.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef XLS_TRANSLATOR_H

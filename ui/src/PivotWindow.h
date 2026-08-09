@@ -9,6 +9,9 @@
 	aggiorna la griglia -- questa finestra non tocca mai il documento
 	direttamente e non riceve dati indietro (il risultato va nel
 	foglio, non in una vista propria di questa finestra).
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef PIVOT_WINDOW_H

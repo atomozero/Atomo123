@@ -14,6 +14,9 @@
 		     il translator lo ignora e lascia che il nostro motore
 		     ricalcoli la formula in modo indipendente)
 		D1 = stringa condivisa "Ciao XLSX"
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include <cmath>

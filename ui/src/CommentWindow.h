@@ -9,6 +9,9 @@
 	commento". Stessa regola sui thread di GoToWindow: non tocca mai
 	CContainer::SetComment direttamente, inoltra solo un BMessage a
 	MainWindow, che possiede fDoc e lo puo' toccare sul proprio thread.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef COMMENT_WINDOW_H

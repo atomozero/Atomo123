@@ -10,6 +10,9 @@
 	per singola regola gia' esistente: "Rimuovi tutte le regole"
 	toglie l'intero elenco in un colpo solo, stessa semplicita' di
 	scope gia' scelta per il resto di questo punto.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef CONDITIONAL_FORMAT_WINDOW_H

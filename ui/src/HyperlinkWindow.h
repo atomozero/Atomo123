@@ -6,6 +6,9 @@
 	BTextControl a una riga per l'URL invece di un BTextView
 	multiriga, piu' un pulsante "Apri" per lanciare subito il
 	collegamento corrente senza dover prima chiudere la finestra.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef HYPERLINK_WINDOW_H

@@ -2,6 +2,9 @@
 	RangeRef.cpp
 
 	Vedi RangeRef.h.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include "RangeRef.h"

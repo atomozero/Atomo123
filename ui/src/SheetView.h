@@ -8,6 +8,9 @@
 	visibile) oppure in-cella (doppio click su una cella, o si inizia
 	a digitare mentre e' selezionata), tramite un BTextControl
 	temporaneo posizionato sopra la cella.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef SHEET_VIEW_H

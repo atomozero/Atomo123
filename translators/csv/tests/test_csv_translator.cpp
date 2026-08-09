@@ -5,6 +5,9 @@
 	lo traduce in formato nativo ASCD tramite Translate(), poi
 	ritraduce l'ASCD in CSV e verifica che i valori sopravvivano al
 	giro completo (round-trip CSV -> ASCD -> CSV).
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include <cstdio>

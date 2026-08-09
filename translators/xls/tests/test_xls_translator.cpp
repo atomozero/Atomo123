@@ -18,6 +18,9 @@
 	corretti, piu' la mancanza di SST/LABELSST (BIFF8/Excel97+, testata
 	qui) che perdeva silenziosamente quasi tutto il testo nei file .xls
 	moderni. Dettaglio completo in docs/TRANSLATORS.md e ROADMAP.md.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include <cstdio>

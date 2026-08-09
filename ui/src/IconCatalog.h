@@ -9,6 +9,9 @@
 	IconData.cpp (generati dai file .hvif del catalogo, incorporati
 	come array C invece che come file separati da distribuire a parte,
 	stesso principio gia' scelto per l'icona dell'applicazione).
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef ICON_CATALOG_H

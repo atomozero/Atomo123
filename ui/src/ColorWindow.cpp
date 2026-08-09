@@ -2,6 +2,9 @@
 	ColorWindow.cpp
 
 	Vedi ColorWindow.h.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include "ColorWindow.h"

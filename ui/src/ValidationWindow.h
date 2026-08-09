@@ -7,6 +7,9 @@
 	CommentWindow/HyperlinkWindow (un vero BWindow, non tocca mai
 	CContainer direttamente, inoltra solo una richiesta a MainWindow
 	via BMessage).
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef VALIDATION_WINDOW_H

@@ -4,6 +4,9 @@
 // AtomGLView), mostrata per pochi secondi da App::ReadyToRun prima
 // della MainWindow. Si chiude da sola (vedi AtomGLView::_Tick) --
 // nessuno la deve chiudere dall'esterno.
+//
+// Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+// radice del repository).
 
 #ifndef SPLASH_WINDOW_H
 #define SPLASH_WINDOW_H

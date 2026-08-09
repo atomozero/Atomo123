@@ -13,6 +13,9 @@
 	Non si chiude mai davvero alla pressione del pulsante di chiusura:
 	resta nascosta e riusabile, per evitare che MainWindow debba
 	gestire un puntatore che potrebbe diventare invalido.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef FIND_WINDOW_H

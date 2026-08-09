@@ -16,6 +16,9 @@
 		D1 = stringa "Ciao ODS"
 		E1..N1 = celle vuote compresse con table:number-columns-repeated
 		     (non devono generare celle nell'ASCD)
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include <cstdio>

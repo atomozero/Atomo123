@@ -10,6 +10,9 @@
 	Solo import per ora: il motore non include ancora un writer per
 	ODS. Il formato di uscita e' lo stesso ASCD gia' definito dal
 	translator CSV.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef ODS_TRANSLATOR_H

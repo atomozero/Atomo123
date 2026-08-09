@@ -9,6 +9,9 @@
 
 	Logica separata dalla finestra (PivotWindow) per essere testabile
 	senza sessione grafica, stesso principio di Chart.h.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef PIVOT_H

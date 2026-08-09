@@ -8,6 +8,9 @@
 	identiche. Stessa regola sui thread di FindWindow: non tocca mai
 	CellStyle direttamente, inoltra solo una richiesta a MainWindow via
 	BMessage.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef COLOR_WINDOW_H

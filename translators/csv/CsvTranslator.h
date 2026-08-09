@@ -11,6 +11,9 @@
 	Fase 4 (UI) definirà come l'app salva i propri file — per ora
 	serve a dimostrare in modo concreto e testabile che il translator
 	funziona end-to-end tramite il framework BTranslator di Haiku.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef CSV_TRANSLATOR_H

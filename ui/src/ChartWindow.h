@@ -11,6 +11,9 @@
 	richieste a MainWindow via BMessage e riceve indietro solo dati
 	gia' estratti (mai un puntatore al documento), sempre via
 	BMessage.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef CHART_WINDOW_H

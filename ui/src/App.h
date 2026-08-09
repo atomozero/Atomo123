@@ -7,6 +7,9 @@
 	MainWindow possono coesistere -- l'elenco autorevole e' quello che
 	BApplication tiene gia' da solo (CountWindows()/WindowAt()), niente
 	puntatore singolo ne' lista duplicata qui.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef APP_H

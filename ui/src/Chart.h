@@ -6,6 +6,9 @@
 	una sessione grafica -- stesso principio gia' seguito per
 	SheetView::ScrollToShowSelection (vedi ui/tests/test_scroll.cpp)
 	e per le funzioni con nome (engine/tests/named_functions_test.cpp).
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef CHART_H

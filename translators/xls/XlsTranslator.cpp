@@ -2,6 +2,9 @@
 	XlsTranslator.cpp
 
 	Vedi XlsTranslator.h per la descrizione generale.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include "XlsTranslator.h"

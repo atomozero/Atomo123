@@ -8,6 +8,9 @@
 	tocca mai la selezione del foglio direttamente, inoltra solo un
 	BMessage a MainWindow, che possiede la SheetView attiva e la puo'
 	toccare sul proprio thread.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef GO_TO_WINDOW_H

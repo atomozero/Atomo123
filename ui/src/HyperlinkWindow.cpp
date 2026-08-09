@@ -2,6 +2,9 @@
 	HyperlinkWindow.cpp
 
 	Vedi HyperlinkWindow.h.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include "HyperlinkWindow.h"

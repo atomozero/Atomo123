@@ -9,6 +9,9 @@
 	lettura/scrittura -- stesso approccio gia' seguito da ogni
 	translator, che duplica WriteASCD() per non introdurre una
 	dipendenza di link tra translator e app.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef ASCD_IO_H

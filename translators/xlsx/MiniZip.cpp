@@ -4,6 +4,9 @@
 	Vedi MiniZip.h per la descrizione. Implementazione minimale del
 	formato ZIP: End Of Central Directory -> Central Directory ->
 	Local File Header -> dati (eventualmente compressi in deflate).
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include "MiniZip.h"

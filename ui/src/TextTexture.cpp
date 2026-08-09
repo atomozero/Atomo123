@@ -1,3 +1,8 @@
+// TextTexture.cpp
+//
+// Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+// radice del repository).
+
 #include "TextTexture.h"
 
 #include <Bitmap.h>

@@ -17,6 +17,9 @@
 	di tre. Stessa regola sui thread di FindWindow: non tocca mai le
 	preferenze applicate direttamente, inoltra solo una richiesta a
 	MainWindow via BMessage.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef PREFERENCES_WINDOW_H

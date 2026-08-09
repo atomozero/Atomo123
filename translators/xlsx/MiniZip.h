@@ -14,6 +14,9 @@
 	cifrate, metodo di compressione "stored" (0) o "deflate" (8),
 	nessun supporto ZIP64 (file oltre 4 GiB — non rilevante per fogli
 	di calcolo).
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef MINIZIP_H

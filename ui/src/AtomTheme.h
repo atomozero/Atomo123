@@ -3,6 +3,9 @@
 // Color palette for the splash screen. Variant "Blu Profondo", scelta
 // dopo averla confrontata dal vivo con altre due varianti (Studio
 // Chiaro, Notte Ambra) poi scartate.
+//
+// Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+// radice del repository).
 
 #ifndef ATOM_THEME_H
 #define ATOM_THEME_H

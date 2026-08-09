@@ -9,6 +9,9 @@
 	MainWindow), inoltra solo richieste via BMessage. MainWindow
 	richiama SetNames() prima di Show() e dopo ogni Aggiungi/
 	Aggiorna/Elimina per tenere l'elenco allineato a CNameTable.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef NAME_WINDOW_H

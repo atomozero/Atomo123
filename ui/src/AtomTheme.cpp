@@ -1,3 +1,8 @@
+// AtomTheme.cpp
+//
+// Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+// radice del repository).
+
 #include "AtomTheme.h"
 
 // Colori del brand presi da ui/icons/atomo123.svg: blu #2f6fed e

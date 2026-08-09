@@ -8,6 +8,9 @@
 	Incorporati come array C invece che come file .hvif separati da
 	distribuire a parte, stesso principio gia' scelto per l'icona
 	dell'applicazione (vedi Atomo123.rdef).
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #include "IconCatalog.h"

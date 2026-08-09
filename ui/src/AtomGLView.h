@@ -6,6 +6,9 @@
 // la scritta "Atomo123" e il credito StudioBernardi.eu che appaiono in
 // dissolvenza sopra. I colori vengono dall'unica tavolozza in
 // AtomTheme.h (kTheme).
+//
+// Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+// radice del repository).
 
 #ifndef ATOM_GL_VIEW_H
 #define ATOM_GL_VIEW_H

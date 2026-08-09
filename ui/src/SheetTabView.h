@@ -8,6 +8,9 @@
 	frecce quando non entrano tutte nella larghezza della finestra,
 	invece di crescere all'infinito o tagliare silenziosamente le
 	schede in eccesso.
+
+	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
+	radice del repository).
 */
 
 #ifndef SHEET_TAB_VIEW_H
