@@ -32,6 +32,7 @@ const uint32 kMsgPreferencesRequest = 'pref';
 
 class BCheckBox;
 class BMenuField;
+class BTextControl;
 
 class PreferencesWindow : public BWindow {
 public:
@@ -42,7 +43,7 @@ public:
 	// seconda apertura, mostrerebbe ancora i valori scelti la prima
 	// volta invece di quelli davvero in vigore.
 	void SetValues(bool showGrid, char decimalSep, char listSep, int maxRecentFiles,
-		bool showSplash);
+		bool showSplash, char thousandSep, const char* currencySymbol);
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
@@ -53,6 +54,8 @@ private:
 	BMenuField* fListField;
 	BMenuField* fRecentField;
 	BCheckBox* fShowSplashBox;
+	BMenuField* fThousandField;
+	BTextControl* fCurrencyField;
 	BMessenger fTarget;
 };
 

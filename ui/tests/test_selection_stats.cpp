@@ -139,17 +139,21 @@ int main()
 	Check(strcmp(win->CellModeText(), "Modifica") == 0,
 		"digitare su una cella (SheetView::StartEditing) porta il footer in modalita' \"Modifica\"");
 
+	// Da qui in poi il documento e' davvero modificato (MainWindow::
+	// MarkModified, chiamata da CommitEditing tramite NotifyDocument
+	// Changed/DocumentChanged): il footer lo segnala con lo stesso "* "
+	// del titolo della finestra (vedi RefreshCellModeText).
 	BMessage commitMsg(kMsgCellEditCommit);
 	view->MessageReceived(&commitMsg);
-	Check(strcmp(win->CellModeText(), "Pronto") == 0,
-		"confermando l'editing (Invio) il footer torna a \"Pronto\"");
+	Check(strcmp(win->CellModeText(), "* Pronto") == 0,
+		"confermando l'editing (Invio) il footer torna a \"Pronto\", con \"* \" perche' il documento e' ora modificato");
 
 	char digit2 = '1';
 	view->KeyDown(&digit2, 1);
 	BMessage cancelMsg(kMsgCellEditCancel);
 	view->MessageReceived(&cancelMsg);
-	Check(strcmp(win->CellModeText(), "Pronto") == 0,
-		"annullando l'editing (Escape) il footer torna comunque a \"Pronto\"");
+	Check(strcmp(win->CellModeText(), "* Pronto") == 0,
+		"annullando l'editing (Escape) il footer torna comunque a \"* Pronto\" (il documento resta modificato da prima)");
 
 	win->Unlock();
 

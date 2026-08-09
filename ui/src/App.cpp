@@ -18,6 +18,7 @@
 #include <Roster.h>
 
 #include <cstdio>
+#include <cstring>
 #include <unistd.h>
 
 #include "FunctionUtils.h"
@@ -74,6 +75,20 @@ App::App()
 
 	gDecimalPoint = gPrefs->GetPrefString("decimalSeparator", ".")[0];
 	gListSeparator = gPrefs->GetPrefString("listSeparator", ";")[0];
+
+	// gThousandSeparator/gCurrencySymbol (Globals.h/Formatter.cpp): come
+	// sopra, mai lette da gPrefs prima d'ora -- restavano ai valori
+	// scritti a mano in EngineGlobals.cpp/Formatter.cpp (bug scoperto
+	// implementando la preferenza "Simbolo valuta"). Usate da
+	// CContainer::GetCellResult (export CSV, elenco valori univoci del
+	// filtro automatico), non dalla griglia a schermo (quella segue il
+	// Locale Kit di Haiku via SheetView::fNumberFormat, indipendente da
+	// questa preferenza per design -- coerente con le altre app native).
+	gThousandSeparator = gPrefs->GetPrefString("thousandSeparator", ",")[0];
+	// 32: stessa dimensione di gCurrencySymbol[32] in Formatter.cpp --
+	// Globals.h dichiara l'array senza dimensione ("extern char
+	// gCurrencySymbol[];"), quindi sizeof() non e' utilizzabile qui.
+	strlcpy(gCurrencySymbol, gPrefs->GetPrefString("currencySymbol", gCurrencySymbol), 32);
 }
 
 App::~App()

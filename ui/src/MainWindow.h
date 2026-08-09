@@ -244,7 +244,7 @@ public:
 	// quindi valgono per l'intera applicazione, non solo per il
 	// documento corrente -- stesso comportamento di Sum-It storico.
 	void HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep, int maxRecentFiles,
-		bool showSplash);
+		bool showSplash, char thousandSep, const char* currencySymbol);
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che
@@ -433,6 +433,7 @@ private:
 	BTextControl* fFormulaBar;
 	BStringView* fCellLabel;
 	BStringView* fCellMode;
+	bool fEditingCell;
 	BStringView* fSelectionStats;
 	int fFooterStatsMask;
 	CContainer* fDoc;
@@ -498,6 +499,12 @@ private:
 
 	void UpdateTitle();
 	void MarkModified();
+	// Aggiorna il testo di fCellMode combinando modalita' (Pronto/
+	// Modifica) e fModified (prefisso "* ", stesso segno gia' usato dal
+	// titolo -- vedi UpdateTitle): chiamata da entrambi, cosi' il
+	// footer riflette le modifiche non salvate senza dover toccare ogni
+	// singolo punto che scrive fModified.
+	void RefreshCellModeText();
 
 	void NewDocument();
 	void CommitFormulaBar();

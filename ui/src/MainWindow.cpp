@@ -123,7 +123,6 @@ static const uint32 kMsgToggleWrapText = 'twrp';
 static const uint32 kMsgMergeCells = 'mrgc';
 static const uint32 kMsgShowCommentWindow = 'shcw';
 static const uint32 kMsgShowHyperlinkWindow = 'shlw';
-static const uint32 kMsgOpenHyperlink = 'ophl';
 static const uint32 kMsgShowValidationWindow = 'shvw';
 static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 static const uint32 kMsgUnmergeCells = 'umrg';
@@ -489,6 +488,7 @@ MainWindow::MainWindow()
 	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
 	ResetWorkbook("Foglio1");
 	fModified = false;
+	fEditingCell = false;
 
 	BMenuBar* menuBar = new BMenuBar("menu");
 	BMenu* fileMenu = new BMenu(B_TRANSLATE("File"));
@@ -647,26 +647,13 @@ MainWindow::MainWindow()
 	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Unisci celle"), new BMessage(kMsgMergeCells)));
 	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Dividi celle"), new BMessage(kMsgUnmergeCells)));
 	formatMenu->AddSeparatorItem();
-	// Commento cella (Fase 13): opera sempre sulla sola cella attiva
-	// (fSelection), mai sull'intero intervallo selezionato come
-	// Taglia/Copia/Incolla/Formato -- un commento e' un'annotazione su
-	// UNA cella precisa, non un'operazione che ha senso ripetere su
-	// piu' celle in un colpo solo.
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Commento cella" B_UTF8_ELLIPSIS),
-		new BMessage(kMsgShowCommentWindow)));
-	// Collegamento ipertestuale (Fase 13): stesso principio del
-	// commento cella appena sopra -- un URL per UNA cella precisa.
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Collegamento ipertestuale" B_UTF8_ELLIPSIS),
-		new BMessage(kMsgShowHyperlinkWindow)));
-	// Convalida dati (Fase 13): a differenza dei due sopra, si applica
-	// a tutta la selezione (come il vero "Convalida dati" di Excel),
-	// non solo alla cella attiva -- vedi MainWindow::
-	// ApplyValidationToSelection.
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Convalida dati" B_UTF8_ELLIPSIS),
-		new BMessage(kMsgShowValidationWindow)));
-	// Formattazione condizionale VIVA (Fase 13): stesso principio della
-	// convalida dati appena sopra -- si applica a tutta la selezione,
-	// vedi MainWindow::ApplyConditionalFormatToSelection.
+	// Formattazione condizionale VIVA (Fase 13): si applica a tutta la
+	// selezione, vedi MainWindow::ApplyConditionalFormatToSelection --
+	// questa e' l'unica delle voci "Fase 13" qui sotto che e' davvero
+	// formattazione (le altre tre -- Commento cella/Collegamento
+	// ipertestuale/Convalida dati -- sono annotazioni o integrita' dei
+	// dati, non aspetto visivo: spostate in Inserisci/Dati, stesso
+	// posto in cui le mette Excel).
 	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Formattazione condizionale" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowConditionalFormatWindow)));
 	menuBar->AddItem(formatMenu);
@@ -690,6 +677,13 @@ MainWindow::MainWindow()
 	// dell'intervallo selezionato (vedi SheetView::SortSelection).
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Ordina crescente"), new BMessage(kMsgSortAscending)));
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Ordina decrescente"), new BMessage(kMsgSortDescending)));
+	dataMenu->AddSeparatorItem();
+	// Convalida dati (Fase 13, spostata qui da Formato -- vedi il
+	// commento li'): si applica a tutta la selezione, come il vero
+	// "Convalida dati" nella scheda Dati di Excel, non solo alla cella
+	// attiva -- vedi MainWindow::ApplyValidationToSelection.
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Convalida dati" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgShowValidationWindow)));
 	dataMenu->AddSeparatorItem();
 	// Il numero di righe/colonne e il punto vengono dalla selezione
 	// corrente (SheetView::SelectionRange()), non da una selezione di
@@ -731,6 +725,20 @@ MainWindow::MainWindow()
 		new BMessage(kMsgShowChart)));
 	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Tabella pivot" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowPivot)));
+	insertMenu->AddSeparatorItem();
+	// Commento cella/Collegamento ipertestuale (Fase 13, spostate qui
+	// da Formato -- vedi il commento li'): entrambe operano sempre
+	// sulla sola cella attiva (fSelection), mai sull'intero intervallo
+	// selezionato come Taglia/Copia/Incolla/Formato -- un'annotazione o
+	// un URL ha senso su UNA cella precisa, non ripetuto su piu' celle
+	// in un colpo solo. Stesso posto in cui Excel mette "Collegamento"
+	// (scheda Inserisci); "Commento cella" li' vive nella scheda
+	// Revisione, non presente qui, Inserisci resta il posto migliore.
+	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Commento cella" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgShowCommentWindow)));
+	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Collegamento ipertestuale" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgShowHyperlinkWindow)));
+	insertMenu->AddSeparatorItem();
 	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Intervalli con nome" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowNames)));
 	menuBar->AddItem(insertMenu);
@@ -960,6 +968,13 @@ void MainWindow::UpdateTitle()
 	title << (fDocumentName.Length() > 0 ? fDocumentName : BString(B_TRANSLATE("Nuovo documento")));
 	title << " \xE2\x80\x94 Atomo123"; // em dash (U+2014) in UTF-8
 	SetTitle(title.String());
+
+	// Stesso "* " del titolo, anche nell'indicatore di modalita' del
+	// footer (vedi RefreshCellModeText): unico punto di richiamo invece
+	// di toccare ognuno dei punti sparsi che scrivono fModified
+	// direttamente, perche' UpdateTitle() e' gia' chiamata da tutti
+	// loro per il titolo.
+	RefreshCellModeText();
 }
 
 void MainWindow::MarkModified()
@@ -2146,7 +2161,7 @@ void MainWindow::ShowPreferencesWindow()
 	{
 		bool showSplash = gPrefs ? (gPrefs->GetPrefInt("showSplash", 1) != 0) : true;
 		fPreferencesWindow->SetValues(fSheetView->ShowGrid(), gDecimalPoint, gListSeparator,
-			fMaxRecentFiles, showSplash);
+			fMaxRecentFiles, showSplash, gThousandSeparator, gCurrencySymbol);
 		fPreferencesWindow->Unlock();
 	}
 
@@ -2156,7 +2171,7 @@ void MainWindow::ShowPreferencesWindow()
 }
 
 void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep,
-	int maxRecentFiles, bool showSplash)
+	int maxRecentFiles, bool showSplash, char thousandSep, const char* currencySymbol)
 {
 	fSheetView->SetShowGrid(showGrid);
 	// showGrid e' ora un attributo per-foglio (vedi AscdSheet::showGrid
@@ -2170,6 +2185,9 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 		fSheets[fActiveSheetIndex].showGrid = showGrid;
 	gDecimalPoint = decimalSep;
 	gListSeparator = listSep;
+	gThousandSeparator = thousandSep;
+	if (currencySymbol && currencySymbol[0])
+		strlcpy(gCurrencySymbol, currencySymbol, 32); // vedi il commento in App::App()
 
 	if (maxRecentFiles < 1)
 		maxRecentFiles = 1;
@@ -2195,6 +2213,9 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 		gPrefs->SetPrefString("listSeparator", listStr);
 		gPrefs->SetPrefInt("showGrid", showGrid ? 1 : 0);
 		gPrefs->SetPrefInt("maxRecentFiles", fMaxRecentFiles);
+		char thousandStr[2] = { thousandSep, 0 };
+		gPrefs->SetPrefString("thousandSeparator", thousandStr);
+		gPrefs->SetPrefString("currencySymbol", gCurrencySymbol);
 		// Letta solo da App::ReadyToRun al prossimo avvio (vedi il
 		// commento li'): non c'e' nessuno stato "vivo" da aggiornare qui
 		// nella finestra corrente, a differenza di showGrid/separatori/
@@ -3376,12 +3397,26 @@ void MainWindow::CommitFormulaBar()
 
 void MainWindow::SetCellMode(bool editing)
 {
-	if (fCellMode)
-	{
-		fCellMode->SetText(editing
-			? B_TRANSLATE_COMMENT("Modifica", "Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"")
-			: B_TRANSLATE("Pronto"));
-	}
+	fEditingCell = editing;
+	RefreshCellModeText();
+}
+
+void MainWindow::RefreshCellModeText()
+{
+	if (!fCellMode)
+		return;
+
+	BString text;
+	// Stesso prefisso "* " gia' usato dal titolo della finestra (vedi
+	// UpdateTitle) per le modifiche non salvate: qui nel footer resta
+	// visibile anche quando il titolo e' tagliato o non guardato, senza
+	// introdurre un secondo linguaggio visivo per lo stesso concetto.
+	if (fModified)
+		text << "* ";
+	text << (fEditingCell
+		? B_TRANSLATE_COMMENT("Modifica", "Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"")
+		: B_TRANSLATE("Pronto"));
+	fCellMode->SetText(text.String());
 }
 
 void MainWindow::ToggleFooterStat(int statBit)
@@ -3941,15 +3976,6 @@ void MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
-		case kMsgOpenHyperlink:
-		{
-			int32 row, col;
-			if (message->FindInt32("row", &row) == B_OK
-				&& message->FindInt32("col", &col) == B_OK)
-				OpenCellHyperlink(row, col);
-			break;
-		}
-
 		case kMsgShowValidationWindow:
 		{
 			if (!fDoc)
@@ -4091,16 +4117,19 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgPreferencesRequest:
 		{
 			bool showGrid = true;
-			int8 decimalSep = '.', listSep = ';';
+			int8 decimalSep = '.', listSep = ';', thousandSep = ',';
 			int32 maxRecentFiles = fMaxRecentFiles;
 			bool showSplash = true;
+			const char* currencySymbol = gCurrencySymbol;
 			message->FindBool("showGrid", &showGrid);
 			message->FindInt8("decimalSeparator", &decimalSep);
 			message->FindInt8("listSeparator", &listSep);
 			message->FindInt32("maxRecentFiles", &maxRecentFiles);
 			message->FindBool("showSplash", &showSplash);
+			message->FindInt8("thousandSeparator", &thousandSep);
+			message->FindString("currencySymbol", &currencySymbol);
 			HandlePreferencesRequest(showGrid, (char)decimalSep, (char)listSep,
-				(int)maxRecentFiles, showSplash);
+				(int)maxRecentFiles, showSplash, (char)thousandSep, currencySymbol);
 			break;
 		}
 

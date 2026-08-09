@@ -55,6 +55,17 @@ FUNC_RESOURCES := ../engine/resources
 # italiano (non inglese come da convenzione Haiku), quindi qui non c'e'
 # nessuna lingua "en" da estrarre -- locales/en.catkeys e' scritto a
 # mano con le traduzioni inglesi vere, mai generato automaticamente.
+#
+# ATTENZIONE quando si aggiungono/spostano stringhe B_TRANSLATE: il
+# 4o campo dell'intestazione di locales/en.catkeys ("1 English <sig>
+# <numero>") NON e' un segnaposto arbitrario -- e' un fingerprint del
+# contenuto (chiave/contesto/commento), verificato da linkcatkeys al
+# link (bug reale scoperto qui: un fingerprint non aggiornato dopo
+# un'aggiunta fa fallire tutto il link con "Bad data", anche se ogni
+# singola riga e' sintatticamente valida). Dopo ogni modifica al set di
+# stringhe, rigenerare il fingerprint corretto con "make catkeys" e
+# copiare il 4o campo dell'intestazione di locales/it.catkeys (mai il
+# contenuto delle traduzioni, solo quel numero) in locales/en.catkeys.
 APP_MIME_SIG := application/x-vnd.Atomo-Atomo123
 CATKEYS_DIR := locales
 EN_CATKEYS := $(CATKEYS_DIR)/en.catkeys

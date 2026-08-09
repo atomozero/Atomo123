@@ -18,6 +18,7 @@
 #include <MenuItem.h>
 #include <PopUpMenu.h>
 #include <StringView.h>
+#include <TextControl.h>
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "PreferencesWindow"
@@ -53,15 +54,33 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 	listMenu->ItemAt(0)->SetMarked(true);
 	fListField = new BMenuField("listField", B_TRANSLATE("Separatore di elenco:"), listMenu);
 
+	// Separatore delle migliaia/simbolo di valuta: usati da
+	// CContainer::GetCellResult (export CSV, elenco valori univoci del
+	// filtro automatico -- vedi il commento in App::App()), non dalla
+	// griglia a schermo (quella segue sempre il Locale Kit di Haiku,
+	// indipendente da questa preferenza).
+	BPopUpMenu* thousandMenu = new BPopUpMenu("thousand");
+	thousandMenu->AddItem(new BMenuItem(B_TRANSLATE("Virgola (,)"), NULL));
+	thousandMenu->AddItem(new BMenuItem(B_TRANSLATE("Punto (.)"), NULL));
+	thousandMenu->AddItem(new BMenuItem(B_TRANSLATE("Spazio ( )"), NULL));
+	thousandMenu->ItemAt(0)->SetMarked(true);
+	fThousandField = new BMenuField("thousandField", B_TRANSLATE("Separatore delle migliaia:"),
+		thousandMenu);
+
+	fCurrencyField = new BTextControl("currencyField", B_TRANSLATE("Simbolo valuta:"), "$", NULL);
+
 	// Generale: vista del foglio e interpretazione dei numeri digitati
-	// nelle formule -- le tre preferenze originali di Fase 7.
+	// nelle formule -- le tre preferenze originali di Fase 7, piu' le
+	// due di esportazione/valuta aggiunte dopo.
 	BBox* generalBox = new BBox("generalBox");
 	generalBox->SetLabel(B_TRANSLATE("Generale"));
 	BLayoutBuilder::Group<>(generalBox, B_VERTICAL, 6)
 		.SetInsets(8, generalBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fShowGridBox)
 		.Add(fDecimalField)
-		.Add(fListField);
+		.Add(fListField)
+		.Add(fThousandField)
+		.Add(fCurrencyField);
 
 	BPopUpMenu* recentMenu = new BPopUpMenu("recent");
 	for (size_t i = 0; i < sizeof(kRecentChoices) / sizeof(kRecentChoices[0]); i++)
@@ -109,12 +128,15 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 }
 
 void PreferencesWindow::SetValues(bool showGrid, char decimalSep, char listSep,
-	int maxRecentFiles, bool showSplash)
+	int maxRecentFiles, bool showSplash, char thousandSep, const char* currencySymbol)
 {
 	fShowGridBox->SetValue(showGrid ? B_CONTROL_ON : B_CONTROL_OFF);
 	fShowSplashBox->SetValue(showSplash ? B_CONTROL_ON : B_CONTROL_OFF);
 	fDecimalField->Menu()->ItemAt(decimalSep == ',' ? 1 : 0)->SetMarked(true);
 	fListField->Menu()->ItemAt(listSep == ',' ? 1 : 0)->SetMarked(true);
+	int thousandIndex = thousandSep == '.' ? 1 : (thousandSep == ' ' ? 2 : 0);
+	fThousandField->Menu()->ItemAt(thousandIndex)->SetMarked(true);
+	fCurrencyField->SetText(currencySymbol);
 
 	// Segna la scelta piu' vicina fra quelle proposte: se gPrefs
 	// contiene un valore non elencato (es. modificato a mano nel file
@@ -157,12 +179,19 @@ void PreferencesWindow::MessageReceived(BMessage* message)
 			&& (size_t)recentIndex < sizeof(kRecentChoices) / sizeof(kRecentChoices[0]))
 			maxRecentFiles = kRecentChoices[recentIndex];
 
+		BMenuItem* markedThousand = fThousandField->Menu()->FindMarked();
+		int32 thousandIndex = markedThousand
+			? fThousandField->Menu()->IndexOf(markedThousand) : 0;
+		char thousandSep = thousandIndex == 1 ? '.' : (thousandIndex == 2 ? ' ' : ',');
+
 		BMessage request(kMsgPreferencesRequest);
 		request.AddBool("showGrid", fShowGridBox->Value() == B_CONTROL_ON);
 		request.AddInt8("decimalSeparator", decimalSep);
 		request.AddInt8("listSeparator", listSep);
 		request.AddInt32("maxRecentFiles", maxRecentFiles);
 		request.AddBool("showSplash", fShowSplashBox->Value() == B_CONTROL_ON);
+		request.AddInt8("thousandSeparator", thousandSep);
+		request.AddString("currencySymbol", fCurrencyField->Text());
 		fTarget.SendMessage(&request);
 		return;
 	}

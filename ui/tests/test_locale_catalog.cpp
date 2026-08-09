@@ -68,6 +68,11 @@ int main()
 	Check(strcmp(catalog.GetString("Mostra lo splash screen all'avvio", "PreferencesWindow"),
 			"Show the splash screen at startup") == 0,
 		"la voce di preferenza dello splash screen traduce correttamente");
+	Check(strcmp(catalog.GetString("Simbolo valuta:", "PreferencesWindow"), "Currency symbol:") == 0,
+		"la nuova voce di preferenza \"Simbolo valuta\" traduce correttamente");
+	Check(strcmp(catalog.GetString("Separatore delle migliaia:", "PreferencesWindow"),
+			"Thousands separator:") == 0,
+		"la nuova voce di preferenza \"Separatore delle migliaia\" traduce correttamente");
 
 	// Stessa parola italiana "Annulla", due significati diversi a
 	// seconda del contesto/commento (vedi il fix nella cronologia di

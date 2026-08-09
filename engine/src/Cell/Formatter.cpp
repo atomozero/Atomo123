@@ -71,10 +71,20 @@ static int32 gNextFormatNr = 1024;
 char gTrueString[32];
 char gFalseString[32];
 
-char gCurrencySymbol[32];
-bool gCurrencyBefore;
-bool gCurrencyParens;
-int gCurrencyDigits;
+// Valori di default sensati invece di lasciare gCurrencySymbol una
+// stringa vuota: InitFormatter() sotto (che li leggerebbe da gPrefs)
+// non e' mai stata chiamata da nessun punto della UI moderna -- bug
+// reale scoperto implementando la preferenza "Simbolo valuta" (vedi
+// App::App(), che ora legge il valore vero da gPrefs sovrascrivendo
+// questi default). Senza questo fix, ogni testo con formattazione
+// valuta prodotto da CContainer::GetCellResult (export CSV, elenco
+// valori univoci del filtro automatico, rilevamento del pattern di
+// riempimento automatico -- vedi i chiamanti in ui/src/SheetView.cpp)
+// usciva senza alcun simbolo di valuta.
+char gCurrencySymbol[32] = "$";
+bool gCurrencyBefore = true;
+bool gCurrencyParens = true;
+int gCurrencyDigits = 2;
 
 void InitFormatter(void)
 {
