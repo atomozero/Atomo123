@@ -63,6 +63,11 @@ cd translators/ods && make && make install
 `~/config/non-packaged/add-ons/Translators/`, where Atomo123's Translation
 Kit finds it automatically.
 
+To see a sample workbook (formulas, charts, formatting, frozen panes,
+AutoFilter, a comment and a hyperlink), open
+[`examples/Atomo123_esempio.ascd`](examples/Atomo123_esempio.ascd) — see
+[examples/README.md](examples/README.md) for details.
+
 ## Repository layout
 
 ```
