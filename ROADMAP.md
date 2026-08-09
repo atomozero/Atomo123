@@ -5553,6 +5553,51 @@ in nessuno dei passaggi. Ogni fix verificato anche dal vivo con l'app
 compilata, incluso il caricamento di ogni file XLSX/XLS/XLSM reale
 dell'utente senza crash.
 
+## Preparazione al rilascio ufficiale (in corso)
+
+**Footer personalizzabile come Excel**: indicatore di modalita'
+("Pronto"/"Modifica", acceso da editing in-cella e barra formula) a
+sinistra; a destra, menu contestuale (tasto destro) per scegliere
+quali statistiche di selezione mostrare fra Media/Conteggio/Conteggio
+numerico/Minimo/Massimo/Somma — prima erano fisse a sole quattro,
+sempre visibili. Default e comportamento identici al vero status bar
+di Excel (Media/Conteggio/Somma accesi, gli altri tre spenti finche'
+non li si accende). "Conteggio" ora conta ogni cella non vuota (anche
+testo), non solo quelle numeriche, altro comportamento reale di Excel
+prima assente.
+
+**Intestazione di licenza/copyright** aggiunta a tutti i 79 file
+sorgente nuovi di questo progetto (`ui/`, `translators/`): prima si
+affidavano solo al `LICENSE` alla radice, ambiguo in un repository che
+mescola MIT (`ui/`/`translators/`) e BSD a 4 clausole (`engine/`,
+derivato da Sum-It).
+
+**`docs/USER_GUIDE.md` aggiornata**: era rimasta ferma a una fase
+molto precedente, con sezioni "non ancora disponibile" per funzioni
+implementate da tempo (export XLSX/ODS, formattazione font/colore/
+bordo/allineamento, fogli multipli). Aggiunta anche
+`docs/GUIDA_RAPIDA.md`, un'introduzione di un minuto per chi apre
+l'app la prima volta.
+
+**Primo pacchetto hpkg** (`packaging/build-hpkg.sh`, dato che
+`packaging/atomo123-0.1.0.recipe` non e' ancora utilizzabile con
+haikuporter senza un archivio sorgente pubblico): compila l'albero di
+lavoro corrente e impacchetta i binari appena prodotti. Provato con
+un'installazione reale — pacchetto copiato in `~/config/packages/`,
+attivato da `package_daemon`, `Atomo123` avviato dal percorso
+installato (`~/config/apps/Atomo123/Atomo123`), poi disinstallato
+rimuovendo l'hpkg — non solo un controllo strutturale.
+
+**Limite noto di questa sessione di sviluppo** (non del prodotto):
+`ui/tests/test_find_replace` e `ui/tests/test_insert_chart` restano
+bloccati a tempo indeterminato quando lanciati in questo ambiente
+sandboxato, quasi certamente per un `BAlert` informativo bloccante che
+nessuno puo' cliccare in una sessione senza interazione reale (vedi i
+commenti nei rispettivi file sorgente per il dialogo in questione) —
+confermato NON essere una regressione introdotta in questa sessione
+(stesso blocco anche su un checkout pulito, prima di ogni modifica).
+Da verificare dal vivo su un sistema Haiku reale.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
