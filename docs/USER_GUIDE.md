@@ -2,9 +2,10 @@
 
 Guida rapida per chi usa Atomo123, non per chi sviluppa il codice
 (per l'architettura interna vedi `docs/ENGINE_API.md`,
-`docs/TRANSLATORS.md`, `docs/UI_ARCHITECTURE.md`). Riflette lo stato
-attuale del progetto (Fase 4/5 della `ROADMAP.md`): alcune funzioni
-descritte qui sotto come "non ancora disponibili" sono già pianificate.
+`docs/TRANSLATORS.md`, `docs/UI_ARCHITECTURE.md`). Per un'introduzione
+ancora più breve (solo l'essenziale per iniziare) vedi
+`docs/GUIDA_RAPIDA.md`; per l'elenco completo e sempre aggiornato di
+cosa c'è e cosa manca vedi `ROADMAP.md`.
 
 ## Avvio
 
@@ -61,6 +62,20 @@ barra formule. Sotto, la griglia del foglio.
   dati); **PagSu**/**PagGiù** spostano la selezione di una schermata
   intera in alto/basso.
 
+### Il footer
+
+In fondo alla finestra, sotto le schede dei fogli:
+
+- A **sinistra**, un indicatore di modalità: "Pronto" a riposo,
+  "Modifica" mentre si sta digitando (in una cella o nella barra
+  formule) — esattamente come in Excel.
+- A **destra**, le statistiche della selezione corrente (Media,
+  Conteggio, Somma per una selezione con almeno un valore numerico;
+  solo Conteggio per una selezione di solo testo). **Tasto destro** sul
+  footer per scegliere quali statistiche mostrare — anche Conteggio
+  numerico, Minimo e Massimo, spente per default come nel vero status
+  bar di Excel — la scelta resta salvata fra un avvio e l'altro.
+
 ## Formule
 
 Si scrivono cominciando con `=`, ad esempio `=A1+B1*2`. Sono
@@ -97,14 +112,16 @@ confronto con `>`, `>=`, `<`, `<=` o `<>` seguito da un numero, es.
   ASCD. Il formato viene riconosciuto dal contenuto del file, non
   dall'estensione.
 - **File → Salva con nome…**: il formato di uscita si sceglie
-  dall'estensione scritta nel nome del file — `.csv` esporta in CSV
-  (con i valori delle formule già calcolati, non il testo della
-  formula), qualunque altra estensione (o nessuna) scrive nel formato
-  nativo ASCD. Non è ancora possibile esportare verso XLS/XLSX/ODS: quei
-  translator per ora importano soltanto. Per riaprire un file ASCD
-  salvato, usare di nuovo File → Apri (un CSV esportato riapre invece
-  solo i valori, non le formule originali — CSV non ha alcun concetto
-  di formula).
+  dall'estensione scritta nel nome del file — `.xlsx` e `.ods`
+  esportano rispettivamente in Excel 2007+ e OpenDocument (con le
+  formule tradotte nella sintassi di quel formato, non solo i valori);
+  `.csv` esporta in CSV (con i valori delle formule già calcolati, non
+  il testo della formula); qualunque altra estensione (o nessuna)
+  scrive nel formato nativo ASCD. Il formato XLS legacy (Excel 97-2003)
+  resta di sola importazione: quel translator non scrive ancora `.xls`.
+  Per riaprire un file ASCD salvato, usare di nuovo File → Apri (un CSV
+  esportato riapre invece solo i valori, non le formule originali — CSV
+  non ha alcun concetto di formula).
 
 ## Taglia, copia, incolla
 
@@ -162,8 +179,12 @@ selezionata:
 - **Percentuale**: il valore moltiplicato per 100 con il simbolo "%"
   (una cella con 0,42 mostra "42%").
 
-**Non ancora disponibile**: controllo del numero di decimali, font,
-colore, bordo, allineamento, formattazione data.
+Grassetto/corsivo/sottolineato, colore testo/sfondo, bordi, a capo
+automatico e allineamento si applicano invece dal menu **Formato** (o
+dalla barra strumenti) e non da qui — vedi le rispettive voci di menu.
+
+**Non ancora disponibile**: controllo del numero di decimali mostrati,
+formattazione data/ora.
 
 ## Grafici e tabelle pivot
 
@@ -206,8 +227,9 @@ non c'è ancora un modo per rimuoverne uno dalla griglia.
 
 ## Cosa manca ancora (in breve)
 
-Vedi `ROADMAP.md` per l'elenco completo e aggiornato. In sintesi, allo
-stato attuale: nessun export verso XLS/XLSX/ODS (solo CSV e ASCD
-nativo), formattazione cella limitata a Generale/Numero/Valuta/
-Percentuale (niente decimali/font/colore/data), nessun supporto per
-più fogli in un unico documento.
+Vedi `ROADMAP.md` per l'elenco completo e sempre aggiornato. In
+sintesi, allo stato attuale: nessun export verso XLS legacy (solo
+importazione — XLSX/ODS/CSV/ASCD esportano tutti), formattazione
+numerica senza controllo dei decimali mostrati né formattazione data/
+ora, nessun grafico a linee o a torta (solo a barre), tabella pivot
+a una sola dimensione.

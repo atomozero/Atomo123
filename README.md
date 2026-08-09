@@ -88,7 +88,9 @@ cd ui && make && make run                                   # the app (needs a g
 ## Documentation
 
 - [ROADMAP.md](ROADMAP.md) — project phases and current status
-- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — quick guide for using the app
+- [docs/GUIDA_RAPIDA.md](docs/GUIDA_RAPIDA.md) — one-minute essential guide
+  (Italian)
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — full guide for using the app
   (not for developing the code)
 - [docs/RESEARCH.md](docs/RESEARCH.md) — initial technical research (Haiku
   APIs, file format libraries, Sum-It evaluation)
