@@ -11,12 +11,16 @@
 
 #include <Box.h>
 #include <Button.h>
+#include <Catalog.h>
 #include <CheckBox.h>
 #include <LayoutBuilder.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
 #include <StringView.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "PreferencesWindow"
 
 static const uint32 kMsgApplyLocal = 'aplp';
 
@@ -29,30 +33,30 @@ static const int kRecentChoices[] = { 3, 5, 10, 15 };
 
 PreferencesWindow::PreferencesWindow(BMessenger target)
 	:
-	BWindow(BRect(180, 180, 460, 360), "Preferenze",
+	BWindow(BRect(180, 180, 460, 360), B_TRANSLATE("Preferenze"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target)
 {
-	fShowGridBox = new BCheckBox("showGrid", "Mostra griglia", NULL);
+	fShowGridBox = new BCheckBox("showGrid", B_TRANSLATE("Mostra griglia"), NULL);
 
 	BPopUpMenu* decimalMenu = new BPopUpMenu("decimal");
-	decimalMenu->AddItem(new BMenuItem("Punto (.)", NULL));
-	decimalMenu->AddItem(new BMenuItem("Virgola (,)", NULL));
+	decimalMenu->AddItem(new BMenuItem(B_TRANSLATE("Punto (.)"), NULL));
+	decimalMenu->AddItem(new BMenuItem(B_TRANSLATE("Virgola (,)"), NULL));
 	decimalMenu->ItemAt(0)->SetMarked(true);
-	fDecimalField = new BMenuField("decimalField", "Separatore decimale:", decimalMenu);
+	fDecimalField = new BMenuField("decimalField", B_TRANSLATE("Separatore decimale:"), decimalMenu);
 
 	BPopUpMenu* listMenu = new BPopUpMenu("list");
-	listMenu->AddItem(new BMenuItem("Punto e virgola (;)", NULL));
-	listMenu->AddItem(new BMenuItem("Virgola (,)", NULL));
+	listMenu->AddItem(new BMenuItem(B_TRANSLATE("Punto e virgola (;)"), NULL));
+	listMenu->AddItem(new BMenuItem(B_TRANSLATE("Virgola (,)"), NULL));
 	listMenu->ItemAt(0)->SetMarked(true);
-	fListField = new BMenuField("listField", "Separatore di elenco:", listMenu);
+	fListField = new BMenuField("listField", B_TRANSLATE("Separatore di elenco:"), listMenu);
 
 	// Generale: vista del foglio e interpretazione dei numeri digitati
 	// nelle formule -- le tre preferenze originali di Fase 7.
 	BBox* generalBox = new BBox("generalBox");
-	generalBox->SetLabel("Generale");
+	generalBox->SetLabel(B_TRANSLATE("Generale"));
 	BLayoutBuilder::Group<>(generalBox, B_VERTICAL, 6)
 		.SetInsets(8, generalBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fShowGridBox)
@@ -67,13 +71,13 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 		recentMenu->AddItem(new BMenuItem(label.String(), NULL));
 	}
 	recentMenu->ItemAt(1)->SetMarked(true); // 5, il valore predefinito
-	fRecentField = new BMenuField("recentField", "File recenti da ricordare:", recentMenu);
+	fRecentField = new BMenuField("recentField", B_TRANSLATE("File recenti da ricordare:"), recentMenu);
 
 	// File: comportamento del menu File > "Apri recenti" -- prima un
 	// numero fisso nel codice (MainWindow::kMaxRecentFiles = 5), ora
 	// scelto qui (vedi MainWindow::fMaxRecentFiles).
 	BBox* fileBox = new BBox("fileBox");
-	fileBox->SetLabel("File");
+	fileBox->SetLabel(B_TRANSLATE("File"));
 	BLayoutBuilder::Group<>(fileBox, B_VERTICAL, 6)
 		.SetInsets(8, fileBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fRecentField);
@@ -82,14 +86,14 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 	// App::ReadyToRun (non riguarda un documento gia' aperto, a
 	// differenza delle altre preferenze qui sopra, quindi non serve
 	// nessun MainWindow::fXxx a specchio, solo gPrefs).
-	fShowSplashBox = new BCheckBox("showSplash", "Mostra lo splash screen all'avvio", NULL);
+	fShowSplashBox = new BCheckBox("showSplash", B_TRANSLATE("Mostra lo splash screen all'avvio"), NULL);
 	BBox* startupBox = new BBox("startupBox");
-	startupBox->SetLabel("Avvio");
+	startupBox->SetLabel(B_TRANSLATE("Avvio"));
 	BLayoutBuilder::Group<>(startupBox, B_VERTICAL, 6)
 		.SetInsets(8, startupBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fShowSplashBox);
 
-	BButton* applyButton = new BButton("apply", "Applica", new BMessage(kMsgApplyLocal));
+	BButton* applyButton = new BButton("apply", B_TRANSLATE("Applica"), new BMessage(kMsgApplyLocal));
 	applyButton->SetTarget(this);
 	applyButton->MakeDefault(true);
 

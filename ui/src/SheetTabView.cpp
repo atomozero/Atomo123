@@ -9,6 +9,7 @@
 
 #include "SheetTabView.h"
 
+#include <Catalog.h>
 #include <Font.h>
 #include <Looper.h>
 #include <MenuItem.h>
@@ -17,6 +18,9 @@
 #include <PopUpMenu.h>
 #include <Region.h>
 #include <Window.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "SheetTabView"
 
 static const float kTabPadding = 14;
 static const float kMinTabWidth = 50;
@@ -296,9 +300,9 @@ void SheetTabView::MouseDown(BPoint where)
 			if (buttons & B_SECONDARY_MOUSE_BUTTON)
 			{
 				BPopUpMenu menu("sheetTabContext");
-				BMenuItem* renameItem = new BMenuItem("Rinomina foglio" B_UTF8_ELLIPSIS, NULL);
+				BMenuItem* renameItem = new BMenuItem(B_TRANSLATE("Rinomina foglio" B_UTF8_ELLIPSIS), NULL);
 				menu.AddItem(renameItem);
-				BMenuItem* deleteItem = new BMenuItem("Elimina foglio", NULL);
+				BMenuItem* deleteItem = new BMenuItem(B_TRANSLATE("Elimina foglio"), NULL);
 				menu.AddItem(deleteItem);
 
 				BPoint screenAnchor = where;

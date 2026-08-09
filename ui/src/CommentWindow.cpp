@@ -10,16 +10,20 @@
 #include "CommentWindow.h"
 
 #include <Button.h>
+#include <Catalog.h>
 #include <LayoutBuilder.h>
 #include <ScrollView.h>
 #include <TextView.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "CommentWindow"
 
 static const uint32 kMsgCommentLocal = 'cmsl';
 static const uint32 kMsgCommentRemoveLocal = 'cmrl';
 
 CommentWindow::CommentWindow(BMessenger target)
 	:
-	BWindow(BRect(150, 150, 470, 350), "Commento cella",
+	BWindow(BRect(150, 150, 470, 350), B_TRANSLATE("Commento cella"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
@@ -45,11 +49,11 @@ CommentWindow::CommentWindow(BMessenger target)
 	BScrollView* scroll = new BScrollView("scroll", fTextView,
 		B_FOLLOW_ALL, 0, false, true, B_FANCY_BORDER);
 
-	BButton* removeButton = new BButton("remove", "Rimuovi commento",
+	BButton* removeButton = new BButton("remove", B_TRANSLATE("Rimuovi commento"),
 		new BMessage(kMsgCommentRemoveLocal));
 	removeButton->SetTarget(this);
 
-	BButton* saveButton = new BButton("save", "Salva",
+	BButton* saveButton = new BButton("save", B_TRANSLATE("Salva"),
 		new BMessage(kMsgCommentLocal));
 	saveButton->SetTarget(this);
 	saveButton->MakeDefault(true);

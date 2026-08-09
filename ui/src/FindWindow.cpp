@@ -10,8 +10,12 @@
 #include "FindWindow.h"
 
 #include <Button.h>
+#include <Catalog.h>
 #include <LayoutBuilder.h>
 #include <TextControl.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "FindWindow"
 
 static const uint32 kMsgFindNextLocal = 'fnlc';
 static const uint32 kMsgReplaceCurrentLocal = 'rclc';
@@ -19,28 +23,28 @@ static const uint32 kMsgReplaceAllLocal = 'ralc';
 
 FindWindow::FindWindow(BMessenger target)
 	:
-	BWindow(BRect(150, 150, 430, 260), "Trova e sostituisci",
+	BWindow(BRect(150, 150, 430, 260), B_TRANSLATE("Trova e sostituisci"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target)
 {
-	fSearchField = new BTextControl("search", "Cerca:", "",
+	fSearchField = new BTextControl("search", B_TRANSLATE("Cerca:"), "",
 		new BMessage(kMsgFindNextLocal));
 	fSearchField->SetTarget(this);
 	fSearchField->MakeFocus(true);
 
-	fReplaceField = new BTextControl("replace", "Sostituisci con:", "", NULL);
+	fReplaceField = new BTextControl("replace", B_TRANSLATE("Sostituisci con:"), "", NULL);
 
-	BButton* findButton = new BButton("find", "Trova successivo",
+	BButton* findButton = new BButton("find", B_TRANSLATE("Trova successivo"),
 		new BMessage(kMsgFindNextLocal));
 	findButton->SetTarget(this);
 
-	BButton* replaceButton = new BButton("replace", "Sostituisci",
+	BButton* replaceButton = new BButton("replace", B_TRANSLATE("Sostituisci"),
 		new BMessage(kMsgReplaceCurrentLocal));
 	replaceButton->SetTarget(this);
 
-	BButton* replaceAllButton = new BButton("replaceAll", "Sostituisci tutto",
+	BButton* replaceAllButton = new BButton("replaceAll", B_TRANSLATE("Sostituisci tutto"),
 		new BMessage(kMsgReplaceAllLocal));
 	replaceAllButton->SetTarget(this);
 

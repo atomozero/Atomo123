@@ -19,7 +19,7 @@ ENGINE_SRCDIRS := $(ENGINE_DIR)/src/Cell $(ENGINE_DIR)/src/Formula \
 	$(ENGINE_DIR)/src/Metrowerks $(ENGINE_DIR)/src/Stubs
 INCLUDES := $(addprefix -I, $(ENGINE_SRCDIRS)) -Isrc
 
-LIBS := -L$(ENGINE_DIR) -lengine -lbe -ltranslation -ltracker -lGL -lGLU
+LIBS := -L$(ENGINE_DIR) -lengine -lbe -llocalestub -ltranslation -ltracker -lGL -lGLU
 
 APP := Atomo123
 SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/SheetTabView.cpp \
@@ -50,6 +50,14 @@ LEGACY_DIR := ../legacy/opensumit
 REZ := $(LEGACY_DIR)/rez/rez
 BSL := $(LEGACY_DIR)/bsl/bsl
 FUNC_RESOURCES := ../engine/resources
+
+# Localizzazione (Locale Kit): le stringhe sorgente nel codice sono in
+# italiano (non inglese come da convenzione Haiku), quindi qui non c'e'
+# nessuna lingua "en" da estrarre -- locales/en.catkeys e' scritto a
+# mano con le traduzioni inglesi vere, mai generato automaticamente.
+APP_MIME_SIG := application/x-vnd.Atomo-Atomo123
+CATKEYS_DIR := locales
+EN_CATKEYS := $(CATKEYS_DIR)/en.catkeys
 
 all: $(APP)
 
@@ -83,12 +91,26 @@ $(RSRC): $(RDEF) $(REZ) $(BSL) $(FUNC_RESOURCES)/funcs_by_nr.r \
 # convertita in HVIF con Icon-O-Matic, incorporata in Atomo123.rdef)
 # va allegata al binario con xres DOPO il link, non prima: xres opera
 # sul file eseguibile finito.
-$(APP): $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
+$(APP): $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC) $(EN_CATKEYS)
 	$(CXX) -o $(APP) $(OBJECTS) $(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o $(APP) $(RSRC)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l en $(EN_CATKEYS)
 
 run: $(APP)
 	./$(APP)
+
+# Passaggio manuale, non nel giro normale di "make": rigenera
+# locales/it.catkeys, l'elenco delle chiavi italiane davvero presenti
+# nel sorgente (via B_TRANSLATE), estratte con lo stesso strumento e
+# preprocessore che Haiku userebbe per una lingua "en" -- qui pero'
+# l'italiano E' la lingua sorgente, quindi questo file serve solo da
+# lista di controllo per non dimenticare una stringa nuova in
+# locales/en.catkeys quando si aggiunge testo, non viene mai letto a
+# runtime ne' committato.
+catkeys: $(SOURCES)
+	-cat $(SOURCES) | $(CXX) -E -x c++ $(INCLUDES) $(CXXFLAGS) -DB_COLLECTING_CATKEYS - | grep -av '^#' > $(CATKEYS_DIR)/atomo123.pre
+	collectcatkeys -s $(APP_MIME_SIG) $(CATKEYS_DIR)/atomo123.pre -o $(CATKEYS_DIR)/it.catkeys
+	rm -f $(CATKEYS_DIR)/atomo123.pre
 
 # Test di round-trip di AscdIO (SaveASCD/LoadASCD): non richiede una
 # sessione grafica, solo l'engine e libbe per BFile/BPositionIO.
@@ -201,7 +223,7 @@ test-chart: $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_chart.cpp -o tests/test_chart.o $(INCLUDES) $(CXXFLAGS)
 	$(CXX) -c src/Chart.cpp -o tests/Chart.o $(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_chart tests/test_chart.o tests/Chart.o \
-		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
 	./tests/test_chart
 
 # Test della logica della tabella pivot (Pivot.cpp): stessa ragione di
@@ -210,7 +232,7 @@ test-pivot: $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_pivot.cpp -o tests/test_pivot.o $(INCLUDES) $(CXXFLAGS)
 	$(CXX) -c src/Pivot.cpp -o tests/Pivot.o $(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_pivot tests/test_pivot.o tests/Pivot.o \
-		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
 	./tests/test_pivot
 
 # Test degli appunti (be_clipboard): a differenza di "test" richiede
@@ -538,6 +560,19 @@ test-xsheet-formulas: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 # delle funzioni con nome. Richiede che i quattro translator siano
 # gia' installati (make install in translators/*), altrimenti
 # BTranslatorRoster non trova nessun formato XLSX.
+# Test del catalogo inglese incorporato (localizzazione, vedi
+# locales/en.catkeys e la regola di $(APP) sopra che lo incorpora con
+# "linkcatkeys -tr"): richiede $(APP) gia' compilato in questa stessa
+# directory, perche' apre proprio quel file per leggerne il catalogo
+# incorporato con la lingua forzata a "en" -- non serve una vera
+# sessione grafica ne' cambiare la lingua di sistema.
+test-locale-catalog: $(APP)
+	$(CXX) -c tests/test_locale_catalog.cpp -o tests/test_locale_catalog.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_locale_catalog tests/test_locale_catalog.o \
+		$(INCLUDES) $(CXXFLAGS) -lbe -llocalestub
+	./tests/test_locale_catalog
+
 test-xlsx-named-functions-dynamic: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 	$(CXX) -c tests/test_xlsx_named_functions_dynamic.cpp -o tests/test_xlsx_named_functions_dynamic.o \
 		$(INCLUDES) $(CXXFLAGS)
@@ -560,7 +595,7 @@ test-sheet-tabs: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_sheet_tabs tests/test_sheet_tabs.o \
 		src/SheetTabView.o \
-		$(INCLUDES) $(CXXFLAGS) -lbe
+		$(INCLUDES) $(CXXFLAGS) -lbe -llocalestub
 	./tests/test_sheet_tabs
 
 # Test del troppopieno della toolbar (vedi ToolbarView.h): stessa
@@ -928,7 +963,9 @@ clean:
 		tests/test_persistence tests/test_persistence.o tests/AscdIO_persistence.o \
 		/tmp/test_persistence.ascd /tmp/test_persistence_old.ascd \
 		tests/test_borders tests/test_borders.o \
+		tests/test_locale_catalog tests/test_locale_catalog.o \
 		examples/generate_demo examples/generate_demo.o examples/AscdIO_demo.o \
-		examples/atomo123_demo.ascd
+		examples/atomo123_demo.ascd \
+		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
-.PHONY: all run demo test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean
+.PHONY: all run catkeys demo test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean

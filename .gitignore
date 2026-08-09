@@ -24,6 +24,11 @@ translators/*/tests/test_*_translator
 ui/Atomo123
 ui/src/*.o
 ui/Atomo123.rsrc
+# locales/it.catkeys: lista di controllo rigenerata da "make catkeys"
+# (estrazione delle chiavi italiane), mai la traduzione vera -- quella
+# e' locales/en.catkeys, scritto a mano e sempre versionato.
+ui/locales/it.catkeys
+ui/locales/atomo123.pre
 # Copie del binario rinominate con l'hash del commit (invece di
 # cancellarle con "make clean"), vedi CLAUDE.md/istruzioni di sessione
 ui/Atomo123-*

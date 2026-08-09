@@ -12,10 +12,15 @@
 #include <algorithm>
 #include <map>
 
+#include <Catalog.h>
+
 #include "Cell.h"
 #include "Container.h"
 #include "Range.h"
 #include "Value.h"
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "Pivot"
 
 static bool RowLess(const PivotRow& a, const PivotRow& b)
 {
@@ -73,11 +78,11 @@ static const char* AggLabel(PivotAggFunc fn)
 	switch (fn)
 	{
 		case ePivotCount:
-			return "Conteggio";
+			return B_TRANSLATE("Conteggio");
 		case ePivotAverage:
-			return "Media";
+			return B_TRANSLATE("Media");
 		default:
-			return "Somma";
+			return B_TRANSLATE("Somma");
 	}
 }
 
@@ -89,7 +94,7 @@ void WritePivotTable(CContainer* doc, const cell& dest,
 
 	cell headerCat(dest.h, dest.v);
 	cell headerVal(dest.h + 1, dest.v);
-	doc->NewCell(headerCat, Value("Categoria"), NULL);
+	doc->NewCell(headerCat, Value(B_TRANSLATE("Categoria")), NULL);
 	doc->NewCell(headerVal, Value(AggLabel(fn)), NULL);
 
 	for (size_t i = 0; i < rows.size(); i++)

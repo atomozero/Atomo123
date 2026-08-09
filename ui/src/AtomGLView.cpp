@@ -9,6 +9,7 @@
 
 #include <AppFileInfo.h>
 #include <Application.h>
+#include <Catalog.h>
 #include <File.h>
 #include <Message.h>
 #include <Window.h>
@@ -16,6 +17,9 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "AtomGLView"
 
 static const uint32 kMsgTick = 'tick';
 static const float kTextFadeDuration = 1.6f;	// secondi, ingresso testo
@@ -123,7 +127,7 @@ AtomGLView::_Init()
 	gluQuadricNormals(fQuadric, GLU_SMOOTH);
 
 	fTitleTex.Build("Atomo123", 60.0f, (rgb_color){255, 255, 255, 255}, true);
-	fSubtitleTex.Build("Sviluppato da StudioBernardi.eu", 22.0f,
+	fSubtitleTex.Build(B_TRANSLATE("Sviluppato da StudioBernardi.eu"), 22.0f,
 		(rgb_color){255, 255, 255, 255}, false);
 
 	char versionStr[32];

@@ -15,6 +15,7 @@
 #include <Application.h>
 #include <Bitmap.h>
 #include <Button.h>
+#include <Catalog.h>
 #include <File.h>
 #include <Font.h>
 #include <fs_attr.h>
@@ -28,6 +29,9 @@
 #include <String.h>
 #include <StringView.h>
 #include <View.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "AboutWindow"
 
 static const uint32 kMsgClose = 'clse';
 static const uint32 kMsgOpenLink = 'olnk';
@@ -110,13 +114,13 @@ static BString AppVersionText()
 		BAppFileInfo appInfo(&file);
 		if (appInfo.GetVersionInfo(&vi, B_APP_VERSION_KIND) == B_OK)
 		{
-			text.SetToFormat("Versione %" B_PRIu32 ".%" B_PRIu32 ".%" B_PRIu32,
+			text.SetToFormat(B_TRANSLATE("Versione %" B_PRIu32 ".%" B_PRIu32 ".%" B_PRIu32),
 				vi.major, vi.middle, vi.minor);
 		}
 	}
 	if (text.IsEmpty())
-		text = "Versione";
-	text << "  \xC2\xB7  per Haiku";
+		text = B_TRANSLATE("Versione");
+	text << B_TRANSLATE("  \xC2\xB7  per Haiku");
 	return text;
 }
 
@@ -184,22 +188,23 @@ private:
 
 AboutWindow::AboutWindow()
 	:
-	BWindow(BRect(0, 0, 460, 320), "Informazioni su Atomo123", B_TITLED_WINDOW,
+	BWindow(BRect(0, 0, 460, 320), B_TRANSLATE("Informazioni su Atomo123"), B_TITLED_WINDOW,
 		B_NOT_RESIZABLE | B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS)
 {
 	AboutHero* hero = new AboutHero(AppVersionText().String());
 
-	BStringView* tagline = new BStringView("tagline", "Foglio di calcolo nativo per Haiku OS.");
+	BStringView* tagline = new BStringView("tagline",
+		B_TRANSLATE("Foglio di calcolo nativo per Haiku OS."));
 
 	BStringView* features = new BStringView("features",
-		"Formule e funzioni \xC2\xB7 import/export XLSX/XLSM/ODS/CSV/XLS \xC2\xB7 "
-		"grafici e tabelle pivot \xC2\xB7 piu' fogli");
+		B_TRANSLATE("Formule e funzioni \xC2\xB7 import/export XLSX/XLSM/ODS/CSV/XLS \xC2\xB7 "
+			"grafici e tabelle pivot \xC2\xB7 piu' fogli"));
 	BFont small(be_plain_font);
 	small.SetSize(be_plain_font->Size() - 1);
 	features->SetFont(&small);
 	features->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.7));
 
-	BStringView* author = new BStringView("author", "di Andrea Bernardi");
+	BStringView* author = new BStringView("author", B_TRANSLATE("di Andrea Bernardi"));
 	BFont bold(be_bold_font);
 	author->SetFont(&bold);
 
@@ -209,21 +214,21 @@ AboutWindow::AboutWindow()
 	// Stesso link "Buy Me A Coffee" gia' presente nel README, stesso
 	// meccanismo click-per-aprire del link al progetto sopra.
 	ClickableStringView* coffeeLink = new ClickableStringView("coffeeLink",
-		"Offrimi un caffe' \xE2\x98\x95");
+		B_TRANSLATE("Offrimi un caffe' \xE2\x98\x95"));
 	coffeeLink->SetClickMessage(new BMessage(kMsgOpenCoffeeLink));
 
 	BStringView* thanks = new BStringView("thanks",
-		"Icone della barra strumenti da hvif-store.art \xE2\x80\x94 grazie!");
+		B_TRANSLATE("Icone della barra strumenti da hvif-store.art \xE2\x80\x94 grazie!"));
 	thanks->SetFont(&small);
 	thanks->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.7));
 
 	BStringView* license = new BStringView("license",
-		"Codice nuovo su licenza MIT \xC2\xB7 motore derivato da Sum-It "
-		"(BSD, Hekkelman Programmatuur).");
+		B_TRANSLATE("Codice nuovo su licenza MIT \xC2\xB7 motore derivato da Sum-It "
+			"(BSD, Hekkelman Programmatuur)."));
 	license->SetFont(&small);
 	license->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.6));
 
-	BButton* ok = new BButton("ok", "OK", new BMessage(kMsgClose));
+	BButton* ok = new BButton("ok", B_TRANSLATE("OK"), new BMessage(kMsgClose));
 	ok->MakeDefault(true);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)

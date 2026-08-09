@@ -12,6 +12,7 @@
 #include "Chart.h"
 
 #include <Button.h>
+#include <Catalog.h>
 #include <LayoutBuilder.h>
 #include <MenuField.h>
 #include <MenuItem.h>
@@ -19,42 +20,45 @@
 #include <String.h>
 #include <TextControl.h>
 
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "ChartWindow"
+
 static const uint32 kMsgDrawLocal = 'drlc';
 static const uint32 kMsgInsertLocal = 'inlc';
 static const uint32 kMsgTypeChangedLocal = 'tpcl';
 
 ChartWindow::ChartWindow(BMessenger target)
 	:
-	BWindow(BRect(180, 180, 580, 500), "Grafico",
+	BWindow(BRect(180, 180, 580, 500), B_TRANSLATE("Grafico"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target)
 {
-	fRangeField = new BTextControl("range", "Intervallo (due colonne: etichette, valori):",
+	fRangeField = new BTextControl("range", B_TRANSLATE("Intervallo (due colonne: etichette, valori):"),
 		"A1:B5", new BMessage(kMsgDrawLocal));
 	fRangeField->SetTarget(this);
 	fRangeField->MakeFocus(true);
 
-	BButton* drawButton = new BButton("draw", "Disegna", new BMessage(kMsgDrawLocal));
+	BButton* drawButton = new BButton("draw", B_TRANSLATE("Disegna"), new BMessage(kMsgDrawLocal));
 	drawButton->SetTarget(this);
 
 	// Barre come voce predefinita (indice 0), stesso ordine dei valori
 	// dell'enum ChartType in Chart.h -- SelectedType() sotto si basa
 	// su questa corrispondenza posizionale.
 	BPopUpMenu* typeMenu = new BPopUpMenu("typeMenu");
-	typeMenu->AddItem(new BMenuItem("Barre", new BMessage(kMsgTypeChangedLocal)));
-	typeMenu->AddItem(new BMenuItem("Linee", new BMessage(kMsgTypeChangedLocal)));
-	typeMenu->AddItem(new BMenuItem("Torta", new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Barre"), new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Linee"), new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Torta"), new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->ItemAt(0)->SetMarked(true);
-	fTypeField = new BMenuField("type", "Tipo:", typeMenu);
+	fTypeField = new BMenuField("type", B_TRANSLATE("Tipo:"), typeMenu);
 	fTypeField->Menu()->SetTargetForItems(this);
 
 	fChartView = new ChartView();
 
-	fDestField = new BTextControl("dest", "Cella di destinazione nel foglio:",
+	fDestField = new BTextControl("dest", B_TRANSLATE("Cella di destinazione nel foglio:"),
 		"D1", NULL);
 
-	BButton* insertButton = new BButton("insert", "Inserisci nel foglio",
+	BButton* insertButton = new BButton("insert", B_TRANSLATE("Inserisci nel foglio"),
 		new BMessage(kMsgInsertLocal));
 	insertButton->SetTarget(this);
 

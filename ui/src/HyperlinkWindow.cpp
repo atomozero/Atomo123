@@ -10,9 +10,13 @@
 #include "HyperlinkWindow.h"
 
 #include <Button.h>
+#include <Catalog.h>
 #include <LayoutBuilder.h>
 #include <TextControl.h>
 #include <Url.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "HyperlinkWindow"
 
 static const uint32 kMsgHyperlinkLocal = 'hlkl';
 static const uint32 kMsgHyperlinkRemoveLocal = 'hlrl';
@@ -20,7 +24,7 @@ static const uint32 kMsgHyperlinkOpenLocal = 'hlol';
 
 HyperlinkWindow::HyperlinkWindow(BMessenger target)
 	:
-	BWindow(BRect(150, 150, 470, 230), "Collegamento ipertestuale",
+	BWindow(BRect(150, 150, 470, 230), B_TRANSLATE("Collegamento ipertestuale"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
@@ -28,17 +32,17 @@ HyperlinkWindow::HyperlinkWindow(BMessenger target)
 	fRow(-1),
 	fCol(-1)
 {
-	fUrlControl = new BTextControl("url", "URL:", "", NULL);
+	fUrlControl = new BTextControl("url", B_TRANSLATE("URL:"), "", NULL);
 
-	BButton* removeButton = new BButton("remove", "Rimuovi collegamento",
+	BButton* removeButton = new BButton("remove", B_TRANSLATE("Rimuovi collegamento"),
 		new BMessage(kMsgHyperlinkRemoveLocal));
 	removeButton->SetTarget(this);
 
-	BButton* openButton = new BButton("open", "Apri",
+	BButton* openButton = new BButton("open", B_TRANSLATE("Apri"),
 		new BMessage(kMsgHyperlinkOpenLocal));
 	openButton->SetTarget(this);
 
-	BButton* saveButton = new BButton("save", "Salva",
+	BButton* saveButton = new BButton("save", B_TRANSLATE("Salva"),
 		new BMessage(kMsgHyperlinkLocal));
 	saveButton->SetTarget(this);
 	saveButton->MakeDefault(true);

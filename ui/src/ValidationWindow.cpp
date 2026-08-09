@@ -10,6 +10,7 @@
 #include "ValidationWindow.h"
 
 #include <Button.h>
+#include <Catalog.h>
 #include <LayoutBuilder.h>
 #include <MenuField.h>
 #include <MenuItem.h>
@@ -19,6 +20,9 @@
 #include <cstdio>
 #include <cstdlib>
 
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "ValidationWindow"
+
 static const uint32 kMsgSaveLocal = 'svlc';
 static const uint32 kMsgRemoveLocal = 'rmlc';
 
@@ -27,7 +31,7 @@ static const uint32 kMsgRemoveLocal = 'rmlc';
 // stesso principio gia' usato per ChartType/ChartWindow.
 ValidationWindow::ValidationWindow(BMessenger target)
 	:
-	BWindow(BRect(180, 180, 480, 330), "Convalida dati",
+	BWindow(BRect(180, 180, 480, 330), B_TRANSLATE("Convalida dati"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
@@ -36,21 +40,21 @@ ValidationWindow::ValidationWindow(BMessenger target)
 	fCol(-1)
 {
 	BPopUpMenu* typeMenu = new BPopUpMenu("typeMenu");
-	typeMenu->AddItem(new BMenuItem("Nessuna", NULL));
-	typeMenu->AddItem(new BMenuItem("Elenco di valori", NULL));
-	typeMenu->AddItem(new BMenuItem("Intervallo numerico", NULL));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Nessuna"), NULL));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Elenco di valori"), NULL));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Intervallo numerico"), NULL));
 	typeMenu->ItemAt(0)->SetMarked(true);
-	fTypeField = new BMenuField("type", "Tipo:", typeMenu);
+	fTypeField = new BMenuField("type", B_TRANSLATE("Tipo:"), typeMenu);
 
-	fListField = new BTextControl("list", "Valori (separati da virgola):", "", NULL);
-	fMinField = new BTextControl("min", "Minimo:", "", NULL);
-	fMaxField = new BTextControl("max", "Massimo:", "", NULL);
+	fListField = new BTextControl("list", B_TRANSLATE("Valori (separati da virgola):"), "", NULL);
+	fMinField = new BTextControl("min", B_TRANSLATE("Minimo:"), "", NULL);
+	fMaxField = new BTextControl("max", B_TRANSLATE("Massimo:"), "", NULL);
 
-	BButton* removeButton = new BButton("remove", "Rimuovi convalida",
+	BButton* removeButton = new BButton("remove", B_TRANSLATE("Rimuovi convalida"),
 		new BMessage(kMsgRemoveLocal));
 	removeButton->SetTarget(this);
 
-	BButton* saveButton = new BButton("save", "Salva", new BMessage(kMsgSaveLocal));
+	BButton* saveButton = new BButton("save", B_TRANSLATE("Salva"), new BMessage(kMsgSaveLocal));
 	saveButton->SetTarget(this);
 	saveButton->MakeDefault(true);
 

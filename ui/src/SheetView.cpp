@@ -20,6 +20,7 @@
 #include <Alert.h>
 #include <Bitmap.h>
 #include <BitmapStream.h>
+#include <Catalog.h>
 #include <Cursor.h>
 #include <DataIO.h>
 #include <MenuItem.h>
@@ -44,6 +45,9 @@
 #include "Preferences.h"
 
 #include "AscdIO.h"
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "SheetView"
 
 static const uint32 kMsgCellEditCommit = 'cedt';
 static const uint32 kMsgCellEditCancel = 'cedc';
@@ -583,7 +587,7 @@ void SheetView::ShowAutoFilterMenu(int col, BPoint screenAnchor)
 	}
 	if (!values.empty())
 		menu.AddSeparatorItem();
-	BMenuItem* clearItem = new BMenuItem("Mostra tutto", NULL);
+	BMenuItem* clearItem = new BMenuItem(B_TRANSLATE("Mostra tutto"), NULL);
 	menu.AddItem(clearItem);
 
 	ConvertToScreen(&screenAnchor);
@@ -1081,9 +1085,9 @@ void SheetView::SortSelection(bool ascending)
 				&& m.top <= sel.bottom && m.bottom >= sel.top;
 			if (overlaps)
 			{
-				BAlert* alert = new BAlert("Ordina",
-					"Non si puo' ordinare: la selezione contiene una cella unita. "
-					"Dividi le celle prima di ordinare.", "OK");
+				BAlert* alert = new BAlert(B_TRANSLATE("Ordina"),
+					B_TRANSLATE("Non si puo' ordinare: la selezione contiene una cella unita. "
+					"Dividi le celle prima di ordinare."), B_TRANSLATE("OK"));
 				alert->Go();
 				return;
 			}
@@ -1259,9 +1263,9 @@ void SheetView::InsertRows()
 	cell dummy;
 	if (overflowIter.NextExisting(dummy))
 	{
-		BAlert* alert = new BAlert("Inserisci riga",
-			"Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.",
-			"OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Inserisci riga"),
+			B_TRANSLATE("Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite."),
+			B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -1317,9 +1321,9 @@ void SheetView::InsertColumns()
 	cell dummy;
 	if (overflowIter.NextExisting(dummy))
 	{
-		BAlert* alert = new BAlert("Inserisci colonna",
-			"Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.",
-			"OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Inserisci colonna"),
+			B_TRANSLATE("Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite."),
+			B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -3585,7 +3589,7 @@ void SheetView::CommitEditing(bool cancel)
 			BString errorMessage;
 			if (!win->ValidateCellValue(editedCell.v, editedCell.h, editor->Text(), &errorMessage))
 			{
-				BAlert* alert = new BAlert("Convalida dati", errorMessage.String(), "OK");
+				BAlert* alert = new BAlert(B_TRANSLATE("Convalida dati"), errorMessage.String(), B_TRANSLATE("OK"));
 				alert->Go();
 				cancel = true;
 			}

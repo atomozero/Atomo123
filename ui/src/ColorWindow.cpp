@@ -10,14 +10,18 @@
 #include "ColorWindow.h"
 
 #include <Button.h>
+#include <Catalog.h>
 #include <ColorControl.h>
 #include <LayoutBuilder.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "ColorWindow"
 
 static const uint32 kMsgApplyLocal = 'aply';
 
 ColorWindow::ColorWindow(BMessenger target)
 	:
-	BWindow(BRect(180, 180, 460, 340), "Colore",
+	BWindow(BRect(180, 180, 460, 340), B_TRANSLATE("Colore"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
@@ -26,7 +30,7 @@ ColorWindow::ColorWindow(BMessenger target)
 {
 	fColorControl = new BColorControl(BPoint(0, 0), B_CELLS_32x8, 8, "colorControl");
 
-	BButton* applyButton = new BButton("apply", "Applica", new BMessage(kMsgApplyLocal));
+	BButton* applyButton = new BButton("apply", B_TRANSLATE("Applica"), new BMessage(kMsgApplyLocal));
 	applyButton->SetTarget(this);
 	applyButton->MakeDefault(true);
 
@@ -44,9 +48,9 @@ void ColorWindow::SetMode(ColorTarget target, rgb_color initial)
 	fColorTarget = target;
 	switch (target)
 	{
-		case eBackgroundColor: SetTitle("Colore sfondo"); break;
-		case eBorderColor: SetTitle("Colore bordo"); break;
-		default: SetTitle("Colore testo"); break;
+		case eBackgroundColor: SetTitle(B_TRANSLATE("Colore sfondo")); break;
+		case eBorderColor: SetTitle(B_TRANSLATE("Colore bordo")); break;
+		default: SetTitle(B_TRANSLATE("Colore testo")); break;
 	}
 	fColorControl->SetValue(initial);
 }

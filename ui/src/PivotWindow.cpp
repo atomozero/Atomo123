@@ -11,35 +11,39 @@
 #include "Pivot.h"
 
 #include <Button.h>
+#include <Catalog.h>
 #include <LayoutBuilder.h>
 #include <MenuField.h>
 #include <MenuItem.h>
 #include <PopUpMenu.h>
 #include <TextControl.h>
 
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "PivotWindow"
+
 static const uint32 kMsgCreateLocal = 'pvlc';
 
 PivotWindow::PivotWindow(BMessenger target)
 	:
-	BWindow(BRect(180, 180, 520, 300), "Tabella pivot",
+	BWindow(BRect(180, 180, 520, 300), B_TRANSLATE("Tabella pivot"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target)
 {
 	fSourceField = new BTextControl("source",
-		"Intervallo dati (due colonne: categoria, valore):", "A1:B10", NULL);
+		B_TRANSLATE("Intervallo dati (due colonne: categoria, valore):"), "A1:B10", NULL);
 
-	fDestField = new BTextControl("dest", "Cella di destinazione:", "D1", NULL);
+	fDestField = new BTextControl("dest", B_TRANSLATE("Cella di destinazione:"), "D1", NULL);
 
 	BPopUpMenu* aggMenu = new BPopUpMenu("agg");
-	aggMenu->AddItem(new BMenuItem("Somma", NULL));
-	aggMenu->AddItem(new BMenuItem("Conteggio", NULL));
-	aggMenu->AddItem(new BMenuItem("Media", NULL));
+	aggMenu->AddItem(new BMenuItem(B_TRANSLATE("Somma"), NULL));
+	aggMenu->AddItem(new BMenuItem(B_TRANSLATE("Conteggio"), NULL));
+	aggMenu->AddItem(new BMenuItem(B_TRANSLATE("Media"), NULL));
 	aggMenu->ItemAt(0)->SetMarked(true);
-	fAggField = new BMenuField("aggField", "Aggregazione:", aggMenu);
+	fAggField = new BMenuField("aggField", B_TRANSLATE("Aggregazione:"), aggMenu);
 
-	BButton* createButton = new BButton("create", "Crea", new BMessage(kMsgCreateLocal));
+	BButton* createButton = new BButton("create", B_TRANSLATE("Crea"), new BMessage(kMsgCreateLocal));
 	createButton->SetTarget(this);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 8)

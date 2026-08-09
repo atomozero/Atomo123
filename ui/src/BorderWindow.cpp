@@ -11,6 +11,7 @@
 
 #include <Box.h>
 #include <Button.h>
+#include <Catalog.h>
 #include <CheckBox.h>
 #include <ColorControl.h>
 #include <LayoutBuilder.h>
@@ -18,6 +19,9 @@
 #include <MenuItem.h>
 #include <PopUpMenu.h>
 #include <View.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "BorderWindow"
 
 static const uint32 kMsgApplyLocal = 'bapl';
 static const uint32 kMsgPreviewUpdate = 'bprv';
@@ -90,35 +94,35 @@ private:
 
 BorderWindow::BorderWindow(BMessenger target)
 	:
-	BWindow(BRect(180, 180, 520, 400), "Bordo cella",
+	BWindow(BRect(180, 180, 520, 400), B_TRANSLATE("Bordo cella"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target)
 {
 	BMessage* topMsg = new BMessage(kMsgPreviewUpdate);
-	fTopBox = new BCheckBox("borderTop", "Superiore", topMsg);
+	fTopBox = new BCheckBox("borderTop", B_TRANSLATE("Superiore"), topMsg);
 	fTopBox->SetTarget(this);
 	BMessage* leftMsg = new BMessage(kMsgPreviewUpdate);
-	fLeftBox = new BCheckBox("borderLeft", "Sinistro", leftMsg);
+	fLeftBox = new BCheckBox("borderLeft", B_TRANSLATE("Sinistro"), leftMsg);
 	fLeftBox->SetTarget(this);
 	BMessage* bottomMsg = new BMessage(kMsgPreviewUpdate);
-	fBottomBox = new BCheckBox("borderBottom", "Inferiore", bottomMsg);
+	fBottomBox = new BCheckBox("borderBottom", B_TRANSLATE("Inferiore"), bottomMsg);
 	fBottomBox->SetTarget(this);
 	BMessage* rightMsg = new BMessage(kMsgPreviewUpdate);
-	fRightBox = new BCheckBox("borderRight", "Destro", rightMsg);
+	fRightBox = new BCheckBox("borderRight", B_TRANSLATE("Destro"), rightMsg);
 	fRightBox->SetTarget(this);
 
 	BPopUpMenu* thicknessMenu = new BPopUpMenu("thickness");
 	BMessage* thinMsg = new BMessage(kMsgPreviewUpdate);
-	thicknessMenu->AddItem(new BMenuItem("Sottile", thinMsg));
+	thicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Sottile"), thinMsg));
 	BMessage* mediumMsg = new BMessage(kMsgPreviewUpdate);
-	thicknessMenu->AddItem(new BMenuItem("Medio", mediumMsg));
+	thicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Medio"), mediumMsg));
 	BMessage* thickMsg = new BMessage(kMsgPreviewUpdate);
-	thicknessMenu->AddItem(new BMenuItem("Spesso", thickMsg));
+	thicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Spesso"), thickMsg));
 	thicknessMenu->ItemAt(0)->SetMarked(true);
 	thicknessMenu->SetTargetForItems(this);
-	fThicknessField = new BMenuField("thicknessField", "Spessore:", thicknessMenu);
+	fThicknessField = new BMenuField("thicknessField", B_TRANSLATE("Spessore:"), thicknessMenu);
 
 	fColorControl = new BColorControl(BPoint(0, 0), B_CELLS_32x8, 8, "borderColorControl",
 		new BMessage(kMsgPreviewUpdate));
@@ -128,7 +132,7 @@ BorderWindow::BorderWindow(BMessenger target)
 	fPreview = new BorderPreviewView();
 
 	BBox* sidesBox = new BBox("sidesBox");
-	sidesBox->SetLabel("Lati");
+	sidesBox->SetLabel(B_TRANSLATE("Lati"));
 	BLayoutBuilder::Group<>(sidesBox, B_VERTICAL, 4)
 		.SetInsets(8, sidesBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fTopBox)
@@ -137,7 +141,7 @@ BorderWindow::BorderWindow(BMessenger target)
 		.Add(fBottomBox)
 		.Add(fThicknessField);
 
-	BButton* applyButton = new BButton("apply", "Applica", new BMessage(kMsgApplyLocal));
+	BButton* applyButton = new BButton("apply", B_TRANSLATE("Applica"), new BMessage(kMsgApplyLocal));
 	applyButton->SetTarget(this);
 	applyButton->MakeDefault(true);
 

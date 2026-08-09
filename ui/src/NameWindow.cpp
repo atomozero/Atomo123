@@ -10,11 +10,15 @@
 #include "NameWindow.h"
 
 #include <Button.h>
+#include <Catalog.h>
 #include <LayoutBuilder.h>
 #include <ListView.h>
 #include <ScrollView.h>
 #include <StringItem.h>
 #include <TextControl.h>
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "NameWindow"
 
 static const uint32 kMsgDefineNameLocal = 'dfnl';
 static const uint32 kMsgDeleteNameLocal = 'dlnl';
@@ -23,7 +27,7 @@ static const uint32 kMsgSelectNameLocal = 'slnl';
 
 NameWindow::NameWindow(BMessenger target)
 	:
-	BWindow(BRect(150, 150, 460, 400), "Intervalli con nome",
+	BWindow(BRect(150, 150, 460, 400), B_TRANSLATE("Intervalli con nome"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
@@ -35,18 +39,20 @@ NameWindow::NameWindow(BMessenger target)
 	BScrollView* listScroll = new BScrollView("namesScroll", fNameList,
 		0, false, true);
 
-	fNameField = new BTextControl("name", "Nome:", "", NULL);
-	fRangeField = new BTextControl("range", "Intervallo:", "", NULL);
+	fNameField = new BTextControl("name", B_TRANSLATE("Nome:"), "", NULL);
+	fRangeField = new BTextControl("range", B_TRANSLATE("Intervallo:"), "",
+		NULL);
 
-	BButton* defineButton = new BButton("define", "Aggiungi/Aggiorna",
+	BButton* defineButton = new BButton("define",
+		B_TRANSLATE("Aggiungi/Aggiorna"),
 		new BMessage(kMsgDefineNameLocal));
 	defineButton->SetTarget(this);
 
-	BButton* deleteButton = new BButton("delete", "Elimina",
+	BButton* deleteButton = new BButton("delete", B_TRANSLATE("Elimina"),
 		new BMessage(kMsgDeleteNameLocal));
 	deleteButton->SetTarget(this);
 
-	BButton* goToButton = new BButton("goto", "Vai a",
+	BButton* goToButton = new BButton("goto", B_TRANSLATE("Vai a"),
 		new BMessage(kMsgGoToNameLocal));
 	goToButton->SetTarget(this);
 

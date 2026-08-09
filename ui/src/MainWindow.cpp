@@ -48,6 +48,7 @@
 #include <Application.h>
 #include <Bitmap.h>
 #include <Button.h>
+#include <Catalog.h>
 #include <Clipboard.h>
 #include <Directory.h>
 #include <Entry.h>
@@ -78,6 +79,9 @@
 #include "CellParser.h"
 #include "Formatter.h"
 #include "Range.h"
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "MainWindow"
 
 static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
@@ -193,13 +197,13 @@ public:
 		if (!(buttons & B_SECONDARY_MOUSE_BUTTON) || fTarget == NULL)
 			return;
 
-		static const struct { int bit; const char* label; } kItems[] = {
-			{ MainWindow::kStatAverage,  "Media" },
-			{ MainWindow::kStatCount,    "Conteggio" },
-			{ MainWindow::kStatNumCount, "Conteggio numerico" },
-			{ MainWindow::kStatMin,      "Minimo" },
-			{ MainWindow::kStatMax,      "Massimo" },
-			{ MainWindow::kStatSum,      "Somma" },
+		const struct { int bit; const char* label; } kItems[] = {
+			{ MainWindow::kStatAverage,  B_TRANSLATE("Media") },
+			{ MainWindow::kStatCount,    B_TRANSLATE("Conteggio") },
+			{ MainWindow::kStatNumCount, B_TRANSLATE("Conteggio numerico") },
+			{ MainWindow::kStatMin,      B_TRANSLATE("Minimo") },
+			{ MainWindow::kStatMax,      B_TRANSLATE("Massimo") },
+			{ MainWindow::kStatSum,      B_TRANSLATE("Somma") },
 		};
 
 		BPopUpMenu* menu = new BPopUpMenu("footerStatsMenu", false, false);
@@ -271,26 +275,34 @@ struct ToolbarGroupDef {
 	size_t count;
 };
 
+// Le etichette qui sotto sono marcate con B_TRANSLATE_MARK (identita' a
+// tempo di compilazione, vedi Catalog.h) invece che tradotte sul posto
+// con B_TRANSLATE: queste tabelle sono oggetti "static" a livello di
+// file, inizializzati PRIMA di main() (quindi prima che BApplication/
+// BLocaleRoster esistano) -- chiamare davvero il catalogo qui
+// crasherebbe o restituirebbe l'italiano non tradotto. La traduzione
+// vera avviene a runtime in BuildToolbar() sotto, nel punto in cui
+// def.label viene davvero usato.
 static const ToolbarButtonDef kFileToolbarButtons[] = {
-	{ "toolNew", "Nuovo", kMsgNew, &kIconNew },
-	{ "toolOpen", "Apri", kMsgOpen, &kIconOpen },
-	{ "toolSave", "Salva", kMsgSaveAs, &kIconSave },
-	{ "toolPrint", "Stampa", kMsgPrint, &kIconPrint },
+	{ "toolNew", B_TRANSLATE_MARK("Nuovo"), kMsgNew, &kIconNew },
+	{ "toolOpen", B_TRANSLATE_MARK("Apri"), kMsgOpen, &kIconOpen },
+	{ "toolSave", B_TRANSLATE_MARK("Salva"), kMsgSaveAs, &kIconSave },
+	{ "toolPrint", B_TRANSLATE_MARK("Stampa"), kMsgPrint, &kIconPrint },
 };
 
 static const ToolbarButtonDef kEditToolbarButtons[] = {
-	{ "toolUndo", "Annulla", kMsgUndo, &kIconUndo },
-	{ "toolRedo", "Ripeti", kMsgRedo, &kIconRedo },
-	{ "toolCut", "Taglia", kMsgCut, &kIconCut },
-	{ "toolCopy", "Copia", kMsgCopy, &kIconCopy },
-	{ "toolPaste", "Incolla", kMsgPaste, &kIconPaste },
-	{ "toolDelete", "Elimina", kMsgClear, &kIconDelete },
-	{ "toolFind", "Trova", kMsgFind, &kIconFind },
+	{ "toolUndo", B_TRANSLATE_MARK("Annulla"), kMsgUndo, &kIconUndo },
+	{ "toolRedo", B_TRANSLATE_MARK("Ripeti"), kMsgRedo, &kIconRedo },
+	{ "toolCut", B_TRANSLATE_MARK("Taglia"), kMsgCut, &kIconCut },
+	{ "toolCopy", B_TRANSLATE_MARK("Copia"), kMsgCopy, &kIconCopy },
+	{ "toolPaste", B_TRANSLATE_MARK("Incolla"), kMsgPaste, &kIconPaste },
+	{ "toolDelete", B_TRANSLATE_MARK("Elimina"), kMsgClear, &kIconDelete },
+	{ "toolFind", B_TRANSLATE_MARK("Trova"), kMsgFind, &kIconFind },
 };
 
 static const ToolbarButtonDef kDataToolbarButtons[] = {
-	{ "toolSortAsc", "Ordina A-Z", kMsgSortAscending, &kIconSortAscending },
-	{ "toolSortDesc", "Ordina Z-A", kMsgSortDescending, &kIconSortDescending },
+	{ "toolSortAsc", B_TRANSLATE_MARK("Ordina A-Z"), kMsgSortAscending, &kIconSortAscending },
+	{ "toolSortDesc", B_TRANSLATE_MARK("Ordina Z-A"), kMsgSortDescending, &kIconSortDescending },
 };
 
 // Vai a/Intervalli con nome (gia' voci di menu) promossi a pulsante ora
@@ -298,13 +310,13 @@ static const ToolbarButtonDef kDataToolbarButtons[] = {
 // gruppo separato da Ordina A-Z/Z-A qui sopra perche' sono comandi di
 // navigazione, non di riordino dati (vedi kToolbarGroups piu' sotto).
 static const ToolbarButtonDef kNavigateToolbarButtons[] = {
-	{ "toolGoTo", "Vai a", kMsgShowGoTo, &kIconGoTo },
-	{ "toolNamedRanges", "Intervalli con nome", kMsgShowNames, &kIconNamedRange },
+	{ "toolGoTo", B_TRANSLATE_MARK("Vai a"), kMsgShowGoTo, &kIconGoTo },
+	{ "toolNamedRanges", B_TRANSLATE_MARK("Intervalli con nome"), kMsgShowNames, &kIconNamedRange },
 };
 
 static const ToolbarButtonDef kInsertToolbarButtons[] = {
-	{ "toolChart", "Grafico", kMsgShowChart, &kIconChart },
-	{ "toolPivot", "Pivot", kMsgShowPivot, &kIconTable },
+	{ "toolChart", B_TRANSLATE_MARK("Grafico"), kMsgShowChart, &kIconChart },
+	{ "toolPivot", B_TRANSLATE_MARK("Pivot"), kMsgShowPivot, &kIconTable },
 };
 
 // Commento cella/Collegamento ipertestuale (Fase 13, gia' voci del menu
@@ -313,8 +325,8 @@ static const ToolbarButtonDef kInsertToolbarButtons[] = {
 // parte perche' sono annotazioni sulla singola cella attiva, non
 // inserimenti di un intero oggetto come grafico/pivot.
 static const ToolbarButtonDef kAnnotateToolbarButtons[] = {
-	{ "toolHyperlink", "Collegamento ipertestuale", kMsgShowHyperlinkWindow, &kIconHyperlink },
-	{ "toolComment", "Commento cella", kMsgShowCommentWindow, &kIconComment },
+	{ "toolHyperlink", B_TRANSLATE_MARK("Collegamento ipertestuale"), kMsgShowHyperlinkWindow, &kIconHyperlink },
+	{ "toolComment", B_TRANSLATE_MARK("Commento cella"), kMsgShowCommentWindow, &kIconComment },
 };
 
 // Stessi comandi dei BMenuItem del menu Formato piu' sotto in questo
@@ -324,22 +336,22 @@ static const ToolbarButtonDef kAnnotateToolbarButtons[] = {
 // IconData.cpp), rimasti solo voci di menu fino ad ora per questo
 // motivo, non per mancanza della funzione stessa.
 static const ToolbarButtonDef kFormatToolbarButtons[] = {
-	{ "toolBold", "Grassetto", kMsgToggleBold, &kIconBold },
-	{ "toolItalic", "Corsivo", kMsgToggleItalic, &kIconItalic },
-	{ "toolUnderline", "Sottolineato", kMsgToggleUnderline, &kIconUnderline },
-	{ "toolAlignLeft", "Allinea a sinistra", kMsgSetAlignment, &kIconAlignLeft, "alignment", eAlignLeft },
-	{ "toolAlignCenter", "Allinea al centro", kMsgSetAlignment, &kIconAlignCenter, "alignment", eAlignCenter },
-	{ "toolAlignRight", "Allinea a destra", kMsgSetAlignment, &kIconAlignRight, "alignment", eAlignRight },
-	{ "toolWrapText", "A capo automatico", kMsgToggleWrapText, &kIconWrapText },
-	{ "toolTextColor", "Colore testo", kMsgShowTextColor, &kIconTextColor },
-	{ "toolHighlight", "Colore sfondo", kMsgShowBgColor, &kIconHighlight },
+	{ "toolBold", B_TRANSLATE_MARK("Grassetto"), kMsgToggleBold, &kIconBold },
+	{ "toolItalic", B_TRANSLATE_MARK("Corsivo"), kMsgToggleItalic, &kIconItalic },
+	{ "toolUnderline", B_TRANSLATE_MARK("Sottolineato"), kMsgToggleUnderline, &kIconUnderline },
+	{ "toolAlignLeft", B_TRANSLATE_MARK("Allinea a sinistra"), kMsgSetAlignment, &kIconAlignLeft, "alignment", eAlignLeft },
+	{ "toolAlignCenter", B_TRANSLATE_MARK("Allinea al centro"), kMsgSetAlignment, &kIconAlignCenter, "alignment", eAlignCenter },
+	{ "toolAlignRight", B_TRANSLATE_MARK("Allinea a destra"), kMsgSetAlignment, &kIconAlignRight, "alignment", eAlignRight },
+	{ "toolWrapText", B_TRANSLATE_MARK("A capo automatico"), kMsgToggleWrapText, &kIconWrapText },
+	{ "toolTextColor", B_TRANSLATE_MARK("Colore testo"), kMsgShowTextColor, &kIconTextColor },
+	{ "toolHighlight", B_TRANSLATE_MARK("Colore sfondo"), kMsgShowBgColor, &kIconHighlight },
 	// Colore bordo (Fase 13): stesso gruppo "Colore" degli altri due
 	// sopra, icona a tavolozza (kIconBorderColor) per distinguerla dai
 	// pittogrammi "A"/pennello gia' usati da testo/sfondo.
 	// Icona di "colore bordo" riusata: apre pero' la finestra completa
 	// (lati/spessore/colore insieme), non solo il colore -- vedi
 	// BorderWindow.h e il commento su kMsgShowBorderColor piu' sotto.
-	{ "toolBorderColor", "Bordo cella", kMsgShowBorderWindow, &kIconBorderColor },
+	{ "toolBorderColor", B_TRANSLATE_MARK("Bordo cella"), kMsgShowBorderWindow, &kIconBorderColor },
 };
 
 #define TOOLBAR_GROUP(buttons) { buttons, sizeof(buttons) / sizeof((buttons)[0]) }
@@ -395,8 +407,9 @@ static BView* BuildToolbar(BHandler* target)
 			if (def.paramName)
 				message->AddInt32(def.paramName, def.paramValue);
 
+			const char* label = B_TRANSLATE(def.label);
 			BButton* button = new BButton(def.name, NULL, message);
-			button->SetToolTip(def.label);
+			button->SetToolTip(label);
 			button->SetTarget(target);
 			// Bottone piatto (bordo visibile solo al passaggio del mouse/
 			// alla pressione, non sempre come un BButton normale): stesso
@@ -414,7 +427,7 @@ static BView* BuildToolbar(BHandler* target)
 				delete icon;
 			}
 
-			toolbar->AddButton(button, def.label);
+			toolbar->AddButton(button, label);
 		}
 	}
 
@@ -478,30 +491,30 @@ MainWindow::MainWindow()
 	fModified = false;
 
 	BMenuBar* menuBar = new BMenuBar("menu");
-	BMenu* fileMenu = new BMenu("File");
-	fileMenu->AddItem(new BMenuItem("Nuovo", new BMessage(kMsgNew), 'N'));
-	fileMenu->AddItem(new BMenuItem("Apri" B_UTF8_ELLIPSIS, new BMessage(kMsgOpen), 'O'));
-	fRecentMenu = new BMenu("Apri recenti");
+	BMenu* fileMenu = new BMenu(B_TRANSLATE("File"));
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Nuovo"), new BMessage(kMsgNew), 'N'));
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Apri" B_UTF8_ELLIPSIS), new BMessage(kMsgOpen), 'O'));
+	fRecentMenu = new BMenu(B_TRANSLATE("Apri recenti"));
 	fileMenu->AddItem(new BMenuItem(fRecentMenu));
 	RebuildRecentMenu(); // popolato subito, non solo alla prima apertura del menu
-	fileMenu->AddItem(new BMenuItem("Salva con nome" B_UTF8_ELLIPSIS,
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Salva con nome" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgSaveAs), 'S'));
 	fileMenu->AddSeparatorItem();
-	fileMenu->AddItem(new BMenuItem("Stampa" B_UTF8_ELLIPSIS, new BMessage(kMsgPrint), 'P'));
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Stampa" B_UTF8_ELLIPSIS), new BMessage(kMsgPrint), 'P'));
 	fileMenu->AddSeparatorItem();
-	fileMenu->AddItem(new BMenuItem("Preferenze" B_UTF8_ELLIPSIS,
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Preferenze" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowPreferences)));
-	fileMenu->AddItem(new BMenuItem("Informazioni su Atomo123" B_UTF8_ELLIPSIS,
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Informazioni su Atomo123" B_UTF8_ELLIPSIS),
 		new BMessage(B_ABOUT_REQUESTED)));
 	fileMenu->AddSeparatorItem();
-	fileMenu->AddItem(new BMenuItem("Esci", new BMessage(B_QUIT_REQUESTED), 'Q'));
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Esci"), new BMessage(B_QUIT_REQUESTED), 'Q'));
 	menuBar->AddItem(fileMenu);
 
 	// Taglia/copia/incolla passano dal vero BClipboard di sistema (non
 	// da un appunti interno all'app): il contenuto della cella (la
 	// formula, come mostrata dalla barra formule) diventa testo piano
 	// condivisibile anche con altre applicazioni Haiku.
-	BMenu* editMenu = new BMenu("Modifica");
+	BMenu* editMenu = new BMenu(B_TRANSLATE("Modifica"));
 	// Ctrl+Z/Ctrl+Y come scorciatoie dirette (non solo di menu): a
 	// differenza di Ctrl+A/Ctrl+D/Ctrl+End sopra, questi due byte
 	// (0x1a e 0x19) non corrispondono a nessun altro tasto speciale
@@ -509,26 +522,26 @@ MainWindow::MainWindow()
 	// da aggirare (vedi InterfaceDefs.h: B_SUBSTITUTE = 0x1a per
 	// Ctrl+Z, nessun nome dedicato per Ctrl+Y). La scorciatoia di menu
 	// basta comunque a farli funzionare, risolta dal BWindow.
-	editMenu->AddItem(new BMenuItem("Annulla", new BMessage(kMsgUndo), 'Z'));
-	editMenu->AddItem(new BMenuItem("Ripeti", new BMessage(kMsgRedo), 'Y'));
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Annulla"), new BMessage(kMsgUndo), 'Z'));
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Ripeti"), new BMessage(kMsgRedo), 'Y'));
 	editMenu->AddSeparatorItem();
-	editMenu->AddItem(new BMenuItem("Taglia", new BMessage(kMsgCut), 'X'));
-	editMenu->AddItem(new BMenuItem("Copia", new BMessage(kMsgCopy), 'C'));
-	editMenu->AddItem(new BMenuItem("Incolla", new BMessage(kMsgPaste), 'V'));
-	editMenu->AddItem(new BMenuItem("Incolla speciale" B_UTF8_ELLIPSIS,
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Taglia"), new BMessage(kMsgCut), 'X'));
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Copia"), new BMessage(kMsgCopy), 'C'));
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Incolla"), new BMessage(kMsgPaste), 'V'));
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Incolla speciale" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowPasteSpecial)));
 	editMenu->AddSeparatorItem();
-	editMenu->AddItem(new BMenuItem("Cancella", new BMessage(kMsgClear)));
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Cancella"), new BMessage(kMsgClear)));
 	editMenu->AddSeparatorItem();
 	// Niente scorciatoia Ctrl+A: su Haiku collide col byte generato da
 	// Ctrl+Inizio (vedi il commento in SheetView::HandleKey) -- voce
 	// di menu soltanto, come gia' fa Sum-It storico per lo stesso
 	// comando (menu Modifica, "Select All", senza modificatore).
-	editMenu->AddItem(new BMenuItem("Seleziona tutto", new BMessage(kMsgSelectAll)));
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Seleziona tutto"), new BMessage(kMsgSelectAll)));
 	editMenu->AddSeparatorItem();
-	editMenu->AddItem(new BMenuItem("Trova e sostituisci" B_UTF8_ELLIPSIS,
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Trova e sostituisci" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgFind), 'F'));
-	editMenu->AddItem(new BMenuItem("Vai a" B_UTF8_ELLIPSIS,
+	editMenu->AddItem(new BMenuItem(B_TRANSLATE("Vai a" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowGoTo), 'G'));
 	menuBar->AddItem(editMenu);
 
@@ -536,63 +549,63 @@ MainWindow::MainWindow()
 	// (letto da CContainer::GetCellResult/SheetView per la
 	// visualizzazione). Valuta e percentuale sfruttano anche le
 	// formattazioni dedicate del Locale Kit in SheetView::Draw.
-	BMenu* formatMenu = new BMenu("Formato");
+	BMenu* formatMenu = new BMenu(B_TRANSLATE("Formato"));
 	BMessage* generalMsg = new BMessage(kMsgSetFormat);
 	generalMsg->AddInt32("format", eGeneral);
-	formatMenu->AddItem(new BMenuItem("Generale", generalMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Generale"), generalMsg));
 	BMessage* fixedMsg = new BMessage(kMsgSetFormat);
 	fixedMsg->AddInt32("format", eFixed);
-	formatMenu->AddItem(new BMenuItem("Numero", fixedMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Numero"), fixedMsg));
 	BMessage* currencyMsg = new BMessage(kMsgSetFormat);
 	currencyMsg->AddInt32("format", eCurrency);
-	formatMenu->AddItem(new BMenuItem("Valuta", currencyMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Valuta"), currencyMsg));
 	BMessage* percentMsg = new BMessage(kMsgSetFormat);
 	percentMsg->AddInt32("format", ePercent);
-	formatMenu->AddItem(new BMenuItem("Percentuale", percentMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Percentuale"), percentMsg));
 	formatMenu->AddSeparatorItem();
 	// Grassetto/Corsivo: agiscono su CellStyle::fFont (un indice in
 	// gFontSizeTable, mai un flag a parte -- vedi MainWindow::ToggleBold/
 	// ToggleItalic). Allinea: CellStyle::fAlignment, letto da
 	// SheetView::Draw per posizionare il testo dentro la cella.
-	formatMenu->AddItem(new BMenuItem("Grassetto", new BMessage(kMsgToggleBold), 'B'));
-	formatMenu->AddItem(new BMenuItem("Corsivo", new BMessage(kMsgToggleItalic), 'I'));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Grassetto"), new BMessage(kMsgToggleBold), 'B'));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Corsivo"), new BMessage(kMsgToggleItalic), 'I'));
 	// Sottolineato (Fase 12): CellStyle::fUnderline, un booleano a
 	// parte -- BFont non ha un attributo sottolineato nativo (vedi il
 	// commento sul campo in CellStyle.h), quindi non puo' viaggiare
 	// nella tripla famiglia/stile/dimensione di fFont come Grassetto/
 	// Corsivo sopra.
-	formatMenu->AddItem(new BMenuItem("Sottolineato", new BMessage(kMsgToggleUnderline), 'U'));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Sottolineato"), new BMessage(kMsgToggleUnderline), 'U'));
 	formatMenu->AddSeparatorItem();
 	BMessage* alignLeftMsg = new BMessage(kMsgSetAlignment);
 	alignLeftMsg->AddInt32("alignment", eAlignLeft);
-	formatMenu->AddItem(new BMenuItem("Allinea a sinistra", alignLeftMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea a sinistra"), alignLeftMsg));
 	BMessage* alignCenterMsg = new BMessage(kMsgSetAlignment);
 	alignCenterMsg->AddInt32("alignment", eAlignCenter);
-	formatMenu->AddItem(new BMenuItem("Allinea al centro", alignCenterMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea al centro"), alignCenterMsg));
 	BMessage* alignRightMsg = new BMessage(kMsgSetAlignment);
 	alignRightMsg->AddInt32("alignment", eAlignRight);
-	formatMenu->AddItem(new BMenuItem("Allinea a destra", alignRightMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea a destra"), alignRightMsg));
 	// A capo automatico (Fase 12): CellStyle::fWrapText, stesso
 	// principio di ToggleBold/ToggleUnderline sopra (stato letto dalla
 	// cella attiva, applicato a tutta la selezione) ma con un effetto
 	// collaterale in piu' -- fa anche crescere l'altezza delle righe
 	// coinvolte se serve, vedi MainWindow::ToggleWrapText.
-	formatMenu->AddItem(new BMenuItem("A capo automatico", new BMessage(kMsgToggleWrapText)));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("A capo automatico"), new BMessage(kMsgToggleWrapText)));
 	formatMenu->AddSeparatorItem();
-	formatMenu->AddItem(new BMenuItem("Colore testo" B_UTF8_ELLIPSIS,
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Colore testo" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowTextColor)));
-	formatMenu->AddItem(new BMenuItem("Colore sfondo" B_UTF8_ELLIPSIS,
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Colore sfondo" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowBgColor)));
 	// Colore del bordo (Fase 13): condiviso da tutti e quattro i lati
 	// di una cella (CellStyle::fBorderColor), stesso principio di
 	// scope gia' scelto per i grafici -- vedi ROADMAP.md.
-	formatMenu->AddItem(new BMenuItem("Colore bordo" B_UTF8_ELLIPSIS,
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Colore bordo" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowBorderColor)));
 	formatMenu->AddSeparatorItem();
 	// Bordo cella (Fase 13): lati/spessore/colore insieme, con
 	// anteprima -- vedi BorderWindow.h. Le voci sotto (un lato/aspetto
 	// alla volta) restano come scorciatoie rapide, non sostituite.
-	formatMenu->AddItem(new BMenuItem("Bordo cella" B_UTF8_ELLIPSIS,
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo cella" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowBorderWindow)));
 	formatMenu->AddSeparatorItem();
 	// Bordi di cella (Fase 11): un lato alla volta, come Grassetto/
@@ -601,60 +614,60 @@ MainWindow::MainWindow()
 	// fBBorderColor/fRBorderColor).
 	BMessage* topBorderMsg = new BMessage(kMsgToggleBorder);
 	topBorderMsg->AddInt32("side", 0);
-	formatMenu->AddItem(new BMenuItem("Bordo superiore", topBorderMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo superiore"), topBorderMsg));
 	BMessage* leftBorderMsg = new BMessage(kMsgToggleBorder);
 	leftBorderMsg->AddInt32("side", 1);
-	formatMenu->AddItem(new BMenuItem("Bordo sinistro", leftBorderMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo sinistro"), leftBorderMsg));
 	BMessage* bottomBorderMsg = new BMessage(kMsgToggleBorder);
 	bottomBorderMsg->AddInt32("side", 2);
-	formatMenu->AddItem(new BMenuItem("Bordo inferiore", bottomBorderMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo inferiore"), bottomBorderMsg));
 	BMessage* rightBorderMsg = new BMessage(kMsgToggleBorder);
 	rightBorderMsg->AddInt32("side", 3);
-	formatMenu->AddItem(new BMenuItem("Bordo destro", rightBorderMsg));
-	formatMenu->AddItem(new BMenuItem("Nessun bordo", new BMessage(kMsgClearBorders)));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo destro"), rightBorderMsg));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Nessun bordo"), new BMessage(kMsgClearBorders)));
 	// Spessore del bordo (Fase 13): cambia lo spessore dei lati GIA'
 	// presenti sulla selezione, non ne attiva di nuovi -- vedi
 	// MainWindow::SetBorderThickness. Corrispondenza posizionale con
 	// CellStyle::fTBorderColor ecc: 1/2/3 = sottile/medio/spesso.
-	BMenu* borderThicknessMenu = new BMenu("Spessore bordo");
+	BMenu* borderThicknessMenu = new BMenu(B_TRANSLATE("Spessore bordo"));
 	BMessage* thinMsg = new BMessage(kMsgSetBorderThickness);
 	thinMsg->AddInt32("thickness", 1);
-	borderThicknessMenu->AddItem(new BMenuItem("Sottile", thinMsg));
+	borderThicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Sottile"), thinMsg));
 	BMessage* mediumMsg = new BMessage(kMsgSetBorderThickness);
 	mediumMsg->AddInt32("thickness", 2);
-	borderThicknessMenu->AddItem(new BMenuItem("Medio", mediumMsg));
+	borderThicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Medio"), mediumMsg));
 	BMessage* thickMsg = new BMessage(kMsgSetBorderThickness);
 	thickMsg->AddInt32("thickness", 3);
-	borderThicknessMenu->AddItem(new BMenuItem("Spesso", thickMsg));
+	borderThicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Spesso"), thickMsg));
 	formatMenu->AddItem(borderThicknessMenu);
 	formatMenu->AddSeparatorItem();
 	// Celle unite (Fase 12): un rettangolo per foglio (CContainer::
 	// AddMergedRange), non un campo per cella -- vedi MainWindow::
 	// MergeCells/UnmergeCells.
-	formatMenu->AddItem(new BMenuItem("Unisci celle", new BMessage(kMsgMergeCells)));
-	formatMenu->AddItem(new BMenuItem("Dividi celle", new BMessage(kMsgUnmergeCells)));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Unisci celle"), new BMessage(kMsgMergeCells)));
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Dividi celle"), new BMessage(kMsgUnmergeCells)));
 	formatMenu->AddSeparatorItem();
 	// Commento cella (Fase 13): opera sempre sulla sola cella attiva
 	// (fSelection), mai sull'intero intervallo selezionato come
 	// Taglia/Copia/Incolla/Formato -- un commento e' un'annotazione su
 	// UNA cella precisa, non un'operazione che ha senso ripetere su
 	// piu' celle in un colpo solo.
-	formatMenu->AddItem(new BMenuItem("Commento cella" B_UTF8_ELLIPSIS,
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Commento cella" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowCommentWindow)));
 	// Collegamento ipertestuale (Fase 13): stesso principio del
 	// commento cella appena sopra -- un URL per UNA cella precisa.
-	formatMenu->AddItem(new BMenuItem("Collegamento ipertestuale" B_UTF8_ELLIPSIS,
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Collegamento ipertestuale" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowHyperlinkWindow)));
 	// Convalida dati (Fase 13): a differenza dei due sopra, si applica
 	// a tutta la selezione (come il vero "Convalida dati" di Excel),
 	// non solo alla cella attiva -- vedi MainWindow::
 	// ApplyValidationToSelection.
-	formatMenu->AddItem(new BMenuItem("Convalida dati" B_UTF8_ELLIPSIS,
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Convalida dati" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowValidationWindow)));
 	// Formattazione condizionale VIVA (Fase 13): stesso principio della
 	// convalida dati appena sopra -- si applica a tutta la selezione,
 	// vedi MainWindow::ApplyConditionalFormatToSelection.
-	formatMenu->AddItem(new BMenuItem("Formattazione condizionale" B_UTF8_ELLIPSIS,
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Formattazione condizionale" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowConditionalFormatWindow)));
 	menuBar->AddItem(formatMenu);
 
@@ -669,14 +682,14 @@ MainWindow::MainWindow()
 	// B_HOME per "Seleziona tutto"), quindi solo la scorciatoia di
 	// menu -- risolta a un livello diverso, prima che KeyDown veda un
 	// singolo byte ambiguo -- funziona in modo affidabile.
-	BMenu* dataMenu = new BMenu("Dati");
-	dataMenu->AddItem(new BMenuItem("Riempi in basso", new BMessage(kMsgFillDown), 'D'));
-	dataMenu->AddItem(new BMenuItem("Riempi a destra", new BMessage(kMsgFillRight), 'R'));
+	BMenu* dataMenu = new BMenu(B_TRANSLATE("Dati"));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Riempi in basso"), new BMessage(kMsgFillDown), 'D'));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Riempi a destra"), new BMessage(kMsgFillRight), 'R'));
 	dataMenu->AddSeparatorItem();
 	// Ordina per righe intere, confrontando la colonna piu' a sinistra
 	// dell'intervallo selezionato (vedi SheetView::SortSelection).
-	dataMenu->AddItem(new BMenuItem("Ordina crescente", new BMessage(kMsgSortAscending)));
-	dataMenu->AddItem(new BMenuItem("Ordina decrescente", new BMessage(kMsgSortDescending)));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Ordina crescente"), new BMessage(kMsgSortAscending)));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Ordina decrescente"), new BMessage(kMsgSortDescending)));
 	dataMenu->AddSeparatorItem();
 	// Il numero di righe/colonne e il punto vengono dalla selezione
 	// corrente (SheetView::SelectionRange()), non da una selezione di
@@ -686,10 +699,10 @@ MainWindow::MainWindow()
 	// "Elimina" di Sum-It storico (che inferiva riga o colonna dal
 	// fatto che la selezione coprisse un'intera riga/colonna): senza
 	// quel gesto sarebbe ambiguo qui.
-	dataMenu->AddItem(new BMenuItem("Inserisci riga", new BMessage(kMsgInsertRows)));
-	dataMenu->AddItem(new BMenuItem("Inserisci colonna", new BMessage(kMsgInsertColumns)));
-	dataMenu->AddItem(new BMenuItem("Elimina riga", new BMessage(kMsgDeleteRows)));
-	dataMenu->AddItem(new BMenuItem("Elimina colonna", new BMessage(kMsgDeleteColumns)));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Inserisci riga"), new BMessage(kMsgInsertRows)));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Inserisci colonna"), new BMessage(kMsgInsertColumns)));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Elimina riga"), new BMessage(kMsgDeleteRows)));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Elimina colonna"), new BMessage(kMsgDeleteColumns)));
 	dataMenu->AddSeparatorItem();
 	// Elimina/Rinomina foglio non compaiono qui apposta: si scelgono
 	// col tasto destro sulla scheda del foglio (SheetTabView), dove il
@@ -699,12 +712,12 @@ MainWindow::MainWindow()
 	// coda), quindi qui nel menu ha senso quanto la maniglia "+" di
 	// Excel/LibreOffice Calc dopo l'ultima scheda -- non implementata
 	// per restare nello scope di questo punto della Fase 13.
-	dataMenu->AddItem(new BMenuItem("Nuovo foglio", new BMessage(kMsgNewSheet)));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Nuovo foglio"), new BMessage(kMsgNewSheet)));
 	dataMenu->AddSeparatorItem();
 	// Blocca tutto cio' che sta sopra/a sinistra della cella attiva
 	// (come Excel): voce con segno di spunta, sincronizzato a ogni
 	// attivazione/cambio foglio -- vedi SheetView::ToggleFreezePanes.
-	fFreezeMenuItem = new BMenuItem("Blocca riquadri", new BMessage(kMsgToggleFreeze));
+	fFreezeMenuItem = new BMenuItem(B_TRANSLATE("Blocca riquadri"), new BMessage(kMsgToggleFreeze));
 	dataMenu->AddItem(fFreezeMenuItem);
 	menuBar->AddItem(dataMenu);
 
@@ -713,12 +726,12 @@ MainWindow::MainWindow()
 	// l'unica selezione supportata dalla griglia -- vedi
 	// docs/UI_ARCHITECTURE.md): l'intervallo si digita nella finestra
 	// dedicata, non si trascina sulla griglia.
-	BMenu* insertMenu = new BMenu("Inserisci");
-	insertMenu->AddItem(new BMenuItem("Grafico a barre" B_UTF8_ELLIPSIS,
+	BMenu* insertMenu = new BMenu(B_TRANSLATE("Inserisci"));
+	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Grafico a barre" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowChart)));
-	insertMenu->AddItem(new BMenuItem("Tabella pivot" B_UTF8_ELLIPSIS,
+	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Tabella pivot" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowPivot)));
-	insertMenu->AddItem(new BMenuItem("Intervalli con nome" B_UTF8_ELLIPSIS,
+	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Intervalli con nome" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowNames)));
 	menuBar->AddItem(insertMenu);
 
@@ -790,7 +803,7 @@ MainWindow::MainWindow()
 	// footer, come Excel: aggiornato da SetCellMode, chiamata da
 	// SheetView::StartEditing/CommitEditing (editing in-cella) e dal
 	// messaggio di modifica della barra formula sotto.
-	fCellMode = new BStringView("cellMode", "Pronto");
+	fCellMode = new BStringView("cellMode", B_TRANSLATE("Pronto"));
 
 	// Footer con le statistiche della selezione corrente, come Excel:
 	// vuoto con una sola cella selezionata senza valore numerico dentro
@@ -944,7 +957,7 @@ void MainWindow::UpdateTitle()
 	BString title;
 	if (fModified)
 		title << "* ";
-	title << (fDocumentName.Length() > 0 ? fDocumentName : BString("Nuovo documento"));
+	title << (fDocumentName.Length() > 0 ? fDocumentName : BString(B_TRANSLATE("Nuovo documento")));
 	title << " \xE2\x80\x94 Atomo123"; // em dash (U+2014) in UTF-8
 	SetTitle(title.String());
 }
@@ -968,9 +981,10 @@ bool MainWindow::ConfirmDiscardChanges()
 	if (!fModified)
 		return true;
 
-	BAlert* alert = new BAlert("Modifiche non salvate",
-		"Le modifiche non salvate andranno perse. Continuare?",
-		"Annulla", "Continua senza salvare", NULL,
+	BAlert* alert = new BAlert(B_TRANSLATE("Modifiche non salvate"),
+		B_TRANSLATE("Le modifiche non salvate andranno perse. Continuare?"),
+		B_TRANSLATE_COMMENT("Annulla", "Pulsante di annullamento in una finestra di conferma (\"Cancel\"), non la voce di menu Annulla/Undo"),
+		B_TRANSLATE("Continua senza salvare"), NULL,
 		B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 	alert->SetShortcut(0, B_ESCAPE);
 	return alert->Go() == 1;
@@ -1183,18 +1197,19 @@ void MainWindow::DeleteSheet(int index)
 
 	if (fSheets.size() <= 1)
 	{
-		BAlert* alert = new BAlert("Elimina foglio",
-			"Non è possibile eliminare l'unico foglio della cartella di lavoro.",
-			"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+		BAlert* alert = new BAlert(B_TRANSLATE("Elimina foglio"),
+			B_TRANSLATE("Non è possibile eliminare l'unico foglio della cartella di lavoro."),
+			B_TRANSLATE("OK"), NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 		alert->Go();
 		return;
 	}
 
 	BString msg;
-	msg << "Eliminare il foglio \"" << fSheets[index].name
-		<< "\"? L'operazione non può essere annullata.";
-	BAlert* alert = new BAlert("Elimina foglio", msg.String(),
-		"Annulla", "Elimina", NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+	msg.SetToFormat(B_TRANSLATE("Eliminare il foglio \"%s\"? L'operazione non può essere annullata."),
+		fSheets[index].name.String());
+	BAlert* alert = new BAlert(B_TRANSLATE("Elimina foglio"), msg.String(),
+		B_TRANSLATE_COMMENT("Annulla", "Pulsante di annullamento in una finestra di conferma (\"Cancel\"), non la voce di menu Annulla/Undo"),
+		B_TRANSLATE("Elimina"), NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 	alert->SetShortcut(0, B_ESCAPE);
 	if (alert->Go() != 1)
 		return;
@@ -1246,9 +1261,9 @@ void MainWindow::RenameSheet(int index, const char* newName)
 	{
 		if ((int)i != index && fSheets[i].name == newName)
 		{
-			BAlert* alert = new BAlert("Rinomina foglio",
-				"Esiste già un foglio con questo nome.",
-				"OK", NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+			BAlert* alert = new BAlert(B_TRANSLATE("Rinomina foglio"),
+				B_TRANSLATE("Esiste già un foglio con questo nome."),
+				B_TRANSLATE("OK"), NULL, NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 			alert->Go();
 			return;
 		}
@@ -1336,7 +1351,7 @@ void MainWindow::RebuildRecentMenu()
 		recent.resize(fMaxRecentFiles);
 	if (recent.empty())
 	{
-		BMenuItem* none = new BMenuItem("(nessuno)", NULL);
+		BMenuItem* none = new BMenuItem(B_TRANSLATE("(nessuno)"), NULL);
 		none->SetEnabled(false);
 		fRecentMenu->AddItem(none);
 		return;
@@ -1408,8 +1423,8 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	BFile file(&ref, B_READ_ONLY);
 	if (file.InitCheck() != B_OK)
 	{
-		BAlert* alert = new BAlert("Errore",
-			"Impossibile aprire il file selezionato.", "OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Impossibile aprire il file selezionato."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -1449,9 +1464,9 @@ void MainWindow::OpenFile(const entry_ref& ref)
 			&ascd, kAtomoNativeFormat);
 		if (translateErr != B_OK)
 		{
-			BAlert* alert = new BAlert("Errore",
-				"Formato file non riconosciuto da nessun translator installato.",
-				"OK");
+			BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+				B_TRANSLATE("Formato file non riconosciuto da nessun translator installato."),
+				B_TRANSLATE("OK"));
 			alert->Go();
 			return;
 		}
@@ -1472,9 +1487,9 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	{
 		for (size_t i = 0; i < newSheets.size(); i++)
 			newSheets[i].doc->Release();
-		BAlert* alert = new BAlert("Errore",
-			"Il file e' stato tradotto ma i dati risultanti non sono validi.",
-			"OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Il file e' stato tradotto ma i dati risultanti non sono validi."),
+			B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -1541,7 +1556,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	BFile file(&directory, name, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 	if (file.InitCheck() != B_OK)
 	{
-		BAlert* alert = new BAlert("Errore", "Impossibile creare il file.", "OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"), B_TRANSLATE("Impossibile creare il file."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -1568,7 +1583,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		status_t err = SaveASCDBook(fSheets, &file);
 		if (err != B_OK)
 		{
-			BAlert* alert = new BAlert("Errore", "Scrittura del file fallita.", "OK");
+			BAlert* alert = new BAlert(B_TRANSLATE("Errore"), B_TRANSLATE("Scrittura del file fallita."), B_TRANSLATE("OK"));
 			alert->Go();
 			return;
 		}
@@ -1589,7 +1604,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	status_t err = SaveASCD(fDoc, &ascd);
 	if (err != B_OK)
 	{
-		BAlert* alert = new BAlert("Errore", "Serializzazione del documento fallita.", "OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"), B_TRANSLATE("Serializzazione del documento fallita."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -1598,8 +1613,8 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	err = BTranslatorRoster::Default()->Translate(&ascd, NULL, NULL, &file, outType);
 	if (err != B_OK)
 	{
-		BAlert* alert = new BAlert("Errore",
-			"Nessun translator installato sa esportare in questo formato.", "OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Nessun translator installato sa esportare in questo formato."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -2793,10 +2808,8 @@ bool MainWindow::ValidateCellValue(int row, int col, const char* text, BString* 
 		}
 		if (errorMessage)
 		{
-			errorMessage->SetTo("\"");
-			errorMessage->Append(text);
-			errorMessage->Append("\" non è uno dei valori ammessi:\n");
-			errorMessage->Append(rule.list.c_str());
+			errorMessage->SetToFormat(B_TRANSLATE("\"%s\" non è uno dei valori ammessi:\n%s"),
+				text, rule.list.c_str());
 		}
 		return false;
 	}
@@ -2812,7 +2825,7 @@ bool MainWindow::ValidateCellValue(int row, int col, const char* text, BString* 
 			{
 				char buf[128];
 				snprintf(buf, sizeof(buf),
-					"\"%s\" non è un numero compreso fra %g e %g.", text, rule.min, rule.max);
+					B_TRANSLATE("\"%s\" non è un numero compreso fra %g e %g."), text, rule.min, rule.max);
 				errorMessage->SetTo(buf);
 			}
 			return false;
@@ -2963,10 +2976,10 @@ void MainWindow::HandleChartRequest(const char* rangeText)
 	std::vector<ChartSeries> series;
 	if (!ParseRangeRef(rangeText, r) || !BuildChartSeries(fDoc, r, series))
 	{
-		BAlert* alert = new BAlert("Grafico",
-			"Intervallo non valido: serve esattamente due colonne "
-			"(etichette, valori) con almeno una riga numerica, es. A1:B5.",
-			"OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
+			B_TRANSLATE("Intervallo non valido: serve esattamente due colonne "
+				"(etichette, valori) con almeno una riga numerica, es. A1:B5."),
+			B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -2997,10 +3010,10 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText, 
 	if (!ParseRangeRef(rangeText, dataRange) || !BuildChartSeries(fDoc, dataRange, series)
 		|| !cell::GetCell(destText, dest))
 	{
-		BAlert* alert = new BAlert("Grafico",
-			"Intervallo dati o cella di destinazione non validi: l'intervallo "
-			"deve avere due colonne (etichette, valori) con almeno una riga "
-			"numerica, es. A1:B5.", "OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
+			B_TRANSLATE("Intervallo dati o cella di destinazione non validi: l'intervallo "
+				"deve avere due colonne (etichette, valori) con almeno una riga "
+				"numerica, es. A1:B5."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -3031,8 +3044,8 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 	cell dest;
 	if (!ParseRangeRef(sourceText, source) || !cell::GetCell(destText, dest))
 	{
-		BAlert* alert = new BAlert("Tabella pivot",
-			"Intervallo dati o cella di destinazione non validi.", "OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Tabella pivot"),
+			B_TRANSLATE("Intervallo dati o cella di destinazione non validi."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -3040,9 +3053,9 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 	std::vector<PivotRow> rows;
 	if (!BuildPivotTable(fDoc, source, rows))
 	{
-		BAlert* alert = new BAlert("Tabella pivot",
-			"Nessun dato valido nell'intervallo (servono due colonne: "
-			"categoria testuale, valore numerico).", "OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Tabella pivot"),
+			B_TRANSLATE("Nessun dato valido nell'intervallo (servono due colonne: "
+				"categoria testuale, valore numerico)."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -3054,9 +3067,9 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 	if (destRange.left <= source.right && destRange.right >= source.left
 		&& destRange.top <= source.bottom && destRange.bottom >= source.top)
 	{
-		BAlert* alert = new BAlert("Tabella pivot",
-			"La cella di destinazione si sovrappone all'intervallo dati: "
-			"scegline una fuori dai dati sorgente.", "OK");
+		BAlert* alert = new BAlert(B_TRANSLATE("Tabella pivot"),
+			B_TRANSLATE("La cella di destinazione si sovrappone all'intervallo dati: "
+				"scegline una fuori dai dati sorgente."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
@@ -3073,8 +3086,8 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 	MarkModified();
 
 	BString msg;
-	msg << (int32)rows.size() << " categoria/e trovate.";
-	BAlert* alert = new BAlert("Tabella pivot", msg.String(), "OK");
+	msg.SetToFormat(B_TRANSLATE("%d categoria/e trovate."), (int)rows.size());
+	BAlert* alert = new BAlert(B_TRANSLATE("Tabella pivot"), msg.String(), B_TRANSLATE("OK"));
 	alert->Go();
 }
 
@@ -3260,8 +3273,8 @@ void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
 	MarkModified();
 
 	BString msg;
-	msg << (int32)matches.size() << " cella/e sostituita/e.";
-	BAlert* alert = new BAlert("Sostituisci tutto", msg.String(), "OK");
+	msg.SetToFormat(B_TRANSLATE("%d cella/e sostituita/e."), (int)matches.size());
+	BAlert* alert = new BAlert(B_TRANSLATE("Sostituisci tutto"), msg.String(), B_TRANSLATE("OK"));
 	alert->Go();
 }
 
@@ -3364,7 +3377,11 @@ void MainWindow::CommitFormulaBar()
 void MainWindow::SetCellMode(bool editing)
 {
 	if (fCellMode)
-		fCellMode->SetText(editing ? "Modifica" : "Pronto");
+	{
+		fCellMode->SetText(editing
+			? B_TRANSLATE_COMMENT("Modifica", "Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"")
+			: B_TRANSLATE("Pronto"));
+	}
 }
 
 void MainWindow::ToggleFooterStat(int statBit)
@@ -3449,17 +3466,17 @@ void MainWindow::SelectionChanged(cell c)
 
 		BString stats;
 		if ((fFooterStatsMask & kStatAverage) && numCount > 0)
-			AppendFooterStat(stats, "Media", sum / numCount);
+			AppendFooterStat(stats, B_TRANSLATE("Media"), sum / numCount);
 		if ((fFooterStatsMask & kStatCount) && count > 0)
-			AppendFooterStatInt(stats, "Conteggio", count);
+			AppendFooterStatInt(stats, B_TRANSLATE("Conteggio"), count);
 		if ((fFooterStatsMask & kStatNumCount) && numCount > 0)
-			AppendFooterStatInt(stats, "Conteggio numerico", numCount);
+			AppendFooterStatInt(stats, B_TRANSLATE("Conteggio numerico"), numCount);
 		if ((fFooterStatsMask & kStatMin) && numCount > 0)
-			AppendFooterStat(stats, "Minimo", min);
+			AppendFooterStat(stats, B_TRANSLATE("Minimo"), min);
 		if ((fFooterStatsMask & kStatMax) && numCount > 0)
-			AppendFooterStat(stats, "Massimo", max);
+			AppendFooterStat(stats, B_TRANSLATE("Massimo"), max);
 		if ((fFooterStatsMask & kStatSum) && numCount > 0)
-			AppendFooterStat(stats, "Somma", sum);
+			AppendFooterStat(stats, B_TRANSLATE("Somma"), sum);
 		fSelectionStats->SetText(stats.String());
 	}
 
@@ -3602,8 +3619,8 @@ void MainWindow::MessageReceived(BMessage* message)
 				SaveRecentFiles(recent);
 				RebuildRecentMenu();
 
-				BAlert* alert = new BAlert("Errore",
-					"Il file non e' piu' disponibile nella posizione registrata.", "OK");
+				BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+					B_TRANSLATE("Il file non e' piu' disponibile nella posizione registrata."), B_TRANSLATE("OK"));
 				alert->Go();
 				break;
 			}

@@ -1,0 +1,251 @@
+1	English	application/x-vnd.Atomo-Atomo123	3378965698
+Dividi	PasteSpecialWindow		Divide
+Nuovo documento	MainWindow		New document
+Sostituisci con:	FindWindow		Replace with:
+Moltiplica	PasteSpecialWindow		Multiply
+Modifica	MainWindow		Edit
+Stampa…	MainWindow		Print…
+(nessuno)	MainWindow		(none)
+Salva	HyperlinkWindow		Save
+Generale	MainWindow		General
+Rimuovi collegamento	HyperlinkWindow		Remove link
+Collegamento ipertestuale…	MainWindow		Hyperlink…
+\"%s\" non è uno dei valori ammessi:\n%s	MainWindow		\"%s\" is not one of the allowed values:\n%s
+Mostra tutto	SheetView		Show all
+Conteggio	MainWindow		Count
+Spessore bordo	MainWindow		Border thickness
+Crea	PivotWindow		Create
+Nessun valore positivo da mostrare.	Chart		No positive value to show.
+Pivot	MainWindow		Pivot
+Preferenze…	MainWindow		Preferences…
+Bordo superiore	MainWindow		Top border
+Elimina riga	MainWindow		Delete row
+Incolla	PasteSpecialWindow		Paste
+Formato	MainWindow		Format
+Informazioni su Atomo123	AboutWindow		About Atomo123
+Spesso	MainWindow		Thick
+Sottrai	PasteSpecialWindow		Subtract
+Intervallo dati (due colonne: categoria, valore):	PivotWindow		Data range (two columns: category, value):
+Media	PivotWindow		Average
+Tabella pivot	MainWindow		Pivot table
+Collegamento ipertestuale	MainWindow		Hyperlink
+Salva	MainWindow		Save
+Incolla speciale…	MainWindow		Paste special…
+Valori duplicati nella selezione	ConditionalFormatWindow		Duplicate values in selection
+URL:	HyperlinkWindow		URL:
+Nuovo	MainWindow		New
+Scrittura del file fallita.	MainWindow		Writing the file failed.
+Trasponi righe e colonne	PasteSpecialWindow		Transpose rows and columns
+Le modifiche non salvate andranno perse. Continuare?	MainWindow		Unsaved changes will be lost. Continue?
+Minimo:	ValidationWindow		Minimum:
+Versione %u.%u.%u	AboutWindow		Version %u.%u.%u
+Separatore di elenco:	PreferencesWindow		List separator:
+Tabella pivot	PivotWindow		Pivot table
+Mostra griglia	PreferencesWindow		Show grid
+Trova e sostituisci	FindWindow		Find and replace
+Informazioni su Atomo123…	MainWindow		About Atomo123…
+Impossibile aprire il file selezionato.	MainWindow		Couldn't open the selected file.
+Seleziona tutto	MainWindow		Select all
+Colore testo…	MainWindow		Text color…
+Sinistro	BorderWindow		Left
+Elimina foglio	MainWindow		Delete sheet
+Intervallo (due colonne: etichette, valori):	ChartWindow		Range (two columns: labels, values):
+Applica	ColorWindow		Apply
+Colore sfondo	MainWindow		Background color
+Riempi a destra	MainWindow		Fill right
+Elimina foglio	SheetTabView		Delete sheet
+Cella di destinazione nel foglio:	ChartWindow		Destination cell in the sheet:
+Commento cella…	MainWindow		Cell comment…
+Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	Editing
+Esci	MainWindow		Quit
+Applica	PreferencesWindow		Apply
+Esiste già un foglio con questo nome.	MainWindow		A sheet with this name already exists.
+Rimuovi convalida	ValidationWindow		Remove validation
+Modifiche non salvate	MainWindow		Unsaved changes
+Minimo	MainWindow		Minimum
+Categoria	Pivot		Category
+Salva	ValidationWindow		Save
+Ordina Z-A	MainWindow		Sort Z-A
+Applica	BorderWindow		Apply
+Spessore:	BorderWindow		Thickness:
+Inserisci riga	MainWindow		Insert row
+Percentuale	MainWindow		Percentage
+Conteggio	Pivot		Count
+di Andrea Bernardi	AboutWindow		by Andrea Bernardi
+Conteggio numerico	MainWindow		Numeric count
+Cella di destinazione:	PivotWindow		Destination cell:
+Cancella	MainWindow		Clear
+Sviluppato da StudioBernardi.eu	AtomGLView		Developed by StudioBernardi.eu
+Vai a	GoToWindow		Go to
+Convalida dati	ValidationWindow		Data validation
+Trova successivo	FindWindow		Find next
+Avvio	PreferencesWindow		Startup
+Bordo destro	MainWindow		Right border
+La cella di destinazione si sovrappone all'intervallo dati: scegline una fuori dai dati sorgente.	MainWindow		The destination cell overlaps the data range: choose one outside the source data.
+Bordo sinistro	MainWindow		Left border
+%d cella/e sostituita/e.	MainWindow		%d cell(s) replaced.
+Annulla	MainWindow		Undo
+Intervalli con nome	NameWindow		Named ranges
+Errore	MainWindow		Error
+Bordo cella	BorderWindow		Cell border
+Foglio di calcolo nativo per Haiku OS.	AboutWindow		Native spreadsheet for Haiku OS.
+Intervallo dati o cella di destinazione non validi: l'intervallo deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Invalid data range or destination cell: the range must have two columns (labels, values) with at least one numeric row, e.g. A1:B5.
+Apri	HyperlinkWindow		Open
+Rinomina foglio	MainWindow		Rename sheet
+Media	Pivot		Average
+Massimo:	ValidationWindow		Maximum:
+Elimina	NameWindow		Delete
+Rimuovi commento	CommentWindow		Remove comment
+Se il valore e' uguale a	ConditionalFormatWindow		If the value is equal to
+A capo automatico	MainWindow		Wrap text
+Il file non e' piu' disponibile nella posizione registrata.	MainWindow		The file is no longer available at its recorded location.
+Tipo:	ChartWindow		Type:
+Bordo inferiore	MainWindow		Bottom border
+Inserisci nel foglio	ChartWindow		Insert into sheet
+Elenco di valori	ValidationWindow		List of values
+Annulla	MainWindow	Pulsante di annullamento in una finestra di conferma (\"Cancel\"), non la voce di menu Annulla/Undo	Cancel
+Inferiore	BorderWindow		Bottom
+Trova e sostituisci…	MainWindow		Find and replace…
+Blocca riquadri	MainWindow		Freeze panes
+Nessun dato da mostrare.	Chart		No data to show.
+Inserisci colonna	MainWindow		Insert column
+%d categoria/e trovate.	MainWindow		%d categories found.
+  ·  per Haiku	AboutWindow		  ·  for Haiku
+Incolla speciale	PasteSpecialWindow		Paste special
+Convalida dati…	MainWindow		Data validation…
+Commento cella	CommentWindow		Cell comment
+\"%s\" non è un numero compreso fra %g e %g.	MainWindow		\"%s\" is not a number between %g and %g.
+Tipo:	ValidationWindow		Type:
+Ripeti	MainWindow		Redo
+OK	SheetView		OK
+Apri recenti	MainWindow		Open Recent
+Grassetto	MainWindow		Bold
+Nessun translator installato sa esportare in questo formato.	MainWindow		No installed translator can export to this format.
+Somma	PivotWindow		Sum
+Grafico a barre…	MainWindow		Bar chart…
+Ordina crescente	MainWindow		Sort ascending
+Cella o intervallo:	GoToWindow		Cell or range:
+Tabella pivot…	MainWindow		Pivot table…
+Rimuovi tutte le regole	ConditionalFormatWindow		Remove all rules
+Formattazione condizionale…	MainWindow		Conditional formatting…
+Medio	BorderWindow		Medium
+Formule e funzioni · import/export XLSX/XLSM/ODS/CSV/XLS · grafici e tabelle pivot · piu' fogli	AboutWindow		Formulas and functions · XLSX/XLSM/ODS/CSV/XLS import/export · charts and pivot tables · multiple sheets
+Serializzazione del documento fallita.	MainWindow		Serializing the document failed.
+Nessun bordo	MainWindow		No border
+Colore sfondo	ColorWindow		Background color
+Punto e virgola (;)	PreferencesWindow		Semicolon (;)
+Impossibile creare il file.	MainWindow		Couldn't create the file.
+Allinea al centro	MainWindow		Align center
+Stampa	MainWindow		Print
+Bordo cella…	MainWindow		Cell border…
+Intervalli con nome…	MainWindow		Named ranges…
+Rinomina foglio…	SheetTabView		Rename sheet…
+File	PreferencesWindow		File
+Rinomina foglio	RenameSheetWindow		Rename sheet
+Sovrascrivi	PasteSpecialWindow		Overwrite
+Elimina colonna	MainWindow		Delete column
+Somma	MainWindow		Sum
+Vai a	NameWindow		Go to
+Colore bordo…	MainWindow		Border color…
+Intervallo dati o cella di destinazione non validi.	MainWindow		Invalid data range or destination cell.
+Aggregazione:	PivotWindow		Aggregation:
+Lati	BorderWindow		Sides
+Codice nuovo su licenza MIT · motore derivato da Sum-It (BSD, Hekkelman Programmatuur).	AboutWindow		New code under the MIT license · engine derived from Sum-It (BSD, Hekkelman Programmatuur).
+Non è possibile eliminare l'unico foglio della cartella di lavoro.	MainWindow		The only sheet in the workbook cannot be deleted.
+Sostituisci	FindWindow		Replace
+Dividi celle	MainWindow		Split cells
+Inserisci riga	SheetView		Insert row
+Nessuna	ValidationWindow		None
+Intervalli con nome	MainWindow		Named ranges
+Punto (.)	PreferencesWindow		Period (.)
+Linee	ChartWindow		Lines
+Superiore	BorderWindow		Top
+Preferenze	PreferencesWindow		Preferences
+Corsivo	MainWindow		Italic
+Numero	MainWindow		Number
+Torta	ChartWindow		Pie
+Intervallo:	NameWindow		Range:
+Solo valori	PasteSpecialWindow		Values only
+OK	AboutWindow		OK
+Disegna	ChartWindow		Draw
+Icone della barra strumenti da hvif-store.art — grazie!	AboutWindow		Toolbar icons from hvif-store.art — thank you!
+Elimina	MainWindow		Delete
+Inserisci	MainWindow		Insert
+Dati	MainWindow		Data
+Non si puo' ordinare: la selezione contiene una cella unita. Dividi le celle prima di ordinare.	SheetView		Can't sort: the selection contains a merged cell. Split the cells before sorting.
+Massimo	MainWindow		Maximum
+Il file e' stato tradotto ma i dati risultanti non sono validi.	MainWindow		The file was translated but the resulting data is not valid.
+Somma	PasteSpecialWindow		Sum
+Sottile	BorderWindow		Thin
+Formattazione condizionale	ConditionalFormatWindow		Conditional formatting
+Nessun dato valido nell'intervallo (servono due colonne: categoria testuale, valore numerico).	MainWindow		No valid data in the range (two columns needed: text category, numeric value).
+Colore sfondo…	MainWindow		Background color…
+Valuta	MainWindow		Currency
+Ordina A-Z	MainWindow		Sort A-Z
+Sottolineato	MainWindow		Underline
+Spesso	BorderWindow		Thick
+Ordina	SheetView		Sort
+Virgola (,)	PreferencesWindow		Comma (,)
+Convalida dati	SheetView		Data validation
+Sottile	MainWindow		Thin
+Media	MainWindow		Average
+Applica alla selezione	ConditionalFormatWindow		Apply to selection
+Nuovo foglio	MainWindow		New sheet
+Separatore decimale:	PreferencesWindow		Decimal separator:
+Salva	CommentWindow		Save
+OK	MainWindow		OK
+Apri	MainWindow		Open
+Mostra lo splash screen all'avvio	PreferencesWindow		Show the splash screen at startup
+Offrimi un caffe' ☕	AboutWindow		Buy me a coffee ☕
+Trova	MainWindow		Find
+Cosa incollare:	PasteSpecialWindow		What to paste:
+Generale	PreferencesWindow		General
+Colore bordo	ColorWindow		Border color
+File recenti da ricordare:	PreferencesWindow		Recent files to remember:
+Grafico	MainWindow		Chart
+Bordo cella	MainWindow		Cell border
+Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.	SheetView		Can't insert: some cells at the bottom of the sheet would go past the limit.
+Continua senza salvare	MainWindow		Continue without saving
+Intervallo numerico	ValidationWindow		Number range
+Medio	MainWindow		Medium
+Collegamento ipertestuale	HyperlinkWindow		Hyperlink
+Riempi in basso	MainWindow		Fill down
+Eliminare il foglio \"%s\"? L'operazione non può essere annullata.	MainWindow		Delete sheet \"%s\"? This operation cannot be undone.
+Valori (separati da virgola):	ValidationWindow		Values (comma-separated):
+File	MainWindow		File
+Allinea a sinistra	MainWindow		Align left
+Vai a	MainWindow		Go to
+Rinomina	RenameSheetWindow		Rename
+Allinea a destra	MainWindow		Align right
+Conteggio	PivotWindow		Count
+Incolla	MainWindow		Paste
+Somma	Pivot		Sum
+Colore testo	ColorWindow		Text color
+Inserisci colonna	SheetView		Insert column
+Salva con nome…	MainWindow		Save As…
+Unisci celle	MainWindow		Merge cells
+Grafico	ChartWindow		Chart
+Sostituisci tutto	FindWindow		Replace all
+Destro	BorderWindow		Right
+Commento cella	MainWindow		Cell comment
+Intervallo non valido: serve esattamente due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Invalid range: exactly two columns are needed (labels, values) with at least one numeric row, e.g. A1:B5.
+Barre	ChartWindow		Bars
+Formato file non riconosciuto da nessun translator installato.	MainWindow		File format not recognized by any installed translator.
+Versione	AboutWindow		Version
+Nome del foglio:	RenameSheetWindow		Sheet name:
+Colore testo	MainWindow		Text color
+Sostituisci tutto	MainWindow		Replace all
+Operazione con la cella di destinazione:	PasteSpecialWindow		Operation with the destination cell:
+Apri…	MainWindow		Open…
+Vai a…	MainWindow		Go to…
+Tipo:	ConditionalFormatWindow		Type:
+Ordina decrescente	MainWindow		Sort descending
+Valore (solo per \"uguale a\"):	ConditionalFormatWindow		Value (only for \"equal to\"):
+Copia	MainWindow		Copy
+Cerca:	FindWindow		Search:
+Tutto (come Incolla)	PasteSpecialWindow		All (like Paste)
+Nome:	NameWindow		Name:
+Colore	ColorWindow		Color
+Pronto	MainWindow		Ready
+Taglia	MainWindow		Cut
+Aggiungi/Aggiorna	NameWindow		Add/Update

@@ -12,11 +12,15 @@
 #include <algorithm>
 #include <cstdio>
 
+#include <Catalog.h>
 #include <View.h>
 
 #include "Cell.h"
 #include "Container.h"
 #include "Value.h"
+
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "Chart"
 
 static void ValueToLabel(const Value& v, BString& out)
 {
@@ -100,7 +104,7 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	if (data.empty())
 	{
 		view->SetHighColor(120, 120, 120);
-		view->DrawString("Nessun dato da mostrare.", frame.LeftTop() + BPoint(10, 20));
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
 		return;
 	}
 
@@ -166,7 +170,7 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	if (data.empty())
 	{
 		view->SetHighColor(120, 120, 120);
-		view->DrawString("Nessun dato da mostrare.", frame.LeftTop() + BPoint(10, 20));
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
 		return;
 	}
 
@@ -263,7 +267,7 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	if (data.empty())
 	{
 		view->SetHighColor(120, 120, 120);
-		view->DrawString("Nessun dato da mostrare.", frame.LeftTop() + BPoint(10, 20));
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
 		return;
 	}
 
@@ -273,7 +277,7 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	if (slices.empty())
 	{
 		view->SetHighColor(120, 120, 120);
-		view->DrawString("Nessun valore positivo da mostrare.", frame.LeftTop() + BPoint(10, 20));
+		view->DrawString(B_TRANSLATE("Nessun valore positivo da mostrare."), frame.LeftTop() + BPoint(10, 20));
 		return;
 	}
 
