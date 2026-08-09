@@ -5598,30 +5598,54 @@ confermato NON essere una regressione introdotta in questa sessione
 (stesso blocco anche su un checkout pulito, prima di ogni modifica).
 Da verificare dal vivo su un sistema Haiku reale.
 
-## Localizzazione dell'interfaccia (non ancora iniziata)
+## Localizzazione dell'interfaccia (italiano + inglese, commit 45326ed)
 
-**Stato attuale: una sola lingua, l'italiano, scritta a mano.** Tutte
-le stringhe dell'interfaccia (menu, finestre, messaggi, la guida
-stessa) sono testo italiano cablato direttamente nel codice sorgente
-— nessun inglese, nessuna lingua di ripiego. Verificato su
-`MainWindow.cpp` (l'intera barra dei menu: "Nuovo", "Apri…", "Salva
-con nome…", "Annulla", "Taglia", "Trova e sostituisci…", ecc.),
-`AboutWindow.cpp`, `PreferencesWindow.cpp`.
+**Stato attuale: due lingue, italiano (sorgente) e inglese.** Ogni
+stringa visibile all'utente in `ui/src/*.cpp` e' avvolta in
+`B_TRANSLATE(...)` (Locale Kit di Haiku), con un `B_TRANSLATION_CONTEXT`
+per file corrispondente alla classe (es. `"MainWindow"`,
+`"PreferencesWindow"`). Le stringhe italiane restano quelle sorgente nel
+codice — non l'inglese come da convenzione Haiku — perche' era gia'
+cosi' prima di questo lavoro e riscrivere ogni file in inglese sarebbe
+stato un rischio inutile.
 
-**Nessuna infrastruttura di localizzazione presente**: niente
-`Catalog.h`/`BCatalog`/`B_TRANSLATE(...)` del Locale Kit di Haiku,
-nessun file `.catkeys`, nessuna cartella `locales/`. Il progetto usa
-gia' il Locale Kit ma solo per la formattazione (separatore
-decimale/delle migliaia, simbolo di valuta — vedi Preferenze →
-Locale), non per tradurre l'interfaccia stessa.
+**Traduzione inglese**: `ui/locales/en.catkeys` (~250 voci), scritto a
+mano riga per riga, incorporato direttamente nel binario con
+`linkcatkeys -tr` (nessun file `.catalog` separato da installare, stesso
+principio della risorsa `'Func'` gia' incorporata per le funzioni con
+nome — vedi la regola di `$(APP)` in `ui/Makefile`). `make catkeys` resta
+un comando manuale che rigenera `ui/locales/it.catkeys`, l'elenco delle
+chiavi italiane davvero estratte dal sorgente (via `collectcatkeys`): una
+lista di controllo per non dimenticare una stringa nuova quando si
+traduce, mai letta a runtime ne' versionata.
 
-**Cosa servirebbe per aggiungere altre lingue**: avvolgere ogni
-stringa visibile in `B_TRANSLATE()`, includere `Catalog.h`, generare i
-`.catkeys` con gli strumenti `collectcatkeys`/`linkcatkeys` di Haiku e
-integrarli nel build (`ui/Makefile`), poi tradurre almeno l'inglese
-(lingua di riferimento per HaikuPorts) oltre all'italiano gia'
-esistente. Lavoro non ancora iniziato, non stimato: coinvolge
-praticamente ogni file `ui/src/*Window.cpp`.
+**Casi dinamici gestiti a parte** (non un wrapping ingenuo):
+`BString::SetToFormat` con specificatori invece di concatenazione
+diretta (nome foglio nel messaggio di conferma eliminazione, conteggi di
+Sostituisci tutto/Tabella pivot, messaggi di convalida dati); le
+etichette della toolbar (tabelle `static` a livello di file,
+inizializzate prima che `BApplication` esista — `B_TRANSLATE_MARK` nella
+tabella, `B_TRANSLATE` solo a runtime nel punto d'uso in
+`BuildToolbar()`); due collisioni reali fra la stessa parola italiana
+con significati diversi a seconda del contesto ("Annulla" = voce di menu
+Undo oppure pulsante Cancel in una finestra di conferma; "Modifica" =
+voce di menu Edit oppure indicatore di modalita' nel footer durante la
+modifica di una cella), disambiguate con `B_TRANSLATE_COMMENT` per dare
+loro chiavi di catalogo separate.
+
+**Verifica**: `ui/tests/test_locale_catalog.cpp`, nuovo test che carica
+il catalogo incorporato direttamente dal binario con la lingua forzata a
+`"en"` (costruttore `BCatalog(entry_ref, lingua)`), incluse le due
+disambiguazioni sopra — non serve un vero cambio di lingua di sistema
+per eseguirlo in automatico. L'intera suite di test esistente (tranne i
+due limiti di sandbox gia' noti, vedi sopra) passa invariata dopo il
+wrapping.
+
+**Cosa manca per una terza lingua**: tradurre `en.catkeys` come base per
+un nuovo `locales/<lingua>.catkeys`, aggiungerlo alla catena di
+`linkcatkeys -tr` in `ui/Makefile` (oggi imbutita per il solo inglese) —
+nessun'altra modifica al codice sorgente serve, tutte le stringhe sono
+gia' avvolte.
 
 ---
 
