@@ -5681,6 +5681,25 @@ icone/footer ha trovato tre cose reali da sistemare.
 Le icone della toolbar sono risultate gia' in ordine (29 icone, mapping
 1:1, nessun placeholder/duplicato) -- nessuna modifica li'.
 
+## Bug critico: riscrivere una cella formattata perdeva la formattazione (commit c0f03a3)
+
+Segnalato dall'utente con screenshot su un file reale (gara d'appalto):
+una cella formattata a valuta ("0,00 €"), dopo aver digitato un nuovo
+numero, mostrava il valore grezzo senza piu' simbolo di valuta ne'
+altra formattazione. Causa: `CContainer::NewCell` (motore, chiamata da
+`TryToParseString` a ogni conferma di editing) azzerava sempre lo
+stile della cella a quello predefinito della colonna invece di
+conservare quello della cella che stava sovrascrivendo -- capitava con
+qualunque formattazione (grassetto, colori, bordi, allineamento,
+valuta/percentuale), non solo con la valuta, ogni volta che si
+ridigitava un valore su una cella gia' formattata. Bug del motore
+storico (Sum-It), presente da sempre, non una regressione recente.
+Corretto conservando lo stile esistente quando la cella ha gia' una
+voce; una cella davvero nuova mantiene il comportamento di sempre.
+Nessun test esistente copriva questo scenario (tutti applicavano
+valore-poi-stile, mai stile-poi-nuovo-valore) -- aggiunto in
+`ui/tests/test_format.cpp`.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
