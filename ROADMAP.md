@@ -5647,6 +5647,40 @@ un nuovo `locales/<lingua>.catkeys`, aggiungerlo alla catena di
 nessun'altra modifica al codice sorgente serve, tutte le stringhe sono
 gia' avvolte.
 
+**Trappola scoperta durante lo sviluppo**: il 4o campo dell'intestazione
+di `locales/en.catkeys` non e' un segnaposto arbitrario ma un fingerprint
+del contenuto, verificato da `linkcatkeys` al link -- se non lo si
+aggiorna dopo aver aggiunto/spostato stringhe, il link fallisce con
+"Bad data" anche se ogni riga del file e' sintatticamente valida.
+Dopo ogni modifica: `make catkeys`, poi copiare il 4o campo
+dell'intestazione di `locales/it.catkeys` (solo quel numero, mai il
+contenuto) in `locales/en.catkeys`. Vedi il commento in `ui/Makefile`.
+
+## Preferenze/menu/footer dopo la localizzazione (commit 3202dd8)
+
+Seguito diretto della localizzazione: un'analisi di Preferenze/menu/
+icone/footer ha trovato tre cose reali da sistemare.
+
+- **Preferenze > Generale**: due nuovi campi (simbolo di valuta,
+  separatore delle migliaia), stesso schema dei separatori decimale/di
+  elenco gia' presenti. Ha anche scoperto un bug reale mai notato prima:
+  `gCurrencySymbol`/`gCurrencyBefore`/`gCurrencyParens`/`gCurrencyDigits`
+  (usati da `CContainer::GetCellResult` per l'export CSV e l'elenco
+  valori univoci del filtro automatico) non erano mai stati
+  inizializzati ne' letti da `gPrefs` -- simbolo di valuta vuoto di
+  default. La griglia a schermo non ne risente (segue sempre il Locale
+  Kit di Haiku, per design), solo l'export/i valori grezzi.
+- **Footer**: l'indicatore Pronto/Modifica ora mostra anche "* " quando
+  il documento ha modifiche non salvate, non solo il titolo.
+- **Menu**: Commento cella/Collegamento ipertestuale spostati da
+  Formato a Inserisci, Convalida dati spostata da Formato a Dati (
+  Formato aveva tre voci che non erano formattazione -- stesso posto in
+  cui li mette Excel). Rimosso `kMsgOpenHyperlink`, un handler morto mai
+  raggiunto da nessuna voce di menu/scorciatoia.
+
+Le icone della toolbar sono risultate gia' in ordine (29 icone, mapping
+1:1, nessun placeholder/duplicato) -- nessuna modifica li'.
+
 ---
 
 Ogni fase, a completamento, aggiorna questo file (checkbox + eventuale
