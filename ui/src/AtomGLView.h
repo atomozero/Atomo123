@@ -70,6 +70,11 @@ private:
 	// di aggiornare a ogni release. Allineato a destra nel footer,
 	// speculare a titolo/credito a sinistra.
 	TextTexture				fVersionTex;
+	// Hash del commit con cui questo binario e' stato compilato (vedi
+	// src/BuildInfo.h, generato dal Makefile con "git rev-parse"),
+	// sotto la versione -- utile durante lo sviluppo per capire al
+	// volo quale build si sta davvero eseguendo.
+	TextTexture				fCommitTex;
 
 	static const int		kStarCount = 160;
 	Star					fStars[kStarCount];

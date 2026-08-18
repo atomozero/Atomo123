@@ -84,6 +84,31 @@ $(BSL):
 %.o: %.cpp
 	$(CXX) -c $< -o $@ $(INCLUDES) $(CXXFLAGS)
 
+# Hash del commit corrente (mostrato nello splash, sotto la versione,
+# vedi src/AtomGLView.cpp) -- rigenerato a OGNI "make" (dipendenza
+# fittizia sempre-fuori-data "FORCE" sotto), ma la ricompilazione a
+# valle scatta solo se il contenuto e' davvero cambiato (confronto con
+# "cmp" prima di sovrascrivere: aggiornare il timestamp a ogni "make"
+# anche a commit invariato ricompilerebbe AtomGLView.o inutilmente a
+# ogni build). "-dirty" quando l'albero di lavoro ha modifiche non
+# committate rispetto a HEAD, utile in sviluppo per non scambiare per
+# sbaglio una build locale modificata per quella di un commit pulito.
+BUILD_INFO_H := src/BuildInfo.h
+
+.PHONY: FORCE
+FORCE:
+
+$(BUILD_INFO_H): FORCE
+	@commit=$$(git rev-parse --short=8 HEAD 2>/dev/null || echo unknown); \
+	if [ "$$commit" != "unknown" ] && ! git diff --quiet HEAD -- 2>/dev/null; then \
+		commit="$$commit-dirty"; \
+	fi; \
+	printf '#define ATOMO123_GIT_COMMIT "%s"\n' "$$commit" > $(BUILD_INFO_H).tmp; \
+	cmp -s $(BUILD_INFO_H).tmp $(BUILD_INFO_H) 2>/dev/null && rm -f $(BUILD_INFO_H).tmp \
+		|| mv $(BUILD_INFO_H).tmp $(BUILD_INFO_H)
+
+src/AtomGLView.o: $(BUILD_INFO_H)
+
 # rc compila l'icona/firma/versione da Atomo123.rdef; rez e bsl
 # aggiungono (per fusione nello stesso file, non sovrascrivendolo --
 # comportamento verificato a mano invocandoli in sequenza su un file
@@ -946,7 +971,7 @@ test-names: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	./tests/test_names
 
 clean:
-	rm -f $(APP) $(OBJECTS) $(RSRC) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
+	rm -f $(APP) $(OBJECTS) $(RSRC) $(BUILD_INFO_H) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
 		tests/roundtrip.ascd tests/roundtrip_charts.ascd tests/roundtrip_widths.ascd \
 		tests/roundtrip_colors.ascd tests/roundtrip_border_color.ascd \
 		tests/roundtrip_condformat.ascd \

@@ -24,6 +24,10 @@ translators/*/tests/test_*_translator
 ui/Atomo123
 ui/src/*.o
 ui/Atomo123.rsrc
+# Generato a ogni "make" da "git rev-parse" (hash del commit corrente,
+# mostrato nello splash screen) -- mai lo stesso da un checkout
+# all'altro, quindi mai versionato.
+ui/src/BuildInfo.h
 # locales/it.catkeys: lista di controllo rigenerata da "make catkeys"
 # (estrazione delle chiavi italiane), mai la traduzione vera -- quella
 # e' locales/en.catkeys, scritto a mano e sempre versionato.

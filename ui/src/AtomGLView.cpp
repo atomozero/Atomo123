@@ -5,6 +5,8 @@
 
 #include "AtomGLView.h"
 
+#include "BuildInfo.h"
+
 #include <GL/glu.h>
 
 #include <AppFileInfo.h>
@@ -17,6 +19,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "AtomGLView"
@@ -134,6 +137,17 @@ AtomGLView::_Init()
 	GetVersionString(versionStr, sizeof(versionStr));
 	if (versionStr[0])
 		fVersionTex.Build(versionStr, 22.0f, (rgb_color){255, 255, 255, 255}, false);
+
+	// ATOMO123_GIT_COMMIT e' sempre definita (src/BuildInfo.h, generato
+	// dal Makefile a ogni build), ma vale "unknown" se git non e'
+	// disponibile in fase di compilazione -- non disegnare affatto in
+	// quel caso, per non mostrare un testo senza senso.
+	if (strcmp(ATOMO123_GIT_COMMIT, "unknown") != 0)
+	{
+		char commitStr[48];
+		snprintf(commitStr, sizeof(commitStr), "commit %s", ATOMO123_GIT_COMMIT);
+		fCommitTex.Build(commitStr, 19.0f, (rgb_color){255, 255, 255, 255}, false);
+	}
 }
 
 
@@ -448,16 +462,29 @@ AtomGLView::_DrawText(float width, float height)
 		kBandPadding + subtitleHeight * fSubtitleTex.AspectRatio() * 0.5f,
 		bandTop + 71.0f + rise * 0.6f, subtitleHeight, kTheme.subtitle, fade);
 
-	// Versione, speculare al titolo/credito: allineata a destra invece
-	// che a sinistra, stesso margine kBandPadding, centrata in verticale
-	// nella striscia invece di impilata su due righe (e' una sola riga
-	// corta, non ha bisogno di altro spazio).
+	// Versione (+ commit sotto, se disponibile), speculare al
+	// titolo/credito: allineata a destra invece che a sinistra, stesso
+	// margine kBandPadding. Con solo la versione resta centrata in
+	// verticale nella striscia (una riga sola); con anche il commit le
+	// due si impilano attorno allo stesso centro, stesso schema di
+	// titolo/sottotitolo a sinistra.
 	if (fVersionTex.IsValid())
 	{
 		const float versionHeight = 22.0f;
 		float w = versionHeight * fVersionTex.AspectRatio();
+		float versionCenterY = bandTop + kBandHeight * 0.5f + rise * 0.6f;
+		if (fCommitTex.IsValid())
+			versionCenterY -= 13.0f;
 		_DrawTexturedQuad(fVersionTex, width - kBandPadding - w * 0.5f,
-			bandTop + kBandHeight * 0.5f + rise * 0.6f, versionHeight, kTheme.subtitle, fade);
+			versionCenterY, versionHeight, kTheme.subtitle, fade);
+
+		if (fCommitTex.IsValid())
+		{
+			const float commitHeight = 19.0f;
+			float cw = commitHeight * fCommitTex.AspectRatio();
+			_DrawTexturedQuad(fCommitTex, width - kBandPadding - cw * 0.5f,
+				versionCenterY + 25.0f, commitHeight, kTheme.subtitle, fade);
+		}
 	}
 
 	glDisable(GL_TEXTURE_2D);
