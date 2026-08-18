@@ -712,7 +712,11 @@ MainWindow::MainWindow()
 	// invece non ha un bersaglio da scegliere (aggiunge sempre in
 	// coda), quindi qui nel menu ha senso quanto la maniglia "+" di
 	// Excel/LibreOffice Calc dopo l'ultima scheda -- non implementata
-	// per restare nello scope di questo punto della Fase 13.
+	// per restare nello scope di questo punto della Fase 13. Ripetuta
+	// anche nel menu Inserisci sotto (bug segnalato dall'utente: "su
+	// insert non posso inserire un nuovo foglio" -- in Excel "Inserisci
+	// foglio" vive li', non insieme a riga/colonna): stesso
+	// kMsgNewSheet, nessuna logica duplicata.
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Nuovo foglio"), new BMessage(kMsgNewSheet)));
 	dataMenu->AddSeparatorItem();
 	// Blocca tutto cio' che sta sopra/a sinistra della cella attiva
@@ -728,6 +732,11 @@ MainWindow::MainWindow()
 	// docs/UI_ARCHITECTURE.md): l'intervallo si digita nella finestra
 	// dedicata, non si trascina sulla griglia.
 	BMenu* insertMenu = new BMenu(B_TRANSLATE("Inserisci"));
+	// "Nuovo foglio" in cima: stesso comando di kMsgNewSheet gia' nel
+	// menu Dati sopra (vedi il commento li'), ripetuto qui perche' e'
+	// dove Excel lo mette e dove l'utente lo ha cercato per primo.
+	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Nuovo foglio"), new BMessage(kMsgNewSheet)));
+	insertMenu->AddSeparatorItem();
 	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Grafico a barre" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowChart)));
 	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Tabella pivot" B_UTF8_ELLIPSIS),
