@@ -93,6 +93,10 @@ Since v0.2.0 (not yet in a tagged release):
 - Dragging or resizing an embedded image with the left button past the
   edge of the visible area now auto-scrolls the sheet to keep it in
   view, same principle as `ScrollToShowSelection` for cell selection
+- Each sheet in a multi-sheet workbook now keeps its own scroll
+  position — scrolling one sheet no longer moves the others, which
+  previously all shared a single `SheetView`'s scroll state. Session
+  only, not saved to the ASCD/ASCB file format
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
