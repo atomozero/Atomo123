@@ -5,7 +5,7 @@ Haiku's own APIs (Interface/Layout Kit, Locale Kit, Translation Kit) —
 compatible with files produced by Microsoft Excel and
 OpenOffice/LibreOffice through Translation Kit conversion add-ons.
 
-![Atomo123 with two windows open, each on a different XLSX file](screenshots/Atomo123_V0.1.png)
+![Atomo123 editing a real-world XLSX project form](screenshots/Atomo123_V0.2.png)
 
 If Atomo123 saves you time, consider supporting development: [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-atomozero-yellow?logo=buymeacoffee)](https://buymeacoffee.com/atomozero)
 

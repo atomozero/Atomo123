@@ -5,29 +5,30 @@
 # radice del repository).
 #
 # Costruisce un .hpkg locale per un primo test di installazione, senza
-# passare da haikuporter/atomo123-0.1.0.recipe: quella recipe non e'
-# ancora utilizzabile cosi' com'e' perche' richiede un archivio
-# sorgente scaricabile pubblicamente (SOURCE_URI), che non esiste
-# finche' il repository non e' pubblicato (vedi i commenti nella
-# recipe stessa). Questo script invece compila da questo stesso
-# albero di lavoro e impacchetta i binari appena prodotti — comodo per
-# verificare che il pacchetto si costruisca e si installi bene PRIMA
-# di occuparsi della recipe "vera" per HaikuPorts.
+# passare da haikuporter/atomo123-0.2.0.recipe: quella recipe richiede
+# un tag + checksum SHA256 reale dell'archivio sorgente pubblicato su
+# GitHub per QUESTA versione, che non esistono finche' non si taggia e
+# pubblica la release (vedi i commenti nella recipe stessa). Questo
+# script invece compila da questo stesso albero di lavoro e
+# impacchetta i binari appena prodotti — comodo per verificare che il
+# pacchetto si costruisca e si installi bene PRIMA di taggare la
+# release, e per allegare l'hpkg risultante alla release stessa su
+# GitHub (stessa procedura gia' usata per v0.1.0).
 #
 # Uso:
 #   packaging/build-hpkg.sh
 #
 # Il pacchetto risultante va provato con:
-#   cp atomo123-0.1.0-1-x86_64.hpkg ~/config/packages/   # solo per l'utente corrente
+#   cp atomo123-0.2.0-1-x86_64.hpkg ~/config/packages/   # solo per l'utente corrente
 # oppure, per tutto il sistema (richiede privilegi):
-#   cp atomo123-0.1.0-1-x86_64.hpkg /boot/system/packages/
+#   cp atomo123-0.2.0-1-x86_64.hpkg /boot/system/packages/
 # packagefs lo monta automaticamente, senza bisogno di riavviare.
 
 set -e
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-VERSION="0.1.0-1"
+VERSION="0.2.0-1"
 OUT="$ROOT/packaging/atomo123-$VERSION-x86_64.hpkg"
 WORKDIR="$ROOT/packaging/hpkg-root"
 
@@ -65,8 +66,8 @@ copyrights {
 	"1996-2000 Hekkelman Programmatuur B.V."
 }
 provides {
-	atomo123 = 0.1.0
-	app:Atomo123 = 0.1.0
+	atomo123 = 0.2.0
+	app:Atomo123 = 0.2.0
 }
 requires {
 	haiku
