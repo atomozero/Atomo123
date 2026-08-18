@@ -267,15 +267,30 @@ richiederebbe leggere `xl/workbook.xml` e i relativi `_rels` per la
 mappatura nome-foglio → file XML — non ancora implementato, ne'
 in lettura ne' in scrittura).
 
-### Export XLSX: solo valori calcolati, non formule
+### Export XLSX: formule vive per le celle sullo stesso foglio
 
-Come per CSV/ODS, `WriteXLSX`/`BuildSheetXml` scrivono solo i
-**valori calcolati** di ogni cella, non le formule. A differenza di
-ODS (dove lo schema OpenDocument richiede contare righe/colonne per
-posizionare le celle), XLSX ha un riferimento esplicito su ogni cella
-(`r="A1"`), quindi `BuildSheetXml` scrive solo le celle realmente
-presenti (via `CCellIterator`, non un rettangolo completo) — niente
-bisogno del meccanismo di compressione delle celle vuote di ODS.
+A differenza di CSV, `WriteXLSX`/`BuildSheetXml` scrivono una formula
+viva (`<f>FORMULA</f>`, oltre al `<v>` con il valore già calcolato)
+per ogni cella con formula **che non referenzia un altro foglio**
+(`CFormula::ReferencesOtherSheet()`, `engine/src/Formula/Formula.cpp`)
+— questo translator esporta un solo foglio per file, quindi un
+riferimento incrociato punterebbe a dati assenti nel file esportato:
+in quel caso si ripiega sul comportamento precedente (solo il valore
+calcolato, come CSV). Il testo della formula si ottiene con
+`CFormula::UnMangle(buf, cella, doc, /*rcStyle*/false, /*decSep*/'.',
+/*listSep*/',')`: i due parametri `decSepOverride`/`listSepOverride`
+forzano sempre `.`/`,` (sintassi canonica ECMA-376) indipendentemente
+dalle preferenze locali correnti dell'utente (es. virgola come
+decimale, `;` come separatore di argomenti nell'Italia) — altrimenti
+Excel non riuscirebbe a rileggere la formula scritta nel file. Una
+cella con risultato testuale aggiunge anche `t="str"` sul `<c>`.
+
+A differenza di ODS (dove lo schema OpenDocument richiede contare
+righe/colonne per posizionare le celle), XLSX ha un riferimento
+esplicito su ogni cella (`r="A1"`), quindi `BuildSheetXml` scrive solo
+le celle realmente presenti (via `CCellIterator`, non un rettangolo
+completo) — niente bisogno del meccanismo di compressione delle celle
+vuote di ODS.
 `Identify()` riconosce anche un sorgente ASCD nativo in ingresso (oltre
 al vero XLSX) in modo da poter instradare `BTranslatorRoster` nella
 direzione ASCD → XLSX; `Translate()` decide la direzione in base a
@@ -379,13 +394,24 @@ Si importa solo il primo `<table:table>` (primo foglio): un documento
 multi-foglio richiederebbe iterare tutte le tabelle e decidere quale
 esporre — stesso tipo di limite già accettato per XLSX/sheet1.
 
-### Export ODS: solo valori calcolati, non formule
+### Export ODS: formule vive per le celle sullo stesso foglio
 
-Come per l'export CSV (vedi sopra), `WriteODS`/`BuildContentXml`
-scrivono solo i **valori calcolati** di ogni cella (`office:value-type`
-`"float"`/`"string"`), non le formule — stessa scelta, stesso motivo:
-niente sintassi ODF arbitraria da ricostruire per casi non gestiti
-(l'inverso di `ConvertODFFormula` non è banale per formule qualsiasi).
+Come per XLSX (vedi sopra), `WriteODS`/`BuildContentXml` scrivono
+l'attributo `table:formula="of:=FORMULA"` per ogni cella con formula
+**che non referenzia un altro foglio**
+(`CFormula::ReferencesOtherSheet()`) — questo translator esporta un
+solo foglio per file, quindi un riferimento incrociato punterebbe a
+dati assenti nel file esportato: in quel caso resta il comportamento
+precedente (solo `office:value`/`<text:p>` col valore già calcolato,
+come CSV). Il testo della formula si ottiene con
+`CFormula::UnMangle(buf, cella, doc, /*rcStyle*/false, /*decSep*/'.',
+/*listSep*/';', /*odfRefs*/true)`: `odfRefs=true` avvolge ogni
+riferimento a cella/intervallo fra `[.` e `]` (sintassi OpenFormula,
+l'inverso esatto di `ConvertODFFormula` in ingresso), mentre
+`decSep`/`listSep` forzano sempre `.`/`;` (convenzione
+OpenFormula/LibreOffice) indipendentemente dalle preferenze locali
+correnti dell'utente — altrimenti la virgola decimale italiana si
+confonderebbe col separatore di argomenti nello stesso `of:=...`.
 `Identify()` riconosce anche un sorgente ASCD nativo in ingresso (oltre
 al vero ODS) in modo da poter instradare `BTranslatorRoster` nella
 direzione ASCD → ODS; `Translate()` decide la direzione in base a
@@ -426,3 +452,53 @@ vedi in `ROADMAP.md`, Fase 5, "Bug scoperto: `GetBounds` esclude le
 celle non ancora calcolate..." e "Bug scoperto (falso allarme, ma
 test-harness da correggere): `GetCellFormula` di una formula con una
 costante numerica si blocca senza un `BApplication`".
+
+Stesso genere di bug del test-harness ricomparso costruendo i test
+dell'export con formule live (vedi sopra): `tests/test_ods_translator`
+non aveva mai avuto bisogno di una `BApplication` finché nessuna
+formula esportata conteneva un letterale numerico (`CFormatter::ftoa`,
+chiamato da `UnMangle` per il caso `valNum`, chiama
+`BFont::StringWidth`) né un nome di funzione come `SUM` (serve
+`InitFunctions()` con una risorsa `'Func'`, altrimenti il parser lancia
+`CParseErr` per "funzione sconosciuta") — entrambi ora aggiunti in
+`main()`, stesso schema già presente in
+`test_xlsx_translator.cpp`/`tests/named_functions.rsrc`.
+
+## Collegare il salvataggio dell'app ai translator veri
+
+`MainWindow::SaveToFile` sceglie il formato di export dall'estensione
+del nome file (`.csv`/`.xlsx`/`.ods`, altrimenti ASCD nativo), poi deve
+instradare `BTranslatorRoster` verso il translator giusto. Due bug
+reali scoperti collegando questo percorso a un vero documento (prima
+non ci si arrivava mai in pratica: senza `.xlsx`/`.ods` riconosciuti
+tutto veniva scritto come ASCD nudo sotto l'estensione sbagliata):
+
+1. **Selezione ambigua di `BTranslatorRoster`**: quando la sorgente è
+   ASCD generico (non un vero file XLSX/ODS/XLS con una firma
+   distintiva), `Identify()` di **tutti e quattro** i translator lo
+   riconosce allo stesso modo come `kAtomoNativeFormat`, con lo stesso
+   punteggio di qualità/capacità. `BTranslatorRoster::Translate(source,
+   info=NULL, ext, dest, wantOutType)` sceglie il translator internamente
+   in base a `Identify()`, **ignorando `wantOutType`** nella selezione
+   (verificato con tracciamento a runtime: sceglie sempre lo stesso
+   translator_id, indipendentemente dal formato di uscita richiesto) —
+   quel translator poi rifiuta correttamente l'`outType` che non
+   supporta, con `B_NO_TRANSLATOR` anche se il translator giusto è
+   installato. **Fix**: enumerare a mano
+   `BTranslatorRoster::GetAllTranslators()`, controllare
+   `GetOutputFormats()` di ciascuno per trovare chi dichiara
+   `wantOutType`, poi chiamare la variante di `Translate()` che prende
+   il `translator_id` esplicito invece di lasciar scegliere il roster.
+2. **CSV/ODS rifiutavano l'ASCD versione 2**: `ui/src/AscdIO.cpp` (il
+   vero formato su disco dell'app) scrive sempre versione 2 (byte
+   `kind` per cella, distingue formula/letterale-numero/letterale-testo
+   — vedi `docs/UI_ARCHITECTURE.md`), ma i `ReadASCD` privati di CSV e
+   ODS (usati come formato intermedio fra `MainWindow` e il translator)
+   accettavano solo versione 1: qualunque salvataggio reale in `.csv`/
+   `.ods` falliva con `B_MISMATCHED_VALUES`, non solo quelli con una
+   formula. Bug invisibile finché nessun test passava per il vero
+   `MainWindow::SaveToFile` con un documento v2 reale. **Fix**: un
+   limite di lettura separato (`kASCDMaxReadableVersion = 2`) da
+   `kASCDVersion` (che resta 1, il formato che *questi* `WriteASCD`
+   continuano a scrivere) — il primo tentativo di fix aveva confuso i
+   due, rendendo la condizione ancora equivalente a "solo versione 1".

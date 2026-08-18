@@ -471,9 +471,16 @@ BeOS-era), che usa l'engine di Fase 2 e i translator di Fase 3. Vedi
       CRC32 via zlib) in `MiniZip.h`/`.cpp` — verificato non solo
       contro il proprio `CZipReader` ma anche contro `unzip` di sistema
       per escludere che l'archivio fosse valido solo per coincidenza.
-      Come per l'export CSV, scrive solo i **valori calcolati**, non le
-      formule (stessa scelta, stesso motivo: niente sintassi ODF
-      arbitraria da ricostruire). Test di round-trip completo
+      Come per l'export CSV, scriveva inizialmente solo i **valori
+      calcolati**, non le formule (stessa scelta, stesso motivo: niente
+      sintassi ODF arbitraria da ricostruire) — **aggiornato in una
+      sessione successiva**: ODS/XLSX ora scrivono una formula viva per
+      ogni cella che non referenzia un altro foglio (vedi
+      `docs/TRANSLATORS.md`, sezioni "Export XLSX"/"Export ODS", per i
+      dettagli su `CFormula::ReferencesOtherSheet`/separatori
+      canonici); CSV continua a scrivere solo il valore calcolato,
+      correttamente, dato che il formato non ha alcun concetto di
+      formula. Test di round-trip completo
       (ASCD → ODS → ASCD, incluso una cella con formula) in
       `translators/ods/tests/test_ods_translator.cpp`. Stesso approccio
       applicato a `XlsxTranslator` (`translators/xlsx/`): `CZipWriter`
