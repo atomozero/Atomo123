@@ -21,6 +21,7 @@ pre-Layout-Kit UI code is not reused).
 ## Features
 
 * Native Haiku GUI — Interface/Layout Kit only, no external toolkit
+* Localized interface (English/Italian) via Haiku's Locale Kit
 * Multi-sheet workbooks with a scrollable tab strip, like Excel/LibreOffice Calc
 * Formulas with named functions (`SUM`, `IF`, `SUMIF`, ...) and cell/range references
 * Cut/copy/paste through the real system clipboard, extended to multi-cell ranges
