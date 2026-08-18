@@ -3390,7 +3390,16 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 	// un trascinamento nullo.
 	if (fPendingExportImageIndex >= 0)
 	{
-		const float kExportDragThreshold = 4.0f;
+		// 4px iniziali si sono rivelati troppo sensibili in prova reale
+		// (segnalato dall'utente: "click destro non seleziona
+		// l'immagine" -- in realta' la selezionava, ma il minimo tremore
+		// della mano durante il clic bastava a superare la soglia e
+		// avviare subito un vero trascinamento di sistema, che poi
+		// ricadeva sulla STESSA finestra invece che su Tracker/un'altra
+		// applicazione, vedi il ramo B_SIMPLE_DATA in MessageReceived
+		// sotto). 10px e' piu' vicino alla soglia di trascinamento tipica
+		// di un desktop reale.
+		const float kExportDragThreshold = 10.0f;
 		float dx = where.x - fExportDragStart.x;
 		float dy = where.y - fExportDragStart.y;
 		if (dx * dx + dy * dy >= kExportDragThreshold * kExportDragThreshold)
@@ -3738,6 +3747,32 @@ void SheetView::MessageReceived(BMessage* message)
 			fExportingImageIndex = -1;
 			break;
 		}
+		case B_SIMPLE_DATA:
+			// Il trascinamento d'esportazione avviato da
+			// StartImageExportDrag e' tornato sulla STESSA finestra
+			// (l'utente ha rilasciato dentro Atomo123 invece che su
+			// Tracker/un'altra applicazione -- capita facilmente anche
+			// solo con un piccolo movimento della mano durante un clic
+			// destro, vedi la soglia in MouseMoved sopra). Nessun
+			// destinatario esterno ha negoziato B_COPY_TARGET, quindi
+			// non c'e' nulla da scrivere: ignorato apposta invece di
+			// lasciarlo al ramo predefinito sotto (BView::MessageReceived
+			// stampa un avviso "non capito" per ogni messaggio senza
+			// gestore, altrimenti visibile a ogni clic destro
+			// leggermente impreciso). Invalidate() esplicito: il
+			// drag-and-drop di sistema disegna il proprio fantasma sopra
+			// la vista finche' dura, garantisce che il riquadro di
+			// selezione blu (gia' impostato da MouseDown via
+			// SelectImage) torni visibile subito, invece di aspettare
+			// un ridisegno causato da qualcos'altro.
+			if (fExportingImageIndex >= 0)
+			{
+				fExportingImageIndex = -1;
+				Invalidate();
+			}
+			else
+				BView::MessageReceived(message);
+			break;
 		default:
 			BView::MessageReceived(message);
 			break;
