@@ -78,9 +78,12 @@ Since v0.2.0 (not yet in a tagged release):
   value until something else forced a repaint. Paste/sort/undo had the
   same narrow-invalidate bug; fixed once in
   `SheetView::RecalculateOwningWorkbook`
+- Embedded images can now be deleted: click to select (persistent
+  selection, not just during drag), Delete/Backspace removes it,
+  undo/redo restores the full image (PNG data included)
 
-Next: deleting an inserted image (currently images can be inserted and
-resized/repositioned, but not removed from the sheet).
+Next: no specific item queued — see "Not currently planned" above for
+the larger backlog.
 
 ## Related work
 
