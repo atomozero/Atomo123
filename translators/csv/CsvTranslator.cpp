@@ -44,6 +44,7 @@ static const translation_format sOutputFormats[] = {
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 static const int32 kASCDVersion = 1;
+enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 
 // Scrive in "dest" tutte le celle non vuote di "doc" nel formato ASCD:
 // magic(4) + versione(int32) + numero celle(int32), poi per ciascuna
@@ -108,7 +109,20 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	if (version != kASCDVersion)
+	// WriteASCD sopra scrive ancora solo versione 1 (kASCDVersion),
+	// ma la LETTURA deve accettare anche la versione 2 vera (con il
+	// byte "kind" per cella) che ui/src/AscdIO.cpp scrive sempre --
+	// kASCDMaxReadableVersion e' percio' un limite SEPARATO da
+	// kASCDVersion, non lo stesso valore: confondendoli (come nel
+	// primo tentativo di questo fix, "version != 1 && version !=
+	// kASCDVersion" con kASCDVersion=1 equivale a "version != 1",
+	// accettando SOLO la versione 1) l'export verso questo formato
+	// avrebbe continuato a fallire con B_MISMATCHED_VALUES per
+	// qualunque documento reale, non solo quelli con una formula. Bug
+	// reale scoperto collegando davvero il salvataggio CSV al vero
+	// documento (MainWindow::SaveToFile, prima non ci arrivava mai).
+	static const int32 kASCDMaxReadableVersion = 2;
+	if (version < 1 || version > kASCDMaxReadableVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -127,6 +141,10 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 			return B_BAD_DATA;
 
+		uint8 kind = kAscdCellFormula;
+		if (version >= 2 && source->Read(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
+			return B_BAD_DATA;
+
 		char text[4096];
 		if (len < 0 || len >= (int32)sizeof(text))
 			return B_BAD_DATA;
@@ -135,6 +153,17 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		text[len] = 0;
 
 		cell c(col, row);
+
+		// Stesso principio di LoadASCD in ui/src/AscdIO.cpp: un valore
+		// testo letterale (kind scritto da una versione 2 di WriteASCD)
+		// non passa MAI per TryToParseString/Parse().
+		if (kind == kAscdCellLiteralText)
+		{
+			Value v(text);
+			doc->NewCell(c, v, NULL);
+			continue;
+		}
+
 		try
 		{
 			// inWarnIfError=false, non true: stesso bug e stesso motivo

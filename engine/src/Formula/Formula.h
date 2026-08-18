@@ -133,7 +133,29 @@ public:
 
 	void AddToken(PFToken inToken, const void *inData, int& ioOffset);
 	void Calculate(cell inLocation, Value& outResult, CContainer *inContainer) const;
-	void UnMangle(char *outString, cell inLocation, CContainer *inContainer, bool rcStyle = false) const;
+	// decSepOverride/listSepOverride: se diversi da 0, forzano quel
+	// separatore decimale/di elenco invece di gDecimalPoint/
+	// gListSeparator (usati altrimenti quando rcStyle=false; rcStyle=
+	// true forza gia' da solo '.'/',' ma passa anche a riferimenti in
+	// stile R1C1, non quello che serve qui) -- decSepOverride!=0 in
+	// piu' normalizza il separatore di intervallo interno ("..",
+	// pensato solo per il giro testuale ASCD/barra formule) in ":"
+	// (Excel/ODF vogliono quello). odfRefs: avvolge i riferimenti a
+	// cella/intervallo con "[." e "]" (sintassi ODF) invece del testo
+	// A1 nudo. Pensati per l'export XLSX/ODS (BuildSheetXml/
+	// BuildContentXml), che ha bisogno di testo di formula portabile
+	// indipendente dalle preferenze locali dell'utente -- nessun
+	// chiamante esistente passa questi parametri, quindi il
+	// comportamento di default resta identico.
+	void UnMangle(char *outString, cell inLocation, CContainer *inContainer, bool rcStyle = false,
+		char decSepOverride = 0, char listSepOverride = 0, bool odfRefs = false) const;
+	// Vero se la formula contiene almeno un riferimento a un altro
+	// foglio (valXRef/valXRange). Usato dall'export XLSX/ODS per
+	// decidere se scrivere la formula viva o solo il suo valore gia'
+	// calcolato: l'export scrive oggi un solo foglio per file, un
+	// riferimento a un foglio diverso punterebbe percio' a dati che
+	// nel file esportato non esistono affatto.
+	bool ReferencesOtherSheet() const;
 	void UpdateReferences(cell inLocation, bool horizontal, int first, int count);
 	void UpdateReferences(cell inLocation, int h, int v, range src);
 	void* UpdateReferences(cell inLoc, range src, range dst);

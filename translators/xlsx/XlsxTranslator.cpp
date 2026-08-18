@@ -34,6 +34,7 @@
 #include "EmbeddedImage.h"
 #include "Formatter.h"
 #include "FontMetrics.h"
+#include "Formula.h"
 #include "FunctionUtils.h"
 #include "Globals.h"
 
@@ -845,10 +846,14 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		}
 	}
 
-	// Le formule vanno calcolate prima di esportare (l'export XLSX
-	// scrive solo valori, non formule -- vedi BuildSheetXml sotto),
-	// altrimenti una cella con formula risulterebbe vuota. Range
-	// completo per lo stesso motivo di WriteASCD sopra.
+	// Le formule vanno comunque calcolate prima di esportare, anche se
+	// adesso l'export scrive la formula viva per le celle sullo stesso
+	// foglio (vedi BuildSheetXml sotto): il valore calcolato resta
+	// necessario come <v> di riserva (letto subito da chi apre il file
+	// senza ricalcolare) e come unico contenuto scritto per le celle
+	// con un riferimento a un altro foglio, che l'export non esporta
+	// come formula viva (vedi ReferencesOtherSheet). Range completo
+	// per lo stesso motivo di WriteASCD sopra.
 	{
 		bool changed = true;
 		int guard = 0;
@@ -883,15 +888,24 @@ static void AppendXmlEscaped(std::string& out, const char* text)
 	}
 }
 
-// Genera xl/worksheets/sheet1.xml a partire dal documento: solo i
-// valori calcolati (numeri/testo), non le formule -- stessa scelta
-// gia' fatta per CSV/ODS. Le stringhe sono scritte inline
-// (t="inlineStr"/<is><t>...</t></is>) invece che in una tabella di
-// stringhe condivise (xl/sharedStrings.xml): richiederebbe una
-// passata separata per raccogliere i valori unici, complessita' non
-// necessaria per i fogli tipici esportati da questo programma, ed
-// e' comunque sintassi OOXML valida (Excel/LibreOffice la leggono
-// correttamente).
+// Genera xl/worksheets/sheet1.xml a partire dal documento. Una cella
+// con formula scrive sia <f> (la formula viva, in sintassi canonica
+// ECMA-376: riferimenti A1, decimali con ".", argomenti separati da
+// ",", indipendenti dalle preferenze locali dell'utente -- stesso
+// principio dell'analisi di <f> in ingresso, vedi il commento in cima
+// al parsing del foglio) sia <v> (il valore gia' calcolato, letto
+// subito da chi apre il file senza dover ricalcolare) -- ma SOLO se
+// la formula non fa riferimento a un altro foglio (vedi
+// ReferencesOtherSheet): questo export scrive un solo foglio per
+// file, un riferimento incrociato punterebbe a dati che nel file
+// esportato non esistono affatto, quindi in quel caso resta il
+// comportamento precedente (solo il valore calcolato, come CSV/ODS).
+// Le stringhe sono scritte inline (t="inlineStr"/<is><t>...</t></is>)
+// invece che in una tabella di stringhe condivise (xl/
+// sharedStrings.xml): richiederebbe una passata separata per
+// raccogliere i valori unici, complessita' non necessaria per i
+// fogli tipici esportati da questo programma, ed e' comunque sintassi
+// OOXML valida (Excel/LibreOffice la leggono correttamente).
 static std::string BuildSheetXml(CContainer* doc)
 {
 	range bounds;
@@ -907,6 +921,10 @@ static std::string BuildSheetXml(CContainer* doc)
 	int curRow = -1;
 	char numBuf[64];
 	char nameBuf[16];
+	// 16384: stessa dimensione di kMaxUnmangledFormulaLength in
+	// Container.cpp (privata a quel file, non esposta da un header) --
+	// generosa rispetto a qualunque formula reale.
+	char formulaBuf[16384];
 	while (iter.NextExisting(c))
 	{
 		Value v;
@@ -929,12 +947,31 @@ static std::string BuildSheetXml(CContainer* doc)
 
 		c.GetName(nameBuf);
 
+		bool writeFormula = false;
+		void* rawFormula = doc->GetCellFormula(c);
+		if (rawFormula)
+		{
+			CFormula form(rawFormula);
+			if (!form.ReferencesOtherSheet())
+			{
+				form.UnMangle(formulaBuf, c, doc, false, '.', ',');
+				writeFormula = true;
+			}
+		}
+
 		if (v.fType == eNumData)
 		{
 			snprintf(numBuf, sizeof(numBuf), "%.15g", (double)v);
 			xml += "<c r=\"";
 			xml += nameBuf;
-			xml += "\"><v>";
+			xml += "\">";
+			if (writeFormula)
+			{
+				xml += "<f>";
+				AppendXmlEscaped(xml, formulaBuf);
+				xml += "</f>";
+			}
+			xml += "<v>";
 			xml += numBuf;
 			xml += "</v></c>";
 		}
@@ -942,9 +979,23 @@ static std::string BuildSheetXml(CContainer* doc)
 		{
 			xml += "<c r=\"";
 			xml += nameBuf;
-			xml += "\" t=\"inlineStr\"><is><t>";
-			AppendXmlEscaped(xml, (const char*)v);
-			xml += "</t></is></c>";
+			xml += "\" t=\"";
+			xml += writeFormula ? "str" : "inlineStr";
+			xml += "\">";
+			if (writeFormula)
+			{
+				xml += "<f>";
+				AppendXmlEscaped(xml, formulaBuf);
+				xml += "</f><v>";
+				AppendXmlEscaped(xml, (const char*)v);
+				xml += "</v></c>";
+			}
+			else
+			{
+				xml += "<is><t>";
+				AppendXmlEscaped(xml, (const char*)v);
+				xml += "</t></is></c>";
+			}
 		}
 	}
 	if (curRow != -1)

@@ -25,7 +25,9 @@
 #include <cstring>
 #include <string>
 
+#include <Application.h>
 #include <File.h>
+#include <Path.h>
 #include <DataIO.h>
 #include <SupportDefs.h>
 
@@ -35,6 +37,9 @@
 #include "Container.h"
 #include "CellIterator.h"
 #include "CellParser.h"
+#include "Globals.h"
+#include "ResourceManager.h"
+#include "FunctionUtils.h"
 
 static int gFailures = 0;
 
@@ -98,6 +103,28 @@ static void Check(bool condition, const char *what)
 
 int main()
 {
+	// gFontSizeTable::GetFontID risolve un BFont reale (CFormatter::
+	// ftoa -> BFont::StringWidth, usata per rendere in testo il
+	// letterale numerico di una formula in UnMangle): senza una
+	// BApplication viva questa chiamata si blocca in attesa di una
+	// risposta dall'app_server che non arriva mai -- stesso motivo gia'
+	// noto in translators/xlsx/tests/test_xlsx_translator.cpp e
+	// ui/tests/test_ascd_io.cpp/test_persistence.cpp per lo stesso
+	// genere di chiamate.
+	BApplication app("application/x-vnd.Atomo-TestOdsTranslator");
+
+	// Senza questo, GetFunctionNr tratta OGNI nome di funzione (SUM
+	// incluso) come identificatore sconosciuto (gFuncCount resta 0): il
+	// parser lancia CParseErr per una formula con un nome di funzione,
+	// esattamente come nella vera app senza App::ReadyToRun -- stesso
+	// principio di translators/xlsx/tests/test_xlsx_translator.cpp.
+	{
+		BPath funcRsrcPath("tests/named_functions.rsrc");
+		gAppName = funcRsrcPath;
+		if (gResourceManager.SetTo(&funcRsrcPath) == B_OK)
+			InitFunctions();
+	}
+
 	BTranslator *translator = make_nth_translator(0, 0, 0);
 	Check(translator != NULL, "make_nth_translator crea il translator");
 
@@ -194,9 +221,12 @@ int main()
 	// Esportazione (ASCD -> ODS): scrive un documento con un numero,
 	// una stringa e una formula, poi rilegge il file ODS prodotto con
 	// lo stesso translator (round-trip completo) per verificare che
-	// sia un file ODS valido e che i VALORI (non le formule, scelta
-	// deliberata -- vedi WriteODS in OdsTranslator.cpp) siano
-	// corretti.
+	// sia un file ODS valido e che la formula sia sopravvissuta VIVA
+	// (scrive table:formula="of:=...", vedi BuildContentXml in
+	// OdsTranslator.cpp), non solo il suo valore calcolato -- come CSV
+	// (che non ha un concetto di formula). Comportamento cambiato
+	// rispetto a prima: l'export scriveva solo il valore anche per
+	// XLSX/ODS.
 	{
 		CContainer &exportDoc = *new CContainer(NULL, NULL);
 		TryToParseString("12", cell(1, 1), &exportDoc, true);   // A1 = 12
@@ -249,7 +279,7 @@ int main()
 			int32 cnt;
 			memcpy(&cnt, data + 8, 4);
 
-			bool reA1 = false, reB1 = false, reC1 = false, reA2 = false;
+			bool reA1 = false, reB1 = false, reC1Formula = false, reA2 = false;
 			for (int32 i = 0; i < cnt && pos + 8 <= len; i++)
 			{
 				int16 row, col;
@@ -264,16 +294,192 @@ int main()
 
 				if (row == 1 && col == 1 && text == "12") reA1 = true;
 				if (row == 1 && col == 2 && text == "8") reB1 = true;
-				if (row == 1 && col == 3 && text == "20") reC1 = true;
+				// Stesso principio del controllo "foundFormula" per
+				// l'import piu' sopra in questo file: il testo deve
+				// contenere davvero i riferimenti di cella (A1+B1), non
+				// essere il valore gia' appiattito (20).
+				if (row == 1 && col == 3 && text.find("A1") != std::string::npos
+						&& text.find("B1") != std::string::npos)
+					reC1Formula = true;
 				if (row == 2 && col == 1 && text == "Prova export") reA2 = true;
 			}
 
 			Check(reA1, "dopo il round-trip, A1 vale ancora 12");
 			Check(reB1, "dopo il round-trip, B1 vale ancora 8");
-			Check(reC1,
-				"dopo il round-trip, C1 (era una formula) vale 20 -- il valore calcolato, "
-				"non la formula (scelta deliberata dell'export)");
+			Check(reC1Formula,
+				"dopo il round-trip, C1 (era una formula) e' sopravvissuta come formula viva "
+				"(A1+B1), non appiattita al suo valore calcolato (20)");
 			Check(reA2, "dopo il round-trip, A2 vale ancora \"Prova export\"");
+		}
+	}
+
+	// Formula con un riferimento a un altro foglio ("AltroFoglio" non
+	// esiste davvero -- non serve, il punto e' solo verificare COSA
+	// viene scritto in export, non il calcolo): l'export NON deve
+	// scrivere una formula viva per questa cella, solo il suo valore
+	// calcolato -- questo translator esporta un solo foglio per file
+	// (vedi BuildContentXml), un riferimento incrociato punterebbe a
+	// dati che nel file esportato non esistono affatto (vedi
+	// CFormula::ReferencesOtherSheet). Un riferimento incrociato mai
+	// risolto (nessun resolver) vale eNoData, trattato come 0 dalla
+	// somma (stessa convenzione di una cella vuota in Excel): il
+	// risultato calcolato e' quindi 5, non NaN -- la cella VIENE
+	// esportata (come valore semplice, mai come formula viva), a
+	// differenza di una vera cella NaN che invece resta vuota.
+	{
+		CContainer &xrefDoc = *new CContainer(NULL, NULL);
+		TryToParseString("=AltroFoglio!A1+5", cell(1, 1), &xrefDoc, true); // A1
+		xrefDoc.CalcCell(cell(1, 1));
+
+		BMallocIO xrefAscdIn;
+		WriteASCDForTest(&xrefDoc, &xrefAscdIn);
+		xrefDoc.Release();
+
+		xrefAscdIn.Seek(0, SEEK_SET);
+		translator_info xrefInfo;
+		translator->Identify(&xrefAscdIn, NULL, NULL, &xrefInfo, kAtomoOdsFormat);
+		xrefAscdIn.Seek(0, SEEK_SET);
+		BMallocIO xrefOdsOut;
+		err = translator->Translate(&xrefAscdIn, &xrefInfo, NULL, kAtomoOdsFormat, &xrefOdsOut);
+		Check(err == B_OK, "Translate ASCD -> ODS riesce anche con un riferimento a un altro foglio");
+
+		// content.xml e' dentro l'archivio ZIP, non leggibile con una
+		// semplice ricerca di sottostringa sul blob intero (compresso)
+		// -- rilegge col translator stesso e verifica che l'ASCD
+		// prodotto non contenga una formula per A1.
+		xrefOdsOut.Seek(0, SEEK_SET);
+		translator_info xrefReimportInfo;
+		translator->Identify(&xrefOdsOut, NULL, NULL, &xrefReimportInfo, 0);
+		xrefOdsOut.Seek(0, SEEK_SET);
+		BMallocIO xrefAscdOut;
+		err = translator->Translate(&xrefOdsOut, &xrefReimportInfo, NULL, kAtomoNativeFormat, &xrefAscdOut);
+		Check(err == B_OK, "il file ODS con riferimento incrociato si rilegge correttamente");
+
+		if (err == B_OK)
+		{
+			const unsigned char *xrefData = (const unsigned char *)xrefAscdOut.Buffer();
+			size_t xrefLen = xrefAscdOut.BufferLength();
+			Check(xrefLen > 12 && memcmp(xrefData, "ASCD", 4) == 0,
+				"l'ASCD del riferimento incrociato ha l'intestazione attesa");
+
+			int32 xrefCount = 0;
+			if (xrefLen > 12)
+				memcpy(&xrefCount, xrefData + 8, 4);
+
+			bool xrefA1Present = false, xrefA1NotFormula = false;
+			size_t xrefPos = 12;
+			for (int32 i = 0; i < xrefCount && xrefPos + 8 <= xrefLen; i++)
+			{
+				int16 row, col;
+				int32 tlen;
+				memcpy(&row, xrefData + xrefPos, 2); xrefPos += 2;
+				memcpy(&col, xrefData + xrefPos, 2); xrefPos += 2;
+				memcpy(&tlen, xrefData + xrefPos, 4); xrefPos += 4;
+				if (xrefPos + tlen > xrefLen)
+					break;
+				std::string text((const char *)xrefData + xrefPos, tlen);
+				xrefPos += tlen;
+
+				if (row == 1 && col == 1)
+				{
+					xrefA1Present = true;
+					xrefA1NotFormula = text.find("AltroFoglio") == std::string::npos;
+				}
+			}
+			Check(xrefA1Present, "A1 (riferimento incrociato mai risolto, trattato come 0 dalla "
+				"somma) viene comunque esportata col suo valore calcolato (5)");
+			Check(xrefA1NotFormula, "A1 non viene esportata come formula viva che referenzia "
+				"\"AltroFoglio\" (dati assenti dal file esportato)");
+		}
+	}
+
+	// Separatori canonici indipendenti dalle preferenze correnti
+	// dell'utente (decSep/listSep, vedi CFormula::UnMangle): una
+	// formula con un letterale decimale e piu' argomenti deve
+	// esportarsi sempre con "." come decimale e ";" come separatore di
+	// argomenti (convenzione OpenFormula/LibreOffice), anche se
+	// l'utente ha impostato virgola come separatore decimale (il
+	// default italiano) -- altrimenti la virgola decimale si
+	// confonderebbe col separatore di argomenti nello stesso "of:=...".
+	// gDecimalPoint/gListSeparator sono globali dell'engine: si
+	// ripristinano al valore originale alla fine di questo blocco, per
+	// non alterare lo stato degli altri test.
+	{
+		char savedDecimalPoint = gDecimalPoint;
+		char savedListSeparator = gListSeparator;
+		gDecimalPoint = ',';
+		gListSeparator = ';';
+
+		CContainer &sepDoc = *new CContainer(NULL, NULL);
+		TryToParseString("1", cell(1, 1), &sepDoc, true);   // A1
+		TryToParseString("2", cell(1, 2), &sepDoc, true);   // A2
+		TryToParseString("=SUM(A1;A2)+1,5", cell(1, 3), &sepDoc, true); // A3, sintassi italiana
+		sepDoc.CalcCell(cell(1, 3));
+
+		BMallocIO sepAscdIn;
+		WriteASCDForTest(&sepDoc, &sepAscdIn);
+		sepDoc.Release();
+
+		sepAscdIn.Seek(0, SEEK_SET);
+		translator_info sepInfo;
+		translator->Identify(&sepAscdIn, NULL, NULL, &sepInfo, kAtomoOdsFormat);
+		sepAscdIn.Seek(0, SEEK_SET);
+		BMallocIO sepOdsOut;
+		err = translator->Translate(&sepAscdIn, &sepInfo, NULL, kAtomoOdsFormat, &sepOdsOut);
+		Check(err == B_OK, "Translate ASCD -> ODS riesce con gDecimalPoint=',' e gListSeparator=';'");
+
+		gDecimalPoint = savedDecimalPoint;
+		gListSeparator = savedListSeparator;
+
+		// Rilegge col translator stesso invece di cercare nel blob ZIP
+		// compresso: verifica che A3 sia tornata una formula (non
+		// appiattita, che sarebbe comunque sbagliato per un
+		// riferimento sullo stesso foglio) e che ricalcoli al valore
+		// giusto (1+2+1.5=4.5), prova indiretta ma concreta che il
+		// testo scritto in content.xml era sintatticamente valido con
+		// "." e ";" (un separatore sbagliato avrebbe fatto fallire
+		// l'analisi grammaticale su una formula con piu' argomenti,
+		// vedi il bug reale gia' corretto per l'import XLSX).
+		sepOdsOut.Seek(0, SEEK_SET);
+		translator_info sepReimportInfo;
+		translator->Identify(&sepOdsOut, NULL, NULL, &sepReimportInfo, 0);
+		sepOdsOut.Seek(0, SEEK_SET);
+		BMallocIO sepAscdOut;
+		err = translator->Translate(&sepOdsOut, &sepReimportInfo, NULL, kAtomoNativeFormat, &sepAscdOut);
+		Check(err == B_OK, "il file ODS con separatori canonici si rilegge correttamente");
+
+		if (err == B_OK)
+		{
+			CContainer &sepRecheckDoc = *new CContainer(NULL, NULL);
+			const unsigned char *sepData = (const unsigned char *)sepAscdOut.Buffer();
+			size_t sepLen = sepAscdOut.BufferLength();
+			size_t sepPos = 12;
+			int32 sepCnt = 0;
+			if (sepLen > 12)
+				memcpy(&sepCnt, sepData + 8, 4);
+			for (int32 i = 0; i < sepCnt && sepPos + 8 <= sepLen; i++)
+			{
+				int16 row, col;
+				int32 tlen;
+				memcpy(&row, sepData + sepPos, 2); sepPos += 2;
+				memcpy(&col, sepData + sepPos, 2); sepPos += 2;
+				memcpy(&tlen, sepData + sepPos, 4); sepPos += 4;
+				if (sepPos + tlen > sepLen)
+					break;
+				std::string text((const char *)sepData + sepPos, tlen);
+				sepPos += tlen;
+				if (row == 3 && col == 1)
+					TryToParseString(text.c_str(), cell(1, 3), &sepRecheckDoc, true);
+				else if (!text.empty())
+					TryToParseString(text.c_str(), cell(col, row), &sepRecheckDoc, true);
+			}
+			sepRecheckDoc.CalcCell(cell(1, 3));
+			Value sepValue;
+			sepRecheckDoc.GetValue(cell(1, 3), sepValue);
+			Check(sepValue.fType == eNumData && (double)sepValue == 4.5,
+				"la formula riscritta con separatori canonici ricalcola 4.5 (1+2+1.5), "
+				"prova che l'export non ha confuso decimale e separatore di argomenti");
+			sepRecheckDoc.Release();
 		}
 	}
 

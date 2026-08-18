@@ -227,6 +227,13 @@ private:
 
 static const uint32 kAtomoNativeFormat = 'ASCD';
 static const uint32 kAtomoCsvFormat = 'ACSV';
+// Stessi FourCC dei rispettivi translator (vedi translators/xlsx/
+// XlsxTranslator.h, translators/ods/OdsTranslator.h) -- ripetuti qui
+// come kAtomoCsvFormat sopra, invece di includere l'header privato di
+// un translator dalla UI: entrambe le parti concordano solo sul
+// valore del FourCC, non condividono altro.
+static const uint32 kAtomoXlsxFormat = 'AXSX';
+static const uint32 kAtomoOdsFormat = 'AODS';
 
 // Toolbar dinamica: i pulsanti vengono generati da questa tabella
 // invece che scritti uno per uno a mano (com'era prima di questo
@@ -1558,14 +1565,26 @@ void MainWindow::OpenFile(const entry_ref& ref)
 void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 {
 	// Il formato di destinazione si sceglie dall'estensione del nome
-	// scelto nel BFilePanel (".csv" esporta in CSV, qualunque altra
-	// estensione o nessuna resta sul formato nativo ASCD) -- non c'e'
-	// ancora un selettore di formato dedicato nel pannello di salvataggio.
+	// scelto nel BFilePanel (".csv"/.xlsx"/".ods" esportano nel
+	// translator corrispondente, qualunque altra estensione o nessuna
+	// resta sul formato nativo ASCD) -- non c'e' ancora un selettore
+	// di formato dedicato nel pannello di salvataggio. ".xls" non e'
+	// qui apposta: quel translator sa solo importare, mai scrivere
+	// (vedi XlsTranslator.cpp) -- ricade sul ramo generico piu' sotto,
+	// che mostra l'errore "Nessun translator installato sa esportare
+	// in questo formato" quando la Translate fallisce, invece di
+	// scrivere silenziosamente byte ASCD sotto un nome ".xls".
 	BString nameStr(name);
 	uint32 outType = kAtomoNativeFormat;
 	int32 csvPos = nameStr.IFindLast(".csv");
+	int32 xlsxPos = nameStr.IFindLast(".xlsx");
+	int32 odsPos = nameStr.IFindLast(".ods");
 	if (csvPos >= 0 && csvPos == nameStr.Length() - 4)
 		outType = kAtomoCsvFormat;
+	else if (xlsxPos >= 0 && xlsxPos == nameStr.Length() - 5)
+		outType = kAtomoXlsxFormat;
+	else if (odsPos >= 0 && odsPos == nameStr.Length() - 4)
+		outType = kAtomoOdsFormat;
 
 	BDirectory directory(&dir);
 	BFile file(&directory, name, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
@@ -1611,10 +1630,11 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	// Per qualunque formato non nativo si passa dal Translation Kit:
 	// si serializza prima il documento in ASCD in memoria, poi si
 	// lascia che BTranslatorRoster trovi un translator installato che
-	// sappia leggere ASCD e scrivere il formato scelto (il translator
-	// CSV lo fa gia' in entrambe le direzioni; XLS/XLSX/ODS per ora
-	// importano soltanto, quindi qui la Translate fallisce per loro
-	// finche' non avranno anche un writer).
+	// sappia leggere ASCD e scrivere il formato scelto (CSV/XLSX/ODS
+	// lo fanno tutti e tre; XLS resta solo import -- vedi il commento
+	// su outType sopra -- quindi qui la Translate fallisce per un nome
+	// ".xls", mostrando l'errore sotto invece di un'estensione senza
+	// il translator giusto).
 	BMallocIO ascd;
 	status_t err = SaveASCD(fDoc, &ascd);
 	if (err != B_OK)
@@ -1624,8 +1644,48 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		return;
 	}
 
+	// Sceglie a mano il translator installato che dichiara outType fra
+	// i propri formati di uscita, invece di lasciare che
+	// BTranslatorRoster lo indovini da solo (con info=NULL, o anche
+	// passando outType come "wantType" a Identify(), che qui non
+	// cambia la scelta): un sorgente ASCD generico (non un vero file
+	// XLSX/ODS/XLS con una firma distintiva) viene riconosciuto allo
+	// stesso identico modo da TUTTI i translator installati (tutti
+	// concordano su kAtomoNativeFormat), quindi Identify() ne sceglie
+	// sempre lo stesso indipendentemente dal formato di uscita
+	// richiesto -- se quello non e' il translator giusto, il suo
+	// stesso Translate() rifiuta correttamente l'outType e l'intera
+	// chiamata fallisce con B_NO_TRANSLATOR, anche col translator
+	// giusto gia' installato. Bug reale scoperto scrivendo il test di
+	// questa funzionalita'.
+	translator_id chosenId = 0;
+	translator_id* allIds = NULL;
+	int32 idCount = 0;
+	if (BTranslatorRoster::Default()->GetAllTranslators(&allIds, &idCount) == B_OK)
+	{
+		for (int32 i = 0; i < idCount && chosenId == 0; i++)
+		{
+			const translation_format* formats = NULL;
+			int32 numFormats = 0;
+			if (BTranslatorRoster::Default()->GetOutputFormats(allIds[i], &formats, &numFormats)
+					!= B_OK)
+				continue;
+			for (int32 j = 0; j < numFormats; j++)
+			{
+				if (formats[j].type == outType)
+				{
+					chosenId = allIds[i];
+					break;
+				}
+			}
+		}
+	}
+
 	ascd.Seek(0, SEEK_SET);
-	err = BTranslatorRoster::Default()->Translate(&ascd, NULL, NULL, &file, outType);
+	if (chosenId != 0)
+		err = BTranslatorRoster::Default()->Translate(chosenId, &ascd, NULL, &file, outType);
+	else
+		err = BTranslatorRoster::Default()->Translate(&ascd, NULL, NULL, &file, outType);
 	if (err != B_OK)
 	{
 		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),

@@ -22,6 +22,7 @@
 #include "Container.h"
 #include "CellIterator.h"
 #include "CellParser.h"
+#include "Formula.h"
 #include "FunctionUtils.h"
 
 static const translation_format sInputFormats[] = {
@@ -46,6 +47,7 @@ static const translation_format sOutputFormats[] = {
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 static const int32 kASCDVersion = 1;
+enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 
 // Stessa serializzazione ASCD degli altri translator (vedi
 // translators/csv/CsvTranslator.cpp per la descrizione completa).
@@ -106,7 +108,20 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	if (version != kASCDVersion)
+	// WriteASCD sopra scrive ancora solo versione 1 (kASCDVersion),
+	// ma la LETTURA deve accettare anche la versione 2 vera (con il
+	// byte "kind" per cella) che ui/src/AscdIO.cpp scrive sempre --
+	// kASCDMaxReadableVersion e' percio' un limite SEPARATO da
+	// kASCDVersion, non lo stesso valore: confondendoli (come nel
+	// primo tentativo di questo fix, "version != 1 && version !=
+	// kASCDVersion" con kASCDVersion=1 equivale a "version != 1",
+	// accettando SOLO la versione 1) l'export verso questo formato
+	// avrebbe continuato a fallire con B_MISMATCHED_VALUES per
+	// qualunque documento reale, non solo quelli con una formula. Bug
+	// reale scoperto collegando davvero il salvataggio ODS al vero
+	// documento (MainWindow::SaveToFile, prima non ci arrivava mai).
+	static const int32 kASCDMaxReadableVersion = 2;
+	if (version < 1 || version > kASCDMaxReadableVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -125,6 +140,10 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 			return B_BAD_DATA;
 
+		uint8 kind = kAscdCellFormula;
+		if (version >= 2 && source->Read(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
+			return B_BAD_DATA;
+
 		char text[4096];
 		if (len < 0 || len >= (int32)sizeof(text))
 			return B_BAD_DATA;
@@ -133,6 +152,17 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		text[len] = 0;
 
 		cell c(col, row);
+
+		// Stesso principio di LoadASCD in ui/src/AscdIO.cpp: un valore
+		// testo letterale (kind scritto da una versione 2 di WriteASCD)
+		// non passa MAI per TryToParseString/Parse().
+		if (kind == kAscdCellLiteralText)
+		{
+			Value v(text);
+			doc->NewCell(c, v, NULL);
+			continue;
+		}
+
 		try
 		{
 			// inWarnIfError=false, non true: stesso bug e stesso motivo
@@ -152,11 +182,15 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		}
 	}
 
-	// Le formule vanno calcolate prima di esportare (l'export ODS
-	// scrive solo valori, non formule -- vedi BuildContentXml sotto),
-	// altrimenti una cella con formula risulterebbe vuota. Stesso
-	// meccanismo "piu' passate fino a convergenza" gia' usato altrove
-	// in questo progetto (vedi ui/src/AscdIO.cpp).
+	// Le formule vanno comunque calcolate prima di esportare, anche se
+	// adesso l'export scrive la formula viva per le celle sullo stesso
+	// foglio (vedi BuildContentXml sotto): il valore calcolato resta
+	// necessario come office:value/<text:p> di riserva e come unico
+	// contenuto scritto per le celle con un riferimento a un altro
+	// foglio, che l'export non esporta come formula viva (vedi
+	// CFormula::ReferencesOtherSheet). Stesso meccanismo "piu' passate
+	// fino a convergenza" gia' usato altrove in questo progetto (vedi
+	// ui/src/AscdIO.cpp).
 	//
 	// L'iteratore usa il range completo del foglio (non i limiti
 	// restituiti da GetBounds) perche' GetBounds esclude le celle con
@@ -201,13 +235,40 @@ static void AppendXmlEscaped(std::string& out, const char* text)
 	}
 }
 
-// Genera content.xml a partire dal documento: solo i valori
-// calcolati (numeri/testo), non le formule -- stessa scelta gia'
-// fatta per l'export CSV (vedi CsvTranslator.cpp), per non generare
-// una sintassi di formula ODF potenzialmente non valida per casi non
-// gestiti (l'inverso di ConvertODFFormula sotto non e' banale per
-// formule arbitrarie). Limite noto, documentato in
-// docs/TRANSLATORS.md.
+// Come AppendXmlEscaped, ma per testo destinato dentro un valore di
+// ATTRIBUTO (qui solo table:formula sotto), non al contenuto di un
+// elemento: le virgolette vanno escluse anche loro, altrimenti una
+// formula con un letterale di testo contenente un apice doppio
+// (es. ="a ""b"" c", sintassi Excel/ODF per un apice doppio dentro un
+// letterale) chiuderebbe l'attributo XML a meta' e corromperebbe il
+// file.
+static void AppendXmlAttrEscaped(std::string& out, const char* text)
+{
+	for (const char* p = text; *p; p++)
+	{
+		switch (*p)
+		{
+			case '&': out += "&amp;"; break;
+			case '<': out += "&lt;"; break;
+			case '>': out += "&gt;"; break;
+			case '"': out += "&quot;"; break;
+			default: out += *p;
+		}
+	}
+}
+
+// Genera content.xml a partire dal documento. Una cella con formula
+// scrive anche table:formula="of:=..." (sintassi OpenFormula, la
+// stessa che scrive LibreOffice: riferimenti fra "[." e "]", "." come
+// separatore decimale, ";" come separatore di argomenti -- vedi
+// ConvertODFFormula sotto per l'analisi in ingresso, che si aspetta
+// esattamente questa forma), oltre a office:value/<text:p> col
+// valore gia' calcolato -- ma SOLO se la formula non fa riferimento a
+// un altro foglio (vedi CFormula::ReferencesOtherSheet): questo
+// export scrive un solo foglio per file, un riferimento incrociato
+// punterebbe a dati che nel file esportato non esistono affatto, in
+// quel caso resta il comportamento precedente (solo il valore
+// calcolato, come CSV).
 static std::string BuildContentXml(CContainer* doc)
 {
 	range bounds;
@@ -226,18 +287,47 @@ static std::string BuildContentXml(CContainer* doc)
 	if (bounds.right >= 1 && bounds.bottom >= 1)
 	{
 		char numBuf[64];
+		// 16384: stessa dimensione di kMaxUnmangledFormulaLength in
+		// Container.cpp (privata a quel file, non esposta da un
+		// header) -- generosa rispetto a qualunque formula reale.
+		char formulaBuf[16384];
 		for (int row = 1; row <= bounds.bottom; row++)
 		{
 			xml += "<table:table-row>";
 			for (int col = 1; col <= bounds.right; col++)
 			{
+				cell c(col, row);
 				Value v;
-				doc->GetValue(cell(col, row), v);
+				doc->GetValue(c, v);
+
+				bool writeFormula = false;
+				void* rawFormula = doc->GetCellFormula(c);
+				if (rawFormula)
+				{
+					CFormula form(rawFormula);
+					if (!form.ReferencesOtherSheet())
+					{
+						// odfRefs=true avvolge i riferimenti a cella/
+						// intervallo in "[." e "]" (sintassi ODF);
+						// listSep=';' e' il separatore di argomenti
+						// convenzionale di OpenFormula/LibreOffice
+						// (a differenza della "," di ECMA-376/XLSX).
+						form.UnMangle(formulaBuf, c, doc, false, '.', ';', true);
+						writeFormula = true;
+					}
+				}
 
 				if (v.fType == eNumData && !v.IsNan())
 				{
 					snprintf(numBuf, sizeof(numBuf), "%.15g", (double)v);
-					xml += "<table:table-cell office:value-type=\"float\" office:value=\"";
+					xml += "<table:table-cell";
+					if (writeFormula)
+					{
+						xml += " table:formula=\"of:=";
+						AppendXmlAttrEscaped(xml, formulaBuf);
+						xml += "\"";
+					}
+					xml += " office:value-type=\"float\" office:value=\"";
 					xml += numBuf;
 					xml += "\"><text:p>";
 					xml += numBuf;
@@ -245,7 +335,14 @@ static std::string BuildContentXml(CContainer* doc)
 				}
 				else if (v.fType == eTextData)
 				{
-					xml += "<table:table-cell office:value-type=\"string\"><text:p>";
+					xml += "<table:table-cell";
+					if (writeFormula)
+					{
+						xml += " table:formula=\"of:=";
+						AppendXmlAttrEscaped(xml, formulaBuf);
+						xml += "\"";
+					}
+					xml += " office:value-type=\"string\"><text:p>";
 					AppendXmlEscaped(xml, (const char*)v);
 					xml += "</text:p></table:table-cell>";
 				}

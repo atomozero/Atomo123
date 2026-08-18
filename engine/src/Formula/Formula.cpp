@@ -537,7 +537,8 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 	outResult = stack[0];
 } /* CFormula::Calculate */
 
-void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContainer, bool rcStyle) const
+void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContainer, bool rcStyle,
+	char decSepOverride, char listSepOverride, bool odfRefs) const
 {
 	char *stack[kMaxStackHeight];
 	int stackIndx, indx, sLen, i;
@@ -549,7 +550,7 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 
 	void *p = MALLOC(kMaxStackHeight * kMaxStringLength);
 	FailNil(p);
-	
+
 	for (int i = 0; i < kMaxStackHeight; i++)
 		stack[i] = (char *)p + i * kMaxStringLength;
 
@@ -726,7 +727,9 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 						if (i)
 						{
 							char s[2];
-							if (rcStyle)
+							if (listSepOverride)
+								s[0] = listSepOverride;
+							else if (rcStyle)
 								s[0] = ',';
 							else
 								s[0] = gListSeparator;
@@ -748,13 +751,16 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 	
 					if (nextOpcode == valPerc)
 						d *= 100;
-	
+
 					ftoa(d, outString);
-					
-					if (rcStyle && gDecimalPoint != '.')
+
 					{
-						char *dp = strchr(outString, gDecimalPoint);
-						if (dp) *dp = '.';
+						char targetDecimal = decSepOverride ? decSepOverride : (rcStyle ? '.' : 0);
+						if (targetDecimal && targetDecimal != gDecimalPoint)
+						{
+							char *dp = strchr(outString, gDecimalPoint);
+							if (dp) *dp = targetDecimal;
+						}
 					}
 	
 					if (nextOpcode == valPerc)
@@ -790,23 +796,65 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					if (rcStyle)
 						theCell.GetRCName(outString);
 					else
+					{
 						theCell.GetFormulaName(outString, inLocation);
+						if (odfRefs)
+						{
+							char wrapped[kMaxStringLength];
+							snprintf(wrapped, kMaxStringLength, "[.%s]", outString);
+							strlcpy(outString, wrapped, kMaxStringLength);
+						}
+					}
 					stackIndx++;
 					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					indx += sizeof(cell) / kPFWordSize;
 					break;
-	
+
 				case valRange:
 					theRange = *((range *)(fString + indx));
 					if (rcStyle)
 						theRange.GetRCName(outString);
 					else
+					{
 						theRange.GetFormulaName(outString, inLocation);
+						if (decSepOverride)
+						{
+							// Normalizza il separatore di intervallo per
+							// l'export verso formati esterni (Excel/ODF
+							// vogliono ":", il nostro ".." storico e'
+							// pensato solo per il giro testuale interno
+							// ASCD/barra formule -- vedi il commento sul
+							// token RANGE nel lexer, che accetta entrambi
+							// in ingresso). L'uscita e' sempre uguale o
+							// piu' corta dell'ingresso (".." di 2
+							// caratteri diventa ":" di 1), quindi riscrivere
+							// nello stesso buffer scorrendolo una volta
+							// sola e' sicuro.
+							char *src = outString, *dst = outString;
+							while (*src)
+							{
+								if (src[0] == '.' && src[1] == '.')
+								{
+									*dst++ = ':';
+									src += 2;
+								}
+								else
+									*dst++ = *src++;
+							}
+							*dst = 0;
+						}
+						if (odfRefs)
+						{
+							char wrapped[kMaxStringLength];
+							snprintf(wrapped, kMaxStringLength, "[.%s]", outString);
+							strlcpy(outString, wrapped, kMaxStringLength);
+						}
+					}
 					stackIndx++;
 					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					indx += sizeof(range) / kPFWordSize;
 					break;
-				
+
 				case valName:
 					stackIndx++;
 					strlcpy(stack[stackIndx], (char *)(fString + indx), kMaxStringLength);
@@ -914,6 +962,68 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 	
 	FREE(p);
 } /* CFormula::UnMangle */
+
+bool CFormula::ReferencesOtherSheet() const
+{
+	// Scansione del bytecode simile a CFormulaIterator::Next (vedi
+	// Formula.iter.cpp), ma senza bisogno di ricostruire nessun
+	// riferimento: basta sapere se un valXRef/valXRange compare da
+	// qualche parte, per questo appena trovato si esce subito senza
+	// nemmeno saltarne il payload.
+	if (!fString)
+		return false;
+
+	int indx = 0;
+	int l;
+	PFToken opcode;
+
+	while ((opcode = (PFToken)fString[indx++]) != opEnd)
+	{
+		switch (opcode)
+		{
+			case valXRef:
+			case valXRange:
+				return true;
+
+			case opFunc:
+				indx += sizeof(FuncCallData) / kPFWordSize;
+				break;
+
+			case valNum:
+			case valPerc:
+				indx += sizeof(double) / kPFWordSize;
+				break;
+
+			case valTime:
+				indx += sizeof(time_t) / kPFWordSize;
+				break;
+
+			case valBool:
+				indx++;
+				break;
+
+			case valStr:
+			case valName:
+				l = 1 + strlen((char *)(fString + indx));
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				indx += l / kPFWordSize;
+				break;
+
+			case valCell:
+				indx += sizeof(cell) / kPFWordSize;
+				break;
+
+			case valRange:
+				indx += sizeof(range) / kPFWordSize;
+				break;
+
+			default:
+				break;
+		}
+	}
+	return false;
+} /* CFormula::ReferencesOtherSheet */
 
 bool CFormula::IsConstant() const
 {

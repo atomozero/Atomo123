@@ -42,6 +42,7 @@
 #include "CellStyle.h"
 #include "FunctionUtils.h"
 #include "Globals.h"
+#include "Globals.h"
 #include "ResourceManager.h"
 
 static int gFailures = 0;
@@ -2297,8 +2298,12 @@ int main()
 	// Esportazione (ASCD -> XLSX): scrive un documento con un numero,
 	// una stringa e una formula, poi rilegge il file XLSX prodotto con
 	// lo stesso translator (round-trip completo) per verificare che i
-	// valori sopravvivano e che la formula sia diventata il suo valore
-	// calcolato (scelta deliberata dell'export, come CSV/ODS).
+	// valori sopravvivano e che la formula sia sopravvissuta VIVA
+	// (scrive sia <f> che <v>, vedi BuildSheetXml in
+	// XlsxTranslator.cpp), non solo il suo valore calcolato come CSV
+	// (che non ha un concetto di formula) -- comportamento cambiato
+	// rispetto a prima: l'export scriveva solo il valore anche per
+	// XLSX/ODS.
 	{
 		CContainer &exportDoc = *new CContainer(NULL, NULL);
 		TryToParseString("12", cell(1, 1), &exportDoc, true);       // A1 = 12
@@ -2347,7 +2352,14 @@ int main()
 			int32 cnt;
 			memcpy(&cnt, data + 8, 4);
 
-			bool reA1 = false, reB1 = false, reC1 = false, reA2 = false;
+			// 0 = kAscdCellFormula (vedi lo stesso enum privato in
+			// XlsxTranslator.cpp): l'unico modo affidabile di sapere se
+			// la cella C1 e' tornata una formula viva invece di un
+			// valore statico, dato che il TESTO da solo ("A1+B1") non
+			// lo direbbe con certezza in ogni caso possibile.
+			static const uint8 kCellKindFormula = 0;
+
+			bool reA1 = false, reB1 = false, reC1Formula = false, reA2 = false;
 			for (int32 i = 0; i < cnt && pos + 8 <= len; i++)
 			{
 				int16 row, col;
@@ -2355,7 +2367,8 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&tlen, data + pos, 4); pos += 4;
-				pos += 1; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
+				uint8 kind = data[pos]; // "kind" per cella (Fase 15, versione 2 del formato ASCD)
+				pos += 1;
 				if (pos + tlen > len)
 					break;
 				std::string text((const char *)data + pos, tlen);
@@ -2363,17 +2376,98 @@ int main()
 
 				if (row == 1 && col == 1 && text == "12") reA1 = true;
 				if (row == 1 && col == 2 && text == "8") reB1 = true;
-				if (row == 1 && col == 3 && text == "20") reC1 = true;
+				if (row == 1 && col == 3 && kind == kCellKindFormula
+						&& text.find("A1") != std::string::npos
+						&& text.find("B1") != std::string::npos)
+					reC1Formula = true;
 				if (row == 2 && col == 1 && text == "Prova export") reA2 = true;
 			}
 
 			Check(reA1, "dopo il round-trip, A1 vale ancora 12");
 			Check(reB1, "dopo il round-trip, B1 vale ancora 8");
-			Check(reC1,
-				"dopo il round-trip, C1 (era una formula) vale 20 -- il valore calcolato, "
-				"non la formula (scelta deliberata dell'export)");
+			Check(reC1Formula,
+				"dopo il round-trip, C1 (era una formula) e' sopravvissuta come formula viva "
+				"(A1+B1), non appiattita al suo valore calcolato (20)");
 			Check(reA2, "dopo il round-trip, A2 vale ancora \"Prova export\"");
 		}
+	}
+
+	// Formula con un riferimento a un altro foglio (qui mai risolto,
+	// "AltroFoglio" non esiste davvero -- non serve perche' il punto e'
+	// solo verificare COSA viene scritto in export, non il calcolo):
+	// l'export NON deve scrivere una formula viva per questa cella,
+	// solo il suo valore calcolato -- questo translator esporta un
+	// solo foglio per file (vedi BuildSheetXml), un riferimento
+	// incrociato punterebbe a dati che nel file esportato non
+	// esistono affatto (vedi CFormula::ReferencesOtherSheet).
+	{
+		CContainer &xrefDoc = *new CContainer(NULL, NULL);
+		TryToParseString("=AltroFoglio!A1+5", cell(1, 1), &xrefDoc, true); // A1
+		xrefDoc.CalcCell(cell(1, 1)); // non risolve (nessun resolver), ma non ci interessa il valore
+
+		BMallocIO xrefAscdIn;
+		WriteASCDForTest(&xrefDoc, &xrefAscdIn);
+		xrefDoc.Release();
+
+		xrefAscdIn.Seek(0, SEEK_SET);
+		translator_info xrefInfo;
+		translator->Identify(&xrefAscdIn, NULL, NULL, &xrefInfo, kAtomoXlsxFormat);
+		xrefAscdIn.Seek(0, SEEK_SET);
+		BMallocIO xrefXlsxOut;
+		err = translator->Translate(&xrefAscdIn, &xrefInfo, NULL, kAtomoXlsxFormat, &xrefXlsxOut);
+		Check(err == B_OK, "Translate ASCD -> XLSX riesce anche con un riferimento a un altro foglio");
+
+		// Cerca direttamente nel file XLSX prodotto (un archivio ZIP):
+		// "<f>" non deve comparire affatto per questa cella -- basta
+		// cercarlo nel blob intero, l'unica formula presente in questo
+		// documento di prova e' proprio questa.
+		std::string xlsxBytes((const char *)xrefXlsxOut.Buffer(), xrefXlsxOut.BufferLength());
+		Check(xlsxBytes.find("<f>") == std::string::npos,
+			"una formula con riferimento a un altro foglio non viene scritta come <f> "
+			"(solo il suo valore, per non puntare a dati assenti nel file esportato)");
+	}
+
+	// Separatori canonici indipendenti dalle preferenze correnti
+	// dell'utente (decSep/listSep, vedi CFormula::UnMangle): una
+	// formula con un letterale decimale e piu' argomenti deve
+	// esportarsi sempre con "." e "," (sintassi canonica ECMA-376),
+	// anche se l'utente ha impostato virgola come separatore
+	// decimale e punto e virgola come separatore di elenco (il
+	// default italiano) -- altrimenti Excel non capirebbe la formula
+	// scritta nel file. gDecimalPoint/gListSeparator sono globali
+	// dell'engine: si ripristinano al valore originale alla fine di
+	// questo blocco, per non alterare lo stato degli altri test.
+	{
+		char savedDecimalPoint = gDecimalPoint;
+		char savedListSeparator = gListSeparator;
+		gDecimalPoint = ',';
+		gListSeparator = ';';
+
+		CContainer &sepDoc = *new CContainer(NULL, NULL);
+		TryToParseString("1", cell(1, 1), &sepDoc, true);   // A1
+		TryToParseString("2", cell(1, 2), &sepDoc, true);   // A2
+		TryToParseString("=SUM(A1;A2)+1,5", cell(1, 3), &sepDoc, true); // A3, sintassi italiana
+		sepDoc.CalcCell(cell(1, 3));
+
+		BMallocIO sepAscdIn;
+		WriteASCDForTest(&sepDoc, &sepAscdIn);
+		sepDoc.Release();
+
+		sepAscdIn.Seek(0, SEEK_SET);
+		translator_info sepInfo;
+		translator->Identify(&sepAscdIn, NULL, NULL, &sepInfo, kAtomoXlsxFormat);
+		sepAscdIn.Seek(0, SEEK_SET);
+		BMallocIO sepXlsxOut;
+		err = translator->Translate(&sepAscdIn, &sepInfo, NULL, kAtomoXlsxFormat, &sepXlsxOut);
+		Check(err == B_OK, "Translate ASCD -> XLSX riesce con gDecimalPoint=',' e gListSeparator=';'");
+
+		gDecimalPoint = savedDecimalPoint;
+		gListSeparator = savedListSeparator;
+
+		std::string sepXlsxBytes((const char *)sepXlsxOut.Buffer(), sepXlsxOut.BufferLength());
+		Check(sepXlsxBytes.find("<f>SUM(A1,A2)+1.5</f>") != std::string::npos,
+			"la formula esportata usa sempre \",\" come separatore di argomenti e \".\" come "
+			"decimale, indipendentemente dalle preferenze locali correnti dell'utente");
 	}
 
 	// Formule con piu' argomenti separati da virgola (Fase 13): bug

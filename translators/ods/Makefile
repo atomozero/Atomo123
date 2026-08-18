@@ -23,10 +23,28 @@ LIBS := -L$(ENGINE_DIR) -lengine -lbe -ltranslation -lexpat -lz
 ADDON := OdsTranslator
 SOURCES := OdsTranslator.cpp MiniZip.cpp
 
+# Risorsa 'Func' per InitFunctions() nel test: senza questa,
+# GetFunctionNr tratta OGNI nome di funzione (SUM incluso) come
+# identificatore sconosciuto (gFuncCount resta 0) e il parser lancia
+# CParseErr per "funzione sconosciuta" appena una formula esportata
+# con separatori canonici usa una funzione con nome -- stesso principio
+# di translators/xlsx/Makefile (FUNC_TEST_RSRC), che serve qui da
+# quando il test dell'export con formule vive usa anche lui SUM().
+LEGACY_DIR := ../../legacy/opensumit
+REZ := $(LEGACY_DIR)/rez/rez
+FUNC_TEST_RSRC := tests/named_functions.rsrc
+
 all: $(ADDON)
 
 $(ENGINE_DIR)/libengine.a:
 	$(MAKE) -C $(ENGINE_DIR)
+
+$(REZ):
+	$(MAKE) -C $(LEGACY_DIR)/rez
+
+$(FUNC_TEST_RSRC): $(REZ) $(ENGINE_DIR)/resources/funcs_by_nr.r
+	rm -f $(FUNC_TEST_RSRC)
+	$(REZ) -o $(FUNC_TEST_RSRC) $(ENGINE_DIR)/resources/funcs_by_nr.r
 
 $(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a
 	$(CXX) -shared -o $(ADDON) $(SOURCES) $(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -35,7 +53,7 @@ install: $(ADDON)
 	mkdir -p ~/config/non-packaged/add-ons/Translators
 	cp $(ADDON) ~/config/non-packaged/add-ons/Translators/
 
-test: $(ADDON)
+test: $(ADDON) $(FUNC_TEST_RSRC)
 	$(CXX) -c tests/test_ods_translator.cpp -o tests/test_ods_translator.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_ods_translator tests/test_ods_translator.o \
@@ -43,6 +61,6 @@ test: $(ADDON)
 	./tests/test_ods_translator
 
 clean:
-	rm -f $(ADDON) tests/test_ods_translator tests/test_ods_translator.o
+	rm -f $(ADDON) tests/test_ods_translator tests/test_ods_translator.o $(FUNC_TEST_RSRC)
 
 .PHONY: all install test clean
