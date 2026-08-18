@@ -97,6 +97,7 @@ Since v0.2.0 (not yet in a tagged release):
   position — scrolling one sheet no longer moves the others, which
   previously all shared a single `SheetView`'s scroll state. Session
   only, not saved to the ASCD/ASCB file format
+- "New sheet" is now also in the Insert menu (was only under Data)
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
