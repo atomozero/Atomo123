@@ -81,6 +81,11 @@ Since v0.2.0 (not yet in a tagged release):
 - Embedded images can now be deleted: click to select (persistent
   selection, not just during drag), Delete/Backspace removes it,
   undo/redo restores the full image (PNG data included)
+- Embedded images can be dragged out of the app with the right mouse
+  button (real Haiku drag-and-drop, `DragMessage`/`B_COPY_TARGET`) —
+  dropped on Tracker they save as a PNG file, dropped on another app
+  they offer the same data. Left button stays reserved for in-sheet
+  move/resize, unchanged
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
