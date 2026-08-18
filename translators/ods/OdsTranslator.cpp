@@ -17,8 +17,11 @@
 
 #include <expat.h>
 
+#include <Catalog.h>
 #include <Cursor.h>
+#include <Entry.h>
 #include <Font.h>
+#include <image.h>
 #include <InterfaceDefs.h>
 #include <LayoutBuilder.h>
 #include <Roster.h>
@@ -667,6 +670,14 @@ int32 COdsTranslator::TranslatorVersion() const
 	return B_TRANSLATION_MAKE_VERSION(1, 0, 0);
 }
 
+// Catalogo di localizzazione di QUESTO add-on, stesso schema/motivo di
+// sCatalog in translators/csv/CsvTranslator.cpp (vedi quel commento).
+static BCatalog sCatalog;
+#undef B_CATALOG
+#define B_CATALOG (&sCatalog)
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "OdsConfigView"
+
 // Link "Offrimi un caffe'" cliccabile, stesso schema/motivo di
 // CCsvCoffeeLink in translators/csv/CsvTranslator.cpp (vedi quel
 // commento per il perche' non e' un ClickableStringView di ui/src/).
@@ -674,7 +685,7 @@ static const char kCoffeeUrl[] = "https://buymeacoffee.com/atomozero";
 
 class COdsCoffeeLink : public BStringView {
 public:
-	COdsCoffeeLink() : BStringView("coffeeLink", "Offrimi un caffe' \xE2\x98\x95") {}
+	COdsCoffeeLink() : BStringView("coffeeLink", B_TRANSLATE("Offrimi un caffe' \xE2\x98\x95")) {}
 
 	virtual void AttachedToWindow()
 	{
@@ -711,8 +722,9 @@ public:
 
 		int32 v = B_TRANSLATION_MAKE_VERSION(1, 0, 0);
 		BString versionText;
-		versionText.SetToFormat("Versione %d.%d.%d", (int)B_TRANSLATION_MAJOR_VERSION(v),
-			(int)B_TRANSLATION_MINOR_VERSION(v), (int)B_TRANSLATION_REVISION_VERSION(v));
+		versionText.SetToFormat(B_TRANSLATE("Versione %d.%d.%d"),
+			(int)B_TRANSLATION_MAJOR_VERSION(v), (int)B_TRANSLATION_MINOR_VERSION(v),
+			(int)B_TRANSLATION_REVISION_VERSION(v));
 
 		BFont small(be_plain_font);
 		small.SetSize(be_plain_font->Size() - 1);
@@ -722,13 +734,13 @@ public:
 		version->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.7));
 
 		BStringView* info = new BStringView("info",
-			"Importa/esporta fogli di calcolo dal/al formato\n"
-			"OpenDocument (ODS), incluse le formule vive sullo\n"
-			"stesso foglio (un riferimento a un altro foglio\n"
-			"esporta solo il valore calcolato).");
+			B_TRANSLATE("Importa/esporta fogli di calcolo dal/al formato\n"
+				"OpenDocument (ODS), incluse le formule vive sullo\n"
+				"stesso foglio (un riferimento a un altro foglio\n"
+				"esporta solo il valore calcolato)."));
 
 		BStringView* copyright = new BStringView("copyright",
-			"Copyright (c) 2026 Andrea Bernardi \xC2\xB7 Licenza MIT");
+			B_TRANSLATE("Copyright (c) 2026 Andrea Bernardi \xC2\xB7 Licenza MIT"));
 		copyright->SetFont(&small);
 		copyright->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.6));
 
@@ -889,6 +901,22 @@ status_t COdsTranslator::Translate(BPositionIO* source,
 extern "C" BTranslator* make_nth_translator(int32 n, image_id you, uint32 flags, ...)
 {
 	if (n == 0)
+	{
+		// Vedi il commento analogo in translators/csv/CsvTranslator.cpp
+		// (make_nth_translator): risolve il catalogo di questo add-on
+		// dal proprio image_id, invece del catalogo dell'host.
+		if (sCatalog.InitCheck() != B_OK)
+		{
+			image_info info;
+			if (get_image_info(you, &info) == B_OK)
+			{
+				BEntry entry(info.name);
+				entry_ref ref;
+				if (entry.GetRef(&ref) == B_OK)
+					sCatalog.SetTo(ref);
+			}
+		}
 		return new COdsTranslator();
+	}
 	return NULL;
 }

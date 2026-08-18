@@ -12,8 +12,11 @@
 #include <cstdio>
 #include <cstring>
 
+#include <Catalog.h>
 #include <Cursor.h>
+#include <Entry.h>
 #include <Font.h>
+#include <image.h>
 #include <InterfaceDefs.h>
 #include <LayoutBuilder.h>
 #include <Roster.h>
@@ -256,6 +259,22 @@ int32 CCsvTranslator::TranslatorVersion() const
 	return B_TRANSLATION_MAKE_VERSION(1, 0, 0);
 }
 
+// Catalogo di localizzazione di QUESTO add-on, non dell'app ospite: un
+// translator puo' essere caricato da qualunque host (Atomo123,
+// DataTranslations, Tracker per le anteprime), ognuno col PROPRIO
+// catalogo -- mai il nostro. Il B_CATALOG predefinito di Catalog.h
+// userebbe BLocaleRoster::Default()->GetCatalog() (il catalogo
+// dell'HOST), che non contiene affatto le nostre chiavi: si punta
+// invece esplicitamente al catalogo incorporato in QUESTO file .so,
+// risolto in make_nth_translator sotto tramite l'image_id ricevuto
+// (BCatalog(entry_ref), pensato apposta per gli add-on che non sono
+// una BApplication con un proprio be_app).
+static BCatalog sCatalog;
+#undef B_CATALOG
+#define B_CATALOG (&sCatalog)
+#undef B_TRANSLATION_CONTEXT
+#define B_TRANSLATION_CONTEXT "CsvConfigView"
+
 // Link "Offrimi un caffe'" cliccabile, stesso URL/icona gia' presenti
 // nella finestra Informazioni dell'app (ui/src/AboutWindow.cpp) --
 // qui pero' non c'e' una BWindow nostra che possa ricevere un
@@ -267,7 +286,7 @@ static const char kCoffeeUrl[] = "https://buymeacoffee.com/atomozero";
 
 class CCsvCoffeeLink : public BStringView {
 public:
-	CCsvCoffeeLink() : BStringView("coffeeLink", "Offrimi un caffe' \xE2\x98\x95") {}
+	CCsvCoffeeLink() : BStringView("coffeeLink", B_TRANSLATE("Offrimi un caffe' \xE2\x98\x95")) {}
 
 	virtual void AttachedToWindow()
 	{
@@ -309,8 +328,9 @@ public:
 
 		int32 v = B_TRANSLATION_MAKE_VERSION(1, 0, 0);
 		BString versionText;
-		versionText.SetToFormat("Versione %d.%d.%d", (int)B_TRANSLATION_MAJOR_VERSION(v),
-			(int)B_TRANSLATION_MINOR_VERSION(v), (int)B_TRANSLATION_REVISION_VERSION(v));
+		versionText.SetToFormat(B_TRANSLATE("Versione %d.%d.%d"),
+			(int)B_TRANSLATION_MAJOR_VERSION(v), (int)B_TRANSLATION_MINOR_VERSION(v),
+			(int)B_TRANSLATION_REVISION_VERSION(v));
 
 		BFont small(be_plain_font);
 		small.SetSize(be_plain_font->Size() - 1);
@@ -320,11 +340,11 @@ public:
 		version->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.7));
 
 		BStringView* info = new BStringView("info",
-			"Converte fogli di calcolo tra CSV e il formato dati\n"
-			"nativo Atomo Sheet (ASCD).");
+			B_TRANSLATE("Converte fogli di calcolo tra CSV e il formato dati\n"
+				"nativo Atomo Sheet (ASCD)."));
 
 		BStringView* copyright = new BStringView("copyright",
-			"Copyright (c) 2026 Andrea Bernardi \xC2\xB7 Licenza MIT");
+			B_TRANSLATE("Copyright (c) 2026 Andrea Bernardi \xC2\xB7 Licenza MIT"));
 		copyright->SetFont(&small);
 		copyright->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.6));
 
@@ -520,6 +540,26 @@ status_t CCsvTranslator::Translate(BPositionIO* source,
 extern "C" BTranslator* make_nth_translator(int32 n, image_id you, uint32 flags, ...)
 {
 	if (n == 0)
+	{
+		// Risolve il catalogo di QUESTO add-on tramite il proprio
+		// image_id (vedi il commento su sCatalog sopra): "you" e'
+		// l'immagine di questo stesso file .so gia' caricato dal
+		// Translation Kit, da cui si ricava il percorso su disco per
+		// costruire un entry_ref -- InitCheck() evita di rifarlo se
+		// make_nth_translator viene chiamata piu' volte nello stesso
+		// processo (ogni chiamata a Identify()/Translate() la richiama).
+		if (sCatalog.InitCheck() != B_OK)
+		{
+			image_info info;
+			if (get_image_info(you, &info) == B_OK)
+			{
+				BEntry entry(info.name);
+				entry_ref ref;
+				if (entry.GetRef(&ref) == B_OK)
+					sCatalog.SetTo(ref);
+			}
+		}
 		return new CCsvTranslator();
+	}
 	return NULL;
 }

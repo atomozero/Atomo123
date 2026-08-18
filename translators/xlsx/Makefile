@@ -46,6 +46,12 @@ REZ := $(LEGACY_DIR)/rez/rez
 BSL := $(LEGACY_DIR)/bsl/bsl
 FUNC_TEST_RSRC := tests/named_functions.rsrc
 
+# Localizzazione (Locale Kit) della vista Informazioni: vedi il
+# commento analogo in translators/csv/Makefile.
+CATALOG_SIG := application/x-vnd.Atomo-XlsxTranslator
+CATKEYS_DIR := locales
+EN_CATKEYS := $(CATKEYS_DIR)/en.catkeys
+
 all: $(ADDON)
 
 $(ENGINE_DIR)/libengine.a:
@@ -61,12 +67,20 @@ $(FUNC_TEST_RSRC): $(REZ) $(BSL) $(ENGINE_DIR)/resources/funcs_by_nr.r
 	rm -f $(FUNC_TEST_RSRC)
 	$(REZ) -o $(FUNC_TEST_RSRC) $(ENGINE_DIR)/resources/funcs_by_nr.r
 
-$(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a
+$(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a $(EN_CATKEYS)
 	$(CXX) -shared -o $(ADDON) $(SOURCES) $(INCLUDES) $(CXXFLAGS) $(LIBS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l en $(EN_CATKEYS)
 
 install: $(ADDON)
 	mkdir -p ~/config/non-packaged/add-ons/Translators
 	cp $(ADDON) ~/config/non-packaged/add-ons/Translators/
+
+# Passaggio manuale, non nel giro normale di "make": vedi il commento
+# analogo in translators/csv/Makefile.
+catkeys: XlsxTranslator.cpp
+	-cat XlsxTranslator.cpp | $(CXX) -E -x c++ $(INCLUDES) $(CXXFLAGS) -DB_COLLECTING_CATKEYS - | /bin/grep -av '^#' > $(CATKEYS_DIR)/xlsx.pre
+	collectcatkeys -s $(CATALOG_SIG) $(CATKEYS_DIR)/xlsx.pre -o $(CATKEYS_DIR)/it.catkeys
+	rm -f $(CATKEYS_DIR)/xlsx.pre
 
 test: $(ADDON) $(FUNC_TEST_RSRC)
 	$(CXX) -c tests/test_xlsx_translator.cpp -o tests/test_xlsx_translator.o \
@@ -76,6 +90,7 @@ test: $(ADDON) $(FUNC_TEST_RSRC)
 	./tests/test_xlsx_translator
 
 clean:
-	rm -f $(ADDON) tests/test_xlsx_translator tests/test_xlsx_translator.o $(FUNC_TEST_RSRC)
+	rm -f $(ADDON) tests/test_xlsx_translator tests/test_xlsx_translator.o $(FUNC_TEST_RSRC) \
+		$(CATKEYS_DIR)/it.catkeys $(CATKEYS_DIR)/xlsx.pre
 
-.PHONY: all install test clean
+.PHONY: all install test catkeys clean

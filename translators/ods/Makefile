@@ -34,6 +34,12 @@ LEGACY_DIR := ../../legacy/opensumit
 REZ := $(LEGACY_DIR)/rez/rez
 FUNC_TEST_RSRC := tests/named_functions.rsrc
 
+# Localizzazione (Locale Kit) della vista Informazioni: vedi il
+# commento analogo in translators/csv/Makefile.
+CATALOG_SIG := application/x-vnd.Atomo-OdsTranslator
+CATKEYS_DIR := locales
+EN_CATKEYS := $(CATKEYS_DIR)/en.catkeys
+
 all: $(ADDON)
 
 $(ENGINE_DIR)/libengine.a:
@@ -46,12 +52,20 @@ $(FUNC_TEST_RSRC): $(REZ) $(ENGINE_DIR)/resources/funcs_by_nr.r
 	rm -f $(FUNC_TEST_RSRC)
 	$(REZ) -o $(FUNC_TEST_RSRC) $(ENGINE_DIR)/resources/funcs_by_nr.r
 
-$(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a
+$(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a $(EN_CATKEYS)
 	$(CXX) -shared -o $(ADDON) $(SOURCES) $(INCLUDES) $(CXXFLAGS) $(LIBS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l en $(EN_CATKEYS)
 
 install: $(ADDON)
 	mkdir -p ~/config/non-packaged/add-ons/Translators
 	cp $(ADDON) ~/config/non-packaged/add-ons/Translators/
+
+# Passaggio manuale, non nel giro normale di "make": vedi il commento
+# analogo in translators/csv/Makefile.
+catkeys: OdsTranslator.cpp
+	-cat OdsTranslator.cpp | $(CXX) -E -x c++ $(INCLUDES) $(CXXFLAGS) -DB_COLLECTING_CATKEYS - | /bin/grep -av '^#' > $(CATKEYS_DIR)/ods.pre
+	collectcatkeys -s $(CATALOG_SIG) $(CATKEYS_DIR)/ods.pre -o $(CATKEYS_DIR)/it.catkeys
+	rm -f $(CATKEYS_DIR)/ods.pre
 
 test: $(ADDON) $(FUNC_TEST_RSRC)
 	$(CXX) -c tests/test_ods_translator.cpp -o tests/test_ods_translator.o \
@@ -61,6 +75,7 @@ test: $(ADDON) $(FUNC_TEST_RSRC)
 	./tests/test_ods_translator
 
 clean:
-	rm -f $(ADDON) tests/test_ods_translator tests/test_ods_translator.o $(FUNC_TEST_RSRC)
+	rm -f $(ADDON) tests/test_ods_translator tests/test_ods_translator.o $(FUNC_TEST_RSRC) \
+		$(CATKEYS_DIR)/it.catkeys $(CATKEYS_DIR)/ods.pre
 
-.PHONY: all install test clean
+.PHONY: all install test catkeys clean
