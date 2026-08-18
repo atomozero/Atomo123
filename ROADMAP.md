@@ -83,12 +83,18 @@ Since v0.2.0 (not yet in a tagged release):
   undo/redo restores the full image (PNG data included)
 - Embedded images can be dragged out of the app with the right mouse
   button (real Haiku drag-and-drop, `DragMessage`/`B_COPY_TARGET`) —
-  dropped on Tracker they save as a PNG file, dropped on another app
-  they offer the same data. Left button stays reserved for in-sheet
-  move/resize, unchanged
+  dropped on Tracker they should save as a PNG file, dropped on another
+  app they should offer the same data. Left button stays reserved for
+  in-sheet move/resize, unchanged. **Not confirmed working end-to-end**:
+  implementation follows the documented Haiku convention and an
+  isolated test program outside Atomo123 shows the same unresolved
+  drop behavior, pointing at something in this dev environment (how
+  the mouse reaches this machine) rather than the app code — needs a
+  retest on a different Haiku setup
 
-Next: no specific item queued — see "Not currently planned" above for
-the larger backlog.
+Next: confirm the image export drag-and-drop above actually completes
+on a real/different machine; otherwise no specific item queued — see
+"Not currently planned" above for the larger backlog.
 
 ## Related work
 
