@@ -177,6 +177,11 @@ public:
 	// trascinamento concluso, solo se qualcosa e' davvero cambiato).
 	void SaveImageUndoState(int imageIndex, float beforeOffsetX, float beforeOffsetY,
 		float beforeWidth, float beforeHeight);
+	// Stesso principio di SaveImageUndoState sopra, per il trascinamento
+	// di un grafico incorporato (Fase 17, richiesta esplicita
+	// dell'utente): un solo BRect invece di due coppie di float, dato
+	// che ChartObject::frame e' gia' assoluto.
+	void SaveChartUndoState(int chartIndex, BRect beforeFrame);
 	// Stesso principio di SaveImageUndoState sopra, per convalida dati
 	// e formattazione condizionale (Fase 15, bug reale: erano gli
 	// unici comandi mutanti mai annullabili -- vedi il commento su
@@ -302,10 +307,19 @@ public:
 	// Apri/cambio foglio, stesso principio di SetColumnWidths.
 	void SetFreezePanes(int rows, int cols);
 
-	// Elenco dei grafici incorporati da disegnare sopra la griglia
-	// (di proprieta' di MainWindow, che lo passa qui solo per
-	// disegnarlo: SheetView non lo possiede ne' lo modifica mai).
-	void SetCharts(const std::vector<ChartObject>* charts) { fCharts = charts; }
+	// Elenco dei grafici incorporati da disegnare sopra la griglia (di
+	// proprieta' di MainWindow, che lo passa qui). Non piu' const (Fase
+	// 17, richiesta esplicita dell'utente: "possiamo spostare i grafici
+	// generati all'interno del foglio?") -- stesso principio gia' usato
+	// per SetImages sotto: trascinare un grafico con MouseDown/
+	// MouseMoved scrive direttamente ChartObject::frame sull'elemento
+	// del vettore di MainWindow (mai una copia), quindi lo spostamento
+	// e' gia' "nel modello" a ogni fotogramma, senza bisogno di
+	// ricopiare nulla indietro. A differenza di EmbeddedImage (ancora a
+	// una cella + scarto), ChartObject::frame e' gia' un BRect assoluto
+	// in Chart.h: lo spostamento aggiorna quel rettangolo direttamente,
+	// nessuna conversione anchor/scarto necessaria.
+	void SetCharts(std::vector<ChartObject>* charts) { fCharts = charts; }
 
 	// Elenco delle immagini incorporate (import XLSX, Fase 12) da
 	// disegnare sopra la griglia -- stesso principio di SetCharts
@@ -607,6 +621,12 @@ private:
 		int imageIndex = -1;
 		float imageOffsetX = 0, imageOffsetY = 0;
 		float imageWidth = 0, imageHeight = 0;
+		// Trascinamento di un grafico incorporato (vedi
+		// SaveChartUndoState): stesso principio di imageIndex sopra, ma
+		// un solo BRect invece di due coppie di float (ChartObject::frame
+		// e' gia' assoluto). -1 = non e' un'istantanea di grafico.
+		int chartIndex = -1;
+		BRect chartFrameBefore;
 		// Convalida dati (Fase 15, bug reale: Applica/Rimuovi convalida
 		// non erano mai annullabili -- unico comando mutante, insieme a
 		// formattazione condizionale sotto, senza SaveUndoState). Non
@@ -646,6 +666,7 @@ private:
 	std::vector<UndoSnapshot> fRedoStack;
 	UndoSnapshot CaptureSnapshot(range r) const;
 	UndoSnapshot CaptureImageSnapshot(int imageIndex) const;
+	UndoSnapshot CaptureChartSnapshot(int chartIndex) const;
 	UndoSnapshot CaptureImageDeleteSnapshot(int imageIndex) const;
 	// Imposta fSelectedImageIndex e invalida sia il vecchio che il
 	// nuovo riquadro di selezione (se diversi da -1) -- un solo posto
@@ -657,7 +678,15 @@ private:
 	UndoSnapshot CaptureCondFormatSnapshot() const;
 	void ApplySnapshot(const UndoSnapshot& snap);
 
-	const std::vector<ChartObject>* fCharts;
+	std::vector<ChartObject>* fCharts;
+	// Trascinamento di un grafico incorporato (MouseDown/MouseMoved/
+	// MouseUp): stesso schema di fDraggingImageIndex sotto, ma il
+	// "valore di partenza" e' l'intero BRect (ChartObject::frame e'
+	// gia' assoluto, non scarto+dimensione come le immagini) invece di
+	// due float separati.
+	int fDraggingChartIndex;
+	BPoint fDragChartStart;
+	BRect fDragChartStartFrame;
 	std::vector<EmbeddedImage>* fImages;
 	// Trascinamento di un'immagine incorporata (MouseDown/MouseMoved/
 	// MouseUp): stesso schema di fResizingColumn/fResizingRow sopra

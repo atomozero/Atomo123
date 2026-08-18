@@ -144,6 +144,7 @@ SheetView::SheetView(CContainer* doc)
 	fAnchor(1, 1),
 	fDragging(false),
 	fCharts(NULL),
+	fDraggingChartIndex(-1),
 	fImages(NULL),
 	fDraggingImageIndex(-1),
 	fResizingImageIndex(-1),
@@ -1550,6 +1551,15 @@ SheetView::UndoSnapshot SheetView::CaptureImageSnapshot(int imageIndex) const
 	return snap;
 }
 
+SheetView::UndoSnapshot SheetView::CaptureChartSnapshot(int chartIndex) const
+{
+	UndoSnapshot snap;
+	snap.chartIndex = chartIndex;
+	if (fCharts && chartIndex >= 0 && chartIndex < (int)fCharts->size())
+		snap.chartFrameBefore = (*fCharts)[chartIndex].frame;
+	return snap;
+}
+
 SheetView::UndoSnapshot SheetView::CaptureImageDeleteSnapshot(int imageIndex) const
 {
 	UndoSnapshot snap;
@@ -1627,6 +1637,16 @@ void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 			img.width = snap.imageWidth;
 			img.height = snap.imageHeight;
 		}
+		return;
+	}
+
+	// Istantanea di un grafico incorporato (vedi SaveChartUndoState):
+	// riscrive solo il frame del grafico all'indice catturato, stesso
+	// principio della sezione immagini sopra.
+	if (snap.chartIndex >= 0)
+	{
+		if (fCharts && snap.chartIndex < (int)fCharts->size())
+			(*fCharts)[snap.chartIndex].frame = snap.chartFrameBefore;
 		return;
 	}
 
@@ -1744,6 +1764,17 @@ void SheetView::Undo()
 		return;
 	}
 
+	// Istantanea di un grafico incorporato: stesso scambio simmetrico
+	// del ramo immagini sopra.
+	if (toRestore.chartIndex >= 0)
+	{
+		fRedoStack.push_back(CaptureChartSnapshot(toRestore.chartIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
 	// Cancellazione di un'immagine incorporata (DeleteSelectedImage):
 	// a differenza del ramo gemello sopra (imageIndex, per un'immagine
 	// che esiste ancora), qui l'immagine e' stata RIMOSSA dal vettore
@@ -1818,6 +1849,15 @@ void SheetView::Redo()
 		NotifyDocumentChanged();
 		return;
 	}
+	// Vedi il commento nel ramo equivalente di Undo() sopra.
+	if (toRestore.chartIndex >= 0)
+	{
+		fUndoStack.push_back(CaptureChartSnapshot(toRestore.chartIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
 	// Vedi il commento nel ramo equivalente di Undo() sopra: qui
 	// l'immagine e' stata REINSERITA da quell'Undo, quindi ricancellarla
 	// e' identica alla cancellazione originale -- si cattura di nuovo
@@ -1884,6 +1924,20 @@ void SheetView::SaveImageUndoState(int imageIndex, float beforeOffsetX, float be
 	snap.imageHeight = beforeHeight;
 	fUndoStack.push_back(snap);
 	// Vedi il motivo nell'omonimo SaveUndoState(range) sopra.
+	fRedoStack.clear();
+}
+
+void SheetView::SaveChartUndoState(int chartIndex, BRect beforeFrame)
+{
+	if (!fCharts || chartIndex < 0 || chartIndex >= (int)fCharts->size())
+		return;
+
+	// Stesso principio di SaveImageUndoState sopra: lo stato "prima" e'
+	// gia' passato esplicitamente da MouseUp a trascinamento concluso.
+	UndoSnapshot snap;
+	snap.chartIndex = chartIndex;
+	snap.chartFrameBefore = beforeFrame;
+	fUndoStack.push_back(snap);
 	fRedoStack.clear();
 }
 
@@ -3229,6 +3283,32 @@ void SheetView::MouseDown(BPoint where)
 		}
 	}
 
+	// Trascinamento di un grafico incorporato (Fase 17, richiesta
+	// esplicita dell'utente): un clic dentro il suo rettangolo (il
+	// BRect assoluto ChartObject::frame, lo stesso usato da Draw() per
+	// disegnarlo) lo afferra per spostarlo invece di selezionare la
+	// cella sotto -- stessa precedenza delle immagini sotto, controllato
+	// PRIMA della selezione normale. Ciclo all'INDIETRO, stesso motivo
+	// del trascinamento immagini: un grafico disegnato sopra un altro
+	// (ultimo nell'elenco, vedi Draw()) ha la precedenza su un clic
+	// nella zona di sovrapposizione. Nessuna maniglia di
+	// ridimensionamento per i grafici (non richiesto): solo lo
+	// spostamento, a differenza delle immagini sotto.
+	if (fCharts)
+	{
+		for (int i = (int)fCharts->size() - 1; i >= 0; i--)
+		{
+			if ((*fCharts)[i].frame.Contains(where))
+			{
+				fDraggingChartIndex = i;
+				fDragChartStart = where;
+				fDragChartStartFrame = (*fCharts)[i].frame;
+				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+				return;
+			}
+		}
+	}
+
 	// Ridimensionamento di un'immagine incorporata: la maniglia
 	// (ImageResizeHandle, angolo in basso a destra) e' un bersaglio piu'
 	// piccolo e piu' specifico del corpo dell'immagine, quindi va
@@ -3374,6 +3454,21 @@ void SheetView::MouseUp(BPoint where)
 	fDragging = false;
 	fResizingColumn = 0;
 	fResizingRow = 0;
+	// Spostare un grafico CAMBIA il documento (stesso principio delle
+	// immagini sotto): il nuovo frame e' gia' scritto nell'elemento del
+	// vettore (MouseMoved sopra lo fa direttamente), manca solo
+	// segnalarlo e, se e' DAVVERO cambiato, renderlo annullabile.
+	if (fDraggingChartIndex >= 0)
+	{
+		if (fCharts && fDraggingChartIndex < (int)fCharts->size())
+		{
+			const ChartObject& obj = (*fCharts)[fDraggingChartIndex];
+			if (obj.frame != fDragChartStartFrame)
+				SaveChartUndoState(fDraggingChartIndex, fDragChartStartFrame);
+		}
+		NotifyDocumentChanged();
+	}
+	fDraggingChartIndex = -1;
 	// Un clic destro su un'immagine SENZA superare la soglia di
 	// trascinamento (vedi MouseMoved) non ha mai chiamato DragMessage():
 	// resta solo da azzerare l'armamento, l'immagine resta selezionata
@@ -3453,6 +3548,23 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 			fPendingExportImageIndex = -1;
 			StartImageExportDrag(index);
 		}
+		return;
+	}
+
+	// Trascinamento di un grafico incorporato in corso (armato da
+	// MouseDown): la nuova posizione e' quella di partenza (l'intero
+	// BRect catturato) piu' lo spostamento del mouse dall'inizio del
+	// trascinamento -- stesso principio dello spostamento immagine
+	// sotto, ma su OffsetBy dell'intero frame invece che su due offset
+	// separati (ChartObject::frame e' gia' assoluto).
+	if (fDraggingChartIndex >= 0 && fCharts
+		&& fDraggingChartIndex < (int)fCharts->size())
+	{
+		ChartObject& obj = (*fCharts)[fDraggingChartIndex];
+		obj.frame = fDragChartStartFrame;
+		obj.frame.OffsetBy(where.x - fDragChartStart.x, where.y - fDragChartStart.y);
+		ScrollToShowRect(obj.frame);
+		Invalidate();
 		return;
 	}
 
