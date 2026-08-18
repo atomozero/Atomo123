@@ -1994,6 +1994,33 @@ void SheetView::ScrollToShowSelection()
 		ScrollBy(dx, dy);
 }
 
+void SheetView::ScrollToShowRect(BRect r)
+{
+	// Stesso calcolo di visible in ScrollToShowSelection sopra (Bounds()
+	// riflette l'intero Frame() virtuale, non l'area davvero visibile
+	// nella BScrollView), senza pero' la logica di blocca-riquadri: un
+	// rettangolo qualunque (qui, un'immagine incorporata) non ha un
+	// concetto di riga/colonna congelata che lo contiene.
+	BRect b = Bounds();
+	BRect viewportSize = Parent() ? Parent()->Bounds() : b;
+	BRect visible(b.left, b.top, b.left + viewportSize.Width(),
+		b.top + viewportSize.Height());
+
+	float dx = 0, dy = 0;
+	if (r.left < visible.left + kHeaderWidth)
+		dx = r.left - kHeaderWidth - visible.left;
+	else if (r.right > visible.right)
+		dx = r.right - visible.right;
+
+	if (r.top < visible.top + kHeaderHeight)
+		dy = r.top - kHeaderHeight - visible.top;
+	else if (r.bottom > visible.bottom)
+		dy = r.bottom - visible.bottom;
+
+	if (dx != 0 || dy != 0)
+		ScrollBy(dx, dy);
+}
+
 // Converte un numero di colonna 1-based in nome stile foglio di
 // calcolo (1->A, 26->Z, 27->AA, ...).
 static void ColumnName(int col, char* out)
@@ -3443,6 +3470,14 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 		EmbeddedImage& img = (*fImages)[fDraggingImageIndex];
 		img.offsetX = fDragImageStartOffsetX + (where.x - fDragImageStart.x);
 		img.offsetY = fDragImageStartOffsetY + (where.y - fDragImageStart.y);
+		// Trascinandola oltre il bordo dell'area visibile il foglio
+		// scorre per seguirla (richiesta esplicita dell'utente),
+		// stesso principio di ScrollToShowSelection ma su un rettangolo
+		// qualunque invece che sulla cella attiva -- senza questo,
+		// l'immagine trascinata fuori dall'area visibile spariva dallo
+		// schermo con nessun modo di vedere dove si stesse andando a
+		// posare.
+		ScrollToShowRect(ImageFrame(img));
 		Invalidate();
 		return;
 	}
@@ -3462,6 +3497,9 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 		float newHeight = fResizeImageStartHeight + (where.y - fResizeImageStart.y);
 		img.width = std::max(kMinImageSize, newWidth);
 		img.height = std::max(kMinImageSize, newHeight);
+		// Stesso motivo dello spostamento sopra: la maniglia trascinata
+		// oltre il bordo visibile deve restare raggiungibile.
+		ScrollToShowRect(ImageFrame(img));
 		Invalidate();
 		return;
 	}

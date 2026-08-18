@@ -761,6 +761,15 @@ private:
 	static const int kResizeGrip = 4;
 
 	void ScrollToShowSelection();
+	// Stesso principio di ScrollToShowSelection, ma su un rettangolo
+	// qualunque invece che sulla cella attiva -- usato durante lo
+	// spostamento/ridimensionamento col mouse di un'immagine incorporata
+	// (Fase 17, richiesta esplicita dell'utente), cosi' trascinandola
+	// oltre il bordo dell'area visibile il foglio scorre per seguirla.
+	// Niente logica di blocca-riquadri qui (a differenza della cella
+	// attiva, un'immagine non ha un concetto di "riga/colonna congelata
+	// che la contiene").
+	void ScrollToShowRect(BRect r);
 	void NotifySelectionChanged();
 	// Avvisa MainWindow (dirty flag/titolo) ogni volta che una
 	// mutazione del documento e' avvenuta qui dentro -- stesso
