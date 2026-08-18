@@ -11,7 +11,7 @@ If Atomo123 saves you time, consider supporting development: [![Buy Me A Coffee]
 
 ## Status
 
-Still early-stage — see [ROADMAP.md](ROADMAP.md) for the phased plan
+**v0.1.0 released** — see [ROADMAP.md](ROADMAP.md) for the phased plan
 and up-to-date status. In short: the calculation engine and legacy
 Excel importer reuse and modernize the old BeOS **Sum-It** project
 (community fork `OpenSumIt`), ported to build on modern 64-bit Haiku;
@@ -30,6 +30,8 @@ pre-Layout-Kit UI code is not reused).
 * Opens CSV/XLS/XLSX/ODS through Translation Kit add-ons (`BTranslatorRoster`
   picks the right one automatically); imports column widths and cell/column
   background/text colors from XLSX theme and direct styles
+* Exports to CSV/XLSX/ODS, with XLSX/ODS writing live formulas (not just
+  calculated values) for same-sheet references — legacy XLS is import-only
 * Native ASCD/ASCB file format round-trips everything above (multiple sheets,
   charts, colors, column widths), not just cell values
 * Registers itself as Tracker's preferred app for its supported file types, so
@@ -93,10 +95,8 @@ cd ui && make && make run                                   # the app (needs a g
 ## Documentation
 
 - [ROADMAP.md](ROADMAP.md) — project phases and current status
-- [docs/GUIDA_RAPIDA.md](docs/GUIDA_RAPIDA.md) — one-minute essential guide
-  (Italian)
-- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — full guide for using the app
-  (not for developing the code)
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — quick start + full guide for
+  using the app (not for developing the code)
 - [docs/RESEARCH.md](docs/RESEARCH.md) — initial technical research (Haiku
   APIs, file format libraries, Sum-It evaluation)
 - [docs/ENGINE_API.md](docs/ENGINE_API.md) — isolated calculation engine
@@ -107,6 +107,14 @@ cd ui && make && make run                                   # the app (needs a g
   architecture, bugs found
 - [legacy/opensumit/PORTING_STATUS.md](legacy/opensumit/PORTING_STATUS.md) —
   technical detail of the 64-bit port of the historical code
+
+## Related work
+
+A separate concept proposal by Jürgen Ihlau ("Haiku Office UI
+Scaffold", August 2026) explores a shared project generator and UI
+conventions across independently-developed native Haiku office apps —
+this project and his own **LetterPro** are cited as examples. Not
+adopted; kept here as a pointer for future discussion.
 
 ## License
 

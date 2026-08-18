@@ -1,78 +1,72 @@
-# Ricerca tecnica di partenza
+# Initial technical research
 
-Sintesi della ricerca multi-fonte (verificata con processo adversariale
-a 3 voti indipendenti) condotta prima di avviare il progetto. Report
-completo con tabelle e fonti citate pubblicato come artifact durante la
-sessione di analisi iniziale.
+Summary of the multi-source research (cross-checked with an adversarial
+3-vote review process) done before starting the project.
 
-## 1. API native Haiku
+## 1. Native Haiku APIs
 
-| Kit | Ruolo |
+| Kit | Role |
 |---|---|
-| Interface Kit + Layout Kit | Griglia celle, toolbar, editing, dialoghi |
-| Application Kit | Ciclo di vita, `BMessage` per comandi/undo-redo |
-| Storage Kit | I/O file, attributi estesi BFS per metadata |
-| Locale Kit | Formattazione numeri/valute/date locale-aware |
-| Translation Kit | Import/export plugin-based (vedi sotto) |
-| Print Kit | Stampa/anteprima |
+| Interface Kit + Layout Kit | Cell grid, toolbar, editing, dialogs |
+| Application Kit | Lifecycle, `BMessage` for commands/undo-redo |
+| Storage Kit | File I/O, BFS extended attributes for metadata |
+| Locale Kit | Locale-aware number/currency/date formatting |
+| Translation Kit | Plugin-based import/export (see below) |
+| Print Kit | Printing/preview |
 
 ### Translation Kit
 
-Documentato ufficialmente come framework generico per conversione dati
-tra formati, non limitato alle immagini (il BeBook storico cita un
-word processor che lo usa per HTML/PostScript/ASCII). `BTranslator`
-è una classe astratta (`Identify()`, `Translate()`, `InputFormats()`,
-`OutputFormats()`); `BTranslatorRoster` scopre e carica gli add-on da
-`/system/add-ons/Translators`, `/boot/home/config/add-ons/Translators`,
-o da variabile d'ambiente/path privato. Un'app può quindi spedire i
-propri translator senza installazione system-wide. Nessun gruppo di
-formati "spreadsheet" nativo: un translator XLSX/ODS si registra come
-tipo MIME custom.
+Documented as a generic data-conversion framework, not limited to
+images (the historical BeBook cites a word processor using it for
+HTML/PostScript/ASCII). `BTranslator` is an abstract class
+(`Identify()`, `Translate()`, `InputFormats()`, `OutputFormats()`);
+`BTranslatorRoster` discovers and loads add-ons from
+`/system/add-ons/Translators`, `~/config/add-ons/Translators`, or a
+private path — an app can ship its own translators without a
+system-wide install. No built-in "spreadsheet" format group: a
+custom XLSX/ODS translator registers its own MIME type.
 
-Fonti: haiku-os.org/docs/api/group__translation.html, classBTranslator.html,
-classBTranslatorRoster.html, legacy-docs/bebook/TheTranslationKit_Introduction.html.
+## 2. The historical Sum-It project
 
-## 2. Il progetto storico SumIt
+- Origin: Maarten Hekkelman / Hekkelman Programmatuur B.V., BeOS,
+  1996-2000. Development stopped, released as free software.
+- Survives as the community fork `github.com/beos-zealot/OpenSumIt`
+  (not adopted into HaikuArchives — checked directly, 404).
+- License: 4-clause BSD with an advertising clause (verified by
+  reading `sum-it/Docs/Licence`/`Docs/Copyright` in the repo — not
+  generic "BSD" as initially assumed).
+- Empirical build check (see `legacy/opensumit/PORTING_STATUS.md`):
+  the calculation engine and legacy Excel importer are solid and
+  portable with targeted fixes; the `rez` build tool had a 32-bit
+  pointer-truncation bug, since fixed.
 
-- Origine: Maarten Hekkelman / Hekkelman Programmatuur B.V., BeOS,
-  1996-2000. Sviluppo cessato, rilasciato come free software.
-- Codice sopravvive come fork community `github.com/beos-zealot/OpenSumIt`
-  (non adottato in HaikuArchives — verifica diretta: 404).
-- Licenza: BSD a 4 clausole con advertising clause (verificata
-  leggendo `sum-it/Docs/Licence` e `Docs/Copyright` nel repository —
-  non "BSD" generico come ipotizzato inizialmente).
-- Verifica empirica di build (vedi `legacy/opensumit/PORTING_STATUS.md`):
-  il motore di calcolo e l'importer Excel legacy sono solidi e portabili
-  con fix mirati; il tool di build `rez` aveva bug di troncamento
-  puntatore a 32 bit, ora corretti.
+## 3. C/C++ libraries for file compatibility
 
-## 3. Librerie C/C++ per compatibilità file
-
-| Libreria | Linguaggio | Licenza | Lettura | Scrittura | Note |
+| Library | Language | License | Read | Write | Notes |
 |---|---|---|---|---|---|
-| OpenXLSX | C++17 | BSD-3 | sì | sì | niente grafici/tabelle/hyperlink; DOM in memoria |
-| libxlsxwriter | ANSI C | FreeBSD | no | sì | solo scrittura, dichiarato esplicitamente |
-| xlnt | C++14+ | MIT | parziale | parziale | solo XLSX |
-| liborcus | C++ | MPL | sì (in sviluppo) | limitata | Document Liberation Project, nato per LibreOffice |
+| OpenXLSX | C++17 | BSD-3 | yes | yes | no charts/tables/hyperlinks; in-memory DOM |
+| libxlsxwriter | ANSI C | FreeBSD | no | yes | write-only, explicitly |
+| xlnt | C++14+ | MIT | partial | partial | XLSX only |
+| liborcus | C++ | MPL | yes (WIP) | limited | Document Liberation Project, built for LibreOffice |
 
-Nessuna libreria singola copre l'intero ciclo lettura+scrittura con
-feature complete: serve integrazione di più librerie o sviluppo
-custom per grafici/tabelle/hyperlink/XLS legacy.
+No single library covers the full read+write cycle with complete
+features — would need integrating several libraries or custom
+development for charts/tables/hyperlinks/legacy XLS. (In the end,
+Atomo123 wrote its own minimal ZIP/XML translators instead — see
+`docs/TRANSLATORS.md`.)
 
-### Precedente storico: porting LibreOffice su Haiku (FOSDEM 2018)
+### Precedent: porting LibreOffice to Haiku (FOSDEM 2018)
 
-Le librerie del Document Liberation Project si sono compilate
-"out-of-the-box" su Haiku grazie a compatibilità POSIX (unica eccezione
-minore: libmwaw/xattr). Il vero collo di bottiglia storico è stato
-integrare il toolkit UI estraneo (VCL di LibreOffice), non il parsing
-dei formati file — a conferma che scrivere la UI nativa in
-Interface/Layout Kit (invece di portare un toolkit estraneo) è la
-scelta giusta.
+Document Liberation Project libraries built "out of the box" on Haiku
+thanks to POSIX compatibility (one minor exception: `libmwaw`/xattr).
+The real historical bottleneck was integrating LibreOffice's own UI
+toolkit (VCL), not file-format parsing — confirming that writing a
+native Interface/Layout Kit UI (instead of porting a foreign toolkit)
+was the right call here too.
 
-## 4. Raccomandazione architetturale
+## 4. Architectural recommendation
 
-Separare un motore di calcolo core (parser formule + grafo di
-dipendenze celle, testabile in isolamento) dalla UI nativa Haiku, con
-il Translation Kit come layer plugin per i formati file. Vedi
-`ROADMAP.md` per come questa raccomandazione si traduce in fasi
-concrete, ora rafforzata da porting empirico reale (non solo teoria).
+Separate a core calculation engine (formula parser + cell dependency
+graph, testable in isolation) from the native Haiku UI, with the
+Translation Kit as the file-format plugin layer. See `ROADMAP.md` for
+how this played out in practice.
