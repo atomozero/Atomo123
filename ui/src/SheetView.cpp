@@ -3177,7 +3177,25 @@ void SheetView::MouseDown(BPoint where)
 					fPendingExportImageIndex = i;
 					fExportDragStart = where;
 					SelectImage(i);
-					SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+					// NIENTE B_LOCK_WINDOW_FOCUS qui (a differenza degli
+					// altri trascinamenti in questo file): quel flag
+					// forza OGNI evento successivo, rilascio compreso, a
+					// tornare comunque a questa finestra anche se il
+					// puntatore e' sopra Tracker o un'altra applicazione
+					// -- intercettava il rilascio PRIMA che il window
+					// server potesse consegnarlo al vero bersaglio,
+					// facendo ricadere il trascinamento su se stessi ogni
+					// volta (bug reale, diagnosticato dall'utente: il
+					// rilascio tornava sempre alla nostra finestra con
+					// coordinate locali enormi, anche rilasciando
+					// visibilmente sul Desktop). La normale consegna di
+					// MouseMoved (senza blocco) basta a rilevare la
+					// soglia qui sotto, dato che il movimento iniziale
+					// resta quasi sempre dentro i confini di questa
+					// vista, molto piu' larga della soglia stessa; una
+					// volta chiamato DragMessage(), il resto del
+					// trascinamento e' comunque gestito dal sistema, non
+					// da questa vista.
 					return;
 				}
 			}
@@ -3794,10 +3812,18 @@ void SheetView::StartImageExportDrag(int index)
 	// potenzialmente grande in ogni fotogramma del trascinamento.
 	fExportingImageIndex = index;
 
+	// "be:types"/"be:filetypes" DEVONO essere B_MIME_TYPE (AddData), non
+	// B_STRING_TYPE (AddString): Tracker li cerca con quel tipo preciso
+	// per capire se offrire la creazione di un file -- se non li trova
+	// perche' sono stati aggiunti con il tipo sbagliato, scarta
+	// l'offerta senza segnalare nulla, e il sistema fa ricadere il
+	// messaggio di trascinamento sulla finestra di origine (esattamente
+	// il sintomo osservato: il rilascio tornava sempre a noi come
+	// B_SIMPLE_DATA anche rilasciando visibilmente sul Desktop).
 	BMessage drag(B_SIMPLE_DATA);
 	drag.AddInt32("be:actions", B_COPY_TARGET);
-	drag.AddString("be:types", "image/png");
-	drag.AddString("be:filetypes", "image/png");
+	drag.AddData("be:types", B_MIME_TYPE, "image/png", strlen("image/png") + 1);
+	drag.AddData("be:filetypes", B_MIME_TYPE, "image/png", strlen("image/png") + 1);
 	drag.AddString("be:type_descriptions", B_TRANSLATE("Immagine PNG"));
 	drag.AddString("be:clip_name", B_TRANSLATE("immagine.png"));
 
