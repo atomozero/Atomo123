@@ -23,7 +23,11 @@
 #include <Catalog.h>
 #include <Cursor.h>
 #include <DataIO.h>
+#include <Directory.h>
+#include <Entry.h>
+#include <File.h>
 #include <MenuItem.h>
+#include <NodeInfo.h>
 #include <MessageFilter.h>
 #include <Messenger.h>
 #include <PopUpMenu.h>
@@ -144,6 +148,8 @@ SheetView::SheetView(CContainer* doc)
 	fDraggingImageIndex(-1),
 	fResizingImageIndex(-1),
 	fSelectedImageIndex(-1),
+	fPendingExportImageIndex(-1),
+	fExportingImageIndex(-1),
 	fHasAutoFilter(false),
 	fEditor(NULL),
 	fEditingCell(1, 1)
@@ -3147,6 +3153,37 @@ void SheetView::MouseDown(BPoint where)
 	if (where.x < bounds.left + kHeaderWidth || where.y < bounds.top + kHeaderHeight)
 		return;
 
+	// Trascinamento con il tasto destro per esportare un'immagine fuori
+	// dal programma (vedi fPendingExportImageIndex in SheetView.h):
+	// controllato PRIMA di tutto il resto che segue su un'immagine
+	// (che non guarda mai quale tasto e' premuto), altrimenti un clic
+	// destro cadrebbe comunque nello spostamento/ridimensionamento col
+	// tasto sinistro sotto. Non chiama ancora DragMessage() qui: arma
+	// solo un potenziale trascinamento, avviato davvero da MouseMoved
+	// solo oltre una soglia minima -- un clic destro senza trascinare
+	// deve poter restare libero per un futuro menu contestuale.
+	{
+		int32 buttons = 0;
+		BMessage* mouseMsg = Window() ? Window()->CurrentMessage() : NULL;
+		if (mouseMsg)
+			mouseMsg->FindInt32("buttons", &buttons);
+
+		if ((buttons & B_SECONDARY_MOUSE_BUTTON) && fImages)
+		{
+			for (int i = (int)fImages->size() - 1; i >= 0; i--)
+			{
+				if (ImageFrame((*fImages)[i]).Contains(where))
+				{
+					fPendingExportImageIndex = i;
+					fExportDragStart = where;
+					SelectImage(i);
+					SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+					return;
+				}
+			}
+		}
+	}
+
 	// Ridimensionamento di un'immagine incorporata: la maniglia
 	// (ImageResizeHandle, angolo in basso a destra) e' un bersaglio piu'
 	// piccolo e piu' specifico del corpo dell'immagine, quindi va
@@ -3292,6 +3329,11 @@ void SheetView::MouseUp(BPoint where)
 	fDragging = false;
 	fResizingColumn = 0;
 	fResizingRow = 0;
+	// Un clic destro su un'immagine SENZA superare la soglia di
+	// trascinamento (vedi MouseMoved) non ha mai chiamato DragMessage():
+	// resta solo da azzerare l'armamento, l'immagine resta selezionata
+	// com'e' gia' successo in MouseDown (SelectImage).
+	fPendingExportImageIndex = -1;
 	// A differenza del ridimensionamento colonna/riga sopra (una
 	// preferenza di sola visualizzazione, mai salvata), spostare
 	// un'immagine CAMBIA il documento -- lo scarto e' gia' scritto
@@ -3338,6 +3380,28 @@ void SheetView::MouseUp(BPoint where)
 
 void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessage)
 {
+	// Trascinamento con il tasto destro per esportare un'immagine
+	// (armato da MouseDown, vedi il commento li'): il vero
+	// drag-and-drop di sistema parte solo qui, e solo la PRIMA volta
+	// che il mouse si allontana dal punto di partenza oltre una
+	// piccola soglia -- un clic destro senza spostamento reale non
+	// deve mai chiamare DragMessage(), altrimenti un semplice clic
+	// destro (futuro menu contestuale) diventerebbe indistinguibile da
+	// un trascinamento nullo.
+	if (fPendingExportImageIndex >= 0)
+	{
+		const float kExportDragThreshold = 4.0f;
+		float dx = where.x - fExportDragStart.x;
+		float dy = where.y - fExportDragStart.y;
+		if (dx * dx + dy * dy >= kExportDragThreshold * kExportDragThreshold)
+		{
+			int index = fPendingExportImageIndex;
+			fPendingExportImageIndex = -1;
+			StartImageExportDrag(index);
+		}
+		return;
+	}
+
 	// Trascinamento di un'immagine incorporata in corso (armato da
 	// MouseDown): la nuova posizione e' quella di partenza piu' lo
 	// spostamento del mouse dall'inizio del trascinamento, stesso
@@ -3642,10 +3706,67 @@ void SheetView::MessageReceived(BMessage* message)
 		case kMsgCellEditCommitTabLeft:
 			CommitEditing(false, -1, 0);
 			break;
+		case B_COPY_TARGET:
+		{
+			// Risposta di Tracker/di un'altra applicazione al
+			// trascinamento d'esportazione avviato da
+			// StartImageExportDrag: negoziano cosi' un file invece di
+			// ricevere subito i byte PNG nel messaggio di drag
+			// (vedi il commento su fExportingImageIndex in
+			// SheetView.h). "directory"/"name" sono la cartella e il
+			// nome scelti dal destinatario (Tracker propone
+			// "be:clip_name" ma l'utente puo' averlo cambiato prima di
+			// rilasciare, o il destinatario puo' sceglierne uno
+			// diverso in caso di conflitto).
+			entry_ref dirRef;
+			BString name;
+			if (message->FindRef("directory", &dirRef) == B_OK
+				&& message->FindString("name", &name) == B_OK
+				&& fImages && fExportingImageIndex >= 0
+				&& fExportingImageIndex < (int)fImages->size())
+			{
+				const EmbeddedImage& img = (*fImages)[fExportingImageIndex];
+				BDirectory dir(&dirRef);
+				BFile file(&dir, name.String(), B_CREATE_FILE | B_ERASE_FILE | B_WRITE_ONLY);
+				if (file.InitCheck() == B_OK && !img.pngData.empty())
+				{
+					file.Write(img.pngData.data(), img.pngData.size());
+					BNodeInfo info(&file);
+					info.SetType("image/png");
+				}
+			}
+			fExportingImageIndex = -1;
+			break;
+		}
 		default:
 			BView::MessageReceived(message);
 			break;
 	}
+}
+
+void SheetView::StartImageExportDrag(int index)
+{
+	if (!fImages || index < 0 || index >= (int)fImages->size())
+		return;
+
+	// Nessun dato incorporato direttamente nel messaggio di drag: solo
+	// il tipo MIME offerto ("be:types") e "be:actions" impostato su
+	// B_COPY_TARGET, cosi' il destinatario (Tracker per salvare sul
+	// Desktop, o un'altra applicazione che accetta un drop d'immagine)
+	// negozia un vero file, richiedendo i byte PNG solo al rilascio
+	// tramite B_COPY_TARGET sopra -- meccanismo standard di Haiku per
+	// "trascina fuori per creare un file", evita di duplicare un PNG
+	// potenzialmente grande in ogni fotogramma del trascinamento.
+	fExportingImageIndex = index;
+
+	BMessage drag(B_SIMPLE_DATA);
+	drag.AddInt32("be:actions", B_COPY_TARGET);
+	drag.AddString("be:types", "image/png");
+	drag.AddString("be:filetypes", "image/png");
+	drag.AddString("be:type_descriptions", B_TRANSLATE("Immagine PNG"));
+	drag.AddString("be:clip_name", B_TRANSLATE("immagine.png"));
+
+	DragMessage(&drag, ImageFrame((*fImages)[index]), this);
 }
 
 void SheetView::StartEditing(cell c, const char* initialText)

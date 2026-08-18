@@ -1,8 +1,10 @@
-1	English	application/x-vnd.Atomo-Atomo123	2567754459
+1	English	application/x-vnd.Atomo-Atomo123	4287322655
 Separatore delle migliaia:	PreferencesWindow		Thousands separator:
 Simbolo valuta:	PreferencesWindow		Currency symbol:
 Spazio ( )	PreferencesWindow		Space ( )
 Dividi	PasteSpecialWindow		Divide
+immagine.png	SheetView		image.png
+Immagine PNG	SheetView		PNG image
 Nuovo documento	MainWindow		New document
 Sostituisci con:	FindWindow		Replace with:
 Moltiplica	PasteSpecialWindow		Multiply

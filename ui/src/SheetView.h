@@ -690,6 +690,28 @@ private:
 	// vettore di immagini, es. apertura di un altro file, non ha nulla
 	// alla vecchia posizione).
 	int fSelectedImageIndex;
+	// Trascinamento con il tasto DESTRO per esportare un'immagine fuori
+	// dal programma (Fase 17, richiesta esplicita dell'utente: "posso
+	// trascinare l'immagine sul desktop o in un'altra applicazione?"):
+	// il tasto sinistro resta interamente dedicato allo spostamento/
+	// ridimensionamento nel foglio sopra, invariato. fPendingExportImageIndex
+	// e' armato da MouseDown su un clic destro dentro l'immagine, ma il
+	// vero drag-and-drop di sistema (DragMessage) parte solo se
+	// MouseMoved supera una piccola soglia PRIMA del rilascio -- un
+	// clic destro SENZA trascinare resta cosi' disponibile per un
+	// futuro menu contestuale, senza essere scambiato per un
+	// trascinamento nullo (vedi StartImageExportDrag sotto).
+	int fPendingExportImageIndex;
+	BPoint fExportDragStart;
+	// Indice dell'immagine il cui drag-and-drop di esportazione e'
+	// ATTUALMENTE in corso (DragMessage gia' chiamato): usato da
+	// MessageReceived per sapere quali dati PNG scrivere quando arriva
+	// B_COPY_TARGET (Tracker/un'altra app negoziano cosi' un file,
+	// invece di ricevere i byte incorporati subito nel messaggio di
+	// drag -- evita di duplicare un PNG potenzialmente grande in ogni
+	// fotogramma del trascinamento).
+	int fExportingImageIndex;
+	void StartImageExportDrag(int index);
 
 	// AutoFilter: vedi SetAutoFilter/SetColumnValueHidden ecc. sopra.
 	// fFilterHiddenValues e' per-colonna (indice di colonna 1-based),
