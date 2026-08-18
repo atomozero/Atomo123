@@ -1,13 +1,14 @@
-# Guida utente
+# User Guide
 
-Guida rapida per chi usa Atomo123, non per chi sviluppa il codice
-(per l'architettura interna vedi `docs/ENGINE_API.md`,
-`docs/TRANSLATORS.md`, `docs/UI_ARCHITECTURE.md`). Per un'introduzione
-ancora più breve (solo l'essenziale per iniziare) vedi
-`docs/GUIDA_RAPIDA.md`; per l'elenco completo e sempre aggiornato di
-cosa c'è e cosa manca vedi `ROADMAP.md`.
+For using Atomo123, not for developing it — see `docs/ENGINE_API.md`,
+`docs/TRANSLATORS.md` and `docs/UI_ARCHITECTURE.md` for internals, and
+`ROADMAP.md` for current project status.
 
-## Avvio
+## Quick start
+
+Atomo123 is a native spreadsheet for Haiku OS, compatible with Excel
+(XLS/XLSX) and OpenOffice/LibreOffice Calc (ODS/CSV) files — double-click
+one of those file types in Tracker to open it directly.
 
 ```
 cd ui
@@ -15,9 +16,8 @@ make
 ./Atomo123
 ```
 
-Per aprire file CSV/XLS/XLSX/ODS (non solo il formato nativo ASCD),
-vanno prima installati i translator corrispondenti — una tantum, non
-a ogni avvio:
+To open or save CSV/XLS/XLSX/ODS files (not just the native ASCD
+format), install the corresponding Translation Kit add-ons once:
 
 ```
 cd translators/csv && make && make install
@@ -26,210 +26,201 @@ cd translators/xlsx && make && make install
 cd translators/ods && make && make install
 ```
 
-`make install` copia l'add-on in
-`~/config/non-packaged/add-ons/Translators/`, da dove Atomo123 lo
-trova automaticamente tramite il Translation Kit di sistema.
+`make install` copies each add-on to
+`~/config/non-packaged/add-ons/Translators/`, where Atomo123 finds it
+automatically.
 
-## La finestra principale
+**The essentials:**
+- **Typing in a cell**: click to select, then type directly (replaces
+  existing content). Enter confirms and moves down, like Excel; Esc
+  cancels.
+- **Formulas**: start with `=`, e.g. `=SUM(A1:A3)` — function names are
+  in English, not localized. Multiple arguments are separated with a
+  **semicolon** (`;`), not a comma.
+- **Saving**: File → Save As…, with the format chosen from the file
+  extension (`.xlsx`, `.ods`, `.csv`, or none for the native ASCD
+  format).
+- **Multiple sheets**: tabs at the bottom of the window work like
+  Excel/LibreOffice Calc — click to switch, right-click to add/rename/
+  delete.
+- **The footer**: bottom-left shows editing state ("Ready"/"Editing");
+  bottom-right shows selection statistics (Sum/Average/Count by
+  default) — right-click to choose which ones to show.
 
-In alto: menu **File**, **Modifica**, **Formato** e **Inserisci**, poi
-una riga con il riferimento della cella selezionata (es. "A1") e la
-barra formule. Sotto, la griglia del foglio.
+Main shortcuts: Ctrl+C/X/V (copy/cut/paste), Ctrl+Z/Y (undo/redo),
+Ctrl+F (find & replace), Tab/Shift+Tab and Enter/Shift+Enter (move
+between cells), Ctrl+Home/Ctrl+End (first/last cell with data).
 
-- **Selezionare una cella**: click, oppure le frecce direzionali da
-  tastiera.
-- **Vedere/modificare la formula di una cella**: la barra formule
-  mostra sempre il contenuto grezzo (la formula, non il valore
-  calcolato) della cella selezionata. Si modifica lì e si conferma con
-  Invio.
-- **Editing direttamente sulla griglia**: doppio click su una cella,
-  oppure si inizia a digitare direttamente mentre è selezionata (il
-  testo digitato sostituisce il contenuto esistente, come in Excel/
-  LibreOffice Calc). Invio o un click su un'altra cella confermano (e,
-  come in Excel, la selezione avanza alla cella sotto); Esc annulla
-  (senza spostare la selezione).
-- **Cancellare il contenuto di una cella**: tasto Canc/Backspace con
-  la cella selezionata, oppure Modifica → Cancella.
-- **Intestazioni "congelate"**: la riga con le lettere di colonna
-  resta visibile in cima anche scorrendo in basso; la colonna con i
-  numeri di riga resta visibile a sinistra anche scorrendo a destra.
-- **Scorciatoie da tastiera aggiuntive** (in stile Excel/LibreOffice
-  Calc): **Tab**/**Maiusc+Tab** spostano a destra/sinistra; **Invio**/
-  **Maiusc+Invio** spostano in basso/alto (anche fuori dall'editing,
-  non solo per confermare); **Inizio** va alla colonna A della riga
-  corrente, **Ctrl+Inizio** va sempre alla cella A1; **Ctrl+Fine** va
-  all'ultima cella con contenuto (l'angolo in basso a destra dei
-  dati); **PagSu**/**PagGiù** spostano la selezione di una schermata
-  intera in alto/basso.
+## The main window
 
-### Il footer
+Top: **File**, **Edit**, **Format**, **Insert** and **Data** menus,
+then the selected cell's reference (e.g. "A1") and the formula bar.
+Below that, the sheet grid.
 
-In fondo alla finestra, sotto le schede dei fogli:
+- **Selecting a cell**: click, or arrow keys.
+- **Viewing/editing a formula**: the formula bar always shows the raw
+  content (the formula, not the calculated value) of the selected
+  cell. Edit there and confirm with Enter.
+- **Editing directly on the grid**: double-click a cell, or start
+  typing while it's selected (replaces existing content, like Excel).
+  Enter or clicking another cell confirms (and, like Excel, moves the
+  selection down); Esc cancels without moving the selection.
+- **Clearing a cell**: Delete/Backspace, or Edit → Clear.
+- **Frozen headers**: the column-letter row stays visible while
+  scrolling down; the row-number column stays visible while scrolling
+  right.
+- **Additional shortcuts**: Tab/Shift+Tab move right/left; Enter/
+  Shift+Enter move down/up (also outside editing); Home goes to column
+  A of the current row, Ctrl+Home always goes to A1; Ctrl+End goes to
+  the last cell with content; Page Up/Down move a full screen.
 
-- A **sinistra**, un indicatore di modalità: "Pronto" a riposo,
-  "Modifica" mentre si sta digitando (in una cella o nella barra
-  formule) — esattamente come in Excel.
-- A **destra**, le statistiche della selezione corrente (Media,
-  Conteggio, Somma per una selezione con almeno un valore numerico;
-  solo Conteggio per una selezione di solo testo). **Tasto destro** sul
-  footer per scegliere quali statistiche mostrare — anche Conteggio
-  numerico, Minimo e Massimo, spente per default come nel vero status
-  bar di Excel — la scelta resta salvata fra un avvio e l'altro.
+### The footer
 
-## Formule
+- **Left**: editing-state indicator — "Ready" at rest, "Editing" while
+  typing (in a cell or the formula bar), like Excel.
+- **Right**: statistics for the current selection (Average, Count, Sum
+  shown by default when the selection has at least one numeric value;
+  Count only for text). **Right-click** to choose which statistics to
+  show — also Numeric Count, Min and Max, off by default like Excel's
+  real status bar. The choice is remembered across sessions.
 
-Si scrivono cominciando con `=`, ad esempio `=A1+B1*2`. Sono
-supportati gli operatori aritmetici, i riferimenti a cella/intervallo
-(`A1:A3`) e le funzioni con nome, ad esempio `=SUM(A1:A3)` o
-`=IF(A1>5;100;200)` — i nomi delle funzioni sono in inglese (`SUM`,
-`IF`, `MAX`, `AVG`, ecc., non `SOMMA`/`SE`/`MEDIA`), eredità diretta
-del motore di calcolo originale di Sum-It.
+## Formulas
 
-**Attenzione al separatore degli argomenti**: fra più argomenti di
-una funzione si usa il **punto e virgola** (`;`), non la virgola —
-`=IF(A1>5;100;200)`, non `=IF(A1>5,100,200)` (che dà errore di
-formula). La virgola resta il separatore delle migliaia nella
-formattazione numero (Formato → Numero), un dettaglio distinto.
+Start with `=`, e.g. `=A1+B1*2`. Arithmetic operators, cell/range
+references (`A1:A3`) and named functions are supported, e.g.
+`=SUM(A1:A3)` or `=IF(A1>5;100;200)` — function names are in English
+(`SUM`, `IF`, `MAX`, `AVG`, ...), inherited directly from the original
+Sum-It calculation engine.
 
-**Aggregazione condizionata**: `=SUMIF(A1:A10;"Roma";B1:B10)` somma i
-valori di B1:B10 dove la cella corrispondente in A1:A10 è "Roma";
-`=COUNTIF(A1:A10;"Roma")` conta invece quante celle corrispondono.
-`=AVERAGEIF(...)` funziona come `SUMIF` ma calcola la media. Il
-terzo argomento (l'intervallo da sommare/mediare) è opzionale — se
-omesso si usa lo stesso primo intervallo. Il criterio può essere un
-numero, del testo (senza distinguere maiuscole/minuscole), oppure un
-confronto con `>`, `>=`, `<`, `<=` o `<>` seguito da un numero, es.
-`=SUMIF(B1:B10;">100")`.
+**Argument separator**: use a **semicolon** (`;`) between a function's
+arguments, not a comma — `=IF(A1>5;100;200)`, not `=IF(A1>5,100,200)`
+(a formula error). The comma remains the thousands separator in number
+formatting (Format → Number), a separate setting.
 
-## File: aprire, salvare, nuovo
+**Conditional aggregation**: `=SUMIF(A1:A10;"Rome";B1:B10)` sums
+B1:B10 where the matching cell in A1:A10 is "Rome"; `=COUNTIF(A1:A10;
+"Rome")` counts matches instead. `=AVERAGEIF(...)` works like `SUMIF`
+but averages. The third argument (the range to sum/average) is
+optional — if omitted, the first range is used. The criterion can be a
+number, text (case-insensitive), or a comparison with `>`, `>=`, `<`,
+`<=` or `<>` followed by a number, e.g. `=SUMIF(B1:B10;">100")`.
 
-- **File → Nuovo**: foglio vuoto (il contenuto non salvato attuale va
-  perso senza conferma — nessun controllo "modifiche non salvate"
-  ancora implementato).
-- **File → Apri…**: qualunque file CSV, XLS (Excel 97-2003), XLSX
-  (Excel 2007+) o ODS (LibreOffice/OpenOffice Calc) per cui sia
-  installato il translator corrispondente, oltre al formato nativo
-  ASCD. Il formato viene riconosciuto dal contenuto del file, non
-  dall'estensione.
-- **File → Salva con nome…**: il formato di uscita si sceglie
-  dall'estensione scritta nel nome del file — `.xlsx` e `.ods`
-  esportano rispettivamente in Excel 2007+ e OpenDocument (con le
-  formule tradotte nella sintassi di quel formato, non solo i valori);
-  `.csv` esporta in CSV (con i valori delle formule già calcolati, non
-  il testo della formula); qualunque altra estensione (o nessuna)
-  scrive nel formato nativo ASCD. Il formato XLS legacy (Excel 97-2003)
-  resta di sola importazione: quel translator non scrive ancora `.xls`.
-  Per riaprire un file ASCD salvato, usare di nuovo File → Apri (un CSV
-  esportato riapre invece solo i valori, non le formule originali — CSV
-  non ha alcun concetto di formula).
+## Files: open, save, new
 
-## Taglia, copia, incolla
+- **File → New**: blank sheet. If the current document has unsaved
+  changes, a confirmation dialog asks before discarding them.
+- **File → Open…**: any CSV, XLS (Excel 97-2003), XLSX (Excel 2007+)
+  or ODS (LibreOffice/OpenOffice Calc) file for which the matching
+  translator is installed, plus the native ASCD format. The format is
+  recognized from file content, not extension.
+  - Formulas that reference another sheet by name are supported.
+- **File → Save As…**: the output format is chosen from the file
+  extension — `.xlsx` and `.ods` export to Excel 2007+ and
+  OpenDocument respectively, including **live formulas** (not just
+  calculated values) for same-sheet references — a formula referencing
+  another sheet exports as its calculated value only, since each of
+  these formats writes a single sheet per file; `.csv` exports
+  calculated values only (no formula concept in that format); any
+  other extension (or none) writes the native ASCD format. Legacy XLS
+  (Excel 97-2003) is import-only — that translator doesn't write
+  `.xls` yet.
 
-Passano dagli appunti di sistema di Haiku (non da un appunti privato
-dell'app): si può copiare da una cella di Atomo123 e incollare in un
-editor di testo, e viceversa. Il contenuto copiato è la formula della
-cella (lo stesso testo mostrato dalla barra formule), non il valore
-già calcolato.
+## Cut, copy, paste
 
-## Trova e sostituisci
+Uses Haiku's system clipboard (not a private one) — you can copy from
+Atomo123 and paste into a text editor, and back. The copied content is
+the cell's formula (the same text the formula bar shows), not the
+already-calculated value.
 
-Modifica → Trova e sostituisci… apre una piccola finestra con un
-campo "Cerca:", un campo "Sostituisci con:" e tre pulsanti. La ricerca
-(senza distinguere maiuscole/minuscole) parte dalla cella attualmente
-selezionata, tornando all'inizio se non trova altri risultati dopo.
+## Find & replace
 
-- **Trova successivo**: seleziona la cella successiva che contiene il
-  testo cercato.
-- **Sostituisci**: sostituisce tutte le occorrenze del testo cercato
-  nella cella attualmente selezionata, poi passa al risultato
-  successivo.
-- **Sostituisci tutto**: sostituisce tutte le occorrenze in ogni
-  cella del documento che contiene il testo cercato, e mostra quante
-  celle sono state modificate.
+Edit → Find & Replace… opens a small window with a "Find:" field, a
+"Replace with:" field and three buttons. Search (case-insensitive)
+starts from the currently selected cell, wrapping to the beginning if
+nothing else is found.
 
-## Stampa
+- **Find Next**: selects the next cell containing the search text.
+- **Replace**: replaces all occurrences in the currently selected
+  cell, then moves to the next match.
+- **Replace All**: replaces every occurrence in every cell in the
+  document and reports how many cells changed.
 
-File → Stampa… apre il dialogo di stampa di sistema (scelta
-stampante/opzioni). Si stampa l'area del foglio che contiene dati,
-suddivisa automaticamente in più pagine se necessario in base
-all'area stampabile scelta. Anche senza una stampante fisica
-collegata, Haiku offre di serie i transport "Anteprima" e "Salva come
-PDF", utilizzabili dal dialogo di stampa per vedere il risultato senza
-stampare davvero.
+## Printing
 
-**Limite noto**: le intestazioni di riga/colonna (le lettere in alto,
-i numeri a sinistra) compaiono solo sulla prima pagina di una stampa
-multi-pagina, non ripetute su ogni pagina.
+File → Print… opens the system print dialog. The area of the sheet
+containing data is printed, split across multiple pages automatically
+if needed. Even without a physical printer, Haiku ships "Preview" and
+"Save as PDF" print transports, usable from the same dialog to check
+the result without printing.
 
-## Formattazione numeri
+**Known limitation**: row/column headers appear only on the first page
+of a multi-page print job, not repeated on every page.
 
-I numeri nella griglia vengono mostrati secondo le preferenze di
-formattazione del sistema (separatore delle migliaia,
-punto/virgola decimale) — cambiano automaticamente insieme alle
-preferenze di sistema (Preferenze → Locale). La barra formule mostra
-sempre il valore grezzo, non formattato.
+## Number formatting
 
-Il menu **Formato** applica uno stile di visualizzazione alla cella
-selezionata:
+Numbers in the grid follow the system's formatting preferences
+(thousands separator, decimal point/comma) and update automatically
+with system Locale preferences. The formula bar always shows the raw,
+unformatted value.
 
-- **Generale**: il comportamento predefinito descritto sopra.
-- **Numero**: numero semplice.
-- **Valuta**: simbolo di valuta secondo le preferenze di sistema (es.
-  "1.234,50 €").
-- **Percentuale**: il valore moltiplicato per 100 con il simbolo "%"
-  (una cella con 0,42 mostra "42%").
+The **Format** menu applies a display style to the selected cell:
 
-Grassetto/corsivo/sottolineato, colore testo/sfondo, bordi, a capo
-automatico e allineamento si applicano invece dal menu **Formato** (o
-dalla barra strumenti) e non da qui — vedi le rispettive voci di menu.
+- **General**: the default behavior above.
+- **Number**: plain number.
+- **Currency**: currency symbol from system preferences (e.g.
+  "$1,234.50").
+- **Percentage**: value × 100 with a "%" sign (0.42 shows as "42%").
 
-**Non ancora disponibile**: controllo del numero di decimali mostrati,
-formattazione data/ora.
+Bold/italic/underline, text/background color, borders, text wrap and
+alignment are applied from the **Format** menu (or the toolbar), not
+from a number style.
 
-## Grafici e tabelle pivot
+Dates imported from XLSX display correctly automatically (no manual
+formatting needed), but there's no menu command to apply a date/time
+style yourself, and no control over the number of decimal places
+shown.
 
-Il menu **Inserisci** offre due funzionalità che leggono un
-intervallo di **due colonne** (prima colonna: etichetta/categoria di
-testo; seconda colonna: valore numerico) — l'intervallo si digita a
-mano nella finestra dedicata (es. `A1:B5`), non si seleziona
-trascinando sulla griglia (che oggi supporta solo una cella
-selezionata alla volta).
+## Comments, hyperlinks, data validation, conditional formatting
 
-- **Grafico a barre…**: apre una finestra con un campo "Intervallo" e
-  il pulsante "Disegna", che mostra un'anteprima (ogni riga
-  dell'intervallo diventa una barra, etichetta sotto, altezza
-  proporzionale al valore) — l'anteprima non si aggiorna da sola,
-  bisogna premere di nuovo "Disegna" dopo aver cambiato i dati. Il
-  pulsante **"Inserisci nel foglio"**, con una cella di destinazione,
-  incorpora invece il grafico davvero nella griglia, come in Excel:
-  una volta inserito, il grafico **si aggiorna da solo** ogni volta
-  che i dati dell'intervallo cambiano (non serve ridisegnarlo a
-  mano), e viene salvato/ricaricato insieme al documento (solo nel
-  formato nativo — un export CSV non lo porta con sé, essendo un
-  formato di solo testo).
-- **Tabella pivot…**: apre una finestra con l'intervallo dati
-  sorgente, la cella di destinazione e il tipo di aggregazione
-  (Somma, Conteggio o Media). Premendo "Crea", le righe con la stessa
-  categoria vengono raggruppate e aggregate; il risultato (due
-  colonne: categoria, valore aggregato) viene scritto nel foglio a
-  partire dalla cella di destinazione scelta — che non può
-  sovrapporsi all'intervallo dati sorgente. A differenza del grafico
-  incorporato, il risultato è una scrittura una tantum (celle vere e
-  proprie): non si aggiorna da solo se i dati sorgente cambiano dopo;
-  per un risultato aggiornato bisogna rilanciare "Crea".
+- **Insert → Cell Comment…**: attaches a note to the selected cell,
+  shown with a small red triangle in the cell's corner.
+- **Insert → Hyperlink…**: attaches a clickable link (opened with the
+  system's default handler) to the selected cell.
+- **Data → Data Validation…**: restricts what a cell accepts (a
+  dropdown list or a numeric range).
+- **Format → Conditional Formatting…**: applies a style to a range
+  based on a live rule (re-evaluated automatically as data changes).
 
-**Limiti di questa prima versione**: solo grafico a barre (niente a
-linee o a torta); la tabella pivot raggruppa per una sola categoria e
-aggrega una sola colonna di valori (non un pivot multidimensionale
-come in Excel/LibreOffice Calc); il grafico incorporato ha una
-dimensione fissa (non si ridimensiona/sposta dopo l'inserimento) e
-non c'è ancora un modo per rimuoverne uno dalla griglia.
+## Charts and pivot tables
 
-## Cosa manca ancora (in breve)
+The **Insert** menu offers two features that read a **two-column**
+range (first column: text label/category; second column: numeric
+value) — the range is typed manually in the dialog (e.g. `A1:B5`), not
+selected by dragging on the grid (which today only supports one cell
+at a time).
 
-Vedi `ROADMAP.md` per l'elenco completo e sempre aggiornato. In
-sintesi, allo stato attuale: nessun export verso XLS legacy (solo
-importazione — XLSX/ODS/CSV/ASCD esportano tutti), formattazione
-numerica senza controllo dei decimali mostrati né formattazione data/
-ora, nessun grafico a linee o a torta (solo a barre), tabella pivot
-a una sola dimensione.
+- **Chart…**: pick bar, line or pie, type the range and click "Draw"
+  for a preview (doesn't auto-update — press "Draw" again after
+  changing data). **"Insert into sheet"**, with a destination cell,
+  embeds the chart in the grid for real: once inserted, it updates
+  itself whenever the source range's data changes, and is saved/
+  reloaded with the document (native format only — a CSV export is
+  text-only and doesn't carry it).
+- **Pivot Table…**: pick the source range, a destination cell and an
+  aggregation (Sum, Count or Average). Rows sharing the same category
+  are grouped and aggregated; the result (two columns: category,
+  aggregated value) is written starting at the destination cell, which
+  can't overlap the source range. Unlike the embedded chart, this is a
+  one-time write (plain cells) — it does not auto-update if the source
+  data changes later; re-run "Create" for a fresh result.
+
+**Current limits**: the pivot table groups by a single category and
+aggregates a single value column (not a multi-dimensional pivot); an
+embedded chart has a fixed size (no resize/move after insertion, and
+no way to remove one from the grid yet).
+
+## What's not yet supported
+
+See `ROADMAP.md` for the full, current list. In short: writing legacy
+XLS (import only), advanced multi-dimensional pivot tables, array
+formulas, Goal Seek/Solver, and macros/VBA.
