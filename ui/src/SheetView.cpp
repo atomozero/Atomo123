@@ -3686,4 +3686,20 @@ void SheetView::RecalculateOwningWorkbook()
 		win->RecalculateActiveWorkbook();
 	else
 		RecalculateAll(fDoc);
+
+	// Il ricalcolo puo' cambiare il valore di QUALSIASI cella con una
+	// formula che dipende (anche indirettamente) da quella appena
+	// modificata, non solo le celle nell'intervallo toccato
+	// direttamente dall'operazione che ha chiamato questo metodo --
+	// es. una riga di totali lontana dalla cella modificata. I
+	// chiamanti storicamente invalidano solo il loro intervallo diretto
+	// (CommitEditing si affida persino solo a SetSelection, che
+	// invalida solo il rettangolo cursore vecchio/nuovo): il valore
+	// nuovo restava quindi corretto nel motore ma non ridisegnato,
+	// finche' qualcos'altro non forzava un repaint (scroll, resize,
+	// cambio scheda) -- bug reale segnalato dall'utente ("il foglio
+	// non si aggiorna in automatico"). Un solo Invalidate() qui, invece
+	// di doverlo aggiungere in ogni chiamante, copre tutti i percorsi
+	// in un colpo solo.
+	Invalidate();
 }
