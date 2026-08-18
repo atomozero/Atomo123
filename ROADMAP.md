@@ -98,6 +98,9 @@ Since v0.2.0 (not yet in a tagged release):
   previously all shared a single `SheetView`'s scroll state. Session
   only, not saved to the ASCD/ASCB file format
 - "New sheet" is now also in the Insert menu (was only under Data)
+- Embedded charts (bar/line/pie) can now be moved with the mouse,
+  same as embedded images — click and drag, undoable, auto-scrolls
+  past the visible edge. No resize handle (not requested)
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
