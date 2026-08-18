@@ -19,8 +19,11 @@
 #ifndef CSV_TRANSLATOR_H
 #define CSV_TRANSLATOR_H
 
+#include <Rect.h>
 #include <Translator.h>
 #include <TranslatorFormats.h>
+
+class BView;
 
 // Codici di formato custom (nessun gruppo "spreadsheet" predefinito
 // nel Translation Kit: si registrano come tipi MIME/type_code propri,
@@ -47,6 +50,9 @@ public:
 	virtual status_t Translate(BPositionIO* source,
 		const translator_info* info, BMessage* extension, uint32 outType,
 		BPositionIO* destination);
+
+	virtual status_t MakeConfigurationView(BMessage* extension, BView** _view,
+		BRect* _extent);
 
 protected:
 	virtual ~CCsvTranslator();

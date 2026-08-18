@@ -20,8 +20,11 @@
 #ifndef XLS_TRANSLATOR_H
 #define XLS_TRANSLATOR_H
 
+#include <Rect.h>
 #include <Translator.h>
 #include <TranslatorFormats.h>
+
+class BView;
 
 const uint32 kAtomoXlsFormat = 'AXLS';
 const uint32 kAtomoNativeFormat = 'ASCD';
@@ -45,6 +48,9 @@ public:
 	virtual status_t Translate(BPositionIO* source,
 		const translator_info* info, BMessage* extension, uint32 outType,
 		BPositionIO* destination);
+
+	virtual status_t MakeConfigurationView(BMessage* extension, BView** _view,
+		BRect* _extent);
 
 protected:
 	virtual ~CXlsTranslator();

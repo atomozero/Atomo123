@@ -12,6 +12,15 @@
 #include <cstdio>
 #include <cstring>
 
+#include <Cursor.h>
+#include <Font.h>
+#include <InterfaceDefs.h>
+#include <LayoutBuilder.h>
+#include <Roster.h>
+#include <String.h>
+#include <StringView.h>
+#include <View.h>
+
 #include "Cell.h"
 #include "Value.h"
 #include "Container.h"
@@ -245,6 +254,106 @@ const char* CCsvTranslator::TranslatorInfo() const
 int32 CCsvTranslator::TranslatorVersion() const
 {
 	return B_TRANSLATION_MAKE_VERSION(1, 0, 0);
+}
+
+// Link "Offrimi un caffe'" cliccabile, stesso URL/icona gia' presenti
+// nella finestra Informazioni dell'app (ui/src/AboutWindow.cpp) --
+// qui pero' non c'e' una BWindow nostra che possa ricevere un
+// BMessage al click (questa vista vive nella finestra del pannello
+// Translators, non controllata da questo add-on), quindi il click
+// apre direttamente l'URL invece di passare da un messaggio postato
+// alla finestra come fa ClickableStringView in ui/src/.
+static const char kCoffeeUrl[] = "https://buymeacoffee.com/atomozero";
+
+class CCsvCoffeeLink : public BStringView {
+public:
+	CCsvCoffeeLink() : BStringView("coffeeLink", "Offrimi un caffe' \xE2\x98\x95") {}
+
+	virtual void AttachedToWindow()
+	{
+		BStringView::AttachedToWindow();
+		SetHighColor(40, 80, 200);
+	}
+
+	virtual void MouseDown(BPoint)
+	{
+		const char* arg = kCoffeeUrl;
+		be_roster->Launch("application/x-vnd.Be.URL.https", 1, const_cast<char**>(&arg));
+	}
+
+	virtual void MouseMoved(BPoint, uint32, const BMessage*)
+	{
+		BCursor link(B_CURSOR_ID_FOLLOW_LINK);
+		SetViewCursor(&link);
+	}
+};
+
+// Vista "Informazioni" mostrata dal pannello Translators di Haiku
+// quando si seleziona questo add-on (MakeConfigurationView sotto):
+// prima di questo il pannello restava vuoto, la classe base BTranslator
+// non fornisce nessuna vista di default. Nessuna vera opzione di
+// configurazione da esporre (il translator non ne ha), quindi la vista
+// mostra solo nome/versione/descrizione -- stesso testo gia'
+// restituito da TranslatorName/TranslatorInfo/TranslatorVersion sopra,
+// solo reso visivamente invece che lasciato leggibile solo via API.
+class CCsvConfigView : public BView {
+public:
+	CCsvConfigView(BRect frame)
+		:
+		BView(frame, "CsvConfigView", B_FOLLOW_ALL, B_WILL_DRAW)
+	{
+		SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+
+		BStringView* title = new BStringView("title", "CSV Translator");
+		title->SetFont(be_bold_font);
+
+		int32 v = B_TRANSLATION_MAKE_VERSION(1, 0, 0);
+		BString versionText;
+		versionText.SetToFormat("Versione %d.%d.%d", (int)B_TRANSLATION_MAJOR_VERSION(v),
+			(int)B_TRANSLATION_MINOR_VERSION(v), (int)B_TRANSLATION_REVISION_VERSION(v));
+
+		BFont small(be_plain_font);
+		small.SetSize(be_plain_font->Size() - 1);
+
+		BStringView* version = new BStringView("version", versionText.String());
+		version->SetFont(&small);
+		version->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.7));
+
+		BStringView* info = new BStringView("info",
+			"Converte fogli di calcolo tra CSV e il formato dati\n"
+			"nativo Atomo Sheet (ASCD).");
+
+		BStringView* copyright = new BStringView("copyright",
+			"Copyright (c) 2026 Andrea Bernardi \xC2\xB7 Licenza MIT");
+		copyright->SetFont(&small);
+		copyright->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.6));
+
+		CCsvCoffeeLink* coffeeLink = new CCsvCoffeeLink();
+		coffeeLink->SetFont(&small);
+
+		BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_SMALL_SPACING)
+			.SetInsets(B_USE_WINDOW_INSETS)
+			.Add(title)
+			.Add(version)
+			.AddStrut(B_USE_SMALL_SPACING)
+			.Add(info)
+			.AddGlue()
+			.Add(coffeeLink)
+			.Add(copyright)
+		.End();
+	}
+};
+
+status_t CCsvTranslator::MakeConfigurationView(BMessage* extension, BView** _view,
+	BRect* _extent)
+{
+	if (_view == NULL || _extent == NULL)
+		return B_BAD_VALUE;
+
+	CCsvConfigView* view = new CCsvConfigView(BRect(0, 0, 279, 134));
+	*_view = view;
+	*_extent = view->Bounds();
+	return B_OK;
 }
 
 const translation_format* CCsvTranslator::InputFormats(int32* _count) const

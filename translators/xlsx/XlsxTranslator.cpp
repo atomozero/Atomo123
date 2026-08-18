@@ -22,7 +22,14 @@
 
 #include <expat.h>
 
+#include <Cursor.h>
 #include <Font.h>
+#include <InterfaceDefs.h>
+#include <LayoutBuilder.h>
+#include <Roster.h>
+#include <String.h>
+#include <StringView.h>
+#include <View.h>
 
 #include "Cell.h"
 #include "Value.h"
@@ -2605,13 +2612,106 @@ const char* CXlsxTranslator::TranslatorName() const
 
 const char* CXlsxTranslator::TranslatorInfo() const
 {
-	return "Importa/esporta fogli di calcolo dal/al formato Excel 2007+ (XLSX) "
-		"-- l'esportazione scrive solo i valori calcolati, non le formule";
+	return "Importa/esporta fogli di calcolo dal/al formato Excel 2007+ (XLSX), "
+		"incluse le formule vive sullo stesso foglio";
 }
 
 int32 CXlsxTranslator::TranslatorVersion() const
 {
 	return B_TRANSLATION_MAKE_VERSION(1, 0, 0);
+}
+
+// Link "Offrimi un caffe'" cliccabile, stesso schema/motivo di
+// CCsvCoffeeLink in translators/csv/CsvTranslator.cpp (vedi quel
+// commento per il perche' non e' un ClickableStringView di ui/src/).
+static const char kCoffeeUrl[] = "https://buymeacoffee.com/atomozero";
+
+class CXlsxCoffeeLink : public BStringView {
+public:
+	CXlsxCoffeeLink() : BStringView("coffeeLink", "Offrimi un caffe' \xE2\x98\x95") {}
+
+	virtual void AttachedToWindow()
+	{
+		BStringView::AttachedToWindow();
+		SetHighColor(40, 80, 200);
+	}
+
+	virtual void MouseDown(BPoint)
+	{
+		const char* arg = kCoffeeUrl;
+		be_roster->Launch("application/x-vnd.Be.URL.https", 1, const_cast<char**>(&arg));
+	}
+
+	virtual void MouseMoved(BPoint, uint32, const BMessage*)
+	{
+		BCursor link(B_CURSOR_ID_FOLLOW_LINK);
+		SetViewCursor(&link);
+	}
+};
+
+// Vista "Informazioni" mostrata dal pannello Translators di Haiku,
+// stesso schema/motivo di CCsvConfigView in translators/csv/
+// CsvTranslator.cpp (vedi quel commento per il perche').
+class CXlsxConfigView : public BView {
+public:
+	CXlsxConfigView(BRect frame)
+		:
+		BView(frame, "XlsxConfigView", B_FOLLOW_ALL, B_WILL_DRAW)
+	{
+		SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+
+		BStringView* title = new BStringView("title", "XLSX Translator");
+		title->SetFont(be_bold_font);
+
+		int32 v = B_TRANSLATION_MAKE_VERSION(1, 0, 0);
+		BString versionText;
+		versionText.SetToFormat("Versione %d.%d.%d", (int)B_TRANSLATION_MAJOR_VERSION(v),
+			(int)B_TRANSLATION_MINOR_VERSION(v), (int)B_TRANSLATION_REVISION_VERSION(v));
+
+		BFont small(be_plain_font);
+		small.SetSize(be_plain_font->Size() - 1);
+
+		BStringView* version = new BStringView("version", versionText.String());
+		version->SetFont(&small);
+		version->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.7));
+
+		BStringView* info = new BStringView("info",
+			"Importa/esporta fogli di calcolo dal/al formato\n"
+			"Excel 2007+ (XLSX), incluse le formule vive sullo\n"
+			"stesso foglio (un riferimento a un altro foglio\n"
+			"esporta solo il valore calcolato).");
+
+		BStringView* copyright = new BStringView("copyright",
+			"Copyright (c) 2026 Andrea Bernardi \xC2\xB7 Licenza MIT");
+		copyright->SetFont(&small);
+		copyright->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.6));
+
+		CXlsxCoffeeLink* coffeeLink = new CXlsxCoffeeLink();
+		coffeeLink->SetFont(&small);
+
+		BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_SMALL_SPACING)
+			.SetInsets(B_USE_WINDOW_INSETS)
+			.Add(title)
+			.Add(version)
+			.AddStrut(B_USE_SMALL_SPACING)
+			.Add(info)
+			.AddGlue()
+			.Add(coffeeLink)
+			.Add(copyright)
+		.End();
+	}
+};
+
+status_t CXlsxTranslator::MakeConfigurationView(BMessage* extension, BView** _view,
+	BRect* _extent)
+{
+	if (_view == NULL || _extent == NULL)
+		return B_BAD_VALUE;
+
+	CXlsxConfigView* view = new CXlsxConfigView(BRect(0, 0, 299, 154));
+	*_view = view;
+	*_extent = view->Bounds();
+	return B_OK;
 }
 
 const translation_format* CXlsxTranslator::InputFormats(int32* _count) const

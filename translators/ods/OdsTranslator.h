@@ -7,9 +7,12 @@
 	stesso lettore ZIP minimale (MiniZip.h) e lo stesso parser expat,
 	ma con lo schema OpenDocument (content.xml) invece di OOXML.
 
-	Solo import per ora: il motore non include ancora un writer per
-	ODS. Il formato di uscita e' lo stesso ASCD gia' definito dal
-	translator CSV.
+	Import ed export: scrive anche formule vive (non solo il valore
+	gia' calcolato) per le celle che non referenziano un altro foglio
+	(vedi CFormula::ReferencesOtherSheet in engine/), con sintassi
+	OpenFormula canonica indipendente dalle preferenze locali
+	dell'utente. Il formato intermedio verso/da ASCD e' lo stesso gia'
+	definito dal translator CSV.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).
@@ -18,8 +21,11 @@
 #ifndef ODS_TRANSLATOR_H
 #define ODS_TRANSLATOR_H
 
+#include <Rect.h>
 #include <Translator.h>
 #include <TranslatorFormats.h>
+
+class BView;
 
 const uint32 kAtomoOdsFormat = 'AODS';
 const uint32 kAtomoNativeFormat = 'ASCD';
@@ -43,6 +49,9 @@ public:
 	virtual status_t Translate(BPositionIO* source,
 		const translator_info* info, BMessage* extension, uint32 outType,
 		BPositionIO* destination);
+
+	virtual status_t MakeConfigurationView(BMessage* extension, BView** _view,
+		BRect* _extent);
 
 protected:
 	virtual ~COdsTranslator();
