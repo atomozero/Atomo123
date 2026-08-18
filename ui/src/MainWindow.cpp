@@ -1127,6 +1127,13 @@ void MainWindow::SwitchToSheet(int index)
 	fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
 	fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 	fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
+	// Posizione di scorrimento (bug reale segnalato dall'utente: uscire
+	// da un foglio scorso e passare a un altro mostrava lo stesso punto
+	// scorso invece dell'angolo in alto a sinistra o di dove l'utente
+	// l'aveva lasciato -- un solo SheetView e' condiviso da tutti i
+	// fogli, la sua posizione di scorrimento non seguiva mai il foglio
+	// da solo). Vedi il commento sul campo in AscdIO.h.
+	fSheets[fActiveSheetIndex].scrollPosition = fSheetView->Bounds().LeftTop();
 
 	fActiveSheetIndex = index;
 	fDoc = fSheets[index].doc;
@@ -1150,6 +1157,12 @@ void MainWindow::SwitchToSheet(int index)
 		fSheetView->ClearAutoFilter();
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	fFormulaBar->SetText("");
+	// Ripristina lo scorrimento di QUESTO foglio (catturato sopra
+	// l'ultima volta che era attivo, (0,0) se non lo e' mai stato) --
+	// dopo tutte le SetXxx sopra, che possono a loro volta scorrere la
+	// vista (es. SetFreezePanes/SetColumnWidths che ridisegnano il
+	// canvas), cosi' non viene subito sovrascritto.
+	fSheetView->ScrollTo(fSheets[index].scrollPosition);
 	RebuildSheetTabs();
 }
 

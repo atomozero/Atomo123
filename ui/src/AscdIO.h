@@ -22,6 +22,7 @@
 
 #include <DataIO.h>
 #include <GraphicsDefs.h>
+#include <Point.h>
 #include <String.h>
 #include <SupportDefs.h>
 
@@ -161,6 +162,21 @@ struct AscdSheet {
 	std::vector<int> hiddenRows;
 	bool hasAutoFilter = false;
 	range autoFilterRange;
+	// Posizione di scorrimento (Fase 17, richiesta esplicita
+	// dell'utente: "se mi sposto su un foglio non vorrei che anche gli
+	// altri fogli si spostassero"): un solo SheetView e' condiviso da
+	// tutti i fogli della cartella (vedi MainWindow::SwitchToSheet), la
+	// sua posizione di scorrimento (Bounds().LeftTop()) rimaneva quindi
+	// quella di qualunque foglio fosse attivo per ultimo invece di
+	// seguire il foglio -- bug reale, non solo un dettaglio estetico
+	// (passare a un altro foglio con una tabella diversa mostrava un
+	// punto scorso a caso invece dell'angolo in alto a sinistra o di
+	// dove l'utente l'aveva lasciato). Solo per la sessione corrente:
+	// non c'e' spazio riservato per questo nel formato ASCD/ASCB e non
+	// e' stato richiesto, quindi non viene ne' letto ne' scritto da
+	// LoadASCD/SaveASCD -- un file riaperto parte sempre dall'angolo in
+	// alto a sinistra di ogni foglio, come sempre.
+	BPoint scrollPosition = BPoint(0, 0);
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

@@ -159,6 +159,36 @@ int main()
 		"tornando su Beta la griglia e' ancora nascosta, non e' andata persa nel cambio "
 		"foglio avanti e indietro");
 
+	// Posizione di scorrimento (bug reale segnalato dall'utente: un solo
+	// SheetView e' condiviso da tutti i fogli, quindi la sua posizione
+	// di scorrimento seguiva l'ultimo foglio visitato invece di
+	// restare quella di CIASCUN foglio) -- stesso principio "avanti e
+	// indietro" gia' verificato sopra per colWidths/showGrid, qui su
+	// ScrollTo/Bounds().
+	view->ScrollTo(BPoint(50, 100));
+	Check(view->Bounds().LeftTop() == BPoint(50, 100),
+		"Beta scorre alla posizione richiesta (verifica del banco di prova)");
+
+	win->SwitchToSheet(2);
+	Check(view->Bounds().LeftTop() == BPoint(0, 0),
+		"Gamma (mai visitato scorso) mostra l'angolo in alto a sinistra, "
+		"non eredita lo scorrimento appena impostato su Beta");
+
+	view->ScrollTo(BPoint(20, 40));
+
+	win->SwitchToSheet(0);
+	Check(view->Bounds().LeftTop() == BPoint(0, 0),
+		"Alfa (mai scorso) mostra ancora l'angolo in alto a sinistra");
+
+	win->SwitchToSheet(1);
+	Check(view->Bounds().LeftTop() == BPoint(50, 100),
+		"tornando su Beta la posizione di scorrimento (50,100) e' ancora quella, "
+		"non e' andata persa nel cambio foglio avanti e indietro");
+
+	win->SwitchToSheet(2);
+	Check(view->Bounds().LeftTop() == BPoint(20, 40),
+		"tornando su Gamma la posizione di scorrimento (20,40) e' ancora quella");
+
 	// Torna su Gamma (indice 2) prima dei controlli sotto, che
 	// verificano che un indice fuori dai limiti non sposti il foglio
 	// attivo -- devono ripartire da uno stato noto.
