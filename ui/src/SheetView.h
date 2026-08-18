@@ -320,7 +320,17 @@ public:
 	// copia, vedi il commento sopra), quindi lo spostamento e' gia'
 	// "salvato" nel modello non appena il trascinamento finisce, senza
 	// bisogno di ricopiare nulla indietro verso MainWindow.
-	void SetImages(std::vector<EmbeddedImage>* images) { fImages = images; }
+	void SetImages(std::vector<EmbeddedImage>* images) { fImages = images; fSelectedImageIndex = -1; }
+
+	// Cancella l'immagine incorporata attualmente selezionata (fatto un
+	// clic sopra, vedi fSelectedImageIndex), se ce n'e' una -- nessun
+	// effetto altrimenti. Annullabile (Undo/Redo), come ogni altra
+	// mutazione di questa classe. Pubblico apposta per essere
+	// testabile direttamente, stesso principio degli altri comandi
+	// sopra -- vedi tests/test_image_delete.cpp.
+	void DeleteSelectedImage();
+	bool HasSelectedImage() const { return fSelectedImageIndex >= 0; }
+	int SelectedImageIndex() const { return fSelectedImageIndex; }
 
 	// AutoFilter (import XLSX, <autoFilter ref="...">): l'intervallo
 	// (riga di intestazione + colonne) su cui disegnare le frecce a
@@ -619,11 +629,30 @@ private:
 		// annullare vuol dire ripristinare l'elenco intero cosi' com'era.
 		bool isCondFormatSnapshot = false;
 		std::vector<ConditionalFormatRule> condFormatBefore;
+		// Cancellazione di un'immagine incorporata (DeleteSelectedImage):
+		// a differenza di imageIndex sopra (solo scarto/dimensione, per
+		// un'immagine che esiste ancora), qui serve l'INTERA
+		// EmbeddedImage catturata PRIMA di rimuoverla dal vettore --
+		// annullare la reinserisce da capo (dati PNG compresi), non si
+		// limita ad aggiustare i campi di un elemento che c'e' gia'.
+		// deletedImageIndex e' la posizione originale nel vettore: Undo
+		// reinserisce li' (non in coda), cosi' l'ordine di
+		// sovrapposizione fra immagini torna quello di prima.
+		bool isImageDeleteSnapshot = false;
+		int deletedImageIndex = -1;
+		EmbeddedImage deletedImage;
 	};
 	std::vector<UndoSnapshot> fUndoStack;
 	std::vector<UndoSnapshot> fRedoStack;
 	UndoSnapshot CaptureSnapshot(range r) const;
 	UndoSnapshot CaptureImageSnapshot(int imageIndex) const;
+	UndoSnapshot CaptureImageDeleteSnapshot(int imageIndex) const;
+	// Imposta fSelectedImageIndex e invalida sia il vecchio che il
+	// nuovo riquadro di selezione (se diversi da -1) -- un solo posto
+	// per questa logica, usato da MouseDown sia per il ridimensionamento
+	// che per il trascinamento (vedi il commento su fSelectedImageIndex
+	// in fondo alla classe).
+	void SelectImage(int index);
 	UndoSnapshot CaptureValidationSnapshot(range r) const;
 	UndoSnapshot CaptureCondFormatSnapshot() const;
 	void ApplySnapshot(const UndoSnapshot& snap);
@@ -649,6 +678,18 @@ private:
 	int fResizingImageIndex;
 	BPoint fResizeImageStart;
 	float fResizeImageStartWidth, fResizeImageStartHeight;
+	// Immagine incorporata attualmente "selezionata" (Fase 16, comando
+	// Elimina immagine): a differenza di fDraggingImageIndex/
+	// fResizingImageIndex sopra (validi solo durante un trascinamento in
+	// corso, tornano a -1 al MouseUp), questa resta impostata dopo il
+	// rilascio del mouse -- serve un riquadro di selezione persistente
+	// perche' Canc/Backspace (HandleKey) sappiano quale immagine
+	// cancellare senza che l'utente debba tenere il mouse premuto.
+	// Azzerata da SetSelection/ExtendSelection (selezionare una cella
+	// deseleziona l'immagine, come in Excel) e da SetImages (un nuovo
+	// vettore di immagini, es. apertura di un altro file, non ha nulla
+	// alla vecchia posizione).
+	int fSelectedImageIndex;
 
 	// AutoFilter: vedi SetAutoFilter/SetColumnValueHidden ecc. sopra.
 	// fFilterHiddenValues e' per-colonna (indice di colonna 1-based),

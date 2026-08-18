@@ -143,6 +143,7 @@ SheetView::SheetView(CContainer* doc)
 	fImages(NULL),
 	fDraggingImageIndex(-1),
 	fResizingImageIndex(-1),
+	fSelectedImageIndex(-1),
 	fHasAutoFilter(false),
 	fEditor(NULL),
 	fEditingCell(1, 1)
@@ -887,6 +888,21 @@ void SheetView::SetSelection(cell c)
 	if (c.v < 1)
 		c.v = 1;
 
+	// Selezionare una cella deseleziona un'eventuale immagine
+	// incorporata (come in Excel): controllato PRIMA del "return" sotto
+	// per selezione di cella invariata, altrimenti ricliccare la stessa
+	// cella attiva dopo aver selezionato un'immagine non la
+	// deselezionerebbe mai. Invalidato a parte (non tramite "invalid"
+	// sotto, calcolato solo per il riquadro di selezione): stesso bug
+	// di ridisegno parziale gia' corretto per il ricalcolo delle
+	// formule, qui sul riquadro blu dell'immagine deselezionata.
+	if (fSelectedImageIndex >= 0)
+	{
+		if (fImages && fSelectedImageIndex < (int)fImages->size())
+			Invalidate(ImageFrame((*fImages)[fSelectedImageIndex]));
+		fSelectedImageIndex = -1;
+	}
+
 	range oldRange = SelectionRange();
 	if (c == fSelection && c == fAnchor)
 		return;
@@ -919,6 +935,16 @@ void SheetView::ExtendSelection(cell c)
 		c.h = 1;
 	if (c.v < 1)
 		c.v = 1;
+
+	// Vedi il commento in SetSelection sopra, stesso motivo e stesso
+	// ordine (prima del "return" sotto per estensione invariata).
+	if (fSelectedImageIndex >= 0)
+	{
+		if (fImages && fSelectedImageIndex < (int)fImages->size())
+			Invalidate(ImageFrame((*fImages)[fSelectedImageIndex]));
+		fSelectedImageIndex = -1;
+	}
+
 	if (c == fSelection)
 		return;
 
@@ -1518,6 +1544,46 @@ SheetView::UndoSnapshot SheetView::CaptureImageSnapshot(int imageIndex) const
 	return snap;
 }
 
+SheetView::UndoSnapshot SheetView::CaptureImageDeleteSnapshot(int imageIndex) const
+{
+	UndoSnapshot snap;
+	snap.isImageDeleteSnapshot = true;
+	snap.deletedImageIndex = imageIndex;
+	if (fImages && imageIndex >= 0 && imageIndex < (int)fImages->size())
+		snap.deletedImage = (*fImages)[imageIndex];
+	return snap;
+}
+
+void SheetView::SelectImage(int index)
+{
+	if (index == fSelectedImageIndex)
+		return;
+
+	if (fSelectedImageIndex >= 0 && fImages && fSelectedImageIndex < (int)fImages->size())
+		Invalidate(ImageFrame((*fImages)[fSelectedImageIndex]));
+
+	fSelectedImageIndex = index;
+
+	if (fSelectedImageIndex >= 0 && fImages && fSelectedImageIndex < (int)fImages->size())
+		Invalidate(ImageFrame((*fImages)[fSelectedImageIndex]));
+}
+
+void SheetView::DeleteSelectedImage()
+{
+	if (!fImages || fSelectedImageIndex < 0 || fSelectedImageIndex >= (int)fImages->size())
+		return;
+
+	fUndoStack.push_back(CaptureImageDeleteSnapshot(fSelectedImageIndex));
+	fRedoStack.clear();
+
+	BRect dirty = ImageFrame((*fImages)[fSelectedImageIndex]);
+	fImages->erase(fImages->begin() + fSelectedImageIndex);
+	fSelectedImageIndex = -1;
+
+	Invalidate(dirty);
+	NotifyDocumentChanged();
+}
+
 SheetView::UndoSnapshot SheetView::CaptureValidationSnapshot(range r) const
 {
 	UndoSnapshot snap;
@@ -1672,6 +1738,32 @@ void SheetView::Undo()
 		return;
 	}
 
+	// Cancellazione di un'immagine incorporata (DeleteSelectedImage):
+	// a differenza del ramo gemello sopra (imageIndex, per un'immagine
+	// che esiste ancora), qui l'immagine e' stata RIMOSSA dal vettore
+	// -- annullare la reinserisce alla sua posizione originale
+	// (deletedImageIndex), dati PNG compresi. Il "ripeti" non ha
+	// bisogno di altro che l'indice: ricancellarla catturera' da sola
+	// i dati completi al momento di quel ricancellamento (vedi il ramo
+	// equivalente in Redo() sotto), esattamente come la cancellazione
+	// originale.
+	if (toRestore.isImageDeleteSnapshot)
+	{
+		if (fImages && toRestore.deletedImageIndex >= 0
+			&& toRestore.deletedImageIndex <= (int)fImages->size())
+		{
+			fImages->insert(fImages->begin() + toRestore.deletedImageIndex, toRestore.deletedImage);
+			fSelectedImageIndex = toRestore.deletedImageIndex;
+		}
+		UndoSnapshot forRedo;
+		forRedo.isImageDeleteSnapshot = true;
+		forRedo.deletedImageIndex = toRestore.deletedImageIndex;
+		fRedoStack.push_back(forRedo);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
 	// Convalida dati/formattazione condizionale: stesso scambio
 	// simmetrico, ne' selezione di celle ne' CellRect (la convalida
 	// non cambia il contenuto visibile della cella, la formattazione
@@ -1716,6 +1808,24 @@ void SheetView::Redo()
 	{
 		fUndoStack.push_back(CaptureImageSnapshot(toRestore.imageIndex));
 		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+	// Vedi il commento nel ramo equivalente di Undo() sopra: qui
+	// l'immagine e' stata REINSERITA da quell'Undo, quindi ricancellarla
+	// e' identica alla cancellazione originale -- si cattura di nuovo
+	// tutto il contenuto (CaptureImageDeleteSnapshot) prima di
+	// rimuoverla, cosi' un Undo successivo funziona come sempre.
+	if (toRestore.isImageDeleteSnapshot)
+	{
+		int idx = toRestore.deletedImageIndex;
+		if (fImages && idx >= 0 && idx < (int)fImages->size())
+		{
+			fUndoStack.push_back(CaptureImageDeleteSnapshot(idx));
+			fImages->erase(fImages->begin() + idx);
+		}
+		fSelectedImageIndex = -1;
 		Invalidate();
 		NotifyDocumentChanged();
 		return;
@@ -2873,6 +2983,17 @@ void SheetView::Draw(BRect updateRect)
 			// scopribile guardando lo schermo.
 			SetHighColor(80, 80, 80);
 			FillRect(ImageResizeHandle(img));
+
+			// Riquadro di selezione (Fase 16, comando Elimina immagine):
+			// stesso blu/stessa logica del riquadro di selezione delle
+			// celle (vedi piu' sotto in questo Draw()) -- senza questo
+			// indizio visivo, un clic che seleziona l'immagine (per poi
+			// premere Canc) non avrebbe alcun riscontro a schermo.
+			if ((int)i == fSelectedImageIndex)
+			{
+				SetHighColor(30, 100, 200);
+				StrokeRect(frame);
+			}
 		}
 	}
 
@@ -3044,6 +3165,7 @@ void SheetView::MouseDown(BPoint where)
 				fResizeImageStart = where;
 				fResizeImageStartWidth = img.width;
 				fResizeImageStartHeight = img.height;
+				SelectImage(i);
 				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 				return;
 			}
@@ -3069,6 +3191,7 @@ void SheetView::MouseDown(BPoint where)
 				fDragImageStart = where;
 				fDragImageStartOffsetX = img.offsetX;
 				fDragImageStartOffsetY = img.offsetY;
+				SelectImage(i);
 				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 				return;
 			}
@@ -3470,7 +3593,15 @@ bool SheetView::HandleKey(char key, bool ctrl, bool shift)
 		}
 		case B_BACKSPACE:
 		case B_DELETE:
-			ClearSelection();
+			// Un'immagine incorporata selezionata (clic sopra, vedi
+			// fSelectedImageIndex) ha la precedenza sulla cancellazione
+			// di celle -- come in Excel/LibreOffice Calc, Canc su un
+			// oggetto selezionato lo rimuove invece di toccare il
+			// contenuto della cella sotto.
+			if (fSelectedImageIndex >= 0)
+				DeleteSelectedImage();
+			else
+				ClearSelection();
 			return true;
 		default:
 			// Niente scorciatoia da tastiera per "seleziona tutto" qui:
