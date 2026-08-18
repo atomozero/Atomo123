@@ -71,6 +71,17 @@ What shipped in v0.2.0, on top of the v0.1.0 baseline:
   (`README.md`, this file, `docs/*.md`)
 - hpkg packaging now bundles all four translators alongside the app
 
+Since v0.2.0 (not yet in a tagged release):
+- Fixed a real redraw bug: editing a cell recalculated dependent
+  formulas correctly but only repainted the cursor's rectangle, so a
+  formula elsewhere on screen (e.g. a totals row) kept showing its old
+  value until something else forced a repaint. Paste/sort/undo had the
+  same narrow-invalidate bug; fixed once in
+  `SheetView::RecalculateOwningWorkbook`
+
+Next: deleting an inserted image (currently images can be inserted and
+resized/repositioned, but not removed from the sheet).
+
 ## Related work
 
 A separate concept proposal by Jürgen Ihlau ("Haiku Office UI
