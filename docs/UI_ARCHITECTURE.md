@@ -1,990 +1,263 @@
-# Applicazione nativa (`ui/`)
+# Native application (`ui/`)
 
-Prima versione dell'applicazione Interface/Layout Kit (Fase 4), scritta
-da zero (non riusa `CellView`/`CellWindow` BeOS-era) sopra il motore di
-calcolo isolato (`engine/`) e il Translation Kit per l'interoperabilità
-file (`translators/`).
+The Interface/Layout Kit application, written from scratch (does not
+reuse the BeOS-era `CellView`/`CellWindow`) on top of the isolated
+calculation engine (`engine/`) and the Translation Kit for file
+interoperability (`translators/`).
 
-## Struttura
+## Structure
 
 ```
-ui/src/App.h/.cpp          BApplication: crea la finestra, inoltra i
-                            file aperti da Tracker/riga di comando
-ui/src/MainWindow.h/.cpp   BWindow: menu File/Modifica, toolbar, barra
-                            formule, cella corrente, apertura/salvataggio
-ui/src/SheetView.h/.cpp    BView custom: griglia, selezione, editing
-ui/src/AscdIO.h/.cpp       Lettura/scrittura del formato nativo ASCD
-                            (stessa logica duplicata nei translator,
-                            vedi docs/TRANSLATORS.md)
-ui/src/FindWindow.h/.cpp   BWindow separata per "Trova e sostituisci"
-                            (campi + pulsanti), inoltra a MainWindow
-ui/Atomo123.rdef           Risorse dell'app (firma, versione, icona
-                            VICN/BEOS:ICON), compilate da rc + xres
-ui/icons/                  Icona sorgente: atomo123.svg (disegnata a
-                            mano) e atomo123.hvif (esportata da
-                            Icon-O-Matic, incorporata in Atomo123.rdef)
+ui/src/App.h/.cpp          BApplication: creates the window, forwards
+                            files opened from Tracker/command line
+ui/src/MainWindow.h/.cpp   BWindow: File/Edit menus, toolbar, formula
+                            bar, current cell, open/save
+ui/src/SheetView.h/.cpp    Custom BView: grid, selection, editing
+ui/src/AscdIO.h/.cpp       Native ASCD format read/write (same logic
+                            duplicated in each translator, see
+                            docs/TRANSLATORS.md)
+ui/src/FindWindow.h/.cpp   Separate BWindow for Find & Replace
+ui/Atomo123.rdef           App resources (signature, version, VICN/
+                            BEOS:ICON icon), compiled by rc + xres
+ui/icons/                  Source icon: atomo123.svg (hand-drawn) and
+                            atomo123.hvif (exported from Icon-O-Matic,
+                            embedded in Atomo123.rdef)
 ```
 
-`SheetView` non usa `BGridLayout`: la griglia è disegnata a mano in
-`Draw()` sopra una `BScrollView`. Il `Frame()` della vista copre
-l'intero intervallo virtuale del motore fin dalla costruzione
-(`kColCount`/`kRowCount` da `engine/src/Config/Constants.h`,
-702×16384 celle, ~56200×327700 pixel — il pattern classico BeOS/Haiku
-per una vista scorrevole: la `BScrollView` ritaglia e scorre una
-vista grande, non viceversa), con calcolo manuale del range delle
-scrollbar (`FixupScrollBars()`, agganciato a `BView::ScrollBar()`).
-Vedi la nota tecnica più sotto sul perché questo dettaglio — vista
-grande, non piccola — è importante e su un bug reale che è nato
-proprio da qui.
+## `SheetView`'s canvas model
 
-## Apertura file: Translation Kit come consumer reale
+Not `BGridLayout` — the grid is drawn by hand in `Draw()` over a
+`BScrollView`. `Frame()` covers the engine's entire virtual range from
+construction (`kColCount`/`kRowCount` in
+`engine/src/Config/Constants.h`, 702×16384 cells, ~56200×327700
+pixels) — the classic BeOS/Haiku scrollable-view pattern: the
+`BScrollView` clips and scrolls a large view, rather than resizing a
+small one to fit content. Scrollbar range is computed manually
+(`FixupScrollBars()`).
 
-`MainWindow::OpenFile()` passa ogni file da aprire per
+**Gotcha**: a `BScrollView` built the classic way (not through
+`BLayoutBuilder`) inherits its *target's* size at construction time
+rather than being constrained by the containing window's layout. With
+a target this large, the `BScrollView` itself becomes just as large,
+and `Parent()->Bounds()` (what code should treat as "the visible area")
+reflects that huge size instead — code relying on it (auto-scroll to a
+selected cell, layout size negotiation) silently breaks. Fixed with an
+explicit one-time `scroll->ResizeTo(400, 300)` right after construction
+*plus* explicit size constraints set directly on `SheetView` itself
+(`SetExplicitMinSize`/`MaxSize`/`PreferredSize`) — the `ResizeTo` alone
+only survives the first layout pass; without the constraints on the
+target view, any later layout recalculation (e.g. from resizing the
+window) re-derives the `BScrollView`'s size from `SheetView::Frame()`
+again and the bug comes back.
+
+## Opening files: Translation Kit as a real consumer
+
+`MainWindow::OpenFile()` passes every file through
 `BTranslatorRoster::Default()->Translate(&file, NULL, NULL, &ascd,
-kAtomoNativeFormat)`: il roster interroga ogni translator installato
-(`~/config/non-packaged/add-ons/Translators/`) chiamando il suo
-`Identify()` finché uno riconosce il formato, poi lo traduce in ASCD —
-lo stesso translator CSV riconosce anche l'ASCD nativo tramite la
-firma, quindi un unico punto di codice apre CSV/XLS/XLSX/ODS/ASCD
-senza bisogno di if-else per estensione. I translator vanno installati
-separatamente (`make install` in ciascuna cartella sotto
-`translators/`) perché sono add-on caricati a runtime, non linkati
-staticamente in questo binario — è la Fase 3 che diventa un
-prerequisito runtime reale della Fase 4, non solo una libreria
-compilata insieme.
+kAtomoNativeFormat)` — the roster asks each installed translator's
+`Identify()` until one recognizes the format, then translates to ASCD.
+The CSV translator also recognizes native ASCD by its signature, so a
+single code path opens CSV/XLS/XLSX/ODS/ASCD without per-extension
+branching. Translators must be installed separately (`make install` in
+each `translators/*` directory) since they're runtime-loaded add-ons,
+not statically linked into this binary.
 
-## Editing: barra formule ed editor in-cella
+Re-opening an already-native ASCD file skips the Translation Kit
+entirely (`IsASCDFile()` checks the signature first) and calls
+`LoadASCD` directly — routing a native file back through a translator
+would silently lose anything the translators' own duplicated
+`ReadASCD`/`WriteASCD` don't know about (e.g. embedded charts, a
+UI-only concept).
 
-Due percorsi verso la stessa logica di scrittura
-(`TryToParseString`/`CalcCell`):
+## Editing: formula bar and in-cell editor
 
-- **Barra formule** (`MainWindow`): sempre visibile, mostra/modifica
-  la formula della cella selezionata, Invio conferma
+Two paths to the same write logic (`TryToParseString`/`CalcCell`):
+
+- **Formula bar** (`MainWindow`): always visible, shows/edits the
+  selected cell's formula, Enter commits
   (`MainWindow::CommitFormulaBar`).
-- **Editor in-cella** (`SheetView::StartEditing`/`CommitEditing`):
-  doppio click su una cella (rilevato dal campo `"clicks"` del
-  messaggio di mouse down corrente, `Window()->CurrentMessage()`) o
-  si inizia a digitare direttamente mentre una cella è selezionata
-  (il carattere digitato sostituisce il contenuto, come Excel/
-  LibreOffice Calc) aprono un `BTextControl` temporaneo posizionato
-  sopra la cella con `CellRect()`. Invio conferma (il `BTextControl`
-  invoca il proprio messaggio sul target, impostato a `SheetView`
-  stesso); un click altrove conferma prima di cambiare selezione
-  (`MouseDown` chiama `CommitEditing(false)` se un editor è attivo);
-  Escape annulla.
-
-### Perché Escape richiede un `BMessageFilter`, non un `KeyDown` sovrascritto
-
-Un `BTextControl` non riceve `KeyDown` per i tasti digitati durante
-l'editing: `BTextControl::MakeFocus()` inoltra il fuoco tastiera alla
-sua `BTextView` interna (che gestisce davvero il testo), quindi è
-quella a ricevere gli eventi, non il contenitore. Sovrascrivere
-`KeyDown` in una sottoclasse di `BTextControl` non avrebbe mai
-intercettato Escape durante la digitazione normale. Soluzione:
-`CellEditEscapeFilter`, un `BMessageFilter` installato direttamente
-sulla `BTextView` interna (`BTextControl::TextView()->AddFilter(...)`),
-che intercetta `B_KEY_DOWN` con `raw_char == B_ESCAPE`, lo trasforma
-in un messaggio di annullamento per `SheetView` e restituisce
-`B_SKIP_MESSAGE` per impedire che venga anche inserito come carattere.
-
-## Toolbar: `BButton` semplici, non `BToolBar`
-
-Una riga di `BButton` di solo testo sotto il menu (Nuovo/Apri/Salva/
-Stampa/Taglia/Copia/Incolla/Trova), non la classe `BToolBar` di Haiku:
-quella vive solo sotto `develop/headers/private/shared/` su questo
-sistema, non nell'SDK pubblico stabile, e il progetto usa
-deliberatamente solo API pubbliche documentate (Interface/Locale/
-Print/Translation/Clipboard Kit). Ogni pulsante invia lo stesso
-`BMessage` già gestito dal menu corrispondente (`SetTarget(this)`,
-stesso target di `MessageReceived`) — nessuna logica nuova, solo un
-secondo punto di accesso alle stesse azioni. Nessuna icona per i
-pulsanti (solo testo): evita di dover disegnare un intero set di
-icone HVIF in più, oltre a quella dell'applicazione.
-
-## Taglia/copia/incolla: appunti di sistema veri, non un buffer privato
-
-Il menu Modifica (`MainWindow::CopySelection`/`PasteSelection`/
-`DeleteSelection`) passa dal vero **Clipboard Kit** di Haiku
-(`be_clipboard`), non da una variabile membro interna all'app: il
-contenuto copiato (la formula della cella, la stessa mostrata dalla
-barra formule) viene scritto come `text/plain`/`B_MIME_TYPE` dentro il
-`BMessage` restituito da `be_clipboard->Data()`, fra un
-`Lock()`/`Clear()` e un `Commit()`/`Unlock()` — esattamente il
-pattern standard di ogni app Haiku che vuole interoperare con gli
-appunti di sistema (copiare in Atomo123 e incollare in un editor di
-testo funziona, e viceversa).
-
-**Verifica**: `ui/tests/test_clipboard.cpp` (richiede una sessione
-grafica, il Clipboard Kit passa dall'app_server — `cd ui && make
-test-clipboard`, non incluso nel normale `make test` headless-safe)
-replica esattamente la logica di `CopySelection`/`PasteSelection` in
-isolamento. Oltre al giro autocontenuto, è stata fatta una prova
-incrociata reale con il tool a riga di comando di sistema
-`clipboard` (già presente su Haiku): scrittura con il binario di test
-→ lettura con `clipboard -p` (esito corretto), e scrittura con
-`clipboard -c` → lettura con il binario di test (esito corretto) —
-prova concreta che si tratta davvero degli appunti di sistema
-condivisi, non di uno stato privato del processo.
-
-## Locale Kit: numeri formattati secondo le preferenze di sistema
-
-Il motore di calcolo formatta i numeri in modo generico
-(`CFormatter`/`eGeneral` in `engine/src/Cell/Formatter.cpp`, nessuna
-nozione di locale) — coerente col fatto che è codice storico BeOS
-isolato, non pensato per il Locale Kit moderno di Haiku. `SheetView`
-aggiunge un livello di presentazione sopra quel testo: se il valore di
-una cella è numerico (`CContainer::GetValue` restituisce `eNumData`,
-non NaN), il testo mostrato nella griglia viene rigenerato con
-`BNumberFormat::Format()`, che usa le preferenze di formattazione del
-sistema (separatore delle migliaia, punto o virgola decimale). La
-barra formule invece mostra sempre il testo grezzo/editabile
-(`GetCellFormula`), non quello formattato — coerente col comportamento
-di un vero foglio di calcolo (editing sul valore vero, visualizzazione
-formattata solo nella cella).
-
-**Verifica**: aperto un file ASCD di test con A1 = 1234567.89 in una
-sessione grafica reale con locale italiano attivo — la griglia mostra
-"1.234.567,89" (punto come separatore delle migliaia, convenzione
-italiana), la barra formule mostra "1234567.89" invariato.
-
-## Menu Formato: Generale/Numero/Valuta/Percentuale
-
-Il menu Formato applica un `ENumberFormat` (`eGeneral`/`eFixed`/
-`eCurrency`/`ePercent`, già definiti in `engine/src/Cell/Formatter.h`)
-alla cella selezionata, agendo su `CellStyle::fFormat`
-(`MainWindow::SetCellFormat`: `GetCellStyle` → modifica `fFormat` →
-`SetCellStyle`, entrambi già esistenti in `CContainer` — nessuna nuova
-API dell'engine servita). Ogni voce del menu porta lo stesso
-`kMsgSetFormat` con il valore da applicare in un campo `int32
-"format"` del `BMessage`, invece di un messaggio diverso per voce.
-
-`SheetView::Draw()` ora legge `CellStyle::fFormat` (via
-`CContainer::GetCellStyle`) prima di applicare la formattazione
-locale-aware, per rispettare la scelta dell'utente invece di
-sovrascriverla sempre con il raggruppamento numerico generico:
-`eCurrency` usa `BNumberFormat::FormatMonetary()`, `ePercent` usa
-`BNumberFormat::FormatPercent()` (valore atteso come frazione, es.
-0.42 → "42%" — stessa convenzione già usata internamente dal motore
-per `ePercent`, vedi `exp10 += 2` in
-`engine/src/Cell/Formatter.number.cpp`), tutto il resto (incluso
-`eGeneral`) usa `BNumberFormat::Format()` come già faceva prima di
-questa funzione.
-
-**Verifica**: dal vivo, invocando il menu con `hey` (non simulando un
-`BMessage` a mano: `MenuItem 2 of Menu 2 of MenuBar of Window 0` per
-"Valuta") su una cella con "1234.5" incollato dagli appunti —
-applicato il formato, la griglia mostra "1.234,50 €" (formattazione
-Locale Kit italiana), la barra formule resta invariata su "1234.5".
-
-**Non ancora fatto**: controllo del numero di decimali, font, colore,
-bordo — il motore li supporta tutti tramite `CellStyle`, ma senza una
-UI dedicata restano fissi ai valori predefiniti. Formattazione data
-(`BDateFormat`) non ancora esposta.
-
-## Print Kit: stampa con `BPrintJob`
-
-"Stampa…" nel menu File (`MainWindow::PrintDocument`) segue il
-pattern standard di Haiku per la stampa:
-
-1. `BPrintJob::ConfigJob()` — mostra il dialogo di sistema
-   (stampante/opzioni); se l'utente annulla o non c'è nessuna
-   stampante configurata, restituisce un errore e non si stampa
-   nulla.
-2. `BeginJob()`, poi un ciclo che copre `SheetView::ContentRect()`
-   (nuovo metodo pubblico: il rettangolo in pixel, intestazioni
-   comprese, che copre le celle con contenuto — calcolato da
-   `CContainer::GetBounds()` più `SheetView::CellRect()`, non
-   l'intero intervallo virtuale del motore di 702×16384 celle)
-   suddiviso in pagine larghe/alte quanto `BPrintJob::
-   PrintableRect()`. Per ogni pagina: `DrawView(fSheetView,
-   pageSlice, BPoint(0,0))` (Haiku disegna quella porzione della
-   view direttamente sul job di stampa) poi `SpoolPage()`.
-3. `CommitJob()` se tutto è andato bene (`CanContinue()` ancora
-   vero), altrimenti `CancelJob()`.
-
-**Limite noto**: le intestazioni di riga/colonna sono disegnate da
-`SheetView::Draw()` solo nella banda fissa `0`–`kHeaderWidth`/
-`kHeaderHeight` (stessa scelta della UI a schermo, vedi limite
-"intestazioni non congelate" sotto) — nella stampa multi-pagina
-questo significa che compaiono solo sulla prima pagina (in alto a
-sinistra), non ripetute su ogni pagina come farebbe un foglio di
-calcolo maturo. Andrebbe risolto facendo disegnare a `SheetView` le
-intestazioni separatamente per ogni pagina durante la stampa, non
-insieme al contenuto — rimandato.
-
-**Verifica**: build pulita e test di non-regressione (apertura di un
-file reale col nuovo codice presente, nessun crash). Un test
-end-to-end di stampa reale non è stato possibile in questa sessione:
-`ConfigJob()` apre un dialogo di sistema che richiede una scelta
-dell'utente (stampante, opzioni, conferma) — non simulabile
-costruendo un `BMessage` a mano come si fa per `B_REFS_RECEIVED`
-(stesso limite già incontrato per `B_SAVE_REQUESTED` e per il doppio
-click/digitazione diretta in-cella: nessuno strumento di iniezione
-mouse/tastiera disponibile in questo ambiente di test). Il sistema ha
-comunque i transport "Preview" e "Save as PDF" già disponibili come
-add-on (`/boot/system/add-ons/Print/`), utilizzabili da un utente
-reale per un test interattivo senza bisogno di una stampante fisica.
-
-## Trova e sostituisci: una seconda finestra, stessa regola sui thread
-
-"Trova e sostituisci…" nel menu Modifica apre `FindWindow`, una
-piccola `BWindow` separata con un campo di ricerca, un campo
-"Sostituisci con:", e tre pulsanti ("Trova successivo", "Sostituisci",
-"Sostituisci tutto"). Non esegue la ricerca/sostituzione da sé — le
-celle appartengono al documento di `MainWindow`, che vive sul thread
-della finestra principale, un `BLooper` diverso da quello di
-`FindWindow` — quindi invia i testi con un `BMessage`
-(`kMsgFindNext`/`kMsgReplaceCurrent`/`kMsgReplaceAll`) a un
-`BMessenger` passato dal chiamante, non chiama un metodo di
-`MainWindow` direttamente: stessa regola del bug di thread
-`BApplication`/`BWindow` descritto sotto, applicata stavolta fra due
-finestre invece che fra applicazione e finestra.
-
-`MainWindow::FindNext()` scandisce le celle esistenti del documento
-(`CCellIterator`) confrontando il testo (`GetCellFormula`,
-case-insensitive, sottostringa) con quanto digitato, e seleziona il
-primo risultato dopo la cella correntemente selezionata — con
-"wrap-around" al primo risultato assoluto se non ce n'è nessuno dopo.
-Nessun iteratore persistito fra una ricerca e l'altra: una scansione
-completa ogni volta, scelta deliberata per semplicità (niente rischio
-di un iteratore invalidato da una modifica del documento fra due
-"Trova successivo") — adeguata alle dimensioni di foglio di questa
-prima versione dell'app.
-
-`MainWindow::ReplaceCurrent()`/`ReplaceAll()` riusano la stessa
-funzione (`ReplaceAllCaseInsensitive`, locale a `MainWindow.cpp`) per
-sostituire tutte le occorrenze del testo cercato dentro il testo di
-una cella, cercando senza distinguere maiuscole/minuscole ma
-inserendo il testo di sostituzione così com'è scritto (non nella
-capitalizzazione originale). `ReplaceAll` prima raccoglie in un
-`std::vector<cell>` tutte le celle da modificare, poi le modifica in
-un secondo ciclo separato: `CCellIterator` scorre la mappa interna del
-documento, che non va alterata (`TryToParseString` può
-aggiungere/rimuovere celle) mentre la si sta iterando.
-
-`FindWindow::QuitRequested()` non chiude mai davvero la finestra (si
-nasconde e basta, restituendo `false`): `MainWindow` tiene un unico
-puntatore per tutta la vita dell'app, mostrandola/attivandola di nuovo
-a ogni apertura del dialogo invece di ricrearla, e la distrugge per
-davvero solo nel proprio distruttore (`Lock()` + `Quit()` diretto, non
-tramite `B_QUIT_REQUESTED` che passerebbe da quell'hook).
-
-**Verifica**: la finestra si apre correttamente dal vivo (invocata dal
-menu con `hey` — `MenuItem 6 of Menu 1 of MenuBar of Window 0` — non
-simulando il `BMessage` a mano), mostrando tutti e tre i controlli.
-La logica di sostituzione (`ReplaceAllCaseInsensitive` + la scansione
-a due passate di `ReplaceAll`) è stata verificata con un harness
-dedicato che riproduce esattamente lo stesso algoritmo su un
-documento con due celle contenenti "Mondo"/"mondo": trova entrambe,
-sostituisce correttamente producendo "Ciao Terra"/"Terra intero". La
-sessione di test in questo momento condivideva il desktop con
-un'altra attività grafica indipendente dell'utente (finestre che
-apparivano/sparivano, processi chiusi dall'esterno) — non affidabile
-per uno screenshot pulito dell'esito finale nella griglia, da qui la
-scelta dell'harness diretto invece di un ennesimo tentativo dal vivo.
-
-## Icona dell'applicazione
-
-Il portale autorizzato per le icone (www.hvif-store.art) è risultato
-vuoto a due controlli separati; l'utente ha scelto di disegnarla da
-zero. `ui/icons/atomo123.svg` è una griglia bianca 3×3 con una cella
-evidenziata in arancione su sfondo blu arrotondato (richiama
-chiaramente un foglio di calcolo), disegnata a mano in SVG piatto
-(niente gradient/filtri, per la massima compatibilità con
-l'importatore SVG di Icon-O-Matic). Aperta in Icon-O-Matic (che importa
-SVG nativamente, senza bisogno di un `BTranslator` dedicato) ed
-esportata in HVIF **direttamente dall'utente** — `ui/icons/atomo123.hvif`
-(verificato: firma `ncif` corretta nei primi 4 byte, il magic number
-del formato).
-
-L'HVIF viene incorporato come risorsa `VICN`/`BEOS:ICON` in
-`ui/Atomo123.rdef` (byte esadecimali diretti nella sintassi `rc`,
-stesso meccanismo — non un file `.hvif` distribuito a parte — usato da
-altri progetti nativi Haiku sullo stesso sistema, es. HaikuBench).
-`ui/Makefile` compila `Atomo123.rdef` con `rc` e allega il risultato al
-binario con `xres` come parte automatica della build normale
-(`make` in `ui/`), non un passo manuale a parte.
-
-**Verifica**: `xres -l Atomo123` conferma la risorsa `VICN` da 440
-byte — la stessa dimensione esatta del file HVIF sorgente. Verificato
-anche visivamente: aperta una finestra Tracker sulla cartella `ui/` in
-vista icone (passaggio di vista fatto scriptando il menu Finestra di
-Tracker con `hey`, stessa tecnica già usata per Atomo123 stesso),
-l'icona compare correttamente sul file `Atomo123`.
-
-## Bug scoperto: violazione di thread fra `BApplication` e `BWindow`
-
-Il primo test end-to-end (apertura di un file XLSX reale in una vera
-sessione grafica, non headless) si è chiuso con un crash intercettato
-da `debug_server` — a differenza di quasi tutti i bug delle fasi
-precedenti, qui *c'era* un `app_server` collegato, quindi non poteva
-trattarsi della stessa famiglia "codice mai eseguito senza UI".
-
-Causa: `App::RefsReceived` (sul thread di `BApplication`) invocava
-direttamente `MainWindow::OpenFile()`, che tocca le `BView` della
-finestra (`Invalidate()`, `BTextControl::SetText()`, ecc.) — ma
-`BWindow` e le sue `BView` vivono sul thread del *loro* `BLooper`, non
-su quello dell'applicazione, e non sono sicure da toccare senza il
-lock della finestra (`BWindow::Lock()`). Chiamare quel metodo dal
-thread sbagliato senza lock corrompe lo stato mentre l'app_server
-potrebbe contemporaneamente elaborare un `Draw()`/`Invalidate()` sullo
-stesso oggetto dal thread corretto — una race condition classica
-nell'Application Kit di Haiku/BeOS.
-
-**Fix**: `App::RefsReceived` si limita a inoltrare il `BMessage` alla
-finestra con `fWindow->PostMessage(message)`, lasciando che sia
-`MainWindow::MessageReceived` (già scritto per gestire
-`B_REFS_RECEIVED`) a processarlo — l'elaborazione avviene così sul
-thread corretto, con il lock preso automaticamente dal ciclo dei
-messaggi del `BLooper`. Regola generale per il resto della Fase 4: mai
-chiamare direttamente un metodo che tocca le `BView` di una finestra
-da un altro thread — sempre passare da un `BMessage` inoltrato con
-`PostMessage()`/`SendMessage()`.
-
-**Come è stato diagnosticato**: un harness headless (`BApplication`
-senza finestra, chiamata diretta a `BTranslatorRoster::Translate` +
-`LoadASCD` + `GetCellResult`) non riproduceva il crash, isolando il
-problema alla combinazione specifica finestra+thread. La conferma
-finale è arrivata testando dal vivo in una sessione grafica reale
-(`app_server`/Deskbar/Tracker attivi sul sistema): un B_REFS_RECEIVED
-sintetico inviato con `BMessenger` all'app in esecuzione (simulando un
-trascinamento da Tracker) riproduceva il crash prima del fix e non lo
-riproduceva più dopo, verificato sia via screenshot sia interrogando
-la finestra dal vivo con lo strumento di scripting nativo `hey`.
-
-## Export CSV e bug scoperto: formule mai ricalcolate al caricamento
-
-"Salva con nome" instrada ora attraverso `BTranslatorRoster` invece di
-scrivere sempre ASCD a mano: serializza prima il documento corrente in
-ASCD in memoria (`BMallocIO`), poi chiama
-`BTranslatorRoster::Default()->Translate(&ascd, NULL, NULL, &file,
-outType)`, lasciando che il roster trovi un translator installato che
-sappia leggere ASCD e scrivere il formato scelto — il formato si
-decide dall'estensione del nome file scelto nel `BFilePanel` (".csv"
-esporta in CSV, altrimenti resta sul nativo ASCD). Il translator CSV
-aveva già entrambe le direzioni fin dalla Fase 3
-(`CTextConverter::ConvertToText`/`ConvertFromText`): mancava solo
-questo instradamento. Disegnato per essere direttamente riusabile
-quando XLS/XLSX/ODS avranno anche loro un writer, non solo per CSV.
-
-Costruendo questo export è emerso un bug reale: una cella con formula
-importata da ASCD esportava sempre **vuota** in CSV, anche se il
-motore la ricalcola correttamente quando richiesto esplicitamente.
-Causa: `TryToParseString` (usata da `LoadASCD` e dal `ReadASCD` del
-translator CSV per popolare celle da un flusso ASCD) imposta la
-formula/il valore di una cella ma **non la calcola** — serve una
-`CalcCell` esplicita. Nessuno dei due punti la faceva, il che
-significava che **qualunque file aperto nell'app con celle a formula
-le mostrava vuote nella griglia** finché l'utente non le toccava a
-mano (barra formule/editing in-cella, che chiamano `CalcCell` dopo
-aver scritto) — passato inosservato perché ogni test dei translator
-XLSX/ODS chiamava `CalcCell` esplicitamente *nel test stesso*,
-mascherando che il percorso di produzione non lo faceva mai da solo.
-
-**Fix**: nuova `RecalculateAll(CContainer*)` in `ui/src/AscdIO.h/.cpp`
-(usata da `LoadASCD`), più la stessa logica duplicata nel `ReadASCD`
-del translator CSV (stessa duplicazione intenzionale già usata per
-`WriteASCD`/`ReadASCD`, per non introdurre una dipendenza di link fra
-app e translator). Itera su tutte le celle chiamando `CalcCell` su
-ciascuna, **ripetendo finché nessuna cella cambia più valore** (limite
-di sicurezza: 50 passate): `CFormula::Calculate` legge i riferimenti
-ad altre celle con una `GetValue` non ricorsiva, quindi l'ordine di
-inserimento non garantisce che una cella referenziata sia già stata
-calcolata — più passate propagano correttamente le dipendenze in
-qualunque ordine, senza un vero ordinamento topologico del grafo delle
-dipendenze.
-
-**Verificato**: `ui/tests/test_ascd_io.cpp` ora controlla il valore di
-C1 subito dopo `LoadASCD`, prima di qualunque `CalcCell` esplicito nel
-test (prima il test chiamava `CalcCell` apposta, che nascondeva il
-bug); un harness diretto dell'export CSV ha confermato che una formula
-`=A1+B1` con A1=10/B1=20 esporta "30" invece di una cella vuota.
-
-## Bug scoperto: la griglia non riempiva la finestra (segnalato dall'utente)
-
-Aprendo l'app a schermo intero, la griglia mostrava solo la colonna A
-e le prime 4 righe (~100×100 pixel in alto a sinistra), con il resto
-della finestra vuoto — non uno sfondo scorrevole, proprio nessuna
-riga/colonna disegnata oltre quel piccolo riquadro. Segnalato
-dall'utente con uno screenshot, non trovato durante lo sviluppo
-perché ogni test precedente aveva usato finestre piccole o si era
-concentrato su altre funzionalità senza notare quanto poco della
-griglia fosse effettivamente disegnato.
-
-**Causa**: `SheetView` veniva costruita con un `Frame()` fisso e
-minuscolo (`BRect(0, 0, 100, 100)`, un placeholder mai più
-ridimensionato dopo la costruzione). `Draw()` calcola l'intervallo di
-celle da disegnare a partire da `updateRect`, che per una `BView` non
-può mai eccedere il proprio `Frame()` — indipendentemente da quanto
-grande fosse la finestra o la `BScrollView` a schermo, l'app_server
-non genera mai un `updateRect` più grande del `Frame()` della vista
-stessa. Il sintomo (~100×100 pixel disegnati, esattamente
-`kHeaderWidth + kColWidth` per `kHeaderHeight + 4×kRowHeight`)
-combaciava esattamente con quella dimensione di costruzione,
-confermando la diagnosi.
-
-**Fix**: `SheetView::FullCanvasFrame()` (nuovo metodo statico)
-restituisce un `BRect` che copre l'intero intervallo virtuale del
-motore (`kColCount`×`kColWidth` per `kRowCount`×`kRowHeight`,
-~56200×327700 pixel), usato nell'inizializzatore del costruttore —
-il pattern classico BeOS/Haiku per una vista scorrevole (la
-`BScrollView` ritaglia e scorre una vista grande, invece di
-ridimensionare una vista piccola per adattarla al contenuto).
-Conseguenza collaterale da correggere insieme: `Bounds()` di una
-vista così grande riflette sempre la dimensione piena del `Frame()`,
-mai la porzione effettivamente visibile a schermo — quindi sia
-`FixupScrollBars()` (intervallo delle scrollbar) sia
-`ScrollToShowSelection()` (scorrimento automatico verso la cella
-selezionata), che prima usavano `Bounds()` assumendo riflettesse
-l'area visibile, avevano lo stesso baco latente (mai emerso
-visibilmente perché mascherato dal bug più vistoso della vista
-minuscola). Corrette entrambe per usare `Parent()->Bounds()` (l'area
-visibile reale della `BScrollView`, il vero "genitore" della vista
-nella gerarchia) per le dimensioni, e `Bounds().left`/`.top` (l'unica
-parte che `ScrollBy()`/`ScrollTo()` aggiornano davvero) per
-l'origine corrente dello scroll.
-
-Rimosso anche il parametro `BRect frame` dal costruttore di
-`SheetView` (era fuorviante: sembrava controllare la dimensione
-visualizzata, ma da questo fix in poi la vista si dimensiona sempre
-da sola) — ora `SheetView(CContainer* doc)`, non più
-`SheetView(BRect frame, CContainer* doc)`.
-
-**Verificato dal vivo**: screenshot dopo il fix mostra colonne A-J e
-righe 1-25 che riempiono correttamente la finestra (prima: solo
-colonna A, righe 1-4); la finestra è stata ridimensionata due volte
-via `hey` (`set Frame of Window 0 to "BRect(...)"`) per esercitare
-ripetutamente `FixupScrollBars()` con le nuove dimensioni — nessun
-crash, nessun errore.
-
-## Bug scoperto (parte 2): `BScrollView` eredita la dimensione del target, non del layout
-
-Poche ore dopo il fix sopra, l'utente ha segnalato che spostando la
-selezione verso una cella fuori dall'area visibile (con le frecce, o
-con "Trova") la vista non scorre per mostrarla — nonostante
-`ScrollToShowSelection()` fosse già stata corretta per usare
-`Parent()->Bounds()`.
-
-**Diagnosi**: un harness diretto (poi promosso a `ui/tests/test_scroll.cpp`)
-che costruisce una vera `BWindow` + `BScrollView` + `SheetView` e
-chiama `SetSelection()` su una cella lontana ha riprodotto il bug in
-isolamento, stampando i valori reali di `Parent()->Bounds()`:
-**~56217×327717 pixel**, non una viewport ragionevole. Causa:
-`BScrollView`, costruita con la forma classica (`BScrollView(name,
-target, resizeMask, flags, horizontal, vertical)`, non tramite
-`BLayoutBuilder`), **eredita di default la dimensione del proprio
-target al momento della costruzione**, invece di farsi vincolare dal
-layout della finestra che la contiene — un dettaglio dell'implementazione
-di `BScrollView` non documentato esplicitamente, scoperto per via
-sperimentale in questa sessione. Dato che `SheetView` ha ora un
-`Frame()` enorme (fix della parte 1 sopra), anche la `BScrollView`
-diventava enorme, e `Parent()->Bounds()` restituiva quella stessa
-dimensione sbagliata: la vista *pensava* di essere già "abbastanza
-grande" da contenere qualunque cella, quindi non scorreva mai —
-il fix della parte 1 era corretto nella logica ma inefficace nella
-pratica, perché la sua premessa (`Parent()->Bounds()` riflette la vera
-area visibile) non era ancora vera.
-
-Provato anche `scroll->SetExplicitMinSize(BSize(100, 100))` prima di
-trovare il fix reale: non ha avuto alcun effetto, a conferma che
-`BScrollView` si ridimensiona con una `ResizeTo()` diretta nella
-propria inizializzazione (bypassando la negoziazione normale di
-min/max size del layout), non con un semplice suggerimento di
-dimensione minima.
-
-**Fix**: un `ResizeTo()` esplicito sulla `BScrollView` subito dopo la
-costruzione, prima di aggiungerla al layout (`MainWindow::MainWindow`):
-
-```cpp
-BScrollView* scroll = new BScrollView("scroll", fSheetView,
-	B_FOLLOW_ALL, 0, true, true);
-scroll->ResizeTo(400, 300);  // "sgancia" dalla dimensione ereditata dal target
-BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
-	// ...
-	.Add(scroll);
-```
-
-La dimensione passata a `ResizeTo()` non conta molto (il layout la
-corregge subito al primo giro): serve solo a rompere l'eredità
-iniziale dal target, dando alla `BScrollView` una dimensione concreta
-di partenza che il layout può poi liberamente ridimensionare in base
-allo spazio disponibile nella finestra.
-
-**Verificato**: `ui/tests/test_scroll.cpp` (richiede una sessione
-grafica, target Makefile `test-scroll` separato come `test-clipboard`)
-verifica: `Parent()->Bounds()` ha una dimensione ragionevole (non
-eredita il canvas virtuale del target); selezione iniziale A1; nessuno
-scroll prima di selezionare una cella lontana; la vista scorre
-selezionando una cella fuori schermo (colonna 30, riga 200); torna
-all'origine riselezionando A1 — tutti verdi. Rifatto anche lo
-screenshot di regressione del bug della parte 1 (griglia che riempie
-la finestra): nessun cambiamento visivo.
-
-### Nota sugli strumenti usati per l'indagine: `hey` e Pippo (MCP)
-
-Durante questa indagine è stato provato per la prima volta **Pippo**
-(`/Magazzino/Pippo`), un server MCP nativo per Haiku dell'utente
-(`localhost:2607`, JSON-RPC via `curl -X POST .../mcp`) che espone
-iniezione reale di mouse/tastiera, screenshot e scripting app. Ha
-funzionato bene per `focus_window`, `key_stroke` (digitazione di
-testo normale) e `screenshot`. Non ha funzionato per `mouse_move`/
-`mouse_down`/`mouse_up` (bug di parsing JSON→Hay in
-`McpDispatcher::_BuildHayCommand`, non di questo progetto) né per
-`key_down` con gli scancode delle frecce direzionali (verificati
-corretti contro `keymap -d .../Keymaps/US`, ma interpretati come
-caratteri normali anziché tasti speciali — probabile bug
-nell'add-on `hay_input` di Pippo). Anche l'indirizzamento di finestre
-secondarie (es. `FindWindow`) è rimasto inaffidabile sia con `hey` sia
-con Pippo. Dettaglio completo, incluso il problema di un desktop
-condiviso con altre sessioni concorrenti durante i test, in
-`ROADMAP.md` (nota "Integrazione con `hey` e con Pippo").
-Conclusione pratica: per verificare la *logica* (non l'esperienza
-utente end-to-end), un harness diretto in processo come
-`test_scroll.cpp` resta più affidabile di qualunque iniezione di
-input in questo ambiente.
-
-## Grafico a barre e tabella pivot: menu Inserisci, due finestre, stessa regola sui thread
-
-Fase 6 aggiunge un menu **Inserisci** con due voci: "Grafico a
-barre…" e "Tabella pivot…". Entrambe leggono un intervallo di due
-colonne (etichetta/categoria testuale, valore numerico) digitato
-dall'utente, non selezionato trascinando sulla griglia — `SheetView`
-supporta solo una singola cella selezionata (`fSelection`), non un
-intervallo con ancora e cella corrente, quindi non c'era nessuna
-"selezione corrente" multi-cella da cui partire senza prima
-implementare quella funzionalità separatamente (rimandata: vedi
-"Limiti noti" sotto). L'intervallo si scrive a mano, es. `A1:B5`,
-analizzato da `RangeRef.cpp` con `cell::GetCell` — lo stesso parser
-di riferimenti di cella già usato dal motore per le formule (non un
-parser scritto da zero).
-
-**Separazione logica/UI**: `Chart.cpp` (lettura dati + calcolo del
-layout delle barre) e `Pivot.cpp` (raggruppamento/aggregazione) non
-toccano mai `BView`/`BWindow`, seguendo lo stesso principio già
-usato per `SheetView::ScrollToShowSelection` e per `InitFunctions`:
-logica pura testabile senza sessione grafica (`make test-chart`,
-`make test-pivot`, headless come `make test` per `AscdIO`). Anche
-`ComputeBarLayout` (geometria delle barre dentro un `BRect`) è
-separata da `ChartView::Draw`, cosi' si verifica il calcolo con dei
-`BRect` di prova senza disegnare nulla per davvero.
-
-**Regola sui thread, applicata due volte**: `ChartWindow` e
-`PivotWindow` sono `BWindow` separate, ciascuna sul proprio
-`BLooper` — la stessa situazione di `FindWindow` (vedi sezione
-dedicata sopra), quindi vale la stessa regola: mai toccare `fDoc` (di
-proprietà di `MainWindow`) da un thread diverso dal suo.
-
-- **Tabella pivot**: `PivotWindow` manda l'intervallo sorgente, la
-  cella di destinazione e l'aggregazione scelta a `MainWindow` con un
-  solo `BMessage` (`kMsgPivotRequest`, via `BMessenger`).
-  `MainWindow::HandlePivotRequest` legge/scrive `fDoc` e invalida
-  `SheetView` interamente sul proprio thread — nessun dato torna
-  indietro a `PivotWindow`, perché il risultato finisce nel foglio
-  stesso, non in una vista di proprietà di `PivotWindow`.
-- **Grafico**: qui il risultato *deve* tornare indietro (il disegno
-  vive dentro `ChartView`, di proprietà di `ChartWindow`), quindi lo
-  scambio è bidirezionale: `ChartWindow` manda il testo
-  dell'intervallo (`kMsgChartRequest`); `MainWindow` lo analizza,
-  legge `fDoc` sul proprio thread, poi manda i dati già estratti
-  (etichette/valori, non puntatori al documento) indietro a
-  `ChartWindow` con un secondo `BMessage` (`kMsgChartData`) via
-  `BMessenger(fChartWindow)`; `ChartWindow::MessageReceived` (sul
-  proprio thread) aggiorna `ChartView` e la reinvalida — mai una
-  chiamata diretta fra i due thread in nessuna delle due direzioni.
-
-**Scrittura pivot e sovrapposizione con i dati sorgente**:
-`MainWindow::HandlePivotRequest` rifiuta esplicitamente (con un
-`BAlert`, non un crash o una sovrascrittura silenziosa) una cella di
-destinazione il cui intervallo di scrittura si sovrapponga
-all'intervallo sorgente, perché `WritePivotTable` scrive una riga
-alla volta e leggerebbe dati già sovrascritti a metà lettura se le
-due zone coincidessero.
-
-## Grafico incorporato nel foglio: da anteprima a oggetto vero, con dati letti dal vivo
-
-Nella prima versione di questa funzionalità (sopra) il grafico viveva
-solo in `ChartWindow`, disconnesso dal documento — l'utente ha
-segnalato subito il problema testando dal vivo: "il grafico si genera
-ma non posso inserirlo nel foglio". La soluzione scelta (fra tre
-opzioni proposte: restare così, incorporarlo come oggetto vero, o
-incollarlo come immagine statica) è stata l'incorporamento vero.
-
-**`ChartObject`** (`Chart.h`): `{ range dataRange; BRect frame; }` —
-posizione fissa in pixel nello stesso sistema di coordinate delle
-celle (`CellRect`), ma **nessuna istantanea dei dati**: a ogni
-ridisegno si rilegge `dataRange` dal documento
-(`SheetView::Draw`, in coda dopo le intestazioni, per restare visibile
-per intero anche vicino al bordo riga/colonna 1):
-
-```cpp
-if (fCharts && fDoc) {
-    for (auto& obj : *fCharts) {
-        if (!obj.frame.Intersects(updateRect)) continue;
-        std::vector<ChartSeries> series;
-        BuildChartSeries(fDoc, obj.dataRange, series);
-        DrawBarChart(this, obj.frame, series);
-    }
-}
-```
-
-`MainWindow` possiede l'unico `std::vector<ChartObject> fCharts`;
-`SheetView` ne riceve solo un puntatore a sola lettura
-(`SetCharts`), non lo possiede né lo modifica mai — stesso principio
-di `fDoc`.
-
-**Disegno condiviso, non duplicato**: `DrawBarChart(BView*, BRect,
-const std::vector<ChartSeries>&)` (`Chart.cpp`) prende dati già
-estratti, mai un `CContainer*` — questo è cruciale per rispettare la
-regola sui thread sopra: `ChartView::Draw` (thread di `ChartWindow`,
-dati ricevuti via `BMessage`) e `SheetView::Draw` (thread di
-`MainWindow`, dati letti dal vivo con `BuildChartSeries` **prima** di
-chiamare `DrawBarChart`) chiamano la stessa funzione di disegno, ma
-ciascuno prepara i dati sul proprio thread nel modo lecito per quel
-thread — `DrawBarChart` stessa non tocca mai il documento, quindi è
-sicura da entrambi.
-
-**Flusso di inserimento**: `ChartWindow` ha un secondo campo (cella
-di destinazione) e un pulsante "Inserisci nel foglio", che manda
-`kMsgChartInsert{range, dest}` a `MainWindow`.
-`MainWindow::HandleChartInsert` valida (stesso `BuildChartSeries` già
-usato per l'anteprima), calcola `frame` da `SheetView::CellOrigin(dest)`
-(nuovo accessor pubblico, riusa `CellRect` privato) con una dimensione
-fissa di default (300×180 px), aggiunge a `fCharts` e invalida
-`SheetView` — tutto sul thread di `MainWindow`, quindi sicuro.
-
-**Persistenza (`AscdIO.cpp`)**: `LoadASCD`/`SaveASCD` guadagnano un
-parametro opzionale `std::vector<ChartObject>*` (default `NULL`,
-comportamento invariato per chi non lo passa — es. `translators/*/`,
-che duplicano la propria copia di `ReadASCD`/`WriteASCD` e restano
-ignari di questa sezione, coerente col fatto che i grafici sono un
-concetto della UI, non del formato dati generico). La sezione
-grafici è scritta **in coda**, dopo l'ultima cella: un file scritto
-prima di questa modifica semplicemente non ce l'ha. `LoadASCD`
-distingue "fine dello stream esattamente lì" (`Read` restituisce 0 —
-formato vecchio, zero grafici, non un errore) da un file davvero
-troncato (`Read` restituisce un valore diverso da 0 ma minore della
-dimensione attesa — quello sì `B_BAD_DATA`).
-
-**Bug scoperto sistemando la persistenza**: `MainWindow::OpenFile`
-passava *sempre* dal Translation Kit (`BTranslatorRoster::Translate`)
-anche per riaprire un file già nel formato nativo — per un file
-ASCD, il translator scelto (es. `CsvTranslator`, che riconosce la
-firma ASCD in `Identify()`) lo rilegge con la propria copia duplicata
-di `ReadASCD` e lo riscrive con la propria copia di `WriteASCD` prima
-che `MainWindow` lo rilegga a sua volta: quella copia duplicata non
-conosce affatto la sezione grafici (è una copia autonoma, per non
-introdurre una dipendenza di link fra translator e app — vedi
-`AscdIO.h`), quindi qualunque grafico incorporato sarebbe sparito in
-un giro salva→riapri, silenziosamente. **Fix**: nuovo
-`IsASCDFile(BPositionIO*)` (legge la firma, riporta la posizione di
-lettura dov'era) — se il file è già nativo, `MainWindow::OpenFile`
-chiama `LoadASCD` direttamente sul file, saltando del tutto il giro
-superfluo (e ora lossy) dal Translation Kit. File non nativi
-(CSV/XLS/XLSX/ODS) continuano a passare dal translator adatto, come
-prima — nessun formato esterno porta comunque grafici incorporati.
-
-**Verificato**: `ui/tests/test_ascd_io.cpp` esteso con un giro
-salva→ricarica di un `ChartObject` (intervallo e posizione preservati
-byte per byte) e con la verifica esplicita di retrocompatibilità (un
-file scritto senza sezione grafici si rilegge con un vettore vuoto,
-non un errore). Build completa e `make test`/`test-chart`/
-`test-pivot`/`test-scroll` confermati senza regressioni dopo la
-modifica. Verifica dal vivo: menu "Inserisci" invocato con `hey
-<app> do MenuItem <n> of Menu <m> of MenuBar of Window 0` (non
-`execute` — nome del verbo scoperto per tentativi in questa sessione,
-`execute` restituisce "Bad verb" nonostante la scripting suite
-sottostante si chiami `B_EXECUTE_PROPERTY`), `ChartWindow` confermata
-aperta senza crash via `list_windows`.
-
-## Bug scoperto (parte 3): lo scroll automatico smetteva di funzionare dopo il primo ricalcolo del layout
-
-Dopo il fix della parte 2 (sopra), l'utente ha rifatto una prova reale
-e ha segnalato di nuovo lo stesso sintomo: navigando con le frecce
-fino a K3, l'etichetta di riferimento in alto a sinistra mostrava
-correttamente "K3" (prova che `SetSelection`/`NotifySelectionChanged`
-erano stati chiamati), ma la griglia continuava a mostrare solo le
-colonne A-J, senza scorrere. Il test `test_scroll.cpp` esistente
-(incluso il controllo aggiunto nella parte 2) continuava a passare,
-segno che il bug non era più riproducibile con quel harness sintetico.
-
-**Diagnosi dal vivo**: iniezione di tasti freccia via Pippo/`hey` si è
-rivelata di nuovo inaffidabile (`key_stroke` con il byte grezzo di
-`B_RIGHT_ARROW`, 0x1d, non muoveva la selezione; lo stesso con
-`key_down`/`key_up` passando 0x1d invece dello scancode fisico) —
-niente di nuovo rispetto ai problemi già documentati sopra. La svolta
-è stata interrogare direttamente la geometria reale della finestra in
-esecuzione con la scripting suite nativa di `BView`, mai usata prima
-in questo progetto:
-
-```
-hey Atomo123 get Frame of View "scroll" of Window 0
-```
-
-Risultato **senza** il fix: `BRect(0, 94, 56217, 327811)` — la
-`BScrollView` aveva davvero la dimensione enorme ereditata dal
-target, esattamente il bug della parte 2, ma tornato indietro. Causa:
-il `scroll->ResizeTo(400, 300)` della parte 2 "sgancia" la
-`BScrollView` dalla dimensione ereditata solo per la primissima
-passata di layout — senza un limite esplicito impostato sulla
-*view target* stessa (`SheetView`), ogni ricalcolo successivo del
-layout (nell'app vera, con più righe sopra la griglia — menu,
-barra strumenti, barra formula — a differenza del test sintetico
-con la sola `BScrollView`) torna a interrogare `SheetView::Frame()`
-(il canvas virtuale intero, ~56000×328000 pixel) per decidere quanto
-spazio offrire, riportando la `BScrollView` alla dimensione ereditata.
-`Parent()->Bounds()`, che `ScrollToShowSelection` usa per sapere
-quanto è davvero visibile, tornava quindi a riflettere quella
-dimensione enorme: qualunque cella sembrava sempre già visibile, lo
-scroll non scattava mai.
-
-**Fix**: limiti espliciti di dimensione impostati direttamente su
-`SheetView` (non solo sulla `BScrollView`, che non basta da sola),
-nel costruttore (`SheetView.cpp`):
-
-```cpp
-SetExplicitMinSize(BSize(100, 100));
-SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
-SetExplicitPreferredSize(BSize(400, 300));
-```
-
-`MaxSize` resta illimitata (la `BScrollView` deve poter crescere
-liberamente quando la finestra si ingrandisce — verificato anche
-questo dal vivo, vedi sotto), ma `MinSize`/`PreferredSize` piccoli
-impediscono al layout di dedurre le proprie richieste di spazio dal
-`Frame()` enorme del target a ogni ricalcolo, non solo al primo.
-
-**Verificato dal vivo** (non riprodotto da `test_scroll.cpp`
-nonostante un tentativo di arricchire il layout del test con menu/
-barra strumenti/barra formula per imitare l'app vera — resta una
-lacuna nota, vedi sotto): stessa query `hey ... get Frame of View
-"scroll" of Window 0` prima e dopo il fix, e anche dopo un
-ridimensionamento forzato della finestra (`hey ... set Frame of
-Window 0 to "BRect(...)"`, per verificare che un secondo/terzo
-ricalcolo del layout non facesse ripresentare il bug):
-
-| Momento | `Frame of View "scroll"` |
-|---|---|
-| Senza il fix, all'avvio | `BRect(0, 94, 56217, 327811)` (bug) |
-| Con il fix, all'avvio | `BRect(0, 94, 820, 620)` (corretto) |
-| Con il fix, dopo un ridimensionamento a `BRect(5,89,1000,750)` | `BRect(0, 94, 995, 661)` (corretto, segue la finestra) |
-
-**Lacuna nota**: `test_scroll.cpp` non riproduce questo bug specifico
-(passa identico con e senza il fix, anche dopo aver arricchito il
-layout della finestra di test con menu/barra strumenti/barra formula
-per assomigliare a `MainWindow`) — la differenza esatta rispetto
-all'app vera non è stata individuata con certezza nel tempo
-disponibile in questa sessione (ipotesi: differenze nella
-sincronizzazione del ciclo dei messaggi/negoziazione del layout fra
-un `BWindow` isolato in un piccolo harness e la finestra reale
-dentro il ciclo completo di `BApplication::Run()`). Il controllo
-aggiunto in `test_scroll.cpp` (ridimensionamento della finestra dopo
-la prima verifica) resta comunque come guardia onesta e ragionevole,
-ma la garanzia di non-regressione per *questo specifico* bug è oggi
-solo la verifica dal vivo documentata sopra, non un test automatico.
-
-## Test
-
-`ui/tests/test_ascd_io.cpp` (`cd ui && make test`, non richiede una
-sessione grafica) verifica che `SaveASCD`/`LoadASCD` siano l'una
-l'inversa dell'altra: numeri, testo e una formula (verificata anche
-nel suo ricalcolo dal motore, non solo nel testo confrontato)
-sopravvivono a un giro salva→ricarica completo.
-
-**Limite noto**: non esiste un test end-to-end automatizzato per il
-doppio click/digitazione diretta in-cella, né per il vero flusso
-"Salva con nome" attraverso `BFilePanel`. Un tentativo di simulare
-`B_SAVE_REQUESTED` con un messaggio costruito a mano e inviato
-all'applicazione non ha funzionato: a differenza di `B_REFS_RECEIVED`
-(per cui `App::RefsReceived` inoltra esplicitamente alla finestra),
-non c'è nessun inoltro automatico quando `B_SAVE_REQUESTED` arriva
-alla `BApplication` — nell'uso reale il `BFilePanel` lo manda
-direttamente alla finestra (è il target impostato nel suo costruttore
-in `MainWindow::MainWindow()`), non passa mai dall'applicazione. Anche
-il doppio click e la digitazione diretta richiederebbero uno strumento
-di iniezione mouse/tastiera non disponibile in questo ambiente di
-test (a differenza di `B_REFS_RECEIVED`, che si simula costruendo il
-`BMessage` a mano). Verificati con test di non-regressione (apertura
-file reale con il nuovo codice presente, nessun crash) e revisione
-manuale del codice; verifica interattiva reale rimandata a un utente
-umano o a un ambiente con tale strumento.
-
-### Scoperta successiva: `hey` sa invocare le voci di menu
-
-Dopo aver scritto la nota sopra, si è scoperto che lo strumento di
-scripting nativo `hey` espone davvero l'esecuzione delle voci di menu
-tramite lo scripting suite standard di `BMenuBar`/`BMenu`
-(`MenuItem ... B_EXECUTE_PROPERTY`, "Invokes the specified menu item"),
-navigabile con la catena di specificatori `MenuItem <indice> of Menu
-<indice> of MenuBar of Window <indice>` (gli indici delle voci si
-scoprono con `hey -o Atomo123 get Label of MenuItem <n> of Menu <m> of
-MenuBar of Window 0`). Usato per aprire davvero la finestra "Trova"
-dal menu (non simulando il `BMessage` a mano) e verificare che
-l'intera catena menu → `MainWindow::ShowFindWindow` → `FindWindow`
-funzioni senza crash in una sessione grafica reale, con entrambe le
-finestre visibili e responsive in uno screenshot. Questo apre la
-possibilità di testare in modo simile anche Taglia/Copia/Incolla/
-Stampa/Nuovo/Apri tramite la stessa tecnica nelle prossime iterazioni,
-invece della sola revisione manuale del codice.
-
-## Intestazioni "congelate" durante lo scroll
-
-Richiesta esplicita dell'utente dopo aver visto la prima versione
-della UI (dove lettere di colonna e numeri di riga scorrevano via
-insieme al resto del foglio, come documentato per un certo periodo in
-"Limiti noti" sotto) — prima solo per la riga delle lettere di
-colonna, poi anche per la colonna dei numeri di riga, con la stessa
-tecnica applicata sull'asse opposto. La riga delle lettere di colonna
-resta fissa in alto durante lo scroll verticale (ma segue quello
-orizzontale, restando allineata alle colonne vere); la colonna dei
-numeri di riga resta fissa a sinistra durante lo scroll orizzontale
-(ma segue quello verticale, mostrando sempre i numeri delle righe
-davvero visibili).
-
-**Tecnica**: niente viste multiple sincronizzate (la complessità che
-la nota "Limiti noti" originale voleva evitare) — `SheetView::Draw`
-disegna la banda dell'intestazione di colonna a `Bounds().top` (la
-cima della porzione attualmente visibile) e quella di riga a
-`Bounds().left` (il bordo sinistro), non più a `y=0`/`x=0` fissi nel
-canvas virtuale come prima. L'intestazione di colonna e' disegnata
-per ultima, cosi' resta sopra a tutto il resto (contenuto celle,
-grafici incorporati, e anche l'intestazione di riga, che si disegna
-prima).
-
-**Bug scoperto e corretto durante l'implementazione** (prima ancora
-di estendere la tecnica alla colonna dei numeri di riga): la sola
-modifica a `Draw()` non bastava — l'utente ha segnalato uno
-sfarfallio ("le celle sembrano scivolare sotto la riga delle
-colonne"). Causa: `ScrollBy()`/`ScrollTo()` blittano normalmente solo
-i pixel già disegnati verso la loro nuova posizione a schermo,
-invalidando poi solo la striscia appena esposta (ottimizzazione
-standard per non ridisegnare tutto a ogni scroll) — la banda
-dell'intestazione, già disegnata alla vecchia posizione, veniva
-quindi spostata insieme al resto invece di restare ferma, lasciando
-una banda grigia "fantasma" in mezzo alle celle. Un primo tentativo
-di correggerlo con un `Invalidate()` di tutta la vista eliminava il
-fantasma ma introduceva lo sfarfallio segnalato (perdendo il blit
-efficiente per l'intera vista, non solo per l'intestazione). **Fix**:
-override di `SheetView::ScrollTo(BPoint)` — l'unico punto che
-intercetta *ogni* scroll, da qualunque cosa lo inneschi (frecce,
-"Trova", trascinamento della scrollbar, rotellina del mouse) — che
-invalida solo le bande (vecchia e nuova, per ciascun asse coinvolto)
-alte/larghe quanto le intestazioni, non l'intera vista: quelle
-vecchie (dove il blit lascia il fantasma, da ridisegnare come celle
-normali) e quelle nuove (dove ora devono comparire le intestazioni
-vere). Applicato lo stesso fix (bande vecchia/nuova, non `Invalidate()`
-totale) fin dall'inizio anche per l'intestazione di riga, per non
-reintrodurre lo stesso sfarfallio sull'asse orizzontale.
-
-**Verificato dal vivo** (non da un test automatico — un tentativo di
-verifica a livello di pixel con una vista offscreen ospitata in una
-`BBitmap` ha causato un hang/crash del test entro il tempo disponibile
-in questa sessione, abbandonato): l'utente ha confermato sia il
-congelamento (di entrambe le intestazioni) sia la scomparsa dello
-sfarfallio dopo il fix.
-
-## Invio non confermava l'editing in-cella; poi anche l'avanzamento della selezione; scorciatoie da tastiera in stile Excel
-
-Segnalazione dell'utente in due tempi, sulla stessa area. Prima:
-"se scrivo un numero in una cella e premo invio non succede nulla".
-Poi, dopo un primo fix (vedi sotto) rivelatosi solo parziale: "se
-scrivo un numero all'interno di una cella con invio non lo confermo,
-non avviene nulla, devo cliccare con il mouse per confermare il
-valore inserito" — quest'ultima frase è stata la vera chiave
-diagnostica.
-
-**Primo fix (incompleto)**: la prima ipotesi era che `CommitEditing`
-scrivesse correttamente il valore ma non facesse avanzare la
-selezione alla cella sotto come in Excel/LibreOffice Calc (verificato
-con un test diretto via `MessageReceived`, che passava) — un fix
-plausibile ma **non la causa reale**, perché quel test manda il
-messaggio di commit direttamente, bypassando il vero meccanismo con
-cui Invio dovrebbe generarlo.
-
-**Diagnosi reale**: la seconda segnalazione dell'utente ("devo
-cliccare con il mouse per confermare") è stata la prova decisiva.
-`SheetView::MouseDown` chiama `CommitEditing()` con una **chiamata
-C++ diretta**, non tramite messaggio — funziona sempre, a prescindere
-da qualunque meccanismo di dispatch. Invio invece si affidava
-all'`Invoke()` automatico che `BTextControl` dovrebbe generare da
-sola alla pressione di Invio al suo interno — meccanismo che non
-scattava in modo affidabile in questo contesto d'uso (causa esatta
-non isolata con certezza nel tempo disponibile in questa sessione:
-verificarla a fondo avrebbe richiesto simulare un vero evento
-`B_KEY_DOWN` con un ciclo dei messaggi realmente in esecuzione su un
-thread separato, tecnica scartata per il rischio di hang già
-sperimentato con un tentativo simile per il test dell'intestazione
-congelata sopra). Un primo tentativo di riprodurre dal vivo con
-`key_stroke` (digitando `"42\n"`) aveva peraltro dato un risultato
-fuorviante — un altro programma di una sessione concorrente sullo
-stesso desktop condiviso ("VideoChiamate") aveva rubato il fuoco
-proprio in quel momento, quindi la digitazione era finita nella
-finestra sbagliata (uno screenshot l'ha confermato).
-
-**Fix reale**: invece di continuare a dipendere dal comportamento
-automatico di `BTextControl` su Invio, lo si intercetta esplicitamente
-— stessa tecnica già usata per Escape (`CellEditEscapeFilter`,
-rinominato `CellEditKeyFilter` includendo ora entrambi i tasti): un
-`BMessageFilter` per `B_KEY_DOWN` aggiunto alla `BTextView` interna
-dell'editor, che per `raw_char == B_RETURN` manda esplicitamente
-`kMsgCellEditCommit` al target (la stessa `SheetView`) e restituisce
-`B_SKIP_MESSAGE`. Non serve più capire perché l'`Invoke()` automatico
-non scattasse: ora Invio, come il click del mouse, non dipende da
-quel meccanismo.
-
-**Fix collegato (dalla prima segnalazione, resta valido)**:
-`CommitEditing`, quando non annullato, chiama ora
-`SetSelection(cell(editedCell.h, editedCell.v + 1))` per avanzare alla
-cella sotto come in Excel/LibreOffice Calc — dato che `fSelection` è
-ancora `editedCell` a quel punto (mai cambiata durante l'editing),
-`SetSelection` si occupa già da sola di invalidare/notificare/scorrere
-se la riga sotto è fuori dall'area visibile. Annullare con Escape resta
-invariato (nessun avanzamento della selezione).
-
-**Scorciatoie aggiuntive**, richieste dall'utente subito dopo
-("vorrei replicare tutti i comandi da tastiera di Excel"): Inizio/
-Ctrl+Inizio, Ctrl+Fine, PagSu/PagGiù, Maiusc+Tab (sposta a sinistra),
-Maiusc+Invio (sposta in alto) — un sottoinsieme scelto perché
-implementabile nella dispatch di `SheetView::KeyDown` esistente senza
-richiedere nuova architettura (a differenza, per esempio, della
-selezione di un intervallo con Maiusc+frecce, che richiederebbe prima
-di introdurre il concetto di intervallo selezionato nella griglia,
-oggi assente — vedi anche la nota sull'assenza di selezione multi-
-cella nella sezione sui grafici/pivot sopra).
-
-**Refactor per la testabilità**: `KeyDown(bytes, numBytes)` legge
-Ctrl/Maiusc dal vero messaggio `B_KEY_DOWN` corrente
-(`Window()->CurrentMessage()`) e poi chiama un nuovo metodo pubblico,
-`HandleKey(char key, bool ctrl, bool shift)`, che contiene tutta la
-logica di navigazione/modifica con i modificatori già risolti. Reso
-pubblico apposta per essere chiamato direttamente dai test con
-modificatori "finti" — un test che chiama `KeyDown()` direttamente
-(bypassando il vero dispatch della tastiera, come fanno già
-`test_scroll.cpp`/`test_editing.cpp`) leggerebbe
-`Window()->CurrentMessage()` come `NULL` o comunque senza i
-modificatori voluti, non potendo quindi esercitare i percorsi
-Ctrl/Maiusc.
-
-**Verificato**: nuovo `ui/tests/test_navigation.cpp` (`make
-test-navigation`, richiede una sessione grafica reale per `PagSu`/
-`PagGiù`, che leggono `Parent()->Bounds()`), 9 asserzioni; `ui/tests/
-test_editing.cpp` esteso con la verifica dell'avanzamento dopo Invio/
-la non-avanzamento dopo Escape (via `MessageReceived`, quindi non
-prova da sola che il filtro intercetti davvero un vero Invio nella
-`BTextView` reale — lacuna nota, come per lo sfarfallio
-dell'intestazione sopra). Nessuna regressione nei test esistenti.
-Verificato dal vivo dall'utente sull'app reale dopo il fix col
-filtro esplicito (non solo con lo scambio di messaggi nel test).
-
-## Limiti noti (prima versione)
-
-- **Export solo verso CSV**: "Salva con nome" esporta in CSV (se il
-  nome scelto finisce per ".csv") o nel nativo ASCD, ma non ancora
-  verso XLS/XLSX/ODS — nessuno dei tre translator ha un writer, solo
-  import. Nessun selettore di formato dedicato nel pannello di
-  salvataggio: il formato si decide dall'estensione del nome file.
-- **Un solo foglio**: coerente col limite già accettato in Fase 3 per
-  XLSX/ODS (si importa solo il primo foglio/tabella).
-- Menu Formato limitato a Generale/Numero/Valuta/Percentuale: nessun
-  controllo su decimali, font, colore, bordo, allineamento, data —
-  il motore li supporta tutti tramite `CellStyle`, ma senza una UI
-  dedicata restano fissi ai valori predefiniti.
+- **In-cell editor** (`SheetView::StartEditing`/`CommitEditing`):
+  double-click, or typing directly while a cell is selected (replaces
+  content, like Excel), opens a temporary `BTextControl` positioned
+  over the cell. A click elsewhere commits first
+  (`CommitEditing(false)`); Escape cancels.
+
+**Key handling gotcha**: a `BTextControl` doesn't receive `KeyDown` for
+keys typed during editing — `MakeFocus()` forwards keyboard focus to
+its internal `BTextView`, which handles the actual text. Both Escape
+(cancel) and Enter (commit) are intercepted with a `BMessageFilter`
+(`CellEditKeyFilter`) installed directly on that internal `BTextView`
+(`BTextControl::TextView()->AddFilter(...)`), returning
+`B_SKIP_MESSAGE` so the key isn't also inserted as a character. Relying
+on `BTextControl`'s own automatic `Invoke()`-on-Enter proved unreliable
+in this context — explicit interception avoids depending on it.
+Confirming via Enter also advances the selection down a row, like
+Excel; Escape does not.
+
+## Toolbar: plain `BButton`s, not `BToolBar`
+
+A row of text-only `BButton`s below the menu — `BToolBar` lives only
+under `develop/headers/private/shared/` on this system, not the public
+stable SDK, and this project deliberately sticks to public documented
+APIs (Interface/Locale/Print/Translation/Clipboard Kit). Each button
+posts the same `BMessage` the corresponding menu item already handles
+— no new logic, just a second entry point to the same actions.
+
+## Clipboard: the real system clipboard
+
+Edit menu operations use Haiku's **Clipboard Kit** (`be_clipboard`),
+not an app-internal buffer: copied content (a cell's formula, the same
+text the formula bar shows) is written as `text/plain` inside the
+`BMessage` from `be_clipboard->Data()`, between `Lock()`/`Clear()` and
+`Commit()`/`Unlock()` — the standard pattern for interoperating with
+other apps' clipboard content. Verified cross-checked against the
+system `clipboard` command-line tool in both directions.
+
+## Locale Kit: numbers formatted per system preferences
+
+The calculation engine formats numbers generically (`CFormatter`/
+`eGeneral`, no locale awareness — historical BeOS code). `SheetView`
+adds a presentation layer on top: a numeric cell's on-grid text is
+regenerated with `BNumberFormat::Format()` (system thousands
+separator, decimal point/comma). The formula bar always shows the raw,
+editable text (`GetCellFormula`), never the formatted version.
+
+**Format menu** (General/Number/Currency/Percentage) sets
+`CellStyle::fFormat` on the selected cell
+(`MainWindow::SetCellFormat`). `SheetView::Draw()` reads that style
+before applying locale-aware formatting: Currency uses
+`BNumberFormat::FormatMonetary()`, Percentage uses
+`FormatPercent()` (value as a fraction, e.g. 0.42 → "42%"), everything
+else (including General) uses plain `Format()`.
+
+**Not yet exposed in the UI**: control over decimal places, and date
+formatting (`BDateFormat`) — the engine supports both via `CellStyle`,
+but without a dedicated menu they stay at their defaults.
+
+## Printing (`BPrintJob`)
+
+File → Print (`MainWindow::PrintDocument`) follows the standard Haiku
+pattern: `ConfigJob()` (system print dialog) → `BeginJob()` and a loop
+over `SheetView::ContentRect()` (the pixel rectangle covering cells
+with actual content, not the full 702×16384 virtual range) sliced into
+`PrintableRect()`-sized pages, `DrawView()` + `SpoolPage()` per page →
+`CommitJob()`/`CancelJob()`.
+
+**Known limitation**: row/column headers are drawn only in the fixed
+top-left band, so on a multi-page print job they only appear on the
+first page, not repeated on every page.
+
+## Find & Replace: cross-window messaging rule
+
+"Find & Replace…" opens `FindWindow`, a separate `BWindow` with its own
+`BLooper` (a different thread from `MainWindow`'s). It never touches
+`MainWindow`'s document directly — it sends search/replace requests as
+`BMessage`s through a `BMessenger` back to `MainWindow`, which owns the
+document and processes them on its own thread. **This is the general
+rule for any cross-window interaction in this codebase**: never call a
+method that touches another window's `BView`s or document from a
+different thread — always go through `PostMessage()`/`SendMessage()`.
+The same rule was violated once between `BApplication` and
+`MainWindow` (see "Notable fixes" below) and applies identically
+between `MainWindow` and `ChartWindow`/`PivotWindow`.
+
+`MainWindow::FindNext()` does a fresh linear scan
+(`CCellIterator` + case-insensitive substring match) from the current
+selection every time, wrapping to the start if nothing else matches —
+no persisted iterator between searches, avoiding any risk of an
+iterator invalidated by a document edit between two "Find Next"
+clicks. `ReplaceAll()` first collects matching cells into a
+`std::vector<cell>`, then mutates them in a second pass, since
+`TryToParseString` can add/remove cells while `CCellIterator` is
+walking the same map.
+
+## Charts and pivot tables
+
+Insert menu, reading a two-column range typed by the user (e.g.
+`A1:B5` — the grid only supports single-cell selection today, no
+drag-select range).
+
+`Chart.cpp` (data + bar-layout math) and `Pivot.cpp` (grouping/
+aggregation) never touch `BView`/`BWindow` — pure, headless-testable
+logic (`make test-chart`, `make test-pivot`), same principle as the
+engine itself.
+
+`ChartWindow`/`PivotWindow` are separate `BWindow`s, so the
+cross-thread messaging rule above applies:
+
+- **Pivot**: `PivotWindow` sends the source range/destination/
+  aggregation to `MainWindow` in one message; the result is written
+  directly into the sheet (no data needs to flow back).
+- **Chart**: bidirectional — `MainWindow` reads the document on its own
+  thread, extracts plain data (labels/values, never a document
+  pointer) and sends it back to `ChartWindow` in a second message,
+  which then updates `ChartView` on its own thread. `DrawBarChart()`
+  itself takes only already-extracted data, never a `CContainer*`, so
+  it's safe to call from either window's thread.
+
+**Embedded charts**: `MainWindow::fCharts` (`std::vector<ChartObject>`,
+`{ range dataRange; BRect frame; }`) holds no data snapshot — each
+redraw re-reads `dataRange` live from the document. Inserted via
+"Insert into sheet" in `ChartWindow`; persisted in `AscdIO.cpp` as an
+optional trailing section (old files without it just get an empty
+vector back, not an error). Translators' own duplicated `ReadASCD`/
+`WriteASCD` don't know about this section — deliberate, since charts
+are a UI concept, not part of the generic data format.
+
+## Frozen headers
+
+The column-letter row stays fixed at the top during vertical scroll
+(but follows horizontal scroll); the row-number column stays fixed on
+the left during horizontal scroll. Implementation: `SheetView::Draw()`
+draws the header bands at `Bounds().top`/`Bounds().left` (the visible
+viewport's edges) instead of a fixed `(0,0)` in the virtual canvas,
+with the column header drawn last so it stays above cell content and
+the row header. A naive version of this flickered — `ScrollBy`/
+`ScrollTo` only blit already-drawn pixels and invalidate the newly
+exposed strip, so an already-drawn header band got dragged along with
+the scroll instead of staying put. Fixed by overriding
+`SheetView::ScrollTo(BPoint)` (the single interception point for
+*every* scroll trigger) to invalidate just the old and new header
+bands, not the whole view.
+
+## Application icon
+
+`ui/icons/atomo123.svg` (hand-drawn, flat SVG for Icon-O-Matic import
+compatibility) → `ui/icons/atomo123.hvif` (exported from Icon-O-Matic)
+→ embedded as a `VICN`/`BEOS:ICON` resource in `ui/Atomo123.rdef`,
+compiled by `rc` and attached with `xres` as part of the normal build.
+
+## Known limitations
+
+- Format menu covers General/Number/Currency/Percentage only — no
+  control over decimal places, font, color, border, alignment or date
+  formatting from a dedicated menu (the engine supports all of these
+  via `CellStyle`, just not exposed yet where noted above).
+- No drag-select range on the grid — chart/pivot ranges are typed
+  manually.
+
+## Notable fixes found building this UI
+
+- **`BApplication`/`BWindow` thread violation**: `App::RefsReceived`
+  (application thread) called `MainWindow::OpenFile()` directly, which
+  touches `BView`s that live on the window's own `BLooper` thread —
+  corrupting state under a concurrent `Draw()`/`Invalidate()` from the
+  correct thread. Fixed by forwarding the message with `PostMessage()`
+  instead of calling directly — the rule now documented above.
+- **Formulas never recalculated on load**: `TryToParseString` (used by
+  `LoadASCD` and the CSV translator's `ReadASCD`) sets a cell's
+  formula but doesn't calculate it — any file opened with formula
+  cells showed them blank until the user touched them by hand. Fixed
+  with a new `RecalculateAll()` that iterates and calls `CalcCell` on
+  every cell, repeating until nothing changes (dependency order isn't
+  guaranteed by insertion order).
+- **Grid not filling the window**: `SheetView` was constructed with a
+  fixed placeholder `Frame()` (100×100) never resized afterward — an
+  app_server `Draw()` update rect can never exceed a view's own
+  `Frame()`, so only that tiny corner ever rendered regardless of
+  window size. Fixed by giving `SheetView` the full virtual-canvas
+  `Frame()` from construction (see canvas model above).
+- **Enter not committing in-cell edits**: relying on `BTextControl`'s
+  automatic `Invoke()` on Enter proved unreliable; fixed by
+  intercepting `B_RETURN` explicitly with the same key-filter mechanism
+  used for Escape (see "Editing" above).
