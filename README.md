@@ -11,7 +11,7 @@ If Atomo123 saves you time, consider supporting development: [![Buy Me A Coffee]
 
 ## Status
 
-**v0.1.0 released** — see [ROADMAP.md](ROADMAP.md) for the phased plan
+**v0.2.0 released** — see [ROADMAP.md](ROADMAP.md) for the phased plan
 and up-to-date status. In short: the calculation engine and legacy
 Excel importer reuse and modernize the old BeOS **Sum-It** project
 (community fork `OpenSumIt`), ported to build on modern 64-bit Haiku;

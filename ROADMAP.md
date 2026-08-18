@@ -5,7 +5,7 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.1.0 released, v0.2.0 in preparation.** All planned phases
+**Status: v0.2.0 released.** All planned phases
 through "closing the gap with Excel" are done or in good shape; a
 handful of large, optional features remain unplanned backlog items
 (see "Not currently planned" below). Full history of individual fixes
@@ -31,7 +31,7 @@ project-level status only.
 | 13. Closing the gap with Excel | Mostly done | See below |
 | Release prep (v0.1.0) | Done | Tagged on GitHub, hpkg packaging, license headers, English localization |
 | Live formula export | Done | XLSX/ODS export now writes live formulas (not just calculated values); CSV stays value-only by design |
-| Release prep (v0.2.0) | In progress | See "Current focus" below |
+| Release prep (v0.2.0) | Done | Tagged on GitHub, translators bundled in the hpkg, doc rewrite, splash/About-panel polish (see "Current focus" below) |
 
 ### Phase 13 detail
 
@@ -57,7 +57,7 @@ existing code to build on):
 
 ## Current focus
 
-Preparing the v0.2.0 release, on top of the v0.1.0 baseline:
+What shipped in v0.2.0, on top of the v0.1.0 baseline:
 - XLSX/ODS export now writes live formulas for same-sheet references
   (cross-sheet references still export as a value only, since each
   format writes a single sheet per file)
@@ -69,6 +69,7 @@ Preparing the v0.2.0 release, on top of the v0.1.0 baseline:
 - Splash screen shows the build's commit hash under the version number
 - All documentation rewritten from Italian to concise English
   (`README.md`, this file, `docs/*.md`)
+- hpkg packaging now bundles all four translators alongside the app
 
 ## Related work
 
