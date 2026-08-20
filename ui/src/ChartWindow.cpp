@@ -29,7 +29,7 @@ static const uint32 kMsgTypeChangedLocal = 'tpcl';
 
 ChartWindow::ChartWindow(BMessenger target)
 	:
-	BWindow(BRect(180, 180, 580, 500), B_TRANSLATE("Grafico"),
+	BWindow(BRect(140, 120, 780, 680), B_TRANSLATE("Grafico"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target)

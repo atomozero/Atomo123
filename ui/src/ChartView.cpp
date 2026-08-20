@@ -15,6 +15,10 @@ ChartView::ChartView()
 	fType(eBarChart)
 {
 	SetViewColor(255, 255, 255);
+	// Senza una dimensione minima esplicita, BLayoutBuilder puo'
+	// schiacciare l'anteprima a quasi nulla se la finestra che la
+	// contiene e' troppo piccola per il resto dei controlli.
+	SetExplicitMinSize(BSize(380, 260));
 }
 
 void ChartView::SetData(const std::vector<ChartSeries>& data)
