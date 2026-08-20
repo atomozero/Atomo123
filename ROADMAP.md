@@ -101,6 +101,13 @@ Since v0.2.0 (not yet in a tagged release):
 - Embedded charts (bar/line/pie) can now be moved with the mouse,
   same as embedded images — click and drag, undoable, auto-scrolls
   past the visible edge. No resize handle (not requested)
+- The chart dialog window was too small for its own controls (fixed
+  400x320px, no minimum size on the preview) — enlarged to 640x560
+  and the chart preview now has an explicit minimum size
+- Chart rendering quality: bar and line charts now show a Y-axis
+  grid with value labels, plus the exact value above each bar/point;
+  the pie chart shows each slice's percentage next to its legend
+  entry
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
