@@ -154,6 +154,35 @@ int main()
 	Check(negativeSlices.empty(),
 		"ComputePieLayout su una serie con solo valori non positivi non produce spicchi");
 
+	// ComputeYAxisTicks: 5 tacche equidistanti da 0 a maxValue, con
+	// coordinate Y decrescenti (0 in basso, maxValue in alto) dentro
+	// plotArea -- stesso principio geometrico di ComputeBarLayout sopra.
+	std::vector<AxisTick> ticks;
+	BRect plotArea(0, 0, 100, 40);
+	ComputeYAxisTicks(20.0, plotArea, ticks);
+
+	Check(ticks.size() == 5, "ComputeYAxisTicks produce 5 tacche (0, 1/4, 2/4, 3/4, max)");
+	if (ticks.size() == 5)
+	{
+		Check(ticks[0].label == "0", "la prima tacca vale 0");
+		Check(ticks[4].label == "20", "l'ultima tacca vale il massimo");
+		Check(ticks[0].y == plotArea.bottom,
+			"la tacca 0 sta sul bordo inferiore di plotArea");
+		Check(ticks[4].y == plotArea.top,
+			"la tacca del massimo sta sul bordo superiore di plotArea");
+		Check(ticks[2].label == "10", "la tacca di mezzo vale la meta' del massimo");
+		Check(ticks[0].y > ticks[2].y && ticks[2].y > ticks[4].y,
+			"le coordinate Y decrescono salendo verso il massimo");
+	}
+
+	// Una serie tutta a zero (o vuota) non deve dividere per zero: usa
+	// 1 come massimo di riserva, stesso principio di ChartMaxValue in
+	// ComputeBarLayout/ComputePieLayout.
+	std::vector<AxisTick> zeroTicks;
+	ComputeYAxisTicks(0.0, plotArea, zeroTicks);
+	Check(zeroTicks.size() == 5,
+		"ComputeYAxisTicks con massimo 0 non va in errore, produce comunque 5 tacche");
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();

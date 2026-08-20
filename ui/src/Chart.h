@@ -66,6 +66,23 @@ struct BarLayout {
 	BRect bar;
 };
 
+struct AxisTick {
+	float y;		// coordinata Y dentro plotArea
+	BString label;	// valore gia' formattato (stesso formato "%g" di ValueToLabel)
+};
+
+// Tacche dell'asse Y: valori equidistanti da 0 a maxValue, convertiti in
+// coordinate Y dentro plotArea. Funzione pura (nessun BView/Draw), usata
+// sia per disegnare la griglia sia per misurare la larghezza delle
+// etichette prima di riservare il margine sinistro del grafico -- vedi
+// DrawBarChart/DrawLineChart.
+void ComputeYAxisTicks(double maxValue, BRect plotArea, std::vector<AxisTick>& out);
+
+// Disegna la griglia orizzontale (linee chiare) e le etichette numeriche
+// a sinistra di plotArea -- condivisa da barre e linee, che condividono
+// lo stesso asse a valori (a differenza della torta, che non ne ha uno).
+void DrawYAxisGrid(BView* view, BRect plotArea, double maxValue);
+
 // Calcola il rettangolo di ogni barra dentro "bounds", scalato al
 // valore massimo della serie. Funzione pura (nessun BView/Draw),
 // cosi' e' verificabile con un test headless.
