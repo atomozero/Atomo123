@@ -146,6 +146,10 @@ Since v0.2.0 (not yet in a tagged release):
   it had no label or explanation before, which was confusing
 - Embedded charts can now be resized (bottom-right handle), same as
   embedded images — previously move-only
+- "Salva con nome" in the File menu is now a submenu with one entry
+  per output format (native/.csv/.xlsx/.ods) — the format could only
+  be chosen before by typing the extension by hand, with no indication
+  that was even possible
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
