@@ -34,6 +34,7 @@
 #include <SupportDefs.h>
 
 #include "XlsxTranslator.h"
+#include "MiniZip.h"
 #include "Cell.h"
 #include "Value.h"
 #include "Container.h"
@@ -99,6 +100,147 @@ static status_t WriteASCDForTest(CContainer* doc, BPositionIO* dest)
 		if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
 			return B_IO_ERROR;
 		if (len > 0 && dest->Write(text, len) != len)
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
+// Come WriteASCDForTest sopra, ma scrive anche UN grafico incorporato
+// (Fase 24, esportazione dei grafici verso XLSX) -- replica a mano
+// l'INTERO formato ASCD in coda (vedi SaveASCD in ui/src/AscdIO.cpp),
+// non solo la sezione grafici, perche' XlsxTranslator::ReadASCD legge
+// le sezioni IN ORDINE fino al titolo del grafico incluso (l'ultima):
+// scrivere solo chartCount e fermarsi qui lascerebbe il tipo/titolo al
+// valore predefinito (0=barre, titolo vuoto), che basta per un test
+// ma non per verificare che tipo/titolo arrivino davvero fino a
+// chart1.xml. Ogni sezione intermedia e' vuota (count/valore a zero),
+// solo grafico/tipo/titolo hanno un valore vero.
+static status_t WriteASCDWithChartForTest(CContainer* doc, int16 chartLeft, int16 chartTop,
+	int16 chartRight, int16 chartBottom, float frameLeft, float frameTop,
+	float frameRight, float frameBottom, int8 chartType, const char* chartTitle,
+	BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati: chartCount=1, un record.
+	{
+		int32 chartCount = 1;
+		float frame[4] = { frameLeft, frameTop, frameRight, frameBottom };
+		if (dest->Write(&chartCount, sizeof(chartCount)) != (ssize_t)sizeof(chartCount)
+			|| dest->Write(&chartLeft, sizeof(chartLeft)) != (ssize_t)sizeof(chartLeft)
+			|| dest->Write(&chartTop, sizeof(chartTop)) != (ssize_t)sizeof(chartTop)
+			|| dest->Write(&chartRight, sizeof(chartRight)) != (ssize_t)sizeof(chartRight)
+			|| dest->Write(&chartBottom, sizeof(chartBottom)) != (ssize_t)sizeof(chartBottom)
+			|| dest->Write(frame, sizeof(frame)) != (ssize_t)sizeof(frame))
+			return B_IO_ERROR;
+	}
+
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi
+	// a zero, stesso schema (int32 count).
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Blocca riquadri: due int32, sempre presenti (non un conteggio).
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+
+	// commenti, collegamenti ipertestuali: due conteggi a zero.
+	for (int i = 0; i < 2; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Tipo di grafico incorporato: chartTypeCount=1, un byte -- stesso
+	// ordine dell'array di grafici scritto piu' sopra.
+	{
+		int32 chartTypeCount = 1;
+		if (dest->Write(&chartTypeCount, sizeof(chartTypeCount)) != (ssize_t)sizeof(chartTypeCount)
+			|| dest->Write(&chartType, sizeof(chartType)) != (ssize_t)sizeof(chartType))
+			return B_IO_ERROR;
+	}
+
+	// Colore del bordo di cella: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Convalida dati, formattazione condizionale, tabelle strutturate:
+	// tre conteggi a zero.
+	for (int i = 0; i < 3; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Titolo di grafico incorporato: ULTIMA sezione, chartTitleCount=1,
+	// una stringa -- stesso ordine dell'array di grafici.
+	{
+		int32 chartTitleCount = 1;
+		int32 titleLen = (int32)strlen(chartTitle);
+		if (dest->Write(&chartTitleCount, sizeof(chartTitleCount)) != (ssize_t)sizeof(chartTitleCount)
+			|| dest->Write(&titleLen, sizeof(titleLen)) != (ssize_t)sizeof(titleLen))
+			return B_IO_ERROR;
+		if (titleLen > 0 && dest->Write(chartTitle, titleLen) != titleLen)
 			return B_IO_ERROR;
 	}
 
@@ -2593,6 +2735,160 @@ int main()
 
 			doc.Release();
 		}
+	}
+
+	// Esportazione dei grafici incorporati verso XLSX (Fase 24): prima
+	// di questo lavoro un grafico Atomo123 spariva del tutto
+	// esportando in .xlsx (nessuna parte xl/charts/xl/drawings mai
+	// scritta). Due scenari: un grafico a barre a UNA serie senza
+	// titolo (A1:B3, etichetta+valore), e uno a torta CON titolo,
+	// entrambi verificati aprendo il vero file XLSX prodotto come
+	// archivio ZIP e leggendo xl/charts/chart1.xml/xl/drawings/
+	// drawing1.xml al loro interno -- non solo che il round-trip
+	// ASCD->XLSX->ASCD conservi i dati (gia' verificato sopra per le
+	// celle), ma che le parti OOXML del grafico vero e proprio
+	// esistano e contengano i valori giusti.
+	{
+		CContainer &chartDoc = *new CContainer(NULL, NULL);
+		TryToParseString("Gen", cell(1, 1), &chartDoc, true); // A1
+		TryToParseString("10", cell(2, 1), &chartDoc, true);  // B1
+		TryToParseString("Feb", cell(1, 2), &chartDoc, true); // A2
+		TryToParseString("20", cell(2, 2), &chartDoc, true);  // B2
+		TryToParseString("Mar", cell(1, 3), &chartDoc, true); // A3
+		TryToParseString("30", cell(2, 3), &chartDoc, true);  // B3
+
+		BMallocIO chartAscdIn;
+		status_t chartSaveErr = WriteASCDWithChartForTest(&chartDoc,
+			1, 1, 2, 3,			// dataRange A1:B3
+			100, 100, 500, 400,	// frame (pixel)
+			0, "",					// tipo barre, nessun titolo
+			&chartAscdIn);
+		Check(chartSaveErr == B_OK, "preparazione dell'ASCD di prova con un grafico riesce");
+		chartDoc.Release();
+
+		chartAscdIn.Seek(0, SEEK_SET);
+		translator_info chartInfo;
+		err = translator->Identify(&chartAscdIn, NULL, NULL, &chartInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && chartInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD di prova con un grafico");
+
+		chartAscdIn.Seek(0, SEEK_SET);
+		BMallocIO chartXlsxOut;
+		err = translator->Translate(&chartAscdIn, &chartInfo, NULL, kAtomoXlsxFormat, &chartXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con un grafico) -> XLSX riesce");
+
+		chartXlsxOut.Seek(0, SEEK_SET);
+		CZipReader zip;
+		Check(zip.Open(&chartXlsxOut), "il file XLSX con un grafico e' un vero archivio ZIP leggibile");
+
+		Check(zip.HasEntry("xl/drawings/drawing1.xml"),
+			"il file XLSX contiene xl/drawings/drawing1.xml (il grafico e' davvero ancorato al foglio)");
+		Check(zip.HasEntry("xl/charts/chart1.xml"),
+			"il file XLSX contiene xl/charts/chart1.xml (la definizione vera del grafico)");
+		Check(zip.HasEntry("xl/worksheets/_rels/sheet1.xml.rels"),
+			"il file XLSX collega il foglio al drawing tramite un vero .rels");
+
+		std::vector<unsigned char> sheetXmlBytes;
+		if (zip.ReadEntry("xl/worksheets/sheet1.xml", sheetXmlBytes))
+		{
+			std::string sheetXml((const char*)&sheetXmlBytes[0], sheetXmlBytes.size());
+			Check(sheetXml.find("<drawing r:id=\"rId1\"/>") != std::string::npos,
+				"xl/worksheets/sheet1.xml referenzia il drawing (<drawing r:id=\"rId1\"/>)");
+		}
+		else
+			Check(false, "xl/worksheets/sheet1.xml si legge dall'archivio");
+
+		std::vector<unsigned char> chartXmlBytes;
+		if (zip.ReadEntry("xl/charts/chart1.xml", chartXmlBytes))
+		{
+			std::string chartXml((const char*)&chartXmlBytes[0], chartXmlBytes.size());
+			Check(chartXml.find("<c:barChart>") != std::string::npos,
+				"chart1.xml e' un grafico a barre (<c:barChart>), come richiesto");
+			Check(chartXml.find("Foglio1!$A$1:$A$3") != std::string::npos,
+				"chart1.xml referenzia le categorie vere (Foglio1!$A$1:$A$3)");
+			Check(chartXml.find("Foglio1!$B$1:$B$3") != std::string::npos,
+				"chart1.xml referenzia i valori veri (Foglio1!$B$1:$B$3)");
+			Check(chartXml.find("<c:v>Gen</c:v>") != std::string::npos
+					&& chartXml.find("<c:v>Feb</c:v>") != std::string::npos
+					&& chartXml.find("<c:v>Mar</c:v>") != std::string::npos,
+				"chart1.xml ha in cache le tre etichette vere (Gen/Feb/Mar)");
+			Check(chartXml.find("<c:v>10</c:v>") != std::string::npos
+					&& chartXml.find("<c:v>20</c:v>") != std::string::npos
+					&& chartXml.find("<c:v>30</c:v>") != std::string::npos,
+				"chart1.xml ha in cache i tre valori veri (10/20/30)");
+			Check(chartXml.find("<c:autoTitleDeleted val=\"1\"/>") != std::string::npos,
+				"chart1.xml non ha nessun titolo (autoTitleDeleted, come richiesto)");
+			// Un grafico a una sola serie non ha bisogno di legenda,
+			// stesso principio gia' seguito da DrawBarChart nell'app.
+			Check(chartXml.find("<c:legend>") == std::string::npos,
+				"chart1.xml (una sola serie) non ha nessuna legenda");
+		}
+		else
+			Check(false, "xl/charts/chart1.xml si legge dall'archivio");
+
+		// Round-trip completo: il file XLSX appena scritto (dati +
+		// grafico) si riapre ancora correttamente con lo stesso
+		// translator, stessa identica verifica gia' fatta per le sole
+		// celle piu' sopra -- un grafico incorporato non deve rompere
+		// l'importazione dei dati.
+		chartXlsxOut.Seek(0, SEEK_SET);
+		translator_info chartReimportInfo;
+		err = translator->Identify(&chartXlsxOut, NULL, NULL, &chartReimportInfo, 0);
+		Check(err == B_OK && chartReimportInfo.type == kAtomoXlsxFormat,
+			"il file XLSX con un grafico si riconosce ancora come XLSX valido rileggendolo");
+
+		chartXlsxOut.Seek(0, SEEK_SET);
+		BMallocIO chartAscdOut;
+		err = translator->Translate(&chartXlsxOut, &chartReimportInfo, NULL, kAtomoNativeFormat, &chartAscdOut);
+		Check(err == B_OK, "il file XLSX con un grafico si rilegge correttamente (round-trip)");
+	}
+
+	// Stesso scenario, ma una torta CON titolo (Assunzioni: A1:B3 e'
+	// comunque a due colonne, quindi resta a una serie anche per la
+	// torta -- vedi il dispatch "columnCount > 2 && type != ePieChart"
+	// in SheetView::Draw, replicato in BuildChartXml).
+	{
+		CContainer &pieDoc = *new CContainer(NULL, NULL);
+		TryToParseString("Rosso", cell(1, 1), &pieDoc, true);
+		TryToParseString("40", cell(2, 1), &pieDoc, true);
+		TryToParseString("Blu", cell(1, 2), &pieDoc, true);
+		TryToParseString("60", cell(2, 2), &pieDoc, true);
+
+		BMallocIO pieAscdIn;
+		status_t pieSaveErr = WriteASCDWithChartForTest(&pieDoc,
+			1, 1, 2, 2,
+			0, 0, 300, 300,
+			2, "Distribuzione colori", // tipo torta, con titolo
+			&pieAscdIn);
+		Check(pieSaveErr == B_OK, "preparazione dell'ASCD di prova con una torta con titolo riesce");
+		pieDoc.Release();
+
+		pieAscdIn.Seek(0, SEEK_SET);
+		translator_info pieInfo;
+		translator->Identify(&pieAscdIn, NULL, NULL, &pieInfo, kAtomoXlsxFormat);
+
+		pieAscdIn.Seek(0, SEEK_SET);
+		BMallocIO pieXlsxOut;
+		err = translator->Translate(&pieAscdIn, &pieInfo, NULL, kAtomoXlsxFormat, &pieXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con una torta con titolo) -> XLSX riesce");
+
+		pieXlsxOut.Seek(0, SEEK_SET);
+		CZipReader pieZip;
+		pieZip.Open(&pieXlsxOut);
+
+		std::vector<unsigned char> pieChartBytes;
+		if (pieZip.ReadEntry("xl/charts/chart1.xml", pieChartBytes))
+		{
+			std::string pieXml((const char*)&pieChartBytes[0], pieChartBytes.size());
+			Check(pieXml.find("<c:pieChart>") != std::string::npos,
+				"chart1.xml di una torta e' davvero <c:pieChart>, non barre/linee");
+			Check(pieXml.find("<a:t>Distribuzione colori</a:t>") != std::string::npos,
+				"chart1.xml conserva il titolo scelto (\"Distribuzione colori\")");
+			Check(pieXml.find("<c:legend>") != std::string::npos,
+				"chart1.xml di una torta ha una legenda (le fette si distinguono per colore)");
+		}
+		else
+			Check(false, "xl/charts/chart1.xml (torta) si legge dall'archivio");
 	}
 
 	translator->Release();

@@ -1745,7 +1745,17 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	// ".xls", mostrando l'errore sotto invece di un'estensione senza
 	// il translator giusto).
 	BMallocIO ascd;
-	status_t err = SaveASCD(fDoc, &ascd);
+	// fCharts va passato esplicitamente (a differenza del ramo nativo
+	// sopra, che lo sincronizza gia' in fSheets[fActiveSheetIndex]
+	// prima di SaveASCDBook): senza, SaveASCD scrive sempre
+	// chartCount=0 qui, indipendentemente da quanti grafici il
+	// documento ha davvero -- bug reale scoperto scrivendo il test di
+	// questa funzionalita' (Fase 24, esportazione dei grafici verso
+	// XLSX): il translator riceveva un flusso ASCD senza nessun
+	// grafico, quindi non aveva letteralmente nulla da esportare,
+	// anche dopo aver insegnato a XlsxTranslator::ReadASCD/WriteXLSX a
+	// leggerli/scriverli.
+	status_t err = SaveASCD(fDoc, &ascd, &fCharts);
 	if (err != B_OK)
 	{
 		BAlert* alert = new BAlert(B_TRANSLATE("Errore"), B_TRANSLATE("Serializzazione del documento fallita."), B_TRANSLATE("OK"));

@@ -800,12 +800,34 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	return B_OK;
 }
 
+// Un grafico incorporato letto dal flusso ASCD (Fase 24, esportazione
+// dei grafici verso XLSX): stessi campi di ChartObject in
+// ui/src/Chart.h, MAI quell'header incluso qui apposta -- stesso
+// principio di ogni altro pezzo del formato ASCD duplicato in questo
+// file (vedi AscdIO.h): un translator resta autonomo dall'app, nessun
+// collegamento a ui/src/*.
+struct XlsxChartInfo {
+	int16 dataLeft, dataTop, dataRight, dataBottom; // ChartObject::dataRange (celle, 1-based)
+	float frameLeft, frameTop, frameRight, frameBottom; // ChartObject::frame (pixel nel foglio)
+	int8 type; // 0 = barre, 1 = linee, 2 = torta (ChartType in Chart.h)
+	std::string title;
+};
+
 // Legge un flusso ASCD e ricostruisce le celle in "doc" (vuoto in
 // ingresso) -- stessa logica di CsvTranslator.cpp/OdsTranslator.cpp,
 // usata qui per l'esportazione (ASCD -> XLSX, la direzione opposta
 // della normale importazione XLSX -> ASCD gestita da ParseSheet/
-// WriteASCD sopra).
-static status_t ReadASCD(BPositionIO* source, CContainer* doc)
+// WriteASCD sopra). "outCharts" e' opzionale (NULL per chi non ha
+// bisogno dei grafici, es. l'esportazione verso il formato nativo
+// stesso qualche riga piu' sotto): se presente, legge anche le
+// sezioni in coda del formato ASCD fino al titolo dei grafici incluso
+// (l'ULTIMA sezione, vedi SaveASCD/LoadASCD in ui/src/AscdIO.cpp),
+// scartando ogni altra sezione intermedia (colori, bordi, commenti,
+// ecc. -- non ancora esportati verso XLSX) MA consumandone comunque i
+// byte per restare allineati fino in fondo, stesso principio
+// EOF-tollerante gia' documentato li'.
+static status_t ReadASCD(BPositionIO* source, CContainer* doc,
+	std::vector<XlsxChartInfo>* outCharts = NULL)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -905,6 +927,540 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 		}
 	}
 
+	if (!outCharts)
+		return B_OK;
+	outCharts->clear();
+
+	// Sezione grafici incorporati (prima sezione in coda, vedi
+	// SaveASCD in ui/src/AscdIO.cpp): posizione/dimensione di ogni
+	// grafico. "got == 0" qui significa "file scritto prima che questa
+	// sezione esistesse", non un errore -- stesso principio
+	// EOF-tollerante di ogni altra sezione qui sotto.
+	{
+		int32 chartCount = 0;
+		ssize_t got = source->Read(&chartCount, sizeof(chartCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartCount; i++)
+			{
+				XlsxChartInfo info;
+				info.type = 0;
+				float frame[4];
+				if (source->Read(&info.dataLeft, sizeof(info.dataLeft)) != (ssize_t)sizeof(info.dataLeft)
+					|| source->Read(&info.dataTop, sizeof(info.dataTop)) != (ssize_t)sizeof(info.dataTop)
+					|| source->Read(&info.dataRight, sizeof(info.dataRight)) != (ssize_t)sizeof(info.dataRight)
+					|| source->Read(&info.dataBottom, sizeof(info.dataBottom)) != (ssize_t)sizeof(info.dataBottom)
+					|| source->Read(frame, sizeof(frame)) != (ssize_t)sizeof(frame))
+					return B_BAD_DATA;
+				info.frameLeft = frame[0];
+				info.frameTop = frame[1];
+				info.frameRight = frame[2];
+				info.frameBottom = frame[3];
+				outCharts->push_back(info);
+			}
+		}
+	}
+
+	// Tutte le sezioni intermedie (fra i grafici sopra e il tipo di
+	// grafico piu' sotto) non riguardano ancora l'esportazione XLSX
+	// (colori, bordi, commenti, tabelle, ecc.) -- vanno pero' comunque
+	// lette e scartate, MAI saltate, per restare allineati fino alla
+	// sezione tipo/titolo di grafico in fondo al formato (stesso
+	// principio EOF-tollerante, vedi il commento su
+	// project_translator_ascd_trailing_section_bug in memoria: un
+	// disallineamento qui produrrebbe B_BAD_DATA o dati insensati letti
+	// come se fossero il tipo/titolo del grafico). Elenco ESATTO e
+	// nello STESSO ORDINE di LoadASCD in ui/src/AscdIO.cpp fra le due
+	// sezioni che servono davvero qui.
+	{
+		// Larghezze di colonna: (int16 col, float width) per record.
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 col; float width;
+				if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&width, sizeof(width)) != (ssize_t)sizeof(width))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Colori di cella: (int16 row, int16 col, 8 byte colore) per record.
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; uint8 colorBuf[8];
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(colorBuf, sizeof(colorBuf)) != (ssize_t)sizeof(colorBuf))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Colori di colonna: (int16 col, 8 byte colore) per record.
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 col; uint8 colorBuf[8];
+				if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(colorBuf, sizeof(colorBuf)) != (ssize_t)sizeof(colorBuf))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Altezze di riga: (int16 row, float height) per record.
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row; float height;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&height, sizeof(height)) != (ssize_t)sizeof(height))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Blocca riquadri: due int32, MAI un conteggio davanti (sempre
+		// presenti insieme, diverso da tutte le altre sezioni qui).
+		int32 fr = 0, fc = 0;
+		ssize_t got = source->Read(&fr, sizeof(fr));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(fr)
+				|| source->Read(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+				return B_BAD_DATA;
+		}
+	}
+	{
+		// Font di cella: (int16 row, int16 col, font_family, font_style, float size).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; font_family family; font_style style; float size;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(family, sizeof(font_family)) != (ssize_t)sizeof(font_family)
+					|| source->Read(style, sizeof(font_style)) != (ssize_t)sizeof(font_style)
+					|| source->Read(&size, sizeof(size)) != (ssize_t)sizeof(size))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Allineamento di cella: (int16 row, int16 col, int8 allineamento).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; int8 alignment;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&alignment, sizeof(alignment)) != (ssize_t)sizeof(alignment))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Bordi di cella (spessore): (int16 row, int16 col, 4 byte lati).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; uint8 sides[4];
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(sides, sizeof(sides)) != (ssize_t)sizeof(sides))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Formato numero di cella: (int16 row, int16 col, int32 formato).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; int32 format;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&format, sizeof(format)) != (ssize_t)sizeof(format))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Sottolineato di cella: (int16 row, int16 col), nessun valore.
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Testo a capo di cella: (int16 row, int16 col), nessun valore.
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Celle unite: (int16 top, left, bottom, right) per record.
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 top, left, bottom, right;
+				if (source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+					|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Immagini incorporate: (int16 row, col, 4 float geom, int32
+		// pngLen, poi pngLen byte del PNG).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; float geom[4]; int32 pngLen;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
+					|| source->Read(&pngLen, sizeof(pngLen)) != (ssize_t)sizeof(pngLen))
+					return B_BAD_DATA;
+				if (pngLen < 0 || pngLen > 200 * 1024 * 1024)
+					return B_BAD_DATA;
+				if (pngLen > 0 && source->Seek(pngLen, SEEK_CUR) < 0)
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Visibilita' griglia: un solo byte, MAI un conteggio davanti.
+		uint8 sg = 1;
+		ssize_t got = source->Read(&sg, sizeof(sg));
+		if (got != 0 && got != (ssize_t)sizeof(sg))
+			return B_BAD_DATA;
+	}
+	{
+		// Colore linguetta foglio: (uint8 has, poi 3 byte rgb se has != 0).
+		uint8 has = 0; uint8 rgb[3];
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has)
+				|| source->Read(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+				return B_BAD_DATA;
+		}
+	}
+	{
+		// Righe nascoste: un int16 per record.
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// AutoFilter: (uint8 has, poi 4 int16 range se has != 0).
+		uint8 has = 0; int16 t2, l2, b2, r2;
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has)
+				|| source->Read(&t2, sizeof(t2)) != (ssize_t)sizeof(t2)
+				|| source->Read(&l2, sizeof(l2)) != (ssize_t)sizeof(l2)
+				|| source->Read(&b2, sizeof(b2)) != (ssize_t)sizeof(b2)
+				|| source->Read(&r2, sizeof(r2)) != (ssize_t)sizeof(r2))
+				return B_BAD_DATA;
+		}
+	}
+	{
+		// Commenti: (int16 row, col, int32 len, poi len byte di testo).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; int32 len;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+				if (len < 0 || len > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				if (len > 0 && source->Seek(len, SEEK_CUR) < 0)
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Collegamenti ipertestuali: stesso schema esatto dei commenti sopra.
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; int32 len;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+				if (len < 0 || len > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				if (len > 0 && source->Seek(len, SEEK_CUR) < 0)
+					return B_BAD_DATA;
+			}
+		}
+	}
+
+	// Sezione tipo di grafico incorporato: assegna nello STESSO ordine
+	// dell'array outCharts gia' popolato piu' sopra (vedi il commento
+	// gemello in LoadASCD).
+	{
+		int32 chartTypeCount = 0;
+		ssize_t got = source->Read(&chartTypeCount, sizeof(chartTypeCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartTypeCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartTypeCount; i++)
+			{
+				int8 type;
+				if (source->Read(&type, sizeof(type)) != (ssize_t)sizeof(type))
+					return B_BAD_DATA;
+				if (i < (int32)outCharts->size())
+					(*outCharts)[i].type = type;
+			}
+		}
+	}
+	{
+		// Colore del bordo di cella: (int16 row, col, rgb_color = 4 byte).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; uint8 colorBuf[4];
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(colorBuf, sizeof(colorBuf)) != (ssize_t)sizeof(colorBuf))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Convalida dati: (int16 row, col, int8 tipo, int32 len, len
+		// byte elenco, 2 double min/max).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; int8 type; int32 len;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&type, sizeof(type)) != (ssize_t)sizeof(type)
+					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+				if (len < 0 || len > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				if (len > 0 && source->Seek(len, SEEK_CUR) < 0)
+					return B_BAD_DATA;
+				double minV, maxV;
+				if (source->Read(&minV, sizeof(minV)) != (ssize_t)sizeof(minV)
+					|| source->Read(&maxV, sizeof(maxV)) != (ssize_t)sizeof(maxV))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		// Formattazione condizionale: (int8 tipo, int32 valueLen, valueLen
+		// byte, rgb_color 4 byte, int32 rangeCount, rangeCount * 4 int16).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int8 type; int32 valueLen;
+				if (source->Read(&type, sizeof(type)) != (ssize_t)sizeof(type)
+					|| source->Read(&valueLen, sizeof(valueLen)) != (ssize_t)sizeof(valueLen))
+					return B_BAD_DATA;
+				if (valueLen < 0 || valueLen > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				if (valueLen > 0 && source->Seek(valueLen, SEEK_CUR) < 0)
+					return B_BAD_DATA;
+				uint8 bgColorBuf[4];
+				int32 rangeCount;
+				if (source->Read(bgColorBuf, sizeof(bgColorBuf)) != (ssize_t)sizeof(bgColorBuf)
+					|| source->Read(&rangeCount, sizeof(rangeCount)) != (ssize_t)sizeof(rangeCount))
+					return B_BAD_DATA;
+				for (int32 r = 0; r < rangeCount; r++)
+				{
+					int16 left, top, right, bottom;
+					if (source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+						|| source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+						|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right)
+						|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+						return B_BAD_DATA;
+				}
+			}
+		}
+	}
+	{
+		// Tabelle strutturate: (int32 nameLen, nameLen byte, 4 int16
+		// range, int32 columnCount, per colonna: int32 colLen + colLen byte).
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int32 nameLen;
+				if (source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_BAD_DATA;
+				if (nameLen < 0 || nameLen > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				if (nameLen > 0 && source->Seek(nameLen, SEEK_CUR) < 0)
+					return B_BAD_DATA;
+
+				int16 left, top, right, bottom;
+				if (source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right)
+					|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+					return B_BAD_DATA;
+
+				int32 columnCount;
+				if (source->Read(&columnCount, sizeof(columnCount)) != (ssize_t)sizeof(columnCount))
+					return B_BAD_DATA;
+				if (columnCount < 0 || columnCount > kColCount)
+					return B_BAD_DATA;
+				for (int32 c = 0; c < columnCount; c++)
+				{
+					int32 colLen;
+					if (source->Read(&colLen, sizeof(colLen)) != (ssize_t)sizeof(colLen))
+						return B_BAD_DATA;
+					if (colLen < 0 || colLen > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+					if (colLen > 0 && source->Seek(colLen, SEEK_CUR) < 0)
+						return B_BAD_DATA;
+				}
+			}
+		}
+	}
+
+	// Sezione titolo di grafico incorporato: ULTIMA sezione del
+	// formato, assegna nello STESSO ordine di outCharts (vedi il
+	// commento gemello in LoadASCD).
+	{
+		int32 chartTitleCount = 0;
+		ssize_t got = source->Read(&chartTitleCount, sizeof(chartTitleCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartTitleCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartTitleCount; i++)
+			{
+				int32 len;
+				if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+				if (len < 0 || len > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+
+				std::string title;
+				if (len > 0)
+				{
+					title.resize(len);
+					if (source->Read(&title[0], len) != len)
+						return B_BAD_DATA;
+				}
+				if (i < (int32)outCharts->size())
+					(*outCharts)[i].title = title;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -940,14 +1496,18 @@ static void AppendXmlEscaped(std::string& out, const char* text)
 // raccogliere i valori unici, complessita' non necessaria per i
 // fogli tipici esportati da questo programma, ed e' comunque sintassi
 // OOXML valida (Excel/LibreOffice la leggono correttamente).
-static std::string BuildSheetXml(CContainer* doc)
+static std::string BuildSheetXml(CContainer* doc, bool hasDrawing)
 {
 	range bounds;
 	doc->GetBounds(bounds);
 
 	std::string xml;
 	xml += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
-	xml += "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">";
+	// xmlns:r sempre presente (anche senza grafici): serve solo per
+	// l'attributo r:id di <drawing> sotto, innocuo da dichiarare anche
+	// quando non usato.
+	xml += "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">";
 	xml += "<sheetData>";
 
 	CCellIterator iter(doc, &bounds);
@@ -1035,20 +1595,380 @@ static std::string BuildSheetXml(CContainer* doc)
 	if (curRow != -1)
 		xml += "</row>";
 
-	xml += "</sheetData></worksheet>";
+	xml += "</sheetData>";
+	// <drawing> e' un fratello di <sheetData> (mai al suo interno),
+	// deve venire DOPO nello schema OOXML del foglio -- ancora i grafici
+	// incorporati (Fase 24) tramite xl/drawings/drawing1.xml, sempre
+	// r:id="rId1" perche' e' l'unica relazione aggiuntiva che questo
+	// foglio puo' avere (vedi il rels scritto in WriteXLSX sotto).
+	if (hasDrawing)
+		xml += "<drawing r:id=\"rId1\"/>";
+	xml += "</worksheet>";
 	return xml;
 }
 
-static status_t WriteXLSX(CContainer* doc, BPositionIO* dest)
+// --- Esportazione dei grafici incorporati verso XLSX (Fase 24) ------
+//
+// Prima di questo lavoro i grafici creati in Atomo123 non venivano
+// esportati affatto: WriteXLSX scriveva solo i dati delle celle,
+// nessuna parte xl/charts/xl/drawings, quindi un grafico Atomo123
+// spariva del tutto aprendo il file in Excel/LibreOffice. Qui sotto:
+// estrazione degli stessi dati che l'app disegnerebbe (stessa logica
+// di BuildChartSeries/BuildMultiChartSeries in ui/src/Chart.cpp, MAI
+// quel file incluso qui, vedi XlsxChartInfo sopra) e generazione delle
+// parti OOXML DrawingML necessarie (c:chart, drawing con ancoraggio
+// assoluto in EMU -- ChartObject::frame e' gia' un rettangolo in
+// pixel fisso, un ancoraggio assoluto evita di dover indovinare
+// larghezze di colonna/altezze di riga per convertirlo in celle+
+// scarto come farebbe un ancoraggio relativo).
+
+// Lettere di colonna Excel (1 = "A", 26 = "Z", 27 = "AA", ...) --
+// evita di dover ricavare la parte lettera da cell::GetName() con
+// find_first_of/substr (fragile, ripetuto piu' volte sotto): qui si
+// costruisce direttamente il riferimento assoluto "$COL$riga" da
+// colonna/riga gia' numeriche.
+static std::string ColumnLetters(int col)
 {
-	static const char kContentTypes[] =
-		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-		"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
-		"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
-		"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
-		"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
-		"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
-		"</Types>\n";
+	std::string s;
+	while (col > 0)
+	{
+		int rem = (col - 1) % 26;
+		s = char('A' + rem) + s;
+		col = (col - 1) / 26;
+	}
+	return s;
+}
+
+static std::string AbsCellRef(int col, int row)
+{
+	char rowBuf[16];
+	snprintf(rowBuf, sizeof(rowBuf), "%d", row);
+	return "$" + ColumnLetters(col) + "$" + rowBuf;
+}
+
+// "Foglio1!$B$2:$B$5" -- lo stesso riferimento assoluto di AbsCellRef,
+// esteso su un intervallo verticale (stessa colonna, righe da topRow a
+// bottomRow).
+static std::string AbsColumnRangeRef(const char* sheetName, int col, int topRow, int bottomRow)
+{
+	return std::string(sheetName) + "!" + AbsCellRef(col, topRow) + ":" + AbsCellRef(col, bottomRow);
+}
+
+static std::string FormatChartNumber(double v)
+{
+	char buf[64];
+	snprintf(buf, sizeof(buf), "%.15g", v);
+	return buf;
+}
+
+// Etichetta testuale di una cella, stessa logica di ValueToLabel in
+// ui/src/Chart.cpp (testo cosi' com'e', numero con "%g" invece della
+// piena precisione usata per i VALORI veri del grafico sopra -- qui
+// e' solo un'etichetta mostrata, non un dato tracciato).
+static std::string ChartCellLabel(CContainer* doc, int col, int row)
+{
+	Value v;
+	doc->GetValue(cell(col, row), v);
+	if (v.fType == eTextData)
+		return (const char*)v;
+	if (v.fType == eNumData)
+	{
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%g", (double)v);
+		return buf;
+	}
+	return std::string();
+}
+
+// Un grafico a UNA serie (ChartObject::dataRange a due colonne:
+// etichetta, valore) -- stessa identica logica di BuildChartSeries:
+// ogni riga da dataTop a dataBottom e' un punto, saltato se la
+// colonna valore non e' numerica (esclude gia' da sola un'eventuale
+// riga di intestazione testuale, senza bisogno di rilevarla a parte).
+struct SimpleChartData {
+	std::vector<std::string> labels;
+	std::vector<double> values;
+};
+
+static bool BuildSimpleChartData(CContainer* doc, const XlsxChartInfo& info, SimpleChartData* out)
+{
+	out->labels.clear();
+	out->values.clear();
+	if (info.dataRight - info.dataLeft != 1)
+		return false;
+
+	for (int row = info.dataTop; row <= info.dataBottom; row++)
+	{
+		Value vv;
+		doc->GetValue(cell(info.dataLeft + 1, row), vv);
+		if (vv.fType != eNumData)
+			continue;
+		out->labels.push_back(ChartCellLabel(doc, info.dataLeft, row));
+		out->values.push_back((double)vv);
+	}
+	return !out->values.empty();
+}
+
+// Un grafico a PIU' serie -- stessa identica logica di
+// BuildMultiChartSeries (rilevamento della riga di intestazione
+// facoltativa compreso).
+struct MultiChartDataXlsx {
+	std::vector<std::string> categories;
+	std::vector<std::string> seriesNames;
+	std::vector<std::vector<double> > values; // values[serie][categoria]
+	int firstDataRow;
+};
+
+static bool BuildMultiChartDataXlsx(CContainer* doc, const XlsxChartInfo& info, MultiChartDataXlsx* out)
+{
+	out->categories.clear();
+	out->seriesNames.clear();
+	out->values.clear();
+
+	int seriesCount = info.dataRight - info.dataLeft;
+	if (seriesCount < 1)
+		return false;
+	out->values.resize(seriesCount);
+
+	bool hasHeader = false;
+	for (int s = 0; s < seriesCount && !hasHeader; s++)
+	{
+		Value hv;
+		doc->GetValue(cell(info.dataLeft + 1 + s, info.dataTop), hv);
+		if (hv.fType == eTextData && ((const char*)hv)[0] != 0)
+			hasHeader = true;
+	}
+
+	for (int s = 0; s < seriesCount; s++)
+	{
+		std::string name;
+		if (hasHeader)
+		{
+			Value hv;
+			doc->GetValue(cell(info.dataLeft + 1 + s, info.dataTop), hv);
+			if (hv.fType == eTextData)
+				name = (const char*)hv;
+		}
+		if (name.empty())
+		{
+			char buf[32];
+			snprintf(buf, sizeof(buf), "Serie %d", s + 1);
+			name = buf;
+		}
+		out->seriesNames.push_back(name);
+	}
+
+	out->firstDataRow = hasHeader ? info.dataTop + 1 : info.dataTop;
+	for (int row = out->firstDataRow; row <= info.dataBottom; row++)
+	{
+		std::vector<double> rowValues(seriesCount);
+		bool rowOk = true;
+		for (int s = 0; s < seriesCount && rowOk; s++)
+		{
+			Value vv;
+			doc->GetValue(cell(info.dataLeft + 1 + s, row), vv);
+			if (vv.fType != eNumData)
+				rowOk = false;
+			else
+				rowValues[s] = (double)vv;
+		}
+		if (!rowOk)
+			continue;
+
+		out->categories.push_back(ChartCellLabel(doc, info.dataLeft, row));
+		for (int s = 0; s < seriesCount; s++)
+			out->values[s].push_back(rowValues[s]);
+	}
+
+	return !out->categories.empty();
+}
+
+static void AppendStrCache(std::string& xml, const std::vector<std::string>& labels)
+{
+	char buf[32];
+	snprintf(buf, sizeof(buf), "%zu", labels.size());
+	xml += "<c:strCache><c:ptCount val=\"";
+	xml += buf;
+	xml += "\"/>";
+	for (size_t i = 0; i < labels.size(); i++)
+	{
+		snprintf(buf, sizeof(buf), "%zu", i);
+		xml += "<c:pt idx=\"";
+		xml += buf;
+		xml += "\"><c:v>";
+		AppendXmlEscaped(xml, labels[i].c_str());
+		xml += "</c:v></c:pt>";
+	}
+	xml += "</c:strCache>";
+}
+
+static void AppendNumCache(std::string& xml, const std::vector<double>& values)
+{
+	char buf[32];
+	snprintf(buf, sizeof(buf), "%zu", values.size());
+	xml += "<c:numCache><c:formatCode>General</c:formatCode><c:ptCount val=\"";
+	xml += buf;
+	xml += "\"/>";
+	for (size_t i = 0; i < values.size(); i++)
+	{
+		xml += "<c:pt idx=\"";
+		snprintf(buf, sizeof(buf), "%zu", i);
+		xml += buf;
+		xml += "\"><c:v>";
+		xml += FormatChartNumber(values[i]);
+		xml += "</c:v></c:pt>";
+	}
+	xml += "</c:numCache>";
+}
+
+// Una serie completa (<c:ser>): nome letterale (mai un riferimento a
+// cella, anche quando la serie ha un nome preso da un'intestazione
+// vera -- evita di dover ricostruire quel riferimento per il caso,
+// altrettanto comune, di un nome "Serie N" senza nessuna cella
+// sorgente), categorie/valori invece SEMPRE con riferimento vivo
+// (<c:f>) piu' la cache -- cosi' Excel/LibreOffice possono ricalcolare
+// il grafico se i dati cambiano, non solo mostrare l'istantanea.
+static void AppendSeries(std::string& xml, int idx, const std::string& seriesName,
+	const std::string& catRef, const std::vector<std::string>& categories,
+	const std::string& valRef, const std::vector<double>& values, bool withTx)
+{
+	char buf[32];
+	xml += "<c:ser><c:idx val=\"";
+	snprintf(buf, sizeof(buf), "%d", idx);
+	xml += buf;
+	xml += "\"/><c:order val=\"";
+	xml += buf;
+	xml += "\"/>";
+	if (withTx)
+	{
+		xml += "<c:tx><c:v>";
+		AppendXmlEscaped(xml, seriesName.c_str());
+		xml += "</c:v></c:tx>";
+	}
+	xml += "<c:cat><c:strRef><c:f>";
+	AppendXmlEscaped(xml, catRef.c_str());
+	xml += "</c:f>";
+	AppendStrCache(xml, categories);
+	xml += "</c:strRef></c:cat>";
+	xml += "<c:val><c:numRef><c:f>";
+	AppendXmlEscaped(xml, valRef.c_str());
+	xml += "</c:f>";
+	AppendNumCache(xml, values);
+	xml += "</c:numRef></c:val></c:ser>";
+}
+
+// Genera xl/charts/chartN.xml per un singolo ChartObject -- restituisce
+// una stringa vuota se l'intervallo dati non produce nessun punto
+// valido (stesso caso in cui l'app stessa non disegna nulla, vedi
+// SheetView::Draw), il chiamante lo salta senza scrivere nessuna parte
+// per quel grafico.
+static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
+{
+	static const char kSheetName[] = "Foglio1";
+
+	bool multiSeries = (info.dataRight - info.dataLeft > 1) && info.type != 2;
+
+	std::string plot;
+	int seriesCountForLegend = 0;
+
+	if (multiSeries)
+	{
+		MultiChartDataXlsx data;
+		if (!BuildMultiChartDataXlsx(doc, info, &data))
+			return std::string();
+
+		std::string catRef = AbsColumnRangeRef(kSheetName, info.dataLeft,
+			data.firstDataRow, info.dataBottom);
+
+		for (int s = 0; s < (int)data.seriesNames.size(); s++)
+		{
+			std::string valRef = AbsColumnRangeRef(kSheetName, info.dataLeft + 1 + s,
+				data.firstDataRow, info.dataBottom);
+			AppendSeries(plot, s, data.seriesNames[s], catRef, data.categories,
+				valRef, data.values[s], true);
+		}
+		seriesCountForLegend = (int)data.seriesNames.size();
+	}
+	else
+	{
+		SimpleChartData data;
+		if (!BuildSimpleChartData(doc, info, &data))
+			return std::string();
+
+		std::string catRef = AbsColumnRangeRef(kSheetName, info.dataLeft,
+			info.dataTop, info.dataBottom);
+		std::string valRef = AbsColumnRangeRef(kSheetName, info.dataLeft + 1,
+			info.dataTop, info.dataBottom);
+
+		AppendSeries(plot, 0, "", catRef, data.labels, valRef, data.values, false);
+		seriesCountForLegend = 1;
+	}
+
+	if (plot.empty())
+		return std::string();
+
+	std::string xml;
+	xml += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+	xml += "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+		"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">";
+	xml += "<c:chart>";
+
+	if (info.title.empty())
+		xml += "<c:autoTitleDeleted val=\"1\"/>";
+	else
+	{
+		xml += "<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>";
+		AppendXmlEscaped(xml, info.title.c_str());
+		xml += "</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>";
+		xml += "<c:autoTitleDeleted val=\"0\"/>";
+	}
+
+	xml += "<c:plotArea><c:layout/>";
+
+	if (info.type == 2) // torta
+	{
+		xml += "<c:pieChart><c:varyColors val=\"1\"/>";
+		xml += plot;
+		xml += "<c:firstSliceAng val=\"0\"/></c:pieChart>";
+	}
+	else if (info.type == 1) // linee
+	{
+		xml += "<c:lineChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>";
+		xml += plot;
+		xml += "<c:marker val=\"1\"/>";
+		xml += "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:lineChart>";
+		xml += "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>";
+		xml += "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>";
+	}
+	else // barre (predefinito)
+	{
+		xml += "<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>";
+		xml += plot;
+		xml += "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:barChart>";
+		xml += "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>";
+		xml += "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>";
+	}
+
+	xml += "</c:plotArea>";
+
+	// Legenda: solo se ha davvero senso (piu' serie, o una torta le cui
+	// fette si distinguono per colore -- mai per un grafico a barre/
+	// linee a una sola serie, che non ne ha bisogno, stesso principio
+	// gia' seguito da DrawBarChart/DrawLineChart nell'app).
+	if (info.type == 2 || seriesCountForLegend > 1)
+		xml += "<c:legend><c:legendPos val=\"r\"/><c:overlay val=\"0\"/></c:legend>";
+
+	xml += "<c:plotVisOnly val=\"1\"/></c:chart></c:chartSpace>";
+	return xml;
+}
+
+static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& charts, BPositionIO* dest)
+{
 	static const char kRootRels[] =
 		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 		"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
@@ -1066,12 +1986,57 @@ static status_t WriteXLSX(CContainer* doc, BPositionIO* dest)
 		"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
 		"</Relationships>\n";
 
-	std::string sheet = BuildSheetXml(doc);
+	// Costruisce prima ogni xl/charts/chartN.xml: un ChartObject il cui
+	// intervallo dati non produce nessun punto valido (stesso caso in
+	// cui l'app stessa non disegnerebbe nulla) viene saltato in
+	// silenzio, non e' un errore di esportazione. "usedCharts" tiene
+	// l'XlsxChartInfo di ogni grafico DAVVERO scritto, nello stesso
+	// ordine/indice di chartXmls -- necessario perche' uno scarto puo'
+	// capitare in mezzo all'elenco, non solo in coda: usare "charts[i]"
+	// direttamente piu' sotto disallineerebbe posizione/dimensione di
+	// ogni grafico successivo a quello scartato.
+	std::vector<std::string> chartXmls;
+	std::vector<XlsxChartInfo> usedCharts;
+	for (size_t i = 0; i < charts.size(); i++)
+	{
+		std::string xml = BuildChartXml(doc, charts[i]);
+		if (!xml.empty())
+		{
+			chartXmls.push_back(xml);
+			usedCharts.push_back(charts[i]);
+		}
+	}
+
+	bool hasDrawing = !chartXmls.empty();
+	std::string sheet = BuildSheetXml(doc, hasDrawing);
+
+	std::string contentTypes;
+	contentTypes += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+		"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+		"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+		"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+		"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+		"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n";
+	if (hasDrawing)
+	{
+		contentTypes += "<Override PartName=\"/xl/drawings/drawing1.xml\" "
+			"ContentType=\"application/vnd.openxmlformats-officedocument.drawing+xml\"/>\n";
+		for (size_t i = 0; i < chartXmls.size(); i++)
+		{
+			char buf[192];
+			snprintf(buf, sizeof(buf),
+				"<Override PartName=\"/xl/charts/chart%zu.xml\" "
+				"ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>\n",
+				i + 1);
+			contentTypes += buf;
+		}
+	}
+	contentTypes += "</Types>\n";
 
 	CZipWriter zip;
 	zip.Begin(dest);
 
-	if (!zip.AddEntry("[Content_Types].xml", kContentTypes, strlen(kContentTypes)))
+	if (!zip.AddEntry("[Content_Types].xml", contentTypes.data(), contentTypes.size()))
 		return B_IO_ERROR;
 	if (!zip.AddEntry("_rels/.rels", kRootRels, strlen(kRootRels)))
 		return B_IO_ERROR;
@@ -1081,6 +2046,87 @@ static status_t WriteXLSX(CContainer* doc, BPositionIO* dest)
 		return B_IO_ERROR;
 	if (!zip.AddEntry("xl/worksheets/sheet1.xml", sheet.data(), sheet.size()))
 		return B_IO_ERROR;
+
+	if (hasDrawing)
+	{
+		// Il foglio si collega al drawing tramite rId1 (l'unica
+		// relazione che questo foglio ha, vedi <drawing r:id="rId1"/>
+		// scritto da BuildSheetXml sopra).
+		static const char kSheetRelsHeader[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" "
+			"Target=\"../drawings/drawing1.xml\"/>\n</Relationships>\n";
+		if (!zip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kSheetRelsHeader, strlen(kSheetRelsHeader)))
+			return B_IO_ERROR;
+
+		// xl/drawings/drawing1.xml: un ancoraggio ASSOLUTO per grafico
+		// (posizione/dimensione in EMU, convertite direttamente dal
+		// rettangolo in pixel di ChartObject::frame) invece di un
+		// ancoraggio relativo a celle -- evita di dover conoscere
+		// larghezze di colonna/altezze di riga per convertire la
+		// posizione, che questo translator non ha modo di calcolare
+		// correttamente qui (dipendono dal font e dalle preferenze
+		// dell'utente, mai scritte nel file XLSX stesso). Entrambe le
+		// forme sono OOXML valido, Excel/LibreOffice leggono
+		// correttamente l'ancoraggio assoluto.
+		std::string drawing;
+		drawing += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+		drawing += "<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">";
+
+		std::string drawingRels;
+		drawingRels += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n";
+
+		static const double kEmuPerPixelChart = 9525.0; // DrawingML, 96 DPI (predefinito Excel)
+		for (size_t i = 0; i < chartXmls.size(); i++)
+		{
+			const XlsxChartInfo& info = usedCharts[i];
+			long long x = (long long)(info.frameLeft * kEmuPerPixelChart);
+			long long y = (long long)(info.frameTop * kEmuPerPixelChart);
+			long long cx = (long long)((info.frameRight - info.frameLeft) * kEmuPerPixelChart);
+			long long cy = (long long)((info.frameBottom - info.frameTop) * kEmuPerPixelChart);
+			if (cx <= 0) cx = (long long)(400 * kEmuPerPixelChart);
+			if (cy <= 0) cy = (long long)(300 * kEmuPerPixelChart);
+
+			char buf[900];
+			snprintf(buf, sizeof(buf),
+				"<xdr:absoluteAnchor><xdr:pos x=\"%lld\" y=\"%lld\"/><xdr:ext cx=\"%lld\" cy=\"%lld\"/>"
+				"<xdr:graphicFrame macro=\"\"><xdr:nvGraphicFramePr>"
+				"<xdr:cNvPr id=\"%zu\" name=\"Grafico %zu\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"
+				"<xdr:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/></xdr:xfrm>"
+				"<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+				"<c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+				"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:id=\"rId%zu\"/>"
+				"</a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:absoluteAnchor>",
+				x, y, cx, cy, i + 1, i + 1, i + 1);
+			drawing += buf;
+
+			char relBuf[256];
+			snprintf(relBuf, sizeof(relBuf),
+				"<Relationship Id=\"rId%zu\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" "
+				"Target=\"../charts/chart%zu.xml\"/>\n",
+				i + 1, i + 1);
+			drawingRels += relBuf;
+		}
+
+		drawing += "</xdr:wsDr>";
+		drawingRels += "</Relationships>\n";
+
+		if (!zip.AddEntry("xl/drawings/drawing1.xml", drawing.data(), drawing.size()))
+			return B_IO_ERROR;
+		if (!zip.AddEntry("xl/drawings/_rels/drawing1.xml.rels", drawingRels.data(), drawingRels.size()))
+			return B_IO_ERROR;
+
+		for (size_t i = 0; i < chartXmls.size(); i++)
+		{
+			char name[64];
+			snprintf(name, sizeof(name), "xl/charts/chart%zu.xml", i + 1);
+			if (!zip.AddEntry(name, chartXmls[i].data(), chartXmls[i].size()))
+				return B_IO_ERROR;
+		}
+	}
 
 	return zip.Close() ? B_OK : B_IO_ERROR;
 }
@@ -3385,10 +4431,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		// foglio, come da sempre -- non cambia con il supporto
 		// multi-foglio, che riguarda solo l'IMPORTAZIONE (vedi sotto).
 		CContainer* doc = new CContainer(NULL, NULL);
-		status_t err = ReadASCD(source, doc);
+		std::vector<XlsxChartInfo> charts;
+		status_t err = ReadASCD(source, doc, &charts);
 		if (err == B_OK)
 			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
-				: WriteXLSX(doc, destination);
+				: WriteXLSX(doc, charts, destination);
 		doc->Release();
 		return err;
 	}
@@ -3629,8 +4676,15 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		else
 			// L'esportazione XLSX resta a un solo foglio (quello
 			// attivo, il primo qui): i writer non nativi non
-			// supportano ancora piu' fogli, vedi WriteXLSX.
-			err = WriteXLSX(sheets[0].doc, destination);
+			// supportano ancora piu' fogli, vedi WriteXLSX. Nessun
+			// grafico da passare: questo ramo legge un vero file XLSX
+			// in ingresso (sheets[] viene da ParseSheet/drawings sopra,
+			// non da un flusso ASCD), e l'importazione dei grafici
+			// VERI di Excel non e' ancora implementata (solo
+			// l'esportazione dei grafici di Atomo123, vedi
+			// XlsxChartInfo/ReadASCD sopra) -- un vettore vuoto e'
+			// quindi corretto qui, non un limite di questa modifica.
+			err = WriteXLSX(sheets[0].doc, std::vector<XlsxChartInfo>(), destination);
 	}
 
 	for (size_t i = 0; i < sheets.size(); i++)
