@@ -119,6 +119,10 @@ Since v0.2.0 (not yet in a tagged release):
   or multiple lines, one color per series with a legend. Pie charts
   stay single-series by design. The existing two-column/single-series
   path is unchanged
+- Fixed a follow-up bug from the negative-value fix above: a negative
+  bar/point's value label could land exactly on top of the category
+  label below it. The category label row now stays fixed in place and
+  the chart floor makes room above it instead
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
