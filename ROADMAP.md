@@ -161,6 +161,15 @@ Since v0.2.0 (not yet in a tagged release):
   the reader's EOF-tolerant skip for that section only works at the
   true end of the stream, so in a multi-sheet workbook every non-final
   sheet's block desynchronized the read that followed it
+- Fixed a real bug affecting any XLSX file exported by LibreOffice
+  Calc: Calc writes boolean attributes spelled out as "true"/"false"
+  (valid per the XLSX spec, but different from Excel's usual "1"/"0"),
+  and the translator's parsing only recognized the numeric form for
+  wrapText, showGridLines, row customHeight/hidden, and table
+  showRowStripes. A cell with wrapText explicitly turned off was
+  misread as wrapped, showing a long single-line text broken into a
+  narrow, unreadably tall column instead of overflowing across the
+  empty cells to its right
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
