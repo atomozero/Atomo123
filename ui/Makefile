@@ -9,7 +9,19 @@
 # linkati staticamente in questo binario.
 
 CXX := g++
-CXXFLAGS := -std=gnu++17 -Wall -g
+# -MMD -MP: genera un file .d di dipendenze (header inclusi, non solo
+# il .cpp) accanto a ogni .o -- senza questo, "make" non sa che un
+# .cpp va ricompilato quando cambia solo un header che include (regola
+# "%.o: %.cpp" sotto non lo dice), lasciando .o vecchi linkati insieme
+# a .o nuovi con un layout di struct diverso per lo stesso header.
+# Causa reale di un crash (vector<bool> corrotto in
+# ChartWindow::RebuildSeriesCheckboxes, 21/08/2026): MultiChartData in
+# Chart.h aveva guadagnato un campo, ma MainWindow.o/SheetView.o non
+# erano stati ricompilati insieme a ChartWindow.o/ChartView.o/Chart.o
+# perche' i loro .cpp non erano stati toccati direttamente in
+# quell'ultima modifica -- stesso sizeof(MultiChartData) atteso da
+# funzioni diverse, in realta' diverso fra le unita' di compilazione.
+CXXFLAGS := -std=gnu++17 -Wall -g -MMD -MP
 ENGINE_DIR := ../engine
 ENGINE_SRCDIRS := $(ENGINE_DIR)/src/Cell $(ENGINE_DIR)/src/Formula \
 	$(ENGINE_DIR)/src/Functions $(ENGINE_DIR)/src/Excel \
@@ -1043,6 +1055,7 @@ test-names: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 	./tests/test_names
 
 clean:
+	rm -f $(OBJECTS:.o=.d) tests/*.d
 	rm -f $(APP) $(OBJECTS) $(RSRC) $(BUILD_INFO_H) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
 		tests/roundtrip.ascd tests/roundtrip_charts.ascd tests/roundtrip_widths.ascd \
 		tests/roundtrip_colors.ascd tests/roundtrip_border_color.ascd \
@@ -1101,3 +1114,20 @@ clean:
 		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
 .PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean
+
+# Include i file di dipendenza generati da -MMD/-MP (vedi CXXFLAGS in
+# cima) -- src/*.d per la build principale, tests/*.d per ogni target
+# di test che compila il proprio .o. In FONDO al file apposta: "include"
+# spezza il testo del file incluso esattamente in quel punto del parse,
+# e la PRIMA regola vera che make incontra ovunque nel Makefile diventa
+# il goal di default per un "make" senza argomenti -- messo in cima
+# (come un primo tentativo qui) faceva diventare "src/App.o" (la prima
+# regola dentro un .d incluso) il goal di default invece di "all" sopra,
+# silenziosamente: un "make" senza argomenti ricompilava un solo file
+# invece di tutti quelli che dipendevano dall'header appena cambiato
+# (bug reale scoperto subito dopo aver aggiunto questo tracciamento
+# delle dipendenze, vedi il commento su CXXFLAGS). Il "-" iniziale
+# rende l'include silenzioso quando i .d non esistono ancora (prima
+# build, o dopo "make clean").
+-include $(OBJECTS:.o=.d)
+-include $(wildcard tests/*.d)
