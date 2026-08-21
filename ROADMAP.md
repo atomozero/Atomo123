@@ -207,6 +207,17 @@ Since v0.2.0 (not yet in a tagged release):
   from MainWindow's thread without locking it first — same bug class
   already fixed once for the Color/Name windows, missed here because
   this pre-fill feature was added afterward
+- Embedded charts now import FROM XLSX too, not just export: bar,
+  line and pie charts anchored in a real Excel file (or one exported
+  by this app) are recognized and redrawn. A chart of a type this app
+  doesn't draw (area, scatter, radar, ...) — or one whose data isn't a
+  single contiguous category+value block — shows a dialog naming it
+  instead of silently vanishing or breaking the rest of the file.
+  Found and fixed two real bugs along the way: a placeholder-zero
+  `<a:ext>` nested inside a chart's own `<xdr:graphicFrame>` was being
+  confused with the real anchor-level size, and the image-import loop
+  didn't skip chart anchors, occasionally misreading a chart's XML as
+  a PNG
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
