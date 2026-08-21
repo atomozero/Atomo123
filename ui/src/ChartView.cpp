@@ -36,6 +36,14 @@ void ChartView::SetMultiData(const MultiChartData& data)
 	Invalidate();
 }
 
+void ChartView::SetSeriesShowValues(int index, bool show)
+{
+	if (index < 0 || index >= (int)fMultiData.showValues.size())
+		return;
+	fMultiData.showValues[index] = show;
+	Invalidate();
+}
+
 void ChartView::SetChartType(ChartType type)
 {
 	fType = type;

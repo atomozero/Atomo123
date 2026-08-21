@@ -163,6 +163,16 @@ struct MultiChartData {
 	std::vector<BString> categories;
 	std::vector<BString> seriesNames;
 	std::vector<std::vector<double> > values;
+	// Visibilita' dell'etichetta del valore numerico per serie (Fase
+	// 19, una checkbox per serie in ChartWindow): VUOTO significa
+	// "mostra tutte" (comportamento di sempre per un grafico
+	// incorporato nel foglio, che non passa mai da questo campo --
+	// solo l'anteprima di ChartWindow lo popola esplicitamente), non
+	// serie tutte nascoste. Se presente, deve avere la stessa
+	// lunghezza di seriesNames; un indice fuori dai limiti (vettore
+	// piu' corto di seriesNames) e' trattato come "visibile", stesso
+	// principio permissivo del resto dell'app.
+	std::vector<bool> showValues;
 };
 
 // L'intervallo deve avere almeno due colonne: la prima con le

@@ -728,19 +728,41 @@ void ComputeMultiLineLayout(const MultiChartData& data, BRect bounds, MultiLineP
 // legenda) a differenza delle loro controparti a singola serie (che
 // non hanno bisogno di una legenda, una sola serie non ha nulla da
 // distinguere).
+// Vera per l'indice "s" se quella serie deve mostrare l'etichetta del
+// valore numerico -- showValues VUOTO (il caso di un grafico
+// incorporato nel foglio, che non passa mai da ChartWindow/le sue
+// checkbox) o un indice fuori dai limiti significano "visibile",
+// stesso principio permissivo del resto dell'app (vedi il commento su
+// MultiChartData::showValues in Chart.h).
+static bool SeriesShowsValues(const MultiChartData& data, size_t s)
+{
+	return s >= data.showValues.size() || data.showValues[s];
+}
+
 static void PrepareMultiSeriesPlotArea(BView* view, BRect frame, const MultiChartData& data,
-	const BString& title, BRect* outPlotArea, double* outMinValue, double* outMaxValue)
+	const BString& title, BRect* outPlotArea, double* outMinValue, double* outMaxValue,
+	float* outCategoryLabelY)
 {
 	float legendWidth = 110;
 	BRect plotArea = frame;
 	plotArea.InsetBy(10, 10);
+	plotArea.top += 14;	// spazio per l'etichetta del valore sopra barre/punti (Fase 19, opzionale per serie)
 	if (!title.IsEmpty())
 		plotArea.top += 18;
 	plotArea.right -= legendWidth;
-	plotArea.bottom -= 16;	// spazio per le etichette di categoria sotto
 
 	double minValue, maxValue;
 	MultiChartValueRange(data, &minValue, &maxValue);
+
+	plotArea.bottom -= 16;	// spazio per le etichette di categoria sotto
+	// La riga di categoria resta fissa a questa posizione (calcolata
+	// PRIMA di ogni restrizione aggiuntiva sotto), stessa correzione
+	// di DrawBarChart/DrawLineChart -- vedi il commento gemello li'
+	// per il bug che questo evita (etichetta valore negativo
+	// sovrapposta alla riga di categoria).
+	float categoryLabelY = plotArea.bottom + 12;
+	if (minValue < 0)
+		plotArea.bottom -= 14;
 
 	std::vector<AxisTick> ticks;
 	ComputeYAxisTicks(minValue, maxValue, plotArea, ticks);
@@ -756,13 +778,14 @@ static void PrepareMultiSeriesPlotArea(BView* view, BRect frame, const MultiChar
 	*outPlotArea = plotArea;
 	*outMinValue = minValue;
 	*outMaxValue = maxValue;
+	*outCategoryLabelY = categoryLabelY;
 }
 
 // Bordo, linea di zero, etichette di categoria e legenda per serie --
 // condivisa da DrawGroupedBarChart/DrawMultiLineChart (stesso schema
 // del commento gemello su PrepareMultiSeriesPlotArea sopra).
 static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
-	const MultiChartData& data, double minValue, double maxValue)
+	const MultiChartData& data, double minValue, double maxValue, float categoryLabelY)
 {
 	view->SetHighColor(0, 0, 0);
 	view->StrokeRect(frame);
@@ -772,7 +795,7 @@ static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
 	float slotWidth = plotArea.Width() / data.categories.size();
 	for (size_t c = 0; c < data.categories.size(); c++)
 	{
-		BPoint labelPos(plotArea.left + c * slotWidth + 2, plotArea.bottom + 12);
+		BPoint labelPos(plotArea.left + c * slotWidth + 2, categoryLabelY);
 		view->DrawString(data.categories[c].String(), labelPos);
 	}
 
@@ -804,7 +827,8 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 
 	BRect plotArea;
 	double minValue, maxValue;
-	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue);
+	float categoryLabelY;
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY);
 
 	GroupedBarLayout layout;
 	ComputeGroupedBarLayout(data, plotArea, layout);
@@ -818,7 +842,32 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 			view->FillRect(layout.bars[s][c]);
 	}
 
-	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue);
+	// Valore numerico sopra/sotto ogni barra, solo per le serie con la
+	// visibilita' attivata (checkbox in ChartWindow) -- con piu' serie
+	// affiancate i valori di TUTTE le barre affollerebbero il
+	// grafico, per questo restano opzionali per serie (a differenza
+	// del grafico a singola serie, dove sono sempre visibili). Colore
+	// dell'etichetta uguale a quello della barra/serie, per restare
+	// leggibile a colpo d'occhio quale valore appartiene a quale
+	// serie.
+	for (size_t s = 0; s < layout.bars.size(); s++)
+	{
+		if (!SeriesShowsValues(data, s))
+			continue;
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		for (size_t c = 0; c < layout.bars[s].size(); c++)
+		{
+			char buf[32];
+			snprintf(buf, sizeof(buf), "%g", data.values[s][c]);
+			float width = view->StringWidth(buf);
+			BRect bar = layout.bars[s][c];
+			float x = bar.left + bar.Width() / 2 - width / 2;
+			float y = (data.values[s][c] >= 0) ? bar.top - 4 : bar.bottom + 4;
+			view->DrawString(buf, BPoint(x, y));
+		}
+	}
+
+	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
 void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, const BString& title)
@@ -836,7 +885,8 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 
 	BRect plotArea;
 	double minValue, maxValue;
-	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue);
+	float categoryLabelY;
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY);
 
 	MultiLinePoint layout;
 	ComputeMultiLineLayout(data, plotArea, layout);
@@ -855,7 +905,26 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 		}
 	}
 
-	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue);
+	// Valore numerico accanto a ogni punto, solo per le serie con la
+	// visibilita' attivata -- stesso principio di DrawGroupedBarChart
+	// sopra.
+	for (size_t s = 0; s < layout.points.size(); s++)
+	{
+		if (!SeriesShowsValues(data, s))
+			continue;
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		for (size_t c = 0; c < layout.points[s].size(); c++)
+		{
+			char buf[32];
+			snprintf(buf, sizeof(buf), "%g", data.values[s][c]);
+			float width = view->StringWidth(buf);
+			BPoint p = layout.points[s][c];
+			float y = (data.values[s][c] >= 0) ? p.y - 8 : p.y + 8;
+			view->DrawString(buf, BPoint(p.x - width / 2, y));
+		}
+	}
+
+	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,

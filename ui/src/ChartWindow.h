@@ -19,6 +19,8 @@
 #ifndef CHART_WINDOW_H
 #define CHART_WINDOW_H
 
+#include <vector>
+
 #include <Messenger.h>
 #include <Window.h>
 
@@ -32,6 +34,7 @@ const uint32 kMsgChartInsert = 'chin';
 // MultiChartData in Chart.h e il gestore in ChartWindow.cpp.
 const uint32 kMsgChartDataMulti = 'chdm';
 
+class BCheckBox;
 class BMenuField;
 class BTextControl;
 class ChartView;
@@ -57,12 +60,29 @@ private:
 	BTextControl* fDestField;
 	ChartView* fChartView;
 	BMessenger fTarget;
+	// Riga di checkbox "mostra i valori" con una voce per serie (Fase
+	// 19): ricostruita ogni volta che arrivano nuovi dati multi-serie,
+	// dato che il numero di serie dipende dall'intervallo selezionato,
+	// non e' fisso. Vuota (nessun figlio) quando l'ultimo grafico
+	// richiesto e' a singola serie.
+	BView* fSeriesCheckboxRow;
+	std::vector<BCheckBox*> fSeriesCheckboxes;
 
 	ChartType SelectedType() const;
 	// Corpo comune di kMsgDrawLocal e LoadRange sopra: applica il
 	// titolo corrente all'anteprima e richiede a MainWindow i dati
 	// dell'intervallo attualmente in fRangeField.
 	void RequestDraw();
+	// Ricostruisce fSeriesCheckboxRow per i dati appena ricevuti,
+	// preservando lo stato di una checkbox il cui nome di serie
+	// combacia con quello di prima (stessa serie tra una richiesta e
+	// l'altra) e imposta data->showValues di conseguenza -- chiamata
+	// PRIMA di ChartView::SetMultiData, cosi' il grafico si disegna
+	// gia' con le visibilita' corrette al primo giro, non solo dopo
+	// che l'utente tocca una checkbox.
+	void RebuildSeriesCheckboxes(MultiChartData* data);
+	// Nessuna checkbox da mostrare per un grafico a singola serie.
+	void ClearSeriesCheckboxes();
 };
 
 #endif

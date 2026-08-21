@@ -11,8 +11,13 @@
 #include "ChartView.h"
 #include "Chart.h"
 
+#include <map>
+#include <string>
+
 #include <Button.h>
 #include <Catalog.h>
+#include <CheckBox.h>
+#include <GroupLayout.h>
 #include <LayoutBuilder.h>
 #include <MenuField.h>
 #include <MenuItem.h>
@@ -26,6 +31,10 @@
 static const uint32 kMsgDrawLocal = 'drlc';
 static const uint32 kMsgInsertLocal = 'inlc';
 static const uint32 kMsgTypeChangedLocal = 'tpcl';
+// Una checkbox per serie (Fase 19): tutte le checkbox della riga
+// condividono lo stesso "what", l'indice della serie viaggia nel
+// campo "index" del BMessage di ognuna (vedi RebuildSeriesCheckboxes).
+static const uint32 kMsgSeriesToggleLocal = 'stvl';
 
 ChartWindow::ChartWindow(BMessenger target)
 	:
@@ -62,6 +71,15 @@ ChartWindow::ChartWindow(BMessenger target)
 
 	fChartView = new ChartView();
 
+	// Riga di checkbox "mostra i valori" per serie (Fase 19): vuota
+	// all'apertura (nessun grafico a serie multiple ancora caricato),
+	// popolata da RebuildSeriesCheckboxes quando arrivano dati con
+	// piu' di una serie. BGroupLayout invece di BLayoutBuilder qui
+	// perche' i figli vanno aggiunti/rimossi dinamicamente dopo la
+	// costruzione, non solo una volta come il resto della finestra.
+	fSeriesCheckboxRow = new BView("seriesCheckboxes", 0);
+	fSeriesCheckboxRow->SetLayout(new BGroupLayout(B_HORIZONTAL, 8));
+
 	fDestField = new BTextControl("dest", B_TRANSLATE("Cella di destinazione nel foglio:"),
 		"D1", NULL);
 
@@ -77,6 +95,7 @@ ChartWindow::ChartWindow(BMessenger target)
 			.Add(fTypeField)
 			.Add(drawButton)
 		.End()
+		.Add(fSeriesCheckboxRow)
 		.Add(fChartView)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fDestField)
@@ -113,6 +132,51 @@ void ChartWindow::RequestDraw()
 	fTarget.SendMessage(&request);
 }
 
+void ChartWindow::ClearSeriesCheckboxes()
+{
+	while (fSeriesCheckboxRow->CountChildren() > 0)
+	{
+		BView* child = fSeriesCheckboxRow->ChildAt(0);
+		fSeriesCheckboxRow->RemoveChild(child);
+		delete child;
+	}
+	fSeriesCheckboxes.clear();
+}
+
+void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
+{
+	// Preserva lo stato "spuntata/non spuntata" per nome di serie:
+	// senza questo, ridisegnare lo stesso intervallo (es. premendo di
+	// nuovo Invio nel campo Intervallo) resetterebbe ogni volta le
+	// checkbox a "tutte spuntate", cancellando una scelta gia' fatta
+	// dall'utente.
+	std::map<std::string, bool> previousState;
+	for (size_t i = 0; i < fSeriesCheckboxes.size(); i++)
+		previousState[fSeriesCheckboxes[i]->Label()] = fSeriesCheckboxes[i]->Value() != 0;
+
+	ClearSeriesCheckboxes();
+
+	data->showValues.resize(data->seriesNames.size());
+	for (size_t s = 0; s < data->seriesNames.size(); s++)
+	{
+		bool checked = true;
+		std::map<std::string, bool>::iterator it =
+			previousState.find(data->seriesNames[s].String());
+		if (it != previousState.end())
+			checked = it->second;
+		data->showValues[s] = checked;
+
+		BMessage* msg = new BMessage(kMsgSeriesToggleLocal);
+		msg->AddInt32("index", (int32)s);
+		BCheckBox* cb = new BCheckBox(data->seriesNames[s].String(),
+			data->seriesNames[s].String(), msg);
+		cb->SetTarget(this);
+		cb->SetValue(checked ? B_CONTROL_ON : B_CONTROL_OFF);
+		fSeriesCheckboxRow->AddChild(cb);
+		fSeriesCheckboxes.push_back(cb);
+	}
+}
+
 void ChartWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what)
@@ -138,6 +202,11 @@ void ChartWindow::MessageReceived(BMessage* message)
 
 		case kMsgChartData:
 		{
+			// Nessuna checkbox per un grafico a singola serie: niente
+			// da scegliere, il valore e' sempre mostrato (come da
+			// sempre).
+			ClearSeriesCheckboxes();
+
 			std::vector<ChartSeries> data;
 			BString label;
 			double value;
@@ -182,7 +251,27 @@ void ChartWindow::MessageReceived(BMessage* message)
 					data.values[s][c] = v;
 				}
 			}
+			// Ricostruisce le checkbox PRIMA di passare i dati a
+			// ChartView: popola anche data.showValues (preservando lo
+			// stato di prima per nome di serie), cosi' il grafico si
+			// disegna gia' con le visibilita' corrette al primo giro.
+			RebuildSeriesCheckboxes(&data);
 			fChartView->SetMultiData(data);
+			return;
+		}
+
+		case kMsgSeriesToggleLocal:
+		{
+			int32 index;
+			int32 value = 0;
+			if (message->FindInt32("index", &index) == B_OK)
+			{
+				// "be:value" e' aggiunto automaticamente da
+				// BControl::Invoke() col nuovo stato della checkbox
+				// che ha generato il messaggio.
+				message->FindInt32("be:value", &value);
+				fChartView->SetSeriesShowValues(index, value != 0);
+			}
 			return;
 		}
 	}

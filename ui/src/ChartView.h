@@ -30,6 +30,13 @@ public:
 	// commento su MultiChartData in Chart.h. fIsMulti sceglie quale dei
 	// due disegnare in Draw().
 	void SetMultiData(const MultiChartData& data);
+	// Accende/spegne l'etichetta del valore numerico di UNA sola serie
+	// (Fase 19, una checkbox per serie in ChartWindow) senza dover
+	// rifare la richiesta dati a MainWindow -- i valori non cambiano,
+	// solo se disegnarne l'etichetta o no. Ininfluente se non c'e'
+	// ancora un grafico a serie multiple caricato (indice fuori dai
+	// limiti, vedi SeriesShowsValues in Chart.cpp).
+	void SetSeriesShowValues(int index, bool show);
 	void SetChartType(ChartType type);
 	void SetTitle(const BString& title);
 
