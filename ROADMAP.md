@@ -240,6 +240,13 @@ Since v0.2.0 (not yet in a tagged release):
   follow: date, math/stats, lookup). SUBSTITUTE is 10 characters, one
   over the `'Func'` resource's name limit — registered internally as
   "SUBST" with the same alias trick as CEILING.MATH/CONCATENATE
+- Added TODAY/NETWORKDAYS/WORKDAY/EDATE/EOMONTH/DATEDIF — third batch
+  (v3.0 consolidation, more to follow: math/stats, lookup). Found a
+  real bug while testing DATEDIF's "YD" unit: computing a day count by
+  subtracting two raw timestamps and dividing by 86400 is off by an
+  hour whenever the range crosses a daylight-saving transition — fixed
+  with a pure calendar-based day-difference calculation that never
+  touches `time_t` at all
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
