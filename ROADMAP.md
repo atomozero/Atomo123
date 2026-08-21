@@ -133,6 +133,13 @@ Since v0.2.0 (not yet in a tagged release):
   dialog to show/hide that series' numeric value labels (previously
   always hidden for multi-series, to avoid clutter). Preview-only —
   not persisted on a chart already embedded in the sheet
+- Fixed a real crash caused by a build issue, not application logic:
+  the Makefile never tracked header dependencies, so editing a shared
+  header like `Chart.h` didn't always trigger recompilation of every
+  `.cpp` that includes it, producing a binary linked from object files
+  built against two different versions of the same struct. Added
+  `-MMD -MP` header dependency tracking so `make` now rebuilds
+  correctly
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
