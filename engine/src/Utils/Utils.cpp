@@ -242,6 +242,13 @@ int GetFunctionNr(const char *name)
 	if (MatchesFuncNameAlias(name, "SUBSTITUTE"))
 		return kSUBSTITUTEFuncNr;
 
+	// "NETWORKDAYS" (11 caratteri, Fase 26) ha lo stesso problema di
+	// SUBSTITUTE sopra: registrata come "NETDAYS" (7 caratteri, vedi
+	// funcs_by_nr.r), questo alias rimanda il nome Excel vero allo
+	// stesso funcNr.
+	if (MatchesFuncNameAlias(name, "NETWORKDAYS"))
+		return kNETWORKDAYSFuncNr;
+
 	if (sLen >= (long)sizeof(myFunc))
 		return -1;
 

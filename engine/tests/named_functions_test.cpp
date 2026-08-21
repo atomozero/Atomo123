@@ -68,7 +68,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 121, "InitFunctions carica tutte le 121 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 127, "InitFunctions carica tutte le 127 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -1194,6 +1194,216 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =EXACT (uguale): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// TODAY/NETWORKDAYS/WORKDAY/EDATE/EOMONTH/DATEDIF (Fase 26, vedi
+	// ROADMAP.md "v3.0 Consolidation"): assenti dalle funzioni
+	// originali di Sum-It, mancanti confrontando la tabella con
+	// l'elenco standard di Excel. Risultati in colonna 50, ben lontano
+	// da 25/26/40/45 gia' usate sopra. Date fisse (mai TODAY() da
+	// sola per il confronto, vedi sotto) per restare riproducibili:
+	// 1 gennaio 2026 e' un giovedi' (verificato contro un'ancora nota,
+	// 1 gennaio 2000 = sabato, 26 anni dopo con 7 anni bisestili in
+	// mezzo = +5 giorni della settimana), quindi 5-9 gennaio 2026 e'
+	// esattamente una settimana lavorativa Lun-Ven completa.
+	try
+	{
+		TryToParseString("=TODAY()", cell(50, 1), &doc, true);
+		doc.CalcCell(cell(50, 1));
+		doc.GetValue(cell(50, 1), v);
+
+		time_t now;
+		time(&now);
+		struct tm nowTm = *localtime(&now);
+		nowTm.tm_hour = nowTm.tm_min = nowTm.tm_sec = 0;
+		time_t expectedToday = mktime(&nowTm);
+
+		Check(v.fType == eTimeData && (time_t)v == expectedToday,
+			"=TODAY() calcola la mezzanotte di oggi, non un'ora qualunque del giorno corrente");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =TODAY: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=EDATE(DATE(2026,1,31),1)", cell(50, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 2));
+		doc.GetValue(cell(50, 2), v);
+
+		TryToParseString("=DATE(2026,2,28)", cell(51, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(51, 2));
+		Value expected;
+		doc.GetValue(cell(51, 2), expected);
+
+		Check(v.fType == eTimeData && expected.fType == eTimeData && (time_t)v == (time_t)expected,
+			"=EDATE(31 gennaio 2026,1) satura al 28 febbraio 2026 (2026 non e' bisestile), "
+			"non trabocca a marzo come farebbe una somma di mesi ingenua");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =EDATE: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=EOMONTH(DATE(2026,1,15),1)", cell(50, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 3));
+		doc.GetValue(cell(50, 3), v);
+
+		TryToParseString("=DATE(2026,2,28)", cell(51, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(51, 3));
+		Value expected;
+		doc.GetValue(cell(51, 3), expected);
+
+		Check(v.fType == eTimeData && expected.fType == eTimeData && (time_t)v == (time_t)expected,
+			"=EOMONTH(15 gennaio 2026,1) calcola l'ultimo giorno di febbraio 2026 (28, non bisestile)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =EOMONTH: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=NETWORKDAYS(DATE(2026,1,5),DATE(2026,1,9))", cell(50, 4), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 4));
+		doc.GetValue(cell(50, 4), v);
+		Check(v.fType == eNumData && (double)v == 5.0,
+			"=NETWORKDAYS(5-9 gennaio 2026, una settimana Lun-Ven completa) calcola 5");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =NETWORKDAYS (settimana piena): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// Lunedi' 5 -> lunedi' 12 (settimana dopo): 5 giorni lavorativi
+		// nella prima settimana + il lunedi' successivo = 6, il weekend
+		// 10-11 gennaio non conta.
+		TryToParseString("=NETWORKDAYS(DATE(2026,1,5),DATE(2026,1,12))", cell(50, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 5));
+		doc.GetValue(cell(50, 5), v);
+		Check(v.fType == eNumData && (double)v == 6.0,
+			"=NETWORKDAYS che attraversa un weekend (5-12 gennaio 2026) calcola 6, "
+			"il sabato/domenica in mezzo non contano");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =NETWORKDAYS (con weekend): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=WORKDAY(DATE(2026,1,5),5)", cell(50, 6), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 6));
+		doc.GetValue(cell(50, 6), v);
+
+		TryToParseString("=DATE(2026,1,12)", cell(51, 6), &doc, true, '.', ',');
+		doc.CalcCell(cell(51, 6));
+		Value expected;
+		doc.GetValue(cell(51, 6), expected);
+
+		Check(v.fType == eTimeData && expected.fType == eTimeData && (time_t)v == (time_t)expected,
+			"=WORKDAY(lunedi' 5 gennaio 2026,5) salta il weekend e calcola lunedi' 12 gennaio");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =WORKDAY: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=DATEDIF(DATE(2026,1,1),DATE(2026,1,31),\"D\")", cell(50, 7), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 7));
+		doc.GetValue(cell(50, 7), v);
+		Check(v.fType == eNumData && (double)v == 30.0,
+			"=DATEDIF(1,31 gennaio 2026,\"D\") calcola 30 giorni");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =DATEDIF (D): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=DATEDIF(DATE(2025,1,1),DATE(2026,1,1),\"Y\")", cell(50, 8), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 8));
+		doc.GetValue(cell(50, 8), v);
+		Check(v.fType == eNumData && (double)v == 1.0, "=DATEDIF(1 anno esatto,\"Y\") calcola 1");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =DATEDIF (Y): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=DATEDIF(DATE(2025,1,1),DATE(2026,3,1),\"M\")", cell(50, 9), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 9));
+		doc.GetValue(cell(50, 9), v);
+		Check(v.fType == eNumData && (double)v == 14.0, "=DATEDIF(14 mesi esatti,\"M\") calcola 14");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =DATEDIF (M): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// YM/MD/YD: stesso giorno del mese (15) in inizio e fine apposta,
+	// per eliminare il ramo "il giorno di fine e' prima" dal calcolo a
+	// mano e restare facilmente verificabili.
+	try
+	{
+		TryToParseString("=DATEDIF(DATE(2025,1,15),DATE(2026,4,15),\"YM\")", cell(50, 10), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 10));
+		doc.GetValue(cell(50, 10), v);
+		Check(v.fType == eNumData && (double)v == 3.0,
+			"=DATEDIF(...,\"YM\") ignora gli anni interi, calcola solo i 3 mesi restanti (gennaio->aprile)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =DATEDIF (YM): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=DATEDIF(DATE(2025,1,15),DATE(2026,4,15),\"MD\")", cell(50, 11), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 11));
+		doc.GetValue(cell(50, 11), v);
+		Check(v.fType == eNumData && (double)v == 0.0,
+			"=DATEDIF(...,\"MD\") ignora mesi/anni interi, calcola 0 giorni (stesso giorno del mese)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =DATEDIF (MD): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=DATEDIF(DATE(2025,1,15),DATE(2026,4,15),\"YD\")", cell(50, 12), &doc, true, '.', ',');
+		doc.CalcCell(cell(50, 12));
+		doc.GetValue(cell(50, 12), v);
+		Check(v.fType == eNumData && (double)v == 90.0,
+			"=DATEDIF(...,\"YD\") ignora gli anni interi, calcola i 90 giorni da meta' gennaio a meta' aprile "
+			"(31+28+31, 2026 non bisestile)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =DATEDIF (YD): %s\n", (char *)e);
 		gFailures++;
 	}
 

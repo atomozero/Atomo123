@@ -119,3 +119,9 @@ Repeats text a given number of times
 Joins two or more text values with a delimiter between them
 Converts a text string that represents a number to a number
 Checks whether two text values are exactly the same (case-sensitive)
+Current date
+Number of whole working days between two dates, excluding weekends and optional holidays
+Date that is a given number of working days before/after a start date, excluding weekends and optional holidays
+Date a given number of months before/after a start date
+Last day of the month a given number of months before/after a start date
+Difference between two dates in the given unit (Y, M, D, MD, YM or YD)

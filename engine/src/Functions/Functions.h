@@ -185,6 +185,16 @@ enum {
 	kTEXTJOINFuncNr,
 	kVALUEFuncNr,
 	kEXACTFuncNr,
+	// TODAY/NETWORKDAYS/WORKDAY/EDATE/EOMONTH/DATEDIF (Fase 26, vedi
+	// ROADMAP.md "v3.0 Consolidation"): assenti dalle funzioni
+	// originali di Sum-It, mancanti confrontando la tabella con
+	// l'elenco standard di Excel.
+	kTODAYFuncNr,
+	kNETWORKDAYSFuncNr,
+	kWORKDAYFuncNr,
+	kEDATEFuncNr,
+	kEOMONTHFuncNr,
+	kDATEDIFFuncNr,
 	kFunctionCount
 };
 
@@ -308,5 +318,11 @@ void REPTFunction(Value *stack, int argCnt, CContainer *cells);
 void TEXTJOINFunction(Value *stack, int argCnt, CContainer *cells);
 void VALUEFunction(Value *stack, int argCnt, CContainer *cells);
 void EXACTFunction(Value *stack, int argCnt, CContainer *cells);
+void TODAYFunction(Value *stack, int argCnt, CContainer *cells);
+void NETWORKDAYSFunction(Value *stack, int argCnt, CContainer *cells);
+void WORKDAYFunction(Value *stack, int argCnt, CContainer *cells);
+void EDATEFunction(Value *stack, int argCnt, CContainer *cells);
+void EOMONTHFunction(Value *stack, int argCnt, CContainer *cells);
+void DATEDIFFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

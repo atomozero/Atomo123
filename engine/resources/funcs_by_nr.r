@@ -197,6 +197,17 @@ resource 'Func' (128, "Functions")
 		"REPT", 2, 117, 6,
 		"TEXTJOIN", 65535, 118, 6,
 		"VALUE", 1, 119, 6,
-		"EXACT", 2, 120, 6
+		"EXACT", 2, 120, 6,
+		// TODAY/NETWORKDAYS/WORKDAY/EDATE/EOMONTH/DATEDIF (Fase 26, vedi
+		// ROADMAP.md "v3.0 Consolidation"). "NETDAYS" (non
+		// "NETWORKDAYS", 11 caratteri, non entra nel campo a lunghezza
+		// fissa): alias diretto in GetFunctionNr (Utils.cpp), stesso
+		// principio di SUBSTITUTE/"SUBST" sopra.
+		"TODAY", 0, 121, 2,
+		"NETDAYS", 65535, 122, 2,
+		"WORKDAY", 65535, 123, 2,
+		"EDATE", 2, 124, 2,
+		"EOMONTH", 2, 125, 2,
+		"DATEDIF", 3, 126, 2
 	}
 };

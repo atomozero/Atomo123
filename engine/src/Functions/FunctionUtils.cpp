@@ -316,6 +316,12 @@ void SetupDefaultFuncs()
 	gFuncs[kTEXTJOINFuncNr] = TEXTJOINFunction;
 	gFuncs[kVALUEFuncNr] = VALUEFunction;
 	gFuncs[kEXACTFuncNr] = EXACTFunction;
+	gFuncs[kTODAYFuncNr] = TODAYFunction;
+	gFuncs[kNETWORKDAYSFuncNr] = NETWORKDAYSFunction;
+	gFuncs[kWORKDAYFuncNr] = WORKDAYFunction;
+	gFuncs[kEDATEFuncNr] = EDATEFunction;
+	gFuncs[kEOMONTHFuncNr] = EOMONTHFunction;
+	gFuncs[kDATEDIFFuncNr] = DATEDIFFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()
