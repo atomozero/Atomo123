@@ -1305,10 +1305,15 @@ int main()
 		}
 	}
 
-	// Testo a capo (Fase 12): tests/sample_wraptext.xlsx ha tre celle
-	// -- A1 con wrapText="1", B1 con wrapText="1" insieme a
+	// Testo a capo (Fase 12): tests/sample_wraptext.xlsx ha quattro
+	// celle -- A1 con wrapText="1", B1 con wrapText="1" insieme a
 	// horizontal="center" (le due proprieta' dello stesso <alignment>
-	// devono convivere), C1 senza stile esplicito.
+	// devono convivere), C1 senza stile esplicito, D1 con
+	// wrapText="false" per esteso (stile LibreOffice Calc anziche' il
+	// solito "0" di Excel -- BUG REALE trovato su un file utente vero:
+	// il parsing controllava solo "0", quindi "false" veniva letto come
+	// vero, avvolgendo su piu' righe un testo che doveva restare su una
+	// riga sola, vedi XlsxAttrIsTrue in XlsxTranslator.cpp).
 	{
 		BFile wrapFile("tests/sample_wraptext.xlsx", B_READ_ONLY);
 		Check(wrapFile.InitCheck() == B_OK, "apertura di tests/sample_wraptext.xlsx riuscita");
@@ -1333,7 +1338,7 @@ int main()
 			int32 count = 0;
 			if (ascdLen > 12)
 				memcpy(&count, ascdData + 8, 4);
-			Check(count == 3, "l'ASCD contiene le 3 celle di sample_wraptext.xlsx");
+			Check(count == 4, "l'ASCD contiene le 4 celle di sample_wraptext.xlsx");
 
 			size_t pos = 12;
 			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
@@ -1423,9 +1428,9 @@ int main()
 				haveWrapCount = true;
 			}
 			Check(haveWrapCount && wrapCount == 2,
-				"sezione testo a capo: 2 celle con a capo attivo (A1/B1, non C1)");
+				"sezione testo a capo: 2 celle con a capo attivo (A1/B1, non C1/D1)");
 
-			bool foundA1 = false, foundB1 = false;
+			bool foundA1 = false, foundB1 = false, foundD1 = false;
 			for (int32 i = 0; i < wrapCount && pos + 4 <= ascdLen; i++)
 			{
 				int16 row, col;
@@ -1434,12 +1439,15 @@ int main()
 
 				if (row == 1 && col == 1) foundA1 = true;
 				if (row == 1 && col == 2) foundB1 = true;
+				if (row == 1 && col == 4) foundD1 = true;
 			}
 
 			Check(foundA1, "A1 (wrapText=\"1\") importato con a capo attivo");
 			Check(foundB1, "B1 (wrapText=\"1\" + horizontal=\"center\") importato con a capo attivo");
 			Check(foundB1Align == eAlignCenter,
 				"B1 mantiene anche l'allineamento centrato, le due proprieta' convivono");
+			Check(!foundD1,
+				"D1 (wrapText=\"false\" per esteso, stile LibreOffice) NON importato con a capo attivo");
 		}
 	}
 

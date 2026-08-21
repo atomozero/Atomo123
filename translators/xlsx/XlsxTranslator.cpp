@@ -1613,6 +1613,22 @@ static bool IsDateNumFmt(int numFmtId, const std::map<int, std::string>& numFmts
 	return (numFmtId >= 14 && numFmtId <= 22) || (numFmtId >= 45 && numFmtId <= 47);
 }
 
+// Booleano XLSX (xsd:boolean, ECMA-376): sia "1"/"0" (forma usata da
+// Excel) sia "true"/"false" per esteso (forma usata da LibreOffice
+// Calc, riconoscibile da fileVersion appName="Calc" in workbook.xml)
+// sono valide. BUG REALE trovato su un file utente vero esportato da
+// Calc: diversi punti di questo file controllavano solo "0" (con
+// strcmp) o usavano atoi() (che restituisce silenziosamente 0 per
+// "true", non essendo una stringa numerica) -- un attributo scritto
+// come "true"/"false" veniva quindi letto sbagliato ovunque tranne nei
+// pochi punti che gia' controllavano esplicitamente anche "false".
+// Centralizzato qui per evitare che lo stesso bug si ripresenti in un
+// punto nuovo.
+static bool XlsxAttrIsTrue(const char* value)
+{
+	return strcmp(value, "0") != 0 && strcmp(value, "false") != 0;
+}
+
 static void XMLCALL StylesStart(void* userData, const char* name, const char** atts)
 {
 	StylesContext* ctx = (StylesContext*)userData;
@@ -1702,7 +1718,7 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			{
 				if (strcmp(atts[i], "val") == 0)
 				{
-					value = strcmp(atts[i + 1], "0") != 0 && strcmp(atts[i + 1], "false") != 0;
+					value = XlsxAttrIsTrue(atts[i + 1]);
 					break;
 				}
 			}
@@ -1802,12 +1818,14 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			{
 				if (strcmp(atts[i], "horizontal") == 0)
 					ctx->cellXfs.back().alignment = ResolveHorizontalAlignment(atts[i + 1]);
-				// wrapText="1" (booleano XLSX: "1"/"true" = vero,
-				// "0"/"false"/assente = falso -- qui basta escludere
-				// "0" dato che l'attributo non compare affatto quando
-				// e' falso).
+				// wrapText: BUG REALE trovato su un file utente vero
+				// esportato da LibreOffice Calc, escludendo solo "0" (non
+				// anche "false") wrapText="false" veniva letto come vero,
+				// avvolgendo su piu' righe un testo che in realta' doveva
+				// restare su una riga sola e debordare nelle celle vuote
+				// a destra -- vedi XlsxAttrIsTrue sopra.
 				else if (strcmp(atts[i], "wrapText") == 0)
-					ctx->cellXfs.back().wrapText = strcmp(atts[i + 1], "0") != 0;
+					ctx->cellXfs.back().wrapText = XlsxAttrIsTrue(atts[i + 1]);
 			}
 		}
 	}
@@ -2157,18 +2175,24 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 	// <sheetView showGridLines="0" .../>, dentro <sheetViews> prima di
 	// <sheetData> -- l'attributo e' assente quando la griglia e'
 	// semplicemente visibile (il default di Excel, "1" implicito, mai
-	// scritto esplicitamente in quel caso): solo "0" esplicito la
-	// nasconde. Bug reale segnalato dall'utente confrontando un file
+	// scritto esplicitamente in quel caso): solo "0"/"false" esplicito
+	// la nasconde. Bug reale segnalato dall'utente confrontando un file
 	// con Excel: un foglio con la griglia nascosta appositamente
 	// dall'autore (un look pulito da documento ufficiale) veniva
 	// comunque importato con la griglia visibile, perche' prima questo
-	// translator non leggeva affatto l'attributo.
+	// translator non leggeva affatto l'attributo. Secondo bug reale,
+	// trovato piu' tardi su un file esportato da LibreOffice Calc: qui
+	// si usava atoi() invece di XlsxAttrIsTrue, e atoi("true") vale
+	// silenziosamente 0 (non essendo una stringa numerica) -- ogni
+	// foglio di un file Calc (che scrive sempre showGridLines="true"
+	// esplicito, mai lo lascia implicito come Excel) risultava quindi
+	// con la griglia nascosta anche quando l'originale la mostrava.
 	if (strcmp(name, "sheetView") == 0 && ctx->showGrid)
 	{
 		bool show = true;
 		for (int i = 0; atts[i]; i += 2)
 			if (strcmp(atts[i], "showGridLines") == 0)
-				show = atoi(atts[i + 1]) != 0;
+				show = XlsxAttrIsTrue(atts[i + 1]);
 		*ctx->showGrid = show;
 	}
 	// <sheetPr><tabColor rgb="FF00B050"/></sheetPr>, prima di
@@ -2215,9 +2239,9 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				hasHeight = true;
 			}
 			else if (strcmp(atts[i], "customHeight") == 0)
-				customHeight = atoi(atts[i + 1]) != 0;
+				customHeight = XlsxAttrIsTrue(atts[i + 1]);
 			else if (strcmp(atts[i], "hidden") == 0)
-				hidden = atoi(atts[i + 1]) != 0;
+				hidden = XlsxAttrIsTrue(atts[i + 1]);
 		}
 		if (row > 0 && hasHeight && customHeight && ctx->rowHeights)
 			ctx->rowHeights->push_back(std::make_pair(row, (float)(heightPt * 4.0 / 3.0)));
@@ -2807,7 +2831,7 @@ static void XMLCALL WorkbookStart(void* userData, const char* name, const char**
 	{
 		for (int i = 0; atts[i]; i += 2)
 			if (strcmp(atts[i], "date1904") == 0)
-				ctx->date1904 = strcmp(atts[i + 1], "0") != 0 && strcmp(atts[i + 1], "false") != 0;
+				ctx->date1904 = XlsxAttrIsTrue(atts[i + 1]);
 	}
 }
 
@@ -2931,7 +2955,7 @@ static void XMLCALL TableStart(void* userData, const char* name, const char** at
 	{
 		for (int i = 0; atts[i]; i += 2)
 			if (strcmp(atts[i], "showRowStripes") == 0)
-				info->showStripes = strcmp(atts[i + 1], "0") != 0;
+				info->showStripes = XlsxAttrIsTrue(atts[i + 1]);
 	}
 }
 
