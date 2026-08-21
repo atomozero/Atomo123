@@ -553,14 +553,55 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out)
 
 	int seriesCount = r.right - r.left;
 	out.values.resize(seriesCount);
+
+	// Riga di intestazione (Fase 18): se la prima riga dell'intervallo
+	// ha un valore testuale in ALMENO una colonna serie, la si assume
+	// una riga di intestazione con i nomi delle serie -- stessa
+	// convenzione di Excel, selezionare A1:C5 con "Vendite"/"Costi" in
+	// B1/C1 nomina le serie senza bisogno di un controllo dedicato.
+	// Senza questo controllo quella riga verrebbe comunque scartata
+	// come dato (un valore testuale in una colonna serie la rende
+	// "rowOk = false" piu' sotto), quindi leggerla come intestazione
+	// invece di limitarsi a saltarla e' un puro miglioramento, non un
+	// cambio di comportamento per un intervallo senza intestazione.
+	bool hasHeader = false;
 	for (int s = 0; s < seriesCount; s++)
 	{
-		BString name(B_TRANSLATE("Serie"));
-		name << " " << (int32)(s + 1);
+		cell headerCell(r.left + 1 + s, r.top);
+		Value hv;
+		doc->GetValue(headerCell, hv);
+		if (hv.fType == eTextData && BString((const char*)hv).Length() > 0)
+		{
+			hasHeader = true;
+			break;
+		}
+	}
+
+	for (int s = 0; s < seriesCount; s++)
+	{
+		BString name;
+		if (hasHeader)
+		{
+			cell headerCell(r.left + 1 + s, r.top);
+			Value hv;
+			doc->GetValue(headerCell, hv);
+			if (hv.fType == eTextData)
+				name = (const char*)hv;
+		}
+		// Una colonna senza intestazione testuale propria (vuota o
+		// numerica) resta "Serie N", anche se le altre colonne ne
+		// hanno una -- non tutte le serie devono avere per forza un
+		// nome esplicito.
+		if (name.IsEmpty())
+		{
+			name = B_TRANSLATE("Serie");
+			name << " " << (int32)(s + 1);
+		}
 		out.seriesNames.push_back(name);
 	}
 
-	for (int row = r.top; row <= r.bottom; row++)
+	int firstDataRow = hasHeader ? r.top + 1 : r.top;
+	for (int row = firstDataRow; row <= r.bottom; row++)
 	{
 		// Una riga con un valore non numerico in QUALSIASI colonna
 		// serie viene saltata per intero (non solo per quella serie):

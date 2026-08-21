@@ -288,6 +288,58 @@ int main()
 	Check(multiWithGap.categories.size() == 3,
 		"una riga con un valore mancante in una sola serie viene saltata per intero, non genera una quarta categoria");
 
+	// Riga di intestazione (Fase 18): se la prima riga dell'intervallo
+	// ha un testo in una colonna serie, quel testo diventa il nome
+	// della serie e i dati partono dalla riga successiva -- stessa
+	// convenzione di Excel, colonne 10-12 per non toccare i dati usati
+	// sopra.
+	doc.NewCell(cell(11, 1), Value("Vendite"), NULL);
+	doc.NewCell(cell(12, 1), Value("Costi"), NULL);
+	doc.NewCell(cell(10, 2), Value("Gen"), NULL);
+	doc.NewCell(cell(11, 2), Value(100.0), NULL);
+	doc.NewCell(cell(12, 2), Value(40.0), NULL);
+	doc.NewCell(cell(10, 3), Value("Feb"), NULL);
+	doc.NewCell(cell(11, 3), Value(120.0), NULL);
+	doc.NewCell(cell(12, 3), Value(50.0), NULL);
+
+	MultiChartData multiHeader;
+	range headerRange(10, 1, 12, 3);
+	bool headerOk = BuildMultiChartSeries(&doc, headerRange, multiHeader);
+	Check(headerOk, "BuildMultiChartSeries riesce su un intervallo con riga di intestazione");
+	Check(multiHeader.categories.size() == 2,
+		"la riga di intestazione non viene contata come categoria (solo Gen/Feb, non 3 righe)");
+	if (multiHeader.categories.size() == 2 && multiHeader.seriesNames.size() == 2)
+	{
+		Check(multiHeader.categories[0] == "Gen" && multiHeader.categories[1] == "Feb",
+			"le categorie partono dalla riga DOPO l'intestazione");
+		Check(multiHeader.seriesNames[0] == "Vendite" && multiHeader.seriesNames[1] == "Costi",
+			"i nomi delle serie sono presi dal testo nella riga di intestazione, non \"Serie 1\"/\"Serie 2\"");
+		Check(multiHeader.values[0][0] == 100.0 && multiHeader.values[0][1] == 120.0,
+			"i valori della serie \"Vendite\" sono corretti (l'intestazione non e' stata letta come dato)");
+		Check(multiHeader.values[1][0] == 40.0 && multiHeader.values[1][1] == 50.0,
+			"i valori della serie \"Costi\" sono corretti");
+	}
+
+	// Un'intestazione parziale (una sola colonna serie con testo, non
+	// tutte) nomina solo quella colonna, l'altra resta "Serie N" --
+	// non tutte le serie devono avere per forza un nome esplicito.
+	doc.NewCell(cell(14, 1), Value("Vendite"), NULL);
+	// col 15 riga 1 lasciata numerica/vuota apposta (nessuna intestazione)
+	doc.NewCell(cell(13, 2), Value("Gen"), NULL);
+	doc.NewCell(cell(14, 2), Value(100.0), NULL);
+	doc.NewCell(cell(15, 2), Value(40.0), NULL);
+
+	MultiChartData multiPartialHeader;
+	range partialHeaderRange(13, 1, 15, 2);
+	BuildMultiChartSeries(&doc, partialHeaderRange, multiPartialHeader);
+	if (multiPartialHeader.seriesNames.size() == 2)
+	{
+		Check(multiPartialHeader.seriesNames[0] == "Vendite",
+			"la colonna con intestazione testuale usa quel nome");
+		Check(multiPartialHeader.seriesNames[1] == "Serie 2",
+			"la colonna senza intestazione testuale propria resta \"Serie 2\", non eredita quella della prima");
+	}
+
 	// Un intervallo di una sola colonna (nessuna colonna serie) viene
 	// rifiutato esplicitamente.
 	MultiChartData multiBadShape;

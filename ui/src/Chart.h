@@ -167,13 +167,16 @@ struct MultiChartData {
 
 // L'intervallo deve avere almeno due colonne: la prima con le
 // etichette di categoria, le successive una per serie di valori
-// numerici (nessuna riga di intestazione richiesta: le serie si
-// chiamano "Serie 1", "Serie 2", ... nell'ordine delle colonne). Una
-// riga con un valore non numerico in QUALSIASI colonna serie viene
-// saltata per intero (stesso principio di BuildChartSeries, esteso per
-// restare allineata su tutte le serie). Restituisce false se
-// l'intervallo ha meno di due colonne o se non risulta nessuna riga
-// valida.
+// numerici. Riga di intestazione facoltativa: se la prima riga ha un
+// valore testuale in una colonna serie, quel testo diventa il nome
+// della serie (stessa convenzione di Excel) e i dati partono dalla
+// riga successiva; una colonna serie senza intestazione testuale (o
+// senza riga di intestazione affatto) si chiama "Serie 1", "Serie 2",
+// ... nell'ordine delle colonne. Una riga (di dati) con un valore non
+// numerico in QUALSIASI colonna serie viene saltata per intero (stesso
+// principio di BuildChartSeries, esteso per restare allineata su tutte
+// le serie). Restituisce false se l'intervallo ha meno di due colonne
+// o se non risulta nessuna riga di dati valida.
 bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out);
 
 struct GroupedBarLayout {
