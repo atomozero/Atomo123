@@ -188,6 +188,13 @@ Since v0.2.0 (not yet in a tagged release):
   directly, no dialog. Previously only Save As existed, so every save
   — even of an already-named file — showed a file picker. A never-saved
   document still falls back to the Save As dialog
+- Added automatic saving: Preferences > "Salvataggio automatico",
+  enabled by default every 5 minutes (both configurable). Starts only
+  after the first manual save, and always writes a "<name>.bak"
+  backup file next to the document — never the original file itself,
+  same principle as AutoCAD's backup. The backup's format follows the
+  live document's format (an open .xlsx gets an .xlsx.bak written by
+  the XLSX translator)
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
