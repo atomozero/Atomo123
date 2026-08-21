@@ -14,8 +14,17 @@
 #ifndef RANGE_REF_H
 #define RANGE_REF_H
 
+#include <cstddef>
+
 class range;
 
 bool ParseRangeRef(const char* text, range& outRange);
+
+// Inversa di ParseRangeRef (Fase 18): "A1" per un intervallo di una
+// sola cella, "A1:B5" per piu' celle -- usata per precompilare il
+// campo Intervallo di ChartWindow con la selezione corrente del
+// foglio quando si apre la finestra Grafico, vedi
+// MainWindow::ShowChartWindow.
+void FormatRangeRef(const range& r, char* out, size_t outSize);
 
 #endif

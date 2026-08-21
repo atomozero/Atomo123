@@ -262,6 +262,15 @@ test-chart: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
 	./tests/test_chart
 
+# Test di FormatRangeRef/ParseRangeRef (RangeRef.cpp): stessa ragione
+# di test-chart, headless.
+test-range-ref: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_range_ref.cpp -o tests/test_range_ref.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/RangeRef.cpp -o tests/RangeRef.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_range_ref tests/test_range_ref.o tests/RangeRef.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
+	./tests/test_range_ref
+
 # Test della logica della tabella pivot (Pivot.cpp): stessa ragione di
 # test-chart, headless.
 test-pivot: $(ENGINE_DIR)/libengine.a
@@ -1042,6 +1051,7 @@ clean:
 		tests/test_clipboard tests/test_clipboard.o \
 		tests/test_scroll tests/test_scroll.o \
 		tests/test_chart tests/test_chart.o tests/Chart.o \
+		tests/test_range_ref tests/test_range_ref.o tests/RangeRef.o \
 		tests/test_pivot tests/test_pivot.o tests/Pivot.o \
 		tests/test_editing tests/test_editing.o \
 		tests/test_real_input_edit tests/test_real_input_edit.o \
@@ -1090,4 +1100,4 @@ clean:
 		examples/atomo123_demo.ascd \
 		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
-.PHONY: all run catkeys demo test test-ascd-book test-chart test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean
+.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format clean

@@ -2084,6 +2084,22 @@ void MainWindow::ShowChartWindow()
 	if (!fChartWindow)
 		fChartWindow = new ChartWindow(BMessenger(this));
 
+	// Se il foglio ha gia' una selezione di piu' di una cella al
+	// momento dell'apertura, precompila l'intervallo del grafico con
+	// quella selezione e disegna subito l'anteprima (Fase 18) invece
+	// di lasciare sempre il valore fisso di default -- l'utente puo'
+	// selezionare i dati PRIMA di aprire Grafico. Una singola cella
+	// selezionata (il caso comune quando non si e' scelto apposta un
+	// intervallo) non sovrascrive il campo: non sarebbe un intervallo
+	// utile per un grafico.
+	range sel = fSheetView->SelectionRange();
+	if (sel.left != sel.right || sel.top != sel.bottom)
+	{
+		char rangeText[32];
+		FormatRangeRef(sel, rangeText, sizeof(rangeText));
+		fChartWindow->LoadRange(rangeText);
+	}
+
 	if (fChartWindow->IsHidden())
 		fChartWindow->Show();
 	fChartWindow->Activate();

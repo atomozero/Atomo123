@@ -40,6 +40,13 @@ class ChartWindow : public BWindow {
 public:
 	ChartWindow(BMessenger target);
 
+	// Precompila il campo Intervallo e disegna subito l'anteprima --
+	// usata da MainWindow::ShowChartWindow quando il foglio ha gia'
+	// una selezione di piu' di una cella al momento dell'apertura,
+	// cosi' l'utente non deve ridigitare come testo un intervallo gia'
+	// selezionato sul foglio (Fase 18).
+	void LoadRange(const char* rangeText);
+
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
 
@@ -52,6 +59,10 @@ private:
 	BMessenger fTarget;
 
 	ChartType SelectedType() const;
+	// Corpo comune di kMsgDrawLocal e LoadRange sopra: applica il
+	// titolo corrente all'anteprima e richiede a MainWindow i dati
+	// dell'intervallo attualmente in fRangeField.
+	void RequestDraw();
 };
 
 #endif

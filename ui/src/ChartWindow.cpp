@@ -99,18 +99,27 @@ ChartType ChartWindow::SelectedType() const
 	}
 }
 
+void ChartWindow::LoadRange(const char* rangeText)
+{
+	fRangeField->SetText(rangeText);
+	RequestDraw();
+}
+
+void ChartWindow::RequestDraw()
+{
+	fChartView->SetTitle(fTitleField->Text());
+	BMessage request(kMsgChartRequest);
+	request.AddString("range", fRangeField->Text());
+	fTarget.SendMessage(&request);
+}
+
 void ChartWindow::MessageReceived(BMessage* message)
 {
 	switch (message->what)
 	{
 		case kMsgDrawLocal:
-		{
-			fChartView->SetTitle(fTitleField->Text());
-			BMessage request(kMsgChartRequest);
-			request.AddString("range", fRangeField->Text());
-			fTarget.SendMessage(&request);
+			RequestDraw();
 			return;
-		}
 
 		case kMsgTypeChangedLocal:
 			fChartView->SetChartType(SelectedType());
