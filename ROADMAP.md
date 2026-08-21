@@ -140,6 +140,12 @@ Since v0.2.0 (not yet in a tagged release):
   built against two different versions of the same struct. Added
   `-MMD -MP` header dependency tracking so `make` now rebuilds
   correctly
+- The per-series checkbox row (see above) now sits in a titled box
+  ("Mostra valori per serie") with a one-line hint explaining that
+  unchecking a series hides only its numbers, not the series itself —
+  it had no label or explanation before, which was confusing
+- Embedded charts can now be resized (bottom-right handle), same as
+  embedded images — previously move-only
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
