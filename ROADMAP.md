@@ -129,6 +129,10 @@ Since v0.2.0 (not yet in a tagged release):
 - Opening the chart dialog with more than one cell already selected
   now pre-fills the data range from that selection and draws the
   preview immediately, instead of always showing the fixed default
+- Multi-series bar/line charts get a per-series checkbox in the chart
+  dialog to show/hide that series' numeric value labels (previously
+  always hidden for multi-series, to avoid clutter). Preview-only —
+  not persisted on a chart already embedded in the sheet
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
