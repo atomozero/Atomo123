@@ -283,3 +283,351 @@ void MODEFunction(Value *stack, int argCnt, CContainer *cells)
 	stack[0] = (bestCount >= 2) ? bestValue : gValueNan;
 }
 
+// RANK/LARGE/SMALL/AVERAGEIFS/MAXIFS/MINIFS/SUBTOTAL (Fase 26, vedi
+// ROADMAP.md "v3.0 Consolidation"): assenti dalle funzioni originali
+// di Sum-It, mancanti confrontando la tabella con l'elenco standard di
+// Excel.
+
+void RANKFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double number, orderArg = 0;
+	range refRange;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetDoubleArgument(stack, argCnt, 1, &number)
+		|| !GetRangeArgument(stack, argCnt, 2, &refRange) || !refRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	bool ascending = argCnt >= 3 && GetDoubleArgument(stack, argCnt, 3, &orderArg) && orderArg != 0;
+	CContainer *refCells = GetRangeContainer(stack, 2, cells);
+
+	bool found = false;
+	int rank = 1;
+	CCellIterator iter(refCells, &refRange);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		Value val;
+		refCells->GetValue(c, val);
+		if (val.fType != eNumData)
+			continue;
+		if (val.fDouble == number)
+			found = true;
+		if (ascending ? (val.fDouble < number) : (val.fDouble > number))
+			rank++;
+	}
+
+	stack[0] = found ? (double)rank : gValueNan;
+}
+
+// LARGE/SMALL(intervallo,k): k-esimo valore piu' grande/piccolo --
+// "intervallo" e' un SOLO argomento (a differenza di MEDIAN/MODE sopra
+// che ne accettano quanti se ne vuole tramite CollectNumbers): "k"
+// stesso e' un numero semplice, non parte dei dati da ordinare, quindi
+// CollectNumbers (che tratterebbe anche "k" come un altro valore da
+// raccogliere) non e' la funzione giusta qui.
+void LARGEFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range dataRange;
+	double kArg;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 1, &dataRange) || !dataRange.IsValid()
+		|| !GetDoubleArgument(stack, argCnt, 2, &kArg))
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	int k = static_cast<int>(rint(kArg));
+	if (k < 1)
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	CContainer *dataCells = GetRangeContainer(stack, 1, cells);
+	std::vector<double> values;
+	CCellIterator iter(dataCells, &dataRange);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		Value val;
+		dataCells->GetValue(c, val);
+		if (val.fType == eNumData)
+			values.push_back(val.fDouble);
+	}
+
+	if (k > (int)values.size())
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	std::sort(values.begin(), values.end(), std::greater<double>());
+	stack[0] = values[k - 1];
+}
+
+void SMALLFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range dataRange;
+	double kArg;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 1, &dataRange) || !dataRange.IsValid()
+		|| !GetDoubleArgument(stack, argCnt, 2, &kArg))
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	int k = static_cast<int>(rint(kArg));
+	if (k < 1)
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	CContainer *dataCells = GetRangeContainer(stack, 1, cells);
+	std::vector<double> values;
+	CCellIterator iter(dataCells, &dataRange);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		Value val;
+		dataCells->GetValue(c, val);
+		if (val.fType == eNumData)
+			values.push_back(val.fDouble);
+	}
+
+	if (k > (int)values.size())
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	std::sort(values.begin(), values.end());
+	stack[0] = values[k - 1];
+}
+
+// AVERAGEIFS/MAXIFS/MINIFS(intervallo_valori,intervallo_criterio1,
+// criterio1,...): a differenza di AVERAGEIF/SUMIF/COUNTIF/COUNTIFS in
+// Functions.math.cpp (dove l'intervallo dati e' l'ULTIMO argomento,
+// opzionale), qui l'intervallo dati e' sempre il PRIMO -- stessa
+// differenza gia' presente nella vera Excel fra le forme "IF" (Fase
+// 13/14) e le piu' recenti "IFS" a piu' criteri. MatchesCriteria e'
+// dichiarata "static" in Functions.math.cpp (non visibile qui): una
+// copia identica locale, nessun modo pulito di condividerla fra i due
+// file senza un header apposta solo per questo, fuori scope qui.
+static bool MatchesCriteriaLocal(const Value &val, const Value &criteria)
+{
+	if (criteria.fType == eNumData)
+		return val.fType == eNumData && val.fDouble == criteria.fDouble;
+
+	if (criteria.fType != eTextData)
+		return false;
+
+	const char *crit = criteria.fText;
+	enum { eEQ, eNE, eGE, eLE, eGT, eLT } op = eEQ;
+	const char *rest = crit;
+
+	if (strncmp(crit, ">=", 2) == 0) { op = eGE; rest = crit + 2; }
+	else if (strncmp(crit, "<=", 2) == 0) { op = eLE; rest = crit + 2; }
+	else if (strncmp(crit, "<>", 2) == 0) { op = eNE; rest = crit + 2; }
+	else if (crit[0] == '>') { op = eGT; rest = crit + 1; }
+	else if (crit[0] == '<') { op = eLT; rest = crit + 1; }
+	else if (crit[0] == '=') { op = eEQ; rest = crit + 1; }
+
+	if (rest != crit)
+	{
+		char *end = NULL;
+		double num = strtod(rest, &end);
+		if (end == rest || val.fType != eNumData)
+			return false;
+
+		switch (op)
+		{
+			case eGE: return val.fDouble >= num;
+			case eLE: return val.fDouble <= num;
+			case eGT: return val.fDouble > num;
+			case eLT: return val.fDouble < num;
+			case eNE: return val.fDouble != num;
+			default: return val.fDouble == num;
+		}
+	}
+
+	char *end = NULL;
+	double critNum = strtod(crit, &end);
+	if (end != crit && *end == 0)
+		return val.fType == eNumData && val.fDouble == critNum;
+
+	return val.fType == eTextData && strcasecmp(val.fText, crit) == 0;
+}
+
+// Comune a AVERAGEIFS/MAXIFS/MINIFS sotto: risolve l'intervallo valori
+// (arg 1) e le coppie intervallo/criterio (arg 2+), poi chiama
+// "visit(valueVal)" per ogni posizione dove TUTTE le coppie
+// corrispondono -- ogni funzione decide da sola cosa farne (media,
+// massimo, minimo).
+template <typename Visitor>
+static bool VisitIfsMatches(Value *stack, int argCnt, CContainer *cells, Visitor visit)
+{
+	const int kMaxPairs = 12; // vedi kMaxStackHeight in Formula.h
+
+	if (argCnt < 3 || (argCnt - 1) % 2 != 0 || (argCnt - 1) / 2 > kMaxPairs)
+		return false;
+
+	range valueRange;
+	if (!GetRangeArgument(stack, argCnt, 1, &valueRange) || !valueRange.IsValid())
+		return false;
+	CContainer *valueCells = GetRangeContainer(stack, 1, cells);
+
+	int pairCount = (argCnt - 1) / 2;
+	range ranges[kMaxPairs];
+	CContainer *rangeCells[kMaxPairs];
+	for (int p = 0; p < pairCount; p++)
+	{
+		int rangeArgNr = 2 + 2 * p;
+		if (!GetRangeArgument(stack, argCnt, rangeArgNr, &ranges[p]) || !ranges[p].IsValid())
+			return false;
+		rangeCells[p] = GetRangeContainer(stack, rangeArgNr, cells);
+	}
+
+	CCellIterator iter(rangeCells[0], &ranges[0]);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		bool allMatch = true;
+		for (int p = 0; p < pairCount && allMatch; p++)
+		{
+			cell target(ranges[p].left + (c.h - ranges[0].left),
+				ranges[p].top + (c.v - ranges[0].top));
+			Value val;
+			rangeCells[p]->GetValue(target, val);
+			int critArgNr = 3 + 2 * p;
+			if (!MatchesCriteriaLocal(val, stack[critArgNr - 1]))
+				allMatch = false;
+		}
+		if (!allMatch)
+			continue;
+
+		cell target(valueRange.left + (c.h - ranges[0].left),
+			valueRange.top + (c.v - ranges[0].top));
+		Value valueVal;
+		valueCells->GetValue(target, valueVal);
+		if (valueVal.fType == eNumData)
+			visit(valueVal.fDouble);
+	}
+
+	return true;
+}
+
+// AVERAGEIFS (10 caratteri) non entra nel campo funcName[10] a
+// lunghezza fissa della risorsa 'Func': registrata internamente come
+// "AVGIFS" (vedi funcs_by_nr.r), alias in GetFunctionNr (Utils.cpp)
+// verso lo stesso funcNr, identico principio di
+// SUBSTITUTE/NETWORKDAYS/CEILING.MATH/CONCATENATE/LOG10.
+void AVERAGEIFSFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double sum = 0.0;
+	long count = 0;
+	bool ok = VisitIfsMatches(stack, argCnt, cells, [&](double v) { sum += v; count++; });
+	stack[0] = (ok && count > 0) ? sum / count : gRefNan;
+}
+
+void MAXIFSFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double best = 0.0;
+	bool found = false;
+	bool ok = VisitIfsMatches(stack, argCnt, cells, [&](double v) {
+		if (!found || v > best) { best = v; found = true; }
+	});
+	stack[0] = (ok && found) ? best : (ok ? 0.0 : gRefNan);
+}
+
+void MINIFSFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double best = 0.0;
+	bool found = false;
+	bool ok = VisitIfsMatches(stack, argCnt, cells, [&](double v) {
+		if (!found || v < best) { best = v; found = true; }
+	});
+	stack[0] = (ok && found) ? best : (ok ? 0.0 : gRefNan);
+}
+
+// SUBTOTAL(numero_funzione,intervallo1,...): solo le sei aggregazioni
+// piu' comuni (AVERAGE/COUNT/COUNTA/MAX/MIN/SUM, codici 1-5 e 9, o
+// 101-105/109 per la variante "ignora le righe nascoste" -- questo
+// motore non tiene traccia di quali righe siano nascoste a livello di
+// CContainer/funzione, solo SheetView lo sa, quindi la variante 100+
+// si comporta esattamente come quella base, non ignora nulla in piu').
+// PRODUCT/STDEV/STDEVP/VAR/VARP (6,7,8,10,11) non sono supportate.
+// Non esclude i risultati di eventuali SUBTOTAL annidati
+// nell'intervallo (comportamento vero di Excel): richiederebbe
+// ispezionare la formula di ogni cella, non solo il suo valore.
+void SUBTOTALFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double funcNumArg;
+
+	if (argCnt < 2 || !GetDoubleArgument(stack, argCnt, 1, &funcNumArg))
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	int funcNum = static_cast<int>(rint(funcNumArg));
+	if (funcNum > 100)
+		funcNum -= 100;
+
+	double sum = 0.0, maxVal = 0.0, minVal = 0.0;
+	long count = 0, countA = 0;
+	bool foundFirst = false;
+
+	for (int i = 2; i <= argCnt; i++)
+	{
+		range r;
+		if (!GetRangeArgument(stack, argCnt, i, &r) || !r.IsValid())
+			continue;
+		CContainer *rangeCells = GetRangeContainer(stack, i, cells);
+		CCellIterator iter(rangeCells, &r);
+		cell c;
+		while (iter.NextExisting(c))
+		{
+			Value val;
+			rangeCells->GetValue(c, val);
+			if (val.fType != eNoData)
+				countA++;
+			if (val.fType == eNumData)
+			{
+				sum += val.fDouble;
+				count++;
+				if (!foundFirst || val.fDouble > maxVal)
+					maxVal = val.fDouble;
+				if (!foundFirst || val.fDouble < minVal)
+					minVal = val.fDouble;
+				foundFirst = true;
+			}
+		}
+	}
+
+	switch (funcNum)
+	{
+		case 1: stack[0] = count > 0 ? sum / count : gValueNan; break; // AVERAGE
+		case 2: stack[0] = (double)count; break;                       // COUNT
+		case 3: stack[0] = (double)countA; break;                      // COUNTA
+		case 4: stack[0] = foundFirst ? maxVal : 0.0; break;           // MAX
+		case 5: stack[0] = foundFirst ? minVal : 0.0; break;           // MIN
+		case 9: stack[0] = sum; break;                                 // SUM
+		default: stack[0] = gValueNan; break; // aggregazione non supportata
+	}
+}
+

@@ -68,7 +68,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 127, "InitFunctions carica tutte le 127 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 135, "InitFunctions carica tutte le 135 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -1404,6 +1404,154 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =DATEDIF (YD): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// SUMPRODUCT/AVERAGEIFS/MAXIFS/MINIFS/RANK/LARGE/SMALL/SUBTOTAL
+	// (Fase 26, vedi ROADMAP.md "v3.0 Consolidation"): assenti dalle
+	// funzioni originali di Sum-It, mancanti confrontando la tabella
+	// con l'elenco standard di Excel. Risultati in colonna 55, ben
+	// lontano dalle colonne gia' usate sopra -- riusa i dati D1:D4/E1:E4
+	// (Mela/Pera/Mela/Banana, 10/5/20/7) gia' definiti per SUMIF/
+	// COUNTIF/AVERAGEIF piu' sopra, e A1:A3 (10,20,30).
+	try
+	{
+		TryToParseString("=AVERAGEIFS(E1:E4,D1:D4,\"Mela\")", cell(55, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 1));
+		doc.GetValue(cell(55, 1), v);
+		Check(v.fType == eNumData && (double)v == 15.0,
+			"=AVERAGEIFS(E1:E4,D1:D4,\"Mela\") calcola 15 (media di 10 e 20, "
+			"stesso risultato di AVERAGEIF ma con l'intervallo valori PRIMO invece che ultimo)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =AVERAGEIFS: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=MAXIFS(E1:E4,D1:D4,\"Mela\")", cell(55, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 2));
+		doc.GetValue(cell(55, 2), v);
+		Check(v.fType == eNumData && (double)v == 20.0,
+			"=MAXIFS(E1:E4,D1:D4,\"Mela\") calcola 20 (il maggiore fra 10 e 20)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =MAXIFS: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=MINIFS(E1:E4,D1:D4,\"Mela\")", cell(55, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 3));
+		doc.GetValue(cell(55, 3), v);
+		Check(v.fType == eNumData && (double)v == 10.0,
+			"=MINIFS(E1:E4,D1:D4,\"Mela\") calcola 10 (il minore fra 10 e 20)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =MINIFS: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=RANK(10,A1:A3)", cell(55, 4), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 4));
+		doc.GetValue(cell(55, 4), v);
+		Check(v.fType == eNumData && (double)v == 3.0,
+			"=RANK(10,A1:A3) con A1:A3=10,20,30: per difetto discendente, 10 (il minore) e' terzo");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =RANK (discendente): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=RANK(10,A1:A3,1)", cell(55, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 5));
+		doc.GetValue(cell(55, 5), v);
+		Check(v.fType == eNumData && (double)v == 1.0,
+			"=RANK(10,A1:A3,1) con ordine ascendente: 10 (il minore) e' primo, non piu' terzo");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =RANK (ascendente): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=LARGE(A1:A3,2)", cell(55, 6), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 6));
+		doc.GetValue(cell(55, 6), v);
+		Check(v.fType == eNumData && (double)v == 20.0,
+			"=LARGE(A1:A3,2) con A1:A3=10,20,30 calcola 20 (il secondo piu' grande)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =LARGE: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=SMALL(A1:A3,1)", cell(55, 7), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 7));
+		doc.GetValue(cell(55, 7), v);
+		Check(v.fType == eNumData && (double)v == 10.0,
+			"=SMALL(A1:A3,1) con A1:A3=10,20,30 calcola 10 (il piu' piccolo)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SMALL: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=SUBTOTAL(9,A1:A3)", cell(55, 8), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 8));
+		doc.GetValue(cell(55, 8), v);
+		Check(v.fType == eNumData && (double)v == 60.0,
+			"=SUBTOTAL(9,A1:A3) (9=SUM) calcola 60, come SUM(A1:A3)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SUBTOTAL (SUM): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=SUBTOTAL(4,A1:A3)", cell(55, 9), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 9));
+		doc.GetValue(cell(55, 9), v);
+		Check(v.fType == eNumData && (double)v == 30.0, "=SUBTOTAL(4,A1:A3) (4=MAX) calcola 30");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SUBTOTAL (MAX): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// A1:A3=10,20,30; E1:E3=10,5,20 -> 10*10+20*5+30*20 = 100+100+600 = 800.
+		TryToParseString("=SUMPRODUCT(A1:A3,E1:E3)", cell(55, 10), &doc, true, '.', ',');
+		doc.CalcCell(cell(55, 10));
+		doc.GetValue(cell(55, 10), v);
+		Check(v.fType == eNumData && (double)v == 800.0,
+			"=SUMPRODUCT(A1:A3,E1:E3) calcola 800 (10*10+20*5+30*20)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SUMPRODUCT: %s\n", (char *)e);
 		gFailures++;
 	}
 

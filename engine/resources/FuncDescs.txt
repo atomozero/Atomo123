@@ -125,3 +125,11 @@ Date that is a given number of working days before/after a start date, excluding
 Date a given number of months before/after a start date
 Last day of the month a given number of months before/after a start date
 Difference between two dates in the given unit (Y, M, D, MD, YM or YD)
+Sums the products of corresponding ranges or arrays
+Averages cells that meet multiple criteria
+Largest value among cells that meet multiple criteria
+Smallest value among cells that meet multiple criteria
+Rank of a number within a list of numbers
+K-th largest value in a data set
+K-th smallest value in a data set
+Aggregate (sum, average, count, max or min) of one or more ranges

@@ -249,6 +249,14 @@ int GetFunctionNr(const char *name)
 	if (MatchesFuncNameAlias(name, "NETWORKDAYS"))
 		return kNETWORKDAYSFuncNr;
 
+	// "SUMPRODUCT"/"AVERAGEIFS" (10 caratteri entrambi, Fase 26) hanno
+	// lo stesso problema di SUBSTITUTE/NETWORKDAYS sopra: registrate
+	// come "SUMPROD"/"AVGIFS" (vedi funcs_by_nr.r).
+	if (MatchesFuncNameAlias(name, "SUMPRODUCT"))
+		return kSUMPRODUCTFuncNr;
+	if (MatchesFuncNameAlias(name, "AVERAGEIFS"))
+		return kAVERAGEIFSFuncNr;
+
 	if (sLen >= (long)sizeof(myFunc))
 		return -1;
 

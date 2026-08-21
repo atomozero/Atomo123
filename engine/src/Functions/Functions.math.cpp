@@ -891,3 +891,67 @@ void AVERAGEIFFunction(Value *stack, int argCnt, CContainer *cells)
 	stack[0] = count > 0 ? sum / count : gRefNan;
 } /* AVERAGEIFFunction */
 
+// SUMPRODUCT(array1,[array2],...) (Fase 26, vedi ROADMAP.md "v3.0
+// Consolidation"): assente dalle funzioni originali di Sum-It. Ogni
+// intervallo deve avere la STESSA forma (righe x colonne) di
+// array1, come nella vera Excel -- una forma diversa restituisce
+// #VALORE!, non un risultato calcolato su un sottoinsieme.
+// SUMPRODUCT (10 caratteri) non entra nel campo funcName[10] a
+// lunghezza fissa della risorsa 'Func': registrata internamente come
+// "SUMPROD" (vedi funcs_by_nr.r), alias in GetFunctionNr (Utils.cpp)
+// verso lo stesso funcNr, identico principio di
+// SUBSTITUTE/NETWORKDAYS/AVERAGEIFS/CEILING.MATH/CONCATENATE/LOG10.
+void SUMPRODUCTFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	const int kMaxArrays = 12; // vedi kMaxStackHeight in Formula.h
+
+	if (argCnt < 1 || argCnt > kMaxArrays)
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	range ranges[kMaxArrays];
+	CContainer *rangeCells[kMaxArrays];
+	for (int i = 0; i < argCnt; i++)
+	{
+		if (!GetRangeArgument(stack, argCnt, i + 1, &ranges[i]) || !ranges[i].IsValid())
+		{
+			stack[0] = gValueNan;
+			return;
+		}
+		rangeCells[i] = GetRangeContainer(stack, i + 1, cells);
+	}
+
+	int width = ranges[0].right - ranges[0].left + 1;
+	int height = ranges[0].bottom - ranges[0].top + 1;
+	for (int i = 1; i < argCnt; i++)
+	{
+		if (ranges[i].right - ranges[i].left + 1 != width
+			|| ranges[i].bottom - ranges[i].top + 1 != height)
+		{
+			stack[0] = gValueNan;
+			return;
+		}
+	}
+
+	double total = 0.0;
+	for (int row = 0; row < height; row++)
+	{
+		for (int col = 0; col < width; col++)
+		{
+			double product = 1.0;
+			for (int i = 0; i < argCnt; i++)
+			{
+				cell c(ranges[i].left + col, ranges[i].top + row);
+				Value val;
+				rangeCells[i]->GetValue(c, val);
+				product *= (val.fType == eNumData) ? val.fDouble : 0.0;
+			}
+			total += product;
+		}
+	}
+
+	stack[0] = total;
+} /* SUMPRODUCTFunction */
+

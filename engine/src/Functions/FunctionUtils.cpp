@@ -322,6 +322,14 @@ void SetupDefaultFuncs()
 	gFuncs[kEDATEFuncNr] = EDATEFunction;
 	gFuncs[kEOMONTHFuncNr] = EOMONTHFunction;
 	gFuncs[kDATEDIFFuncNr] = DATEDIFFunction;
+	gFuncs[kSUMPRODUCTFuncNr] = SUMPRODUCTFunction;
+	gFuncs[kAVERAGEIFSFuncNr] = AVERAGEIFSFunction;
+	gFuncs[kMAXIFSFuncNr] = MAXIFSFunction;
+	gFuncs[kMINIFSFuncNr] = MINIFSFunction;
+	gFuncs[kRANKFuncNr] = RANKFunction;
+	gFuncs[kLARGEFuncNr] = LARGEFunction;
+	gFuncs[kSMALLFuncNr] = SMALLFunction;
+	gFuncs[kSUBTOTALFuncNr] = SUBTOTALFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

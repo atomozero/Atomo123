@@ -195,6 +195,18 @@ enum {
 	kEDATEFuncNr,
 	kEOMONTHFuncNr,
 	kDATEDIFFuncNr,
+	// SUMPRODUCT/AVERAGEIFS/MAXIFS/MINIFS/RANK/LARGE/SMALL/SUBTOTAL
+	// (Fase 26, vedi ROADMAP.md "v3.0 Consolidation"): assenti dalle
+	// funzioni originali di Sum-It, mancanti confrontando la tabella
+	// con l'elenco standard di Excel.
+	kSUMPRODUCTFuncNr,
+	kAVERAGEIFSFuncNr,
+	kMAXIFSFuncNr,
+	kMINIFSFuncNr,
+	kRANKFuncNr,
+	kLARGEFuncNr,
+	kSMALLFuncNr,
+	kSUBTOTALFuncNr,
 	kFunctionCount
 };
 
@@ -324,5 +336,13 @@ void WORKDAYFunction(Value *stack, int argCnt, CContainer *cells);
 void EDATEFunction(Value *stack, int argCnt, CContainer *cells);
 void EOMONTHFunction(Value *stack, int argCnt, CContainer *cells);
 void DATEDIFFunction(Value *stack, int argCnt, CContainer *cells);
+void SUMPRODUCTFunction(Value *stack, int argCnt, CContainer *cells);
+void AVERAGEIFSFunction(Value *stack, int argCnt, CContainer *cells);
+void MAXIFSFunction(Value *stack, int argCnt, CContainer *cells);
+void MINIFSFunction(Value *stack, int argCnt, CContainer *cells);
+void RANKFunction(Value *stack, int argCnt, CContainer *cells);
+void LARGEFunction(Value *stack, int argCnt, CContainer *cells);
+void SMALLFunction(Value *stack, int argCnt, CContainer *cells);
+void SUBTOTALFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

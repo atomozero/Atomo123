@@ -208,6 +208,20 @@ resource 'Func' (128, "Functions")
 		"WORKDAY", 65535, 123, 2,
 		"EDATE", 2, 124, 2,
 		"EOMONTH", 2, 125, 2,
-		"DATEDIF", 3, 126, 2
+		"DATEDIF", 3, 126, 2,
+		// SUMPRODUCT/AVERAGEIFS/MAXIFS/MINIFS/RANK/LARGE/SMALL/SUBTOTAL
+		// (Fase 26, vedi ROADMAP.md "v3.0 Consolidation"). "SUMPROD"/
+		// "AVGIFS" (non "SUMPRODUCT"/"AVERAGEIFS", 10 caratteri
+		// entrambi, non entrano nel campo a lunghezza fissa): alias
+		// diretti in GetFunctionNr (Utils.cpp), stesso principio di
+		// SUBSTITUTE/NETWORKDAYS sopra.
+		"SUMPROD", 65535, 127, 4,
+		"AVGIFS", 65535, 128, 5,
+		"MAXIFS", 65535, 129, 5,
+		"MINIFS", 65535, 130, 5,
+		"RANK", 65535, 131, 5,
+		"LARGE", 2, 132, 5,
+		"SMALL", 2, 133, 5,
+		"SUBTOTAL", 65535, 134, 5
 	}
 };
