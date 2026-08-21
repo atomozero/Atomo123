@@ -71,21 +71,28 @@ struct AxisTick {
 	BString label;	// valore gia' formattato (stesso formato "%g" di ValueToLabel)
 };
 
-// Tacche dell'asse Y: valori equidistanti da 0 a maxValue, convertiti in
-// coordinate Y dentro plotArea. Funzione pura (nessun BView/Draw), usata
-// sia per disegnare la griglia sia per misurare la larghezza delle
-// etichette prima di riservare il margine sinistro del grafico -- vedi
-// DrawBarChart/DrawLineChart.
-void ComputeYAxisTicks(double maxValue, BRect plotArea, std::vector<AxisTick>& out);
+// Tacche dell'asse Y: valori equidistanti da minValue a maxValue,
+// convertiti in coordinate Y dentro plotArea. Funzione pura (nessun
+// BView/Draw), usata sia per disegnare la griglia sia per misurare la
+// larghezza delle etichette prima di riservare il margine sinistro del
+// grafico -- vedi DrawBarChart/DrawLineChart. minValue e' quasi sempre
+// 0, tranne quando la serie ha valori negativi (vedi ChartValueRange
+// in Chart.cpp): le tacche/etichette scendono allora sotto zero invece
+// di ignorare la parte negativa della scala.
+void ComputeYAxisTicks(double minValue, double maxValue, BRect plotArea,
+	std::vector<AxisTick>& out);
 
 // Disegna la griglia orizzontale (linee chiare) e le etichette numeriche
 // a sinistra di plotArea -- condivisa da barre e linee, che condividono
 // lo stesso asse a valori (a differenza della torta, che non ne ha uno).
-void DrawYAxisGrid(BView* view, BRect plotArea, double maxValue);
+void DrawYAxisGrid(BView* view, BRect plotArea, double minValue, double maxValue);
 
-// Calcola il rettangolo di ogni barra dentro "bounds", scalato al
-// valore massimo della serie. Funzione pura (nessun BView/Draw),
-// cosi' e' verificabile con un test headless.
+// Calcola il rettangolo di ogni barra dentro "bounds", scalato
+// all'intervallo di valori della serie (vedi ComputeYAxisTicks sopra):
+// un valore negativo produce una barra che scende sotto la linea dello
+// zero invece che sopra, non una barra fuori dall'area disegnabile.
+// Funzione pura (nessun BView/Draw), cosi' e' verificabile con un test
+// headless.
 void ComputeBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 	std::vector<BarLayout>& out);
 

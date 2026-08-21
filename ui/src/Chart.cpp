@@ -64,32 +64,55 @@ bool BuildChartSeries(CContainer* doc, const range& r,
 	return !out.empty();
 }
 
-// Condivisa da ComputeBarLayout/DrawBarChart (e in futuro dalle linee):
-// mai <= 0, cosi' i chiamanti possono dividere per il risultato senza
-// controllare separatamente il caso "nessun valore positivo".
-static double ChartMaxValue(const std::vector<ChartSeries>& data)
+// Intervallo di valori della serie, sempre comprensivo dello zero (la
+// linea di base convenzionale di un grafico a barre/linee): con dati
+// tutti positivi (il caso comune) e' equivalente al vecchio
+// "ChartMaxValue" di sola andata (0..max). Con valori negativi, minValue
+// scende sotto zero cosi' ComputeBarLayout/ComputeLineLayout possono
+// disegnare quella parte della serie SOTTO la linea di zero invece di
+// fuori dall'area disegnabile (bug corretto qui). Una serie piatta o
+// vuota (minValue == maxValue, es. tutti zero) allarga maxValue di 1
+// cosi' i chiamanti possono dividere per (maxValue - minValue) senza
+// controllare separatamente il caso degenere.
+static void ChartValueRange(const std::vector<ChartSeries>& data, double* outMin, double* outMax)
 {
-	double maxValue = 0;
+	double minValue = 0, maxValue = 0;
 	for (size_t i = 0; i < data.size(); i++)
+	{
+		if (data[i].value < minValue)
+			minValue = data[i].value;
 		if (data[i].value > maxValue)
 			maxValue = data[i].value;
-	return maxValue > 0 ? maxValue : 1;
+	}
+	if (minValue == maxValue)
+		maxValue = minValue + 1;
+	*outMin = minValue;
+	*outMax = maxValue;
 }
 
-void ComputeYAxisTicks(double maxValue, BRect plotArea, std::vector<AxisTick>& out)
+// Coordinata Y di "value" dentro "bounds", scalata sull'intervallo
+// [minValue, maxValue] -- minValue cade su bounds.bottom, maxValue su
+// bounds.top. Condivisa da ComputeBarLayout/ComputeLineLayout/
+// ComputeYAxisTicks cosi' i tre usano sempre la stessa proiezione.
+static float ChartValueToY(double value, double minValue, double maxValue, BRect bounds)
+{
+	return bounds.bottom - bounds.Height() * (float)((value - minValue) / (maxValue - minValue));
+}
+
+void ComputeYAxisTicks(double minValue, double maxValue, BRect plotArea, std::vector<AxisTick>& out)
 {
 	out.clear();
-	if (maxValue <= 0)
-		maxValue = 1;
+	if (maxValue <= minValue)
+		maxValue = minValue + 1;
 
-	// 5 tacche (0, 1/4, 2/4, 3/4, max): abbastanza per leggere la scala
-	// senza affollare l'asse su un grafico piccolo come quello di
-	// ChartView/un grafico incorporato nel foglio.
+	// 5 tacche equidistanti da minValue a maxValue: abbastanza per
+	// leggere la scala senza affollare l'asse su un grafico piccolo
+	// come quello di ChartView/un grafico incorporato nel foglio.
 	const int kDivisions = 4;
 	for (int i = 0; i <= kDivisions; i++)
 	{
-		double value = maxValue * i / kDivisions;
-		float y = plotArea.bottom - plotArea.Height() * (float)(value / maxValue);
+		double value = minValue + (maxValue - minValue) * i / kDivisions;
+		float y = ChartValueToY(value, minValue, maxValue, plotArea);
 
 		AxisTick tick;
 		tick.y = y;
@@ -100,10 +123,10 @@ void ComputeYAxisTicks(double maxValue, BRect plotArea, std::vector<AxisTick>& o
 	}
 }
 
-void DrawYAxisGrid(BView* view, BRect plotArea, double maxValue)
+void DrawYAxisGrid(BView* view, BRect plotArea, double minValue, double maxValue)
 {
 	std::vector<AxisTick> ticks;
-	ComputeYAxisTicks(maxValue, plotArea, ticks);
+	ComputeYAxisTicks(minValue, maxValue, plotArea, ticks);
 
 	view->SetHighColor(225, 225, 225);
 	for (size_t i = 0; i < ticks.size(); i++)
@@ -124,22 +147,28 @@ void ComputeBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 	if (data.empty())
 		return;
 
-	double maxValue = ChartMaxValue(data);
+	double minValue, maxValue;
+	ChartValueRange(data, &minValue, &maxValue);
 
 	float slotWidth = bounds.Width() / data.size();
 	float gap = slotWidth * 0.2f;
 	if (gap > 10)
 		gap = 10;
 
+	float zeroY = ChartValueToY(0.0, minValue, maxValue, bounds);
+
 	for (size_t i = 0; i < data.size(); i++)
 	{
 		float left = bounds.left + i * slotWidth + gap / 2;
 		float right = left + slotWidth - gap;
-		float barHeight = bounds.Height() * (float)(data[i].value / maxValue);
-		float top = bounds.bottom - barHeight;
+		float valueY = ChartValueToY(data[i].value, minValue, maxValue, bounds);
 
 		BarLayout bl;
-		bl.bar.Set(left, top, right, bounds.bottom);
+		// La barra va sempre dalla linea di zero al valore, qualunque
+		// sia il segno: min/max invece di "top fisso, bottom fisso"
+		// cosi' un valore negativo scende sotto zero invece di
+		// produrre un rettangolo con top > bottom (invisibile/storto).
+		bl.bar.Set(left, std::min(valueY, zeroY), right, std::max(valueY, zeroY));
 		out.push_back(bl);
 	}
 }
@@ -161,14 +190,15 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	plotArea.bottom -= 16;	// spazio per le etichette sotto le barre
 	plotArea.top += 14;	// spazio per l'etichetta del valore sopra le barre
 
-	double maxValue = ChartMaxValue(data);
+	double minValue, maxValue;
+	ChartValueRange(data, &minValue, &maxValue);
 
 	// Riserva a sinistra lo spazio per le etichette dell'asse Y,
 	// misurando la piu' larga con il font corrente -- le coordinate Y
 	// delle tacche non dipendono da plotArea.left/right, quindi vanno
 	// bene anche calcolate prima di restringere plotArea qui sotto.
 	std::vector<AxisTick> ticks;
-	ComputeYAxisTicks(maxValue, plotArea, ticks);
+	ComputeYAxisTicks(minValue, maxValue, plotArea, ticks);
 	float axisLabelWidth = 0;
 	for (size_t i = 0; i < ticks.size(); i++)
 	{
@@ -181,15 +211,17 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	std::vector<BarLayout> bars;
 	ComputeBarLayout(data, plotArea, bars);
 
-	DrawYAxisGrid(view, plotArea, maxValue);
+	DrawYAxisGrid(view, plotArea, minValue, maxValue);
 
 	view->SetHighColor(70, 110, 190);
 	for (size_t i = 0; i < bars.size(); i++)
 		view->FillRect(bars[i].bar);
 
-	// Valore numerico sopra ogni barra, centrato -- plotArea.top e'
-	// stato riservato apposta qui sopra cosi' anche la barra al valore
-	// massimo (che tocca plotArea.top) ha spazio per la sua etichetta.
+	// Valore numerico accanto a ogni barra, centrato -- sopra per un
+	// valore positivo (plotArea.top riservato apposta qui sopra),
+	// sotto per uno negativo (la barra scende sotto la linea di zero,
+	// vedi ComputeBarLayout: mettere l'etichetta sopra la barra la
+	// piazzerebbe vicino alla linea di zero, lontano dalla barra vera).
 	view->SetHighColor(40, 40, 40);
 	for (size_t i = 0; i < bars.size() && i < data.size(); i++)
 	{
@@ -197,13 +229,18 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 		snprintf(buf, sizeof(buf), "%g", data[i].value);
 		float width = view->StringWidth(buf);
 		float x = bars[i].bar.left + bars[i].bar.Width() / 2 - width / 2;
-		view->DrawString(buf, BPoint(x, bars[i].bar.top - 4));
+		float y = (data[i].value >= 0) ? bars[i].bar.top - 4 : bars[i].bar.bottom + 12;
+		view->DrawString(buf, BPoint(x, y));
 	}
 
 	view->SetHighColor(0, 0, 0);
 	view->StrokeRect(frame);
-	view->StrokeLine(BPoint(plotArea.left, plotArea.bottom),
-		BPoint(plotArea.right, plotArea.bottom));
+	// Linea di zero: sul fondo di plotArea con soli valori positivi
+	// (comportamento di sempre), ma sale a meta' se la serie ha anche
+	// valori negativi -- e' la vera linea di base delle barre, non il
+	// bordo del grafico.
+	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
+	view->StrokeLine(BPoint(plotArea.left, zeroY), BPoint(plotArea.right, zeroY));
 
 	for (size_t i = 0; i < bars.size() && i < data.size(); i++)
 	{
@@ -219,7 +256,8 @@ void ComputeLineLayout(const std::vector<ChartSeries>& data, BRect bounds,
 	if (data.empty())
 		return;
 
-	double maxValue = ChartMaxValue(data);
+	double minValue, maxValue;
+	ChartValueRange(data, &minValue, &maxValue);
 
 	// Stessa larghezza di slot di ComputeBarLayout, cosi' un punto
 	// della linea cade nello stesso centro orizzontale dell'etichetta
@@ -230,7 +268,7 @@ void ComputeLineLayout(const std::vector<ChartSeries>& data, BRect bounds,
 	for (size_t i = 0; i < data.size(); i++)
 	{
 		float x = bounds.left + i * slotWidth + slotWidth / 2;
-		float y = bounds.bottom - bounds.Height() * (float)(data[i].value / maxValue);
+		float y = ChartValueToY(data[i].value, minValue, maxValue, bounds);
 
 		LinePoint lp;
 		lp.point.Set(x, y);
@@ -255,13 +293,14 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	plotArea.bottom -= 16;	// spazio per le etichette sotto i punti
 	plotArea.top += 14;	// spazio per l'etichetta del valore sopra i punti
 
-	double maxValue = ChartMaxValue(data);
+	double minValue, maxValue;
+	ChartValueRange(data, &minValue, &maxValue);
 
 	// Stesso margine sinistro per l'asse Y di DrawBarChart -- vedi il
 	// commento li' sopra per il perche' delle tacche calcolate prima
 	// di restringere plotArea.
 	std::vector<AxisTick> ticks;
-	ComputeYAxisTicks(maxValue, plotArea, ticks);
+	ComputeYAxisTicks(minValue, maxValue, plotArea, ticks);
 	float axisLabelWidth = 0;
 	for (size_t i = 0; i < ticks.size(); i++)
 	{
@@ -274,7 +313,7 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	std::vector<LinePoint> points;
 	ComputeLineLayout(data, plotArea, points);
 
-	DrawYAxisGrid(view, plotArea, maxValue);
+	DrawYAxisGrid(view, plotArea, minValue, maxValue);
 
 	view->SetHighColor(70, 110, 190);
 	for (size_t i = 1; i < points.size(); i++)
@@ -289,22 +328,26 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 		view->FillEllipse(dot);
 	}
 
-	// Valore numerico sopra ogni punto, centrato -- stesso principio
-	// dell'etichetta sopra le barre in DrawBarChart, plotArea.top e'
-	// stato riservato apposta qui sopra.
+	// Valore numerico accanto a ogni punto, centrato -- sopra per un
+	// valore positivo (plotArea.top riservato apposta qui sopra), sotto
+	// per uno negativo, stesso principio delle barre in DrawBarChart.
 	view->SetHighColor(40, 40, 40);
 	for (size_t i = 0; i < points.size() && i < data.size(); i++)
 	{
 		char buf[32];
 		snprintf(buf, sizeof(buf), "%g", data[i].value);
 		float width = view->StringWidth(buf);
-		view->DrawString(buf, BPoint(points[i].point.x - width / 2, points[i].point.y - 8));
+		float y = (data[i].value >= 0) ? points[i].point.y - 8 : points[i].point.y + 16;
+		view->DrawString(buf, BPoint(points[i].point.x - width / 2, y));
 	}
 
 	view->SetHighColor(0, 0, 0);
 	view->StrokeRect(frame);
-	view->StrokeLine(BPoint(plotArea.left, plotArea.bottom),
-		BPoint(plotArea.right, plotArea.bottom));
+	// Linea di zero (vedi il commento gemello in DrawBarChart): sale a
+	// meta' di plotArea se la serie ha anche valori negativi, invece di
+	// restare sempre sul fondo.
+	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
+	view->StrokeLine(BPoint(plotArea.left, zeroY), BPoint(plotArea.right, zeroY));
 
 	// Stessa larghezza di slot di ComputeLineLayout, per allineare
 	// l'etichetta sotto il punto corrispondente (DrawString parte da

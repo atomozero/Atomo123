@@ -154,12 +154,13 @@ int main()
 	Check(negativeSlices.empty(),
 		"ComputePieLayout su una serie con solo valori non positivi non produce spicchi");
 
-	// ComputeYAxisTicks: 5 tacche equidistanti da 0 a maxValue, con
-	// coordinate Y decrescenti (0 in basso, maxValue in alto) dentro
-	// plotArea -- stesso principio geometrico di ComputeBarLayout sopra.
+	// ComputeYAxisTicks: 5 tacche equidistanti da minValue a maxValue,
+	// con coordinate Y decrescenti (minValue in basso, maxValue in
+	// alto) dentro plotArea -- stesso principio geometrico di
+	// ComputeBarLayout sopra.
 	std::vector<AxisTick> ticks;
 	BRect plotArea(0, 0, 100, 40);
-	ComputeYAxisTicks(20.0, plotArea, ticks);
+	ComputeYAxisTicks(0.0, 20.0, plotArea, ticks);
 
 	Check(ticks.size() == 5, "ComputeYAxisTicks produce 5 tacche (0, 1/4, 2/4, 3/4, max)");
 	if (ticks.size() == 5)
@@ -175,13 +176,70 @@ int main()
 			"le coordinate Y decrescono salendo verso il massimo");
 	}
 
-	// Una serie tutta a zero (o vuota) non deve dividere per zero: usa
-	// 1 come massimo di riserva, stesso principio di ChartMaxValue in
-	// ComputeBarLayout/ComputePieLayout.
+	// Un intervallo degenere (minValue == maxValue, es. serie tutta a
+	// zero o vuota) non deve dividere per zero: allarga maxValue di 1
+	// di riserva, stesso principio di ChartValueRange in
+	// ComputeBarLayout/ComputeLineLayout.
 	std::vector<AxisTick> zeroTicks;
-	ComputeYAxisTicks(0.0, plotArea, zeroTicks);
+	ComputeYAxisTicks(0.0, 0.0, plotArea, zeroTicks);
 	Check(zeroTicks.size() == 5,
-		"ComputeYAxisTicks con massimo 0 non va in errore, produce comunque 5 tacche");
+		"ComputeYAxisTicks con minValue == maxValue non va in errore, produce comunque 5 tacche");
+
+	// ComputeYAxisTicks con un intervallo che scende sotto zero (serie
+	// con valori negativi): la prima tacca deve valere il minimo
+	// negativo, non 0 -- l'asse deve mostrare anche la parte negativa
+	// della scala, non tagliarla via.
+	std::vector<AxisTick> negativeTicks;
+	ComputeYAxisTicks(-10.0, 10.0, plotArea, negativeTicks);
+	Check(negativeTicks.size() == 5, "ComputeYAxisTicks produce 5 tacche anche con un minimo negativo");
+	if (negativeTicks.size() == 5)
+	{
+		Check(negativeTicks[0].label == "-10", "la prima tacca vale il minimo negativo, non 0");
+		Check(negativeTicks[2].label == "0", "la tacca di mezzo vale 0 quando l'intervallo e' simmetrico");
+		Check(negativeTicks[4].label == "10", "l'ultima tacca vale il massimo");
+	}
+
+	// ComputeBarLayout con valori sia positivi che negativi: la barra
+	// negativa deve scendere SOTTO la linea di zero (bottom > zeroY),
+	// non finire fuori dall'area disegnabile come prima di questo fix.
+	std::vector<ChartSeries> mixedData;
+	ChartSeries pos; pos.label = "Pos"; pos.value = 10;
+	ChartSeries neg2; neg2.label = "Neg"; neg2.value = -10;
+	mixedData.push_back(pos);
+	mixedData.push_back(neg2);
+
+	std::vector<BarLayout> mixedBars;
+	BRect mixedBounds(0, 0, 100, 40);
+	ComputeBarLayout(mixedData, mixedBounds, mixedBars);
+
+	Check(mixedBars.size() == 2, "ComputeBarLayout produce una barra per voce anche con valori misti");
+	if (mixedBars.size() == 2)
+	{
+		Check(mixedBars[0].bar.top < mixedBars[0].bar.bottom,
+			"la barra positiva e' un rettangolo valido (top sopra bottom)");
+		Check(mixedBars[1].bar.top < mixedBars[1].bar.bottom,
+			"la barra negativa e' un rettangolo valido (top sopra bottom), non invertito");
+		Check(mixedBars[0].bar.bottom == mixedBars[1].bar.top,
+			"le due barre (valori opposti e simmetrici) si toccano esattamente sulla linea di zero");
+		Check(mixedBars[0].bar.top == mixedBounds.top,
+			"la barra positiva massima tocca il bordo superiore dell'area");
+		Check(mixedBars[1].bar.bottom == mixedBounds.bottom,
+			"la barra negativa minima tocca il bordo inferiore dell'area");
+	}
+
+	// ComputeLineLayout con lo stesso caso misto: il punto negativo
+	// deve scendere sotto il punto a valore zero (se ci fosse), non
+	// finire fuori da bounds.
+	std::vector<LinePoint> mixedPoints;
+	ComputeLineLayout(mixedData, mixedBounds, mixedPoints);
+	Check(mixedPoints.size() == 2, "ComputeLineLayout produce un punto per voce anche con valori misti");
+	if (mixedPoints.size() == 2)
+	{
+		Check(mixedPoints[0].point.y == mixedBounds.top,
+			"il punto col valore positivo massimo tocca il bordo superiore dell'area");
+		Check(mixedPoints[1].point.y == mixedBounds.bottom,
+			"il punto col valore negativo minimo tocca il bordo inferiore dell'area");
+	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
