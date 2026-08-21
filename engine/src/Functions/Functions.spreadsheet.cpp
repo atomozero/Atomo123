@@ -596,6 +596,285 @@ void MATCHFunction(Value *stack, int argCnt, CContainer *cells)
 		stack[0] = gRefNan;
 }
 
+// INDIRECT/ADDRESS/XMATCH (Fase 26, vedi ROADMAP.md "v3.0
+// Consolidation"): assenti dalle funzioni originali di Sum-It,
+// mancanti confrontando la tabella con l'elenco standard di Excel.
+
+// INDIRECT(testo_rif,[stile_a1]): converte un TESTO in un riferimento
+// vero -- a differenza di un riferimento scritto direttamente in una
+// formula (risolto una volta sola dal parser in bytecode valRange/
+// valCell, vedi Formula.cpp), qui il testo va analizzato e risolto A
+// RUNTIME, ogni volta che la formula ricalcola. Solo lo stile A1 e'
+// riconosciuto ("Foglio1!A1:B5", "A1", "$A$1" -- il "$" e' tollerato
+// ma ignorato, il risultato e' comunque sempre un riferimento
+// assoluto); lo stile R1C1 (stile_a1=FALSO) non e' supportato, il
+// secondo argomento e' accettato ma ignorato.
+void INDIRECTFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	char refText[256];
+
+	if (!GetTextArgument(stack, argCnt, 1, refText))
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	CContainer *targetCells = cells;
+	char *cellsPart = refText;
+
+	char *bang = strchr(refText, '!');
+	if (bang)
+	{
+		*bang = 0;
+		char *sheetName = refText;
+		// Nome foglio fra apici singoli ('Foglio 1'!A1), per un nome
+		// con spazi -- stessa convenzione gia' vista nei translator
+		// XLSX/ODS per lo stesso identico problema.
+		size_t sheetLen = strlen(sheetName);
+		if (sheetLen >= 2 && sheetName[0] == '\'' && sheetName[sheetLen - 1] == '\'')
+		{
+			sheetName[sheetLen - 1] = 0;
+			sheetName++;
+		}
+
+		ISheetResolver *resolver = cells->GetSheetResolver();
+		targetCells = resolver ? resolver->ResolveSheetByName(sheetName) : NULL;
+		if (!targetCells)
+		{
+			stack[0] = gRefNan;
+			return;
+		}
+		cellsPart = bang + 1;
+	}
+
+	char clean[256];
+	int w = 0;
+	for (char *p = cellsPart; *p && w < (int)sizeof(clean) - 1; p++)
+		if (*p != '$')
+			clean[w++] = *p;
+	clean[w] = 0;
+
+	char *colon = strchr(clean, ':');
+	cell topLeft, botRight;
+	if (colon)
+	{
+		*colon = 0;
+		if (!cell::GetCell(clean, topLeft) || !cell::GetCell(colon + 1, botRight))
+		{
+			stack[0] = gRefNan;
+			return;
+		}
+	}
+	else
+	{
+		if (!cell::GetCell(clean, topLeft))
+		{
+			stack[0] = gRefNan;
+			return;
+		}
+		botRight = topLeft;
+	}
+
+	// Un riferimento a una SOLA cella (topLeft==botRight) restituisce il
+	// suo VALORE, non un intervallo di una cella -- stesso principio
+	// gia' seguito dall'interprete del bytecode per un riferimento
+	// scritto direttamente in formula ("case valCell"/"case valRange"
+	// col caso degenere, Formula.cpp): senza questo, "=INDIRECT(\"A1\")"
+	// da solo (non passato a un'altra funzione come SUM, che invece
+	// accetta comunque un intervallo) restava di tipo eRangeData
+	// invece del numero/testo vero contenuto in A1.
+	if (topLeft.h == botRight.h && topLeft.v == botRight.v)
+	{
+		Value val;
+		targetCells->GetValue(topLeft, val);
+		stack[0] = val;
+		return;
+	}
+
+	int left = topLeft.h < botRight.h ? topLeft.h : botRight.h;
+	int right = topLeft.h > botRight.h ? topLeft.h : botRight.h;
+	int top = topLeft.v < botRight.v ? topLeft.v : botRight.v;
+	int bottom = topLeft.v > botRight.v ? topLeft.v : botRight.v;
+
+	stack[0] = range(left, top, right, bottom);
+	stack[0].fRangeContainer = targetCells;
+}
+
+// ADDRESS(riga,colonna,[tipo_assoluto],[a1],[testo_foglio]): l'inversa
+// concettuale di INDIRECT sopra -- costruisce il TESTO di un
+// riferimento da numeri di riga/colonna. tipo_assoluto: 1 (predefinito)
+// riga e colonna assolute, 2 riga assoluta/colonna relativa, 3
+// viceversa, 4 entrambe relative. Solo lo stile A1 e' riconosciuto (il
+// quarto argomento e' accettato ma ignorato, stesso limite di
+// INDIRECT sopra).
+void ADDRESSFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double rowArg, colArg;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetDoubleArgument(stack, argCnt, 1, &rowArg) || !GetDoubleArgument(stack, argCnt, 2, &colArg))
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	int row = static_cast<int>(rint(rowArg));
+	int col = static_cast<int>(rint(colArg));
+	if (row < 1 || col < 1 || col > kColCount)
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	double absArgD;
+	int absNum = (argCnt >= 3 && GetDoubleArgument(stack, argCnt, 3, &absArgD))
+		? static_cast<int>(rint(absArgD)) : 1;
+	bool colAbs = (absNum == 1 || absNum == 3);
+	bool rowAbs = (absNum == 1 || absNum == 2);
+
+	char sheetText[256];
+	bool hasSheet = argCnt >= 5 && GetTextArgument(stack, argCnt, 5, sheetText);
+
+	char colLetters[4];
+	NumToAString(col, colLetters);
+
+	char out[300];
+	out[0] = 0;
+	if (hasSheet)
+	{
+		strncat(out, sheetText, sizeof(out) - strlen(out) - 1);
+		strncat(out, "!", sizeof(out) - strlen(out) - 1);
+	}
+	if (colAbs)
+		strncat(out, "$", sizeof(out) - strlen(out) - 1);
+	strncat(out, colLetters, sizeof(out) - strlen(out) - 1);
+	if (rowAbs)
+		strncat(out, "$", sizeof(out) - strlen(out) - 1);
+
+	char rowStr[16];
+	snprintf(rowStr, sizeof(rowStr), "%d", row);
+	strncat(out, rowStr, sizeof(out) - strlen(out) - 1);
+
+	stack[0] = out;
+}
+
+// XMATCH(valore_cercato,array_cercato,[modo_corrispondenza],
+// [modo_ricerca]): come MATCHFunction sopra ma con un'API piu' chiara
+// -- modo_corrispondenza 0 (predefinito) esatta, -1 esatta o il valore
+// piu' vicino PIU' PICCOLO, 1 esatta o il valore piu' vicino PIU'
+// GRANDE (a differenza del match_type di MATCH, -1/1 qui NON
+// richiedono dati ordinati: una scansione completa trova il candidato
+// migliore comunque). modo_ricerca 1 (predefinito) dal primo
+// all'ultimo, -1 dall'ultimo al primo; la ricerca binaria (modo 2/-2)
+// non e' distinta da quella lineare, stesso risultato ma non piu'
+// veloce. Le wildcard (modo_corrispondenza=2) non sono supportate.
+void XMATCHFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range cRange;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 2, &cRange) || !cRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int numRows = cRange.bottom - cRange.top + 1;
+	int numCols = cRange.right - cRange.left + 1;
+	if (numRows != 1 && numCols != 1)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+	bool horizontal = (numRows == 1 && numCols > 1);
+	int count = horizontal ? numCols : numRows;
+
+	double matchModeArg;
+	int matchMode = (argCnt >= 3 && GetDoubleArgument(stack, argCnt, 3, &matchModeArg))
+		? static_cast<int>(rint(matchModeArg)) : 0;
+	double searchModeArg;
+	int searchMode = (argCnt >= 4 && GetDoubleArgument(stack, argCnt, 4, &searchModeArg))
+		? static_cast<int>(rint(searchModeArg)) : 1;
+
+	if (matchMode < -1 || matchMode > 1)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	char keyS[256];
+	double key = 0;
+	time_t keyD = 0;
+	enum { kNumKey, kTextKey, kTimeKey } keyKind;
+
+	if (GetDoubleArgument(stack, argCnt, 1, &key) && !isnan(key))
+		keyKind = kNumKey;
+	else if (GetTextArgument(stack, argCnt, 1, keyS))
+		keyKind = kTextKey;
+	else if (GetTimeArgument(stack, argCnt, 1, &keyD))
+		keyKind = kTimeKey;
+	else
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	CContainer *rangeCells = GetRangeContainer(stack, 2, cells);
+
+	int foundPos = -1;
+	int bestSmallerPos = -1;
+	double bestSmallerVal = 0;
+	int bestLargerPos = -1;
+	double bestLargerVal = 0;
+
+	for (int step = 0; step < count; step++)
+	{
+		int i = (searchMode == -1) ? (count - 1 - step) : step;
+		cell c = horizontal ? cell(cRange.left + i, cRange.top) : cell(cRange.left, cRange.top + i);
+		Value val;
+		rangeCells->GetValue(c, val);
+
+		bool eq = (keyKind == kNumKey && val.fType == eNumData && key == val.fDouble)
+			|| (keyKind == kTextKey && val.fType == eTextData && strcasecmp(keyS, val.fText) == 0)
+			|| (keyKind == kTimeKey && val.fType == eTimeData && keyD == val.fTime);
+		if (eq)
+		{
+			foundPos = i + 1;
+			break;
+		}
+
+		if (matchMode == -1 && keyKind == kNumKey && val.fType == eNumData && val.fDouble < key)
+		{
+			if (bestSmallerPos == -1 || val.fDouble > bestSmallerVal)
+			{
+				bestSmallerVal = val.fDouble;
+				bestSmallerPos = i + 1;
+			}
+		}
+		else if (matchMode == 1 && keyKind == kNumKey && val.fType == eNumData && val.fDouble > key)
+		{
+			if (bestLargerPos == -1 || val.fDouble < bestLargerVal)
+			{
+				bestLargerVal = val.fDouble;
+				bestLargerPos = i + 1;
+			}
+		}
+	}
+
+	if (foundPos != -1)
+		stack[0] = (double)foundPos;
+	else if (matchMode == -1 && bestSmallerPos != -1)
+		stack[0] = (double)bestSmallerPos;
+	else if (matchMode == 1 && bestLargerPos != -1)
+		stack[0] = (double)bestLargerPos;
+	else
+		stack[0] = gRefNan;
+}
+
 // XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found],
 // [match_mode], [search_mode]) -- Fase 14, nome standard Excel piu'
 // recente del formato dichiarato del file (scritto con "_xlfn."

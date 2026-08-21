@@ -207,6 +207,12 @@ enum {
 	kLARGEFuncNr,
 	kSMALLFuncNr,
 	kSUBTOTALFuncNr,
+	// INDIRECT/ADDRESS/XMATCH (Fase 26, vedi ROADMAP.md "v3.0
+	// Consolidation"): assenti dalle funzioni originali di Sum-It,
+	// mancanti confrontando la tabella con l'elenco standard di Excel.
+	kINDIRECTFuncNr,
+	kADDRESSFuncNr,
+	kXMATCHFuncNr,
 	kFunctionCount
 };
 
@@ -344,5 +350,8 @@ void RANKFunction(Value *stack, int argCnt, CContainer *cells);
 void LARGEFunction(Value *stack, int argCnt, CContainer *cells);
 void SMALLFunction(Value *stack, int argCnt, CContainer *cells);
 void SUBTOTALFunction(Value *stack, int argCnt, CContainer *cells);
+void INDIRECTFunction(Value *stack, int argCnt, CContainer *cells);
+void ADDRESSFunction(Value *stack, int argCnt, CContainer *cells);
+void XMATCHFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

@@ -330,6 +330,9 @@ void SetupDefaultFuncs()
 	gFuncs[kLARGEFuncNr] = LARGEFunction;
 	gFuncs[kSMALLFuncNr] = SMALLFunction;
 	gFuncs[kSUBTOTALFuncNr] = SUBTOTALFunction;
+	gFuncs[kINDIRECTFuncNr] = INDIRECTFunction;
+	gFuncs[kADDRESSFuncNr] = ADDRESSFunction;
+	gFuncs[kXMATCHFuncNr] = XMATCHFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

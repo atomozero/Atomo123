@@ -68,7 +68,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 135, "InitFunctions carica tutte le 135 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 138, "InitFunctions carica tutte le 138 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -1552,6 +1552,100 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =SUMPRODUCT: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// INDIRECT/ADDRESS/XMATCH (Fase 26, ultima infornata di funzioni
+	// mancanti, vedi ROADMAP.md "v3.0 Consolidation"): assenti dalle
+	// funzioni originali di Sum-It, mancanti confrontando la tabella
+	// con l'elenco standard di Excel. Risultati in colonna 60, ben
+	// lontano dalle colonne gia' usate sopra -- riusa A1:A3 (10,20,30).
+	try
+	{
+		TryToParseString("=INDIRECT(\"A1\")", cell(60, 1), &doc, true);
+		doc.CalcCell(cell(60, 1));
+		doc.GetValue(cell(60, 1), v);
+		Check(v.fType == eNumData && (double)v == 10.0,
+			"=INDIRECT(\"A1\") calcola 10 (il valore vero di A1, non il testo \"A1\")");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =INDIRECT (cella semplice): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=SUM(INDIRECT(\"$A$1:$A$3\"))", cell(60, 2), &doc, true);
+		doc.CalcCell(cell(60, 2));
+		doc.GetValue(cell(60, 2), v);
+		Check(v.fType == eNumData && (double)v == 60.0,
+			"=SUM(INDIRECT(\"$A$1:$A$3\")) calcola 60: un intervallo, e il \"$\" "
+			"e' tollerato (ignorato, sempre un riferimento assoluto)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =INDIRECT (intervallo con $): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ADDRESS(1,1)", cell(60, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(60, 3));
+		doc.GetValue(cell(60, 3), v);
+		Check(strcmp((const char *)v, "$A$1") == 0,
+			"=ADDRESS(1,1) calcola \"$A$1\" (per difetto riga e colonna assolute)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ADDRESS (assoluto): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ADDRESS(2,3,4)", cell(60, 4), &doc, true, '.', ',');
+		doc.CalcCell(cell(60, 4));
+		doc.GetValue(cell(60, 4), v);
+		Check(strcmp((const char *)v, "C2") == 0,
+			"=ADDRESS(2,3,4) calcola \"C2\" (tipo_assoluto=4, riga e colonna entrambe relative)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ADDRESS (relativo): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=XMATCH(20,A1:A3)", cell(60, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(60, 5));
+		doc.GetValue(cell(60, 5), v);
+		Check(v.fType == eNumData && (double)v == 2.0,
+			"=XMATCH(20,A1:A3) con A1:A3=10,20,30 calcola 2 (posizione di 20)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =XMATCH (esatto): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// 15 non e' in A1:A3 (10,20,30): -1 = corrispondenza esatta o il
+		// valore piu' vicino PIU' PICCOLO -> 10, in posizione 1. A
+		// differenza del match_type di MATCH, non serve che i dati siano
+		// ordinati.
+		TryToParseString("=XMATCH(15,A1:A3,-1)", cell(60, 6), &doc, true, '.', ',');
+		doc.CalcCell(cell(60, 6));
+		doc.GetValue(cell(60, 6), v);
+		Check(v.fType == eNumData && (double)v == 1.0,
+			"=XMATCH(15,A1:A3,-1) senza corrispondenza esatta trova il piu' vicino PIU' PICCOLO (10, posizione 1)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =XMATCH (piu' piccolo): %s\n", (char *)e);
 		gFailures++;
 	}
 

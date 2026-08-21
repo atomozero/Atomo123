@@ -222,6 +222,13 @@ resource 'Func' (128, "Functions")
 		"RANK", 65535, 131, 5,
 		"LARGE", 2, 132, 5,
 		"SMALL", 2, 133, 5,
-		"SUBTOTAL", 65535, 134, 5
+		"SUBTOTAL", 65535, 134, 5,
+		// INDIRECT/ADDRESS/XMATCH (Fase 26, vedi ROADMAP.md "v3.0
+		// Consolidation"), ultima infornata di funzioni mancanti.
+		// Nessun alias necessario: tutti e tre entrano nel campo a
+		// lunghezza fissa.
+		"INDIRECT", 65535, 135, 1,
+		"ADDRESS", 65535, 136, 1,
+		"XMATCH", 65535, 137, 1
 	}
 };

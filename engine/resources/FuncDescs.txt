@@ -133,3 +133,6 @@ Rank of a number within a list of numbers
 K-th largest value in a data set
 K-th smallest value in a data set
 Aggregate (sum, average, count, max or min) of one or more ranges
+Returns the reference described by a text string
+Creates a cell reference as text from row/column numbers
+Searches a range for a match and returns its relative position
