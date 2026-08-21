@@ -123,6 +123,9 @@ Since v0.2.0 (not yet in a tagged release):
   bar/point's value label could land exactly on top of the category
   label below it. The category label row now stays fixed in place and
   the chart floor makes room above it instead
+- Multi-series charts recognize an optional header row: selecting a
+  range whose first row has text in a series column names that series
+  from it (Excel-style), instead of always "Serie 1", "Serie 2", ...
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
