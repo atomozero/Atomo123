@@ -86,6 +86,7 @@
 static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
 static const uint32 kMsgOpenRecent = 'aorc';
+static const uint32 kMsgSave = 'asve';
 static const uint32 kMsgSaveAs = 'asva';
 // Voci del sottomenu "Salva con nome" (Fase 21, richiesta esplicita
 // dell'utente: "non posso selezionare il formato del file finale"):
@@ -303,7 +304,7 @@ struct ToolbarGroupDef {
 static const ToolbarButtonDef kFileToolbarButtons[] = {
 	{ "toolNew", B_TRANSLATE_MARK("Nuovo"), kMsgNew, &kIconNew },
 	{ "toolOpen", B_TRANSLATE_MARK("Apri"), kMsgOpen, &kIconOpen },
-	{ "toolSave", B_TRANSLATE_MARK("Salva"), kMsgSaveAs, &kIconSave },
+	{ "toolSave", B_TRANSLATE_MARK("Salva"), kMsgSave, &kIconSave },
 	{ "toolPrint", B_TRANSLATE_MARK("Stampa"), kMsgPrint, &kIconPrint },
 };
 
@@ -515,16 +516,25 @@ MainWindow::MainWindow()
 	fRecentMenu = new BMenu(B_TRANSLATE("Apri recenti"));
 	fileMenu->AddItem(new BMenuItem(fRecentMenu));
 	RebuildRecentMenu(); // popolato subito, non solo alla prima apertura del menu
+	// "Salva" (Fase 22, richiesta esplicita dell'utente: "abbiamo solo
+	// Salva con nome") scrive direttamente sul file gia' aperto/salvato
+	// in precedenza (fFileDirRef/fDocumentName), senza mostrare nessun
+	// pannello -- SOLO se il documento ha gia' un percorso noto; un
+	// documento nuovo/mai salvato ricade sullo stesso pannello di "Salva
+	// con nome" (nessun percorso da riusare). L'acceleratore 'S' vive
+	// qui, non piu' sulla voce del sottomenu sotto.
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Salva"), new BMessage(kMsgSave), 'S'));
 	// Sottomenu invece di una singola voce (Fase 21): prima il formato
 	// di destinazione si sceglieva solo digitando l'estensione a mano
 	// nel pannello di salvataggio, senza nessun indizio che fosse
 	// possibile -- ogni voce qui precompila il nome col formato scelto
 	// prima di mostrare il pannello (vedi i gestori kMsgSaveAsXxx
-	// sotto). L'acceleratore 'S' resta sulla voce del sottomenu stesso
-	// (formato nativo, l'uso piu' comune), non su un item separato.
+	// sotto). Nessun acceleratore su queste voci (ne' prima ne' ora):
+	// "Salva con nome" mostra sempre il pannello per scelta, non ha
+	// bisogno di una scorciatoia da tastiera dedicata.
 	BMenu* saveAsMenu = new BMenu(B_TRANSLATE("Salva con nome" B_UTF8_ELLIPSIS));
 	saveAsMenu->AddItem(new BMenuItem(B_TRANSLATE("Formato nativo (.ascd)"),
-		new BMessage(kMsgSaveAsAscd), 'S'));
+		new BMessage(kMsgSaveAsAscd)));
 	saveAsMenu->AddItem(new BMenuItem(B_TRANSLATE("CSV (.csv)"), new BMessage(kMsgSaveAsCsv)));
 	saveAsMenu->AddItem(new BMenuItem(B_TRANSLATE("Excel (.xlsx)"), new BMessage(kMsgSaveAsXlsx)));
 	saveAsMenu->AddItem(new BMenuItem(B_TRANSLATE("OpenDocument (.ods)"), new BMessage(kMsgSaveAsOds)));
@@ -1601,6 +1611,12 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	RecalculateWorkbook(fSheets);
 
 	fDocumentName = ref.name;
+	{
+		BEntry openedEntry(&ref);
+		BEntry parentEntry;
+		if (openedEntry.GetParent(&parentEntry) == B_OK)
+			parentEntry.GetRef(&fFileDirRef);
+	}
 	fModified = false;
 	UpdateTitle();
 
@@ -1620,6 +1636,20 @@ static BString BaseNameWithoutExtension(const BString& name)
 	if (dot > 0)
 		return BString(name.String(), dot);
 	return name;
+}
+
+// "Salva" (Fase 22, richiesta esplicita dell'utente: "abbiamo solo
+// Salva con nome"): riscrive direttamente lo stesso file gia'
+// aperto/salvato in precedenza (fFileDirRef/fDocumentName), senza
+// mostrare nessun pannello -- un documento mai salvato (fDocumentName
+// vuoto, vedi IsUntouched) non ha ancora nessun file da riscrivere,
+// ricade sullo stesso pannello di "Salva con nome".
+void MainWindow::Save()
+{
+	if (fDocumentName.Length() > 0)
+		SaveToFile(fFileDirRef, fDocumentName.String());
+	else
+		fSavePanel->Show();
 }
 
 void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
@@ -1684,6 +1714,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 			return;
 		}
 		fDocumentName = name;
+		fFileDirRef = dir;
 		fModified = false;
 		UpdateTitle();
 		return;
@@ -1757,6 +1788,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	}
 
 	fDocumentName = name;
+	fFileDirRef = dir;
 	fModified = false;
 	UpdateTitle();
 }
@@ -3867,6 +3899,10 @@ void MainWindow::MessageReceived(BMessage* message)
 			OpenFile(ref);
 			break;
 		}
+
+		case kMsgSave:
+			Save();
+			break;
 
 		case kMsgSaveAs:
 			fSavePanel->Show();

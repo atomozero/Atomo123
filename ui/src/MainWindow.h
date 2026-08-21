@@ -89,6 +89,13 @@ public:
 	virtual void MenusBeginning();
 
 	void OpenFile(const entry_ref& ref);
+	// "Salva" (Fase 22): riscrive lo stesso file gia' noto
+	// (fFileDirRef/fDocumentName) senza pannello, o mostra il pannello
+	// "Salva con nome" se il documento non e' ancora mai stato salvato.
+	// Pubblico per lo stesso motivo di CopySelection/ClearSelection
+	// altrove in questo progetto -- testabile direttamente senza
+	// passare da un vero clic sul pannello.
+	void Save();
 	void SelectionChanged(cell c);
 
 	// Footer stile Excel (Fase 17): indicatore di modalita' ("Pronto"/
@@ -497,6 +504,15 @@ private:
 	// salvato l'ultima volta. Vuoto = documento nuovo, mai salvato.
 	BString fDocumentName;
 	bool fModified;
+	// Cartella del file corrente (Fase 22, comando "Salva" a differenza
+	// di "Salva con nome"): entry_ref della DIRECTORY che contiene il
+	// file, stesso formato del campo "directory" del messaggio
+	// B_SAVE_REQUESTED di BFilePanel -- passato cosi' com'e' a
+	// SaveToFile. Valido solo se fDocumentName non e' vuoto (vedi
+	// IsUntouched sopra): un documento mai salvato non ha ancora nessuna
+	// cartella, "Salva" ricade sul pannello "Salva con nome" in quel
+	// caso.
+	entry_ref fFileDirRef;
 
 	void UpdateTitle();
 	void MarkModified();
