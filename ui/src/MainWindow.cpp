@@ -3102,7 +3102,8 @@ void MainWindow::HandleChartRequest(const char* rangeText)
 // momento in poi, sopravvive al salvataggio/ricaricamento nel
 // formato nativo (vedi AscdIO.cpp) e legge i dati dal vivo ogni volta
 // che si ridisegna, non un'istantanea fissa come l'anteprima.
-void MainWindow::HandleChartInsert(const char* rangeText, const char* destText, ChartType type)
+void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
+	ChartType type, const char* title)
 {
 	if (!fDoc)
 		return;
@@ -3129,6 +3130,7 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText, 
 	obj.dataRange = dataRange;
 	obj.frame.Set(origin.x, origin.y, origin.x + 300, origin.y + 180);
 	obj.type = type;
+	obj.title = title;
 	fCharts.push_back(obj);
 
 	fSheetView->Invalidate();
@@ -4278,12 +4280,14 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgChartInsert:
 		{
-			BString rangeText, destText;
+			BString rangeText, destText, titleText;
 			int32 type = eBarChart;
 			message->FindInt32("type", &type);
+			message->FindString("title", &titleText);
 			if (message->FindString("range", &rangeText) == B_OK
 				&& message->FindString("dest", &destText) == B_OK)
-				HandleChartInsert(rangeText.String(), destText.String(), (ChartType)type);
+				HandleChartInsert(rangeText.String(), destText.String(), (ChartType)type,
+					titleText.String());
 			break;
 		}
 

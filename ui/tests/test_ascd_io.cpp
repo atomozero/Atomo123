@@ -197,6 +197,9 @@ int main()
 	ChartObject obj;
 	obj.dataRange.Set(1, 1, 2, 5);
 	obj.frame.Set(100, 200, 400, 380);
+	// Titolo (Fase 17): sezione separata in coda come il tipo, stesso
+	// motivo -- verifica che sopravviva insieme al resto.
+	obj.title = "Vendite 2026";
 	saved.push_back(obj);
 
 	// Un secondo grafico di tipo diverso (Fase 13, linee/torta): la
@@ -232,6 +235,10 @@ int main()
 			"il primo grafico resta a barre (tipo predefinito)");
 		Check(loaded[1].type == ePieChart,
 			"il tipo del secondo grafico (torta) e' preservato, allineato al grafico giusto");
+		Check(loaded[0].title == "Vendite 2026",
+			"il titolo del primo grafico e' preservato");
+		Check(loaded[1].title.IsEmpty(),
+			"il secondo grafico (senza titolo assegnato) resta vuoto, non eredita quello del primo");
 	}
 	chartReloaded.Release();
 

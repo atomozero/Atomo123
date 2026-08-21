@@ -150,7 +150,8 @@ public:
 	void FindNext(const char* searchText);
 	void ReplaceCurrent(const char* searchText, const char* replaceText);
 	void ReplaceAll(const char* searchText, const char* replaceText);
-	void HandleChartInsert(const char* rangeText, const char* destText, ChartType type = eBarChart);
+	void HandleChartInsert(const char* rangeText, const char* destText,
+		ChartType type = eBarChart, const char* title = "");
 	// Pubblico apposta per essere testabile senza passare da una vera
 	// PreferencesWindow (stesso principio di GetSheetView sopra): vedi
 	// tests/test_preferences.cpp.

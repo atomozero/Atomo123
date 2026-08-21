@@ -52,6 +52,10 @@ struct ChartObject {
 	range dataRange;
 	BRect frame;
 	ChartType type;
+	// Opzionale (Fase 17): un file .ascd scritto prima di questo campo
+	// non ce l'ha, resta vuoto (nessun titolo disegnato) -- vedi la
+	// sezione dedicata, EOF-tollerante, in AscdIO.cpp.
+	BString title;
 };
 
 // L'intervallo deve avere esattamente due colonne: la prima con le
@@ -101,7 +105,10 @@ void ComputeBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 // stessa funzione serve sia a ChartView (dati ricevuti via BMessage
 // da un'altra finestra, vedi ChartWindow.h) sia a SheetView (dati
 // letti dal vivo sul proprio thread, che possiede il documento).
-void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data);
+// "title" e' opzionale (vedi ChartObject::title): una stringa vuota non
+// disegna nulla e non riserva spazio in piu' rispetto a prima.
+void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title = BString());
 
 struct LinePoint {
 	BPoint point;
@@ -113,7 +120,8 @@ struct LinePoint {
 void ComputeLineLayout(const std::vector<ChartSeries>& data, BRect bounds,
 	std::vector<LinePoint>& out);
 
-void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& data);
+void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title = BString());
 
 struct PieSlice {
 	float startAngle;	// gradi, 0 = ore 3, senso antiorario (convenzione BView::FillArc)
@@ -128,13 +136,14 @@ struct PieSlice {
 void ComputePieLayout(const std::vector<ChartSeries>& data,
 	std::vector<PieSlice>& out);
 
-void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data);
+void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title = BString());
 
 // Smista verso DrawBarChart/DrawLineChart/DrawPieChart secondo "type"
 // -- unico punto di ingresso condiviso da ChartView e SheetView (vedi
 // i commenti su DrawBarChart sopra), cosi' aggiungere un futuro nuovo
 // tipo di grafico tocca un solo punto di dispatch.
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	ChartType type);
+	ChartType type, const BString& title = BString());
 
 #endif

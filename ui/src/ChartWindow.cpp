@@ -34,6 +34,13 @@ ChartWindow::ChartWindow(BMessenger target)
 		B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target)
 {
+	// Stesso messaggio di fRangeField (kMsgDrawLocal): digitare un
+	// titolo e premere Invio (o "Disegna") lo applica subito
+	// all'anteprima, senza bisogno di un pulsante/campo separato.
+	fTitleField = new BTextControl("title", B_TRANSLATE("Titolo (facoltativo):"),
+		"", new BMessage(kMsgDrawLocal));
+	fTitleField->SetTarget(this);
+
 	fRangeField = new BTextControl("range", B_TRANSLATE("Intervallo (due colonne: etichette, valori):"),
 		"A1:B5", new BMessage(kMsgDrawLocal));
 	fRangeField->SetTarget(this);
@@ -64,6 +71,7 @@ ChartWindow::ChartWindow(BMessenger target)
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
 		.SetInsets(8, 8, 8, 8)
+		.Add(fTitleField)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fRangeField)
 			.Add(fTypeField)
@@ -97,6 +105,7 @@ void ChartWindow::MessageReceived(BMessage* message)
 	{
 		case kMsgDrawLocal:
 		{
+			fChartView->SetTitle(fTitleField->Text());
 			BMessage request(kMsgChartRequest);
 			request.AddString("range", fRangeField->Text());
 			fTarget.SendMessage(&request);
@@ -113,6 +122,7 @@ void ChartWindow::MessageReceived(BMessage* message)
 			request.AddString("range", fRangeField->Text());
 			request.AddString("dest", fDestField->Text());
 			request.AddInt32("type", (int32)SelectedType());
+			request.AddString("title", fTitleField->Text());
 			fTarget.SendMessage(&request);
 			return;
 		}

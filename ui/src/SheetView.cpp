@@ -3026,7 +3026,7 @@ void SheetView::Draw(BRect updateRect)
 
 			std::vector<ChartSeries> series;
 			BuildChartSeries(fDoc, obj.dataRange, series);
-			DrawChart(this, obj.frame, series, obj.type);
+			DrawChart(this, obj.frame, series, obj.type, obj.title);
 		}
 	}
 

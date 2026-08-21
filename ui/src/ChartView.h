@@ -26,12 +26,14 @@ public:
 
 	void SetData(const std::vector<ChartSeries>& data);
 	void SetChartType(ChartType type);
+	void SetTitle(const BString& title);
 
 	virtual void Draw(BRect updateRect);
 
 private:
 	std::vector<ChartSeries> fData;
 	ChartType fType;
+	BString fTitle;
 };
 
 #endif

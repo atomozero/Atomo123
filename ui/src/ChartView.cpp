@@ -33,6 +33,12 @@ void ChartView::SetChartType(ChartType type)
 	Invalidate();
 }
 
+void ChartView::SetTitle(const BString& title)
+{
+	fTitle = title;
+	Invalidate();
+}
+
 void ChartView::Draw(BRect updateRect)
 {
 	// Il disegno vero e proprio (assi/barre/linee/spicchi/etichette) e'
@@ -40,5 +46,5 @@ void ChartView::Draw(BRect updateRect)
 	// Chart.h) -- qui i dati arrivano gia' pronti via SetData
 	// (ricevuti da MainWindow con un BMessage, vedi ChartWindow.cpp),
 	// non letti direttamente dal documento.
-	DrawChart(this, Bounds(), fData, fType);
+	DrawChart(this, Bounds(), fData, fType, fTitle);
 }

@@ -40,6 +40,7 @@ public:
 	virtual bool QuitRequested();
 
 private:
+	BTextControl* fTitleField;
 	BTextControl* fRangeField;
 	BMenuField* fTypeField;
 	BTextControl* fDestField;

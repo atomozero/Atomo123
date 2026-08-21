@@ -13,6 +13,7 @@
 #include <cstdio>
 
 #include <Catalog.h>
+#include <Font.h>
 #include <View.h>
 
 #include "Cell.h"
@@ -34,6 +35,29 @@ static void ValueToLabel(const Value& v, BString& out)
 	}
 	else
 		out = "";
+}
+
+// Titolo centrato in grassetto sopra "frame" -- condiviso da barre/
+// linee/torta. Una stringa vuota non disegna nulla: i chiamanti
+// riservano lo spazio in piu' solo quando c'e' davvero un titolo, cosi'
+// un ChartObject senza titolo (il caso comune, e ogni file .ascd
+// scritto prima di questo campo) si disegna esattamente come prima.
+static void DrawChartTitle(BView* view, BRect frame, const BString& title)
+{
+	if (title.IsEmpty())
+		return;
+
+	BFont font;
+	view->GetFont(&font);
+	font.SetFace(B_BOLD_FACE);
+	view->SetFont(&font, B_FONT_FACE);
+
+	view->SetHighColor(0, 0, 0);
+	float width = view->StringWidth(title.String());
+	view->DrawString(title.String(), BPoint(frame.left + (frame.Width() - width) / 2, frame.top + 14));
+
+	font.SetFace(B_REGULAR_FACE);
+	view->SetFont(&font, B_FONT_FACE);
 }
 
 bool BuildChartSeries(CContainer* doc, const range& r,
@@ -173,10 +197,12 @@ void ComputeBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 	}
 }
 
-void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data)
+void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title)
 {
 	view->SetHighColor(255, 255, 255);
 	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
 
 	if (data.empty())
 	{
@@ -189,6 +215,8 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	plotArea.InsetBy(10, 10);
 	plotArea.bottom -= 16;	// spazio per le etichette sotto le barre
 	plotArea.top += 14;	// spazio per l'etichetta del valore sopra le barre
+	if (!title.IsEmpty())
+		plotArea.top += 18;	// spazio per il titolo, vedi DrawChartTitle
 
 	double minValue, maxValue;
 	ChartValueRange(data, &minValue, &maxValue);
@@ -276,10 +304,12 @@ void ComputeLineLayout(const std::vector<ChartSeries>& data, BRect bounds,
 	}
 }
 
-void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& data)
+void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title)
 {
 	view->SetHighColor(255, 255, 255);
 	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
 
 	if (data.empty())
 	{
@@ -292,6 +322,8 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	plotArea.InsetBy(10, 10);
 	plotArea.bottom -= 16;	// spazio per le etichette sotto i punti
 	plotArea.top += 14;	// spazio per l'etichetta del valore sopra i punti
+	if (!title.IsEmpty())
+		plotArea.top += 18;	// spazio per il titolo, vedi DrawChartTitle
 
 	double minValue, maxValue;
 	ChartValueRange(data, &minValue, &maxValue);
@@ -409,10 +441,12 @@ void ComputePieLayout(const std::vector<ChartSeries>& data, std::vector<PieSlice
 	}
 }
 
-void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data)
+void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title)
 {
 	view->SetHighColor(255, 255, 255);
 	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
 
 	if (data.empty())
 	{
@@ -439,6 +473,8 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	float legendWidth = 110;
 	BRect pieArea = frame;
 	pieArea.InsetBy(10, 10);
+	if (!title.IsEmpty())
+		pieArea.top += 18;	// spazio per il titolo, vedi DrawChartTitle
 	pieArea.right -= legendWidth;
 
 	float diameter = std::min(pieArea.Width(), pieArea.Height());
@@ -458,7 +494,7 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	view->StrokeRect(frame);
 
 	float legendX = pieArea.right + 16;
-	float legendY = frame.top + 14;
+	float legendY = pieArea.top + 4;
 	for (size_t i = 0; i < data.size() && i < slices.size(); i++)
 	{
 		BRect swatch(legendX, legendY - 8, legendX + 10, legendY + 2);
@@ -480,19 +516,19 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 }
 
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	ChartType type)
+	ChartType type, const BString& title)
 {
 	switch (type)
 	{
 		case eLineChart:
-			DrawLineChart(view, frame, data);
+			DrawLineChart(view, frame, data, title);
 			return;
 		case ePieChart:
-			DrawPieChart(view, frame, data);
+			DrawPieChart(view, frame, data, title);
 			return;
 		case eBarChart:
 		default:
-			DrawBarChart(view, frame, data);
+			DrawBarChart(view, frame, data, title);
 			return;
 	}
 }

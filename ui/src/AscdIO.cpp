@@ -844,6 +844,27 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione titolo di grafico incorporato, in coda (Fase 17): stesso
+	// schema della sezione tipo di grafico piu' sopra -- un titolo per
+	// grafico, length-prefixed, nello STESSO ordine dell'array "charts".
+	// Un file .ascd scritto prima di questo campo (o senza questa
+	// sezione) lascia ogni ChartObject::title vuoto (nessun titolo
+	// disegnato, gia' il valore predefinito del costruttore in Chart.h).
+	{
+		int32 chartTitleCount = charts ? (int32)charts->size() : 0;
+		if (dest->Write(&chartTitleCount, sizeof(chartTitleCount)) != (ssize_t)sizeof(chartTitleCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < chartTitleCount; i++)
+		{
+			const BString& title = (*charts)[i].title;
+			int32 len = title.Length();
+			if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(title.String(), len) != len)
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1785,6 +1806,40 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				}
 
 				doc->AddTable(name, def);
+			}
+		}
+	}
+
+	// Sezione titolo di grafico incorporato, in coda: stesso schema
+	// EOF-tollerante delle sezioni sopra (vedi il commento gemello in
+	// SaveASCD). Assegna nello STESSO ordine dell'array charts gia'
+	// popolato piu' sopra in questa funzione. Un file scritto prima di
+	// questo campo (o senza questa sezione) lascia ogni titolo vuoto.
+	{
+		int32 chartTitleCount = 0;
+		ssize_t got = source->Read(&chartTitleCount, sizeof(chartTitleCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartTitleCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartTitleCount; i++)
+			{
+				int32 len;
+				if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+				if (len < 0 || len > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+
+				std::string title;
+				if (len > 0)
+				{
+					title.resize(len);
+					if (source->Read(&title[0], len) != len)
+						return B_BAD_DATA;
+				}
+				if (charts && i < (int32)charts->size())
+					(*charts)[i].title = title.c_str();
 			}
 		}
 	}
