@@ -108,6 +108,10 @@ Since v0.2.0 (not yet in a tagged release):
   grid with value labels, plus the exact value above each bar/point;
   the pie chart shows each slice's percentage next to its legend
   entry
+- Fixed a real bug in bar/line charts: a negative value produced a
+  bar/point outside the drawable area instead of dropping below a
+  zero line. Bar/line layout now scales to the series' actual value
+  range (including negative values), with an explicit zero baseline
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
