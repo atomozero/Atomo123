@@ -132,6 +132,29 @@ int main()
 	Check(strstr(quotedFormula, "'BT02 - CM_Installazione'!I10") != NULL,
 		"la formula ricostruita mostra di nuovo il nome fra apici, spazi e trattino compresi");
 
+	// Nome di foglio che comincia per cifra, SENZA apici, come i fogli
+	// veri del file che ha motivato questo test ("1P_Mandata_studio",
+	// "1P_Ripresa_studio"): legale in XLSX/ECMA-376 anche senza apici
+	// (LibreOffice Calc lo scrive cosi'), ma il lessico riconosceva la
+	// cifra iniziale come un NUMERO a se stante e scartava il resto
+	// della formula come token scollegati -- l'intera formula veniva
+	// quindi lasciata come testo grezzo, mai calcolata (vedi lo stato
+	// 26 in lexer.cpp). Nome scelto identico a quello del file reale.
+	CContainer &digitSheet = *new CContainer(NULL, NULL);
+	resolver.sheets.push_back(&digitSheet);
+	resolver.names.push_back("1P_Mandata_studio");
+	digitSheet.SetSheetResolver(&resolver);
+
+	cell u14(21, 14); // colonna U (h=21, A=1...I=9...U=21), riga 14
+	TryToParseString("21.3", u14, &digitSheet, true);
+
+	cell b5(6, 1);
+	TryToParseString("=1P_Mandata_studio!U14*2", b5, &summary, true);
+	summary.CalcCell(b5);
+	summary.GetValue(b5, v);
+	Check((double)v == 42.6,
+		"=1P_Mandata_studio!U14*2 (nome foglio che comincia per cifra, senza apici) calcola 42.6");
+
 	// UnMangle: la formula si ricostruisce con "NomeFoglio!Cella" nel
 	// testo (barra formule), non con un indice numerico interno. Cella
 	// a parte con SOLO il riferimento incrociato, senza "+8": UnMangle
@@ -235,5 +258,6 @@ int main()
 	detail.Release();
 	summary.Release();
 	quoted.Release();
+	digitSheet.Release();
 	return gFailures == 0 ? 0 : 1;
 }

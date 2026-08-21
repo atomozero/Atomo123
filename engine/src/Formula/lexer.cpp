@@ -704,6 +704,23 @@ int CParser::GetNextToken(bool acceptTime)
 				GETNEXTCHAR;
 				if (isdigit(ch))
 					state = 26;
+				else if (isalpha(ch) || ch == '_' || ch == '$')
+					// Non e' un numero intero seguito da un separatore
+					// qualunque: e' l'inizio di un identificatore che
+					// comincia per cifra (es. un nome di foglio come
+					// "1P_Mandata_studio", legale in XLSX/ECMA-376 anche
+					// senza apici quando non e' altrimenti ambiguo).
+					// Senza questo ramo lo stato precedente finiva sempre
+					// a stato 27 e chiudeva il token come NUMERO("1"),
+					// lasciando "P_Mandata_studio!..." come token
+					// successivi scollegati -- un errore di sintassi che
+					// faceva scartare l'intera formula, mostrata poi come
+					// testo grezzo invece che calcolata. Bug reale
+					// scoperto su un file utente vero con fogli chiamati
+					// "1P_Mandata_studio"/"1P_Ripresa_studio". Da qui in
+					// poi si prosegue esattamente come lo stato 10
+					// (scansione di un identificatore normale).
+					state = 10;
 				else
 					state = 27;
 				break;
