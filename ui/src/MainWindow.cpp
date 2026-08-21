@@ -2309,12 +2309,26 @@ void MainWindow::ShowChartWindow()
 	// selezionata (il caso comune quando non si e' scelto apposta un
 	// intervallo) non sovrascrive il campo: non sarebbe un intervallo
 	// utile per un grafico.
+	//
+	// fChartWindow e' una BWindow a se', con un thread/BLooper proprio
+	// (non lo stesso di MainWindow): toccare una sua BView (LoadRange
+	// aggiorna fRangeField/fTitleField, entrambe BTextControl) da qui
+	// senza il suo lock viola le regole di threading di Haiku -- bug
+	// reale, un vero crash riprodotto due volte ("Looper must be
+	// locked", debug_server, ChartWindow::LoadRange chiamato da
+	// MainWindow::ShowChartWindow), stesso schema gia' corretto altrove
+	// in questo file per ShowColorWindow/RefreshNameWindow ma mai
+	// applicato qui quando questa precompilazione fu aggiunta.
 	range sel = fSheetView->SelectionRange();
 	if (sel.left != sel.right || sel.top != sel.bottom)
 	{
 		char rangeText[32];
 		FormatRangeRef(sel, rangeText, sizeof(rangeText));
-		fChartWindow->LoadRange(rangeText);
+		if (fChartWindow->Lock())
+		{
+			fChartWindow->LoadRange(rangeText);
+			fChartWindow->Unlock();
+		}
 	}
 
 	if (fChartWindow->IsHidden())
