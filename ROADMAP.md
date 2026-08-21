@@ -237,9 +237,13 @@ same alias trick already used for CEILING.MATH/CONCATENATE), array
 formulas (spill ranges — the largest single item, touches the engine's
 evaluation model), the rest of the print backlog (page setup dialog:
 margins/orientation/scale-to-fit, definable print area), pivot table
-improvements (multi-level grouping, more aggregations), and translator
+improvements (multi-level grouping, more aggregations), translator
 parity gaps (ambiguous-text fix confirmed only on XLSX/ASCD; XLS has no
-export path; only XLSX has live-formula export).
+export path; only XLSX has live-formula export), and identifying a
+proper per-file-type icon set from the HVIF store (www.hvif-store.art)
+— the app currently uses generic/placeholder icons for its own file
+type(s) in Tracker, not distinct icons per format the way Excel/Calc
+distinguish .xlsx/.csv/.ods at a glance.
 
 **v4.0** — scripting: expose the app to Haiku's native BHandler/
 BMessage scripting protocol, with macro execution provided by an
