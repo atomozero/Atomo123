@@ -224,6 +224,17 @@ Since v0.2.0 (not yet in a tagged release):
   math now lives in its own `PrintLayout.cpp`, testable without a real
   configured printer — first item from the "v3.0 consolidation" print
   backlog (see below)
+- Added NOT/XOR/SWITCH/IFNA/ISBLANK/ISERROR/ISNA/ISFORMULA — first
+  batch of functions missing versus Excel (v3.0 consolidation, more
+  batches to follow: text, date, math/stats, lookup). Found a real
+  engine limitation while writing ISFORMULA (also affects the existing
+  ROW()/COLUMN(), never noticed before): a bare single-cell reference
+  like `B1` (no `:`) is always dereferenced to its value by the parser
+  before any function sees it, so `ISFORMULA(B1)` can't work — only a
+  genuine multi-cell range like `B1:B2` preserves the reference.
+  Documented in the function's own comment rather than fixed (would
+  need the parser to know which arguments of which functions want a
+  reference instead of a value, a larger change)
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
