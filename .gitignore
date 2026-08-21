@@ -23,6 +23,8 @@ translators/*/tests/test_*_translator
 # Build artifacts (ui/ Makefile)
 ui/Atomo123
 ui/src/*.o
+ui/src/*.d
+ui/tests/*.d
 ui/Atomo123.rsrc
 # Generato a ogni "make" da "git rev-parse" (hash del commit corrente,
 # mostrato nello splash screen) -- mai lo stesso da un checkout

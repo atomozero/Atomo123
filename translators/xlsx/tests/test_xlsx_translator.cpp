@@ -648,6 +648,26 @@ int main()
 								"nessuna tabella strutturata in sample.xlsx, il contatore e' zero");
 						}
 
+						// Titolo di grafico incorporato (Fase 17): stesso
+						// principio delle sezioni sopra, ULTIMA sezione del
+						// formato (vedi WriteASCD sopra) -- bug reale
+						// scoperto su un file utente vero: senza questa
+						// sezione (aggiunta qui insieme al titolo dei
+						// grafici, ma dimenticata nel translator la prima
+						// volta) LoadASCDBook disallineava la lettura di
+						// OGNI foglio tranne l'ultimo in una cartella di
+						// lavoro multi-foglio, perche' l'EOF-tolleranza di
+						// LoadASCD funziona solo quando la sezione mancante
+						// e' davvero l'ultima cosa nell'intero stream, non
+						// solo nel singolo blocco di un foglio.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 chartTitleCount;
+							memcpy(&chartTitleCount, ascdData + pos, 4); pos += 4;
+							Check(chartTitleCount == 0,
+								"nessun grafico in sample.xlsx, il contatore dei titoli e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte

@@ -773,6 +773,30 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione titolo di grafico incorporato, in coda (vedi
+	// ui/src/AscdIO.cpp, STESSO ORDINE -- ultima sezione, dopo le
+	// tabelle strutturate): sempre vuota, stesso principio delle sezioni
+	// "non ancora estratte" sopra (il chartCount scritto piu' sopra e'
+	// gia' sempre zero per questo translator). BUG REALE senza questa
+	// sezione, non solo teorico: LoadASCD (lato lettura) e' EOF-
+	// tollerante SOLO quando la sezione mancante e' davvero l'ULTIMA
+	// cosa nello stream -- vero per un file a un solo foglio, ma per
+	// una cartella di lavoro XLSX multi-foglio (formato ASCB, piu'
+	// blocchi ASCD concatenati) ogni blocco tranne l'ultimo e' seguito
+	// dal blocco del foglio successivo: senza scrivere questa sezione
+	// (anche vuota) per OGNI foglio, la lettura del titolo del foglio N
+	// finiva per leggere i primi byte del blocco del foglio N+1 come se
+	// fossero un conteggio di titoli, disallineando tutto il resto
+	// della lettura -- LoadASCDBook falliva con B_BAD_DATA su
+	// QUALUNQUE file XLSX con piu' di un foglio, anche senza nessun
+	// grafico. Scoperto da un file reale dell'utente che non si apriva
+	// piu' dopo l'aggiunta del titolo dei grafici (Fase 17).
+	{
+		int32 chartTitleCount = 0;
+		if (dest->Write(&chartTitleCount, sizeof(chartTitleCount)) != (ssize_t)sizeof(chartTitleCount))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
