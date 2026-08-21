@@ -183,6 +183,11 @@ Since v0.2.0 (not yet in a tagged release):
   formula), matching Excel/LibreOffice Calc — it previously wiped the
   cell's formatting (color, borders, etc.) too, since it shared the
   same code path as deleting the cell record entirely
+- Added a plain "Salva" (Save) command, separate from "Salva con
+  nome" (Save As): rewrites the already-open/already-saved file
+  directly, no dialog. Previously only Save As existed, so every save
+  — even of an already-named file — showed a file picker. A never-saved
+  document still falls back to the Save As dialog
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
