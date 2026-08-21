@@ -145,6 +145,7 @@ SheetView::SheetView(CContainer* doc)
 	fDragging(false),
 	fCharts(NULL),
 	fDraggingChartIndex(-1),
+	fResizingChartIndex(-1),
 	fImages(NULL),
 	fDraggingImageIndex(-1),
 	fResizingImageIndex(-1),
@@ -2786,6 +2787,16 @@ BRect SheetView::ImageResizeHandle(const EmbeddedImage& img) const
 		frame.right, frame.bottom);
 }
 
+// Stesso principio esatto di ImageResizeHandle sopra, ma su
+// ChartObject::frame (gia' un BRect assoluto, non ancora+scarto come
+// le immagini) invece di ImageFrame.
+BRect SheetView::ChartResizeHandle(const ChartObject& obj) const
+{
+	const float kHandleSize = 8;
+	return BRect(obj.frame.right - kHandleSize, obj.frame.bottom - kHandleSize,
+		obj.frame.right, obj.frame.bottom);
+}
+
 // Decodifica un blob PNG (o qualunque altro formato per cui esista un
 // translator installato) in una BBitmap pronta per DrawBitmap -- di
 // proprieta' del chiamante, che deve fare "delete". Nessuna cache:
@@ -3041,12 +3052,22 @@ void SheetView::Draw(BRect updateRect)
 					else
 						DrawGroupedBarChart(this, obj.frame, multi, obj.title);
 				}
+				// Maniglia di ridimensionamento (Fase 20): sempre
+				// visibile, stesso motivo gia' scritto per quella
+				// delle immagini -- senza un indizio visivo permanente
+				// l'interazione non sarebbe scopribile guardando lo
+				// schermo.
+				SetHighColor(80, 80, 80);
+				FillRect(ChartResizeHandle(obj));
 				continue;
 			}
 
 			std::vector<ChartSeries> series;
 			BuildChartSeries(fDoc, obj.dataRange, series);
 			DrawChart(this, obj.frame, series, obj.type, obj.title);
+
+			SetHighColor(80, 80, 80);
+			FillRect(ChartResizeHandle(obj));
 		}
 	}
 
@@ -3303,6 +3324,30 @@ void SheetView::MouseDown(BPoint where)
 		}
 	}
 
+	// Ridimensionamento di un grafico incorporato (Fase 20, richiesta
+	// esplicita dell'utente): la maniglia (ChartResizeHandle, angolo in
+	// basso a destra) e' un bersaglio piu' piccolo e piu' specifico del
+	// corpo del grafico, quindi va controllata PRIMA dello spostamento
+	// sotto -- altrimenti un clic sulla maniglia sposterebbe il grafico
+	// invece di ridimensionarlo, dato che la maniglia e' sempre
+	// contenuta nel suo frame. Stesso ciclo all'INDIETRO del blocco
+	// sotto, stesso motivo (un grafico sopra un altro ha la precedenza
+	// nella zona di sovrapposizione).
+	if (fCharts)
+	{
+		for (int i = (int)fCharts->size() - 1; i >= 0; i--)
+		{
+			if (ChartResizeHandle((*fCharts)[i]).Contains(where))
+			{
+				fResizingChartIndex = i;
+				fResizeChartStart = where;
+				fResizeChartStartFrame = (*fCharts)[i].frame;
+				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+				return;
+			}
+		}
+	}
+
 	// Trascinamento di un grafico incorporato (Fase 17, richiesta
 	// esplicita dell'utente): un clic dentro il suo rettangolo (il
 	// BRect assoluto ChartObject::frame, lo stesso usato da Draw() per
@@ -3311,9 +3356,7 @@ void SheetView::MouseDown(BPoint where)
 	// PRIMA della selezione normale. Ciclo all'INDIETRO, stesso motivo
 	// del trascinamento immagini: un grafico disegnato sopra un altro
 	// (ultimo nell'elenco, vedi Draw()) ha la precedenza su un clic
-	// nella zona di sovrapposizione. Nessuna maniglia di
-	// ridimensionamento per i grafici (non richiesto): solo lo
-	// spostamento, a differenza delle immagini sotto.
+	// nella zona di sovrapposizione.
 	if (fCharts)
 	{
 		for (int i = (int)fCharts->size() - 1; i >= 0; i--)
@@ -3489,6 +3532,20 @@ void SheetView::MouseUp(BPoint where)
 		NotifyDocumentChanged();
 	}
 	fDraggingChartIndex = -1;
+	// Stesso motivo del blocco sopra: ridimensionare un grafico cambia
+	// right/bottom del frame nel documento, non solo una preferenza di
+	// visualizzazione.
+	if (fResizingChartIndex >= 0)
+	{
+		if (fCharts && fResizingChartIndex < (int)fCharts->size())
+		{
+			const ChartObject& obj = (*fCharts)[fResizingChartIndex];
+			if (obj.frame != fResizeChartStartFrame)
+				SaveChartUndoState(fResizingChartIndex, fResizeChartStartFrame);
+		}
+		NotifyDocumentChanged();
+	}
+	fResizingChartIndex = -1;
 	// Un clic destro su un'immagine SENZA superare la soglia di
 	// trascinamento (vedi MouseMoved) non ha mai chiamato DragMessage():
 	// resta solo da azzerare l'armamento, l'immagine resta selezionata
@@ -3568,6 +3625,26 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 			fPendingExportImageIndex = -1;
 			StartImageExportDrag(index);
 		}
+		return;
+	}
+
+	// Ridimensionamento di un grafico incorporato in corso (armato da
+	// MouseDown tramite ChartResizeHandle): stesso principio esatto del
+	// ridimensionamento immagine sotto, ma cambia right/bottom del
+	// frame invece di width/height separati (ChartObject::frame e'
+	// gia' assoluto) -- l'angolo in alto a sinistra resta fermo, solo
+	// quello in basso a destra segue il mouse.
+	if (fResizingChartIndex >= 0 && fCharts
+		&& fResizingChartIndex < (int)fCharts->size())
+	{
+		const float kMinChartSize = 40;
+		ChartObject& obj = (*fCharts)[fResizingChartIndex];
+		float newRight = fResizeChartStartFrame.right + (where.x - fResizeChartStart.x);
+		float newBottom = fResizeChartStartFrame.bottom + (where.y - fResizeChartStart.y);
+		obj.frame.right = std::max(fResizeChartStartFrame.left + kMinChartSize, newRight);
+		obj.frame.bottom = std::max(fResizeChartStartFrame.top + kMinChartSize, newBottom);
+		ScrollToShowRect(obj.frame);
+		Invalidate();
 		return;
 	}
 

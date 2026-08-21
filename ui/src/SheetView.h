@@ -425,6 +425,13 @@ public:
 	// colonna: senza un indizio visivo permanente l'interazione non
 	// sarebbe scopribile guardando lo schermo.
 	BRect ImageResizeHandle(const EmbeddedImage& img) const;
+	// Maniglia di ridimensionamento di un grafico incorporato (Fase 20,
+	// richiesta esplicita dell'utente): stesso principio esatto di
+	// ImageResizeHandle sopra, un piccolo quadrato nell'angolo in basso
+	// a destra di ChartObject::frame -- un solo posto per la formula,
+	// usato sia da Draw() per disegnarla sia da MouseDown per
+	// riconoscere il clic.
+	BRect ChartResizeHandle(const ChartObject& obj) const;
 	// Rettangolo della cella attiva, esteso a tutto l'intervallo se "c"
 	// e' l'angolo di una cella unita -- un solo posto per la formula,
 	// usato sia da Draw() per disegnare il riquadro di selezione sia da
@@ -687,6 +694,17 @@ private:
 	int fDraggingChartIndex;
 	BPoint fDragChartStart;
 	BRect fDragChartStartFrame;
+	// Ridimensionamento di un grafico incorporato (maniglia nell'angolo
+	// in basso a destra, vedi ChartResizeHandle pubblico sopra): stesso
+	// schema esatto dello spostamento appena sopra (indice + punto di
+	// partenza + frame di partenza), ma MouseMoved cambia solo right/
+	// bottom del frame invece di traslarlo tutto -- un trascinamento e'
+	// o l'uno o l'altro, mai entrambi insieme (MouseDown controlla
+	// prima la maniglia, poi il corpo del grafico, stesso ordine delle
+	// immagini sotto).
+	int fResizingChartIndex;
+	BPoint fResizeChartStart;
+	BRect fResizeChartStartFrame;
 	std::vector<EmbeddedImage>* fImages;
 	// Trascinamento di un'immagine incorporata (MouseDown/MouseMoved/
 	// MouseUp): stesso schema di fResizingColumn/fResizingRow sopra
