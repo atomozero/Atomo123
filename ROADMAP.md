@@ -112,6 +112,8 @@ Since v0.2.0 (not yet in a tagged release):
   bar/point outside the drawable area instead of dropping below a
   zero line. Bar/line layout now scales to the series' actual value
   range (including negative values), with an explicit zero baseline
+- Charts can now have an optional title, set in the chart dialog and
+  persisted with the file (old files without one just show none)
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
