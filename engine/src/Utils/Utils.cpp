@@ -219,6 +219,20 @@ int GetFunctionNr(const char *name)
 	if (MatchesFuncNameAlias(name, "CONCATENATE"))
 		return kCONCATFuncNr;
 
+	// "LOG10" (5 caratteri, entrerebbe nella tabella normale, ma alias
+	// diretto qui comunque per semplicita': stessa funzione di LOG a un
+	// solo argomento, che gia' calcola log10() -- vedi LOGFunction in
+	// Functions.math.cpp, dove LOG(number) senza secondo argomento e'
+	// sempre in base 10, esattamente il comportamento di Excel. Bug
+	// reale scoperto su un file utente vero: LOG10() e' comune nelle
+	// formule di perdita di carico (formula di Colebrook-White), la
+	// funzione mancante faceva fallire l'analisi grammaticale dell'INTERA
+	// formula che la contiene, che restava testo grezzo invece che
+	// calcolata -- e quel valore testuale, usato poi in un prodotto con
+	// altre celle, propagava NaN a cascata fino al totale finale.
+	if (MatchesFuncNameAlias(name, "LOG10"))
+		return kLOGFuncNr;
+
 	if (sLen >= (long)sizeof(myFunc))
 		return -1;
 
