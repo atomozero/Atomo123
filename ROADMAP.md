@@ -218,9 +218,37 @@ Since v0.2.0 (not yet in a tagged release):
   confused with the real anchor-level size, and the image-import loop
   didn't skip chart anchors, occasionally misreading a chart's XML as
   a PNG
+- Printing repeats the row/column header band on every page, not just
+  the first: a multi-page sheet's later pages used to be unreadable
+  (no way to tell which row/column a cell belonged to). The page-tiling
+  math now lives in its own `PrintLayout.cpp`, testable without a real
+  configured printer — first item from the "v3.0 consolidation" print
+  backlog (see below)
 
-Next: no specific item queued — see "Not currently planned" above for
-the larger backlog.
+## Next: v3.0 "Consolidation" and v4.0 "Scripting"
+
+Two planned major versions, not yet started beyond the print fix above:
+
+**v3.0** — functions still missing versus Excel (SUMPRODUCT,
+AVERAGEIFS/MAXIFS/MINIFS, SUBSTITUTE/REPLACE/TEXTJOIN, NETWORKDAYS/
+WORKDAY/EDATE/EOMONTH/DATEDIF, INDIRECT/ADDRESS, and others — the
+`'Func'` resource's 9-character name limit means longer names need the
+same alias trick already used for CEILING.MATH/CONCATENATE), array
+formulas (spill ranges — the largest single item, touches the engine's
+evaluation model), the rest of the print backlog (page setup dialog:
+margins/orientation/scale-to-fit, definable print area), pivot table
+improvements (multi-level grouping, more aggregations), and translator
+parity gaps (ambiguous-text fix confirmed only on XLSX/ASCD; XLS has no
+export path; only XLSX has live-formula export).
+
+**v4.0** — scripting: expose the app to Haiku's native BHandler/
+BMessage scripting protocol, with macro execution provided by an
+existing embeddable VBA-compatible library if a suitable one is found
+(a research spike, not yet started — no known standalone embeddable
+VBA engine has been confirmed to exist; LibreOffice's Basic is the
+only mature open implementation and is deeply coupled to its own UNO
+API, not extractable as-is) — falls back to a self-written VBA-subset
+interpreter if the spike finds nothing usable.
 
 ## Related work
 
