@@ -216,6 +216,26 @@ void CContainer::DisposeCell(const cell& inLoc)
 	}
 } /* DisposeCell */
 
+void CContainer::ClearCellContent(const cell& inLoc)
+{	CHECKLOCK
+	cellmap::iterator ci = fCellData.find(inLoc);
+	if (ci == fCellData.end())
+		return;
+
+	CellData& data = (*ci).second;
+	if (data.mType == eTextData && data.mText)
+		FREE(data.mText);
+	if (data.mFormula)
+		FREE(data.mFormula);
+
+	data.mFormula = NULL;
+	data.mType = eNoData;
+	data.mConstant = 0;
+	data.mStatus = 0;
+	// data.mStyle deliberatamente intatto -- vedi il commento su questo
+	// metodo in Container.h.
+} /* ClearCellContent */
+
 void CContainer::CopyCell(CContainer *destContainer, const cell& srcLoc, const cell& destLoc,
 	range *inFrom, bool isDragMove)
 {	CHECKLOCK

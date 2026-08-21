@@ -227,6 +227,14 @@ public:
 
 	void NewCell(const cell& inLocation, const Value& inValue, void *inFormula);
 	void DisposeCell(const cell& c);
+	// Come DisposeCell, ma per il tasto Canc/Backspace (Fase 18):
+	// svuota solo valore/formula, mStyle intatto -- l'utente vuole
+	// poter cancellare il contenuto di una cella colorata/bordata senza
+	// perdere la formattazione, che DisposeCell invece cancella insieme
+	// (erase() dalla mappa, tutta la CellData compresa). Nessun effetto
+	// su una cella gia' vuota o mai esistita (non c'e' nulla da
+	// svuotare, e non ha senso creare una entry solo per questo).
+	void ClearCellContent(const cell& c);
 	void CopyCell(CContainer *destContainer, const cell& srcLoc, const cell& destLoc,
 			range *inFrom = NULL, bool isDragMove = false);
 	void MoveCell(CContainer *destContainer, const cell& srcLoc, const cell& destLoc,

@@ -1035,7 +1035,7 @@ void SheetView::ClearSelection()
 	CCellIterator iter(fDoc, &sel);
 	cell c;
 	while (iter.NextExisting(c))
-		fDoc->DisposeCell(c);
+		fDoc->ClearCellContent(c);
 
 	RecalculateOwningWorkbook();
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
