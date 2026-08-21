@@ -30,6 +30,7 @@
 #include "Chart.h"
 #include "Pivot.h"
 #include "RangeRef.h"
+#include "PrintLayout.h"
 #include "IconCatalog.h"
 #include "NameTable.h"
 #include "Utils.h"
@@ -3800,30 +3801,52 @@ void MainWindow::PrintDocument()
 	BRect contentRect = fSheetView->ContentRect();
 	float pageWidth = printableRect.Width();
 	float pageHeight = printableRect.Height();
+	float headerW = fSheetView->HeaderWidth();
+	float headerH = fSheetView->HeaderHeight();
 
-	if (pageWidth <= 0 || pageHeight <= 0)
+	if (pageWidth <= headerW || pageHeight <= headerH)
 	{
 		printJob.CancelJob();
 		return;
 	}
 
+	// Ripristinata alla fine (successo o annullamento): ogni pagina si
+	// disegna scorrendo DAVVERO la vista (vedi sotto), non solo
+	// ritagliando un rettangolo diverso -- stesso identico
+	// salva/ripristina di SwitchToSheet (fSheetView->Bounds().LeftTop()
+	// / ScrollTo), qui per la durata della stampa invece che di un
+	// cambio foglio.
+	BPoint originalScroll = fSheetView->Bounds().LeftTop();
+
 	// Si stampa solo l'area del foglio che contiene dati
 	// (SheetView::ContentRect), suddivisa in tante pagine quante ne
 	// servono in base all'area stampabile della stampante scelta —
 	// non l'intero intervallo virtuale del motore (702x16384 celle).
-	// Limite noto: le intestazioni di riga/colonna, disegnate da
-	// SheetView::Draw solo nella banda 0-kHeaderWidth/kHeaderHeight,
-	// compaiono quindi solo sulla prima pagina (in alto a sinistra),
-	// non ripetute su ogni pagina.
-	for (float y = 0; y <= contentRect.bottom && printJob.CanContinue(); y += pageHeight)
+	//
+	// Le intestazioni di riga/colonna si "incollano" al bordo della
+	// vista corrente (SheetView::Draw, rowHeaderLeft/colHeaderTop =
+	// Bounds().left/top): DrawView() da solo non le ripete su ogni
+	// pagina, perche' il rettangolo sorgente passato a DrawView e la
+	// posizione di scorrimento REALE della vista sono due cose
+	// indipendenti -- comparivano quindi solo sulla prima pagina (dove
+	// Bounds() coincide per caso con l'inizio del contenuto). Scorrendo
+	// davvero la vista alla posizione di ogni pagina (ComputePrintPageOrigins,
+	// vedi PrintLayout.cpp per la derivazione completa del calcolo)
+	// prima di disegnarla, l'intestazione si ripete correttamente su
+	// ognuna.
+	std::vector<BPoint> pageOrigins = ComputePrintPageOrigins(contentRect,
+		pageWidth, pageHeight, headerW, headerH);
+	for (size_t i = 0; i < pageOrigins.size() && printJob.CanContinue(); i++)
 	{
-		for (float x = 0; x <= contentRect.right && printJob.CanContinue(); x += pageWidth)
-		{
-			BRect pageSlice(x, y, x + pageWidth, y + pageHeight);
-			printJob.DrawView(fSheetView, pageSlice, BPoint(0, 0));
-			printJob.SpoolPage();
-		}
+		fSheetView->ScrollTo(pageOrigins[i]);
+
+		BRect pageSlice(pageOrigins[i].x, pageOrigins[i].y,
+			pageOrigins[i].x + pageWidth, pageOrigins[i].y + pageHeight);
+		printJob.DrawView(fSheetView, pageSlice, BPoint(0, 0));
+		printJob.SpoolPage();
 	}
+
+	fSheetView->ScrollTo(originalScroll);
 
 	if (printJob.CanContinue())
 		printJob.CommitJob();

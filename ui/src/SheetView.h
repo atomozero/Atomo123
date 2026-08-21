@@ -475,6 +475,14 @@ public:
 	// stampare l'intero intervallo virtuale del motore (702x16384).
 	BRect ContentRect() const;
 
+	// Larghezza/altezza della banda di intestazione (numeri di riga a
+	// sinistra, lettere di colonna in cima) in pixel -- kHeaderWidth/
+	// kHeaderHeight sono altrimenti private: usate da MainWindow per
+	// ripetere le intestazioni su ogni pagina in stampa (vedi
+	// PrintDocument), che deve riservare la stessa banda su ogni pagina.
+	float HeaderWidth() const { return kHeaderWidth; }
+	float HeaderHeight() const { return kHeaderHeight; }
+
 private:
 	// Ultima area visibile (Parent()->Bounds(), la vera BScrollView)
 	// per cui le barre di scorrimento sono state posizionate --
