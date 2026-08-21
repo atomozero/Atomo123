@@ -195,6 +195,12 @@ Since v0.2.0 (not yet in a tagged release):
   same principle as AutoCAD's backup. The backup's format follows the
   live document's format (an open .xlsx gets an .xlsx.bak written by
   the XLSX translator)
+- Embedded charts (bar/line/pie) now export to XLSX: previously they
+  simply vanished when saving as .xlsx (only cell data was ever
+  written). Now real DrawingML chart parts are generated — cell
+  references with cached values, correct chart type, title, single-
+  or multi-series grouping matching the same rules the app itself
+  uses to draw them
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
