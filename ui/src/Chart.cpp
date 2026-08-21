@@ -213,13 +213,27 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 
 	BRect plotArea = frame;
 	plotArea.InsetBy(10, 10);
-	plotArea.bottom -= 16;	// spazio per le etichette sotto le barre
 	plotArea.top += 14;	// spazio per l'etichetta del valore sopra le barre
 	if (!title.IsEmpty())
 		plotArea.top += 18;	// spazio per il titolo, vedi DrawChartTitle
 
 	double minValue, maxValue;
 	ChartValueRange(data, &minValue, &maxValue);
+
+	plotArea.bottom -= 16;	// spazio per le etichette di categoria sotto
+	// La riga delle etichette di categoria resta SEMPRE a questa
+	// posizione fissa (calcolata PRIMA dell'eventuale restrizione
+	// aggiuntiva qui sotto), anche quando la serie ha valori negativi:
+	// solo il "pavimento" delle barre sale, non la riga di categoria.
+	float categoryLabelY = plotArea.bottom + 12;
+	if (minValue < 0)
+		// Spazio aggiuntivo perche' l'etichetta valore di una barra
+		// negativa (disegnata subito sotto la barra) non finisca a
+		// sovrapporsi alla riga di categoria fissa sopra -- prima di
+		// questo fix le due etichette cadevano sulla STESSA
+		// coordinata Y quando una barra toccava il minimo della
+		// serie (bug segnalato dall'utente).
+		plotArea.bottom -= 14;
 
 	// Riserva a sinistra lo spazio per le etichette dell'asse Y,
 	// misurando la piu' larga con il font corrente -- le coordinate Y
@@ -249,7 +263,10 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	// valore positivo (plotArea.top riservato apposta qui sopra),
 	// sotto per uno negativo (la barra scende sotto la linea di zero,
 	// vedi ComputeBarLayout: mettere l'etichetta sopra la barra la
-	// piazzerebbe vicino alla linea di zero, lontano dalla barra vera).
+	// piazzerebbe vicino alla linea di zero, lontano dalla barra
+	// vera). +4 in entrambi i casi (non +12 sotto): la riga di
+	// categoria fissa sotto ha gia' il suo spazio riservato apposta
+	// sopra, vedi "categoryLabelY".
 	view->SetHighColor(40, 40, 40);
 	for (size_t i = 0; i < bars.size() && i < data.size(); i++)
 	{
@@ -257,7 +274,7 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 		snprintf(buf, sizeof(buf), "%g", data[i].value);
 		float width = view->StringWidth(buf);
 		float x = bars[i].bar.left + bars[i].bar.Width() / 2 - width / 2;
-		float y = (data[i].value >= 0) ? bars[i].bar.top - 4 : bars[i].bar.bottom + 12;
+		float y = (data[i].value >= 0) ? bars[i].bar.top - 4 : bars[i].bar.bottom + 4;
 		view->DrawString(buf, BPoint(x, y));
 	}
 
@@ -272,7 +289,7 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 
 	for (size_t i = 0; i < bars.size() && i < data.size(); i++)
 	{
-		BPoint labelPos(bars[i].bar.left, plotArea.bottom + 12);
+		BPoint labelPos(bars[i].bar.left, categoryLabelY);
 		view->DrawString(data[i].label.String(), labelPos);
 	}
 }
@@ -320,13 +337,21 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 
 	BRect plotArea = frame;
 	plotArea.InsetBy(10, 10);
-	plotArea.bottom -= 16;	// spazio per le etichette sotto i punti
 	plotArea.top += 14;	// spazio per l'etichetta del valore sopra i punti
 	if (!title.IsEmpty())
 		plotArea.top += 18;	// spazio per il titolo, vedi DrawChartTitle
 
 	double minValue, maxValue;
 	ChartValueRange(data, &minValue, &maxValue);
+
+	plotArea.bottom -= 16;	// spazio per le etichette di categoria sotto
+	// Stessa correzione di DrawBarChart (vedi il commento gemello li'):
+	// la riga di categoria resta fissa qui, solo il "pavimento" dei
+	// punti sale quando la serie ha valori negativi, cosi' l'etichetta
+	// valore di un punto negativo non ci si sovrappone piu'.
+	float categoryLabelY = plotArea.bottom + 12;
+	if (minValue < 0)
+		plotArea.bottom -= 14;
 
 	// Stesso margine sinistro per l'asse Y di DrawBarChart -- vedi il
 	// commento li' sopra per il perche' delle tacche calcolate prima
@@ -363,13 +388,16 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	// Valore numerico accanto a ogni punto, centrato -- sopra per un
 	// valore positivo (plotArea.top riservato apposta qui sopra), sotto
 	// per uno negativo, stesso principio delle barre in DrawBarChart.
+	// +8 sotto (non di piu'): il pallino ha gia' raggio 3, la riga di
+	// categoria fissa sotto ha il suo spazio riservato a parte, vedi
+	// "categoryLabelY".
 	view->SetHighColor(40, 40, 40);
 	for (size_t i = 0; i < points.size() && i < data.size(); i++)
 	{
 		char buf[32];
 		snprintf(buf, sizeof(buf), "%g", data[i].value);
 		float width = view->StringWidth(buf);
-		float y = (data[i].value >= 0) ? points[i].point.y - 8 : points[i].point.y + 16;
+		float y = (data[i].value >= 0) ? points[i].point.y - 8 : points[i].point.y + 8;
 		view->DrawString(buf, BPoint(points[i].point.x - width / 2, y));
 	}
 
@@ -387,7 +415,7 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	float slotWidth = plotArea.Width() / data.size();
 	for (size_t i = 0; i < points.size() && i < data.size(); i++)
 	{
-		BPoint labelPos(plotArea.left + i * slotWidth + 2, plotArea.bottom + 12);
+		BPoint labelPos(plotArea.left + i * slotWidth + 2, categoryLabelY);
 		view->DrawString(data[i].label.String(), labelPos);
 	}
 }
