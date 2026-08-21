@@ -146,6 +146,7 @@ SheetView::SheetView(CContainer* doc)
 	fCharts(NULL),
 	fDraggingChartIndex(-1),
 	fResizingChartIndex(-1),
+	fSelectedChartIndex(-1),
 	fImages(NULL),
 	fDraggingImageIndex(-1),
 	fResizingImageIndex(-1),
@@ -910,6 +911,14 @@ void SheetView::SetSelection(cell c)
 			Invalidate(ImageFrame((*fImages)[fSelectedImageIndex]));
 		fSelectedImageIndex = -1;
 	}
+	// Stesso principio esatto del blocco immagine sopra, ma per un
+	// grafico incorporato selezionato.
+	if (fSelectedChartIndex >= 0)
+	{
+		if (fCharts && fSelectedChartIndex < (int)fCharts->size())
+			Invalidate((*fCharts)[fSelectedChartIndex].frame);
+		fSelectedChartIndex = -1;
+	}
 
 	range oldRange = SelectionRange();
 	if (c == fSelection && c == fAnchor)
@@ -951,6 +960,12 @@ void SheetView::ExtendSelection(cell c)
 		if (fImages && fSelectedImageIndex < (int)fImages->size())
 			Invalidate(ImageFrame((*fImages)[fSelectedImageIndex]));
 		fSelectedImageIndex = -1;
+	}
+	if (fSelectedChartIndex >= 0)
+	{
+		if (fCharts && fSelectedChartIndex < (int)fCharts->size())
+			Invalidate((*fCharts)[fSelectedChartIndex].frame);
+		fSelectedChartIndex = -1;
 	}
 
 	if (c == fSelection)
@@ -1573,6 +1588,15 @@ SheetView::UndoSnapshot SheetView::CaptureImageDeleteSnapshot(int imageIndex) co
 
 void SheetView::SelectImage(int index)
 {
+	// Selezionare un'immagine deseleziona un eventuale grafico
+	// selezionato (Fase 22, aggiunto insieme alla selezione dei
+	// grafici): senza questo i due potevano restare selezionati
+	// insieme (un clic su un'immagine non passa da SetSelection/
+	// ExtendSelection, che sono gli unici altri punti che deselezionano
+	// un grafico), rendendo ambiguo cosa cancellerebbe Canc.
+	if (index >= 0 && fSelectedChartIndex >= 0)
+		SelectChart(-1);
+
 	if (index == fSelectedImageIndex)
 		return;
 
@@ -1596,6 +1620,53 @@ void SheetView::DeleteSelectedImage()
 	BRect dirty = ImageFrame((*fImages)[fSelectedImageIndex]);
 	fImages->erase(fImages->begin() + fSelectedImageIndex);
 	fSelectedImageIndex = -1;
+
+	Invalidate(dirty);
+	NotifyDocumentChanged();
+}
+
+SheetView::UndoSnapshot SheetView::CaptureChartDeleteSnapshot(int chartIndex) const
+{
+	UndoSnapshot snap;
+	snap.isChartDeleteSnapshot = true;
+	snap.deletedChartIndex = chartIndex;
+	if (fCharts && chartIndex >= 0 && chartIndex < (int)fCharts->size())
+		snap.deletedChart = (*fCharts)[chartIndex];
+	return snap;
+}
+
+// Stesso principio esatto di SelectImage sopra, simmetrico: selezionare
+// un grafico deseleziona un'eventuale immagine selezionata (vedi il
+// commento gemello li').
+void SheetView::SelectChart(int index)
+{
+	if (index >= 0 && fSelectedImageIndex >= 0)
+		SelectImage(-1);
+
+	if (index == fSelectedChartIndex)
+		return;
+
+	if (fSelectedChartIndex >= 0 && fCharts && fSelectedChartIndex < (int)fCharts->size())
+		Invalidate((*fCharts)[fSelectedChartIndex].frame);
+
+	fSelectedChartIndex = index;
+
+	if (fSelectedChartIndex >= 0 && fCharts && fSelectedChartIndex < (int)fCharts->size())
+		Invalidate((*fCharts)[fSelectedChartIndex].frame);
+}
+
+// Stesso principio esatto di DeleteSelectedImage sopra.
+void SheetView::DeleteSelectedChart()
+{
+	if (!fCharts || fSelectedChartIndex < 0 || fSelectedChartIndex >= (int)fCharts->size())
+		return;
+
+	fUndoStack.push_back(CaptureChartDeleteSnapshot(fSelectedChartIndex));
+	fRedoStack.clear();
+
+	BRect dirty = (*fCharts)[fSelectedChartIndex].frame;
+	fCharts->erase(fCharts->begin() + fSelectedChartIndex);
+	fSelectedChartIndex = -1;
 
 	Invalidate(dirty);
 	NotifyDocumentChanged();
@@ -1802,6 +1873,25 @@ void SheetView::Undo()
 		return;
 	}
 
+	// Cancellazione di un grafico incorporato (DeleteSelectedChart):
+	// stesso principio esatto del ramo immagine sopra.
+	if (toRestore.isChartDeleteSnapshot)
+	{
+		if (fCharts && toRestore.deletedChartIndex >= 0
+			&& toRestore.deletedChartIndex <= (int)fCharts->size())
+		{
+			fCharts->insert(fCharts->begin() + toRestore.deletedChartIndex, toRestore.deletedChart);
+			fSelectedChartIndex = toRestore.deletedChartIndex;
+		}
+		UndoSnapshot forRedo;
+		forRedo.isChartDeleteSnapshot = true;
+		forRedo.deletedChartIndex = toRestore.deletedChartIndex;
+		fRedoStack.push_back(forRedo);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
 	// Convalida dati/formattazione condizionale: stesso scambio
 	// simmetrico, ne' selezione di celle ne' CellRect (la convalida
 	// non cambia il contenuto visibile della cella, la formattazione
@@ -1873,6 +1963,21 @@ void SheetView::Redo()
 			fImages->erase(fImages->begin() + idx);
 		}
 		fSelectedImageIndex = -1;
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+	// Vedi il commento nel ramo equivalente di Undo() sopra, stesso
+	// principio del ramo immagine appena sopra ma per un grafico.
+	if (toRestore.isChartDeleteSnapshot)
+	{
+		int idx = toRestore.deletedChartIndex;
+		if (fCharts && idx >= 0 && idx < (int)fCharts->size())
+		{
+			fUndoStack.push_back(CaptureChartDeleteSnapshot(idx));
+			fCharts->erase(fCharts->begin() + idx);
+		}
+		fSelectedChartIndex = -1;
 		Invalidate();
 		NotifyDocumentChanged();
 		return;
@@ -3059,6 +3164,16 @@ void SheetView::Draw(BRect updateRect)
 				// schermo.
 				SetHighColor(80, 80, 80);
 				FillRect(ChartResizeHandle(obj));
+				// Riquadro di selezione (Fase 22, comando Elimina
+				// grafico): stesso blu/stessa logica del riquadro di
+				// selezione delle immagini -- senza questo indizio
+				// visivo, un clic che seleziona il grafico (per poi
+				// premere Canc) non avrebbe alcun riscontro a schermo.
+				if ((int)i == fSelectedChartIndex)
+				{
+					SetHighColor(30, 100, 200);
+					StrokeRect(obj.frame);
+				}
 				continue;
 			}
 
@@ -3068,6 +3183,11 @@ void SheetView::Draw(BRect updateRect)
 
 			SetHighColor(80, 80, 80);
 			FillRect(ChartResizeHandle(obj));
+			if ((int)i == fSelectedChartIndex)
+			{
+				SetHighColor(30, 100, 200);
+				StrokeRect(obj.frame);
+			}
 		}
 	}
 
@@ -3342,6 +3462,7 @@ void SheetView::MouseDown(BPoint where)
 				fResizingChartIndex = i;
 				fResizeChartStart = where;
 				fResizeChartStartFrame = (*fCharts)[i].frame;
+				SelectChart(i);
 				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 				return;
 			}
@@ -3366,6 +3487,7 @@ void SheetView::MouseDown(BPoint where)
 				fDraggingChartIndex = i;
 				fDragChartStart = where;
 				fDragChartStartFrame = (*fCharts)[i].frame;
+				SelectChart(i);
 				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
 				return;
 			}
@@ -3931,13 +4053,18 @@ bool SheetView::HandleKey(char key, bool ctrl, bool shift)
 		}
 		case B_BACKSPACE:
 		case B_DELETE:
-			// Un'immagine incorporata selezionata (clic sopra, vedi
-			// fSelectedImageIndex) ha la precedenza sulla cancellazione
-			// di celle -- come in Excel/LibreOffice Calc, Canc su un
-			// oggetto selezionato lo rimuove invece di toccare il
-			// contenuto della cella sotto.
+			// Un'immagine o un grafico incorporato selezionato (clic
+			// sopra, vedi fSelectedImageIndex/fSelectedChartIndex) ha
+			// la precedenza sulla cancellazione di celle -- come in
+			// Excel/LibreOffice Calc, Canc su un oggetto selezionato lo
+			// rimuove invece di toccare il contenuto della cella sotto.
+			// I due indici non sono mai entrambi >= 0 insieme (vedi
+			// SelectImage/SelectChart, che si deselezionano a vicenda),
+			// l'ordine qui non e' quindi significativo.
 			if (fSelectedImageIndex >= 0)
 				DeleteSelectedImage();
+			else if (fSelectedChartIndex >= 0)
+				DeleteSelectedChart();
 			else
 				ClearSelection();
 			return true;

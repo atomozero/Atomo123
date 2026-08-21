@@ -319,7 +319,16 @@ public:
 	// una cella + scarto), ChartObject::frame e' gia' un BRect assoluto
 	// in Chart.h: lo spostamento aggiorna quel rettangolo direttamente,
 	// nessuna conversione anchor/scarto necessaria.
-	void SetCharts(std::vector<ChartObject>* charts) { fCharts = charts; }
+	void SetCharts(std::vector<ChartObject>* charts) { fCharts = charts; fSelectedChartIndex = -1; }
+
+	// Cancella il grafico incorporato attualmente selezionato (fatto un
+	// clic sopra, vedi fSelectedChartIndex), se ce n'e' uno -- nessun
+	// effetto altrimenti. Annullabile (Undo/Redo), stesso principio
+	// esatto di DeleteSelectedImage sotto. Pubblico apposta per essere
+	// testabile direttamente -- vedi tests/test_chart_delete.cpp.
+	void DeleteSelectedChart();
+	bool HasSelectedChart() const { return fSelectedChartIndex >= 0; }
+	int SelectedChartIndex() const { return fSelectedChartIndex; }
 
 	// Elenco delle immagini incorporate (import XLSX, Fase 12) da
 	// disegnare sopra la griglia -- stesso principio di SetCharts
@@ -668,6 +677,14 @@ private:
 		bool isImageDeleteSnapshot = false;
 		int deletedImageIndex = -1;
 		EmbeddedImage deletedImage;
+		// Cancellazione di un grafico incorporato (DeleteSelectedChart):
+		// stesso principio esatto di isImageDeleteSnapshot sopra -- serve
+		// l'INTERO ChartObject (dataRange/frame/type/title) catturato
+		// PRIMA di rimuoverlo dal vettore, non solo il frame come
+		// chartIndex sopra (che presuppone il grafico esista ancora).
+		bool isChartDeleteSnapshot = false;
+		int deletedChartIndex = -1;
+		ChartObject deletedChart;
 	};
 	std::vector<UndoSnapshot> fUndoStack;
 	std::vector<UndoSnapshot> fRedoStack;
@@ -675,12 +692,15 @@ private:
 	UndoSnapshot CaptureImageSnapshot(int imageIndex) const;
 	UndoSnapshot CaptureChartSnapshot(int chartIndex) const;
 	UndoSnapshot CaptureImageDeleteSnapshot(int imageIndex) const;
+	UndoSnapshot CaptureChartDeleteSnapshot(int chartIndex) const;
 	// Imposta fSelectedImageIndex e invalida sia il vecchio che il
 	// nuovo riquadro di selezione (se diversi da -1) -- un solo posto
 	// per questa logica, usato da MouseDown sia per il ridimensionamento
 	// che per il trascinamento (vedi il commento su fSelectedImageIndex
 	// in fondo alla classe).
 	void SelectImage(int index);
+	// Stesso principio esatto di SelectImage sopra, ma su fSelectedChartIndex.
+	void SelectChart(int index);
 	UndoSnapshot CaptureValidationSnapshot(range r) const;
 	UndoSnapshot CaptureCondFormatSnapshot() const;
 	void ApplySnapshot(const UndoSnapshot& snap);
@@ -705,6 +725,13 @@ private:
 	int fResizingChartIndex;
 	BPoint fResizeChartStart;
 	BRect fResizeChartStartFrame;
+	// Grafico incorporato attualmente "selezionato" (Fase 22, comando
+	// Elimina grafico): stesso principio esatto di fSelectedImageIndex
+	// sotto -- a differenza di fDraggingChartIndex/fResizingChartIndex
+	// sopra (validi solo durante un trascinamento in corso), resta
+	// impostato dopo il rilascio del mouse, cosi' Canc/Backspace sanno
+	// quale grafico cancellare senza dover tenere il mouse premuto.
+	int fSelectedChartIndex;
 	std::vector<EmbeddedImage>* fImages;
 	// Trascinamento di un'immagine incorporata (MouseDown/MouseMoved/
 	// MouseUp): stesso schema di fResizingColumn/fResizingRow sopra
