@@ -860,6 +860,22 @@ test-plain-save: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 	xres -o tests/test_plain_save $(RSRC)
 	./tests/test_plain_save
 
+# Salvataggio automatico (Fase 23): scrive un backup, mai il file
+# originale -- vedi il commento in cima al test. Serve $(RSRC) come
+# test-plain-save sopra (uno scenario passa da un vero export XLSX).
+test-autosave: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
+	$(CXX) -c tests/test_autosave.cpp -o tests/test_autosave.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_autosave tests/test_autosave.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/IconCatalog.o src/IconData.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	xres -o tests/test_autosave $(RSRC)
+	./tests/test_autosave
+
 # Test della formattazione grassetto/corsivo/allineamento/colore
 # (Fase 7): tutti si applicano a tutto SelectionRange(), non solo
 # alla cella attiva. Stessa ragione di test-paste-range (serve una
@@ -1172,7 +1188,7 @@ clean:
 		examples/atomo123_demo.ascd \
 		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
-.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save clean
+.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave clean
 
 # Include i file di dipendenza generati da -MMD/-MP (vedi CXXFLAGS in
 # cima) -- src/*.d per la build principale, tests/*.d per ogni target

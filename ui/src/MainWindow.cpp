@@ -142,6 +142,7 @@ static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgShowTextColor = 'shtc';
 static const uint32 kMsgShowBgColor = 'shbc';
 static const uint32 kMsgShowPreferences = 'shpr';
+static const uint32 kMsgAutoSaveTick = 'atck';
 static const uint32 kMsgToggleBorder = 'tbrd';
 static const uint32 kMsgClearBorders = 'cbrd';
 static const uint32 kMsgShowBorderColor = 'shbd';
@@ -504,6 +505,17 @@ MainWindow::MainWindow()
 		fMaxRecentFiles = 1;
 	if (fMaxRecentFiles > kMaxRecentFilesLimit)
 		fMaxRecentFiles = kMaxRecentFilesLimit;
+	// Salvataggio automatico (Fase 23): abilitato ogni 5 minuti per
+	// default, richiesta esplicita dell'utente. fAutoSaveRunner parte
+	// solo piu' avanti (StartOrUpdateAutoSaveRunner), quando/se
+	// fDocumentName smette di essere vuoto.
+	fAutoSaveEnabled = gPrefs ? (gPrefs->GetPrefInt("autoSaveEnabled", 1) != 0) : true;
+	fAutoSaveIntervalMinutes = gPrefs ? gPrefs->GetPrefInt("autoSaveInterval", 5) : 5;
+	if (fAutoSaveIntervalMinutes < 1)
+		fAutoSaveIntervalMinutes = 1;
+	if (fAutoSaveIntervalMinutes > 120)
+		fAutoSaveIntervalMinutes = 120;
+	fAutoSaveRunner = NULL;
 	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
 	ResetWorkbook("Foglio1");
 	fModified = false;
@@ -924,6 +936,7 @@ MainWindow::MainWindow()
 
 MainWindow::~MainWindow()
 {
+	delete fAutoSaveRunner;
 	delete fOpenPanel;
 	delete fSavePanel;
 	if (fFindWindow)
@@ -1460,6 +1473,7 @@ void MainWindow::NewDocument()
 	fDocumentName = "";
 	fModified = false;
 	UpdateTitle();
+	StopAutoSaveRunner(); // documento nuovo: nessun file dove scrivere un backup
 }
 
 // Legge un singolo blocco ASCD (un solo foglio, formato "ASCD") in un
@@ -1619,6 +1633,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	}
 	fModified = false;
 	UpdateTitle();
+	StartOrUpdateAutoSaveRunner();
 
 	AddToRecentFiles(ref);
 }
@@ -1717,6 +1732,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		fFileDirRef = dir;
 		fModified = false;
 		UpdateTitle();
+		StartOrUpdateAutoSaveRunner();
 		return;
 	}
 
@@ -1791,6 +1807,125 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	fFileDirRef = dir;
 	fModified = false;
 	UpdateTitle();
+	StartOrUpdateAutoSaveRunner();
+}
+
+// Nome/formato del backup automatico (Fase 23): stessa estensione di
+// fDocumentName, con ".bak" in coda -- MAI il nome del file originale
+// (richiesta esplicita dell'utente: "come fa AutoCAD", che scrive un
+// file di recupero a parte invece di toccare il disegno aperto). Il
+// FORMATO del contenuto segue comunque quello del file vero (stessa
+// estensione riconosciuta da SaveToFile sopra): un documento aperto
+// come .xlsx produce un backup .xlsx.bak scritto dal translator XLSX,
+// non un .ascd sotto mentite spoglie.
+void MainWindow::AutoSaveBackup()
+{
+	// Niente da salvare (documento intatto dall'ultimo salvataggio) o
+	// nessun file conosciuto (documento mai salvato manualmente): in
+	// entrambi i casi StartOrUpdateAutoSaveRunner non avrebbe nemmeno
+	// dovuto avviare il timer, ma il controllo resta qui per sicurezza
+	// (es. l'utente disabilita "Salva" mentre il timer e' gia' armato).
+	if (!fModified || fDocumentName.Length() == 0)
+		return;
+
+	BString nameStr(fDocumentName);
+	uint32 outType = kAtomoNativeFormat;
+	int32 csvPos = nameStr.IFindLast(".csv");
+	int32 xlsxPos = nameStr.IFindLast(".xlsx");
+	int32 odsPos = nameStr.IFindLast(".ods");
+	if (csvPos >= 0 && csvPos == nameStr.Length() - 4)
+		outType = kAtomoCsvFormat;
+	else if (xlsxPos >= 0 && xlsxPos == nameStr.Length() - 5)
+		outType = kAtomoXlsxFormat;
+	else if (odsPos >= 0 && odsPos == nameStr.Length() - 4)
+		outType = kAtomoOdsFormat;
+
+	BString backupName(fDocumentName);
+	backupName << ".bak";
+
+	BDirectory directory(&fFileDirRef);
+	BFile file(&directory, backupName.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	if (file.InitCheck() != B_OK)
+		return; // silenzioso: un salvataggio automatico non deve mai interrompere l'utente con un BAlert
+
+	if (outType == kAtomoNativeFormat)
+	{
+		fSheets[fActiveSheetIndex].charts = fCharts;
+		fSheets[fActiveSheetIndex].images = fImages;
+		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
+		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
+		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
+		fSheets[fActiveSheetIndex].frozenCols = fSheetView->FrozenCols();
+		fSheets[fActiveSheetIndex].showGrid = fSheetView->ShowGrid();
+		fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
+		fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
+		fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
+		SaveASCDBook(fSheets, &file); // esito ignorato, vedi il commento sopra su file.InitCheck()
+		return;
+	}
+
+	BMallocIO ascd;
+	if (SaveASCD(fDoc, &ascd) != B_OK)
+		return;
+
+	translator_id chosenId = 0;
+	translator_id* allIds = NULL;
+	int32 idCount = 0;
+	if (BTranslatorRoster::Default()->GetAllTranslators(&allIds, &idCount) == B_OK)
+	{
+		for (int32 i = 0; i < idCount && chosenId == 0; i++)
+		{
+			const translation_format* formats = NULL;
+			int32 numFormats = 0;
+			if (BTranslatorRoster::Default()->GetOutputFormats(allIds[i], &formats, &numFormats) != B_OK)
+				continue;
+			for (int32 j = 0; j < numFormats; j++)
+			{
+				if (formats[j].type == outType)
+				{
+					chosenId = allIds[i];
+					break;
+				}
+			}
+		}
+	}
+
+	ascd.Seek(0, SEEK_SET);
+	if (chosenId != 0)
+		BTranslatorRoster::Default()->Translate(chosenId, &ascd, NULL, &file, outType);
+	else
+		BTranslatorRoster::Default()->Translate(&ascd, NULL, NULL, &file, outType);
+}
+
+// Avvia (o riarma con un intervallo nuovo) il timer del salvataggio
+// automatico -- SOLO se abilitato nelle preferenze E il documento ha
+// gia' un file noto (fDocumentName non vuoto): un documento nuovo/mai
+// salvato non ha ancora nessun posto dove scrivere un backup, vedi
+// AutoSaveBackup sopra. Chiamata da OpenFile/SaveToFile (ogni volta
+// che fDocumentName diventa valido) e da HandlePreferencesRequest
+// (per applicare subito una modifica alle preferenze).
+void MainWindow::StartOrUpdateAutoSaveRunner()
+{
+	if (!fAutoSaveEnabled || fDocumentName.Length() == 0)
+	{
+		StopAutoSaveRunner();
+		return;
+	}
+
+	bigtime_t interval = (bigtime_t)fAutoSaveIntervalMinutes * 60 * 1000000;
+	if (fAutoSaveRunner)
+	{
+		fAutoSaveRunner->SetInterval(interval);
+		return;
+	}
+
+	fAutoSaveRunner = new BMessageRunner(BMessenger(this), new BMessage(kMsgAutoSaveTick), interval);
+}
+
+void MainWindow::StopAutoSaveRunner()
+{
+	delete fAutoSaveRunner;
+	fAutoSaveRunner = NULL;
 }
 
 void MainWindow::CopySelection(bool cut)
@@ -2331,7 +2466,8 @@ void MainWindow::ShowPreferencesWindow()
 	{
 		bool showSplash = gPrefs ? (gPrefs->GetPrefInt("showSplash", 1) != 0) : true;
 		fPreferencesWindow->SetValues(fSheetView->ShowGrid(), gDecimalPoint, gListSeparator,
-			fMaxRecentFiles, showSplash, gThousandSeparator, gCurrencySymbol);
+			fMaxRecentFiles, showSplash, gThousandSeparator, gCurrencySymbol,
+			fAutoSaveEnabled, fAutoSaveIntervalMinutes);
 		fPreferencesWindow->Unlock();
 	}
 
@@ -2341,7 +2477,8 @@ void MainWindow::ShowPreferencesWindow()
 }
 
 void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep,
-	int maxRecentFiles, bool showSplash, char thousandSep, const char* currencySymbol)
+	int maxRecentFiles, bool showSplash, char thousandSep, const char* currencySymbol,
+	bool autoSaveEnabled, int autoSaveIntervalMinutes)
 {
 	fSheetView->SetShowGrid(showGrid);
 	// showGrid e' ora un attributo per-foglio (vedi AscdSheet::showGrid
@@ -2371,6 +2508,17 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 	// rinfrescare il menu con la nuova preferenza appena impostata.
 	RebuildRecentMenu();
 
+	if (autoSaveIntervalMinutes < 1)
+		autoSaveIntervalMinutes = 1;
+	if (autoSaveIntervalMinutes > 120)
+		autoSaveIntervalMinutes = 120;
+	fAutoSaveEnabled = autoSaveEnabled;
+	fAutoSaveIntervalMinutes = autoSaveIntervalMinutes;
+	// Applica subito: arma/riarma il timer se appena abilitato o se
+	// l'intervallo e' cambiato, oppure lo ferma se appena disabilitato
+	// (StartOrUpdateAutoSaveRunner gestisce entrambi i casi da sola).
+	StartOrUpdateAutoSaveRunner();
+
 	// gPrefs (Preferences.h) puo' essere NULL in un test che non passa
 	// da App::App() (vedi il commento li'): l'effetto in memoria sopra
 	// resta comunque valido e testabile, solo la persistenza su disco
@@ -2391,6 +2539,8 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 		// nella finestra corrente, a differenza di showGrid/separatori/
 		// file recenti sopra.
 		gPrefs->SetPrefInt("showSplash", showSplash ? 1 : 0);
+		gPrefs->SetPrefInt("autoSaveEnabled", fAutoSaveEnabled ? 1 : 0);
+		gPrefs->SetPrefInt("autoSaveInterval", fAutoSaveIntervalMinutes);
 		try { gPrefs->WritePrefFile(); }
 		catch (CErr&) { }
 	}
@@ -4393,6 +4543,10 @@ void MainWindow::MessageReceived(BMessage* message)
 			ShowPreferencesWindow();
 			break;
 
+		case kMsgAutoSaveTick:
+			AutoSaveBackup();
+			break;
+
 		case B_ABOUT_REQUESTED:
 			(new AboutWindow())->Show();
 			break;
@@ -4404,6 +4558,8 @@ void MainWindow::MessageReceived(BMessage* message)
 			int32 maxRecentFiles = fMaxRecentFiles;
 			bool showSplash = true;
 			const char* currencySymbol = gCurrencySymbol;
+			bool autoSaveEnabled = fAutoSaveEnabled;
+			int32 autoSaveInterval = fAutoSaveIntervalMinutes;
 			message->FindBool("showGrid", &showGrid);
 			message->FindInt8("decimalSeparator", &decimalSep);
 			message->FindInt8("listSeparator", &listSep);
@@ -4411,8 +4567,11 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindBool("showSplash", &showSplash);
 			message->FindInt8("thousandSeparator", &thousandSep);
 			message->FindString("currencySymbol", &currencySymbol);
+			message->FindBool("autoSaveEnabled", &autoSaveEnabled);
+			message->FindInt32("autoSaveInterval", &autoSaveInterval);
 			HandlePreferencesRequest(showGrid, (char)decimalSep, (char)listSep,
-				(int)maxRecentFiles, showSplash, (char)thousandSep, currencySymbol);
+				(int)maxRecentFiles, showSplash, (char)thousandSep, currencySymbol,
+				autoSaveEnabled, (int)autoSaveInterval);
 			break;
 		}
 

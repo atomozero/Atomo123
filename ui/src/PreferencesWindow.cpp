@@ -9,6 +9,8 @@
 
 #include "PreferencesWindow.h"
 
+#include <cstdlib>
+
 #include <Box.h>
 #include <Button.h>
 #include <Catalog.h>
@@ -112,6 +114,22 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 		.SetInsets(8, startupBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fShowSplashBox);
 
+	// Salvataggio automatico (Fase 23, richiesta esplicita dell'utente):
+	// scrive un BACKUP a intervalli regolari, mai il file originale
+	// (vedi MainWindow::AutoSaveBackup) -- parte solo dopo il primo
+	// salvataggio manuale (nessun file dove scrivere il backup prima di
+	// quello). Abilitato di default ogni 5 minuti, come richiesto.
+	fAutoSaveBox = new BCheckBox("autoSave",
+		B_TRANSLATE("Abilita il salvataggio automatico (backup)"), NULL);
+	fAutoSaveIntervalField = new BTextControl("autoSaveInterval",
+		B_TRANSLATE("Ogni quanti minuti:"), "5", NULL);
+	BBox* autoSaveBox = new BBox("autoSaveBox");
+	autoSaveBox->SetLabel(B_TRANSLATE("Salvataggio automatico"));
+	BLayoutBuilder::Group<>(autoSaveBox, B_VERTICAL, 6)
+		.SetInsets(8, autoSaveBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fAutoSaveBox)
+		.Add(fAutoSaveIntervalField);
+
 	BButton* applyButton = new BButton("apply", B_TRANSLATE("Applica"), new BMessage(kMsgApplyLocal));
 	applyButton->SetTarget(this);
 	applyButton->MakeDefault(true);
@@ -121,6 +139,7 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 		.Add(generalBox)
 		.Add(fileBox)
 		.Add(startupBox)
+		.Add(autoSaveBox)
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
 			.Add(applyButton)
@@ -128,10 +147,15 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 }
 
 void PreferencesWindow::SetValues(bool showGrid, char decimalSep, char listSep,
-	int maxRecentFiles, bool showSplash, char thousandSep, const char* currencySymbol)
+	int maxRecentFiles, bool showSplash, char thousandSep, const char* currencySymbol,
+	bool autoSaveEnabled, int autoSaveIntervalMinutes)
 {
 	fShowGridBox->SetValue(showGrid ? B_CONTROL_ON : B_CONTROL_OFF);
 	fShowSplashBox->SetValue(showSplash ? B_CONTROL_ON : B_CONTROL_OFF);
+	fAutoSaveBox->SetValue(autoSaveEnabled ? B_CONTROL_ON : B_CONTROL_OFF);
+	BString intervalStr;
+	intervalStr << autoSaveIntervalMinutes;
+	fAutoSaveIntervalField->SetText(intervalStr.String());
 	fDecimalField->Menu()->ItemAt(decimalSep == ',' ? 1 : 0)->SetMarked(true);
 	fListField->Menu()->ItemAt(listSep == ',' ? 1 : 0)->SetMarked(true);
 	int thousandIndex = thousandSep == '.' ? 1 : (thousandSep == ' ' ? 2 : 0);
@@ -184,6 +208,15 @@ void PreferencesWindow::MessageReceived(BMessage* message)
 			? fThousandField->Menu()->IndexOf(markedThousand) : 0;
 		char thousandSep = thousandIndex == 1 ? '.' : (thousandIndex == 2 ? ' ' : ',');
 
+		// Intervallo: qualunque testo non numerico o fuori dai limiti
+		// sani (1-120 minuti, applicati di nuovo in
+		// MainWindow::HandlePreferencesRequest) ricade su 5, il valore
+		// predefinito -- mai un timer a zero/negativo o assurdamente
+		// lungo per un refuso di battitura.
+		int autoSaveInterval = atoi(fAutoSaveIntervalField->Text());
+		if (autoSaveInterval < 1 || autoSaveInterval > 120)
+			autoSaveInterval = 5;
+
 		BMessage request(kMsgPreferencesRequest);
 		request.AddBool("showGrid", fShowGridBox->Value() == B_CONTROL_ON);
 		request.AddInt8("decimalSeparator", decimalSep);
@@ -192,6 +225,8 @@ void PreferencesWindow::MessageReceived(BMessage* message)
 		request.AddBool("showSplash", fShowSplashBox->Value() == B_CONTROL_ON);
 		request.AddInt8("thousandSeparator", thousandSep);
 		request.AddString("currencySymbol", fCurrencyField->Text());
+		request.AddBool("autoSaveEnabled", fAutoSaveBox->Value() == B_CONTROL_ON);
+		request.AddInt32("autoSaveInterval", autoSaveInterval);
 		fTarget.SendMessage(&request);
 		return;
 	}

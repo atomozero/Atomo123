@@ -1,4 +1,4 @@
-1	English	application/x-vnd.Atomo-Atomo123	4287322655
+1	English	application/x-vnd.Atomo-Atomo123	2376409699
 Separatore delle migliaia:	PreferencesWindow		Thousands separator:
 Simbolo valuta:	PreferencesWindow		Currency symbol:
 Spazio ( )	PreferencesWindow		Space ( )
@@ -201,6 +201,19 @@ Salva	CommentWindow		Save
 OK	MainWindow		OK
 Apri	MainWindow		Open
 Mostra lo splash screen all'avvio	PreferencesWindow		Show the splash screen at startup
+Salvataggio automatico	PreferencesWindow		Automatic saving
+Abilita il salvataggio automatico (backup)	PreferencesWindow		Enable automatic saving (backup)
+Ogni quanti minuti:	PreferencesWindow		Every how many minutes:
+CSV (.csv)	MainWindow		CSV (.csv)
+Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		Deselect a series to hide only its numeric labels on the chart; the series itself stays visible.
+Excel (.xlsx)	MainWindow		Excel (.xlsx)
+Formato nativo (.ascd)	MainWindow		Native format (.ascd)
+Intervallo non valido: serve almeno una riga numerica in ogni colonna serie.	MainWindow		Invalid range: at least one numeric row is needed in each series column.
+Mostra valori per serie	ChartWindow		Show values per series
+OpenDocument (.ods)	MainWindow		OpenDocument (.ods)
+Senza titolo	MainWindow		Untitled
+Serie	Chart		Series
+Titolo (facoltativo):	ChartWindow		Title (optional):
 Offrimi un caffe' ☕	AboutWindow		Buy me a coffee ☕
 Trova	MainWindow		Find
 Cosa incollare:	PasteSpecialWindow		What to paste:

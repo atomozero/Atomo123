@@ -43,7 +43,8 @@ public:
 	// seconda apertura, mostrerebbe ancora i valori scelti la prima
 	// volta invece di quelli davvero in vigore.
 	void SetValues(bool showGrid, char decimalSep, char listSep, int maxRecentFiles,
-		bool showSplash, char thousandSep, const char* currencySymbol);
+		bool showSplash, char thousandSep, const char* currencySymbol,
+		bool autoSaveEnabled, int autoSaveIntervalMinutes);
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
@@ -56,6 +57,8 @@ private:
 	BCheckBox* fShowSplashBox;
 	BMenuField* fThousandField;
 	BTextControl* fCurrencyField;
+	BCheckBox* fAutoSaveBox;
+	BTextControl* fAutoSaveIntervalField;
 	BMessenger fTarget;
 };
 

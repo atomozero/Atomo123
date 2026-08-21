@@ -27,6 +27,7 @@
 #include "Container.h"
 
 class BFilePanel;
+class BMessageRunner;
 class BScrollBar;
 class BMenu;
 class BMenuItem;
@@ -96,6 +97,17 @@ public:
 	// altrove in questo progetto -- testabile direttamente senza
 	// passare da un vero clic sul pannello.
 	void Save();
+	// Salvataggio automatico (Fase 23, richiesta esplicita dell'utente:
+	// "vorrei un backup, come fa AutoCAD"): scrive un file "<nome>.bak"
+	// nella stessa cartella del documento, MAI il file originale --
+	// serve solo come rete di sicurezza in caso di crash, non sostituisce
+	// mai un vero Salva (fModified/il titolo restano invariati). Non fa
+	// nulla se il documento non ha modifiche pendenti o non ha ancora
+	// un file noto (fDocumentName vuoto: l'automazione parte solo dopo
+	// il primo salvataggio manuale, vedi StartOrUpdateAutoSaveRunner).
+	// Pubblico per lo stesso motivo di Save() sopra -- vedi
+	// tests/test_autosave.cpp.
+	void AutoSaveBackup();
 	void SelectionChanged(cell c);
 
 	// Footer stile Excel (Fase 17): indicatore di modalita' ("Pronto"/
@@ -163,6 +175,14 @@ public:
 	// PreferencesWindow (stesso principio di GetSheetView sopra): vedi
 	// tests/test_preferences.cpp.
 	int MaxRecentFiles() const { return fMaxRecentFiles; }
+	// Stesso motivo di MaxRecentFiles sopra -- vedi
+	// tests/test_preferences.cpp/test_autosave.cpp. IsAutoSaveArmed()
+	// riflette se il timer e' davvero attivo in questo momento (non solo
+	// se la preferenza e' abilitata: resta fermo finche' il documento
+	// non ha un file noto, vedi StartOrUpdateAutoSaveRunner).
+	bool AutoSaveEnabled() const { return fAutoSaveEnabled; }
+	int AutoSaveIntervalMinutes() const { return fAutoSaveIntervalMinutes; }
+	bool IsAutoSaveArmed() const { return fAutoSaveRunner != NULL; }
 	// Pubblico apposta per essere testabile direttamente (stesso
 	// principio di GetSheetView sopra): verifica che SelectionChanged
 	// anteponga davvero "=" al testo di una cella con formula (vedi il
@@ -252,7 +272,8 @@ public:
 	// quindi valgono per l'intera applicazione, non solo per il
 	// documento corrente -- stesso comportamento di Sum-It storico.
 	void HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep, int maxRecentFiles,
-		bool showSplash, char thousandSep, const char* currencySymbol);
+		bool showSplash, char thousandSep, const char* currencySymbol,
+		bool autoSaveEnabled, int autoSaveIntervalMinutes);
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che
@@ -513,6 +534,21 @@ private:
 	// cartella, "Salva" ricade sul pannello "Salva con nome" in quel
 	// caso.
 	entry_ref fFileDirRef;
+
+	// Salvataggio automatico (Fase 23, richiesta esplicita dell'utente):
+	// preferenze specchio di gPrefs (come fMaxRecentFiles sopra), piu'
+	// il BMessageRunner che invia kMsgAutoSaveTick a intervalli fissi.
+	// L'automazione parte SOLO quando fDocumentName non e' vuoto (un
+	// documento mai salvato non ha ancora nessun posto dove scrivere il
+	// backup) -- vedi StartOrUpdateAutoSaveRunner, chiamata da
+	// OpenFile/SaveToFile/HandlePreferencesRequest, e fermata da
+	// NewDocument quando fDocumentName torna vuoto.
+	bool fAutoSaveEnabled;
+	int fAutoSaveIntervalMinutes;
+	BMessageRunner* fAutoSaveRunner;
+
+	void StartOrUpdateAutoSaveRunner();
+	void StopAutoSaveRunner();
 
 	void UpdateTitle();
 	void MarkModified();
