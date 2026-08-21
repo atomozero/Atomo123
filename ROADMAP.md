@@ -126,6 +126,9 @@ Since v0.2.0 (not yet in a tagged release):
 - Multi-series charts recognize an optional header row: selecting a
   range whose first row has text in a series column names that series
   from it (Excel-style), instead of always "Serie 1", "Serie 2", ...
+- Opening the chart dialog with more than one cell already selected
+  now pre-fills the data range from that selection and draws the
+  preview immediately, instead of always showing the fixed default
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
