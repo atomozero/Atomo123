@@ -403,3 +403,8 @@ double Nan(int nannr)
 	__LO(x) = 0;
 	return x;
 } /* Nan */
+
+int GetNanNr(double x)
+{
+	return (__HI(x) >> 5) & 0x000000FF;
+} /* GetNanNr */

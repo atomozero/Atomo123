@@ -302,6 +302,14 @@ void SetupDefaultFuncs()
 	gFuncs[kMATCHFuncNr] = MATCHFunction;
 	gFuncs[kXLOOKUPFuncNr] = XLOOKUPFunction;
 	gFuncs[kIFSFuncNr] = IFSFunction;
+	gFuncs[kNOTFuncNr] = NOTFunction;
+	gFuncs[kXORFuncNr] = XORFunction;
+	gFuncs[kSWITCHFuncNr] = SWITCHFunction;
+	gFuncs[kIFNAFuncNr] = IFNAFunction;
+	gFuncs[kISBLANKFuncNr] = ISBLANKFunction;
+	gFuncs[kISERRORFuncNr] = ISERRORFunction;
+	gFuncs[kISNAFuncNr] = ISNAFunction;
+	gFuncs[kISFORMULAFuncNr] = ISFORMULAFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

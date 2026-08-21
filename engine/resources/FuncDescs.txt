@@ -105,3 +105,11 @@ Counts cells that meet multiple criteria
 Rounds a number away from zero to the given number of digits
 Rounds a number toward zero to the given number of digits
 Formats a number as text using the given format
+Reverses the logical value of its argument
+TRUE if an odd number of arguments are TRUE
+Compares an expression against a list of values and returns the matching result
+Returns a fallback value if the formula evaluates to #N/A
+TRUE if the referenced cell is empty
+TRUE if the value is any error
+TRUE if the value is #N/A
+TRUE if the referenced cell contains a formula

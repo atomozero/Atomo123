@@ -69,5 +69,12 @@ bool IsOptionalClick(BMessage *msg);
 char* Bin2Hex(void *data, ssize_t size);
 void* Hex2Bin(const char *hex, ssize_t& size);
 double Nan(int nannr);
+// Inversa di Nan() sopra (Fase 26): estrae il numero di errore da un
+// NaN gia' taggato -- serve a ISNA per distinguere #N/A (gNANan, vedi
+// Globals.h) da qualunque altro errore (#DIV/0!, #REF!, ...), a
+// differenza di ISERROR che li tratta tutti allo stesso modo. Nessun
+// controllo che "x" sia davvero un NaN taggato da Nan(): il chiamante
+// deve gia' averlo verificato con isnan(x) prima.
+int GetNanNr(double x);
 
 #endif

@@ -163,6 +163,18 @@ enum {
 	kROUNDUPFuncNr,
 	kROUNDDOWNFuncNr,
 	kTEXTFuncNr,
+	// NOT/XOR/SWITCH/IFNA/ISBLANK/ISERROR/ISNA/ISFORMULA (Fase 26, vedi
+	// ROADMAP.md "v3.0 Consolidation"): assenti dalle funzioni
+	// originali di Sum-It, mancanti confrontando la tabella con
+	// l'elenco standard di Excel.
+	kNOTFuncNr,
+	kXORFuncNr,
+	kSWITCHFuncNr,
+	kIFNAFuncNr,
+	kISBLANKFuncNr,
+	kISERRORFuncNr,
+	kISNAFuncNr,
+	kISFORMULAFuncNr,
 	kFunctionCount
 };
 
@@ -272,5 +284,13 @@ void INDEXFunction(Value *stack, int argCnt, CContainer *cells);
 void MATCHFunction(Value *stack, int argCnt, CContainer *cells);
 void XLOOKUPFunction(Value *stack, int argCnt, CContainer *cells);
 void IFSFunction(Value *stack, int argCnt, CContainer *cells);
+void NOTFunction(Value *stack, int argCnt, CContainer *cells);
+void XORFunction(Value *stack, int argCnt, CContainer *cells);
+void SWITCHFunction(Value *stack, int argCnt, CContainer *cells);
+void IFNAFunction(Value *stack, int argCnt, CContainer *cells);
+void ISBLANKFunction(Value *stack, int argCnt, CContainer *cells);
+void ISERRORFunction(Value *stack, int argCnt, CContainer *cells);
+void ISNAFunction(Value *stack, int argCnt, CContainer *cells);
+void ISFORMULAFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

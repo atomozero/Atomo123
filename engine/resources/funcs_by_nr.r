@@ -171,6 +171,19 @@ resource 'Func' (128, "Functions")
 		// cifre), come ROUND gia' esistente.
 		"ROUNDUP", 2, 104, 5,
 		"ROUNDDOWN", 2, 105, 5,
-		"TEXT", 2, 106, 6
+		"TEXT", 2, 106, 6,
+		// NOT/XOR/SWITCH/IFNA/ISBLANK/ISERROR/ISNA/ISFORMULA (Fase 26,
+		// vedi ROADMAP.md "v3.0 Consolidation"): assenti dalle funzioni
+		// originali di Sum-It, mancanti confrontando la tabella con
+		// l'elenco standard di Excel. 65535 = numero di argomenti
+		// variabile (XOR da 1 in su, SWITCH da 3 in su).
+		"NOT", 1, 107, 7,
+		"XOR", 65535, 108, 7,
+		"SWITCH", 65535, 109, 7,
+		"IFNA", 2, 110, 7,
+		"ISBLANK", 1, 111, 7,
+		"ISERROR", 1, 112, 7,
+		"ISNA", 1, 113, 7,
+		"ISFORMULA", 1, 114, 7
 	}
 };

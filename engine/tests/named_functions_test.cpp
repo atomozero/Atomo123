@@ -68,7 +68,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 107, "InitFunctions carica tutte le 107 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 115, "InitFunctions carica tutte le 115 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -822,6 +822,249 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL scenario reale +_xlfn.XLOOKUP su Tabella[...]: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// NOT/XOR/SWITCH/IFNA/ISBLANK/ISERROR/ISNA/ISFORMULA (Fase 26, vedi
+	// ROADMAP.md "v3.0 Consolidation"): assenti dalle funzioni
+	// originali di Sum-It, mancanti confrontando la tabella con
+	// l'elenco standard di Excel. A1 (10) e B1 (=SUM(A1:A3)) sono gia'
+	// definite piu' sopra; risultati scritti in colonna 40, ben lontano
+	// dalle colonne 25/26 (Y/Z) gia' riservate piu' sotto per il test
+	// di IF su una cella vuota -- un vero incidente successo scrivendo
+	// questi stessi test la prima volta (colonna 25 sovrascriveva Y1,
+	// che quel test si aspettava restasse vuota).
+	try
+	{
+		TryToParseString("=NOT(A1>100)", cell(40, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 1));
+		doc.GetValue(cell(40, 1), v);
+		Check(v.fType == eBoolData && (bool)v == true,
+			"=NOT(A1>100) calcola VERO (10>100 e' falso)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =NOT: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// A1=10, A2=20: entrambe >5, due argomenti VERI (pari) -> FALSO.
+		TryToParseString("=XOR(A1>5,A2>5)", cell(40, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 2));
+		doc.GetValue(cell(40, 2), v);
+		Check(v.fType == eBoolData && (bool)v == false,
+			"=XOR(A1>5,A2>5) calcola FALSO (due argomenti VERI, numero pari)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =XOR (pari): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// A1=10 (>5, vero), A3=30 (<=25, falso): un solo VERO (dispari) -> VERO.
+		TryToParseString("=XOR(A1>5,A3<=25)", cell(40, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 3));
+		doc.GetValue(cell(40, 3), v);
+		Check(v.fType == eBoolData && (bool)v == true,
+			"=XOR(A1>5,A3<=25) calcola VERO (un solo argomento VERO, numero dispari)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =XOR (dispari): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=SWITCH(A1,10,\"dieci\",20,\"venti\",\"altro\")", cell(40, 4), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 4));
+		doc.GetValue(cell(40, 4), v);
+		Check(strcmp((const char *)v, "dieci") == 0,
+			"=SWITCH(A1,10,\"dieci\",20,\"venti\",\"altro\") con A1=10 calcola \"dieci\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SWITCH (corrispondenza): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=SWITCH(A3,10,\"dieci\",20,\"venti\",\"altro\")", cell(40, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 5));
+		doc.GetValue(cell(40, 5), v);
+		Check(strcmp((const char *)v, "altro") == 0,
+			"=SWITCH(A3,10,\"dieci\",20,\"venti\",\"altro\") con A3=30 (nessuna corrispondenza) "
+			"calcola il predefinito \"altro\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SWITCH (predefinito): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=IFNA(NA(),\"mancante\")", cell(40, 6), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 6));
+		doc.GetValue(cell(40, 6), v);
+		Check(strcmp((const char *)v, "mancante") == 0,
+			"=IFNA(NA(),\"mancante\") sostituisce #N/A con \"mancante\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =IFNA (con #N/A): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=IFNA(A1,\"mancante\")", cell(40, 7), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 7));
+		doc.GetValue(cell(40, 7), v);
+		Check(v.fType == eNumData && (double)v == 10.0,
+			"=IFNA(A1,\"mancante\") con A1=10 (nessun errore) lascia passare 10, "
+			"non lo sostituisce col valore di riserva");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =IFNA (senza errore): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// AO1 (colonna 41), mai scritta altrove in questo file: stesso
+		// principio di Y1 usata piu' sotto per IF(cellaVuota=0;...) --
+		// una colonna diversa apposta, per non ripetere lo stesso
+		// errore di disattenzione gia' documentato li' (vedi il
+		// commento su "cell(26, 4)" invece di "cell(25, 4)").
+		TryToParseString("=ISBLANK(AO1)", cell(40, 8), &doc, true);
+		doc.CalcCell(cell(40, 8));
+		doc.GetValue(cell(40, 8), v);
+		Check(v.fType == eBoolData && (bool)v == true,
+			"=ISBLANK(AO1) calcola VERO (AO1 non ha mai avuto un valore)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ISBLANK (vuota): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ISBLANK(A1)", cell(40, 9), &doc, true);
+		doc.CalcCell(cell(40, 9));
+		doc.GetValue(cell(40, 9), v);
+		Check(v.fType == eBoolData && (bool)v == false,
+			"=ISBLANK(A1) calcola FALSO (A1 vale 10)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ISBLANK (piena): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ISERROR(1/0)", cell(40, 10), &doc, true);
+		doc.CalcCell(cell(40, 10));
+		doc.GetValue(cell(40, 10), v);
+		Check(v.fType == eBoolData && (bool)v == true,
+			"=ISERROR(1/0) calcola VERO (divisione per zero, un errore qualunque)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ISERROR (con errore): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ISERROR(A1)", cell(40, 11), &doc, true);
+		doc.CalcCell(cell(40, 11));
+		doc.GetValue(cell(40, 11), v);
+		Check(v.fType == eBoolData && (bool)v == false,
+			"=ISERROR(A1) calcola FALSO (A1 vale 10, nessun errore)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ISERROR (senza errore): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ISNA(NA())", cell(40, 12), &doc, true);
+		doc.CalcCell(cell(40, 12));
+		doc.GetValue(cell(40, 12), v);
+		Check(v.fType == eBoolData && (bool)v == true, "=ISNA(NA()) calcola VERO");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ISNA (con #N/A): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// #DIV/0! non e' #N/A: ISNA deve distinguere i due errori (a
+		// differenza di ISERROR sopra, che li tratta tutti allo stesso
+		// modo) -- la prova diretta che GetNanNr funziona davvero.
+		TryToParseString("=ISNA(1/0)", cell(40, 13), &doc, true);
+		doc.CalcCell(cell(40, 13));
+		doc.GetValue(cell(40, 13), v);
+		Check(v.fType == eBoolData && (bool)v == false,
+			"=ISNA(1/0) calcola FALSO (#DIV/0! non e' #N/A, anche se entrambi sono errori)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ISNA (con un altro errore): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// ISFORMULA ha bisogno del riferimento di cella VERO (eRangeData),
+	// non del suo valore -- ma il parser (parser.cpp, "case CELL")
+	// genera SEMPRE un valCell per un riferimento a una sola cella
+	// senza ":", che il bytecode interpreter (Formula.cpp, "case
+	// valCell") deferenzia SUBITO al valore della cella, qualunque sia
+	// la funzione che lo usa: non esiste modo, in questo motore, di
+	// far arrivare a una funzione il riferimento NUDO invece del
+	// valore. "B1" da solo restituirebbe quindi #REF! (lo stesso
+	// limite gia' presente, mai scoperto finora, di ROW()/COLUMN() con
+	// un solo argomento) -- un intervallo VERO di almeno due celle
+	// (qui B1:B2) e' l'unico modo di preservare il riferimento fino
+	// alla funzione, che legge sempre e solo l'angolo in alto a
+	// sinistra dell'intervallo.
+	try
+	{
+		TryToParseString("=ISFORMULA(B1:B2)", cell(40, 14), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 14));
+		doc.GetValue(cell(40, 14), v);
+		Check(v.fType == eBoolData && (bool)v == true,
+			"=ISFORMULA(B1:B2) calcola VERO (B1, l'angolo in alto a sinistra, e' =SUM(A1:A3))");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ISFORMULA (con formula): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ISFORMULA(A1:A2)", cell(40, 15), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 15));
+		doc.GetValue(cell(40, 15), v);
+		Check(v.fType == eBoolData && (bool)v == false,
+			"=ISFORMULA(A1:A2) calcola FALSO (A1, l'angolo in alto a sinistra, e' un valore letterale)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ISFORMULA (senza formula): %s\n", (char *)e);
 		gFailures++;
 	}
 
