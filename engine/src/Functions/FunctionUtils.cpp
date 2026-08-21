@@ -310,6 +310,12 @@ void SetupDefaultFuncs()
 	gFuncs[kISERRORFuncNr] = ISERRORFunction;
 	gFuncs[kISNAFuncNr] = ISNAFunction;
 	gFuncs[kISFORMULAFuncNr] = ISFORMULAFunction;
+	gFuncs[kSUBSTITUTEFuncNr] = SUBSTITUTEFunction;
+	gFuncs[kREPLACEFuncNr] = REPLACEFunction;
+	gFuncs[kREPTFuncNr] = REPTFunction;
+	gFuncs[kTEXTJOINFuncNr] = TEXTJOINFunction;
+	gFuncs[kVALUEFuncNr] = VALUEFunction;
+	gFuncs[kEXACTFuncNr] = EXACTFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

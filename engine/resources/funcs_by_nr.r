@@ -184,6 +184,19 @@ resource 'Func' (128, "Functions")
 		"ISBLANK", 1, 111, 7,
 		"ISERROR", 1, 112, 7,
 		"ISNA", 1, 113, 7,
-		"ISFORMULA", 1, 114, 7
+		"ISFORMULA", 1, 114, 7,
+		// SUBSTITUTE/REPLACE/REPT/TEXTJOIN/VALUE/EXACT (Fase 26, vedi
+		// ROADMAP.md "v3.0 Consolidation"). "SUBST" (non "SUBSTITUTE",
+		// 10 caratteri, non entra nel campo a lunghezza fissa): alias
+		// diretto in GetFunctionNr (Utils.cpp), stesso principio di
+		// CEILING.MATH/CONCATENATE/LOG10 -- funziona anche digitato
+		// come "SUBST()" direttamente, non solo come alias, ma non e'
+		// un nome Excel vero quindi non e' un problema.
+		"SUBST", 65535, 115, 6,
+		"REPLACE", 4, 116, 6,
+		"REPT", 2, 117, 6,
+		"TEXTJOIN", 65535, 118, 6,
+		"VALUE", 1, 119, 6,
+		"EXACT", 2, 120, 6
 	}
 };

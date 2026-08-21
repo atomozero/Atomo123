@@ -233,6 +233,15 @@ int GetFunctionNr(const char *name)
 	if (MatchesFuncNameAlias(name, "LOG10"))
 		return kLOGFuncNr;
 
+	// "SUBSTITUTE" (10 caratteri, Fase 26) ha lo stesso problema di
+	// CEILING.MATH/CONCATENATE sopra, ma senza un nome storico piu'
+	// corto gia' esistente da riusare: la risorsa 'Func' registra
+	// SUBSTITUTEFunction sotto il nome interno "SUBST" (5 caratteri,
+	// vedi funcs_by_nr.r), questo alias rimanda il nome Excel vero
+	// allo stesso funcNr.
+	if (MatchesFuncNameAlias(name, "SUBSTITUTE"))
+		return kSUBSTITUTEFuncNr;
+
 	if (sLen >= (long)sizeof(myFunc))
 		return -1;
 

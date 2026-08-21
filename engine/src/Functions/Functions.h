@@ -175,6 +175,16 @@ enum {
 	kISERRORFuncNr,
 	kISNAFuncNr,
 	kISFORMULAFuncNr,
+	// SUBSTITUTE/REPLACE/REPT/TEXTJOIN/VALUE/EXACT (Fase 26, vedi
+	// ROADMAP.md "v3.0 Consolidation"): assenti dalle funzioni
+	// originali di Sum-It, mancanti confrontando la tabella con
+	// l'elenco standard di Excel.
+	kSUBSTITUTEFuncNr,
+	kREPLACEFuncNr,
+	kREPTFuncNr,
+	kTEXTJOINFuncNr,
+	kVALUEFuncNr,
+	kEXACTFuncNr,
 	kFunctionCount
 };
 
@@ -292,5 +302,11 @@ void ISBLANKFunction(Value *stack, int argCnt, CContainer *cells);
 void ISERRORFunction(Value *stack, int argCnt, CContainer *cells);
 void ISNAFunction(Value *stack, int argCnt, CContainer *cells);
 void ISFORMULAFunction(Value *stack, int argCnt, CContainer *cells);
+void SUBSTITUTEFunction(Value *stack, int argCnt, CContainer *cells);
+void REPLACEFunction(Value *stack, int argCnt, CContainer *cells);
+void REPTFunction(Value *stack, int argCnt, CContainer *cells);
+void TEXTJOINFunction(Value *stack, int argCnt, CContainer *cells);
+void VALUEFunction(Value *stack, int argCnt, CContainer *cells);
+void EXACTFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

@@ -68,7 +68,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 115, "InitFunctions carica tutte le 115 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 121, "InitFunctions carica tutte le 121 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -1065,6 +1065,135 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =ISFORMULA (senza formula): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// SUBSTITUTE/REPLACE/REPT/TEXTJOIN/VALUE/EXACT (Fase 26, vedi
+	// ROADMAP.md "v3.0 Consolidation"): assenti dalle funzioni
+	// originali di Sum-It, mancanti confrontando la tabella con
+	// l'elenco standard di Excel. Risultati in colonna 45, ben lontano
+	// da colonna 40 (batch precedente) e da 25/26 (Y/Z, riservate per
+	// IF su cella vuota piu' sotto) -- stessa cautela gia' imparata li'.
+	try
+	{
+		TryToParseString("=SUBSTITUTE(\"banana\",\"a\",\"o\")", cell(45, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(45, 1));
+		doc.GetValue(cell(45, 1), v);
+		Check(strcmp((const char *)v, "bonono") == 0,
+			"=SUBSTITUTE(\"banana\",\"a\",\"o\") senza occorrenza sostituisce TUTTE le \"a\", calcola \"bonono\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SUBSTITUTE (tutte): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=SUBSTITUTE(\"banana\",\"a\",\"o\",2)", cell(45, 2), &doc, true, '.', ',');
+		doc.CalcCell(cell(45, 2));
+		doc.GetValue(cell(45, 2), v);
+		Check(strcmp((const char *)v, "banona") == 0,
+			"=SUBSTITUTE(\"banana\",\"a\",\"o\",2) con occorrenza sostituisce SOLO la seconda \"a\", calcola \"banona\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SUBSTITUTE (occorrenza): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=REPLACE(\"Atomo123\",1,5,\"Hello\")", cell(45, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(45, 3));
+		doc.GetValue(cell(45, 3), v);
+		Check(strcmp((const char *)v, "Hello123") == 0,
+			"=REPLACE(\"Atomo123\",1,5,\"Hello\") sostituisce i primi 5 caratteri, calcola \"Hello123\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =REPLACE: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=REPT(\"ab\",3)", cell(45, 4), &doc, true, '.', ',');
+		doc.CalcCell(cell(45, 4));
+		doc.GetValue(cell(45, 4), v);
+		Check(strcmp((const char *)v, "ababab") == 0, "=REPT(\"ab\",3) calcola \"ababab\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =REPT: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=TEXTJOIN(\"-\",TRUE,\"a\",\"\",\"b\")", cell(45, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(45, 5));
+		doc.GetValue(cell(45, 5), v);
+		Check(strcmp((const char *)v, "a-b") == 0,
+			"=TEXTJOIN(\"-\",TRUE,\"a\",\"\",\"b\") con ignora_vuoti=VERO salta l'argomento vuoto, calcola \"a-b\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =TEXTJOIN (ignora vuoti): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=TEXTJOIN(\"-\",FALSE,\"a\",\"\",\"b\")", cell(45, 6), &doc, true, '.', ',');
+		doc.CalcCell(cell(45, 6));
+		doc.GetValue(cell(45, 6), v);
+		Check(strcmp((const char *)v, "a--b") == 0,
+			"=TEXTJOIN(\"-\",FALSE,\"a\",\"\",\"b\") con ignora_vuoti=FALSO tiene l'argomento vuoto, calcola \"a--b\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =TEXTJOIN (tiene vuoti): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=VALUE(\"42\")", cell(45, 7), &doc, true, '.', ',');
+		doc.CalcCell(cell(45, 7));
+		doc.GetValue(cell(45, 7), v);
+		Check(v.fType == eNumData && (double)v == 42.0, "=VALUE(\"42\") calcola 42");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =VALUE: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=EXACT(\"Atomo\",\"atomo\")", cell(45, 8), &doc, true, '.', ',');
+		doc.CalcCell(cell(45, 8));
+		doc.GetValue(cell(45, 8), v);
+		Check(v.fType == eBoolData && (bool)v == false,
+			"=EXACT(\"Atomo\",\"atomo\") calcola FALSO (distingue maiuscole/minuscole, a differenza di =)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =EXACT (diverso): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=EXACT(\"Atomo\",\"Atomo\")", cell(45, 9), &doc, true, '.', ',');
+		doc.CalcCell(cell(45, 9));
+		doc.GetValue(cell(45, 9), v);
+		Check(v.fType == eBoolData && (bool)v == true, "=EXACT(\"Atomo\",\"Atomo\") calcola VERO");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =EXACT (uguale): %s\n", (char *)e);
 		gFailures++;
 	}
 

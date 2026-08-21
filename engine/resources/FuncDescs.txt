@@ -113,3 +113,9 @@ TRUE if the referenced cell is empty
 TRUE if the value is any error
 TRUE if the value is #N/A
 TRUE if the referenced cell contains a formula
+Replaces occurrences of a given text with another text
+Replaces part of a text string, based on position, with another text string
+Repeats text a given number of times
+Joins two or more text values with a delimiter between them
+Converts a text string that represents a number to a number
+Checks whether two text values are exactly the same (case-sensitive)

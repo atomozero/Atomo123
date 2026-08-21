@@ -42,6 +42,7 @@
 #include "FunctionUtils.h"
 #include "Functions.h"
 #include "Formatter.h"
+#include "Utils.h"
 #if __BEOS__ || __HAIKU__
 #include "utf-support.h"
 #include <cstdio>
@@ -399,5 +400,226 @@ void CONCATFunction(Value *stack, int argCnt, CContainer *cells)
 		}
 	}
 	stack[0] = out;
+}
+
+// SUBSTITUTE/REPLACE/REPT/TEXTJOIN/VALUE/EXACT (Fase 26, vedi
+// ROADMAP.md "v3.0 Consolidation"): assenti dalle funzioni originali
+// di Sum-It, mancanti confrontando la tabella con l'elenco standard di
+// Excel. Come CONCATFunction sopra, leggono il testo direttamente da
+// stack[i-1].fText (mai in un buffer char[256] fisso via
+// GetTextArgument) per lo stesso identico motivo gia' documentato li'.
+
+// SUBSTITUTE(testo,testo_vecchio,testo_nuovo,[occorrenza]): senza
+// "occorrenza" sostituisce OGNI ricorrenza di testo_vecchio, altrimenti
+// solo la N-esima. Registrata nella risorsa 'Func' col nome interno
+// "SUBST" (kSUBSTITUTEFuncNr): "SUBSTITUTE" e' di 10 caratteri, non
+// entra nel campo funcName[10] a lunghezza fissa (9 utili piu' il
+// terminatore) -- alias in GetFunctionNr verso questo stesso funcNr,
+// identico principio di CEILING.MATH/CONCATENATE/LOG10 (vedi Utils.cpp).
+void SUBSTITUTEFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (stack[0].fType != eTextData || stack[1].fType != eTextData
+		|| stack[2].fType != eTextData)
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	const char *text = stack[0].fText;
+	const char *oldText = stack[1].fText;
+	const char *newText = stack[2].fText;
+	size_t oldLen = strlen(oldText);
+
+	double instanceArg;
+	int instance = 0; // 0 = tutte le occorrenze
+	if (argCnt >= 4 && GetDoubleArgument(stack, argCnt, 4, &instanceArg))
+		instance = static_cast<int>(rint(instanceArg));
+
+	char out[2048];
+	out[0] = 0;
+
+	if (oldLen == 0)
+	{
+		strncat(out, text, sizeof(out) - 1);
+		stack[0] = out;
+		return;
+	}
+
+	int occurrence = 0;
+	const char *p = text;
+	while (*p && strlen(out) + 1 < sizeof(out))
+	{
+		if (strncmp(p, oldText, oldLen) == 0)
+		{
+			occurrence++;
+			if (instance == 0 || occurrence == instance)
+			{
+				strncat(out, newText, sizeof(out) - strlen(out) - 1);
+				p += oldLen;
+				continue;
+			}
+		}
+		size_t outLen = strlen(out);
+		out[outLen] = *p;
+		out[outLen + 1] = 0;
+		p++;
+	}
+
+	stack[0] = out;
+}
+
+// REPLACE(testo_vecchio,posizione,num_caratteri,testo_nuovo): sostituisce
+// num_caratteri caratteri a partire da posizione (1-based) con
+// testo_nuovo, indipendentemente dal loro contenuto (a differenza di
+// SUBSTITUTE sopra, che cerca un testo).
+void REPLACEFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double startArg, lenArg;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (stack[0].fType == eTextData
+		&& GetDoubleArgument(stack, argCnt, 2, &startArg)
+		&& GetDoubleArgument(stack, argCnt, 3, &lenArg)
+		&& stack[3].fType == eTextData)
+	{
+		const char *text = stack[0].fText;
+		const char *newText = stack[3].fText;
+		int start = static_cast<int>(rint(startArg));
+		int numChars = static_cast<int>(rint(lenArg));
+		int textLen = (int)strlen(text);
+
+		if (start < 1 || numChars < 0)
+		{
+			stack[0] = gValueNan;
+			return;
+		}
+
+		char out[2048];
+		out[0] = 0;
+		int headLen = (start - 1 < textLen) ? (start - 1) : textLen;
+		strncat(out, text, headLen);
+		strncat(out, newText, sizeof(out) - strlen(out) - 1);
+		int tailStart = start - 1 + numChars;
+		if (tailStart < textLen)
+			strncat(out, text + tailStart, sizeof(out) - strlen(out) - 1);
+
+		stack[0] = out;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+void REPTFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double countArg;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (stack[0].fType == eTextData && GetDoubleArgument(stack, argCnt, 2, &countArg))
+	{
+		int count = static_cast<int>(rint(countArg));
+		if (count < 0)
+		{
+			stack[0] = gValueNan;
+			return;
+		}
+		const char *text = stack[0].fText;
+		char out[2048];
+		out[0] = 0;
+		for (int i = 0; i < count && strlen(out) + 1 < sizeof(out); i++)
+			strncat(out, text, sizeof(out) - strlen(out) - 1);
+		stack[0] = out;
+	}
+	else
+		stack[0] = gValueNan;
+}
+
+// TEXTJOIN(separatore,ignora_vuoti,testo1,[testo2],...): come CONCAT
+// sopra ma con un separatore fra i pezzi e la possibilita' di saltare
+// gli argomenti vuoti -- FormatNumberForConcat e' la stessa funzione
+// gia' definita sopra per CONCATFunction.
+void TEXTJOINFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (argCnt < 3 || stack[0].fType != eTextData)
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	const char *delim = stack[0].fText;
+	bool ignoreEmpty = true;
+	if (stack[1].fType == eBoolData)
+		ignoreEmpty = stack[1].fBool;
+
+	char out[4096];
+	out[0] = 0;
+	bool first = true;
+	double d;
+
+	for (int i = 2; i < argCnt; i++)
+	{
+		const char *piece = NULL;
+		char numBuf[32];
+		if (stack[i].fType == eTextData)
+			piece = stack[i].fText;
+		else if (GetDoubleArgument(stack, argCnt, i + 1, &d))
+		{
+			FormatNumberForConcat(d, numBuf);
+			piece = numBuf;
+		}
+
+		if (piece == NULL || (ignoreEmpty && piece[0] == 0))
+			continue;
+
+		if (!first)
+			strncat(out, delim, sizeof(out) - strlen(out) - 1);
+		strncat(out, piece, sizeof(out) - strlen(out) - 1);
+		first = false;
+	}
+
+	stack[0] = out;
+}
+
+// VALUE(testo): converte una stringa numerica in numero, usando lo
+// stesso analizzatore locale-aware gia' usato dal motore per i valori
+// letterali digitati dall'utente (atof_i, Utils.cpp -- decimale/
+// migliaia secondo gDecimalPoint/gThousandSeparator correnti). Limite
+// ereditato da atof_i: si aspetta una stringa PULITA (solo cifre,
+// separatore decimale/migliaia, segno meno iniziale), un simbolo di
+// valuta o spazio finale la fanno fallire con #VALUE!, a differenza
+// del VALUE() vero di Excel che e' piu' permissivo.
+void VALUEFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double d;
+
+	if (stack[0].fType == eTextData)
+		stack[0] = atof_i(stack[0].fText);
+	else if (GetDoubleArgument(stack, argCnt, 1, &d))
+		stack[0] = d; // gia' un numero: passa cosi' com'e', come in Excel
+	else
+		stack[0] = gValueNan;
+}
+
+// EXACT(testo1,testo2): confronto CASE-SENSITIVE, a differenza di
+// Value::operator== (Value.cpp, usato altrove nell'engine per es. da
+// SWITCH) che ignora maiuscole/minuscole per il testo.
+void EXACTFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (stack[0].fType == eTextData && stack[1].fType == eTextData)
+		stack[0] = (bool)(strcmp(stack[0].fText, stack[1].fText) == 0);
+	else
+		stack[0] = gValueNan;
 }
 
