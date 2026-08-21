@@ -114,6 +114,11 @@ Since v0.2.0 (not yet in a tagged release):
   range (including negative values), with an explicit zero baseline
 - Charts can now have an optional title, set in the chart dialog and
   persisted with the file (old files without one just show none)
+- Bar/line charts now support multiple series: a data range with more
+  than two columns (labels + one column per series) draws grouped bars
+  or multiple lines, one color per series with a legend. Pie charts
+  stay single-series by design. The existing two-column/single-series
+  path is unchanged
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
