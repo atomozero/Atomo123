@@ -95,6 +95,19 @@ static bool ColorsEqual(rgb_color a, rgb_color b)
 	return a.red == b.red && a.green == b.green && a.blue == b.blue && a.alpha == b.alpha;
 }
 
+// Un grafico incorporato, sia in lettura (Fase 24, esportazione verso
+// XLSX) sia in scrittura (Fase 25, importazione da XLSX): stessi campi
+// di ChartObject in ui/src/Chart.h, MAI quell'header incluso qui
+// apposta -- stesso principio di ogni altro pezzo del formato ASCD
+// duplicato in questo file (vedi AscdIO.h): un translator resta
+// autonomo dall'app, nessun collegamento a ui/src/*.
+struct XlsxChartInfo {
+	int16 dataLeft, dataTop, dataRight, dataBottom; // ChartObject::dataRange (celle, 1-based)
+	float frameLeft, frameTop, frameRight, frameBottom; // ChartObject::frame (pixel nel foglio)
+	int8 type; // 0 = barre, 1 = linee, 2 = torta (ChartType in Chart.h)
+	std::string title;
+};
+
 // Stessa serializzazione ASCD degli altri translator (vedi
 // translators/csv/CsvTranslator.cpp per la descrizione completa).
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
@@ -104,7 +117,8 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const bool* showGrid = NULL,
 	const bool* hasTabColor = NULL, const rgb_color* tabColor = NULL,
 	const std::vector<int>* hiddenRows = NULL,
-	const bool* hasAutoFilter = NULL, const range* autoFilterRange = NULL)
+	const bool* hasAutoFilter = NULL, const range* autoFilterRange = NULL,
+	const std::vector<XlsxChartInfo>* charts = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -166,23 +180,34 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	// Sezione grafici incorporati, in coda: sempre vuota qui (questo
-	// translator non legge/scrive grafici), ma il campo va scritto
-	// comunque per compatibilita' col formato di ui/src/AscdIO.cpp
-	// (SaveASCD/LoadASCD), che lo prevede sempre. Senza questo campo
-	// esplicito, quando WriteASCDBook incapsula piu' fogli in
-	// sequenza nello stesso flusso, LoadASCD (chiamato da
-	// LoadASCDBook una volta per foglio) non puo' distinguere "fine
-	// del flusso, nessun grafico" (fine vera) da "qui non c'e' la
-	// sezione grafici" (fine del SOLO blocco di questo foglio, con
-	// altri fogli a seguire): interpreterebbe i primi 4 byte del
-	// foglio successivo (la lunghezza del suo nome) come un numero di
-	// grafici, disallineando la lettura di ogni foglio dopo il primo.
-	// Bug reale scoperto aprendo un file .xlsm con 38 fogli: solo il
-	// primo veniva letto correttamente.
-	int32 chartCount = 0;
+	// Sezione grafici incorporati, in coda (Fase 25: prima sempre
+	// vuota, "charts" e' NULL per ogni chiamante che non importa
+	// grafici, es. l'esportazione ASCD -> XLSX/nativo). Stesso formato
+	// binario di SaveASCD in ui/src/AscdIO.cpp, letto da LoadASCD.
+	// Anche quando vuota il campo va scritto comunque: quando
+	// WriteASCDBook incapsula piu' fogli in sequenza nello stesso
+	// flusso, LoadASCD (chiamato da LoadASCDBook una volta per foglio)
+	// non puo' distinguere "fine del flusso, nessun grafico" (fine
+	// vera) da "qui non c'e' la sezione grafici" (fine del SOLO blocco
+	// di questo foglio, con altri fogli a seguire): interpreterebbe i
+	// primi 4 byte del foglio successivo (la lunghezza del suo nome)
+	// come un numero di grafici, disallineando la lettura di ogni
+	// foglio dopo il primo. Bug reale scoperto aprendo un file .xlsm
+	// con 38 fogli: solo il primo veniva letto correttamente.
+	int32 chartCount = charts ? (int32)charts->size() : 0;
 	if (dest->Write(&chartCount, sizeof(chartCount)) != (ssize_t)sizeof(chartCount))
 		return B_IO_ERROR;
+	for (int32 i = 0; i < chartCount; i++)
+	{
+		const XlsxChartInfo& info = (*charts)[i];
+		float frame[4] = { info.frameLeft, info.frameTop, info.frameRight, info.frameBottom };
+		if (dest->Write(&info.dataLeft, sizeof(info.dataLeft)) != (ssize_t)sizeof(info.dataLeft)
+			|| dest->Write(&info.dataTop, sizeof(info.dataTop)) != (ssize_t)sizeof(info.dataTop)
+			|| dest->Write(&info.dataRight, sizeof(info.dataRight)) != (ssize_t)sizeof(info.dataRight)
+			|| dest->Write(&info.dataBottom, sizeof(info.dataBottom)) != (ssize_t)sizeof(info.dataBottom)
+			|| dest->Write(frame, sizeof(frame)) != (ssize_t)sizeof(frame))
+			return B_IO_ERROR;
+	}
 
 	// Sezione larghezze di colonna personalizzate, in coda: stesso
 	// principio della sezione grafici sopra (sempre scritta anche se
@@ -648,14 +673,19 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	// Sezione tipo di grafico incorporato, in coda (vedi
-	// ui/src/AscdIO.cpp): sempre vuota, stesso principio delle sezioni
-	// commenti/collegamenti appena sopra -- il chartCount scritto piu'
-	// sopra e' gia' sempre zero per questo translator.
+	// Sezione tipo di grafico incorporato, in coda (Fase 25, vedi
+	// ui/src/AscdIO.cpp): un byte per grafico, nello STESSO ordine
+	// dell'array "charts" scritto nella sezione grafici sopra.
 	{
-		int32 chartTypeCount = 0;
+		int32 chartTypeCount = charts ? (int32)charts->size() : 0;
 		if (dest->Write(&chartTypeCount, sizeof(chartTypeCount)) != (ssize_t)sizeof(chartTypeCount))
 			return B_IO_ERROR;
+		for (int32 i = 0; i < chartTypeCount; i++)
+		{
+			int8 type = (*charts)[i].type;
+			if (dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type))
+				return B_IO_ERROR;
+		}
 	}
 
 	// Sezione colore del bordo di cella non predefinito, in coda (vedi
@@ -792,26 +822,22 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// grafico. Scoperto da un file reale dell'utente che non si apriva
 	// piu' dopo l'aggiunta del titolo dei grafici (Fase 17).
 	{
-		int32 chartTitleCount = 0;
+		int32 chartTitleCount = charts ? (int32)charts->size() : 0;
 		if (dest->Write(&chartTitleCount, sizeof(chartTitleCount)) != (ssize_t)sizeof(chartTitleCount))
 			return B_IO_ERROR;
+		for (int32 i = 0; i < chartTitleCount; i++)
+		{
+			const std::string& title = (*charts)[i].title;
+			int32 len = (int32)title.size();
+			if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(title.data(), len) != len)
+				return B_IO_ERROR;
+		}
 	}
 
 	return B_OK;
 }
-
-// Un grafico incorporato letto dal flusso ASCD (Fase 24, esportazione
-// dei grafici verso XLSX): stessi campi di ChartObject in
-// ui/src/Chart.h, MAI quell'header incluso qui apposta -- stesso
-// principio di ogni altro pezzo del formato ASCD duplicato in questo
-// file (vedi AscdIO.h): un translator resta autonomo dall'app, nessun
-// collegamento a ui/src/*.
-struct XlsxChartInfo {
-	int16 dataLeft, dataTop, dataRight, dataBottom; // ChartObject::dataRange (celle, 1-based)
-	float frameLeft, frameTop, frameRight, frameBottom; // ChartObject::frame (pixel nel foglio)
-	int8 type; // 0 = barre, 1 = linee, 2 = torta (ChartType in Chart.h)
-	std::string title;
-};
 
 // Legge un flusso ASCD e ricostruisce le celle in "doc" (vuoto in
 // ingresso) -- stessa logica di CsvTranslator.cpp/OdsTranslator.cpp,
@@ -4159,11 +4185,40 @@ static void ApplyConditionalFormatting(CContainer* doc,
 struct DrawingPic {
 	int fromCol, fromRow; // 0-based, come nel file XLSX originale
 	long fromColOffEmu, fromRowOffEmu;
+	// xdr:to (Fase 25, import dei grafici): solo un xdr:twoCellAnchor
+	// vero ce l'ha -- serve per calcolare la dimensione di un GRAFICO
+	// (a differenza di un'immagine, un grafico non ha una "dimensione
+	// naturale" di riserva quando extCxEmu/extCyEmu sono assenti/zero,
+	// il caso comune per un xdr:twoCellAnchor reale: la dimensione vera
+	// e' la differenza fra "from" e "to", non un <xdr:ext> che per un
+	// oggetto ancorato-a-due-celle e' opzionale o assente).
+	bool hasTo;
+	int toCol, toRow;
+	long toColOffEmu, toRowOffEmu;
 	long extCxEmu, extCyEmu; // 0 = non specificato, vedi sopra
+	// xdr:absoluteAnchor (Fase 25): un ancoraggio a posizione pixel
+	// assoluta invece che a cella -- raro in un vero file Excel (che
+	// usa quasi sempre twoCellAnchor), ma e' esattamente cio' che
+	// WriteXLSX/BuildChartXml scrive per i grafici esportati da questa
+	// stessa app (vedi kEmuPerPixelChart li' sopra): senza riconoscere
+	// anche questo tipo di ancoraggio, un file XLSX esportato da
+	// Atomo123 e poi riaperto perderebbe silenziosamente i propri
+	// grafici, un'asimmetria export/import reale, non solo teorica.
+	bool isAbsolute;
+	long absXEmu, absYEmu;
 	std::string relId;
+	// true se relId viene da <c:chart r:id="..."> (grafico incorporato,
+	// Fase 25) invece che da <a:blip r:embed="..."> (immagine, Fase 12)
+	// -- stesso ancoraggio XLSX (xdr:twoCellAnchor/oneCellAnchor/
+	// absoluteAnchor), contenuto diverso: un <xdr:graphicFrame> con
+	// dentro un riferimento a xl/charts/chartN.xml invece di un
+	// <xdr:pic>.
+	bool isChart;
 
 	DrawingPic() : fromCol(0), fromRow(0), fromColOffEmu(0), fromRowOffEmu(0),
-		extCxEmu(0), extCyEmu(0) {}
+		hasTo(false), toCol(0), toRow(0), toColOffEmu(0), toRowOffEmu(0),
+		extCxEmu(0), extCyEmu(0), isAbsolute(false), absXEmu(0), absYEmu(0),
+		isChart(false) {}
 };
 
 struct DrawingContext {
@@ -4171,6 +4226,17 @@ struct DrawingContext {
 	DrawingPic current;
 	bool inAnchor;
 	bool inFrom;
+	bool inTo;
+	// <xdr:graphicFrame> (un grafico, Fase 25) porta il SUO xfrm/ext
+	// interno per il posizionamento grafico del contenuto (sempre
+	// 0x0 in cio' che scrive BuildChartXml sopra -- "dipendono dal
+	// font", vedi il commento li') -- un <a:ext> diverso, annidato
+	// piu' in profondita', dallo <xdr:ext> a livello di ancoraggio che
+	// contiene davvero la dimensione (letto sotto). Senza distinguerli,
+	// lo stesso nome di tag "a:ext" veniva confuso con quello giusto e
+	// lo sovrascriveva con 0x0 (bug reale, scoperto con un fprintf di
+	// debug sul round-trip dei grafici esportati da questa stessa app).
+	bool inGraphicFrame;
 	bool captureNum;
 	std::string numText;
 };
@@ -4179,7 +4245,8 @@ static void XMLCALL DrawingStart(void* userData, const char* name, const char** 
 {
 	DrawingContext* ctx = (DrawingContext*)userData;
 
-	if (strcmp(name, "xdr:twoCellAnchor") == 0 || strcmp(name, "xdr:oneCellAnchor") == 0)
+	if (strcmp(name, "xdr:twoCellAnchor") == 0 || strcmp(name, "xdr:oneCellAnchor") == 0
+		|| strcmp(name, "xdr:absoluteAnchor") == 0)
 	{
 		ctx->inAnchor = true;
 		ctx->current = DrawingPic();
@@ -4190,13 +4257,32 @@ static void XMLCALL DrawingStart(void* userData, const char* name, const char** 
 
 	if (strcmp(name, "xdr:from") == 0)
 		ctx->inFrom = true;
-	else if (ctx->inFrom && (strcmp(name, "xdr:col") == 0 || strcmp(name, "xdr:colOff") == 0
-		|| strcmp(name, "xdr:row") == 0 || strcmp(name, "xdr:rowOff") == 0))
+	else if (strcmp(name, "xdr:to") == 0)
+	{
+		ctx->inTo = true;
+		ctx->current.hasTo = true;
+	}
+	else if (strcmp(name, "xdr:pos") == 0)
+	{
+		ctx->current.isAbsolute = true;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "x") == 0)
+				ctx->current.absXEmu = atol(atts[i + 1]);
+			else if (strcmp(atts[i], "y") == 0)
+				ctx->current.absYEmu = atol(atts[i + 1]);
+		}
+	}
+	else if ((ctx->inFrom || ctx->inTo) && (strcmp(name, "xdr:col") == 0
+		|| strcmp(name, "xdr:colOff") == 0 || strcmp(name, "xdr:row") == 0
+		|| strcmp(name, "xdr:rowOff") == 0))
 	{
 		ctx->numText.clear();
 		ctx->captureNum = true;
 	}
-	else if (strcmp(name, "xdr:ext") == 0 || strcmp(name, "a:ext") == 0)
+	else if (strcmp(name, "xdr:graphicFrame") == 0)
+		ctx->inGraphicFrame = true;
+	else if (!ctx->inGraphicFrame && (strcmp(name, "xdr:ext") == 0 || strcmp(name, "a:ext") == 0))
 	{
 		for (int i = 0; atts[i]; i += 2)
 		{
@@ -4214,13 +4300,29 @@ static void XMLCALL DrawingStart(void* userData, const char* name, const char** 
 				ctx->current.relId = atts[i + 1];
 		}
 	}
+	else if (strcmp(name, "c:chart") == 0)
+	{
+		// Grafico incorporato (Fase 25): <xdr:graphicFrame><a:graphic>
+		// <a:graphicData><c:chart r:id="rIdX"/> -- r:id punta, tramite i
+		// _rels di QUESTO drawing (stesso indirizzamento di a:blip
+		// sopra), a xl/charts/chartN.xml.
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "r:id") == 0)
+			{
+				ctx->current.relId = atts[i + 1];
+				ctx->current.isChart = true;
+			}
+		}
+	}
 }
 
 static void XMLCALL DrawingEnd(void* userData, const char* name)
 {
 	DrawingContext* ctx = (DrawingContext*)userData;
 
-	if (strcmp(name, "xdr:twoCellAnchor") == 0 || strcmp(name, "xdr:oneCellAnchor") == 0)
+	if (strcmp(name, "xdr:twoCellAnchor") == 0 || strcmp(name, "xdr:oneCellAnchor") == 0
+		|| strcmp(name, "xdr:absoluteAnchor") == 0)
 	{
 		ctx->inAnchor = false;
 		if (!ctx->current.relId.empty())
@@ -4228,17 +4330,35 @@ static void XMLCALL DrawingEnd(void* userData, const char* name)
 	}
 	else if (strcmp(name, "xdr:from") == 0)
 		ctx->inFrom = false;
+	else if (strcmp(name, "xdr:to") == 0)
+		ctx->inTo = false;
+	else if (strcmp(name, "xdr:graphicFrame") == 0)
+		ctx->inGraphicFrame = false;
 	else if (ctx->captureNum)
 	{
 		long value = atol(ctx->numText.c_str());
-		if (strcmp(name, "xdr:col") == 0)
-			ctx->current.fromCol = (int)value;
-		else if (strcmp(name, "xdr:colOff") == 0)
-			ctx->current.fromColOffEmu = value;
-		else if (strcmp(name, "xdr:row") == 0)
-			ctx->current.fromRow = (int)value;
-		else if (strcmp(name, "xdr:rowOff") == 0)
-			ctx->current.fromRowOffEmu = value;
+		if (ctx->inFrom)
+		{
+			if (strcmp(name, "xdr:col") == 0)
+				ctx->current.fromCol = (int)value;
+			else if (strcmp(name, "xdr:colOff") == 0)
+				ctx->current.fromColOffEmu = value;
+			else if (strcmp(name, "xdr:row") == 0)
+				ctx->current.fromRow = (int)value;
+			else if (strcmp(name, "xdr:rowOff") == 0)
+				ctx->current.fromRowOffEmu = value;
+		}
+		else if (ctx->inTo)
+		{
+			if (strcmp(name, "xdr:col") == 0)
+				ctx->current.toCol = (int)value;
+			else if (strcmp(name, "xdr:colOff") == 0)
+				ctx->current.toColOffEmu = value;
+			else if (strcmp(name, "xdr:row") == 0)
+				ctx->current.toRow = (int)value;
+			else if (strcmp(name, "xdr:rowOff") == 0)
+				ctx->current.toRowOffEmu = value;
+		}
 		ctx->captureNum = false;
 	}
 }
@@ -4258,6 +4378,8 @@ static bool ParseDrawing(const std::vector<unsigned char>& xml, std::vector<Draw
 	DrawingContext ctx;
 	ctx.inAnchor = false;
 	ctx.inFrom = false;
+	ctx.inTo = false;
+	ctx.inGraphicFrame = false;
 	ctx.captureNum = false;
 
 	XML_Parser parser = XML_ParserCreate(NULL);
@@ -4298,6 +4420,271 @@ static bool PngDimensions(const std::vector<unsigned char>& data, uint32* outW, 
 
 static const double kEmuPerPixel = 9525.0; // DrawingML, 96 DPI (predefinito Excel)
 
+// --- Parsing di xl/charts/chartN.xml (Fase 25, importazione dei grafici) --
+//
+// Estrae solo cio' che serve per ricostruire un ChartObject: tipo di
+// grafico, titolo opzionale, e i riferimenti di cella di categoria/
+// valori. MAI i valori cache <c:numCache>/<c:strCache> -- il grafico
+// dell'app legge sempre i dati DAL VIVO dal foglio al momento del
+// disegno, mai da uno snapshot, stesso comportamento sia per un
+// grafico creato in Atomo123 sia per uno importato da Excel; e i nomi
+// delle serie (<c:tx>) non hanno campo di destinazione in ChartObject.
+struct ChartXmlResult {
+	int8 type;
+	bool typeRecognized;
+	std::string unsupportedReason; // valido solo se !typeRecognized
+	std::string title;
+	std::string catRef;
+	std::vector<std::string> valRefs; // uno per <c:ser>, stesso ordine
+
+	ChartXmlResult() : type(0), typeRecognized(false) {}
+};
+
+struct ChartXmlContext {
+	ChartXmlResult result;
+	// <c:cat> e <c:val> non si annidano mai l'uno nell'altro dentro lo
+	// stesso <c:ser> -- un unico "kind piatto" (non uno stack) basta a
+	// distinguerli, e resta eNone quando un <c:f> compare altrove (nel
+	// titolo o nel nome di una serie), che percio' viene ignorato
+	// correttamente senza bisogno di un caso speciale.
+	enum { eNone, eCat, eVal } kind;
+	bool inTitle;
+	bool capturingF;
+	bool capturingTitleText;
+	std::string fText;
+};
+
+static void XMLCALL ChartXmlStart(void* userData, const char* name, const char** atts)
+{
+	ChartXmlContext* ctx = (ChartXmlContext*)userData;
+
+	if (strcmp(name, "c:barChart") == 0)
+	{
+		ctx->result.type = 0;
+		ctx->result.typeRecognized = true;
+	}
+	else if (strcmp(name, "c:barDir") == 0)
+	{
+		// Un grafico a barre ORIZZONTALI ("bar" invece di "col") non ha
+		// equivalente disegnato da questa app -- solo barre verticali
+		// (vedi ChartType/DrawBarChart in ui/src/Chart*).
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "val") == 0 && strcmp(atts[i + 1], "bar") == 0)
+			{
+				ctx->result.typeRecognized = false;
+				ctx->result.unsupportedReason = "Barre orizzontali";
+			}
+		}
+	}
+	else if (strcmp(name, "c:lineChart") == 0)
+	{
+		ctx->result.type = 1;
+		ctx->result.typeRecognized = true;
+	}
+	else if (strcmp(name, "c:pieChart") == 0)
+	{
+		ctx->result.type = 2;
+		ctx->result.typeRecognized = true;
+	}
+	else if (!ctx->result.typeRecognized)
+	{
+		// Qualunque altro "c:xxxChart" (area, dispersione, radar,
+		// ciambella, azionario, superficie, bolle, 3D, ecc.) non ha un
+		// equivalente disegnato da questa app -- solo 3 tipi esistono
+		// in ChartType (ui/src/Chart.h).
+		size_t len = strlen(name);
+		if (len > 5 && strncmp(name, "c:", 2) == 0 && strcmp(name + len - 5, "Chart") == 0)
+			ctx->result.unsupportedReason = std::string(name).substr(2);
+	}
+
+	if (strcmp(name, "c:cat") == 0)
+		ctx->kind = ChartXmlContext::eCat;
+	else if (strcmp(name, "c:val") == 0)
+		ctx->kind = ChartXmlContext::eVal;
+	else if (strcmp(name, "c:ser") == 0)
+		ctx->result.valRefs.push_back(std::string());
+	else if (strcmp(name, "c:title") == 0)
+		ctx->inTitle = true;
+	else if (strcmp(name, "c:f") == 0)
+	{
+		ctx->capturingF = true;
+		ctx->fText.clear();
+	}
+	else if (ctx->inTitle && strcmp(name, "a:t") == 0)
+		ctx->capturingTitleText = true;
+}
+
+static void XMLCALL ChartXmlEnd(void* userData, const char* name)
+{
+	ChartXmlContext* ctx = (ChartXmlContext*)userData;
+
+	if (strcmp(name, "c:cat") == 0 || strcmp(name, "c:val") == 0)
+		ctx->kind = ChartXmlContext::eNone;
+	else if (strcmp(name, "c:title") == 0)
+		ctx->inTitle = false;
+	else if (strcmp(name, "c:f") == 0)
+	{
+		ctx->capturingF = false;
+		if (ctx->kind == ChartXmlContext::eCat)
+		{
+			if (ctx->result.catRef.empty())
+				ctx->result.catRef = ctx->fText;
+		}
+		else if (ctx->kind == ChartXmlContext::eVal && !ctx->result.valRefs.empty())
+			ctx->result.valRefs.back() = ctx->fText;
+	}
+	else if (strcmp(name, "a:t") == 0)
+		ctx->capturingTitleText = false;
+}
+
+static void XMLCALL ChartXmlChars(void* userData, const XML_Char* s, int len)
+{
+	ChartXmlContext* ctx = (ChartXmlContext*)userData;
+	if (ctx->capturingF)
+		ctx->fText.append(s, len);
+	else if (ctx->capturingTitleText)
+		ctx->result.title.append(s, len);
+}
+
+static bool ParseChartXml(const std::vector<unsigned char>& xml, ChartXmlResult* out)
+{
+	if (xml.empty())
+		return false;
+
+	ChartXmlContext ctx;
+	ctx.kind = ChartXmlContext::eNone;
+	ctx.inTitle = false;
+	ctx.capturingF = false;
+	ctx.capturingTitleText = false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, ChartXmlStart, ChartXmlEnd);
+	XML_SetCharacterDataHandler(parser, ChartXmlChars);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), (int)xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK)
+		return false;
+
+	*out = ctx.result;
+	return true;
+}
+
+// Converte un riferimento tipo "Foglio1!$A$2:$A$5" (o con un nome
+// foglio fra apici singoli se contiene spazi, es. "'Dati mensili'!
+// $B$2:$B$13") in nome del foglio + range di celle. Un riferimento a
+// una sola cella (senza ":") e' valido qui, a differenza di
+// ParseMergeCellRef sopra -- un grafico con un solo punto dato e'
+// un caso reale. Usato solo per i riferimenti di categoria/valori di
+// un grafico (<c:f> dentro <c:cat>/<c:val>), mai per formule generiche.
+static bool ParseSheetRangeRef(const std::string& ref, std::string* outSheetName, range* outRange)
+{
+	std::string sheetName;
+	size_t bang;
+
+	if (!ref.empty() && ref[0] == '\'')
+	{
+		size_t end = ref.find('\'', 1);
+		while (end != std::string::npos && end + 1 < ref.size() && ref[end + 1] == '\'')
+			end = ref.find('\'', end + 2); // '' = un apice letterale nel nome
+		if (end == std::string::npos)
+			return false;
+
+		sheetName = ref.substr(1, end - 1);
+		size_t p = 0, w = 0;
+		while (p < sheetName.size())
+		{
+			if (sheetName[p] == '\'' && p + 1 < sheetName.size() && sheetName[p + 1] == '\'')
+				p++;
+			sheetName[w++] = sheetName[p++];
+		}
+		sheetName.resize(w);
+
+		bang = ref.find('!', end);
+	}
+	else
+	{
+		bang = ref.find('!');
+		if (bang != std::string::npos)
+			sheetName = ref.substr(0, bang);
+	}
+
+	if (bang == std::string::npos || bang + 1 >= ref.size())
+		return false;
+
+	std::string cellsPart = ref.substr(bang + 1);
+	cellsPart.erase(std::remove(cellsPart.begin(), cellsPart.end(), '$'), cellsPart.end());
+
+	size_t colon = cellsPart.find(':');
+	int col1, row1, col2, row2;
+	if (colon == std::string::npos)
+	{
+		if (!CellRefToColRow(cellsPart, col1, row1))
+			return false;
+		col2 = col1;
+		row2 = row1;
+	}
+	else
+	{
+		if (!CellRefToColRow(cellsPart.substr(0, colon), col1, row1))
+			return false;
+		if (!CellRefToColRow(cellsPart.substr(colon + 1), col2, row2))
+			return false;
+	}
+
+	*outSheetName = sheetName;
+	outRange->Set(std::min(col1, col2), std::min(row1, row2),
+		std::max(col1, col2), std::max(row1, row2));
+	return true;
+}
+
+// Ricostruisce ChartObject::dataRange da un riferimento di categoria e
+// uno o piu' riferimenti di valori (uno per serie), verificando che
+// abbiano ESATTAMENTE la forma che questo stesso translator produce in
+// esportazione (vedi BuildChartXml/AbsColumnRangeRef sopra): tutti
+// sullo stesso foglio del grafico, colonna di categoria seguita
+// immediatamente da colonne di valori contigue nello stesso ordine
+// delle serie, stessa riga iniziale/finale per tutte. Un grafico che
+// non rispetta questa forma (es. valori sparsi, fogli diversi, righe
+// diverse) non e' rappresentabile dall'unico "range" rettangolare
+// contiguo che ChartObject::dataRange richiede -- trattato come non
+// supportato, stesso meccanismo di un tipo di grafico sconosciuto.
+static bool ReconstructChartRange(const std::string& sheetName, const std::string& catRefText,
+	const std::vector<std::string>& valRefTexts, range* outRange)
+{
+	if (catRefText.empty() || valRefTexts.empty())
+		return false;
+
+	std::string catSheet;
+	range catRange;
+	if (!ParseSheetRangeRef(catRefText, &catSheet, &catRange))
+		return false;
+	if (catSheet != sheetName || catRange.left != catRange.right)
+		return false;
+
+	int expectedCol = catRange.left + 1;
+	for (size_t i = 0; i < valRefTexts.size(); i++)
+	{
+		std::string valSheet;
+		range valRange;
+		if (!ParseSheetRangeRef(valRefTexts[i], &valSheet, &valRange))
+			return false;
+		if (valSheet != sheetName || valRange.left != valRange.right)
+			return false;
+		if (valRange.left != expectedCol)
+			return false;
+		if (valRange.top != catRange.top || valRange.bottom != catRange.bottom)
+			return false;
+		expectedCol++;
+	}
+
+	outRange->Set(catRange.left, catRange.top, expectedCol - 1, catRange.bottom);
+	return true;
+}
+
 // Un foglio gia' analizzato, pronto per essere scritto in formato
 // ASCD/ASCB: nome, documento, e le sole colonne con una larghezza
 // esplicita nel file XLSX originale (vedi ParseSheet/SheetStart).
@@ -4313,6 +4700,7 @@ struct ParsedSheet {
 	std::vector<int> hiddenRows;
 	bool hasAutoFilter = false;
 	range autoFilterRange;
+	std::vector<XlsxChartInfo> charts;
 };
 
 // Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
@@ -4340,7 +4728,8 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths, &sheets[i].images,
 			&sheets[i].rowHeights, &sheets[i].showGrid,
 			&sheets[i].hasTabColor, &sheets[i].tabColor,
-			&sheets[i].hiddenRows, &sheets[i].hasAutoFilter, &sheets[i].autoFilterRange);
+			&sheets[i].hiddenRows, &sheets[i].hasAutoFilter, &sheets[i].autoFilterRange,
+			&sheets[i].charts);
 		if (err != B_OK)
 			return err;
 	}
@@ -4530,6 +4919,16 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 	std::vector<ParsedSheet> sheets;
 	status_t err = B_OK;
 
+	// Nomi (o tipo XML) di ogni grafico incontrato che questa app non sa
+	// disegnare (Fase 25) -- accumulati qui, su tutti i fogli, e passati
+	// al chiamante tramite "extension" in fondo alla funzione, MAI
+	// mostrati direttamente da questo translator con una BAlert: Tracker
+	// chiama Translate() in-process durante la generazione delle
+	// anteprime (vedi il commento su "info" sopra), e un dialogo
+	// spuntato li' dal nulla sarebbe un vero bug, non solo fastidioso.
+	// MainWindow::OpenFile e' l'unico posto che deve reagire a questo.
+	std::vector<std::string> unsupportedCharts;
+
 	for (size_t i = 0; i < sheetsToRead.size() && err == B_OK; i++)
 	{
 		std::vector<unsigned char> sheetXml;
@@ -4631,6 +5030,21 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 
 						for (size_t p = 0; p < pics.size(); p++)
 						{
+							// Un anchor con isChart=true rimanda a
+							// xl/charts/chartN.xml (Fase 25, gestito nel
+							// ciclo dedicato subito sotto), MAI a
+							// un'immagine sotto xl/media/ -- senza questo
+							// filtro, il file XML del grafico veniva letto
+							// come se fosse un PNG (bug reale, scoperto
+							// insieme a quello sull'xdr:ext qui sopra: solo
+							// dopo aver corretto quello, extCxEmu smetteva
+							// di essere zero per sbaglio, e questo ramo
+							// iniziava davvero a produrre un'"immagine"
+							// incorporata fasulla con dentro i byte XML del
+							// grafico spacciati per PNG).
+							if (pics[p].isChart)
+								continue;
+
 							std::map<std::string, std::string>::iterator rit =
 								drawingRelTargets.find(pics[p].relId);
 							if (rit == drawingRelTargets.end())
@@ -4661,6 +5075,114 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							if (img.width > 0 && img.height > 0)
 								parsed.images.push_back(img);
 						}
+
+						// Grafici incorporati (Fase 25): stesso file di
+						// disegno, stessi _rels gia' risolti sopra per le
+						// immagini -- un anchor con isChart=true rimanda,
+						// tramite relId, a xl/charts/chartN.xml invece che
+						// a un'immagine sotto xl/media/.
+						for (size_t p = 0; p < pics.size(); p++)
+						{
+							if (!pics[p].isChart)
+								continue;
+
+							std::map<std::string, std::string>::iterator rit =
+								drawingRelTargets.find(pics[p].relId);
+							if (rit == drawingRelTargets.end())
+								continue;
+
+							std::string chartTarget = rit->second;
+							if (chartTarget.compare(0, 3, "../") == 0)
+								chartTarget = chartTarget.substr(3);
+							std::string chartPath = "xl/" + chartTarget;
+
+							std::vector<unsigned char> chartXml;
+							ChartXmlResult chartResult;
+							if (!zip.ReadEntry(chartPath.c_str(), chartXml)
+								|| !ParseChartXml(chartXml, &chartResult))
+								continue;
+
+							if (!chartResult.typeRecognized)
+							{
+								unsupportedCharts.push_back(chartResult.unsupportedReason.empty()
+									? std::string("sconosciuto") : chartResult.unsupportedReason);
+								continue;
+							}
+
+							range dataRange;
+							if (!ReconstructChartRange(parsed.name, chartResult.catRef,
+								chartResult.valRefs, &dataRange))
+							{
+								unsupportedCharts.push_back("layout dati non compatibile");
+								continue;
+							}
+
+							// Dimensione dell'ancoraggio in pixel: se manca
+							// un <xdr:ext> esplicito (il caso comune per un
+							// vero xdr:twoCellAnchor), si ricava da "to" -
+							// "from" usando la larghezza/altezza PREDEFINITA
+							// di colonna/riga (SheetView::kColWidth/
+							// kRowHeight, 80/20 px) -- un'approssimazione: a
+							// differenza delle immagini (Fase 12), qui non
+							// c'e' nessuna "dimensione naturale" di riserva,
+							// e le larghezze/altezze VERE della SheetView non
+							// sono note in questa fase di importazione.
+							static const float kDefColWidth = 80.0f, kDefRowHeight = 20.0f;
+							float left, top;
+							if (pics[p].isAbsolute)
+							{
+								// <xdr:absoluteAnchor>: posizione pixel gia'
+								// assoluta (<xdr:pos>), nessuna cella di
+								// ancoraggio da convertire -- il caso scritto
+								// da BuildChartXml per i grafici esportati da
+								// questa stessa app (vedi il commento su
+								// isAbsolute in DrawingPic sopra).
+								left = (float)(pics[p].absXEmu / kEmuPerPixel);
+								top = (float)(pics[p].absYEmu / kEmuPerPixel);
+							}
+							else
+							{
+								left = pics[p].fromCol * kDefColWidth
+									+ (float)(pics[p].fromColOffEmu / kEmuPerPixel);
+								top = pics[p].fromRow * kDefRowHeight
+									+ (float)(pics[p].fromRowOffEmu / kEmuPerPixel);
+							}
+							float width, height;
+							if (pics[p].extCxEmu > 0 && pics[p].extCyEmu > 0)
+							{
+								width = (float)(pics[p].extCxEmu / kEmuPerPixel);
+								height = (float)(pics[p].extCyEmu / kEmuPerPixel);
+							}
+							else if (pics[p].hasTo)
+							{
+								float right = pics[p].toCol * kDefColWidth
+									+ (float)(pics[p].toColOffEmu / kEmuPerPixel);
+								float bottom = pics[p].toRow * kDefRowHeight
+									+ (float)(pics[p].toRowOffEmu / kEmuPerPixel);
+								width = right - left;
+								height = bottom - top;
+							}
+							else
+							{
+								width = 400.0f;
+								height = 300.0f;
+							}
+							if (width <= 0 || height <= 0)
+								continue;
+
+							XlsxChartInfo info;
+							info.dataLeft = (int16)dataRange.left;
+							info.dataTop = (int16)dataRange.top;
+							info.dataRight = (int16)dataRange.right;
+							info.dataBottom = (int16)dataRange.bottom;
+							info.frameLeft = left;
+							info.frameTop = top;
+							info.frameRight = left + width;
+							info.frameBottom = top + height;
+							info.type = chartResult.type;
+							info.title = chartResult.title;
+							parsed.charts.push_back(info);
+						}
 					}
 				}
 			}
@@ -4676,15 +5198,23 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		else
 			// L'esportazione XLSX resta a un solo foglio (quello
 			// attivo, il primo qui): i writer non nativi non
-			// supportano ancora piu' fogli, vedi WriteXLSX. Nessun
-			// grafico da passare: questo ramo legge un vero file XLSX
-			// in ingresso (sheets[] viene da ParseSheet/drawings sopra,
-			// non da un flusso ASCD), e l'importazione dei grafici
-			// VERI di Excel non e' ancora implementata (solo
-			// l'esportazione dei grafici di Atomo123, vedi
-			// XlsxChartInfo/ReadASCD sopra) -- un vettore vuoto e'
-			// quindi corretto qui, non un limite di questa modifica.
-			err = WriteXLSX(sheets[0].doc, std::vector<XlsxChartInfo>(), destination);
+			// supportano ancora piu' fogli, vedi WriteXLSX. I grafici
+			// del primo foglio (Fase 25, appena ricostruiti sopra da
+			// xl/charts/*.xml) vengono ripassati cosi' com'e' a
+			// WriteXLSX: un vero file XLSX in ingresso riscritto in
+			// uscita mantiene i suoi grafici invece di perderli.
+			err = WriteXLSX(sheets[0].doc, sheets[0].charts, destination);
+	}
+
+	if (err == B_OK && extension != NULL && !unsupportedCharts.empty())
+	{
+		// Comunica i grafici non disegnabili a MainWindow::OpenFile
+		// (vedi il commento su "unsupportedCharts" sopra) senza toccare
+		// il formato ASCD/ASCB -- un campo BMessage separato dal flusso
+		// dati vero e proprio, stesso principio gia' seguito per ogni
+		// altra informazione "fuori banda" di questo translator.
+		for (size_t i = 0; i < unsupportedCharts.size(); i++)
+			extension->AddString("atomo:unsupportedChart", unsupportedCharts[i].c_str());
 	}
 
 	for (size_t i = 0; i < sheets.size(); i++)

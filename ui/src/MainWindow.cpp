@@ -1523,6 +1523,14 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	std::vector<AscdSheet> newSheets;
 	bool ok = true;
 
+	// Popolato solo dal ramo Translation Kit sotto (XlsxTranslator::
+	// Translate, Fase 25): nomi/tipo dei grafici incorporati che il
+	// file XLSX in ingresso conteneva ma che questa app non sa
+	// disegnare (solo barre/linee/torta). Un canale "fuori banda"
+	// separato dal formato ASCD vero e proprio -- vedi il commento
+	// gemello in XlsxTranslator.cpp su "unsupportedCharts".
+	BMessage translateExtension;
+
 	if (IsASCDBookFile(&file))
 	{
 		// Cartella di lavoro nativa multi-foglio (Fase 9): si legge
@@ -1551,8 +1559,8 @@ void MainWindow::OpenFile(const entry_ref& ref)
 		// .xlsx/.xlsm con piu' fogli) produce una cartella di lavoro
 		// "ASCB"; gli altri restano a un solo foglio, senza grafici.
 		BMallocIO ascd;
-		status_t translateErr = BTranslatorRoster::Default()->Translate(&file, NULL, NULL,
-			&ascd, kAtomoNativeFormat);
+		status_t translateErr = BTranslatorRoster::Default()->Translate(&file, NULL,
+			&translateExtension, &ascd, kAtomoNativeFormat);
 		if (translateErr != B_OK)
 		{
 			BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
@@ -1636,6 +1644,43 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	StartOrUpdateAutoSaveRunner();
 
 	AddToRecentFiles(ref);
+
+	// Grafici incorporati non disegnabili (Fase 25): un dialogo mostrato
+	// QUI, dopo che il file e' gia' aperto con successo -- mai dentro il
+	// translator stesso (vedi il commento su "translateExtension" sopra),
+	// solo quando l'utente ha davvero aperto un file da questa finestra.
+	int32 unsupportedCount = 0;
+	BString unsupportedList;
+	{
+		type_code type;
+		int32 count = 0;
+		if (translateExtension.GetInfo("atomo:unsupportedChart", &type, &count) == B_OK)
+		{
+			unsupportedCount = count;
+			for (int32 i = 0; i < count; i++)
+			{
+				const char* name = NULL;
+				if (translateExtension.FindString("atomo:unsupportedChart", i, &name) == B_OK)
+				{
+					if (unsupportedList.Length() > 0)
+						unsupportedList << "\n";
+					unsupportedList << "- " << name;
+				}
+			}
+		}
+	}
+	if (unsupportedCount > 0)
+	{
+		BString text;
+		if (unsupportedCount == 1)
+			text = B_TRANSLATE("Il file conteneva un grafico non implementato in Atomo123:\n");
+		else
+			text = B_TRANSLATE("Il file conteneva grafici non implementati in Atomo123:\n");
+		text << unsupportedList;
+		BAlert* alert = new BAlert(B_TRANSLATE("Grafico non implementato"), text,
+			B_TRANSLATE("OK"));
+		alert->Go();
+	}
 }
 
 // Nome senza estensione, usato per precompilare il pannello di

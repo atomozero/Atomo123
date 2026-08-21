@@ -29,6 +29,7 @@
 #include <File.h>
 #include <DataIO.h>
 #include <Font.h>
+#include <Message.h>
 #include <Path.h>
 #include <String.h>
 #include <SupportDefs.h>
@@ -291,6 +292,139 @@ static bool UnwrapFirstSheet(const unsigned char* data, size_t len,
 	}
 
 	return false;
+}
+
+// Rilegge dataRange/tipo/titolo del PRIMO grafico incorporato da un
+// blocco ASCD (Fase 25, importazione dei grafici): cammina esattamente
+// lo stesso formato scritto da WriteASCD in XlsxTranslator.cpp,
+// sezione per sezione fino al titolo del grafico incluso (l'ultima) --
+// stesso principio EOF-tollerante gia' verificato altrove in questo
+// file (vedi le sezioni "restano allineate" per sample_table.xlsx/
+// sample_condformat.xlsx piu' sotto). Presuppone un documento di prova
+// MINIMO (nessuno stile/font/bordo/immagine espliciti), quindi ogni
+// sezione intermedia e' sempre vuota -- non un parser ASCD generico.
+static bool ReadFirstChartForTest(const unsigned char* ascdData, size_t ascdLen,
+	int16* outLeft, int16* outTop, int16* outRight, int16* outBottom,
+	int8* outType, std::string* outTitle, float outFrame[4] = NULL)
+{
+	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
+		return false;
+
+	int32 cellCount;
+	memcpy(&cellCount, ascdData + 8, 4);
+
+	size_t pos = 12;
+	for (int32 i = 0; i < cellCount; i++)
+	{
+		if (pos + 9 > ascdLen)
+			return false;
+		int32 len;
+		memcpy(&len, ascdData + pos + 4, 4);
+		pos += 9 + len;
+	}
+
+	if (pos + 4 > ascdLen)
+		return false;
+	int32 chartCount;
+	memcpy(&chartCount, ascdData + pos, 4); pos += 4;
+	if (chartCount != 1 || pos + 24 > ascdLen)
+		return false;
+	memcpy(outLeft, ascdData + pos, 2); pos += 2;
+	memcpy(outTop, ascdData + pos, 2); pos += 2;
+	memcpy(outRight, ascdData + pos, 2); pos += 2;
+	memcpy(outBottom, ascdData + pos, 2); pos += 2;
+	if (outFrame)
+		memcpy(outFrame, ascdData + pos, 16);
+	pos += 16; // frame (4 float)
+
+	// colWidths, cellColors, columnColors, rowHeights: quattro contatori.
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Blocca riquadri: due interi fissi (non un contatore).
+	if (pos + 8 > ascdLen) return false;
+	pos += 8;
+
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto contatori.
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Visibilita' griglia: un byte fisso.
+	if (pos + 1 > ascdLen) return false;
+	pos += 1;
+
+	// Colore della linguetta: 4 byte fissi.
+	if (pos + 4 > ascdLen) return false;
+	pos += 4;
+
+	// Righe nascoste: un contatore.
+	if (pos + 4 > ascdLen) return false;
+	{
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// AutoFilter: 9 byte fissi.
+	if (pos + 9 > ascdLen) return false;
+	pos += 9;
+
+	// Commenti, collegamenti: due contatori.
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Tipo di grafico: un contatore + un byte per grafico.
+	if (pos + 4 > ascdLen) return false;
+	{
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 1) return false;
+	}
+	if (pos + 1 > ascdLen) return false;
+	memcpy(outType, ascdData + pos, 1); pos += 1;
+
+	// Colore del bordo, convalida dati, formattazione condizionale,
+	// tabelle: quattro contatori (tutti a zero in questo documento di
+	// prova minimo -- nessuno stile/regola/tabella).
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Titolo di grafico: un contatore + un titolo length-prefixed per
+	// grafico, l'ULTIMA sezione del formato.
+	if (pos + 4 > ascdLen) return false;
+	{
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 1) return false;
+	}
+	if (pos + 4 > ascdLen) return false;
+	int32 titleLen;
+	memcpy(&titleLen, ascdData + pos, 4); pos += 4;
+	if (titleLen < 0 || pos + (size_t)titleLen > ascdLen) return false;
+	outTitle->assign((const char*)ascdData + pos, titleLen);
+
+	return true;
 }
 
 int main()
@@ -2841,6 +2975,46 @@ int main()
 		BMallocIO chartAscdOut;
 		err = translator->Translate(&chartXlsxOut, &chartReimportInfo, NULL, kAtomoNativeFormat, &chartAscdOut);
 		Check(err == B_OK, "il file XLSX con un grafico si rilegge correttamente (round-trip)");
+
+		// Fase 25 (importazione dei grafici): oltre a rileggersi senza
+		// errori, il grafico incorporato deve davvero riapparire
+		// nell'ASCD prodotto, con lo stesso dataRange/tipo con cui e'
+		// stato esportato sopra -- non silenziosamente perso, e non
+		// scambiato per un anchor assoluto non riconosciuto (vedi il
+		// commento su isAbsolute in DrawingPic).
+		const unsigned char* chartAscdData = NULL;
+		size_t chartAscdLen = 0;
+		bool chartUnwrapped = UnwrapFirstSheet((const unsigned char*)chartAscdOut.Buffer(),
+			chartAscdOut.BufferLength(), &chartAscdData, &chartAscdLen);
+		Check(chartUnwrapped, "il round-trip del grafico produce anch'esso una cartella ASCB valida");
+
+		int16 rtLeft = 0, rtTop = 0, rtRight = 0, rtBottom = 0;
+		int8 rtType = -1;
+		std::string rtTitle;
+		float rtFrame[4] = { 0, 0, 0, 0 };
+		bool chartRead = chartUnwrapped && ReadFirstChartForTest(chartAscdData, chartAscdLen,
+			&rtLeft, &rtTop, &rtRight, &rtBottom, &rtType, &rtTitle, rtFrame);
+		Check(chartRead, "il grafico incorporato (UNO, con tutte le sezioni intermedie allineate) "
+			"riappare dopo il round-trip XLSX -> ASCD");
+		Check(chartRead && rtLeft == 1 && rtTop == 1 && rtRight == 2 && rtBottom == 3,
+			"il grafico riletto punta ancora ad A1:B3, lo stesso dataRange con cui e' stato esportato");
+		Check(chartRead && rtType == 0,
+			"il tipo di grafico riletto e' ancora \"barre\" (0), lo stesso con cui e' stato esportato");
+		Check(chartRead && rtTitle.empty(),
+			"il grafico riletto non ha titolo, come nell'originale (autoTitleDeleted)");
+		// Il grafico e' stato esportato con <xdr:absoluteAnchor><xdr:pos
+		// x=".." y=".."/><xdr:ext cx=".." cy=".."/>...<xdr:graphicFrame>
+		// <xdr:xfrm><a:ext cx="0" cy="0"/>...: un bug reale (scoperto
+		// mentre si costruiva questo stesso test) confondeva il primo
+		// <xdr:ext> (la dimensione vera) con quello ZERO annidato dentro
+		// xfrm, azzerando extCxEmu/extCyEmu -- il frame ricostruito qui
+		// deve essere quello ESPORTATO (100,100,500,400), non un
+		// ripiego indovinato per coincidenza (400x300, vedi il commento
+		// gemello sulla torta piu' sotto per un caso che NON coincide).
+		Check(chartRead && (int)rtFrame[0] == 100 && (int)rtFrame[1] == 100
+				&& (int)rtFrame[2] == 500 && (int)rtFrame[3] == 400,
+			"il frame del grafico riletto (100,100,500,400) e' quello vero, "
+			"non il ripiego predefinito (avrebbe coinciso per caso su questo grafico)");
 	}
 
 	// Stesso scenario, ma una torta CON titolo (Assunzioni: A1:B3 e'
@@ -2889,6 +3063,110 @@ int main()
 		}
 		else
 			Check(false, "xl/charts/chart1.xml (torta) si legge dall'archivio");
+
+		// Fase 25: stesso round-trip di importazione della sezione
+		// precedente, qui per verificare che tipo TORTA e titolo
+		// sopravvivano entrambi, non solo il dataRange.
+		pieXlsxOut.Seek(0, SEEK_SET);
+		translator_info pieReimportInfo;
+		err = translator->Identify(&pieXlsxOut, NULL, NULL, &pieReimportInfo, 0);
+		Check(err == B_OK && pieReimportInfo.type == kAtomoXlsxFormat,
+			"il file XLSX della torta con titolo si riconosce ancora come XLSX valido rileggendolo");
+
+		pieXlsxOut.Seek(0, SEEK_SET);
+		BMallocIO pieAscdOut;
+		err = translator->Translate(&pieXlsxOut, &pieReimportInfo, NULL, kAtomoNativeFormat, &pieAscdOut);
+		Check(err == B_OK, "il file XLSX della torta con titolo si rilegge correttamente (round-trip)");
+
+		const unsigned char* pieAscdData = NULL;
+		size_t pieAscdLen = 0;
+		bool pieUnwrapped = UnwrapFirstSheet((const unsigned char*)pieAscdOut.Buffer(),
+			pieAscdOut.BufferLength(), &pieAscdData, &pieAscdLen);
+		Check(pieUnwrapped, "il round-trip della torta produce anch'esso una cartella ASCB valida");
+
+		int16 pieRtLeft = 0, pieRtTop = 0, pieRtRight = 0, pieRtBottom = 0;
+		int8 pieRtType = -1;
+		std::string pieRtTitle;
+		float pieRtFrame[4] = { 0, 0, 0, 0 };
+		bool pieChartRead = pieUnwrapped && ReadFirstChartForTest(pieAscdData, pieAscdLen,
+			&pieRtLeft, &pieRtTop, &pieRtRight, &pieRtBottom, &pieRtType, &pieRtTitle, pieRtFrame);
+		Check(pieChartRead && pieRtLeft == 1 && pieRtTop == 1 && pieRtRight == 2 && pieRtBottom == 2,
+			"la torta riletta punta ancora ad A1:B2, lo stesso dataRange con cui e' stata esportata");
+		Check(pieChartRead && pieRtType == 2,
+			"il tipo di grafico riletto e' ancora \"torta\" (2), lo stesso con cui e' stato esportato");
+		Check(pieChartRead && pieRtTitle == "Distribuzione colori",
+			"il titolo riletto (\"Distribuzione colori\") e' ancora quello con cui e' stato esportato");
+		// La torta e' stata esportata con frame (0,0,300,300) -- 300x300,
+		// DIVERSO dal ripiego predefinito 400x300 usato quando l'ancoraggio
+		// non da' una dimensione esplicita: a differenza del grafico a
+		// barre sopra (dove il ripiego coincideva per caso), qui una
+		// dimensione sbagliata si vede subito. Questo e' l'assert che ha
+		// davvero smascherato il bug xdr:ext/xfrm descritto sopra.
+		Check(pieChartRead && (int)pieRtFrame[0] == 0 && (int)pieRtFrame[1] == 0
+				&& (int)pieRtFrame[2] == 300 && (int)pieRtFrame[3] == 300,
+			"il frame della torta riletta (0,0,300,300) e' quello vero, non il ripiego predefinito (400x300)");
+	}
+
+	// Importazione di un vero file XLSX in stile Excel (Fase 25):
+	// tests/sample_chart_import.xlsx e' costruito a mano (non con
+	// questo stesso translator, a differenza dei round-trip sopra) con
+	// <xdr:twoCellAnchor>/<xdr:from>/<xdr:to> -- l'ancoraggio che Excel
+	// scrive DAVVERO, mai <xdr:absoluteAnchor> (quello e' solo cio' che
+	// scrive l'export di QUESTA app, gia' verificato sopra). Due
+	// grafici sullo stesso foglio (A1:B3, Gen/Feb/Mar + 10/20/30):
+	// chart1.xml e' un grafico a barre (riconosciuto), chart2.xml e'
+	// un grafico ad area (NON fra i 3 tipi disegnati da questa app) --
+	// verifica sia che il primo arrivi fino a ChartObject sia che il
+	// secondo sia segnalato come "non implementato" invece di
+	// sparire silenziosamente o rompere l'importazione degli altri dati.
+	{
+		BFile importFile("tests/sample_chart_import.xlsx", B_READ_ONLY);
+		Check(importFile.InitCheck() == B_OK, "apertura di tests/sample_chart_import.xlsx riuscita");
+
+		translator_info importInfo;
+		err = translator->Identify(&importFile, NULL, NULL, &importInfo, 0);
+		Check(err == B_OK && importInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce sample_chart_import.xlsx");
+
+		importFile.Seek(0, SEEK_SET);
+		BMallocIO importOut;
+		BMessage importExtension;
+		err = translator->Translate(&importFile, &importInfo, &importExtension,
+			kAtomoNativeFormat, &importOut);
+		Check(err == B_OK, "Translate di sample_chart_import.xlsx riesce");
+
+		const unsigned char* importAscdData = NULL;
+		size_t importAscdLen = 0;
+		bool importUnwrapped = UnwrapFirstSheet((const unsigned char*)importOut.Buffer(),
+			importOut.BufferLength(), &importAscdData, &importAscdLen);
+		Check(importUnwrapped, "l'output di Translate di sample_chart_import.xlsx e' un ASCD valido");
+
+		int16 impLeft = 0, impTop = 0, impRight = 0, impBottom = 0;
+		int8 impType = -1;
+		std::string impTitle;
+		bool importChartRead = importUnwrapped && ReadFirstChartForTest(importAscdData, importAscdLen,
+			&impLeft, &impTop, &impRight, &impBottom, &impType, &impTitle);
+		Check(importChartRead, "il grafico a barre in stile Excel (xdr:twoCellAnchor) arriva fino all'ASCD");
+		Check(importChartRead && impLeft == 1 && impTop == 1 && impRight == 2 && impBottom == 3,
+			"il grafico a barre importato punta ad A1:B3, ricostruito dai riferimenti veri di chart1.xml");
+		Check(importChartRead && impType == 0,
+			"il grafico importato e' di tipo \"barre\" (0), <c:barChart>/<c:barDir val=\"col\"/> di chart1.xml");
+
+		// Il grafico ad area (chart2.xml) non deve essere il SECONDO
+		// grafico nell'ASCD (solo 1 record atteso, non 2): la sua
+		// mancata implementazione non deve ne' comparire come un
+		// grafico fasullo ne' rompere il primo.
+		type_code msgType;
+		int32 unsupportedCount = 0;
+		importExtension.GetInfo("atomo:unsupportedChart", &msgType, &unsupportedCount);
+		Check(unsupportedCount == 1,
+			"esattamente un grafico non implementato segnalato tramite \"extension\" (l'area di chart2.xml)");
+		const char* unsupportedName = NULL;
+		bool foundAreaName = unsupportedCount == 1
+			&& importExtension.FindString("atomo:unsupportedChart", 0, &unsupportedName) == B_OK
+			&& std::string(unsupportedName).find("area") != std::string::npos;
+		Check(foundAreaName,
+			"il nome del grafico non implementato menziona \"areaChart\", non generico");
 	}
 
 	translator->Release();
