@@ -235,6 +235,11 @@ Since v0.2.0 (not yet in a tagged release):
   Documented in the function's own comment rather than fixed (would
   need the parser to know which arguments of which functions want a
   reference instead of a value, a larger change)
+- Added SUBSTITUTE/REPLACE/REPT/TEXTJOIN/VALUE/EXACT — second batch of
+  functions missing versus Excel (v3.0 consolidation, more batches to
+  follow: date, math/stats, lookup). SUBSTITUTE is 10 characters, one
+  over the `'Func'` resource's name limit — registered internally as
+  "SUBST" with the same alias trick as CEILING.MATH/CONCATENATE
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
