@@ -150,6 +150,10 @@ Since v0.2.0 (not yet in a tagged release):
   per output format (native/.csv/.xlsx/.ods) — the format could only
   be chosen before by typing the extension by hand, with no indication
   that was even possible
+- Embedded charts can now be deleted: click to select (persistent, a
+  blue outline like embedded images), Delete/Backspace removes it,
+  full undo/redo. Selecting a chart deselects a selected image and
+  vice versa, so Delete is never ambiguous
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
