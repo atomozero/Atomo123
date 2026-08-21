@@ -247,6 +247,14 @@ Since v0.2.0 (not yet in a tagged release):
   hour whenever the range crosses a daylight-saving transition — fixed
   with a pure calendar-based day-difference calculation that never
   touches `time_t` at all
+- Added SUMPRODUCT/AVERAGEIFS/MAXIFS/MINIFS/RANK/LARGE/SMALL/SUBTOTAL
+  — fourth batch (v3.0 consolidation, one more to follow: lookup).
+  SUMPRODUCT/AVERAGEIFS are 10 characters, one over the `'Func'`
+  resource's name limit — registered internally as "SUMPROD"/"AVGIFS"
+  with the same alias trick as CEILING.MATH/CONCATENATE/SUBSTITUTE.
+  SUBTOTAL only supports the six most common aggregations (AVERAGE/
+  COUNT/COUNTA/MAX/MIN/SUM); it doesn't exclude nested SUBTOTAL calls
+  or distinguish filter-hidden rows from visible ones
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
