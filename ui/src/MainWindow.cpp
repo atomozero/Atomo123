@@ -87,6 +87,17 @@ static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
 static const uint32 kMsgOpenRecent = 'aorc';
 static const uint32 kMsgSaveAs = 'asva';
+// Voci del sottomenu "Salva con nome" (Fase 21, richiesta esplicita
+// dell'utente: "non posso selezionare il formato del file finale"):
+// ognuna precompila il pannello di salvataggio con l'estensione giusta
+// prima di mostrarlo, cosi' il formato scelto qui e' visibile a colpo
+// d'occhio nel nome del file -- SaveToFile continua a scegliere il
+// formato dall'estensione digitata (vedi il commento li'), non serve
+// nessun campo nuovo per "ricordare" la scelta.
+static const uint32 kMsgSaveAsAscd = 'svas';
+static const uint32 kMsgSaveAsCsv = 'svcs';
+static const uint32 kMsgSaveAsXlsx = 'svxl';
+static const uint32 kMsgSaveAsOds = 'svod';
 static const uint32 kMsgFormulaCommit = 'afml';
 static const uint32 kMsgUndo = 'aund';
 static const uint32 kMsgRedo = 'ared';
@@ -504,8 +515,20 @@ MainWindow::MainWindow()
 	fRecentMenu = new BMenu(B_TRANSLATE("Apri recenti"));
 	fileMenu->AddItem(new BMenuItem(fRecentMenu));
 	RebuildRecentMenu(); // popolato subito, non solo alla prima apertura del menu
-	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Salva con nome" B_UTF8_ELLIPSIS),
-		new BMessage(kMsgSaveAs), 'S'));
+	// Sottomenu invece di una singola voce (Fase 21): prima il formato
+	// di destinazione si sceglieva solo digitando l'estensione a mano
+	// nel pannello di salvataggio, senza nessun indizio che fosse
+	// possibile -- ogni voce qui precompila il nome col formato scelto
+	// prima di mostrare il pannello (vedi i gestori kMsgSaveAsXxx
+	// sotto). L'acceleratore 'S' resta sulla voce del sottomenu stesso
+	// (formato nativo, l'uso piu' comune), non su un item separato.
+	BMenu* saveAsMenu = new BMenu(B_TRANSLATE("Salva con nome" B_UTF8_ELLIPSIS));
+	saveAsMenu->AddItem(new BMenuItem(B_TRANSLATE("Formato nativo (.ascd)"),
+		new BMessage(kMsgSaveAsAscd), 'S'));
+	saveAsMenu->AddItem(new BMenuItem(B_TRANSLATE("CSV (.csv)"), new BMessage(kMsgSaveAsCsv)));
+	saveAsMenu->AddItem(new BMenuItem(B_TRANSLATE("Excel (.xlsx)"), new BMessage(kMsgSaveAsXlsx)));
+	saveAsMenu->AddItem(new BMenuItem(B_TRANSLATE("OpenDocument (.ods)"), new BMessage(kMsgSaveAsOds)));
+	fileMenu->AddItem(new BMenuItem(saveAsMenu));
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Stampa" B_UTF8_ELLIPSIS), new BMessage(kMsgPrint), 'P'));
 	fileMenu->AddSeparatorItem();
@@ -1584,13 +1607,30 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	AddToRecentFiles(ref);
 }
 
+// Nome senza estensione, usato per precompilare il pannello di
+// salvataggio con l'estensione giusta quando si sceglie un formato dal
+// sottomenu "Salva con nome" (vedi i gestori kMsgSaveAsXxx sotto) --
+// un documento nuovo/mai salvato non ha ancora un nome, ne usa uno
+// generico invece di lasciare il campo vuoto.
+static BString BaseNameWithoutExtension(const BString& name)
+{
+	if (name.Length() == 0)
+		return BString(B_TRANSLATE("Senza titolo"));
+	int32 dot = name.FindLast('.');
+	if (dot > 0)
+		return BString(name.String(), dot);
+	return name;
+}
+
 void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 {
 	// Il formato di destinazione si sceglie dall'estensione del nome
 	// scelto nel BFilePanel (".csv"/.xlsx"/".ods" esportano nel
 	// translator corrispondente, qualunque altra estensione o nessuna
-	// resta sul formato nativo ASCD) -- non c'e' ancora un selettore
-	// di formato dedicato nel pannello di salvataggio. ".xls" non e'
+	// resta sul formato nativo ASCD) -- il sottomenu "Salva con nome"
+	// (Fase 21) precompila gia' l'estensione giusta prima di mostrare
+	// il pannello, ma resta comunque possibile digitarne una diversa a
+	// mano, che vince sempre su quella precompilata. ".xls" non e'
 	// qui apposta: quel translator sa solo importare, mai scrivere
 	// (vedi XlsTranslator.cpp) -- ricade sul ramo generico piu' sotto,
 	// che mostra l'errore "Nessun translator installato sa esportare
@@ -3831,6 +3871,48 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgSaveAs:
 			fSavePanel->Show();
 			break;
+
+		// Voci del sottomenu "Salva con nome" (Fase 21): precompilano il
+		// nome nel pannello con l'estensione del formato scelto prima di
+		// mostrarlo -- SaveToFile sceglie comunque il formato vero
+		// dall'estensione digitata quando l'utente conferma (vedi il
+		// commento li'), qui basta impostare un punto di partenza
+		// coerente con la scelta appena fatta.
+		case kMsgSaveAsAscd:
+		{
+			BString saveName = BaseNameWithoutExtension(fDocumentName);
+			saveName << ".ascd";
+			fSavePanel->SetSaveText(saveName.String());
+			fSavePanel->Show();
+			break;
+		}
+
+		case kMsgSaveAsCsv:
+		{
+			BString saveName = BaseNameWithoutExtension(fDocumentName);
+			saveName << ".csv";
+			fSavePanel->SetSaveText(saveName.String());
+			fSavePanel->Show();
+			break;
+		}
+
+		case kMsgSaveAsXlsx:
+		{
+			BString saveName = BaseNameWithoutExtension(fDocumentName);
+			saveName << ".xlsx";
+			fSavePanel->SetSaveText(saveName.String());
+			fSavePanel->Show();
+			break;
+		}
+
+		case kMsgSaveAsOds:
+		{
+			BString saveName = BaseNameWithoutExtension(fDocumentName);
+			saveName << ".ods";
+			fSavePanel->SetSaveText(saveName.String());
+			fSavePanel->Show();
+			break;
+		}
 
 		case B_REFS_RECEIVED:
 		{
