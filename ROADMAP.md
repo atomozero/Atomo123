@@ -154,6 +154,13 @@ Since v0.2.0 (not yet in a tagged release):
   blue outline like embedded images), Delete/Backspace removes it,
   full undo/redo. Selecting a chart deselects a selected image and
   vice versa, so Delete is never ambiguous
+- Fixed a real regression: any multi-sheet XLSX file failed to open
+  ("i dati risultanti non sono validi"). The XLSX translator keeps its
+  own copy of the ASCD writer and hadn't been updated for the new
+  chart-title section added alongside optional chart titles above —
+  the reader's EOF-tolerant skip for that section only works at the
+  true end of the stream, so in a multi-sheet workbook every non-final
+  sheet's block desynchronized the read that followed it
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
