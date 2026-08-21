@@ -34,6 +34,7 @@ const uint32 kMsgChartInsert = 'chin';
 // MultiChartData in Chart.h e il gestore in ChartWindow.cpp.
 const uint32 kMsgChartDataMulti = 'chdm';
 
+class BBox;
 class BCheckBox;
 class BMenuField;
 class BTextControl;
@@ -60,11 +61,15 @@ private:
 	BTextControl* fDestField;
 	ChartView* fChartView;
 	BMessenger fTarget;
-	// Riga di checkbox "mostra i valori" con una voce per serie (Fase
-	// 19): ricostruita ogni volta che arrivano nuovi dati multi-serie,
-	// dato che il numero di serie dipende dall'intervallo selezionato,
-	// non e' fisso. Vuota (nessun figlio) quando l'ultimo grafico
-	// richiesto e' a singola serie.
+	// Riquadro (con titolo + suggerimento) che contiene la riga di
+	// checkbox "mostra i valori", una voce per serie (Fase 19). Creato
+	// una sola volta nel costruttore -- solo fSeriesCheckboxRow al suo
+	// interno viene svuotato/ripopolato a ogni richiesta, cosi' titolo
+	// e suggerimento non vengono mai distrutti e ricreati. Nascosto per
+	// intero (Hide/Show) quando l'ultimo grafico richiesto e' a singola
+	// serie, cosi' non resta un riquadro vuoto che sembra un controllo
+	// "sparito" (vedi ClearSeriesCheckboxes/RebuildSeriesCheckboxes).
+	BBox* fSeriesCheckboxBox;
 	BView* fSeriesCheckboxRow;
 	std::vector<BCheckBox*> fSeriesCheckboxes;
 

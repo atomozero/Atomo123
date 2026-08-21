@@ -14,6 +14,7 @@
 #include <map>
 #include <string>
 
+#include <Box.h>
 #include <Button.h>
 #include <Catalog.h>
 #include <CheckBox.h>
@@ -23,6 +24,7 @@
 #include <MenuItem.h>
 #include <PopUpMenu.h>
 #include <String.h>
+#include <StringView.h>
 #include <TextControl.h>
 
 #undef B_TRANSLATION_CONTEXT
@@ -71,14 +73,42 @@ ChartWindow::ChartWindow(BMessenger target)
 
 	fChartView = new ChartView();
 
-	// Riga di checkbox "mostra i valori" per serie (Fase 19): vuota
-	// all'apertura (nessun grafico a serie multiple ancora caricato),
-	// popolata da RebuildSeriesCheckboxes quando arrivano dati con
-	// piu' di una serie. BGroupLayout invece di BLayoutBuilder qui
-	// perche' i figli vanno aggiunti/rimossi dinamicamente dopo la
-	// costruzione, non solo una volta come il resto della finestra.
+	// Riquadro "Mostra valori per serie" (Fase 19): titolo del BBox
+	// (stessa convenzione di raggruppamento di PreferencesWindow/
+	// ConditionalFormatWindow) + un suggerimento in corpo minore che
+	// spiega cosa fanno davvero le checkbox -- senza, la riga di
+	// checkbox appariva senza contesto e si poteva credere che togliere
+	// la spunta nascondesse l'intera serie invece della sola etichetta
+	// numerica. Titolo e suggerimento sono creati una sola volta qui;
+	// solo fSeriesCheckboxRow al suo interno viene svuotato/ripopolato
+	// da RebuildSeriesCheckboxes/ClearSeriesCheckboxes a ogni richiesta.
+	fSeriesCheckboxBox = new BBox("seriesCheckboxBox");
+	fSeriesCheckboxBox->SetLabel(B_TRANSLATE("Mostra valori per serie"));
+
+	BStringView* seriesHint = new BStringView("seriesHint",
+		B_TRANSLATE("Deseleziona una serie per nascondere solo le sue etichette numeriche "
+			"nel grafico; la serie resta comunque visibile."));
+	BFont hintFont(be_plain_font);
+	hintFont.SetSize(be_plain_font->Size() - 1);
+	seriesHint->SetFont(&hintFont);
+	seriesHint->SetHighColor(tint_color(ui_color(B_PANEL_TEXT_COLOR), 0.7));
+
+	// BGroupLayout invece di BLayoutBuilder per la riga vera e propria
+	// perche' le checkbox al suo interno vanno aggiunte/rimosse
+	// dinamicamente dopo la costruzione, non solo una volta come il
+	// resto della finestra.
 	fSeriesCheckboxRow = new BView("seriesCheckboxes", 0);
 	fSeriesCheckboxRow->SetLayout(new BGroupLayout(B_HORIZONTAL, 8));
+
+	BLayoutBuilder::Group<>(fSeriesCheckboxBox, B_VERTICAL, 4)
+		.SetInsets(8, fSeriesCheckboxBox->TopBorderOffset() + 6, 8, 6)
+		.Add(seriesHint)
+		.Add(fSeriesCheckboxRow);
+	// Nascosto finche' non arriva un grafico a serie multiple (vedi
+	// ClearSeriesCheckboxes/RebuildSeriesCheckboxes): un riquadro con
+	// titolo ma senza nemmeno una checkbox sarebbe fuorviante quanto la
+	// vecchia riga vuota.
+	fSeriesCheckboxBox->Hide();
 
 	fDestField = new BTextControl("dest", B_TRANSLATE("Cella di destinazione nel foglio:"),
 		"D1", NULL);
@@ -95,7 +125,7 @@ ChartWindow::ChartWindow(BMessenger target)
 			.Add(fTypeField)
 			.Add(drawButton)
 		.End()
-		.Add(fSeriesCheckboxRow)
+		.Add(fSeriesCheckboxBox)
 		.Add(fChartView)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fDestField)
@@ -141,6 +171,10 @@ void ChartWindow::ClearSeriesCheckboxes()
 		delete child;
 	}
 	fSeriesCheckboxes.clear();
+	// Nessuna serie da elencare: il riquadro intero sparisce invece di
+	// restare visibile ma vuoto (vedi il commento nel costruttore).
+	if (!fSeriesCheckboxBox->IsHidden())
+		fSeriesCheckboxBox->Hide();
 }
 
 void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
@@ -175,6 +209,12 @@ void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
 		fSeriesCheckboxRow->AddChild(cb);
 		fSeriesCheckboxes.push_back(cb);
 	}
+
+	// Almeno una serie da elencare: mostra (o tieni visibile) il
+	// riquadro col titolo/suggerimento -- vedi ClearSeriesCheckboxes
+	// per il caso opposto.
+	if (!data->seriesNames.empty() && fSeriesCheckboxBox->IsHidden())
+		fSeriesCheckboxBox->Show();
 }
 
 void ChartWindow::MessageReceived(BMessage* message)
