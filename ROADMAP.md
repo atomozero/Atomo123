@@ -179,6 +179,10 @@ Since v0.2.0 (not yet in a tagged release):
   LOG, which already computes base-10 log): the missing function was
   failing to parse entirely, on the same real file above, cascading
   NaN through every formula that depended on it
+- Delete/Backspace on a cell now clears only its content (value,
+  formula), matching Excel/LibreOffice Calc — it previously wiped the
+  cell's formatting (color, borders, etc.) too, since it shared the
+  same code path as deleting the cell record entirely
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
