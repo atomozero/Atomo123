@@ -255,26 +255,34 @@ Since v0.2.0 (not yet in a tagged release):
   SUBTOTAL only supports the six most common aggregations (AVERAGE/
   COUNT/COUNTA/MAX/MIN/SUM); it doesn't exclude nested SUBTOTAL calls
   or distinguish filter-hidden rows from visible ones
+- Added INDIRECT/ADDRESS/XMATCH — fifth and last function batch. All
+  20 functions across the five batches (NOT/XOR/SWITCH/IFNA/ISBLANK/
+  ISERROR/ISNA/ISFORMULA/SUBSTITUTE/REPLACE/REPT/TEXTJOIN/VALUE/EXACT/
+  TODAY/NETWORKDAYS/WORKDAY/EDATE/EOMONTH/DATEDIF/SUMPRODUCT/
+  AVERAGEIFS/MAXIFS/MINIFS/RANK/LARGE/SMALL/SUBTOTAL/INDIRECT/ADDRESS/
+  XMATCH — 30 in total) are now shipped, closing the "functions still
+  missing versus Excel" item of the v3.0 backlog. Found a real bug
+  writing INDIRECT's test: a single-cell reference returned a
+  one-cell range instead of its value, unlike how the engine's own
+  bytecode interpreter treats the same case for a reference written
+  directly in a formula
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
 Two planned major versions, not yet started beyond the print fix above:
 
-**v3.0** — functions still missing versus Excel (SUMPRODUCT,
-AVERAGEIFS/MAXIFS/MINIFS, SUBSTITUTE/REPLACE/TEXTJOIN, NETWORKDAYS/
-WORKDAY/EDATE/EOMONTH/DATEDIF, INDIRECT/ADDRESS, and others — the
-`'Func'` resource's 9-character name limit means longer names need the
-same alias trick already used for CEILING.MATH/CONCATENATE), array
-formulas (spill ranges — the largest single item, touches the engine's
-evaluation model), the rest of the print backlog (page setup dialog:
-margins/orientation/scale-to-fit, definable print area), pivot table
-improvements (multi-level grouping, more aggregations), translator
-parity gaps (ambiguous-text fix confirmed only on XLSX/ASCD; XLS has no
-export path; only XLSX has live-formula export), and identifying a
-proper per-file-type icon set from the HVIF store (www.hvif-store.art)
-— the app currently uses generic/placeholder icons for its own file
-type(s) in Tracker, not distinct icons per format the way Excel/Calc
-distinguish .xlsx/.csv/.ods at a glance.
+**v3.0** — remaining items: array formulas (spill ranges — the largest
+single item, touches the engine's evaluation model), the rest of the
+print backlog (page setup dialog: margins/orientation/scale-to-fit,
+definable print area), pivot table improvements (multi-level grouping,
+more aggregations), translator parity gaps (ambiguous-text fix
+confirmed only on XLSX/ASCD; XLS has no export path; only XLSX has
+live-formula export), and identifying a proper per-file-type icon set
+from the HVIF store (www.hvif-store.art) — the app currently uses
+generic/placeholder icons for its own file type(s) in Tracker, not
+distinct icons per format the way Excel/Calc distinguish
+.xlsx/.csv/.ods at a glance. The "functions still missing versus
+Excel" item is done (30 functions across five batches, see above).
 
 **v4.0** — scripting: expose the app to Haiku's native BHandler/
 BMessage scripting protocol, with macro execution provided by an
