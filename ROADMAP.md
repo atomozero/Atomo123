@@ -201,6 +201,12 @@ Since v0.2.0 (not yet in a tagged release):
   references with cached values, correct chart type, title, single-
   or multi-series grouping matching the same rules the app itself
   uses to draw them
+- Fixed a real crash reported by the user ("Looper must be locked"):
+  opening the Chart dialog with a multi-cell selection already active
+  pre-fills the data range by calling into the dialog's own BWindow
+  from MainWindow's thread without locking it first — same bug class
+  already fixed once for the Color/Name windows, missed here because
+  this pre-fill feature was added afterward
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
