@@ -96,5 +96,12 @@ Position of find_text within within_text, case-insensitive
 Joins two or more text values into one
 Median (middle value) of a list of numbers
 Most frequently occurring value in a list of numbers
+Returns a fallback value if the formula evaluates to an error
 Value at the given row/column position within a range
 Relative position of a value within a range
+Searches a range for a match and returns the corresponding value from another range
+Checks multiple conditions and returns the value for the first one that is true
+Counts cells that meet multiple criteria
+Rounds a number away from zero to the given number of digits
+Rounds a number toward zero to the given number of digits
+Formats a number as text using the given format
