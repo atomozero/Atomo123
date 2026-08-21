@@ -170,6 +170,15 @@ Since v0.2.0 (not yet in a tagged release):
   misread as wrapped, showing a long single-line text broken into a
   narrow, unreadably tall column instead of overflowing across the
   empty cells to its right
+- Fixed a real formula-parsing bug: a sheet name starting with a digit
+  (e.g. "1P_Mandata_studio", legal in XLSX without quotes) was
+  tokenized as a standalone number followed by disconnected leftover
+  text, so any formula referencing that sheet failed to parse and was
+  left as raw, uncalculated text
+- Added Excel's LOG10() function (alias for the existing single-argument
+  LOG, which already computes base-10 log): the missing function was
+  failing to parse entirely, on the same real file above, cascading
+  NaN through every formula that depended on it
 
 Next: no specific item queued — see "Not currently planned" above for
 the larger backlog.
