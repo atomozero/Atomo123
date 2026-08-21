@@ -3024,6 +3024,26 @@ void SheetView::Draw(BRect updateRect)
 			if (!obj.frame.Intersects(updateRect))
 				continue;
 
+			// Un intervallo con piu' di due colonne e' un grafico a
+			// serie multiple (Fase 17, vedi MultiChartData in
+			// Chart.h) -- non supportato dalla torta (vedi il
+			// commento su ChartView::Draw), che in quel caso usa
+			// comunque solo le prime due colonne tramite il percorso
+			// a singola serie sotto.
+			int columnCount = obj.dataRange.right - obj.dataRange.left + 1;
+			if (columnCount > 2 && obj.type != ePieChart)
+			{
+				MultiChartData multi;
+				if (BuildMultiChartSeries(fDoc, obj.dataRange, multi))
+				{
+					if (obj.type == eLineChart)
+						DrawMultiLineChart(this, obj.frame, multi, obj.title);
+					else
+						DrawGroupedBarChart(this, obj.frame, multi, obj.title);
+				}
+				continue;
+			}
+
 			std::vector<ChartSeries> series;
 			BuildChartSeries(fDoc, obj.dataRange, series);
 			DrawChart(this, obj.frame, series, obj.type, obj.title);

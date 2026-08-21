@@ -3076,8 +3076,48 @@ void MainWindow::HandleChartRequest(const char* rangeText)
 		return;
 
 	range r;
+	if (!ParseRangeRef(rangeText, r))
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
+			B_TRANSLATE("Intervallo non valido: serve esattamente due colonne "
+				"(etichette, valori) con almeno una riga numerica, es. A1:B5."),
+			B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	// Un intervallo con piu' di due colonne e' una richiesta di serie
+	// multiple (Fase 17, vedi MultiChartData in Chart.h) -- due colonne
+	// restano il percorso a singola serie di sempre, invariato.
+	if (r.right - r.left > 1)
+	{
+		MultiChartData multi;
+		if (!BuildMultiChartSeries(fDoc, r, multi))
+		{
+			BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
+				B_TRANSLATE("Intervallo non valido: serve almeno una riga numerica "
+					"in ogni colonna serie."), B_TRANSLATE("OK"));
+			alert->Go();
+			return;
+		}
+
+		// Codifica piatta: vedi il commento gemello in
+		// ChartWindow::MessageReceived (kMsgChartDataMulti) per l'ordine
+		// esatto ricostruito li'.
+		BMessage data(kMsgChartDataMulti);
+		for (size_t c = 0; c < multi.categories.size(); c++)
+			data.AddString("category", multi.categories[c]);
+		for (size_t s = 0; s < multi.seriesNames.size(); s++)
+			data.AddString("seriesName", multi.seriesNames[s]);
+		for (size_t s = 0; s < multi.values.size(); s++)
+			for (size_t c = 0; c < multi.values[s].size(); c++)
+				data.AddDouble("value", multi.values[s][c]);
+		BMessenger(fChartWindow).SendMessage(&data);
+		return;
+	}
+
 	std::vector<ChartSeries> series;
-	if (!ParseRangeRef(rangeText, r) || !BuildChartSeries(fDoc, r, series))
+	if (!BuildChartSeries(fDoc, r, series))
 	{
 		BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
 			B_TRANSLATE("Intervallo non valido: serve esattamente due colonne "
@@ -3109,10 +3149,35 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 		return;
 
 	range dataRange;
-	std::vector<ChartSeries> series;
 	cell dest;
-	if (!ParseRangeRef(rangeText, dataRange) || !BuildChartSeries(fDoc, dataRange, series)
-		|| !cell::GetCell(destText, dest))
+	if (!ParseRangeRef(rangeText, dataRange) || !cell::GetCell(destText, dest))
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
+			B_TRANSLATE("Intervallo dati o cella di destinazione non validi: l'intervallo "
+				"deve avere due colonne (etichette, valori) con almeno una riga "
+				"numerica, es. A1:B5."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	// Validazione: il ChartObject memorizza solo l'intervallo (letto
+	// dal vivo a ogni ridisegno da SheetView, vedi il commento sopra),
+	// quindi qui basta verificare che i dati abbiano una forma valida,
+	// non serve tenerli. Due colonne (o meno) usano la validazione a
+	// singola serie di sempre; piu' colonne quella a serie multiple
+	// (Fase 17, vedi MultiChartData in Chart.h).
+	bool validData;
+	if (dataRange.right - dataRange.left > 1)
+	{
+		MultiChartData multi;
+		validData = BuildMultiChartSeries(fDoc, dataRange, multi);
+	}
+	else
+	{
+		std::vector<ChartSeries> series;
+		validData = BuildChartSeries(fDoc, dataRange, series);
+	}
+	if (!validData)
 	{
 		BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
 			B_TRANSLATE("Intervallo dati o cella di destinazione non validi: l'intervallo "

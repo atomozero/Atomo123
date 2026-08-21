@@ -241,6 +241,94 @@ int main()
 			"il punto col valore negativo minimo tocca il bordo inferiore dell'area");
 	}
 
+	// BuildMultiChartSeries (Fase 17, serie multiple): un intervallo con
+	// PIU' di due colonne, la prima le etichette di categoria, le
+	// successive una per serie -- stesso principio di BuildChartSeries
+	// ma esteso a N colonne di valori invece di una sola. Colonne 5-7
+	// (non ancora usate sopra in questo documento) per non sporcare i
+	// dati A1:B4 dei test precedenti.
+	doc.NewCell(cell(5, 1), Value("Gen"), NULL);
+	doc.NewCell(cell(6, 1), Value(10.0), NULL);
+	doc.NewCell(cell(7, 1), Value(15.0), NULL);
+	doc.NewCell(cell(5, 2), Value("Feb"), NULL);
+	doc.NewCell(cell(6, 2), Value(20.0), NULL);
+	doc.NewCell(cell(7, 2), Value(25.0), NULL);
+	doc.NewCell(cell(5, 3), Value("Mar"), NULL);
+	doc.NewCell(cell(6, 3), Value(30.0), NULL);
+	doc.NewCell(cell(7, 3), Value(10.0), NULL);
+
+	MultiChartData multi;
+	range threeColRange(5, 1, 7, 3);
+	bool multiOk = BuildMultiChartSeries(&doc, threeColRange, multi);
+	Check(multiOk, "BuildMultiChartSeries riesce su un intervallo a tre colonne (etichette + 2 serie)");
+	Check(multi.categories.size() == 3, "estrae le 3 categorie");
+	Check(multi.seriesNames.size() == 2, "estrae le 2 serie (una per colonna valori)");
+	if (multi.categories.size() == 3 && multi.seriesNames.size() == 2)
+	{
+		Check(multi.categories[0] == "Gen" && multi.categories[1] == "Feb" && multi.categories[2] == "Mar",
+			"le categorie sono nell'ordine delle righe");
+		Check(multi.seriesNames[0] == "Serie 1" && multi.seriesNames[1] == "Serie 2",
+			"le serie senza nome esplicito si chiamano Serie 1, Serie 2, ... in ordine di colonna");
+		Check(multi.values[0][0] == 10.0 && multi.values[0][1] == 20.0 && multi.values[0][2] == 30.0,
+			"i valori della prima serie sono nell'ordine delle righe");
+		Check(multi.values[1][0] == 15.0 && multi.values[1][1] == 25.0 && multi.values[1][2] == 10.0,
+			"i valori della seconda serie sono nell'ordine delle righe, non mescolati con la prima");
+	}
+
+	// Una riga con un valore non numerico in una QUALSIASI colonna
+	// serie viene saltata per intero, non solo per quella serie --
+	// altrimenti l'indice categoria/valore si disallineerebbe tra le
+	// serie.
+	doc.NewCell(cell(5, 4), Value("Apr"), NULL);
+	doc.NewCell(cell(6, 4), Value(40.0), NULL);
+	// col 7 riga 4 lasciata vuota (nessun valore) apposta
+	MultiChartData multiWithGap;
+	range fourRowRange(5, 1, 7, 4);
+	BuildMultiChartSeries(&doc, fourRowRange, multiWithGap);
+	Check(multiWithGap.categories.size() == 3,
+		"una riga con un valore mancante in una sola serie viene saltata per intero, non genera una quarta categoria");
+
+	// Un intervallo di una sola colonna (nessuna colonna serie) viene
+	// rifiutato esplicitamente.
+	MultiChartData multiBadShape;
+	range oneColumn(5, 1, 5, 3);
+	Check(!BuildMultiChartSeries(&doc, oneColumn, multiBadShape),
+		"un intervallo di una sola colonna (nessuna serie) viene rifiutato");
+
+	// ComputeGroupedBarLayout: due serie, tre categorie -- una barra
+	// per (serie, categoria), ordinate correttamente.
+	GroupedBarLayout grouped;
+	BRect groupedBounds(0, 0, 120, 40);
+	ComputeGroupedBarLayout(multi, groupedBounds, grouped);
+	Check(grouped.bars.size() == 2, "ComputeGroupedBarLayout produce un vettore di barre per serie");
+	if (grouped.bars.size() == 2)
+	{
+		Check(grouped.bars[0].size() == 3 && grouped.bars[1].size() == 3,
+			"ogni serie ha una barra per categoria");
+		Check(grouped.bars[0][0].left < grouped.bars[1][0].left,
+			"dentro lo stesso gruppo di categoria, la barra della serie 0 sta a sinistra di quella della serie 1");
+		Check(grouped.bars[0][0].right <= grouped.bars[0][1].left,
+			"le barre di categorie diverse (stessa serie) non si sovrappongono");
+		// La serie 0 a Mar (30) e' il valore assoluto piu' alto di
+		// tutto il grafico: deve risultare piu' alta della serie 1
+		// alla stessa categoria (10), sulla stessa scala comune.
+		Check(grouped.bars[0][2].Height() > grouped.bars[1][2].Height(),
+			"la barra col valore maggiore (serie 0, Mar=30) e' piu' alta di quella con valore minore nello stesso gruppo (serie 1, Mar=10)");
+	}
+
+	// ComputeMultiLineLayout: stesso principio, un punto per (serie,
+	// categoria) invece di una barra.
+	MultiLinePoint multiLine;
+	ComputeMultiLineLayout(multi, groupedBounds, multiLine);
+	Check(multiLine.points.size() == 2, "ComputeMultiLineLayout produce un vettore di punti per serie");
+	if (multiLine.points.size() == 2)
+	{
+		Check(multiLine.points[0].size() == 3 && multiLine.points[1].size() == 3,
+			"ogni serie ha un punto per categoria");
+		Check(multiLine.points[0][0].x == multiLine.points[1][0].x,
+			"lo stesso indice di categoria cade sulla stessa X per tutte le serie (stesso asse a categorie)");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();

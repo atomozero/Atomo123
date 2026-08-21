@@ -515,6 +515,280 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	}
 }
 
+bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out)
+{
+	out.categories.clear();
+	out.seriesNames.clear();
+	out.values.clear();
+	if (!doc || r.right - r.left < 1)
+		return false;
+
+	int seriesCount = r.right - r.left;
+	out.values.resize(seriesCount);
+	for (int s = 0; s < seriesCount; s++)
+	{
+		BString name(B_TRANSLATE("Serie"));
+		name << " " << (int32)(s + 1);
+		out.seriesNames.push_back(name);
+	}
+
+	for (int row = r.top; row <= r.bottom; row++)
+	{
+		// Una riga con un valore non numerico in QUALSIASI colonna
+		// serie viene saltata per intero (non solo per quella serie):
+		// le serie condividono lo stesso elenco di categorie, quindi
+		// un valore mancante in una sola serie romperebbe
+		// l'allineamento values[s][c] <-> categories[c] per tutte le
+		// altre se la riga venisse tenuta con un buco.
+		std::vector<double> rowValues(seriesCount);
+		bool rowOk = true;
+		for (int s = 0; s < seriesCount; s++)
+		{
+			cell valueCell(r.left + 1 + s, row);
+			Value vv;
+			doc->GetValue(valueCell, vv);
+			if (vv.fType != eNumData)
+			{
+				rowOk = false;
+				break;
+			}
+			rowValues[s] = (double)vv;
+		}
+		if (!rowOk)
+			continue;
+
+		cell labelCell(r.left, row);
+		Value lv;
+		doc->GetValue(labelCell, lv);
+		BString label;
+		ValueToLabel(lv, label);
+
+		out.categories.push_back(label);
+		for (int s = 0; s < seriesCount; s++)
+			out.values[s].push_back(rowValues[s]);
+	}
+
+	return !out.categories.empty();
+}
+
+// Intervallo di valori su TUTTE le serie insieme (non una per serie):
+// le barre/linee di serie diverse devono restare sullo stesso asse per
+// essere confrontabili, stesso principio di ChartValueRange ma esteso
+// a piu' vettori di valori.
+static void MultiChartValueRange(const MultiChartData& data, double* outMin, double* outMax)
+{
+	double minValue = 0, maxValue = 0;
+	for (size_t s = 0; s < data.values.size(); s++)
+	{
+		for (size_t c = 0; c < data.values[s].size(); c++)
+		{
+			if (data.values[s][c] < minValue)
+				minValue = data.values[s][c];
+			if (data.values[s][c] > maxValue)
+				maxValue = data.values[s][c];
+		}
+	}
+	if (minValue == maxValue)
+		maxValue = minValue + 1;
+	*outMin = minValue;
+	*outMax = maxValue;
+}
+
+void ComputeGroupedBarLayout(const MultiChartData& data, BRect bounds, GroupedBarLayout& out)
+{
+	out.bars.clear();
+	size_t seriesCount = data.seriesNames.size();
+	size_t catCount = data.categories.size();
+	if (seriesCount == 0 || catCount == 0)
+		return;
+
+	double minValue, maxValue;
+	MultiChartValueRange(data, &minValue, &maxValue);
+	float zeroY = ChartValueToY(0.0, minValue, maxValue, bounds);
+
+	float slotWidth = bounds.Width() / catCount;
+	float slotGap = slotWidth * 0.15f;
+	if (slotGap > 10)
+		slotGap = 10;
+	float groupWidth = slotWidth - slotGap;
+	float barWidth = groupWidth / seriesCount;
+
+	out.bars.resize(seriesCount);
+	for (size_t s = 0; s < seriesCount; s++)
+	{
+		out.bars[s].resize(catCount);
+		for (size_t c = 0; c < catCount; c++)
+		{
+			float groupLeft = bounds.left + c * slotWidth + slotGap / 2;
+			float left = groupLeft + s * barWidth;
+			float right = left + barWidth;
+			float valueY = ChartValueToY(data.values[s][c], minValue, maxValue, bounds);
+			out.bars[s][c].Set(left, std::min(valueY, zeroY), right, std::max(valueY, zeroY));
+		}
+	}
+}
+
+void ComputeMultiLineLayout(const MultiChartData& data, BRect bounds, MultiLinePoint& out)
+{
+	out.points.clear();
+	size_t seriesCount = data.seriesNames.size();
+	size_t catCount = data.categories.size();
+	if (seriesCount == 0 || catCount == 0)
+		return;
+
+	double minValue, maxValue;
+	MultiChartValueRange(data, &minValue, &maxValue);
+	float slotWidth = bounds.Width() / catCount;
+
+	out.points.resize(seriesCount);
+	for (size_t s = 0; s < seriesCount; s++)
+	{
+		out.points[s].resize(catCount);
+		for (size_t c = 0; c < catCount; c++)
+		{
+			float x = bounds.left + c * slotWidth + slotWidth / 2;
+			float y = ChartValueToY(data.values[s][c], minValue, maxValue, bounds);
+			out.points[s][c].Set(x, y);
+		}
+	}
+}
+
+// Riserva il margine sinistro (etichette asse Y) e la striscia destra
+// (legenda per serie) di plotArea -- condivisa da DrawGroupedBarChart/
+// DrawMultiLineChart, che hanno la stessa struttura (asse Y comune +
+// legenda) a differenza delle loro controparti a singola serie (che
+// non hanno bisogno di una legenda, una sola serie non ha nulla da
+// distinguere).
+static void PrepareMultiSeriesPlotArea(BView* view, BRect frame, const MultiChartData& data,
+	const BString& title, BRect* outPlotArea, double* outMinValue, double* outMaxValue)
+{
+	float legendWidth = 110;
+	BRect plotArea = frame;
+	plotArea.InsetBy(10, 10);
+	if (!title.IsEmpty())
+		plotArea.top += 18;
+	plotArea.right -= legendWidth;
+	plotArea.bottom -= 16;	// spazio per le etichette di categoria sotto
+
+	double minValue, maxValue;
+	MultiChartValueRange(data, &minValue, &maxValue);
+
+	std::vector<AxisTick> ticks;
+	ComputeYAxisTicks(minValue, maxValue, plotArea, ticks);
+	float axisLabelWidth = 0;
+	for (size_t i = 0; i < ticks.size(); i++)
+	{
+		float width = view->StringWidth(ticks[i].label.String());
+		if (width > axisLabelWidth)
+			axisLabelWidth = width;
+	}
+	plotArea.left += axisLabelWidth + 6;
+
+	*outPlotArea = plotArea;
+	*outMinValue = minValue;
+	*outMaxValue = maxValue;
+}
+
+// Bordo, linea di zero, etichette di categoria e legenda per serie --
+// condivisa da DrawGroupedBarChart/DrawMultiLineChart (stesso schema
+// del commento gemello su PrepareMultiSeriesPlotArea sopra).
+static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
+	const MultiChartData& data, double minValue, double maxValue)
+{
+	view->SetHighColor(0, 0, 0);
+	view->StrokeRect(frame);
+	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
+	view->StrokeLine(BPoint(plotArea.left, zeroY), BPoint(plotArea.right, zeroY));
+
+	float slotWidth = plotArea.Width() / data.categories.size();
+	for (size_t c = 0; c < data.categories.size(); c++)
+	{
+		BPoint labelPos(plotArea.left + c * slotWidth + 2, plotArea.bottom + 12);
+		view->DrawString(data.categories[c].String(), labelPos);
+	}
+
+	float legendX = plotArea.right + 16;
+	float legendY = plotArea.top + 4;
+	for (size_t s = 0; s < data.seriesNames.size(); s++)
+	{
+		BRect swatch(legendX, legendY - 8, legendX + 10, legendY + 2);
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		view->FillRect(swatch);
+		view->SetHighColor(0, 0, 0);
+		view->DrawString(data.seriesNames[s].String(), BPoint(legendX + 16, legendY));
+		legendY += 16;
+	}
+}
+
+void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, const BString& title)
+{
+	view->SetHighColor(255, 255, 255);
+	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
+
+	if (data.categories.empty() || data.seriesNames.empty())
+	{
+		view->SetHighColor(120, 120, 120);
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
+		return;
+	}
+
+	BRect plotArea;
+	double minValue, maxValue;
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue);
+
+	GroupedBarLayout layout;
+	ComputeGroupedBarLayout(data, plotArea, layout);
+
+	DrawYAxisGrid(view, plotArea, minValue, maxValue);
+
+	for (size_t s = 0; s < layout.bars.size(); s++)
+	{
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		for (size_t c = 0; c < layout.bars[s].size(); c++)
+			view->FillRect(layout.bars[s][c]);
+	}
+
+	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue);
+}
+
+void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, const BString& title)
+{
+	view->SetHighColor(255, 255, 255);
+	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
+
+	if (data.categories.empty() || data.seriesNames.empty())
+	{
+		view->SetHighColor(120, 120, 120);
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
+		return;
+	}
+
+	BRect plotArea;
+	double minValue, maxValue;
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue);
+
+	MultiLinePoint layout;
+	ComputeMultiLineLayout(data, plotArea, layout);
+
+	DrawYAxisGrid(view, plotArea, minValue, maxValue);
+
+	for (size_t s = 0; s < layout.points.size(); s++)
+	{
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		for (size_t c = 1; c < layout.points[s].size(); c++)
+			view->StrokeLine(layout.points[s][c - 1], layout.points[s][c]);
+		for (size_t c = 0; c < layout.points[s].size(); c++)
+		{
+			BPoint p = layout.points[s][c];
+			view->FillEllipse(BRect(p.x - 3, p.y - 3, p.x + 3, p.y + 3));
+		}
+	}
+
+	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue);
+}
+
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
 	ChartType type, const BString& title)
 {

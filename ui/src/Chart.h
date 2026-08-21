@@ -146,4 +146,68 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
 	ChartType type, const BString& title = BString());
 
+// Dati di un grafico a PIU' serie (Fase 17): a differenza di
+// ChartSeries/BuildChartSeries sopra (un solo valore per categoria),
+// qui ogni categoria ha una lista di valori, uno per serie -- non un
+// tipo di dato nuovo per ogni serie, le serie condividono le STESSE
+// etichette di categoria (stesso principio del grafico a barre
+// raggruppate di Excel). values[s][c] = valore della serie s alla
+// categoria c, quindi values[s].size() == categories.size() per ogni
+// s. Deliberatamente NON usato dalla torta (una torta e' per natura
+// una singola serie, vedi DrawPieChart) ne' da BuildChartSeries/
+// DrawBarChart/DrawLineChart sopra, che restano invariati per il caso
+// (comune) a singola serie -- chi legge un intervallo decide quale dei
+// due percorsi usare in base al numero di colonne, vedi
+// MainWindow::HandleChartRequest/HandleChartInsert e SheetView::Draw.
+struct MultiChartData {
+	std::vector<BString> categories;
+	std::vector<BString> seriesNames;
+	std::vector<std::vector<double> > values;
+};
+
+// L'intervallo deve avere almeno due colonne: la prima con le
+// etichette di categoria, le successive una per serie di valori
+// numerici (nessuna riga di intestazione richiesta: le serie si
+// chiamano "Serie 1", "Serie 2", ... nell'ordine delle colonne). Una
+// riga con un valore non numerico in QUALSIASI colonna serie viene
+// saltata per intero (stesso principio di BuildChartSeries, esteso per
+// restare allineata su tutte le serie). Restituisce false se
+// l'intervallo ha meno di due colonne o se non risulta nessuna riga
+// valida.
+bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out);
+
+struct GroupedBarLayout {
+	std::vector<std::vector<BRect> > bars;	// bars[serie][categoria]
+};
+
+// Calcola il rettangolo di ogni barra, raggruppate per categoria (una
+// barra affiancata per serie dentro lo stesso "slot" di categoria) --
+// stessa scala di valori (intervallo min/max comune a tutte le serie)
+// di ComputeBarLayout, cosi' le barre di serie diverse restano
+// confrontabili sullo stesso asse. Funzione pura, verificabile senza
+// BView/Draw.
+void ComputeGroupedBarLayout(const MultiChartData& data, BRect bounds,
+	GroupedBarLayout& out);
+
+// Disegna il grafico a barre raggruppate: un colore per serie (stessa
+// tavolozza della torta, kPieColors in Chart.cpp) e una legenda a
+// destra invece del valore sopra ogni barra (con piu' serie affiancate
+// diventerebbe illeggibile).
+void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data,
+	const BString& title = BString());
+
+struct MultiLinePoint {
+	std::vector<std::vector<BPoint> > points;	// points[serie][categoria]
+};
+
+// Calcola il punto di ogni valore, una spezzata per serie -- stessa
+// scala comune di ComputeGroupedBarLayout. Funzione pura.
+void ComputeMultiLineLayout(const MultiChartData& data, BRect bounds,
+	MultiLinePoint& out);
+
+// Disegna una spezzata per serie (stessi colori/legenda di
+// DrawGroupedBarChart).
+void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data,
+	const BString& title = BString());
+
 #endif

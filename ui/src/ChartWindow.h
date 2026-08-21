@@ -27,6 +27,10 @@
 const uint32 kMsgChartRequest = 'chrq';
 const uint32 kMsgChartData = 'chdt';
 const uint32 kMsgChartInsert = 'chin';
+// Risposta di HandleChartRequest quando l'intervallo ha piu' di due
+// colonne (serie multiple, Fase 17) -- vedi il commento su
+// MultiChartData in Chart.h e il gestore in ChartWindow.cpp.
+const uint32 kMsgChartDataMulti = 'chdm';
 
 class BMenuField;
 class BTextControl;

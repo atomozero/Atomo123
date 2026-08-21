@@ -143,6 +143,39 @@ void ChartWindow::MessageReceived(BMessage* message)
 			fChartView->SetData(data);
 			return;
 		}
+
+		case kMsgChartDataMulti:
+		{
+			// Codifica piatta dello stesso MultiChartData di Chart.h:
+			// tutte le categorie, poi tutti i nomi di serie, poi tutti
+			// i valori in ordine "serie-maggiore" (prima tutte le
+			// categorie della serie 0, poi tutte quelle della serie 1,
+			// ...) -- ricostruito qui nello stesso ordine, vedi
+			// MainWindow::HandleChartRequest dove viene scritto.
+			MultiChartData data;
+			BString category;
+			for (int32 i = 0; message->FindString("category", i, &category) == B_OK; i++)
+				data.categories.push_back(category);
+
+			BString seriesName;
+			for (int32 s = 0; message->FindString("seriesName", s, &seriesName) == B_OK; s++)
+				data.seriesNames.push_back(seriesName);
+
+			data.values.resize(data.seriesNames.size());
+			int32 k = 0;
+			for (size_t s = 0; s < data.seriesNames.size(); s++)
+			{
+				data.values[s].resize(data.categories.size());
+				for (size_t c = 0; c < data.categories.size(); c++)
+				{
+					double v = 0;
+					message->FindDouble("value", k++, &v);
+					data.values[s][c] = v;
+				}
+			}
+			fChartView->SetMultiData(data);
+			return;
+		}
 	}
 
 	BWindow::MessageReceived(message);

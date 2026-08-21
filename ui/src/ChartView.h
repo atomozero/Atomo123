@@ -25,6 +25,11 @@ public:
 	ChartView();
 
 	void SetData(const std::vector<ChartSeries>& data);
+	// Fase 17 (serie multiple): percorso alternativo a SetData, usato
+	// quando l'intervallo richiesto ha piu' di due colonne -- vedi il
+	// commento su MultiChartData in Chart.h. fIsMulti sceglie quale dei
+	// due disegnare in Draw().
+	void SetMultiData(const MultiChartData& data);
 	void SetChartType(ChartType type);
 	void SetTitle(const BString& title);
 
@@ -32,6 +37,8 @@ public:
 
 private:
 	std::vector<ChartSeries> fData;
+	MultiChartData fMultiData;
+	bool fIsMulti;
 	ChartType fType;
 	BString fTitle;
 };

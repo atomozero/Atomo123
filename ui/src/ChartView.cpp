@@ -12,6 +12,7 @@
 ChartView::ChartView()
 	:
 	BView(BRect(0, 0, 380, 260), "ChartView", B_FOLLOW_ALL, B_WILL_DRAW),
+	fIsMulti(false),
 	fType(eBarChart)
 {
 	SetViewColor(255, 255, 255);
@@ -24,6 +25,14 @@ ChartView::ChartView()
 void ChartView::SetData(const std::vector<ChartSeries>& data)
 {
 	fData = data;
+	fIsMulti = false;
+	Invalidate();
+}
+
+void ChartView::SetMultiData(const MultiChartData& data)
+{
+	fMultiData = data;
+	fIsMulti = true;
 	Invalidate();
 }
 
@@ -43,8 +52,40 @@ void ChartView::Draw(BRect updateRect)
 {
 	// Il disegno vero e proprio (assi/barre/linee/spicchi/etichette) e'
 	// condiviso con SheetView (grafico incorporato nel foglio, vedi
-	// Chart.h) -- qui i dati arrivano gia' pronti via SetData
-	// (ricevuti da MainWindow con un BMessage, vedi ChartWindow.cpp),
-	// non letti direttamente dal documento.
-	DrawChart(this, Bounds(), fData, fType, fTitle);
+	// Chart.h) -- qui i dati arrivano gia' pronti via SetData/
+	// SetMultiData (ricevuti da MainWindow con un BMessage, vedi
+	// ChartWindow.cpp), non letti direttamente dal documento.
+	if (!fIsMulti)
+	{
+		DrawChart(this, Bounds(), fData, fType, fTitle);
+		return;
+	}
+
+	if (fType == ePieChart)
+	{
+		// La torta non supporta piu' serie (vedi il commento su
+		// MultiChartData in Chart.h): si disegna con la sola prima
+		// serie, invece di rifiutarsi o mostrare un errore -- stesso
+		// principio permissivo del resto dell'app (un dato "non del
+		// tutto nella forma attesa" si adatta il piu' possibile invece
+		// di bloccarsi).
+		std::vector<ChartSeries> single;
+		if (!fMultiData.values.empty())
+		{
+			for (size_t c = 0; c < fMultiData.categories.size(); c++)
+			{
+				ChartSeries s;
+				s.label = fMultiData.categories[c];
+				s.value = fMultiData.values[0][c];
+				single.push_back(s);
+			}
+		}
+		DrawPieChart(this, Bounds(), single, fTitle);
+		return;
+	}
+
+	if (fType == eLineChart)
+		DrawMultiLineChart(this, Bounds(), fMultiData, fTitle);
+	else
+		DrawGroupedBarChart(this, Bounds(), fMultiData, fTitle);
 }
