@@ -11,7 +11,7 @@ If Atomo123 saves you time, consider supporting development: [![Buy Me A Coffee]
 
 ## Status
 
-**v0.2.0 released** — see [ROADMAP.md](ROADMAP.md) for the phased plan
+**v0.2.5 released** — see [ROADMAP.md](ROADMAP.md) for the phased plan
 and up-to-date status. In short: the calculation engine and legacy
 Excel importer reuse and modernize the old BeOS **Sum-It** project
 (community fork `OpenSumIt`), ported to build on modern 64-bit Haiku;
@@ -25,7 +25,8 @@ pre-Layout-Kit UI code is not reused).
 * Multi-sheet workbooks with a scrollable tab strip, like Excel/LibreOffice Calc
 * Formulas with named functions (`SUM`, `IF`, `SUMIF`, ...) and cell/range references
 * Cut/copy/paste through the real system clipboard, extended to multi-cell ranges
-* Undo/redo, Find & replace, sort ascending/descending, fill down/right
+* Undo/redo, Find & replace, sort ascending/descending, fill down/right,
+  Excel-style AutoFill (drag the selection handle to extend a series)
 * Insert/delete rows and columns
 * Bar charts and pivot tables
 * Opens CSV/XLS/XLSX/ODS through Translation Kit add-ons (`BTranslatorRoster`

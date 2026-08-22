@@ -5,7 +5,7 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.2.0 released.** All planned phases
+**Status: v0.2.5 released.** All planned phases
 through "closing the gap with Excel" are done or in good shape; a
 handful of large, optional features remain unplanned backlog items
 (see "Not currently planned" below). Full history of individual fixes
@@ -32,6 +32,8 @@ project-level status only.
 | Release prep (v0.1.0) | Done | Tagged on GitHub, hpkg packaging, license headers, English localization |
 | Live formula export | Done | XLSX/ODS export now writes live formulas (not just calculated values); CSV stays value-only by design |
 | Release prep (v0.2.0) | Done | Tagged on GitHub, translators bundled in the hpkg, doc rewrite, splash/About-panel polish (see "Current focus" below) |
+| Release prep (v0.2.1) | Done | Intermediate beta-tester release, tagged on GitHub: chart import from XLSX, repeated print headers |
+| Release prep (v0.2.5) | Done | Tagged on GitHub: five function batches (30 functions), print settings + preview, pivot table multi-level grouping, translator ambiguous-text parity, AutoFill (see "Current focus" below) |
 
 ### Phase 13 detail
 
@@ -74,7 +76,7 @@ What shipped in v0.2.0, on top of the v0.1.0 baseline:
   (`README.md`, this file, `docs/*.md`)
 - hpkg packaging now bundles all four translators alongside the app
 
-Since v0.2.0 (not yet in a tagged release):
+What shipped in v0.2.1, on top of v0.2.0 (intermediate beta-tester release):
 - Fixed a real redraw bug: editing a cell recalculated dependent
   formulas correctly but only repainted the cursor's rectangle, so a
   formula elsewhere on screen (e.g. a totals row) kept showing its old
@@ -227,6 +229,8 @@ Since v0.2.0 (not yet in a tagged release):
   math now lives in its own `PrintLayout.cpp`, testable without a real
   configured printer — first item from the "v3.0 consolidation" print
   backlog (see below)
+
+What shipped in v0.2.5, on top of v0.2.1:
 - Added NOT/XOR/SWITCH/IFNA/ISBLANK/ISERROR/ISNA/ISFORMULA — first
   batch of functions missing versus Excel (v3.0 consolidation, more
   batches to follow: text, date, math/stats, lookup). Found a real
