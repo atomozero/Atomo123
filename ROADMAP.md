@@ -277,6 +277,19 @@ Since v0.2.0 (not yet in a tagged release):
   (`BPrintJob::ConfigJob`), not duplicated here. The fit-scale math
   lives in `PrintLayout.cpp` next to the existing page-tiling code,
   same "testable without a real printer" principle
+- Added a live print preview to "Imposta pagina": a real render of the
+  page, with page-by-page navigation (capped at 20 pages) that updates
+  whenever a margin/scale control changes. A "Stampa…" button in the
+  dialog applies pending settings and prints in one step. The first
+  implementation captured `SheetView`'s real drawing into a `BPicture`
+  (`BeginPicture`/`Draw`/`EndPicture`, the same primitive `BPrintJob`
+  itself uses) — reproducible crash in Haiku's `app_server`
+  (`ServerWindow::_DispatchPictureMessage`), confirmed via a debug
+  report generated live in this environment. Replaced with a
+  self-contained renderer that draws each cell's background/text
+  directly from `CContainer` data (no borders, merged cells, or text
+  wrap — a deliberate simplification, not pixel parity with the real
+  print output)
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
