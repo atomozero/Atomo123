@@ -318,17 +318,17 @@ Since v0.2.0 (not yet in a tagged release):
 Two planned major versions, not yet started beyond the print work above:
 
 **v3.0** — remaining items: array formulas (spill ranges — the largest
-single item, touches the engine's evaluation model), extending
-live-formula export beyond XLSX (only XLSX writes live formulas today;
-XLS has no export path at all, deliberately — see "Not currently
-planned" below), and identifying a proper per-file-type icon set from
-the HVIF store (www.hvif-store.art) — the app currently uses
-generic/placeholder icons for its own file type(s) in Tracker, not
-distinct icons per format the way Excel/Calc distinguish
-.xlsx/.csv/.ods at a glance. The "functions still missing versus
-Excel" item is done (30 functions across five batches), and so is the
-print settings backlog (margins/scale/print area) and the ambiguous-text
-translator parity gap (see above for both).
+single item, touches the engine's evaluation model), and identifying a
+proper per-file-type icon set from the HVIF store (www.hvif-store.art)
+— the app currently uses generic/placeholder icons for its own file
+type(s) in Tracker, not distinct icons per format the way Excel/Calc
+distinguish .xlsx/.csv/.ods at a glance. The "functions still missing
+versus Excel" item is done (30 functions across five batches). So are
+live formula export (already covers both XLSX and ODS symmetrically,
+see "Current focus" above — XLS has no export path at all,
+deliberately, not a gap), the print settings backlog (margins/scale/
+print area), and the ambiguous-text translator parity gap (see above
+for both).
 
 **v4.0** — scripting: expose the app to Haiku's native BHandler/
 BMessage scripting protocol, with macro execution provided by an
