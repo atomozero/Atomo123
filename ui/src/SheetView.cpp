@@ -9,6 +9,7 @@
 
 #include "SheetView.h"
 #include "MainWindow.h"
+#include "AutoFill.h"
 
 #include <algorithm>
 #include <cmath>
@@ -143,6 +144,7 @@ SheetView::SheetView(CContainer* doc)
 	fSelection(1, 1),
 	fAnchor(1, 1),
 	fDragging(false),
+	fAutoFilling(false),
 	fCharts(NULL),
 	fDraggingChartIndex(-1),
 	fResizingChartIndex(-1),
@@ -2911,6 +2913,19 @@ BRect SheetView::ChartResizeHandle(const ChartObject& obj) const
 		obj.frame.right, obj.frame.bottom);
 }
 
+// Stesso principio esatto di ImageResizeHandle/ChartResizeHandle sopra,
+// ma sull'angolo in basso a destra della selezione corrente (lo stesso
+// "selOuter" gia' calcolato da Draw() per il riquadro blu di selezione,
+// vedi SelectionRange/PinnedCellRect).
+BRect SheetView::FillHandleRect() const
+{
+	range selRange = SelectionRange();
+	BRect selOuter = PinnedCellRect(selRange.TopLeft()) | PinnedCellRect(selRange.BotRight());
+	const float kHandleSize = 6;
+	return BRect(selOuter.right - kHandleSize, selOuter.bottom - kHandleSize,
+		selOuter.right, selOuter.bottom);
+}
+
 // Decodifica un blob PNG (o qualunque altro formato per cui esista un
 // translator installato) in una BBitmap pronta per DrawBitmap -- di
 // proprieta' del chiamante, che deve fare "delete". Nessuna cache:
@@ -3058,6 +3073,28 @@ void SheetView::Draw(BRect updateRect)
 	StrokeRect(selOuter);
 	StrokeRect(activeRect);
 	StrokeRect(activeRect.InsetByCopy(1, 1));
+
+	// Maniglia di riempimento automatico (Fase 29): stesso blu del
+	// riquadro di selezione appena sopra (non il grigio delle maniglie
+	// di ridimensionamento di immagini/grafici) apposta per legarla
+	// visivamente alla SELEZIONE, non a un oggetto incorporato. Sempre
+	// visibile (non solo al passaggio del mouse), stesso motivo gia'
+	// scritto per le altre maniglie di questo file.
+	FillRect(FillHandleRect());
+
+	// Anteprima del riempimento in corso (armata da MouseDown, vedi
+	// fAutoFilling): un riquadro tratteggiato (pattern B_MIXED_COLORS,
+	// alterna HighColor/LowColor pixel per pixel -- lo standard BeOS/
+	// Haiku per un bordo "in corso di trascinamento") sull'intervallo su
+	// cui MouseUp scrivera' i nuovi valori se il rilascio avviene qui.
+	if (fAutoFilling)
+	{
+		BRect previewRect = PinnedCellRect(fAutoFillPreviewRange.TopLeft())
+			| PinnedCellRect(fAutoFillPreviewRange.BotRight());
+		SetHighColor(30, 100, 200);
+		SetLowColor(255, 255, 255);
+		StrokeRect(previewRect, B_MIXED_COLORS);
+	}
 
 	// Intestazione di riga (numeri): "congelata" durante lo scroll
 	// orizzontale -- stessa tecnica e stessa richiesta dell'utente
@@ -3554,6 +3591,22 @@ void SheetView::MouseDown(BPoint where)
 		}
 	}
 
+	// Riempimento automatico (Fase 29): la maniglia in basso a destra
+	// della selezione e' un bersaglio piccolo e specifico, quindi va
+	// controllata PRIMA della selezione normale sotto -- stessa
+	// precedenza delle maniglie di ridimensionamento di immagini/
+	// grafici piu' sopra. Niente ciclo all'indietro qui: esiste al
+	// massimo UNA selezione (e quindi una sola maniglia) per volta.
+	if (FillHandleRect().Contains(where))
+	{
+		fAutoFilling = true;
+		fAutoFillSourceRange = SelectionRange();
+		fAutoFillPreviewRange = fAutoFillSourceRange;
+		fAutoFillDragStart = where;
+		SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+		return;
+	}
+
 	cell c = CellAt(where);
 
 	// AutoFilter: un clic sulla freccia a discesa dell'intestazione (non
@@ -3723,6 +3776,68 @@ void SheetView::MouseUp(BPoint where)
 		NotifyDocumentChanged();
 	}
 	fResizingImageIndex = -1;
+
+	// Riempimento automatico (Fase 29): se il trascinamento e' uscito
+	// davvero dalla selezione di partenza, applica GenerateAutoFillSequence
+	// colonna per colonna (riempimento verticale) o riga per riga
+	// (orizzontale) -- stessa iterazione indipendente per colonna/riga
+	// gia' usata da FillDown/FillRight sopra, solo con valori generati
+	// invece di duplicati. fAutoFillPreviewRange cresce SEMPRE su un solo
+	// asse rispetto a fAutoFillSourceRange (vedi MouseMoved), quindi i due
+	// casi sotto sono mutuamente esclusivi.
+	if (fAutoFilling)
+	{
+		range src = fAutoFillSourceRange;
+		range preview = fAutoFillPreviewRange;
+		if (fDoc && (preview.bottom > src.bottom || preview.right > src.right))
+		{
+			SaveUndoState(preview);
+
+			if (preview.bottom > src.bottom)
+			{
+				int count = preview.bottom - src.bottom;
+				for (int col = src.left; col <= src.right; col++)
+				{
+					std::vector<Value> sourceValues;
+					for (int row = src.top; row <= src.bottom; row++)
+					{
+						Value v;
+						fDoc->GetValue(cell(col, row), v);
+						sourceValues.push_back(v);
+					}
+					std::vector<Value> next = GenerateAutoFillSequence(sourceValues, count);
+					for (int i = 0; i < (int)next.size(); i++)
+						fDoc->NewCell(cell(col, src.bottom + 1 + i), next[i], NULL);
+				}
+			}
+			else
+			{
+				int count = preview.right - src.right;
+				for (int row = src.top; row <= src.bottom; row++)
+				{
+					std::vector<Value> sourceValues;
+					for (int col = src.left; col <= src.right; col++)
+					{
+						Value v;
+						fDoc->GetValue(cell(col, row), v);
+						sourceValues.push_back(v);
+					}
+					std::vector<Value> next = GenerateAutoFillSequence(sourceValues, count);
+					for (int i = 0; i < (int)next.size(); i++)
+						fDoc->NewCell(cell(src.right + 1 + i, row), next[i], NULL);
+				}
+			}
+
+			RecalculateOwningWorkbook();
+			Invalidate(CellRect(preview.TopLeft()) | CellRect(preview.BotRight()));
+			NotifySelectionChanged();
+			NotifyDocumentChanged();
+		}
+		else
+			Invalidate();
+	}
+	fAutoFilling = false;
+
 	BView::MouseUp(where);
 }
 
@@ -3756,6 +3871,34 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 			fPendingExportImageIndex = -1;
 			StartImageExportDrag(index);
 		}
+		return;
+	}
+
+	// Riempimento automatico in corso (armato da MouseDown tramite
+	// FillHandleRect): la direzione (orizzontale/verticale) si decide
+	// dinamicamente confrontando lo spostamento orizzontale/verticale
+	// dall'inizio del trascinamento -- una selezione larga e bassa si
+	// trascina naturalmente a destra, una stretta e alta in basso, ma
+	// nulla vieta all'utente di cambiare direzione a meta' strada.
+	// CellAt(where) (non RowAtY/ColumnAtX grezzi) tiene gia' conto delle
+	// bande congelate/dello scroll, stesso motivo per cui lo usa
+	// MouseDown per la selezione normale. fAutoFillPreviewRange e'
+	// SEMPRE ricalcolato da fAutoFillSourceRange (non accumulato), cosi'
+	// un rientro verso l'origine lo restringe di nuovo fino al minimo
+	// (la sola selezione di partenza), mai oltre.
+	if (fAutoFilling)
+	{
+		range preview = fAutoFillSourceRange;
+		cell c = CellAt(where);
+		float dx = where.x - fAutoFillDragStart.x;
+		float dy = where.y - fAutoFillDragStart.y;
+		if (std::fabs(dx) >= std::fabs(dy))
+			preview.right = std::max(fAutoFillSourceRange.right, c.h);
+		else
+			preview.bottom = std::max(fAutoFillSourceRange.bottom, c.v);
+		fAutoFillPreviewRange = preview;
+		ScrollToShowRect(PinnedCellRect(cell(preview.right, preview.bottom)));
+		Invalidate();
 		return;
 	}
 

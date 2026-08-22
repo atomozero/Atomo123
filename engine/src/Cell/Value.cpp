@@ -117,6 +117,23 @@ Value::Value(CellData& cd)
 	*this = cd;
 }
 
+// Fase 29: vedi il commento su questo costruttore in Value.h -- copia
+// PROFONDA (STRDUP) per un testo, esattamente come operator=(const
+// Value&) sotto, ma senza il suo Clear() iniziale, che presuppone un
+// oggetto GIA' costruito (qui "this" non lo e' ancora).
+Value::Value(const Value& other)
+{
+	fType = other.fType;
+	if (fType == eTextData)
+	{
+		fText = other.fText ? STRDUP(other.fText) : NULL;
+		fTextIsCopy = true;
+	}
+	else
+		fDouble = other.fDouble;
+	fRangeContainer = other.fRangeContainer;
+}
+
 Value::~Value()
 {
 	if (fType == eTextData && fText && fTextIsCopy)

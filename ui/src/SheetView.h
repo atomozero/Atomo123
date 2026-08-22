@@ -441,6 +441,17 @@ public:
 	// usato sia da Draw() per disegnarla sia da MouseDown per
 	// riconoscere il clic.
 	BRect ChartResizeHandle(const ChartObject& obj) const;
+	// Maniglia di riempimento automatico (Fase 29, richiesta esplicita
+	// dell'utente: "molti utenti mi chiedono il completamento
+	// automatico della celle come su excel"): stesso principio esatto
+	// di ImageResizeHandle/ChartResizeHandle sopra, un piccolo quadrato
+	// nell'angolo in basso a destra della selezione corrente (lo stesso
+	// selOuter gia' calcolato da Draw() per il riquadro blu di
+	// selezione) -- un solo posto per la formula, usato sia da Draw()
+	// per disegnarla sia da MouseDown per riconoscere il clic che avvia
+	// il trascinamento (vedi GenerateAutoFillSequence in AutoFill.h per
+	// la logica di riconoscimento della serie che MouseUp applica).
+	BRect FillHandleRect() const;
 	// Rettangolo della cella attiva, esteso a tutto l'intervallo se "c"
 	// e' l'angolo di una cella unita -- un solo posto per la formula,
 	// usato sia da Draw() per disegnare il riquadro di selezione sia da
@@ -622,6 +633,22 @@ private:
 	// per non confondere un trascinamento con un semplice movimento
 	// del mouse a bottone rilasciato.
 	bool fDragging;
+
+	// Riempimento automatico (Fase 29, maniglia in basso a destra della
+	// selezione, vedi FillHandleRect pubblico sopra): stesso schema
+	// esatto di fResizingImageIndex/fResizingChartIndex (indice unico
+	// sostituito da un semplice bool, dato che al massimo una sola
+	// selezione esiste per volta), ma qui non c'e' un frame di partenza
+	// da ricordare -- l'intervallo sorgente (fAutoFillSourceRange, la
+	// selezione com'era al MouseDown) e' gia' tutto cio' che serve per
+	// ricalcolare l'anteprima ad ogni MouseMoved. fAutoFillPreviewRange
+	// e' l'intervallo (sorgente incluso) su cui MouseUp scrivera' i
+	// nuovi valori se il trascinamento supera davvero il bordo della
+	// selezione di partenza.
+	bool fAutoFilling;
+	range fAutoFillSourceRange;
+	range fAutoFillPreviewRange;
+	BPoint fAutoFillDragStart;
 
 	// Vedi SaveUndoState/Undo/Redo: un'istantanea e' l'intervallo
 	// coinvolto piu' testo grezzo E CellStyle delle sole celle che

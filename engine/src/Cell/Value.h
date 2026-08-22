@@ -81,6 +81,21 @@ struct Value {
 	Value(bool b);
 	Value(time_t t);
 	Value(CellData& cd);
+	// Fase 29: senza questo, il costruttore di copia GENERATO DAL
+	// COMPILATORE copiava fText bit per bit (un puntatore, non una vera
+	// stringa) -- due Value con fType==eTextData e fTextIsCopy==true
+	// finivano per condividere lo STESSO blocco allocato, e ~Value()
+	// lo liberava due volte (un vero doppio-free, non solo teorico:
+	// scoperto mettendo Value dentro uno std::vector, che copia i suoi
+	// elementi in giro -- es. durante una riallocazione -- ogni volta
+	// che serve). operator=(const Value&) gia' faceva la copia
+	// profonda giusta (STRDUP), ma un operatore di assegnazione non
+	// costruisce mai un oggetto NUOVO da zero: serviva un costruttore
+	// di copia a parte, che qui NON puo' chiamare Clear() come fa
+	// operator= (Clear() legge fType/fText/fTextIsCopy assumendo che
+	// siano gia' validi, ma su un oggetto appena allocato sono ancora
+	// indefiniti).
+	Value(const Value& other);
 	~Value();
 
 	void operator+=(Value &);
