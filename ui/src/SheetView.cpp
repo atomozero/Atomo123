@@ -1696,6 +1696,14 @@ SheetView::UndoSnapshot SheetView::CaptureCondFormatSnapshot() const
 	return snap;
 }
 
+SheetView::UndoSnapshot SheetView::CaptureMergeSnapshot() const
+{
+	UndoSnapshot snap;
+	snap.isMergeSnapshot = true;
+	snap.mergedRangesBefore = fDoc->GetMergedRanges();
+	return snap;
+}
+
 void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 {
 	// Istantanea di un'immagine incorporata (vedi SaveImageUndoState),
@@ -1741,6 +1749,18 @@ void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 	if (snap.isCondFormatSnapshot)
 	{
 		fDoc->SetConditionalFormatRules(snap.condFormatBefore);
+		return;
+	}
+
+	// Istantanea di celle unite/divise: stesso principio esatto di
+	// isCondFormatSnapshot sopra, ma su fMergedRanges -- nessun modo di
+	// "aggiornare" un elenco esistente, va sostituito per intero.
+	if (snap.isMergeSnapshot)
+	{
+		fDoc->ClearMergedRanges();
+		for (size_t i = 0; i < snap.mergedRangesBefore.size(); i++)
+			fDoc->AddMergedRange(snap.mergedRangesBefore[i]);
+		RecalculateWrappedRowHeights();
 		return;
 	}
 
@@ -1814,6 +1834,15 @@ void SheetView::SaveCondFormatUndoState()
 		return;
 
 	fUndoStack.push_back(CaptureCondFormatSnapshot());
+	fRedoStack.clear();
+}
+
+void SheetView::SaveMergeUndoState()
+{
+	if (!fDoc)
+		return;
+
+	fUndoStack.push_back(CaptureMergeSnapshot());
 	fRedoStack.clear();
 }
 
@@ -1914,6 +1943,15 @@ void SheetView::Undo()
 		NotifyDocumentChanged();
 		return;
 	}
+	// Celle unite/divise: stesso scambio simmetrico dei due rami sopra.
+	if (toRestore.isMergeSnapshot)
+	{
+		fRedoStack.push_back(CaptureMergeSnapshot());
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
 
 	fRedoStack.push_back(CaptureSnapshot(toRestore.r));
 	ApplySnapshot(toRestore);
@@ -1995,6 +2033,15 @@ void SheetView::Redo()
 	if (toRestore.isCondFormatSnapshot)
 	{
 		fUndoStack.push_back(CaptureCondFormatSnapshot());
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+	// Celle unite/divise: vedi il commento nel ramo equivalente di Undo() sopra.
+	if (toRestore.isMergeSnapshot)
+	{
+		fUndoStack.push_back(CaptureMergeSnapshot());
 		ApplySnapshot(toRestore);
 		Invalidate();
 		NotifyDocumentChanged();

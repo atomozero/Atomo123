@@ -189,6 +189,10 @@ public:
 	// Chiamati PRIMA di mutare, come SaveUndoState(range) sopra.
 	void SaveValidationUndoState(range affected);
 	void SaveCondFormatUndoState();
+	// Da chiamare da MainWindow::MergeCells/UnmergeCells PRIMA di
+	// mutare CContainer::fMergedRanges -- stesso principio esatto di
+	// SaveCondFormatUndoState sopra.
+	void SaveMergeUndoState();
 	bool CanUndo() const { return !fUndoStack.empty(); }
 	bool CanRedo() const { return !fRedoStack.empty(); }
 	void Undo();
@@ -711,6 +715,15 @@ private:
 		// annullare vuol dire ripristinare l'elenco intero cosi' com'era.
 		bool isCondFormatSnapshot = false;
 		std::vector<ConditionalFormatRule> condFormatBefore;
+		// Celle unite/divise (Fase 29, richiesta esplicita dell'utente:
+		// "vorrei poter annullare l'unione della cella"): stesso identico
+		// principio di isCondFormatSnapshot sopra -- CContainer::
+		// fMergedRanges e' un elenco per FOGLIO, non un campo per cella,
+		// quindi annullare vuol dire ripristinare l'elenco intero
+		// com'era prima di MergeCells/UnmergeCells, non un singolo
+		// intervallo.
+		bool isMergeSnapshot = false;
+		std::vector<range> mergedRangesBefore;
 		// Cancellazione di un'immagine incorporata (DeleteSelectedImage):
 		// a differenza di imageIndex sopra (solo scarto/dimensione, per
 		// un'immagine che esiste ancora), qui serve l'INTERA
@@ -739,6 +752,7 @@ private:
 	UndoSnapshot CaptureChartSnapshot(int chartIndex) const;
 	UndoSnapshot CaptureImageDeleteSnapshot(int imageIndex) const;
 	UndoSnapshot CaptureChartDeleteSnapshot(int chartIndex) const;
+	UndoSnapshot CaptureMergeSnapshot() const;
 	// Imposta fSelectedImageIndex e invalida sia il vecchio che il
 	// nuovo riquadro di selezione (se diversi da -1) -- un solo posto
 	// per questa logica, usato da MouseDown sia per il ridimensionamento

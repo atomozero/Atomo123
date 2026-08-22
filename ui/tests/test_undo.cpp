@@ -226,6 +226,42 @@ int main()
 	Check(doc->GetConditionalFormatRules().size() == 1,
 		"Ripeti dopo l'annullamento la riaggiunge");
 
+	// Celle unite: SaveMergeUndoState() prima della modifica, come
+	// MainWindow::MergeCells/UnmergeCells -- richiesta esplicita
+	// dell'utente ("vorrei poter annullare l'unione della cella"),
+	// prima non era affatto annullabile (limite noto, documentato nel
+	// codice fino a questa correzione).
+	view->Undo(); // torna a "nessuna regola condizionale" per non sporcare CanUndo() sotto
+	while (view->CanRedo())
+		view->Redo();
+
+	Check(doc->GetMergedRanges().empty(),
+		"nessun intervallo unito prima del test di unione celle");
+
+	view->SaveMergeUndoState();
+	doc->AddMergedRange(range(1, 5, 3, 5)); // A5:C5
+	Check(doc->GetMergedRanges().size() == 1,
+		"l'unione di A5:C5 e' stata applicata");
+
+	view->Undo();
+	Check(doc->GetMergedRanges().empty(),
+		"Annulla dopo l'unione di celle la toglie di nuovo");
+
+	view->Redo();
+	Check(doc->GetMergedRanges().size() == 1,
+		"Ripeti dopo l'annullamento la riapplica");
+
+	// Dividere le celle unite e' una mutazione distinta (UnmergeCells
+	// chiama SaveMergeUndoState() a parte, non riusa quella sopra):
+	// deve essere annullabile a sua volta, tornando all'unione.
+	view->SaveMergeUndoState();
+	doc->ClearMergedRanges();
+	Check(doc->GetMergedRanges().empty(), "la divisione delle celle svuota l'elenco");
+
+	view->Undo();
+	Check(doc->GetMergedRanges().size() == 1,
+		"Annulla dopo la divisione delle celle ripristina l'unione A5:C5");
+
 	while (view->CanUndo())
 		view->Undo();
 

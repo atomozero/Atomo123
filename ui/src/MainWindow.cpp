@@ -3172,14 +3172,13 @@ static std::vector<range> RemoveOverlappingMerges(const std::vector<range>& exis
 // una finestra di conferma dedicata -- Dividi celle lo farebbe
 // ricomparire.
 //
-// Non ancora annullabile con Annulla/Ripeti (a differenza delle
-// funzioni di formattazione sopra, corrette per lo stesso motivo):
-// GetMergedRanges/AddMergedRange sono per foglio, non per cella, e non
-// rientrano nel formato di UndoSnapshot (SheetView.h) -- includerli
-// li' richiederebbe salvare l'intero elenco a ogni istantanea, con il
-// rischio concreto di annullare anche unioni successive scorrelate
-// quando si annulla un'altra modifica nel frattempo. Limite noto,
-// lasciato esplicito qui invece di un mezzo fix silenzioso.
+// Annullabile con Annulla/Ripeti (Fase 29, richiesta esplicita
+// dell'utente: "vorrei poter annullare l'unione della cella") tramite
+// SheetView::SaveMergeUndoState, che cattura l'INTERO elenco
+// GetMergedRanges() prima della mutazione -- stesso principio di
+// SaveCondFormatUndoState, dato che fMergedRanges e' per foglio, non
+// per cella, e non rientra nel formato denso di UndoSnapshot usato per
+// le celle.
 void MainWindow::MergeCells()
 {
 	if (!fDoc)
@@ -3188,6 +3187,8 @@ void MainWindow::MergeCells()
 	range sel = fSheetView->SelectionRange();
 	if (sel.left == sel.right && sel.top == sel.bottom)
 		return;
+
+	fSheetView->SaveMergeUndoState();
 
 	std::vector<range> kept = RemoveOverlappingMerges(fDoc->GetMergedRanges(), sel);
 	fDoc->ClearMergedRanges();
@@ -3204,6 +3205,8 @@ void MainWindow::UnmergeCells()
 {
 	if (!fDoc)
 		return;
+
+	fSheetView->SaveMergeUndoState();
 
 	range sel = fSheetView->SelectionRange();
 	std::vector<range> kept = RemoveOverlappingMerges(fDoc->GetMergedRanges(), sel);
