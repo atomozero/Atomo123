@@ -44,8 +44,11 @@ formatting.
 
 Not currently planned (large, self-contained efforts, no library or
 existing code to build on):
-- **Advanced pivot tables** — current implementation is intentionally
-  minimal (one grouping level, Sum/Count/Average only)
+- **Full pivot tables** — multi-level grouping and Sum/Count/Average/
+  Min/Max are done (see below); still no Excel-style "Columns" field
+  (a second pivot axis) or multiple simultaneous measures, both would
+  need a real 2D output layout, not an incremental change to the
+  current flat-list one
 - **Array formulas** (spill ranges) — touches the engine's evaluation
   model, not an incremental change
 - **Goal Seek / Solver** — needs a new iterative numeric solver
@@ -290,6 +293,12 @@ Since v0.2.0 (not yet in a tagged release):
   directly from `CContainer` data (no borders, merged cells, or text
   wrap — a deliberate simplification, not pixel parity with the real
   print output)
+- Pivot tables now support multi-level grouping (more than one
+  category column — the last column stays the value; grouping happens
+  on the combination of all category columns) and two new
+  aggregations, Min/Max, alongside Sum/Count/Average. Still a flat
+  output list, not a real 2D pivot layout (see "Not currently planned"
+  below)
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
