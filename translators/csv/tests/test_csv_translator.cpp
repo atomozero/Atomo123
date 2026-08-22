@@ -37,7 +37,18 @@ int main()
 	BTranslator *translator = make_nth_translator(0, 0, 0);
 	Check(translator != NULL, "make_nth_translator crea il translator");
 
-	const char *sampleCsv = "10,60\n20,\nCiao,\n";
+	// "P-EL-a" e' il testo ambiguo reale che ha corrotto XLSX in una
+	// formula NaN (vedi commit 670425b, "P-EL-a"/"P-EL-b" da una
+	// tabella strutturata reale, colonna Codice): tre nomi non
+	// definiti concatenati da un "meno" sono sintatticamente
+	// un'espressione valida per un parser di formule completo. CSV
+	// passa invece da CTextConverter::ConvertFromText
+	// (engine/src/FileSys/Text2Cells.cpp), che scandisce un solo
+	// token (CParser::ScanFirstToken) e ripiega sul testo intero non
+	// appena resta qualcosa dopo quel token -- diverso dal bug XLSX
+	// (che passava per Parse(), un'analisi completa dell'espressione)
+	// per costruzione, ma verificato qui piuttosto che assunto.
+	const char *sampleCsv = "10,60\n20,\nCiao,\nP-EL-a,\n";
 	BMemoryIO csvIn(sampleCsv, strlen(sampleCsv));
 
 	translator_info csvInfo;
@@ -79,6 +90,10 @@ int main()
 	Check(strstr(result, "10") != NULL, "il round-trip contiene il valore 10");
 	Check(strstr(result, "20") != NULL, "il round-trip contiene il valore 20");
 	Check(strstr(result, "Ciao") != NULL, "il round-trip contiene il testo Ciao");
+	Check(strstr(result, "P-EL-a") != NULL,
+		"\"P-EL-a\" sopravvive letterale al giro CSV -> ASCD -> CSV, non sparisce");
+	Check(strstr(result, "NaN") == NULL,
+		"\"P-EL-a\" non e' MAI diventato una formula che calcola NaN (bug reale gia' corretto per XLSX)");
 
 	// Identify non deve accettare contenuto binario come "forse CSV"
 	// (bug reale scoperto verificando le immagini incorporate del

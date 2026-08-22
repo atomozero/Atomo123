@@ -44,13 +44,19 @@
 static int gFailures = 0;
 
 // Scrive un flusso ASCD a mano (stesso formato di WriteASCD in
-// OdsTranslator.cpp, che pero' e' privata a quel file): serve solo a
-// costruire un sorgente di prova per il test di export sotto, senza
-// passare dalla vera GUI.
+// OdsTranslator.cpp, che pero' e' privata a quel file, VERSIONE 2 col
+// byte "kind" per cella): serve solo a costruire un sorgente di prova
+// per il test di export sotto, senza passare dalla vera GUI -- scrive
+// v2, non v1, perche' e' quello che manda davvero MainWindow::SaveToFile
+// (tramite ui/src/AscdIO.cpp, gia' v2): un test che scrivesse ancora
+// v1 non eserciterebbe il percorso reale, e nasconderebbe silenziosamente
+// il bug del testo ambiguo (vedi il commento su kASCDVersion in
+// OdsTranslator.cpp) invece di verificarlo.
 static status_t WriteASCDForTest(CContainer *doc, BPositionIO *dest)
 {
 	static const char kMagic[4] = { 'A', 'S', 'C', 'D' };
-	static const int32 kVersion = 1;
+	static const int32 kVersion = 2;
+	enum { kKindFormula = 0, kKindLiteralOther = 1, kKindLiteralText = 2 };
 
 	range bounds;
 	doc->GetBounds(bounds);
@@ -77,11 +83,23 @@ static status_t WriteASCDForTest(CContainer *doc, BPositionIO *dest)
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);
 
+		uint8 kind;
+		if (doc->GetCellFormula(c) != NULL)
+			kind = kKindFormula;
+		else
+		{
+			Value v;
+			doc->GetValue(c, v);
+			kind = (v.fType == eTextData) ? kKindLiteralText : kKindLiteralOther;
+		}
+
 		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
 			return B_IO_ERROR;
 		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
 			return B_IO_ERROR;
 		if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (dest->Write(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
 			return B_IO_ERROR;
 		if (len > 0 && dest->Write(text, len) != len)
 			return B_IO_ERROR;
@@ -175,6 +193,7 @@ int main()
 			memcpy(&row, ascdData + pos, 2); pos += 2;
 			memcpy(&col, ascdData + pos, 2); pos += 2;
 			memcpy(&len, ascdData + pos, 4); pos += 4;
+			pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi OdsTranslator.cpp)
 			if (pos + len > ascdLen)
 				break;
 
@@ -233,6 +252,19 @@ int main()
 		TryToParseString("8", cell(2, 1), &exportDoc, true);    // B1 = 8
 		TryToParseString("=A1+B1", cell(3, 1), &exportDoc, true); // C1 = 20
 		TryToParseString("Prova export", cell(1, 2), &exportDoc, true); // A2
+		// A3 = "P-EL-a" (Fase 29): stesso testo ambiguo reale gia'
+		// corretto per XLSX/CSV (commit 670425b e vedi il commento su
+		// kASCDVersion in OdsTranslator.cpp) -- tre nomi non definiti
+		// concatenati da un "meno", sintatticamente un'espressione
+		// valida per un parser completo. NewCell diretto, non
+		// TryToParseString: quest'ultima e' la stessa funzione che
+		// interpreta un testo cosi' come formula quando l'utente lo
+		// digita davvero nella barra della formula (comportamento
+		// storico voluto, non il bug) -- qui serve invece simulare un
+		// valore GIA' importato come testo letterale (esattamente cosa
+		// scrive ReadASCD per kind=kAscdCellLiteralText), lo scenario
+		// che il fix di questo file riguarda davvero.
+		exportDoc.NewCell(cell(1, 3), Value("P-EL-a"), NULL); // A3
 		exportDoc.CalcCell(cell(3, 1));
 
 		BMallocIO ascdIn;
@@ -279,7 +311,7 @@ int main()
 			int32 cnt;
 			memcpy(&cnt, data + 8, 4);
 
-			bool reA1 = false, reB1 = false, reC1Formula = false, reA2 = false;
+			bool reA1 = false, reB1 = false, reC1Formula = false, reA2 = false, reA3 = false;
 			for (int32 i = 0; i < cnt && pos + 8 <= len; i++)
 			{
 				int16 row, col;
@@ -287,6 +319,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&tlen, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi OdsTranslator.cpp)
 				if (pos + tlen > len)
 					break;
 				std::string text((const char *)data + pos, tlen);
@@ -302,6 +335,7 @@ int main()
 						&& text.find("B1") != std::string::npos)
 					reC1Formula = true;
 				if (row == 2 && col == 1 && text == "Prova export") reA2 = true;
+				if (row == 3 && col == 1 && text == "P-EL-a") reA3 = true;
 			}
 
 			Check(reA1, "dopo il round-trip, A1 vale ancora 12");
@@ -310,6 +344,8 @@ int main()
 				"dopo il round-trip, C1 (era una formula) e' sopravvissuta come formula viva "
 				"(A1+B1), non appiattita al suo valore calcolato (20)");
 			Check(reA2, "dopo il round-trip, A2 vale ancora \"Prova export\"");
+			Check(reA3, "dopo il round-trip, A3 (\"P-EL-a\", testo ambiguo) e' ancora testo "
+				"letterale, non e' diventato una formula che calcola NaN");
 		}
 	}
 
@@ -375,6 +411,7 @@ int main()
 				memcpy(&row, xrefData + xrefPos, 2); xrefPos += 2;
 				memcpy(&col, xrefData + xrefPos, 2); xrefPos += 2;
 				memcpy(&tlen, xrefData + xrefPos, 4); xrefPos += 4;
+				xrefPos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi OdsTranslator.cpp)
 				if (xrefPos + tlen > xrefLen)
 					break;
 				std::string text((const char *)xrefData + xrefPos, tlen);
@@ -464,6 +501,7 @@ int main()
 				memcpy(&row, sepData + sepPos, 2); sepPos += 2;
 				memcpy(&col, sepData + sepPos, 2); sepPos += 2;
 				memcpy(&tlen, sepData + sepPos, 4); sepPos += 4;
+				sepPos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi OdsTranslator.cpp)
 				if (sepPos + tlen > sepLen)
 					break;
 				std::string text((const char *)sepData + sepPos, tlen);

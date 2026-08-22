@@ -55,16 +55,30 @@ static const translation_format sOutputFormats[] = {
 };
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
-static const int32 kASCDVersion = 1;
+// Versione 2 (era 1): aggiunge un byte "kind" per cella -- vedi il
+// commento su kASCDVersion in ui/src/AscdIO.cpp e nello stesso punto
+// di translators/xlsx/XlsxTranslator.cpp (dove il bug gemello e' gia'
+// stato corretto, commit 670425b). Senza questo byte, un valore testo
+// AMBIGUO (es. "P-EL-a": tre nomi non definiti concatenati da un
+// "meno", sintatticamente un'espressione valida) sopravviveva
+// all'importazione CSV in memoria ma tornava a corrompersi in una
+// formula che calcola NaN non appena WriteASCD lo serializzava e
+// ReadASCD lo rileggeva -- il testo grezzo da solo non basta a
+// distinguere "era gia' una formula" da "era solo testo che ASSOMIGLIA
+// a una formula". Bug reale confermato con un test dedicato
+// (tests/test_csv_translator.cpp) prima di questo fix: il testo
+// spariva del tutto dal CSV ri-esportato, sostituito dal risultato
+// (NaN/errore) della formula spuria.
+static const int32 kASCDVersion = 2;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 
 // Scrive in "dest" tutte le celle non vuote di "doc" nel formato ASCD:
 // magic(4) + versione(int32) + numero celle(int32), poi per ciascuna
-// cella: riga(int16) colonna(int16) lunghezza testo(int32) testo.
-// Il testo è quanto restituito da GetCellFormula: la formula con "="
-// se presente, altrimenti il valore formattato — cosi' una formula
-// sopravvive al round-trip nativo (a differenza dell'export CSV, dove
-// e' corretto che venga "appiattita" al valore calcolato).
+// cella: riga(int16) colonna(int16) lunghezza testo(int32) kind(uint8)
+// testo. Il testo e' quanto restituito da GetCellFormula: la formula
+// con "=" se presente, altrimenti il valore formattato — cosi' una
+// formula sopravvive al round-trip nativo (a differenza dell'export
+// CSV, dove e' corretto che venga "appiattita" al valore calcolato).
 static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
@@ -94,11 +108,29 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);
 
+		// "kind": vedi il commento su kASCDVersion sopra -- senza
+		// questo byte, un valore testo AMBIGUO importato da CSV (es.
+		// "P-EL-a") sopravviveva in memoria ma tornava a corrompersi
+		// in una formula NaN al primo giro salva/ricarica ASCD, perche'
+		// ReadASCD (sotto) non ha modo di distinguerlo da una vera
+		// formula guardando solo il testo.
+		uint8 kind;
+		if (doc->GetCellFormula(c) != NULL)
+			kind = kAscdCellFormula;
+		else
+		{
+			Value v;
+			doc->GetValue(c, v);
+			kind = (v.fType == eTextData) ? kAscdCellLiteralText : kAscdCellLiteralOther;
+		}
+
 		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
 			return B_IO_ERROR;
 		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
 			return B_IO_ERROR;
 		if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (dest->Write(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
 			return B_IO_ERROR;
 		if (len > 0 && dest->Write(text, len) != len)
 			return B_IO_ERROR;
@@ -121,18 +153,17 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	// WriteASCD sopra scrive ancora solo versione 1 (kASCDVersion),
-	// ma la LETTURA deve accettare anche la versione 2 vera (con il
-	// byte "kind" per cella) che ui/src/AscdIO.cpp scrive sempre --
-	// kASCDMaxReadableVersion e' percio' un limite SEPARATO da
-	// kASCDVersion, non lo stesso valore: confondendoli (come nel
-	// primo tentativo di questo fix, "version != 1 && version !=
-	// kASCDVersion" con kASCDVersion=1 equivale a "version != 1",
-	// accettando SOLO la versione 1) l'export verso questo formato
-	// avrebbe continuato a fallire con B_MISMATCHED_VALUES per
-	// qualunque documento reale, non solo quelli con una formula. Bug
-	// reale scoperto collegando davvero il salvataggio CSV al vero
-	// documento (MainWindow::SaveToFile, prima non ci arrivava mai).
+	// WriteASCD sopra scrive ormai sempre versione 2 (kASCDVersion, col
+	// byte "kind" per cella -- vedi il commento li'), ma un file .ascd
+	// piu' vecchio scritto da una versione precedente di questo stesso
+	// translator (o comunque un flusso genuinamente v1, senza quel
+	// byte) resta comunque leggibile: kASCDMaxReadableVersion e' un
+	// limite SEPARATO da kASCDVersion apposta, non lo stesso valore
+	// (confonderli, come nel primo tentativo di questo fix, "version
+	// != 1 && version != kASCDVersion" con kASCDVersion=1 equivalente
+	// a "version != 1", avrebbe accettato SOLO la versione 1, facendo
+	// fallire l'export verso questo formato con B_MISMATCHED_VALUES
+	// per qualunque documento reale scritto dalla nuova WriteASCD).
 	static const int32 kASCDMaxReadableVersion = 2;
 	if (version < 1 || version > kASCDMaxReadableVersion)
 		return B_MISMATCHED_VALUES;

@@ -58,7 +58,11 @@ static const translation_format sOutputFormats[] = {
 };
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
-static const int32 kASCDVersion = 1;
+// Versione 2 (era 1): aggiunge un byte "kind" per cella -- stesso bug
+// gemello e stessa correzione di translators/csv/CsvTranslator.cpp
+// (vedi il commento completo li'), qui perche' questo translator ha la
+// sua stessa, separata implementazione di WriteASCD/ReadASCD.
+static const int32 kASCDVersion = 2;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 
 // Stessa serializzazione ASCD degli altri translator (vedi
@@ -92,11 +96,24 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest)
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);
 
+		// "kind": vedi il commento su kASCDVersion sopra.
+		uint8 kind;
+		if (doc->GetCellFormula(c) != NULL)
+			kind = kAscdCellFormula;
+		else
+		{
+			Value v;
+			doc->GetValue(c, v);
+			kind = (v.fType == eTextData) ? kAscdCellLiteralText : kAscdCellLiteralOther;
+		}
+
 		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
 			return B_IO_ERROR;
 		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
 			return B_IO_ERROR;
 		if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (dest->Write(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
 			return B_IO_ERROR;
 		if (len > 0 && dest->Write(text, len) != len)
 			return B_IO_ERROR;
@@ -120,18 +137,11 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	// WriteASCD sopra scrive ancora solo versione 1 (kASCDVersion),
-	// ma la LETTURA deve accettare anche la versione 2 vera (con il
-	// byte "kind" per cella) che ui/src/AscdIO.cpp scrive sempre --
-	// kASCDMaxReadableVersion e' percio' un limite SEPARATO da
-	// kASCDVersion, non lo stesso valore: confondendoli (come nel
-	// primo tentativo di questo fix, "version != 1 && version !=
-	// kASCDVersion" con kASCDVersion=1 equivale a "version != 1",
-	// accettando SOLO la versione 1) l'export verso questo formato
-	// avrebbe continuato a fallire con B_MISMATCHED_VALUES per
-	// qualunque documento reale, non solo quelli con una formula. Bug
-	// reale scoperto collegando davvero il salvataggio ODS al vero
-	// documento (MainWindow::SaveToFile, prima non ci arrivava mai).
+	// WriteASCD sopra scrive ormai sempre versione 2 (kASCDVersion, col
+	// byte "kind" per cella), ma un file .ascd piu' vecchio (versione 1
+	// genuina, senza quel byte) resta comunque leggibile:
+	// kASCDMaxReadableVersion e' un limite SEPARATO da kASCDVersion
+	// apposta, non lo stesso valore.
 	static const int32 kASCDMaxReadableVersion = 2;
 	if (version < 1 || version > kASCDMaxReadableVersion)
 		return B_MISMATCHED_VALUES;
@@ -496,28 +506,58 @@ static void ImportCell(SheetContext* ctx)
 	if (ctx->curCol <= 0 || ctx->curRow <= 0)
 		return;
 
-	std::string text;
-	if (!ctx->formula.empty())
-		text = "=" + ConvertODFFormula(ctx->formula);
-	else if (ctx->valueType == "string")
-		text = ctx->textContent;
-	else if (!ctx->value.empty())
-		text = ctx->value;
-	else if (!ctx->textContent.empty())
-		text = ctx->textContent; // fallback: valore solo come testo visualizzato
+	cell loc(ctx->curCol, ctx->curRow);
 
+	if (!ctx->formula.empty())
+	{
+		// Vera formula (table:formula presente sulla cella): questa SI
+		// passa per TryToParseString/Parse(), che deve interpretare
+		// l'espressione ODF convertita.
+		std::string text = "=" + ConvertODFFormula(ctx->formula);
+		try
+		{
+			TryToParseString(text.c_str(), loc, ctx->doc, false);
+		}
+		catch (...)
+		{
+			// Una singola cella non importabile non deve far fallire
+			// l'intero documento: viene semplicemente saltata.
+		}
+		return;
+	}
+
+	// Nessuna formula su questa cella: un valore di tipo STRINGA
+	// (office:value-type="string", o nessun tipo esplicito con solo
+	// testo visualizzato come ripiego) non passa MAI per
+	// TryToParseString/Parse(), che tenterebbe di interpretarlo come
+	// un'espressione qualunque anche senza "=" iniziale -- bug reale
+	// gia' corretto per XLSX (commit 670425b): un testo come "P-EL-a"
+	// (tre nomi non definiti concatenati da un "meno") e'
+	// sintatticamente un'espressione valida, e Parse() lo trasformava
+	// in una formula viva che calcola NaN, corrompendo silenziosamente
+	// il testo importato. I tipi numerico/booleano/data (office:value
+	// e' gia' un valore grezzo non ambiguo, es. "15") restano invece
+	// su TryToParseString come prima: nessuna stringa del genere
+	// risulta mai ambigua allo stesso modo.
+	if (ctx->valueType == "string" || (ctx->valueType.empty() && ctx->value.empty()))
+	{
+		std::string text = !ctx->textContent.empty() ? ctx->textContent : ctx->value;
+		if (text.empty())
+			return;
+		ctx->doc->NewCell(loc, Value(text.c_str()), NULL);
+		return;
+	}
+
+	std::string text = !ctx->value.empty() ? ctx->value : ctx->textContent;
 	if (text.empty())
 		return;
 
-	cell loc(ctx->curCol, ctx->curRow);
 	try
 	{
 		TryToParseString(text.c_str(), loc, ctx->doc, false);
 	}
 	catch (...)
 	{
-		// Una singola cella non importabile non deve far fallire
-		// l'intero documento: viene semplicemente saltata.
 	}
 }
 

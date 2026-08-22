@@ -130,34 +130,57 @@ int main()
 
 			bool foundA1 = false, foundB1 = false, foundA2 = false, foundA3 = false,
 				foundB2 = false, foundA4Long = false;
+			bool a1KindIsLiteralText = false, b2KindIsNotText = false;
 			size_t pos = 12;
-			for (int32 i = 0; i < count && pos + 8 <= len; i++)
+			for (int32 i = 0; i < count && pos + 9 <= len; i++)
 			{
 				short row, col;
 				int32 l;
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				// "kind" per cella (Fase 29, versione 2 del formato
+				// ASCD, vedi il commento su kASCDVersion in
+				// XlsTranslator.cpp): 2 = testo letterale, mai
+				// ripassato per TryToParseString/Parse() da
+				// ui/src/AscdIO.cpp::LoadASCD quando l'app apre questo
+				// stesso flusso -- catturato qui (non solo saltato con
+				// pos += 1 come nei loop sotto) per verificare
+				// esplicitamente che WriteASCD lo scriva davvero.
+				unsigned char kind = data[pos];
+				pos += 1;
 				if (pos + (size_t)l > len)
 					break;
 				std::string text((const char *)data + pos, l);
 				pos += l;
 
-				if (row == 1 && col == 1 && text == "Ciao mondo") foundA1 = true;
+				if (row == 1 && col == 1 && text == "Ciao mondo")
+				{
+					foundA1 = true;
+					a1KindIsLiteralText = (kind == 2);
+				}
 				if (row == 1 && col == 2 && text == "Seconda stringa") foundB1 = true;
 				if (row == 2 && col == 1 && text == "Ripetuta") foundA2 = true;
 				if (row == 3 && col == 1 && text == "Ripetuta") foundA3 = true;
-				if (row == 2 && col == 2 && text == "42") foundB2 = true;
+				if (row == 2 && col == 2 && text == "42")
+				{
+					foundB2 = true;
+					b2KindIsNotText = (kind != 2);
+				}
 				if (row == 4 && col == 1 && text.size() > 250
 					&& text.compare(0, 13, "Testo lungo: ") == 0)
 					foundA4Long = true;
 			}
 
 			Check(foundA1, "A1 (\"Ciao mondo\", SST/LABELSST) importato correttamente");
+			Check(a1KindIsLiteralText,
+				"A1 e' scritta con kind=2 (testo letterale, Fase 29) -- LoadASCD non la ripassera' "
+				"MAI per TryToParseString/Parse(), anche se il testo assomigliasse a una formula");
 			Check(foundB1, "B1 (\"Seconda stringa\", SST/LABELSST) importato correttamente");
 			Check(foundA2 && foundA3,
 				"A2/A3 (stessa stringa \"Ripetuta\", una sola voce SST) importate in entrambe le celle");
 			Check(foundB2, "B2 (42, numero puro, non SST) resta un numero, non tocca fSST");
+			Check(b2KindIsNotText, "B2 (42, un numero) NON e' scritta con kind=2 (testo letterale)");
 			Check(foundA4Long, "A4 (stringa lunga oltre 250 caratteri) importata per intero, non troncata");
 		}
 	}
@@ -202,6 +225,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len)
 					break;
 				got.insert(std::string((const char *)data + pos, l));
@@ -260,6 +284,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len)
 					break;
 				std::string text((const char *)data + pos, l);
@@ -321,6 +346,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len)
 					break;
 				std::string text((const char *)data + pos, l);
@@ -382,6 +408,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len)
 					break;
 				std::string text((const char *)data + pos, l);
@@ -438,6 +465,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}
@@ -544,6 +572,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}
@@ -611,6 +640,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}
@@ -722,6 +752,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}
@@ -821,6 +852,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}
@@ -919,6 +951,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}
@@ -1000,6 +1033,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}
@@ -1075,6 +1109,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}
@@ -1148,6 +1183,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}
@@ -1223,6 +1259,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len)
 					break;
 				std::string text((const char *)data + pos, l);
@@ -1284,6 +1321,7 @@ int main()
 				memcpy(&row, data + pos, 2); pos += 2;
 				memcpy(&col, data + pos, 2); pos += 2;
 				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD, vedi XlsTranslator.cpp)
 				if (pos + (size_t)l > len) break;
 				pos += l;
 			}

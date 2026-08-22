@@ -55,7 +55,23 @@ static const unsigned char kOLE2Signature[8] =
 	{ 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 };
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
-static const int32 kASCDVersion = 1;
+// Versione 2 (era 1): aggiunge un byte "kind" per cella -- stesso bug
+// gemello e stessa correzione di translators/csv/CsvTranslator.cpp e
+// translators/ods/OdsTranslator.cpp (vedi il commento completo su
+// kASCDVersion li'). XLS non ha una propria ReadASCD (e' un translator
+// SOLO import, vedi ROADMAP.md "Legacy XLS writing"): il rischio qui
+// non e' un round-trip interno a questo translator, ma il confine con
+// l'app -- MainWindow apre un file .xls tramite ui/src/AscdIO.cpp::
+// LoadASCD, che (gia' v2-consapevole) tratta OGNI cella di un flusso
+// v1 come se fosse una formula da ripassare per TryToParseString/
+// Parse(), anche se CExcel5Filter (Excel.pass1/pass2.cpp) aveva GIA'
+// determinato correttamente che si trattava di un valore testo
+// letterale scrivendolo con NewCell/SetValue diretti, mai
+// TryToParseString -- l'ambiguita' che quel codice evita dentro
+// questo processo si ripresentava comunque appena il valore veniva
+// serializzato in ASCD v1 e riletto dall'app.
+static const int32 kASCDVersion = 2;
+enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 
 // Stessa serializzazione ASCD del translator CSV (vedi
 // translators/csv/CsvTranslator.cpp per la descrizione completa):
@@ -97,11 +113,24 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		int16 row = c.v, col = c.h;
 		int32 len = strlen(text);
 
+		// "kind": vedi il commento su kASCDVersion sopra.
+		uint8 kind;
+		if (doc->GetCellFormula(c) != NULL)
+			kind = kAscdCellFormula;
+		else
+		{
+			Value v;
+			doc->GetValue(c, v);
+			kind = (v.fType == eTextData) ? kAscdCellLiteralText : kAscdCellLiteralOther;
+		}
+
 		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
 			return B_IO_ERROR;
 		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
 			return B_IO_ERROR;
 		if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (dest->Write(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
 			return B_IO_ERROR;
 		if (len > 0 && dest->Write(text, len) != len)
 			return B_IO_ERROR;
