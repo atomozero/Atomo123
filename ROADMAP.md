@@ -299,22 +299,36 @@ Since v0.2.0 (not yet in a tagged release):
   aggregations, Min/Max, alongside Sum/Count/Average. Still a flat
   output list, not a real 2D pivot layout (see "Not currently planned"
   below)
+- The ambiguous-text-becomes-a-NaN-formula bug (fixed for XLSX/ASCD
+  earlier, commit 670425b) is now fixed for CSV, ODS and XLS too — a
+  text value like "P-EL-a" (several undefined names joined by "-",
+  syntactically a valid expression) no longer risks being silently
+  reparsed into a live formula on import or through the native ASCD
+  round-trip. Two distinct causes, both real: CSV/ODS/XLS's own
+  internal ASCD bridge only ever *wrote* the older 1-byte-shorter
+  format (no per-cell formula/literal marker) even though the reader
+  side already understood the newer one; ODS's real XML import
+  additionally ran every formula-less cell value through the same
+  general-purpose expression parser XLSX used to. XLS's legacy BIFF
+  importer never had this problem (it already writes typed values
+  directly) — only its ASCD bridge needed the fix
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
 Two planned major versions, not yet started beyond the print work above:
 
 **v3.0** — remaining items: array formulas (spill ranges — the largest
-single item, touches the engine's evaluation model), pivot table
-improvements (multi-level grouping, more aggregations), translator
-parity gaps (ambiguous-text fix confirmed only on XLSX/ASCD; XLS has
-no export path; only XLSX has live-formula export), and identifying a
-proper per-file-type icon set from the HVIF store (www.hvif-store.art)
-— the app currently uses generic/placeholder icons for its own file
-type(s) in Tracker, not distinct icons per format the way Excel/Calc
-distinguish .xlsx/.csv/.ods at a glance. The "functions still missing
-versus Excel" item is done (30 functions across five batches), and so
-is the print settings backlog (margins/scale/print area, see above).
+single item, touches the engine's evaluation model), extending
+live-formula export beyond XLSX (only XLSX writes live formulas today;
+XLS has no export path at all, deliberately — see "Not currently
+planned" below), and identifying a proper per-file-type icon set from
+the HVIF store (www.hvif-store.art) — the app currently uses
+generic/placeholder icons for its own file type(s) in Tracker, not
+distinct icons per format the way Excel/Calc distinguish
+.xlsx/.csv/.ods at a glance. The "functions still missing versus
+Excel" item is done (30 functions across five batches), and so is the
+print settings backlog (margins/scale/print area) and the ambiguous-text
+translator parity gap (see above for both).
 
 **v4.0** — scripting: expose the app to Haiku's native BHandler/
 BMessage scripting protocol, with macro execution provided by an
