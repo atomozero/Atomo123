@@ -25,7 +25,9 @@
 #include "Chart.h"
 #include "ColorWindow.h"
 #include "Container.h"
+#include "PrintLayout.h"
 
+class BBitmap;
 class BFilePanel;
 class BMessageRunner;
 class BScrollBar;
@@ -282,6 +284,11 @@ public:
 	// differenza dell'area di stampa sotto, che invece e' per-foglio),
 	// PrintDocument le rilegge da li' ogni volta che stampa davvero.
 	void HandlePageSetupRequest(double marginTop, double marginBottom, double marginLeft,
+		double marginRight, int scaleMode, double scalePercent);
+	// Anteprima (Fase 28): stessi sei parametri, ma NON scritti in
+	// gPrefs -- rigenera solo le bitmap di anteprima e le manda a
+	// fPageSetupWindow, vedi GeneratePrintPreviewPages.
+	void HandlePageSetupPreviewRequest(double marginTop, double marginBottom, double marginLeft,
 		double marginRight, int scaleMode, double scalePercent);
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
@@ -588,6 +595,35 @@ private:
 	void SaveToFile(const entry_ref& dir, const char* name);
 	void DeleteSelection();
 	void PrintDocument();
+	// Area di stampa del foglio ATTIVO (selezione scelta dall'utente,
+	// vedi SetPrintArea, o tutto il contenuto) -- condivisa fra
+	// ComputePrintJobLayoutForActiveSheet e GeneratePrintPreviewPages
+	// sotto, cosi' anteprima e stampa vera scelgono sempre la STESSA
+	// area.
+	BRect ActivePrintContentRect();
+	// Layout della stampa vera (Fase 27/28): legge margini/scala GIA'
+	// applicati da gPrefs -- usato solo da PrintDocument, che stampa
+	// sempre le impostazioni correnti, mai quelle ancora in modifica
+	// in "Imposta pagina" (vedi GeneratePrintPreviewPages sotto per
+	// quelle). Delega il calcolo vero e proprio a ComputePrintJobLayout
+	// (PrintLayout.h) -- unica fonte di verita' condivisa con
+	// l'anteprima, un'incongruenza fra le due produrrebbe un'anteprima
+	// che non corrisponde a quello che viene davvero stampato.
+	PrintJobLayout ComputePrintJobLayoutForActiveSheet(float printableWidth, float printableHeight,
+		int32 xDPI, int32 yDPI);
+	// Anteprima di stampa (Fase 28, "Imposta pagina"): margini/scala
+	// passati come parametri (non riletti da gPrefs, a differenza di
+	// ComputePrintJobLayoutForActiveSheet sopra) -- sono i valori
+	// ANCORA IN MODIFICA nel dialogo, non ancora applicati con
+	// "Applica" -- vedi PageSetupWindow::MessageReceived. Il chiamante
+	// prende possesso delle bitmap restituite (una per pagina, gia'
+	// nell'ordine di ComputePrintPageOrigins). Usa un BPrintJob usa e
+	// getta solo per leggere le dimensioni/risoluzione VERE della
+	// stampante predefinita (PrintableRect/GetResolution funzionano
+	// senza mostrare il dialogo di sistema, vedi il commento nel .cpp)
+	// -- MAI ConfigJob(), l'anteprima non deve mai aprire un dialogo.
+	std::vector<BBitmap*> GeneratePrintPreviewPages(double marginTop, double marginBottom,
+		double marginLeft, double marginRight, int scaleMode, double scalePercent);
 	void ShowFindWindow();
 	void ShowChartWindow();
 	void ShowPivotWindow();

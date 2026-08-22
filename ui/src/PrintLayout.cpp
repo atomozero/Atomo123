@@ -109,3 +109,62 @@ float ComputePrintFitScale(BRect contentRect, float usableWidth, float usableHei
 	// in Excel.
 	return (scale > 1.0f) ? 1.0f : scale;
 }
+
+PrintJobLayout ComputePrintJobLayout(BRect contentRect,
+	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
+	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
+	int scaleMode, double scalePercent, float headerW, float headerH)
+{
+	PrintJobLayout layout;
+
+	// 1 pollice = 2.54cm -- xDPI/yDPI sono la risoluzione VERA del
+	// dispositivo (BPrintJob::GetResolution), non un valore fisso a
+	// 72dpi: printableWidth/Height sono gia' espresse in pixel del
+	// dispositivo (BPrintJob::PrintableRect()).
+	layout.marginTopPx = (float)(marginTopCm / 2.54 * yDPI);
+	layout.marginLeftPx = (float)(marginLeftCm / 2.54 * xDPI);
+	float marginBottomPx = (float)(marginBottomCm / 2.54 * yDPI);
+	float marginRightPx = (float)(marginRightCm / 2.54 * xDPI);
+
+	float usableWidth = printableWidth - layout.marginLeftPx - marginRightPx;
+	float usableHeight = printableHeight - layout.marginTopPx - marginBottomPx;
+
+	if (usableWidth <= headerW || usableHeight <= headerH)
+	{
+		layout.pageWidth = layout.pageHeight = 0;
+		layout.scale = 1.0;
+		return layout;
+	}
+
+	// Scala: o una percentuale fissa scelta dall'utente (scaleMode 0),
+	// o calcolata per adattare il contenuto alla larghezza/altezza/
+	// entrambe di una sola pagina (ComputePrintFitScale sopra) -- i
+	// valori di scaleMode 1/2/3 coincidono apposta con
+	// kPrintFitWidth/kPrintFitHeight/kPrintFitBoth.
+	if (scaleMode == kPrintFitWidth || scaleMode == kPrintFitHeight || scaleMode == kPrintFitBoth)
+		layout.scale = ComputePrintFitScale(contentRect, usableWidth, usableHeight,
+			headerW, headerH, scaleMode);
+	else
+		layout.scale = scalePercent / 100.0;
+
+	if (layout.scale <= 0.0)
+		layout.scale = 1.0;
+
+	// pageWidth/pageHeight sono la porzione di CANVAS (coordinate
+	// logiche, non scalate, di SheetView) che sta in una pagina fisica
+	// -- non usableWidth/usableHeight direttamente: BView::SetScale
+	// ingrandisce/rimpicciolisce ogni operazione di disegno della vista
+	// in modo trasparente al codice di disegno interno. Per riempire la
+	// STESSA area fisica usableWidth x usableHeight con una scala < 1
+	// serve percio' PIU' canvas logico, cioe' usableWidth/scale: la
+	// larghezza fisica totale per pagina resta invariata a usableWidth
+	// qualunque sia la scala, per costruzione (pageWidth*scale ==
+	// usableWidth).
+	layout.pageWidth = (float)(usableWidth / layout.scale);
+	layout.pageHeight = (float)(usableHeight / layout.scale);
+
+	layout.pageOrigins = ComputePrintPageOrigins(contentRect, layout.pageWidth, layout.pageHeight,
+		headerW, headerH);
+
+	return layout;
+}

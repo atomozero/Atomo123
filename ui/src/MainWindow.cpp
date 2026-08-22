@@ -56,6 +56,7 @@
 #include <Entry.h>
 #include <File.h>
 #include <FilePanel.h>
+#include <Font.h>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <Menu.h>
@@ -65,6 +66,7 @@
 #include <Path.h>
 #include <PopUpMenu.h>
 #include <PrintJob.h>
+#include <Region.h>
 #include <ScrollView.h>
 #include <SeparatorView.h>
 #include <SpaceLayoutItem.h>
@@ -2637,19 +2639,34 @@ void MainWindow::ShowPageSetupWindow()
 	if (!fPageSetupWindow)
 		fPageSetupWindow = new PageSetupWindow(BMessenger(this));
 
+	double marginTop = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
+	double marginBottom = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
+	double marginLeft = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
+	double marginRight = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
+	int scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
+	double scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+
+	// Generata QUI, PRIMA di Lock() su fPageSetupWindow (Fase 28):
+	// GeneratePrintPreviewPages tocca fSheetView, che vive sul thread
+	// di QUESTA finestra, non su quello di PageSetupWindow -- va
+	// chiamata dal thread giusto, poi solo il risultato gia' pronto (le
+	// bitmap) attraversa il confine verso l'altra finestra.
+	std::vector<BBitmap*> pages = GeneratePrintPreviewPages(marginTop, marginBottom, marginLeft,
+		marginRight, scaleMode, scalePercent);
+
 	// Stesso motivo di fPreferencesWindow sopra: SetValues tocca le
 	// BView interne di PageSetupWindow, che vive sul proprio thread.
 	if (fPageSetupWindow->Lock())
 	{
-		double marginTop = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
-		double marginBottom = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
-		double marginLeft = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
-		double marginRight = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
-		int scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
-		double scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
 		fPageSetupWindow->SetValues(marginTop, marginBottom, marginLeft, marginRight,
 			scaleMode, scalePercent);
+		fPageSetupWindow->SetPreviewPages(pages);
 		fPageSetupWindow->Unlock();
+	}
+	else
+	{
+		for (size_t i = 0; i < pages.size(); i++)
+			delete pages[i];
 	}
 
 	if (fPageSetupWindow->IsHidden())
@@ -2675,6 +2692,27 @@ void MainWindow::HandlePageSetupRequest(double marginTop, double marginBottom,
 	gPrefs->SetPrefDouble("printScalePercent", scalePercent);
 	try { gPrefs->WritePrefFile(); }
 	catch (CErr&) { }
+}
+
+void MainWindow::HandlePageSetupPreviewRequest(double marginTop, double marginBottom,
+	double marginLeft, double marginRight, int scaleMode, double scalePercent)
+{
+	// I valori qui sono quelli ANCORA IN MODIFICA nel dialogo (mai
+	// scritti in gPrefs) -- a differenza di HandlePageSetupRequest
+	// sopra, che persiste e viene chiamato solo da "Applica"/"Stampa".
+	std::vector<BBitmap*> pages = GeneratePrintPreviewPages(marginTop, marginBottom, marginLeft,
+		marginRight, scaleMode, scalePercent);
+
+	if (fPageSetupWindow && fPageSetupWindow->Lock())
+	{
+		fPageSetupWindow->SetPreviewPages(pages);
+		fPageSetupWindow->Unlock();
+	}
+	else
+	{
+		for (size_t i = 0; i < pages.size(); i++)
+			delete pages[i];
+	}
 }
 
 void MainWindow::SetPrintArea()
@@ -3870,6 +3908,215 @@ void MainWindow::SetCellFormat(int32 format)
 	MarkModified();
 }
 
+BRect MainWindow::ActivePrintContentRect()
+{
+	// Area di stampa (Fase 27, MainWindow::SetPrintArea): se impostata
+	// per il foglio attivo, si stampa/mostra in anteprima SOLO
+	// quell'intervallo invece di tutte le celle con contenuto -- stesso
+	// principio "solo per la sessione corrente" del resto di
+	// AscdSheet, vedi il commento su hasPrintArea/printArea in
+	// AscdIO.h.
+	if (fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size()
+		&& fSheets[fActiveSheetIndex].hasPrintArea)
+	{
+		range area = fSheets[fActiveSheetIndex].printArea;
+		return fSheetView->CellRect(area.TopLeft()) | fSheetView->CellRect(area.BotRight());
+	}
+	return fSheetView->ContentRect();
+}
+
+PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWidth,
+	float printableHeight, int32 xDPI, int32 yDPI)
+{
+	// Margini/scala (Fase 27, "Imposta pagina"): salvati in gPrefs,
+	// riletti da zero a ogni stampa -- nessuno stato "vivo" specchiato
+	// in MainWindow, vedi HandlePageSetupRequest. GeneratePrintPreviewPages
+	// sotto usa invece i valori ANCORA IN MODIFICA nel dialogo, passati
+	// come parametri: sono due chiamanti diversi con esigenze diverse,
+	// entrambi delegano pero' allo stesso ComputePrintJobLayout.
+	double marginTopCm = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
+	double marginBottomCm = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
+	double marginLeftCm = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
+	double marginRightCm = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
+	int scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
+	double scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+
+	float headerW = fSheetView->HeaderWidth();
+	float headerH = fSheetView->HeaderHeight();
+
+	return ComputePrintJobLayout(ActivePrintContentRect(), printableWidth, printableHeight,
+		xDPI, yDPI, marginTopCm, marginBottomCm, marginLeftCm, marginRightCm, scaleMode,
+		scalePercent, headerW, headerH);
+}
+
+std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(double marginTop,
+	double marginBottom, double marginLeft, double marginRight, int scaleMode,
+	double scalePercent)
+{
+	std::vector<BBitmap*> pages;
+	if (!fDoc)
+		return pages;
+
+	// BPrintJob usa e getta, MAI ConfigJob(): PrintableRect()/
+	// GetResolution() richiedono comunque un setup, ma lo caricano da
+	// soli dal print_server (le impostazioni della stampante
+	// PREDEFINITA) se non gliene e' stato dato uno esplicito --
+	// verificato leggendo BPrintJob::_LoadDefaultSettings() nei
+	// sorgenti di Haiku: nessun dialogo mostrato, un vero giro
+	// (sincrono) col print_server. L'anteprima riflette percio' la
+	// stampante predefinita vera, senza mai disturbare l'utente con un
+	// dialogo solo per aggiornarla mentre modifica margini/scala.
+	BPrintJob previewJob("Atomo123 (anteprima)");
+	BRect printableRect = previewJob.PrintableRect();
+	int32 xDPI = 72, yDPI = 72;
+	previewJob.GetResolution(&xDPI, &yDPI);
+	if (printableRect.Width() <= 0 || printableRect.Height() <= 0)
+		return pages;
+
+	float headerW = fSheetView->HeaderWidth();
+	float headerH = fSheetView->HeaderHeight();
+
+	PrintJobLayout layout = ComputePrintJobLayout(ActivePrintContentRect(),
+		printableRect.Width(), printableRect.Height(), xDPI, yDPI,
+		marginTop, marginBottom, marginLeft, marginRight, scaleMode, scalePercent,
+		headerW, headerH);
+	if (layout.pageOrigins.empty())
+		return pages;
+
+	// Le bitmap di anteprima rappresentano la pagina FISICA INTERA
+	// (proporzioni vere di printableRect), non solo l'area utile dopo i
+	// margini -- i margini restano visibili come spazio bianco intorno
+	// al contenuto, esattamente come l'anteprima di stampa di Excel/
+	// LibreOffice. previewDeviceScale converte pixel VERI del
+	// dispositivo (potenzialmente migliaia a 300dpi) in un budget fisso
+	// di pixel per lo schermo -- indipendente dalla risoluzione di
+	// stampa, la proporzione (larghezza/altezza) resta comunque quella
+	// vera.
+	const float kPreviewWidth = 500.0f;
+	float previewDeviceScale = kPreviewWidth / printableRect.Width();
+	float previewHeight = printableRect.Height() * previewDeviceScale;
+
+	// Tetto al numero di pagine RESE (non alla stampa vera, che non
+	// tocca questa funzione): ogni pagina costa comunque una bitmap
+	// offscreen e una chiamata di disegno per cella. Oltre il tetto si
+	// mostrano le prime kMaxPreviewPages, non tutte -- l'anteprima
+	// resta comunque utile per controllare margini/scala sulla prima
+	// parte del foglio.
+	const size_t kMaxPreviewPages = 20;
+	size_t pageCount = layout.pageOrigins.size();
+	if (pageCount > kMaxPreviewPages)
+		pageCount = kMaxPreviewPages;
+
+	// Disegno DIRETTO da CContainer (valori/stili), MAI tramite
+	// SheetView::Draw(). Un tentativo precedente catturava il disegno
+	// vero della vista in un BPicture (fSheetView->BeginPicture()/
+	// Draw()/EndPicture(), la stessa tecnica usata internamente da
+	// BPrintJob per la stampa vera) -- manda un vero CRASH di
+	// app_server (Segment violation dentro
+	// ServerWindow::_DispatchPictureMessage/BPrivate::LinkReceiver::
+	// ReadRegion, confermato da un report di crash reale generato dal
+	// vivo in questo ambiente): non solo lento, un bug riproducibile
+	// nel percorso di registrazione di un BPicture di questa versione
+	// di Haiku, non qualcosa che questo codice possa aggirare in
+	// sicurezza. Si disegna percio' ogni cella a mano (sfondo/testo,
+	// niente bordi per lato/celle unite/testo a capo -- una
+	// semplificazione deliberata: l'obiettivo e' un'anteprima
+	// sufficiente per controllare margini/scala/impaginazione, non la
+	// parita' pixel-per-pixel con la stampa vera) usando solo
+	// FillRect/DrawString/StrokeRect, mai BeginPicture: nessuna di
+	// queste chiamate passa per _DispatchPictureMessage.
+	CContainer* doc = fSheetView->Document();
+
+	for (size_t i = 0; i < pageCount; i++)
+	{
+		BBitmap* pageBitmap = new BBitmap(BRect(0, 0, kPreviewWidth - 1, previewHeight - 1),
+			B_RGB32, true);
+		pageBitmap->Lock();
+		BView* offscreen = new BView(pageBitmap->Bounds(), "print_preview_page",
+			B_FOLLOW_NONE, B_WILL_DRAW);
+		pageBitmap->AddChild(offscreen);
+		offscreen->SetHighColor(255, 255, 255);
+		offscreen->FillRect(offscreen->Bounds());
+
+		BPoint pageOrigin = layout.pageOrigins[i];
+		float combinedScale = (float)(layout.scale * previewDeviceScale);
+		float marginLeftPreview = layout.marginLeftPx * previewDeviceScale;
+		float marginTopPreview = layout.marginTopPx * previewDeviceScale;
+		float pageWidthPreview = layout.pageWidth * combinedScale;
+		float pageHeightPreview = layout.pageHeight * combinedScale;
+		float headerWPreview = headerW * combinedScale;
+		float headerHPreview = headerH * combinedScale;
+
+		// Banda di intestazione: solo la forma (grigio chiaro), senza
+		// lettere/numeri -- il contenuto delle celle e' il punto
+		// centrale di questa anteprima semplificata, non la replica
+		// esatta delle etichette di riga/colonna.
+		offscreen->SetHighColor(230, 230, 230);
+		offscreen->FillRect(BRect(marginLeftPreview, marginTopPreview,
+			marginLeftPreview + pageWidthPreview, marginTopPreview + headerHPreview));
+		offscreen->FillRect(BRect(marginLeftPreview, marginTopPreview,
+			marginLeftPreview + headerWPreview, marginTopPreview + pageHeightPreview));
+
+		BRect dataRect(pageOrigin.x + headerW, pageOrigin.y + headerH,
+			pageOrigin.x + layout.pageWidth, pageOrigin.y + layout.pageHeight);
+		int firstCol, lastCol, firstRow, lastRow;
+		fSheetView->ColumnRowRangeForRect(dataRect, firstCol, lastCol, firstRow, lastRow);
+
+		BFont font(be_plain_font);
+		font.SetSize(std::max(6.0f, 9.0f * combinedScale));
+		offscreen->SetFont(&font);
+
+		for (int row = firstRow; row <= lastRow; row++)
+		{
+			for (int col = firstCol; col <= lastCol; col++)
+			{
+				cell c(col, row);
+				BRect cellR = fSheetView->CellRect(c);
+				BRect previewR(
+					marginLeftPreview + (cellR.left - pageOrigin.x) * combinedScale,
+					marginTopPreview + (cellR.top - pageOrigin.y) * combinedScale,
+					marginLeftPreview + (cellR.right - pageOrigin.x) * combinedScale,
+					marginTopPreview + (cellR.bottom - pageOrigin.y) * combinedScale);
+				if (!previewR.IsValid())
+					continue;
+
+				CellStyle cs;
+				doc->GetCellStyle(c, cs);
+				if (cs.fLowColor.red != 255 || cs.fLowColor.green != 255
+					|| cs.fLowColor.blue != 255)
+				{
+					offscreen->SetHighColor(cs.fLowColor);
+					offscreen->FillRect(previewR);
+				}
+
+				BString text = fSheetView->FormattedCellText(c);
+				if (text.Length() > 0)
+				{
+					offscreen->SetHighColor(cs.fHighColor);
+					offscreen->SetLowColor(cs.fLowColor);
+					BRegion clip(previewR);
+					offscreen->ConstrainClippingRegion(&clip);
+					offscreen->DrawString(text.String(),
+						BPoint(previewR.left + 1, previewR.bottom - 1));
+					offscreen->ConstrainClippingRegion(NULL);
+				}
+
+				offscreen->SetHighColor(220, 220, 220);
+				offscreen->StrokeRect(previewR);
+			}
+		}
+
+		offscreen->Sync();
+		pageBitmap->RemoveChild(offscreen);
+		delete offscreen;
+		pageBitmap->Unlock();
+
+		pages.push_back(pageBitmap);
+	}
+
+	return pages;
+}
+
 void MainWindow::PrintDocument()
 {
 	if (!fDoc)
@@ -3890,83 +4137,21 @@ void MainWindow::PrintDocument()
 
 	BRect printableRect = printJob.PrintableRect();
 
-	// Margini (Fase 27, "Imposta pagina"): salvati in cm in gPrefs,
-	// convertiti in pixel con la risoluzione VERA della stampante
-	// scelta (GetResolution) -- 1 pollice = 2.54cm. PrintableRect() e'
-	// gia' espresso in pixel del dispositivo, non in punti a 72dpi
-	// fissi (il codice di stampa gia' esistente prima di questa
-	// modifica confrontava PrintableRect().Width() direttamente con le
-	// unita' pixel di SheetView).
+	// PrintableRect() e' gia' espressa in pixel del dispositivo, non in
+	// punti a 72dpi fissi -- GetResolution() da' la risoluzione VERA
+	// della stampante scelta, usata da ComputePrintJobLayoutForActiveSheet
+	// per convertire i margini (in cm) in pixel.
 	int32 xDPI = 72, yDPI = 72;
 	printJob.GetResolution(&xDPI, &yDPI);
 
-	double marginTopCm = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
-	double marginBottomCm = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
-	double marginLeftCm = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
-	double marginRightCm = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
-	int scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
-	double scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+	PrintJobLayout layout = ComputePrintJobLayoutForActiveSheet(printableRect.Width(),
+		printableRect.Height(), xDPI, yDPI);
 
-	float marginTopPx = (float)(marginTopCm / 2.54 * yDPI);
-	float marginBottomPx = (float)(marginBottomCm / 2.54 * yDPI);
-	float marginLeftPx = (float)(marginLeftCm / 2.54 * xDPI);
-	float marginRightPx = (float)(marginRightCm / 2.54 * xDPI);
-
-	float usableWidth = printableRect.Width() - marginLeftPx - marginRightPx;
-	float usableHeight = printableRect.Height() - marginTopPx - marginBottomPx;
-
-	float headerW = fSheetView->HeaderWidth();
-	float headerH = fSheetView->HeaderHeight();
-
-	if (usableWidth <= headerW || usableHeight <= headerH)
+	if (layout.pageOrigins.empty())
 	{
 		printJob.CancelJob();
 		return;
 	}
-
-	// Area di stampa (Fase 27, MainWindow::SetPrintArea): se impostata
-	// per il foglio attivo, si stampa SOLO quell'intervallo invece di
-	// tutte le celle con contenuto -- stesso principio "solo per la
-	// sessione corrente" del resto di AscdSheet, vedi il commento su
-	// hasPrintArea/printArea in AscdIO.h.
-	BRect contentRect;
-	if (fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size()
-		&& fSheets[fActiveSheetIndex].hasPrintArea)
-	{
-		range area = fSheets[fActiveSheetIndex].printArea;
-		contentRect = fSheetView->CellRect(area.TopLeft()) | fSheetView->CellRect(area.BotRight());
-	}
-	else
-		contentRect = fSheetView->ContentRect();
-
-	// Scala (Fase 27): o una percentuale fissa scelta dall'utente
-	// (scaleMode 0), o calcolata per adattare il contenuto alla
-	// larghezza/altezza/entrambe di una sola pagina (ComputePrintFitScale,
-	// vedi PrintLayout.cpp) -- i valori di scaleMode 1/2/3 coincidono
-	// apposta con kPrintFitWidth/kPrintFitHeight/kPrintFitBoth.
-	double scale;
-	if (scaleMode == kPrintFitWidth || scaleMode == kPrintFitHeight || scaleMode == kPrintFitBoth)
-		scale = ComputePrintFitScale(contentRect, usableWidth, usableHeight, headerW, headerH,
-			scaleMode);
-	else
-		scale = scalePercent / 100.0;
-
-	if (scale <= 0.0)
-		scale = 1.0;
-
-	// pageWidth/pageHeight sono la porzione di CANVAS (coordinate
-	// logiche, non scalate, di SheetView) che sta in una pagina fisica
-	// -- non usableWidth/usableHeight direttamente: BView::SetScale
-	// ingrandisce/rimpicciolisce ogni operazione di disegno della vista
-	// (intestazione compresa, ridisegnata dalla stessa SheetView::Draw)
-	// in modo trasparente al codice di disegno interno (ColumnAtX/
-	// RowAtY restano nello spazio logico). Per riempire la STESSA area
-	// fisica usableWidth x usableHeight con una scala < 1 serve percio'
-	// PIU' canvas logico, cioe' usableWidth/scale: la larghezza fisica
-	// totale per pagina resta invariata a usableWidth qualunque sia la
-	// scala, per costruzione (pageWidth*scale == usableWidth).
-	float pageWidth = (float)(usableWidth / scale);
-	float pageHeight = (float)(usableHeight / scale);
 
 	// Ripristinati alla fine (successo o annullamento): ogni pagina si
 	// disegna scorrendo DAVVERO la vista e scalandola (vedi sotto), non
@@ -3994,17 +4179,14 @@ void MainWindow::PrintDocument()
 	// vedi PrintLayout.cpp per la derivazione completa del calcolo)
 	// prima di disegnarla, l'intestazione si ripete correttamente su
 	// ognuna.
-	std::vector<BPoint> pageOrigins = ComputePrintPageOrigins(contentRect,
-		pageWidth, pageHeight, headerW, headerH);
-
-	fSheetView->SetScale((float)scale);
-	for (size_t i = 0; i < pageOrigins.size() && printJob.CanContinue(); i++)
+	fSheetView->SetScale((float)layout.scale);
+	for (size_t i = 0; i < layout.pageOrigins.size() && printJob.CanContinue(); i++)
 	{
-		fSheetView->ScrollTo(pageOrigins[i]);
+		fSheetView->ScrollTo(layout.pageOrigins[i]);
 
-		BRect pageSlice(pageOrigins[i].x, pageOrigins[i].y,
-			pageOrigins[i].x + pageWidth, pageOrigins[i].y + pageHeight);
-		printJob.DrawView(fSheetView, pageSlice, BPoint(marginLeftPx, marginTopPx));
+		BRect pageSlice(layout.pageOrigins[i].x, layout.pageOrigins[i].y,
+			layout.pageOrigins[i].x + layout.pageWidth, layout.pageOrigins[i].y + layout.pageHeight);
+		printJob.DrawView(fSheetView, pageSlice, BPoint(layout.marginLeftPx, layout.marginTopPx));
 		printJob.SpoolPage();
 	}
 	fSheetView->SetScale(originalScale);
@@ -4855,6 +5037,39 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindDouble("scalePercent", &scalePercent);
 			HandlePageSetupRequest(marginTop, marginBottom, marginLeft, marginRight,
 				(int)scaleMode, scalePercent);
+			break;
+		}
+
+		case kMsgPageSetupPreviewRequest:
+		{
+			double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
+			int32 scaleMode = 0;
+			double scalePercent = 100.0;
+			message->FindDouble("marginTop", &marginTop);
+			message->FindDouble("marginBottom", &marginBottom);
+			message->FindDouble("marginLeft", &marginLeft);
+			message->FindDouble("marginRight", &marginRight);
+			message->FindInt32("scaleMode", &scaleMode);
+			message->FindDouble("scalePercent", &scalePercent);
+			HandlePageSetupPreviewRequest(marginTop, marginBottom, marginLeft, marginRight,
+				(int)scaleMode, scalePercent);
+			break;
+		}
+
+		case kMsgPageSetupPrintRequest:
+		{
+			double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
+			int32 scaleMode = 0;
+			double scalePercent = 100.0;
+			message->FindDouble("marginTop", &marginTop);
+			message->FindDouble("marginBottom", &marginBottom);
+			message->FindDouble("marginLeft", &marginLeft);
+			message->FindDouble("marginRight", &marginRight);
+			message->FindInt32("scaleMode", &scaleMode);
+			message->FindDouble("scalePercent", &scalePercent);
+			HandlePageSetupRequest(marginTop, marginBottom, marginLeft, marginRight,
+				(int)scaleMode, scalePercent);
+			PrintDocument();
 			break;
 		}
 

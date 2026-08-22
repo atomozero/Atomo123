@@ -153,6 +153,63 @@ int main()
 			"usa la larghezza VERA dell'area (400+headerW=430), non contentRect.right da solo (700)");
 	}
 
+	// ComputePrintJobLayout (Fase 28, anteprima in "Imposta pagina"):
+	// unica fonte di verita' condivisa fra PrintDocument (stampa vera)
+	// e GeneratePrintPreviewPages (anteprima) -- combina conversione
+	// margini cm->pixel, scelta della scala e ComputePrintPageOrigins
+	// in un'unica chiamata.
+	{
+		// Margini di 1.27cm (0.5") a 100dpi = esattamente 50px -- verifica
+		// la conversione cm->pixel, non solo che il risultato "sembri
+		// ragionevole".
+		BRect content(0, 0, 50, 30);
+		PrintJobLayout layout = ComputePrintJobLayout(content, 400, 300, 100, 100,
+			1.27, 1.27, 1.27, 1.27, 0, 50.0, 10, 5);
+		Check(layout.marginTopPx > 49.9f && layout.marginTopPx < 50.1f,
+			"ComputePrintJobLayout converte 1.27cm a 100dpi in esattamente 50px di margine superiore");
+		Check(layout.marginLeftPx > 49.9f && layout.marginLeftPx < 50.1f,
+			"...e allo stesso modo per il margine sinistro");
+		Check(layout.scale > 0.499 && layout.scale < 0.501,
+			"in modalita' percentuale (scaleMode 0), la scala e' esattamente scalePercent/100 (50%)");
+		Check(layout.pageWidth > 599.9f && layout.pageWidth < 600.1f,
+			"pageWidth e' usableWidth/scale (300/0.5=600), non usableWidth da solo");
+		Check(layout.pageOrigins.size() == 1 && !layout.pageOrigins.empty()
+			&& layout.pageOrigins[0] == BPoint(0, 0),
+			"un contenuto che sta in una pagina produce una sola origine a (0,0), "
+			"stessa identica risposta di ComputePrintPageOrigins chiamata a mano");
+	}
+
+	{
+		// Stessi numeri del test "adatta alla LARGHEZZA" di
+		// ComputePrintFitScale sopra (contenuto 600 largo in 300
+		// disponibili da' scala 0.5): margini a 0 per isolare solo la
+		// combinazione fit-mode + pagine, gia' verificata a parte.
+		BRect content(0, 0, 600, 300);
+		PrintJobLayout layout = ComputePrintJobLayout(content, 300, 1000, 100, 100,
+			0, 0, 0, 0, kPrintFitWidth, 999.0, 30, 20);
+		Check(layout.scale > 0.499 && layout.scale < 0.501,
+			"in modalita' 'adatta alla larghezza', la scala usata e' esattamente quella di "
+			"ComputePrintFitScale (0.5), scalePercent (999) viene ignorato");
+		Check(layout.pageOrigins.size() == 1 && !layout.pageOrigins.empty()
+			&& layout.pageOrigins[0] == BPoint(0, 0),
+			"le origini di pagina risultanti sono le stesse di ComputePrintPageOrigins chiamata "
+			"a mano con pageWidth/pageHeight derivati dalla scala 'adatta'");
+	}
+
+	{
+		// Margini che da soli superano l'intera area stampabile: nessuna
+		// pagina puo' contenere dati reali -- elenco vuoto (stessa
+		// garanzia di sicurezza di ComputePrintPageOrigins), non un
+		// crash ne' un valore a caso.
+		BRect content(0, 0, 50, 30);
+		PrintJobLayout layout = ComputePrintJobLayout(content, 100, 100, 100, 100,
+			2.54, 2.54, 2.54, 2.54, 0, 100.0, 10, 10);
+		Check(layout.pageOrigins.empty(),
+			"margini che consumano tutta l'area stampabile producono un elenco di pagine vuoto");
+		Check(layout.pageWidth == 0 && layout.pageHeight == 0,
+			"...e pageWidth/pageHeight restano a 0, non un valore negativo o indefinito");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

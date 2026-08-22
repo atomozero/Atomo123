@@ -17,6 +17,7 @@
 
 #include <Point.h>
 #include <Rect.h>
+#include <SupportDefs.h>
 
 #include <vector>
 
@@ -47,5 +48,35 @@ enum {
 // in realta' non ci sta.
 float ComputePrintFitScale(BRect contentRect, float usableWidth, float usableHeight,
 	float headerW, float headerH, int fitMode);
+
+// Risultato completo del calcolo di un lavoro di stampa (Fase 28,
+// anteprima in "Imposta pagina"): unica fonte di verita' condivisa fra
+// MainWindow::PrintDocument (stampa vera) e
+// MainWindow::GeneratePrintPreviewPages (anteprima) -- un'incongruenza
+// fra le due produrrebbe un'anteprima che non corrisponde a quello che
+// viene davvero stampato.
+struct PrintJobLayout {
+	std::vector<BPoint> pageOrigins;
+	float pageWidth;
+	float pageHeight;
+	float marginLeftPx;
+	float marginTopPx;
+	double scale;
+};
+
+// Margini in centimetri -> pixel (usando la risoluzione VERA del
+// dispositivo, xDPI/yDPI da BPrintJob::GetResolution), poi scala
+// (percentuale fissa o "adatta", vedi ComputePrintFitScale sopra) e
+// origini di pagina (vedi ComputePrintPageOrigins sopra), in un'unica
+// chiamata. printableWidth/printableHeight sono
+// BPrintJob::PrintableRect().Width()/Height() (l'area stampabile PRIMA
+// dei margini). pageOrigins vuoto se i margini lasciano meno spazio
+// utile della sola banda di intestazione (stessa condizione di
+// sicurezza gia' in ComputePrintPageOrigins) -- il chiamante deve
+// trattarlo come "niente da stampare/mostrare", non come un errore.
+PrintJobLayout ComputePrintJobLayout(BRect contentRect,
+	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
+	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
+	int scaleMode, double scalePercent, float headerW, float headerH);
 
 #endif

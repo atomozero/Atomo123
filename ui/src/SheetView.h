@@ -483,6 +483,17 @@ public:
 	float HeaderWidth() const { return kHeaderWidth; }
 	float HeaderHeight() const { return kHeaderHeight; }
 
+	// Indici di colonna/riga (1-based, gia' bloccati in [1, kColCount]/
+	// [1, kRowCount] da ColumnAtX/RowAtY) che coprono "rect" -- pubblico
+	// apposta per MainWindow::GeneratePrintPreviewPages (Fase 28,
+	// anteprima di stampa), che deve sapere quali celle disegnare per
+	// una pagina SENZA passare da Draw()/BeginPicture (vedi il
+	// commento su GeneratePrintPreviewPages per il perche': quella
+	// tecnica manda un vero crash di app_server, non solo una lentezza,
+	// confermato da un report di crash reale).
+	void ColumnRowRangeForRect(BRect rect, int& firstCol, int& lastCol,
+		int& firstRow, int& lastRow) const;
+
 private:
 	// Ultima area visibile (Parent()->Bounds(), la vera BScrollView)
 	// per cui le barre di scorrimento sono state posizionate --

@@ -2105,6 +2105,15 @@ BRect SheetView::ContentRect() const
 	return BRect(0, 0, botRight.right, botRight.bottom);
 }
 
+void SheetView::ColumnRowRangeForRect(BRect rect, int& firstCol, int& lastCol,
+	int& firstRow, int& lastRow) const
+{
+	firstCol = ColumnAtX(rect.left);
+	lastCol = ColumnAtX(rect.right);
+	firstRow = RowAtY(rect.top);
+	lastRow = RowAtY(rect.bottom);
+}
+
 void SheetView::ScrollToShowSelection()
 {
 	BRect r = CellRect(fSelection);
