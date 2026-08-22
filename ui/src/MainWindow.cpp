@@ -26,6 +26,7 @@
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
 #include "BorderWindow.h"
+#include "PageSetupWindow.h"
 #include "AboutWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
@@ -117,6 +118,9 @@ static const uint32 kMsgInsertColumns = 'ainc';
 static const uint32 kMsgDeleteRows = 'adlr';
 static const uint32 kMsgDeleteColumns = 'adlc';
 static const uint32 kMsgPrint = 'aprt';
+static const uint32 kMsgPageSetup = 'apgs';
+static const uint32 kMsgSetPrintArea = 'sppa';
+static const uint32 kMsgClearPrintArea = 'clpa';
 static const uint32 kMsgFind = 'afnd';
 static const uint32 kMsgSwitchSheet = 'swsh';
 // Un solo colpo, poco dopo Show(): vedi MainWindow::Show() per il perche'.
@@ -553,6 +557,12 @@ MainWindow::MainWindow()
 	saveAsMenu->AddItem(new BMenuItem(B_TRANSLATE("OpenDocument (.ods)"), new BMessage(kMsgSaveAsOds)));
 	fileMenu->AddItem(new BMenuItem(saveAsMenu));
 	fileMenu->AddSeparatorItem();
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Imposta pagina" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgPageSetup)));
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Imposta area di stampa"),
+		new BMessage(kMsgSetPrintArea)));
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Cancella area di stampa"),
+		new BMessage(kMsgClearPrintArea)));
 	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Stampa" B_UTF8_ELLIPSIS), new BMessage(kMsgPrint), 'P'));
 	fileMenu->AddSeparatorItem();
 	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Preferenze" B_UTF8_ELLIPSIS),
@@ -931,6 +941,7 @@ MainWindow::MainWindow()
 	fColorWindow = NULL;
 	fPreferencesWindow = NULL;
 	fBorderWindow = NULL;
+	fPageSetupWindow = NULL;
 
 	UpdateTitle();
 }
@@ -1014,6 +1025,11 @@ MainWindow::~MainWindow()
 	{
 		fBorderWindow->Lock();
 		fBorderWindow->Quit();
+	}
+	if (fPageSetupWindow)
+	{
+		fPageSetupWindow->Lock();
+		fPageSetupWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -2616,6 +2632,79 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 	}
 }
 
+void MainWindow::ShowPageSetupWindow()
+{
+	if (!fPageSetupWindow)
+		fPageSetupWindow = new PageSetupWindow(BMessenger(this));
+
+	// Stesso motivo di fPreferencesWindow sopra: SetValues tocca le
+	// BView interne di PageSetupWindow, che vive sul proprio thread.
+	if (fPageSetupWindow->Lock())
+	{
+		double marginTop = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
+		double marginBottom = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
+		double marginLeft = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
+		double marginRight = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
+		int scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
+		double scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+		fPageSetupWindow->SetValues(marginTop, marginBottom, marginLeft, marginRight,
+			scaleMode, scalePercent);
+		fPageSetupWindow->Unlock();
+	}
+
+	if (fPageSetupWindow->IsHidden())
+		fPageSetupWindow->Show();
+	fPageSetupWindow->Activate();
+}
+
+void MainWindow::HandlePageSetupRequest(double marginTop, double marginBottom,
+	double marginLeft, double marginRight, int scaleMode, double scalePercent)
+{
+	// Nessuno stato "vivo" da aggiornare in memoria (a differenza di
+	// HandlePreferencesRequest sopra): PrintDocument rilegge sempre
+	// gPrefs da zero al momento di stampare davvero, non c'e' un fXxx
+	// a specchio qui.
+	if (!gPrefs)
+		return;
+
+	gPrefs->SetPrefDouble("printMarginTop", marginTop);
+	gPrefs->SetPrefDouble("printMarginBottom", marginBottom);
+	gPrefs->SetPrefDouble("printMarginLeft", marginLeft);
+	gPrefs->SetPrefDouble("printMarginRight", marginRight);
+	gPrefs->SetPrefInt("printScaleMode", scaleMode);
+	gPrefs->SetPrefDouble("printScalePercent", scalePercent);
+	try { gPrefs->WritePrefFile(); }
+	catch (CErr&) { }
+}
+
+void MainWindow::SetPrintArea()
+{
+	if (fActiveSheetIndex < 0 || fActiveSheetIndex >= (int)fSheets.size())
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	fSheets[fActiveSheetIndex].hasPrintArea = true;
+	fSheets[fActiveSheetIndex].printArea = sel;
+}
+
+void MainWindow::ClearPrintArea()
+{
+	if (fActiveSheetIndex < 0 || fActiveSheetIndex >= (int)fSheets.size())
+		return;
+
+	fSheets[fActiveSheetIndex].hasPrintArea = false;
+}
+
+void MainWindow::PrintAreaText(char* out, size_t outSize) const
+{
+	if (out == NULL || outSize == 0)
+		return;
+	out[0] = '\0';
+	if (!HasPrintArea())
+		return;
+	FormatRangeRef(fSheets[fActiveSheetIndex].printArea, out, outSize);
+}
+
 // Legge famiglia/stile/dimensione/colore di un font registrato in
 // gFontSizeTable, con un ripiego sicuro se l'indice non e' (ancora)
 // valido -- CContainer::CContainer registra un font predefinito in
@@ -3791,37 +3880,108 @@ void MainWindow::PrintDocument()
 	// ConfigJob mostra il dialogo di stampa di sistema (scelta
 	// stampante/opzioni): se l'utente annulla, o non c'e' nessuna
 	// stampante configurata, restituisce un errore e non si stampa
-	// nulla.
+	// nulla. L'orientamento/formato carta restano affidati a questo
+	// stesso dialogo (ConfigPage non e' verificabile senza una
+	// stampante vera in questo ambiente, e ConfigJob li offre gia').
 	if (printJob.ConfigJob() != B_OK)
 		return;
 
 	printJob.BeginJob();
 
 	BRect printableRect = printJob.PrintableRect();
-	BRect contentRect = fSheetView->ContentRect();
-	float pageWidth = printableRect.Width();
-	float pageHeight = printableRect.Height();
+
+	// Margini (Fase 27, "Imposta pagina"): salvati in cm in gPrefs,
+	// convertiti in pixel con la risoluzione VERA della stampante
+	// scelta (GetResolution) -- 1 pollice = 2.54cm. PrintableRect() e'
+	// gia' espresso in pixel del dispositivo, non in punti a 72dpi
+	// fissi (il codice di stampa gia' esistente prima di questa
+	// modifica confrontava PrintableRect().Width() direttamente con le
+	// unita' pixel di SheetView).
+	int32 xDPI = 72, yDPI = 72;
+	printJob.GetResolution(&xDPI, &yDPI);
+
+	double marginTopCm = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
+	double marginBottomCm = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
+	double marginLeftCm = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
+	double marginRightCm = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
+	int scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
+	double scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+
+	float marginTopPx = (float)(marginTopCm / 2.54 * yDPI);
+	float marginBottomPx = (float)(marginBottomCm / 2.54 * yDPI);
+	float marginLeftPx = (float)(marginLeftCm / 2.54 * xDPI);
+	float marginRightPx = (float)(marginRightCm / 2.54 * xDPI);
+
+	float usableWidth = printableRect.Width() - marginLeftPx - marginRightPx;
+	float usableHeight = printableRect.Height() - marginTopPx - marginBottomPx;
+
 	float headerW = fSheetView->HeaderWidth();
 	float headerH = fSheetView->HeaderHeight();
 
-	if (pageWidth <= headerW || pageHeight <= headerH)
+	if (usableWidth <= headerW || usableHeight <= headerH)
 	{
 		printJob.CancelJob();
 		return;
 	}
 
-	// Ripristinata alla fine (successo o annullamento): ogni pagina si
-	// disegna scorrendo DAVVERO la vista (vedi sotto), non solo
-	// ritagliando un rettangolo diverso -- stesso identico
+	// Area di stampa (Fase 27, MainWindow::SetPrintArea): se impostata
+	// per il foglio attivo, si stampa SOLO quell'intervallo invece di
+	// tutte le celle con contenuto -- stesso principio "solo per la
+	// sessione corrente" del resto di AscdSheet, vedi il commento su
+	// hasPrintArea/printArea in AscdIO.h.
+	BRect contentRect;
+	if (fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size()
+		&& fSheets[fActiveSheetIndex].hasPrintArea)
+	{
+		range area = fSheets[fActiveSheetIndex].printArea;
+		contentRect = fSheetView->CellRect(area.TopLeft()) | fSheetView->CellRect(area.BotRight());
+	}
+	else
+		contentRect = fSheetView->ContentRect();
+
+	// Scala (Fase 27): o una percentuale fissa scelta dall'utente
+	// (scaleMode 0), o calcolata per adattare il contenuto alla
+	// larghezza/altezza/entrambe di una sola pagina (ComputePrintFitScale,
+	// vedi PrintLayout.cpp) -- i valori di scaleMode 1/2/3 coincidono
+	// apposta con kPrintFitWidth/kPrintFitHeight/kPrintFitBoth.
+	double scale;
+	if (scaleMode == kPrintFitWidth || scaleMode == kPrintFitHeight || scaleMode == kPrintFitBoth)
+		scale = ComputePrintFitScale(contentRect, usableWidth, usableHeight, headerW, headerH,
+			scaleMode);
+	else
+		scale = scalePercent / 100.0;
+
+	if (scale <= 0.0)
+		scale = 1.0;
+
+	// pageWidth/pageHeight sono la porzione di CANVAS (coordinate
+	// logiche, non scalate, di SheetView) che sta in una pagina fisica
+	// -- non usableWidth/usableHeight direttamente: BView::SetScale
+	// ingrandisce/rimpicciolisce ogni operazione di disegno della vista
+	// (intestazione compresa, ridisegnata dalla stessa SheetView::Draw)
+	// in modo trasparente al codice di disegno interno (ColumnAtX/
+	// RowAtY restano nello spazio logico). Per riempire la STESSA area
+	// fisica usableWidth x usableHeight con una scala < 1 serve percio'
+	// PIU' canvas logico, cioe' usableWidth/scale: la larghezza fisica
+	// totale per pagina resta invariata a usableWidth qualunque sia la
+	// scala, per costruzione (pageWidth*scale == usableWidth).
+	float pageWidth = (float)(usableWidth / scale);
+	float pageHeight = (float)(usableHeight / scale);
+
+	// Ripristinati alla fine (successo o annullamento): ogni pagina si
+	// disegna scorrendo DAVVERO la vista e scalandola (vedi sotto), non
+	// solo ritagliando un rettangolo diverso -- stesso identico
 	// salva/ripristina di SwitchToSheet (fSheetView->Bounds().LeftTop()
 	// / ScrollTo), qui per la durata della stampa invece che di un
 	// cambio foglio.
 	BPoint originalScroll = fSheetView->Bounds().LeftTop();
+	float originalScale = fSheetView->Scale();
 
-	// Si stampa solo l'area del foglio che contiene dati
-	// (SheetView::ContentRect), suddivisa in tante pagine quante ne
-	// servono in base all'area stampabile della stampante scelta —
-	// non l'intero intervallo virtuale del motore (702x16384 celle).
+	// Si stampa solo l'area del foglio che contiene dati (o l'area di
+	// stampa scelta), suddivisa in tante pagine quante ne servono in
+	// base all'area stampabile (al netto dei margini) della stampante
+	// scelta -- non l'intero intervallo virtuale del motore (702x16384
+	// celle).
 	//
 	// Le intestazioni di riga/colonna si "incollano" al bordo della
 	// vista corrente (SheetView::Draw, rowHeaderLeft/colHeaderTop =
@@ -3836,15 +3996,18 @@ void MainWindow::PrintDocument()
 	// ognuna.
 	std::vector<BPoint> pageOrigins = ComputePrintPageOrigins(contentRect,
 		pageWidth, pageHeight, headerW, headerH);
+
+	fSheetView->SetScale((float)scale);
 	for (size_t i = 0; i < pageOrigins.size() && printJob.CanContinue(); i++)
 	{
 		fSheetView->ScrollTo(pageOrigins[i]);
 
 		BRect pageSlice(pageOrigins[i].x, pageOrigins[i].y,
 			pageOrigins[i].x + pageWidth, pageOrigins[i].y + pageHeight);
-		printJob.DrawView(fSheetView, pageSlice, BPoint(0, 0));
+		printJob.DrawView(fSheetView, pageSlice, BPoint(marginLeftPx, marginTopPx));
 		printJob.SpoolPage();
 	}
+	fSheetView->SetScale(originalScale);
 
 	fSheetView->ScrollTo(originalScroll);
 
@@ -4310,6 +4473,18 @@ void MainWindow::MessageReceived(BMessage* message)
 			PrintDocument();
 			break;
 
+		case kMsgPageSetup:
+			ShowPageSetupWindow();
+			break;
+
+		case kMsgSetPrintArea:
+			SetPrintArea();
+			break;
+
+		case kMsgClearPrintArea:
+			ClearPrintArea();
+			break;
+
 		case kMsgFind:
 			ShowFindWindow();
 			break;
@@ -4664,6 +4839,22 @@ void MainWindow::MessageReceived(BMessage* message)
 			HandlePreferencesRequest(showGrid, (char)decimalSep, (char)listSep,
 				(int)maxRecentFiles, showSplash, (char)thousandSep, currencySymbol,
 				autoSaveEnabled, (int)autoSaveInterval);
+			break;
+		}
+
+		case kMsgPageSetupRequest:
+		{
+			double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
+			int32 scaleMode = 0;
+			double scalePercent = 100.0;
+			message->FindDouble("marginTop", &marginTop);
+			message->FindDouble("marginBottom", &marginBottom);
+			message->FindDouble("marginLeft", &marginLeft);
+			message->FindDouble("marginRight", &marginRight);
+			message->FindInt32("scaleMode", &scaleMode);
+			message->FindDouble("scalePercent", &scalePercent);
+			HandlePageSetupRequest(marginTop, marginBottom, marginLeft, marginRight,
+				(int)scaleMode, scalePercent);
 			break;
 		}
 

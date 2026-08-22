@@ -49,6 +49,7 @@ class ConditionalFormatWindow;
 class ColorWindow;
 class PreferencesWindow;
 class BorderWindow;
+class PageSetupWindow;
 
 // MainWindow implementa ISheetResolver (Container.h, Fase 9) perche'
 // e' lei a possedere fSheets, l'unico elenco di "nome foglio -> CContainer*"
@@ -275,6 +276,14 @@ public:
 		bool showSplash, char thousandSep, const char* currencySymbol,
 		bool autoSaveEnabled, int autoSaveIntervalMinutes);
 
+	// Margini/scala di stampa (Fase 27): tutte e sei le impostazioni
+	// scritte direttamente in gPrefs (preferenze GLOBALI dell'app,
+	// come showSplash/autoSaveInterval -- non per-documento, a
+	// differenza dell'area di stampa sotto, che invece e' per-foglio),
+	// PrintDocument le rilegge da li' ogni volta che stampa davvero.
+	void HandlePageSetupRequest(double marginTop, double marginBottom, double marginLeft,
+		double marginRight, int scaleMode, double scalePercent);
+
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che
 	// una delle sue operazioni muta il documento -- stesso principio
@@ -330,6 +339,20 @@ public:
 	void DeleteSheetNoConfirm(int index);
 	void RenameSheet(int index, const char* newName);
 	BString UniqueSheetName(const char* prefix) const;
+
+	// Area di stampa (Fase 27): pubblici per lo stesso motivo di
+	// NewSheet/SwitchToSheet sopra -- testabili senza passare dal menu
+	// File vero. HasPrintArea()/PrintAreaText() sono sola lettura, lo
+	// stesso stato che PrintDocument usa per decidere cosa stampare
+	// -- vedi il commento su AscdSheet::printArea in AscdIO.h.
+	void SetPrintArea();
+	void ClearPrintArea();
+	bool HasPrintArea() const
+	{
+		return fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size()
+			&& fSheets[fActiveSheetIndex].hasPrintArea;
+	}
+	void PrintAreaText(char* out, size_t outSize) const;
 
 	// Commenti/note per cella (Fase 13): pubblici per lo stesso motivo
 	// di NewSheet/RenameSheet sopra -- CommentWindow (un vero BWindow,
@@ -482,6 +505,7 @@ private:
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
 	BorderWindow* fBorderWindow;
+	PageSetupWindow* fPageSetupWindow;
 	std::vector<ChartObject> fCharts;
 	std::vector<EmbeddedImage> fImages;
 
@@ -576,6 +600,7 @@ private:
 	void ShowColorWindow(ColorTarget target);
 	void ShowPreferencesWindow();
 	void ShowBorderWindow();
+	void ShowPageSetupWindow();
 };
 
 #endif

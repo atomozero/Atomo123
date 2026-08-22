@@ -83,6 +83,26 @@ int main()
 			"(passo == pageWidth-headerW, nessun buco ne' sovrapposizione visibile)");
 	}
 
+	// Area di stampa (Fase 27) che NON comincia dalla riga/colonna 1
+	// del foglio (contentRect.left/top diversi da zero, es. un'area
+	// scelta a partire dalla colonna D): la prima pagina deve iniziare
+	// esattamente da contentRect.left/top vero, non da 0 (il caso
+	// normale, contentRect da 0,0) ne' da un valore "relativo" alla
+	// sola area -- le etichette di riga/colonna in SheetView::Draw
+	// usano gia' la posizione REALE di ogni riga/colonna, quindi
+	// l'unica cosa che deve cambiare qui e' da dove si comincia a
+	// scorrere la vista.
+	{
+		BRect content(300, 150, 700, 350); // es. un'area che comincia ben oltre l'origine
+		float pageWidth = 200, pageHeight = 100, headerW = 30, headerH = 20;
+		std::vector<BPoint> origins = ComputePrintPageOrigins(content, pageWidth, pageHeight,
+			headerW, headerH);
+		Check(!origins.empty(), "un'area di stampa che non comincia da riga/colonna 1 produce comunque pagine");
+		Check(origins[0] == BPoint(content.left - headerW, content.top - headerH),
+			"la prima pagina di un'area di stampa che comincia a (300,150) parte da "
+			"(300-headerW,150-headerH), non da (0,0)");
+	}
+
 	// Pagina piu' stretta/bassa della sola intestazione: nessuna pagina
 	// puo' contenere dati reali, elenco vuoto invece di un ciclo
 	// infinito (il chiamante deve gia' escludere questo caso, ma la
@@ -92,6 +112,45 @@ int main()
 		std::vector<BPoint> origins = ComputePrintPageOrigins(content, 10, 100, 30, 5);
 		Check(origins.empty(), "una pagina piu' stretta della sola intestazione (10 < headerW 30) "
 			"produce un elenco vuoto, non un ciclo infinito");
+	}
+
+	// ComputePrintFitScale (Fase 27, vedi ROADMAP.md "v3.0
+	// Consolidation"): la scala che fa stare un contenuto in una sola
+	// pagina di larghezza/altezza/entrambe.
+	{
+		BRect content(0, 0, 600, 300);
+		float scale = ComputePrintFitScale(content, 300, 1000, 30, 20, kPrintFitWidth);
+		Check(scale > 0.499f && scale < 0.501f,
+			"adatta alla LARGHEZZA: contenuto 600 largo (intestazione compresa) in 300 disponibili "
+			"da' scala 0.5");
+	}
+
+	{
+		BRect content(0, 0, 600, 300);
+		float scale = ComputePrintFitScale(content, 300, 100, 30, 20, kPrintFitBoth);
+		Check(scale > 0.332f && scale < 0.334f,
+			"adatta a UNA PAGINA (entrambe le dimensioni): usa la piu' restrittiva delle due "
+			"(altezza, 100/300=0.333), non la larghezza (300/600=0.5)");
+	}
+
+	{
+		BRect content(0, 0, 600, 300);
+		float scale = ComputePrintFitScale(content, 1000, 1000, 30, 20, kPrintFitWidth);
+		Check(scale == 1.0f,
+			"adatta non ingrandisce MAI un contenuto che gia' ci sta (scala clampata a 1.0, "
+			"non 1000/600=1.667)");
+	}
+
+	{
+		// Stessa area di stampa non allineata all'origine del test sopra
+		// (300,150)-(700,350): la larghezza VERA da adattare e' 700-300+30
+		// (intestazione compresa), non 700 da solo (che includerebbe
+		// anche lo spazio PRIMA dell'area, mai stampato).
+		BRect content(300, 150, 700, 350);
+		float scale = ComputePrintFitScale(content, 430, 1000, 30, 20, kPrintFitWidth);
+		Check(scale > 0.999f && scale < 1.001f,
+			"adatta alla larghezza di un'area di stampa che non comincia da riga/colonna 1 "
+			"usa la larghezza VERA dell'area (400+headerW=430), non contentRect.right da solo (700)");
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

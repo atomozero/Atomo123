@@ -177,6 +177,15 @@ struct AscdSheet {
 	// LoadASCD/SaveASCD -- un file riaperto parte sempre dall'angolo in
 	// alto a sinistra di ogni foglio, come sempre.
 	BPoint scrollPosition = BPoint(0, 0);
+	// Area di stampa (Fase 27, vedi ROADMAP.md "v3.0 Consolidation"):
+	// se impostata, MainWindow::PrintDocument stampa SOLO questo
+	// intervallo invece di SheetView::ContentRect() (tutte le celle con
+	// contenuto). Stesso principio "solo per la sessione corrente" di
+	// scrollPosition sopra: nessuno spazio riservato per questo nel
+	// formato ASCD/ASCB, un file riaperto non ha mai un'area di stampa
+	// gia' impostata.
+	bool hasPrintArea = false;
+	range printArea;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di
