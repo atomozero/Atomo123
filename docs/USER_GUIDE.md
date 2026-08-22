@@ -132,6 +132,27 @@ Atomo123 and paste into a text editor, and back. The copied content is
 the cell's formula (the same text the formula bar shows), not the
 already-calculated value.
 
+## AutoFill
+
+Select two or more cells in a row or column, then drag the small
+square handle at the bottom-right corner of the selection into the
+cells you want to fill (same convention as Excel/LibreOffice Calc).
+Atomo123 extends the pattern it detects in the source cells:
+
+- **Numbers with a constant step**: `1, 2, 3` continues `4, 5, 6`;
+  `10, 8, 6` continues `4, 2`; a fractional step (`0.1, 0.2, 0.3`)
+  keeps working despite floating-point rounding.
+- **Dates/times with a constant step**: continues with the same step
+  (a day, a week, or any other interval between the source cells).
+- **A single selected cell**: repeats that value, same as the
+  existing "Fill Down"/"Fill Right" commands.
+- **Anything else** (text, mixed types, or numbers with no constant
+  step): cycles through the source values in order, the same fallback
+  Excel uses.
+
+Dragging down or right grows the selection; the direction follows
+whichever way you actually drag, and can change mid-drag.
+
 ## Find & replace
 
 Edit → Find & Replace… opens a small window with a "Find:" field, a

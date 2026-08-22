@@ -312,6 +312,21 @@ Since v0.2.0 (not yet in a tagged release):
   general-purpose expression parser XLSX used to. XLS's legacy BIFF
   importer never had this problem (it already writes typed values
   directly) — only its ASCD bridge needed the fix
+- Added Excel-style AutoFill: a small handle at the bottom-right corner
+  of the current selection, drag it to extend a detected series into
+  the cells you drag over (Excel/LibreOffice Calc convention).
+  Recognizes a constant-step numeric progression (1,2,3 → 4,5,6; also
+  negative/fractional steps), a constant-step date/time progression,
+  and otherwise cycles the selected values (or repeats a single value)
+  the same way Excel falls back for non-arithmetic/mixed-type
+  selections. Direction (horizontal/vertical) follows whichever axis
+  the drag moves further along, and can change mid-drag. Found and
+  fixed a real latent double-free in the engine's `Value` class along
+  the way: it had a custom destructor and assignment operator but no
+  explicit copy constructor, so the compiler-generated one shallow-
+  copied a text cell's heap pointer — invisible until this feature
+  became the first code in the project to put `Value` in a
+  `std::vector` (which copies elements around, e.g. on reallocation)
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
