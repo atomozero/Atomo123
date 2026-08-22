@@ -1,39 +1,45 @@
-1	English	application/x-vnd.Atomo-Atomo123	2376409699
-Separatore delle migliaia:	PreferencesWindow		Thousands separator:
-Simbolo valuta:	PreferencesWindow		Currency symbol:
-Spazio ( )	PreferencesWindow		Space ( )
+1	English	application/x-vnd.Atomo-Atomo123	939076935
 Dividi	PasteSpecialWindow		Divide
-immagine.png	SheetView		image.png
-Immagine PNG	SheetView		PNG image
 Nuovo documento	MainWindow		New document
 Sostituisci con:	FindWindow		Replace with:
+Minimo	PivotWindow		Minimum
 Moltiplica	PasteSpecialWindow		Multiply
 Modifica	MainWindow		Edit
 Stampa…	MainWindow		Print…
-(nessuno)	MainWindow		(none)
 Salva	HyperlinkWindow		Save
+(nessuno)	MainWindow		(none)
+Minimo	Pivot		Minimum
 Generale	MainWindow		General
 Rimuovi collegamento	HyperlinkWindow		Remove link
+›	PageSetupWindow		›
 Collegamento ipertestuale…	MainWindow		Hyperlink…
 \"%s\" non è uno dei valori ammessi:\n%s	MainWindow		\"%s\" is not one of the allowed values:\n%s
+Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		Deselect a series to hide only its numeric labels on the chart; the series itself stays visible.
 Mostra tutto	SheetView		Show all
 Conteggio	MainWindow		Count
+Il file conteneva un grafico non implementato in Atomo123:\n	MainWindow		Il file conteneva un grafico non implementato in Atomo123:\n
 Spessore bordo	MainWindow		Border thickness
+Separatore delle migliaia:	PreferencesWindow		Thousands separator:
 Crea	PivotWindow		Create
 Nessun valore positivo da mostrare.	Chart		No positive value to show.
+‹	PageSetupWindow		‹
+immagine.png	SheetView		image.png
 Pivot	MainWindow		Pivot
 Preferenze…	MainWindow		Preferences…
 Bordo superiore	MainWindow		Top border
 Elimina riga	MainWindow		Delete row
+Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		Il file conteneva grafici non implementati in Atomo123:\n
+Massimo	Pivot		Maximum
 Incolla	PasteSpecialWindow		Paste
 Formato	MainWindow		Format
+Margini	PageSetupWindow		Margini
 Informazioni su Atomo123	AboutWindow		About Atomo123
 Spesso	MainWindow		Thick
 Sottrai	PasteSpecialWindow		Subtract
-Intervallo dati (due colonne: categoria, valore):	PivotWindow		Data range (two columns: category, value):
 Media	PivotWindow		Average
 Tabella pivot	MainWindow		Pivot table
 Collegamento ipertestuale	MainWindow		Hyperlink
+Imposta area di stampa	MainWindow		Imposta area di stampa
 Salva	MainWindow		Save
 Incolla speciale…	MainWindow		Paste special…
 Valori duplicati nella selezione	ConditionalFormatWindow		Duplicate values in selection
@@ -41,48 +47,63 @@ URL:	HyperlinkWindow		URL:
 Nuovo	MainWindow		New
 Scrittura del file fallita.	MainWindow		Writing the file failed.
 Trasponi righe e colonne	PasteSpecialWindow		Transpose rows and columns
-Le modifiche non salvate andranno perse. Continuare?	MainWindow		Unsaved changes will be lost. Continue?
+Spazio ( )	PreferencesWindow		Space ( )
 Minimo:	ValidationWindow		Minimum:
+Le modifiche non salvate andranno perse. Continuare?	MainWindow		Unsaved changes will be lost. Continue?
+Grafico non implementato	MainWindow		Grafico non implementato
 Versione %u.%u.%u	AboutWindow		Version %u.%u.%u
 Separatore di elenco:	PreferencesWindow		List separator:
 Tabella pivot	PivotWindow		Pivot table
+Serie	Chart		Series
 Mostra griglia	PreferencesWindow		Show grid
+Applica	PageSetupWindow		Applica
 Trova e sostituisci	FindWindow		Find and replace
+Inferiore:	PageSetupWindow		Inferiore:
 Informazioni su Atomo123…	MainWindow		About Atomo123…
 Impossibile aprire il file selezionato.	MainWindow		Couldn't open the selected file.
 Seleziona tutto	MainWindow		Select all
 Colore testo…	MainWindow		Text color…
 Sinistro	BorderWindow		Left
+Ogni quanti minuti:	PreferencesWindow		Every how many minutes:
 Elimina foglio	MainWindow		Delete sheet
+Nessun dato valido nell'intervallo (servono almeno due colonne: una o piu' di categoria testuale, poi il valore numerico).	MainWindow		No valid data in the range (at least two columns needed: one or more of text category, then the numeric value).
 Intervallo (due colonne: etichette, valori):	ChartWindow		Range (two columns: labels, values):
 Applica	ColorWindow		Apply
 Colore sfondo	MainWindow		Background color
+Imposta pagina…	MainWindow		Imposta pagina…
 Riempi a destra	MainWindow		Fill right
 Elimina foglio	SheetTabView		Delete sheet
 Cella di destinazione nel foglio:	ChartWindow		Destination cell in the sheet:
+Stampa…	PageSetupWindow		Stampa…
 Commento cella…	MainWindow		Cell comment…
+Cancella area di stampa	MainWindow		Cancella area di stampa
 Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	Editing
 Esci	MainWindow		Quit
+Imposta pagina	PageSetupWindow		Imposta pagina
 Applica	PreferencesWindow		Apply
 Esiste già un foglio con questo nome.	MainWindow		A sheet with this name already exists.
 Rimuovi convalida	ValidationWindow		Remove validation
 Modifiche non salvate	MainWindow		Unsaved changes
+Titolo (facoltativo):	ChartWindow		Title (optional):
 Minimo	MainWindow		Minimum
 Categoria	Pivot		Category
 Salva	ValidationWindow		Save
 Ordina Z-A	MainWindow		Sort Z-A
 Applica	BorderWindow		Apply
 Spessore:	BorderWindow		Thickness:
+Mostra valori per serie	ChartWindow		Show values per series
+Destro:	PageSetupWindow		Destro:
 Inserisci riga	MainWindow		Insert row
 Percentuale	MainWindow		Percentage
 Conteggio	Pivot		Count
 di Andrea Bernardi	AboutWindow		by Andrea Bernardi
 Conteggio numerico	MainWindow		Numeric count
+Larghezza di una pagina	PageSetupWindow		Larghezza di una pagina
 Cella di destinazione:	PivotWindow		Destination cell:
 Cancella	MainWindow		Clear
 Sviluppato da StudioBernardi.eu	AtomGLView		Developed by StudioBernardi.eu
-Vai a	GoToWindow		Go to
 Convalida dati	ValidationWindow		Data validation
+Vai a	GoToWindow		Go to
 Trova successivo	FindWindow		Find next
 Avvio	PreferencesWindow		Startup
 Bordo destro	MainWindow		Right border
@@ -96,11 +117,12 @@ Bordo cella	BorderWindow		Cell border
 Foglio di calcolo nativo per Haiku OS.	AboutWindow		Native spreadsheet for Haiku OS.
 Intervallo dati o cella di destinazione non validi: l'intervallo deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Invalid data range or destination cell: the range must have two columns (labels, values) with at least one numeric row, e.g. A1:B5.
 Apri	HyperlinkWindow		Open
+Massimo:	ValidationWindow		Maximum:
 Rinomina foglio	MainWindow		Rename sheet
 Media	Pivot		Average
-Massimo:	ValidationWindow		Maximum:
-Elimina	NameWindow		Delete
 Rimuovi commento	CommentWindow		Remove comment
+Elimina	NameWindow		Delete
+Nessuna anteprima	PageSetupWindow		Nessuna anteprima
 Se il valore e' uguale a	ConditionalFormatWindow		If the value is equal to
 A capo automatico	MainWindow		Wrap text
 Il file non e' piu' disponibile nella posizione registrata.	MainWindow		The file is no longer available at its recorded location.
@@ -118,6 +140,7 @@ Inserisci colonna	MainWindow		Insert column
   ·  per Haiku	AboutWindow		  ·  for Haiku
 Incolla speciale	PasteSpecialWindow		Paste special
 Convalida dati…	MainWindow		Data validation…
+Immagine PNG	SheetView		PNG image
 Commento cella	CommentWindow		Cell comment
 \"%s\" non è un numero compreso fra %g e %g.	MainWindow		\"%s\" is not a number between %g and %g.
 Tipo:	ValidationWindow		Type:
@@ -128,7 +151,10 @@ Grassetto	MainWindow		Bold
 Nessun translator installato sa esportare in questo formato.	MainWindow		No installed translator can export to this format.
 Somma	PivotWindow		Sum
 Grafico a barre…	MainWindow		Bar chart…
+Superiore:	PageSetupWindow		Superiore:
 Ordina crescente	MainWindow		Sort ascending
+Una sola pagina	PageSetupWindow		Una sola pagina
+Scala	PageSetupWindow		Scala
 Cella o intervallo:	GoToWindow		Cell or range:
 Tabella pivot…	MainWindow		Pivot table…
 Rimuovi tutte le regole	ConditionalFormatWindow		Remove all rules
@@ -141,6 +167,7 @@ Colore sfondo	ColorWindow		Background color
 Punto e virgola (;)	PreferencesWindow		Semicolon (;)
 Impossibile creare il file.	MainWindow		Couldn't create the file.
 Allinea al centro	MainWindow		Align center
+Percentuale:	PageSetupWindow		Percentuale:
 Stampa	MainWindow		Print
 Bordo cella…	MainWindow		Cell border…
 Intervalli con nome…	MainWindow		Named ranges…
@@ -148,19 +175,22 @@ Rinomina foglio…	SheetTabView		Rename sheet…
 File	PreferencesWindow		File
 Rinomina foglio	RenameSheetWindow		Rename sheet
 Sovrascrivi	PasteSpecialWindow		Overwrite
+Formato nativo (.ascd)	MainWindow		Native format (.ascd)
 Elimina colonna	MainWindow		Delete column
 Somma	MainWindow		Sum
 Vai a	NameWindow		Go to
 Colore bordo…	MainWindow		Border color…
+OpenDocument (.ods)	MainWindow		OpenDocument (.ods)
 Intervallo dati o cella di destinazione non validi.	MainWindow		Invalid data range or destination cell.
 Aggregazione:	PivotWindow		Aggregation:
 Lati	BorderWindow		Sides
 Codice nuovo su licenza MIT · motore derivato da Sum-It (BSD, Hekkelman Programmatuur).	AboutWindow		New code under the MIT license · engine derived from Sum-It (BSD, Hekkelman Programmatuur).
 Non è possibile eliminare l'unico foglio della cartella di lavoro.	MainWindow		The only sheet in the workbook cannot be deleted.
 Sostituisci	FindWindow		Replace
+Intervallo non valido: serve almeno una riga numerica in ogni colonna serie.	MainWindow		Invalid range: at least one numeric row is needed in each series column.
 Dividi celle	MainWindow		Split cells
-Inserisci riga	SheetView		Insert row
 Nessuna	ValidationWindow		None
+Inserisci riga	SheetView		Insert row
 Intervalli con nome	MainWindow		Named ranges
 Punto (.)	PreferencesWindow		Period (.)
 Linee	ChartWindow		Lines
@@ -181,19 +211,22 @@ Non si puo' ordinare: la selezione contiene una cella unita. Dividi le celle pri
 Massimo	MainWindow		Maximum
 Il file e' stato tradotto ma i dati risultanti non sono validi.	MainWindow		The file was translated but the resulting data is not valid.
 Somma	PasteSpecialWindow		Sum
+Adatta al:	PageSetupWindow		Adatta al:
 Sottile	BorderWindow		Thin
 Formattazione condizionale	ConditionalFormatWindow		Conditional formatting
-Nessun dato valido nell'intervallo (servono due colonne: categoria testuale, valore numerico).	MainWindow		No valid data in the range (two columns needed: text category, numeric value).
 Colore sfondo…	MainWindow		Background color…
 Valuta	MainWindow		Currency
 Ordina A-Z	MainWindow		Sort A-Z
 Sottolineato	MainWindow		Underline
 Spesso	BorderWindow		Thick
 Ordina	SheetView		Sort
+Salvataggio automatico	PreferencesWindow		Automatic saving
 Virgola (,)	PreferencesWindow		Comma (,)
 Convalida dati	SheetView		Data validation
 Sottile	MainWindow		Thin
 Media	MainWindow		Average
+Simbolo valuta:	PreferencesWindow		Currency symbol:
+di	PageSetupWindow		di
 Applica alla selezione	ConditionalFormatWindow		Apply to selection
 Nuovo foglio	MainWindow		New sheet
 Separatore decimale:	PreferencesWindow		Decimal separator:
@@ -201,39 +234,30 @@ Salva	CommentWindow		Save
 OK	MainWindow		OK
 Apri	MainWindow		Open
 Mostra lo splash screen all'avvio	PreferencesWindow		Show the splash screen at startup
-Salvataggio automatico	PreferencesWindow		Automatic saving
-Abilita il salvataggio automatico (backup)	PreferencesWindow		Enable automatic saving (backup)
-Ogni quanti minuti:	PreferencesWindow		Every how many minutes:
-CSV (.csv)	MainWindow		CSV (.csv)
-Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		Deselect a series to hide only its numeric labels on the chart; the series itself stays visible.
-Excel (.xlsx)	MainWindow		Excel (.xlsx)
-Formato nativo (.ascd)	MainWindow		Native format (.ascd)
-Intervallo non valido: serve almeno una riga numerica in ogni colonna serie.	MainWindow		Invalid range: at least one numeric row is needed in each series column.
-Mostra valori per serie	ChartWindow		Show values per series
-OpenDocument (.ods)	MainWindow		OpenDocument (.ods)
-Senza titolo	MainWindow		Untitled
-Serie	Chart		Series
-Titolo (facoltativo):	ChartWindow		Title (optional):
+Intervallo dati (una o piu' colonne di categoria, poi il valore):	PivotWindow		Data range (one or more category columns, then the value):
 Offrimi un caffe' ☕	AboutWindow		Buy me a coffee ☕
 Trova	MainWindow		Find
 Cosa incollare:	PasteSpecialWindow		What to paste:
+Excel (.xlsx)	MainWindow		Excel (.xlsx)
 Generale	PreferencesWindow		General
 Colore bordo	ColorWindow		Border color
 File recenti da ricordare:	PreferencesWindow		Recent files to remember:
 Grafico	MainWindow		Chart
 Bordo cella	MainWindow		Cell border
 Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.	SheetView		Can't insert: some cells at the bottom of the sheet would go past the limit.
-Continua senza salvare	MainWindow		Continue without saving
 Intervallo numerico	ValidationWindow		Number range
-Medio	MainWindow		Medium
+Continua senza salvare	MainWindow		Continue without saving
+Senza titolo	MainWindow		Untitled
 Collegamento ipertestuale	HyperlinkWindow		Hyperlink
+Medio	MainWindow		Medium
 Riempi in basso	MainWindow		Fill down
+CSV (.csv)	MainWindow		CSV (.csv)
 Eliminare il foglio \"%s\"? L'operazione non può essere annullata.	MainWindow		Delete sheet \"%s\"? This operation cannot be undone.
 Valori (separati da virgola):	ValidationWindow		Values (comma-separated):
 File	MainWindow		File
 Allinea a sinistra	MainWindow		Align left
-Vai a	MainWindow		Go to
 Rinomina	RenameSheetWindow		Rename
+Vai a	MainWindow		Go to
 Allinea a destra	MainWindow		Align right
 Conteggio	PivotWindow		Count
 Incolla	MainWindow		Paste
@@ -251,10 +275,12 @@ Barre	ChartWindow		Bars
 Formato file non riconosciuto da nessun translator installato.	MainWindow		File format not recognized by any installed translator.
 Versione	AboutWindow		Version
 Nome del foglio:	RenameSheetWindow		Sheet name:
+Massimo	PivotWindow		Maximum
 Colore testo	MainWindow		Text color
 Sostituisci tutto	MainWindow		Replace all
 Operazione con la cella di destinazione:	PasteSpecialWindow		Operation with the destination cell:
 Apri…	MainWindow		Open…
+Abilita il salvataggio automatico (backup)	PreferencesWindow		Enable automatic saving (backup)
 Vai a…	MainWindow		Go to…
 Tipo:	ConditionalFormatWindow		Type:
 Ordina decrescente	MainWindow		Sort descending
@@ -263,7 +289,11 @@ Copia	MainWindow		Copy
 Cerca:	FindWindow		Search:
 Tutto (come Incolla)	PasteSpecialWindow		All (like Paste)
 Nome:	NameWindow		Name:
+Sinistro:	PageSetupWindow		Sinistro:
 Colore	ColorWindow		Color
+Valori in centimetri	PageSetupWindow		Valori in centimetri
+Altezza di una pagina	PageSetupWindow		Altezza di una pagina
 Pronto	MainWindow		Ready
+Pagina	PageSetupWindow		Pagina
 Taglia	MainWindow		Cut
 Aggiungi/Aggiorna	NameWindow		Add/Update

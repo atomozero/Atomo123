@@ -32,14 +32,19 @@ PivotWindow::PivotWindow(BMessenger target)
 	fTarget(target)
 {
 	fSourceField = new BTextControl("source",
-		B_TRANSLATE("Intervallo dati (due colonne: categoria, valore):"), "A1:B10", NULL);
+		B_TRANSLATE("Intervallo dati (una o piu' colonne di categoria, poi il valore):"),
+		"A1:B10", NULL);
 
 	fDestField = new BTextControl("dest", B_TRANSLATE("Cella di destinazione:"), "D1", NULL);
 
+	// L'ordine qui DEVE combaciare con la mappatura indice->PivotAggFunc
+	// in kMsgCreateLocal sotto.
 	BPopUpMenu* aggMenu = new BPopUpMenu("agg");
 	aggMenu->AddItem(new BMenuItem(B_TRANSLATE("Somma"), NULL));
 	aggMenu->AddItem(new BMenuItem(B_TRANSLATE("Conteggio"), NULL));
 	aggMenu->AddItem(new BMenuItem(B_TRANSLATE("Media"), NULL));
+	aggMenu->AddItem(new BMenuItem(B_TRANSLATE("Minimo"), NULL));
+	aggMenu->AddItem(new BMenuItem(B_TRANSLATE("Massimo"), NULL));
 	aggMenu->ItemAt(0)->SetMarked(true);
 	fAggField = new BMenuField("aggField", B_TRANSLATE("Aggregazione:"), aggMenu);
 
@@ -70,6 +75,10 @@ void PivotWindow::MessageReceived(BMessage* message)
 				fn = ePivotCount;
 			else if (index == 2)
 				fn = ePivotAverage;
+			else if (index == 3)
+				fn = ePivotMin;
+			else if (index == 4)
+				fn = ePivotMax;
 		}
 
 		BMessage request(kMsgPivotRequest);

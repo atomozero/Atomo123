@@ -1,10 +1,11 @@
 /*
 	PivotWindow.h
 
-	Finestra "Tabella pivot": intervallo dati sorgente (due colonne:
-	categoria, valore), cella di destinazione e scelta
-	dell'aggregazione (Somma/Conteggio/Media). Stessa regola sui
-	thread di FindWindow: manda una richiesta a MainWindow via
+	Finestra "Tabella pivot": intervallo dati sorgente (una o piu'
+	colonne di categoria, poi il valore -- raggruppamento multi-livello
+	se piu' di una, Fase 29), cella di destinazione e scelta
+	dell'aggregazione (Somma/Conteggio/Media/Minimo/Massimo). Stessa
+	regola sui thread di FindWindow: manda una richiesta a MainWindow via
 	BMessage, che legge/scrive il documento sul proprio thread e
 	aggiorna la griglia -- questa finestra non tocca mai il documento
 	direttamente e non riceve dati indietro (il risultato va nel

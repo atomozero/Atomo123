@@ -3659,16 +3659,19 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 	if (!BuildPivotTable(fDoc, source, rows))
 	{
 		BAlert* alert = new BAlert(B_TRANSLATE("Tabella pivot"),
-			B_TRANSLATE("Nessun dato valido nell'intervallo (servono due colonne: "
-				"categoria testuale, valore numerico)."), B_TRANSLATE("OK"));
+			B_TRANSLATE("Nessun dato valido nell'intervallo (servono almeno due colonne: "
+				"una o piu' di categoria testuale, poi il valore numerico)."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
 
-	// La destinazione (intestazioni + una riga per categoria) non deve
+	// La destinazione (intestazioni + una riga per gruppo, larga
+	// quante sono le colonne di categoria piu' quella di
+	// aggregazione -- Fase 29, raggruppamento multi-livello) non deve
 	// sovrapporsi ai dati sorgente, altrimenti la scrittura riga per
 	// riga li corromperebbe mentre li si sta ancora leggendo.
-	range destRange(dest.h, dest.v, dest.h + 1, dest.v + (int)rows.size());
+	int destWidth = (int)rows[0].categories.size();
+	range destRange(dest.h, dest.v, dest.h + destWidth, dest.v + (int)rows.size());
 	if (destRange.left <= source.right && destRange.right >= source.left
 		&& destRange.top <= source.bottom && destRange.bottom >= source.top)
 	{
