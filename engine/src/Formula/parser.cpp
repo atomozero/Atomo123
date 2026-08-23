@@ -581,41 +581,67 @@ void CParser::Factor()
 
 				AddToken(valRange, &r);
 			}
+			else if (fcd.funcNr >= 0 && (strcasecmp(name, "TRUE") == 0 || strcasecmp(name, "FALSE") == 0))
+			{
+				// TRUE/FALSE nudi, senza parentesi, restano un'eccezione
+				// voluta: nel vero Excel sono letterali booleani
+				// utilizzabili senza "()" (es. "=IF(A1=FALSE;...)",
+				// "=TEXTJOIN(\"-\";TRUE;...)"), e diverse formule reali
+				// di questo stesso progetto (test compresi) fanno
+				// affidamento su questa forma -- a differenza di OGNI
+				// altra funzione (vedi il ramo sotto), che non deve mai
+				// essere chiamata implicitamente senza parentesi.
+				fcd.argCnt = 0;
+				AddToken(opFunc, &fcd);
+			}
 			else
 			{
-				if (fcd.funcNr >= 0)
-				{
-					if (expectedArgs != -1 && expectedArgs != 0)
-						throw CParseErr(s, strlen(name), errIncorrectNrOfArgs,
-							expectedArgs, 0);
-
-					fcd.argCnt = 0;
-
-					AddToken(opFunc, &fcd);
-				}
-				else
-				{
-					// Fase 7: un identificatore che non e' un nome di
-					// funzione conosciuta e' sempre un possibile
-					// riferimento a un intervallo con nome, incorporato
-					// cosi' com'e' -- MAI verificato qui se esiste
-					// davvero (CContainer::GetNameTable/IsNamedRange
-					// tramite il vecchio GetOwner()/CCellView, sempre
-					// NULL nella UI reale, e' stato rimosso). Se il
-					// nome non risulta definito nella tabella del
-					// documento in fase di CALCOLO
-					// (CContainer::ResolveName, mai di parsing), il
-					// riferimento semplicemente non si risolve
-					// (gNameNan) -- stesso principio gia' scelto per i
-					// riferimenti fra fogli (vedi ParseSheetReference
-					// sopra): un nome definito DOPO che la formula e'
-					// stata scritta (o ri-analizzata da un file
-					// caricato, prima che l'utente riapra la finestra
-					// Intervalli con nome) deve comunque restare una
-					// formula, non degradare silenziosamente a testo
-					// puro.
-					AddToken(valName, name);
-				}
+				// Fase 7 (esteso qui): un identificatore NUDO, senza le
+				// parentesi che lo renderebbero inequivocabilmente una
+				// chiamata di funzione, e' SEMPRE trattato come un
+				// possibile riferimento a un intervallo con nome, MAI
+				// come una chiamata implicita a zero argomenti -- anche
+				// se "name" corrisponde per caso al nome di una
+				// funzione nota (fcd.funcNr >= 0), TRUE/FALSE a parte
+				// (vedi il ramo sopra). Incorporato cosi' com'e', MAI
+				// verificato qui se esiste davvero (CContainer::
+				// GetNameTable/IsNamedRange tramite il vecchio
+				// GetOwner()/CCellView, sempre NULL nella UI reale, e'
+				// stato rimosso). Se il nome non risulta definito nella
+				// tabella del documento in fase di CALCOLO
+				// (CContainer::ResolveName, mai di parsing), il
+				// riferimento semplicemente non si risolve (gNameNan)
+				// -- stesso principio gia' scelto per i riferimenti fra
+				// fogli (vedi ParseSheetReference sopra): un nome
+				// definito DOPO che la formula e' stata scritta (o
+				// ri-analizzata da un file caricato, prima che l'utente
+				// riapra la finestra Intervalli con nome) deve comunque
+				// restare una formula, non degradare silenziosamente a
+				// testo puro.
+				//
+				// PRIMA di questo fix, un identificatore nudo che
+				// corrispondeva a una funzione con "expectedArgs" pari
+				// a -1 o 0 veniva invece chiamato implicitamente con
+				// zero argomenti (AddToken(opFunc, ...)) -- bug reale
+				// (segnalato dall'utente, scoperto scrivendo un
+				// catalogo di funzioni con nome: digitare la sola
+				// parola "TODAY", "CONCAT", "IF" o "XOR" come normale
+				// ETICHETTA di testo, senza alcun "=" davanti, veniva
+				// silenziosamente CALCOLATO come se fosse stata scritta
+				// la formula corrispondente). expectedArgs=-1 e' la
+				// stessa sentinella usata per "funzione sconosciuta"
+				// qui sopra, ma un TRONCAMENTO involontario (argCnt e'
+				// un short in FuncRec, 65535 = "argomenti variabili"
+				// diventa bit per bit -1) la faceva scattare anche per
+				// funzioni note come SUM/IF/CONCAT/XOR/AND/OR, non solo
+				// per le poche VERAMENTE a zero argomenti fissi
+				// (TODAY/NOW/PI/...). Nessun'altra formula reale in
+				// questo progetto fa affidamento su una chiamata
+				// implicita senza parentesi (stesso principio del vero
+				// Excel, dove "=OGGI" da solo non esiste, serve sempre
+				// "=OGGI()") -- solo TRUE/FALSE, gestiti a parte sopra,
+				// ne avevano davvero bisogno.
+				AddToken(valName, name);
 			}
 			break;
 		}

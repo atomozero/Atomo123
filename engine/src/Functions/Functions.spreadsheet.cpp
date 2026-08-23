@@ -599,7 +599,14 @@ void MATCHFunction(Value *stack, int argCnt, CContainer *cells)
 	if (foundPos > 0)
 		stack[0] = (double)foundPos;
 	else
-		stack[0] = gRefNan;
+		// #N/A ("non trovato"), non #REF! ("riferimento non valido"):
+		// stesso principio del vero Excel, dove IFNA(MATCH(...),
+		// ripiego) e' un pattern comune -- bug reale scoperto scrivendo
+		// il catalogo di esempio di generate_cda_report.cpp, IFNA non
+		// intercettava mai un MATCH senza corrispondenza perche' l'unico
+		// controllo di IFNAFunction e' sul numero di errore taggato
+		// dentro il NaN (GetNanNr), non su isnan() da solo.
+		stack[0] = gNANan;
 }
 
 // INDIRECT/ADDRESS/XMATCH (Fase 26, vedi ROADMAP.md "v3.0
@@ -878,7 +885,9 @@ void XMATCHFunction(Value *stack, int argCnt, CContainer *cells)
 	else if (matchMode == 1 && bestLargerPos != -1)
 		stack[0] = (double)bestLargerPos;
 	else
-		stack[0] = gRefNan;
+		// #N/A, non #REF! -- stesso motivo del fix gemello in
+		// MATCHFunction sopra.
+		stack[0] = gNANan;
 }
 
 // true se il bytecode di "formulaBytecode" (vedi CContainer::
@@ -1155,10 +1164,12 @@ void XLOOKUPFunction(Value *stack, int argCnt, CContainer *cells)
 		// if_not_found (quarto argomento, opzionale): qualunque valore
 		// grezzo passato cosi' com'e', stesso schema di IFERR/IF sopra
 		// per il ramo "vero"/"falso" -- puo' essere un numero, testo,
-		// o qualunque altra cosa, non solo gRefNan.
+		// o qualunque altra cosa, non solo un errore.
 		stack[0] = stack[3];
 	else
-		stack[0] = gRefNan;
+		// #N/A, non #REF! -- stesso motivo del fix gemello in
+		// MATCHFunction/XMATCHFunction sopra.
+		stack[0] = gNANan;
 }
 
 // IFS(condizione1, valore1, [condizione2, valore2], ...) -- Fase 14,

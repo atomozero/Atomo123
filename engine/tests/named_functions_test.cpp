@@ -938,6 +938,56 @@ int main()
 		gFailures++;
 	}
 
+	// Bug reale scoperto scrivendo il catalogo di esempio di
+	// generate_cda_report.cpp: MATCH/XMATCH/XLOOKUP senza corrispondenza
+	// restituivano #REF! (gRefNan) invece di #N/A (gNANan), quindi
+	// IFNA -- che controlla SOLO il numero di errore taggato dentro il
+	// NaN, non isnan() da solo -- non li intercettava mai. Pattern
+	// comunissimo in Excel (IFNA(MATCH(...),ripiego)), qui verificato
+	// sulle tre funzioni di ricerca "moderne" insieme.
+	try
+	{
+		TryToParseString("=IFNA(MATCH(99,L1:L3,0),\"non trovato\")", cell(40, 8), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 8));
+		doc.GetValue(cell(40, 8), v);
+		Check(v.fType == eTextData && strcmp((const char *)v, "non trovato") == 0,
+			"=IFNA(MATCH(99,L1:L3,0),\"non trovato\") intercetta il #N/A di MATCH senza corrispondenza");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =IFNA(MATCH senza corrispondenza): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=IFNA(XMATCH(99,A1:A3),\"non trovato\")", cell(40, 9), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 9));
+		doc.GetValue(cell(40, 9), v);
+		Check(v.fType == eTextData && strcmp((const char *)v, "non trovato") == 0,
+			"=IFNA(XMATCH(99,A1:A3),\"non trovato\") intercetta il #N/A di XMATCH senza corrispondenza");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =IFNA(XMATCH senza corrispondenza): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=IFNA(XLOOKUP(99,L1:L3,M1:M3),\"non trovato\")", cell(40, 10), &doc, true, '.', ',');
+		doc.CalcCell(cell(40, 10));
+		doc.GetValue(cell(40, 10), v);
+		Check(v.fType == eTextData && strcmp((const char *)v, "non trovato") == 0,
+			"=IFNA(XLOOKUP(99,L1:L3,M1:M3),\"non trovato\") intercetta il #N/A di XLOOKUP senza "
+			"corrispondenza (e senza il suo stesso quarto argomento if_not_found)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =IFNA(XLOOKUP senza corrispondenza): %s\n", (char *)e);
+		gFailures++;
+	}
+
 	try
 	{
 		// AO1 (colonna 41), mai scritta altrove in questo file: stesso
@@ -2131,6 +2181,54 @@ int main()
 
 		formulaSheet.Release();
 		dataSheet2.Release();
+	}
+
+	// Bug reale segnalato dall'utente (screenshot di un catalogo di
+	// funzioni con nome): un'etichetta di testo NUDA che corrisponde
+	// per caso al nome di una funzione (senza "=" davanti, senza
+	// parentesi) veniva silenziosamente CALCOLATA come se l'utente
+	// avesse scritto la formula corrispondente -- "TODAY" digitato
+	// come normale testo diventava la data di oggi, "CONCAT"/"IF"/
+	// "XOR" (funzioni ad argomenti variabili, argCnt=65535 che un
+	// troncamento short trasforma bit per bit in -1, la stessa
+	// sentinella di "funzione sconosciuta") diventavano un valore
+	// calcolato invece di restare testo. TRUE/FALSE restano
+	// un'eccezione voluta (vedi il commento in parser.cpp, case IDENT):
+	// letterali booleani utilizzabili senza parentesi anche nel vero
+	// Excel, e gia' usati cosi' da formule reali di questo stesso file
+	// (vedi i test TEXTJOIN/IF piu' sopra).
+	{
+		CContainer& doc = *new CContainer(NULL, NULL);
+		const char* ambiguousLabels[] = {
+			"TODAY", "CONCAT", "IF", "XOR", "AND", "OR", "SUM", "NOW", "PI", "RAND"
+		};
+		bool allOk = true;
+		for (size_t i = 0; i < sizeof(ambiguousLabels) / sizeof(ambiguousLabels[0]); i++)
+		{
+			TryToParseString(ambiguousLabels[i], cell(1, (int)i + 1), &doc, true);
+			Value v;
+			doc.GetValue(cell(1, (int)i + 1), v);
+			if (v.fType != eTextData || strcmp((const char*)v, ambiguousLabels[i]) != 0)
+			{
+				printf("FAIL \"%s\" digitato come testo non e' rimasto testo letterale\n",
+					ambiguousLabels[i]);
+				allOk = false;
+			}
+		}
+		Check(allOk, "un'etichetta di testo che corrisponde al nome di una funzione "
+			"(TODAY/CONCAT/IF/XOR/...) resta testo letterale, non viene calcolata da sola");
+
+		// TRUE/FALSE nudi restano un'eccezione voluta: devono ancora
+		// funzionare come letterali booleani dentro una formula vera.
+		TryToParseString("=IF(TRUE;\"vero\";\"falso\")", cell(2, 1), &doc, true);
+		doc.CalcCell(cell(2, 1));
+		Value v;
+		doc.GetValue(cell(2, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "vero") == 0,
+			"=IF(TRUE;...) con TRUE nudo (senza parentesi) dentro una formula vera continua a "
+			"funzionare come letterale booleano");
+
+		doc.Release();
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
