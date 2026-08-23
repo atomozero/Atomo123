@@ -37,6 +37,102 @@ static void ValueToLabel(const Value& v, BString& out)
 		out = "";
 }
 
+// Disegna "text" andando a capo per stare entro "maxWidth", fino a
+// "maxLines" righe -- BView::DrawString da solo non tronca ne' va a
+// capo, quindi un'etichetta piu' larga dello slot/della striscia a
+// disposizione (es. un nome di categoria lungo come "United States of
+// America", o "Channel Partners" nella legenda) sconfinava fuori dal
+// grafico (bug segnalato dall'utente). Suddivisione "greedy" classica
+// per parole (spazio come separatore): non serve altro per etichette
+// corte come nomi di categoria/serie. Se il testo non entra comunque
+// in "maxLines" righe, le parole in eccesso si accorpano nell'ultima
+// riga, troncata con l'ellissi (BFont::TruncateString) -- l'altezza
+// occupata resta cosi' sempre prevedibile per chi riserva lo spazio
+// sotto/accanto al grafico. "centered"=true centra ogni riga su
+// "anchor.x" (etichette di categoria, sotto una barra/un punto);
+// false allinea a sinistra (voci di legenda, dopo il quadratino di
+// colore). Ritorna l'altezza totale disegnata, cosi' i chiamanti con
+// piu' voci in colonna (la legenda) possono spaziarle senza
+// sovrapporsi quando una voce va a capo.
+static float DrawWrappedLabel(BView* view, const char* text, BPoint anchor,
+	float maxWidth, int maxLines, bool centered)
+{
+	if (!text || !text[0] || maxWidth < 4 || maxLines < 1)
+		return 0;
+
+	font_height fh;
+	view->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+
+	std::vector<BString> words;
+	BString word;
+	for (int32 i = 0; text[i]; i++)
+	{
+		if (text[i] == ' ')
+		{
+			if (word.Length() > 0)
+			{
+				words.push_back(word);
+				word = "";
+			}
+		}
+		else
+			word << text[i];
+	}
+	if (word.Length() > 0)
+		words.push_back(word);
+	if (words.empty())
+		return 0;
+
+	std::vector<BString> lines;
+	BString current = words[0];
+	for (size_t i = 1; i < words.size(); i++)
+	{
+		BString candidate = current;
+		candidate << " " << words[i];
+		if (view->StringWidth(candidate.String()) <= maxWidth)
+			current = candidate;
+		else
+		{
+			lines.push_back(current);
+			current = words[i];
+		}
+	}
+	lines.push_back(current);
+
+	BFont font;
+	view->GetFont(&font);
+
+	// Piu' righe di quante concesse: le eccedenti si accorpano
+	// nell'ultima, troncata con l'ellissi -- mai piu' di "maxLines"
+	// righe disegnate.
+	if ((int)lines.size() > maxLines)
+	{
+		BString merged = lines[maxLines - 1];
+		for (size_t i = maxLines; i < lines.size(); i++)
+			merged << " " << lines[i];
+		lines.resize(maxLines);
+		font.TruncateString(&merged, B_TRUNCATE_END, maxWidth);
+		lines[maxLines - 1] = merged;
+	}
+	// Anche una singola riga puo' restare piu' larga di "maxWidth" (una
+	// sola parola lunghissima, senza spazi su cui spezzare): troncarla
+	// comunque, altrimenti sconfinerebbe lo stesso.
+	for (size_t i = 0; i < lines.size(); i++)
+	{
+		if (view->StringWidth(lines[i].String()) > maxWidth)
+			font.TruncateString(&lines[i], B_TRUNCATE_END, maxWidth);
+	}
+
+	for (size_t i = 0; i < lines.size(); i++)
+	{
+		float x = centered ? anchor.x - view->StringWidth(lines[i].String()) / 2 : anchor.x;
+		view->DrawString(lines[i].String(), BPoint(x, anchor.y + i * lineHeight));
+	}
+
+	return lines.size() * lineHeight;
+}
+
 // Titolo centrato in grassetto sopra "frame" -- condiviso da barre/
 // linee/torta. Una stringa vuota non disegna nulla: i chiamanti
 // riservano lo spazio in piu' solo quando c'e' davvero un titolo, cosi'
@@ -53,12 +149,26 @@ static void DrawChartTitle(BView* view, BRect frame, const BString& title)
 	view->SetFont(&font, B_FONT_FACE);
 
 	view->SetHighColor(0, 0, 0);
-	float width = view->StringWidth(title.String());
-	view->DrawString(title.String(), BPoint(frame.left + (frame.Width() - width) / 2, frame.top + 14));
+	// Troncato con l'ellissi se piu' largo del frame (meno un margine):
+	// un titolo lunghissimo sconfinerebbe altrimenti a sinistra/destra,
+	// stesso principio delle etichette di categoria/legenda sotto (vedi
+	// DrawWrappedLabel) ma su una sola riga, il titolo resta sempre
+	// centrato su una riga sola.
+	BString truncated = title;
+	font.TruncateString(&truncated, B_TRUNCATE_END, frame.Width() - 20);
+	float width = view->StringWidth(truncated.String());
+	view->DrawString(truncated.String(), BPoint(frame.left + (frame.Width() - width) / 2, frame.top + 14));
 
 	font.SetFace(B_REGULAR_FACE);
 	view->SetFont(&font, B_FONT_FACE);
 }
+
+// Righe massime per un'etichetta che va a capo (DrawWrappedLabel):
+// due per le categorie sotto barre/punti e per le voci di legenda --
+// abbastanza per un nome ragionevolmente lungo senza far crescere
+// troppo lo spazio riservato sotto/accanto al grafico.
+static const int kCategoryLabelMaxLines = 2;
+static const int kLegendLabelMaxLines = 2;
 
 bool BuildChartSeries(CContainer* doc, const range& r,
 	std::vector<ChartSeries>& out)
@@ -220,7 +330,15 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	double minValue, maxValue;
 	ChartValueRange(data, &minValue, &maxValue);
 
-	plotArea.bottom -= 16;	// spazio per le etichette di categoria sotto
+	// Spazio per le etichette di categoria sotto: fino a
+	// kCategoryLabelMaxLines righe (vedi DrawWrappedLabel), non piu'
+	// una sola come prima di questo fix -- un'etichetta lunga (es. un
+	// nome di categoria) puo' ora andare a capo invece di sconfinare
+	// fuori dal grafico (bug segnalato dall'utente).
+	font_height fh;
+	view->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+	plotArea.bottom -= 12 + lineHeight * kCategoryLabelMaxLines + 4;
 	// La riga delle etichette di categoria resta SEMPRE a questa
 	// posizione fissa (calcolata PRIMA dell'eventuale restrizione
 	// aggiuntiva qui sotto), anche quando la serie ha valori negativi:
@@ -287,10 +405,17 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
 	view->StrokeLine(BPoint(plotArea.left, zeroY), BPoint(plotArea.right, zeroY));
 
+	// Etichetta centrata sotto la barra e avvolta su piu' righe se
+	// serve (vedi DrawWrappedLabel), invece di un unico DrawString a
+	// sinistra che sconfinava fuori dallo slot con un nome lungo.
+	// slotWidth qui e' la stessa identica formula di ComputeBarLayout
+	// (non esposta al chiamante), riusata solo per il centraggio.
+	float slotWidth = plotArea.Width() / data.size();
 	for (size_t i = 0; i < bars.size() && i < data.size(); i++)
 	{
-		BPoint labelPos(bars[i].bar.left, categoryLabelY);
-		view->DrawString(data[i].label.String(), labelPos);
+		float centerX = bars[i].bar.left + bars[i].bar.Width() / 2;
+		DrawWrappedLabel(view, data[i].label.String(), BPoint(centerX, categoryLabelY),
+			slotWidth - 2, kCategoryLabelMaxLines, true);
 	}
 }
 
@@ -344,7 +469,13 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	double minValue, maxValue;
 	ChartValueRange(data, &minValue, &maxValue);
 
-	plotArea.bottom -= 16;	// spazio per le etichette di categoria sotto
+	// Spazio per le etichette di categoria sotto, fino a
+	// kCategoryLabelMaxLines righe -- vedi il commento gemello in
+	// DrawBarChart.
+	font_height fh;
+	view->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+	plotArea.bottom -= 12 + lineHeight * kCategoryLabelMaxLines + 4;
 	// Stessa correzione di DrawBarChart (vedi il commento gemello li'):
 	// la riga di categoria resta fissa qui, solo il "pavimento" dei
 	// punti sale quando la serie ha valori negativi, cosi' l'etichetta
@@ -409,14 +540,16 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
 	view->StrokeLine(BPoint(plotArea.left, zeroY), BPoint(plotArea.right, zeroY));
 
-	// Stessa larghezza di slot di ComputeLineLayout, per allineare
-	// l'etichetta sotto il punto corrispondente (DrawString parte da
-	// sinistra, non centrata: uno scarto fisso approssima il centro).
+	// Stessa larghezza di slot di ComputeLineLayout, per centrare
+	// l'etichetta sotto il punto corrispondente e avvolgerla su piu'
+	// righe se serve (vedi DrawWrappedLabel), invece di un unico
+	// DrawString a sinistra che sconfinava fuori dallo slot.
 	float slotWidth = plotArea.Width() / data.size();
 	for (size_t i = 0; i < points.size() && i < data.size(); i++)
 	{
-		BPoint labelPos(plotArea.left + i * slotWidth + 2, categoryLabelY);
-		view->DrawString(data[i].label.String(), labelPos);
+		float centerX = plotArea.left + i * slotWidth + slotWidth / 2;
+		DrawWrappedLabel(view, data[i].label.String(), BPoint(centerX, categoryLabelY),
+			slotWidth - 2, kCategoryLabelMaxLines, true);
 	}
 }
 
@@ -521,6 +654,13 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	view->StrokeEllipse(center, radius, radius);
 	view->StrokeRect(frame);
 
+	// Larghezza di testo disponibile nella striscia di legenda
+	// (legendWidth sopra, 110px): meno il quadratino di colore/il suo
+	// scarto (16px) e un margine destro (8px) prima del bordo del
+	// frame -- un'etichetta lunga (es. "United States of America (25%)")
+	// vi va ora a capo su piu' righe (DrawWrappedLabel) invece di
+	// sconfinare fuori dal grafico (bug segnalato dall'utente).
+	float legendTextWidth = legendWidth - 16 - 8;
 	float legendX = pieArea.right + 16;
 	float legendY = pieArea.top + 4;
 	for (size_t i = 0; i < data.size() && i < slices.size(); i++)
@@ -533,13 +673,17 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 		// Percentuale sul totale, ricavata dalla stessa ampiezza
 		// d'angolo gia' calcolata da ComputePieLayout (sweepAngle e'
 		// proporzionale al peso del valore, vedi il commento li').
+		// Parte della STESSA stringa avvolta sotto, non disegnata a
+		// parte: il testo a capo la sposta naturalmente su qualunque
+		// riga ci sia spazio, senza bisogno di un caso speciale.
 		BString entry = data[i].label;
 		char pct[16];
 		snprintf(pct, sizeof(pct), " (%.0f%%)", slices[i].sweepAngle / 360.0 * 100.0);
 		entry << pct;
 
-		view->DrawString(entry.String(), BPoint(legendX + 16, legendY));
-		legendY += 16;
+		float used = DrawWrappedLabel(view, entry.String(), BPoint(legendX + 16, legendY),
+			legendTextWidth, kLegendLabelMaxLines, false);
+		legendY += std::max(16.0f, used + 4);
 	}
 }
 
@@ -754,7 +898,13 @@ static void PrepareMultiSeriesPlotArea(BView* view, BRect frame, const MultiChar
 	double minValue, maxValue;
 	MultiChartValueRange(data, &minValue, &maxValue);
 
-	plotArea.bottom -= 16;	// spazio per le etichette di categoria sotto
+	// Spazio per le etichette di categoria sotto, fino a
+	// kCategoryLabelMaxLines righe -- vedi il commento gemello in
+	// DrawBarChart.
+	font_height fh;
+	view->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+	plotArea.bottom -= 12 + lineHeight * kCategoryLabelMaxLines + 4;
 	// La riga di categoria resta fissa a questa posizione (calcolata
 	// PRIMA di ogni restrizione aggiuntiva sotto), stessa correzione
 	// di DrawBarChart/DrawLineChart -- vedi il commento gemello li'
@@ -792,23 +942,36 @@ static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
 	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
 	view->StrokeLine(BPoint(plotArea.left, zeroY), BPoint(plotArea.right, zeroY));
 
+	// Etichetta centrata sotto lo slot e avvolta su piu' righe se serve
+	// (vedi DrawWrappedLabel), invece di un unico DrawString a sinistra
+	// che sconfinava fuori dallo slot con un nome di categoria lungo.
 	float slotWidth = plotArea.Width() / data.categories.size();
 	for (size_t c = 0; c < data.categories.size(); c++)
 	{
-		BPoint labelPos(plotArea.left + c * slotWidth + 2, categoryLabelY);
-		view->DrawString(data.categories[c].String(), labelPos);
+		float centerX = plotArea.left + c * slotWidth + slotWidth / 2;
+		DrawWrappedLabel(view, data.categories[c].String(), BPoint(centerX, categoryLabelY),
+			slotWidth - 2, kCategoryLabelMaxLines, true);
 	}
 
+	// Striscia di legenda: stesso "legendWidth" di
+	// PrepareMultiSeriesPlotArea (110px), meno il quadratino di colore
+	// e un margine -- vedi il commento su legendTextWidth in
+	// DrawPieChart per lo stesso identico calcolo. legendY avanza
+	// dell'altezza VERA occupata (il valore di ritorno di
+	// DrawWrappedLabel), non piu' un passo fisso: una voce che va a
+	// capo non si sovrappone piu' alla successiva.
 	float legendX = plotArea.right + 16;
 	float legendY = plotArea.top + 4;
+	float legendTextWidth = 110 - 16 - 8;
 	for (size_t s = 0; s < data.seriesNames.size(); s++)
 	{
 		BRect swatch(legendX, legendY - 8, legendX + 10, legendY + 2);
 		view->SetHighColor(kPieColors[s % kPieColorCount]);
 		view->FillRect(swatch);
 		view->SetHighColor(0, 0, 0);
-		view->DrawString(data.seriesNames[s].String(), BPoint(legendX + 16, legendY));
-		legendY += 16;
+		float used = DrawWrappedLabel(view, data.seriesNames[s].String(), BPoint(legendX + 16, legendY),
+			legendTextWidth, kLegendLabelMaxLines, false);
+		legendY += std::max(16.0f, used + 4);
 	}
 }
 

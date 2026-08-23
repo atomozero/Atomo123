@@ -276,6 +276,18 @@ test-chart: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
 	./tests/test_chart
 
+# Verifica che le etichette lunghe (categorie/legenda) non sconfinino
+# piu' fuori dal grafico (Fase 29, bug segnalato dall'utente): a
+# differenza di test-chart sopra, qui serve una vera BView (misura del
+# testo con StringWidth), agganciata pero' a una BBitmap offscreen, mai
+# a una vera finestra -- vedi il commento in cima al file.
+test-chart-label-wrap: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_chart_label_wrap.cpp -o tests/test_chart_label_wrap.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/Chart.cpp -o tests/Chart_label_wrap.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_chart_label_wrap tests/test_chart_label_wrap.o tests/Chart_label_wrap.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
+	./tests/test_chart_label_wrap
+
 # Test di FormatRangeRef/ParseRangeRef (RangeRef.cpp): stessa ragione
 # di test-chart, headless.
 test-range-ref: $(ENGINE_DIR)/libengine.a
