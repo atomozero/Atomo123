@@ -488,6 +488,28 @@ What shipped in v0.2.5, on top of v0.2.1:
   correctly even though the recalculation happens against a
   temporary, worker-thread-local `ISheetResolver` before the sheets
   are handed to the window
+- Optimized `RecalculateWorkbook` with "dirty cell" tracking (Fase 32,
+  same 13-sheet real file as above): it re-scanned EVERY cell with
+  content — including purely literal ones, which can never change from
+  a recalculation, only from an explicit user edit — on every one of
+  up to 50 convergence passes. One sheet in the real file is a
+  ~500KB/8000-row lookup table with almost no formulas; re-visiting
+  every one of those literal rows on every pass was close to pure
+  waste. Now `CollectFormulaCells` builds the list of formula-bearing
+  cells ONCE, before any pass, and every pass only re-evaluates that
+  list. Safe with respect to array formulas (`SEQUENCE` etc.): a
+  spilled neighbor cell is written as a plain VALUE, never a formula
+  of its own, so the set of formula cells in a document never changes
+  during these passes, only their values — verified with a dedicated
+  new test, `ui/tests/test_recalc_dirty_cells.cpp`, combining exactly
+  that (an array-formula spill, a cross-sheet reference, and hundreds
+  of literal cells) on a multi-sheet workbook. Measured on the same
+  real file: `RecalculateWorkbook` dropped from 90.9s to 2.08s (about
+  44x). `RecalculateAll` (the single-document path used after every
+  interactive edit, not just at file-open time) is deliberately left
+  untouched — out of scope for this fix, and a much more
+  frequently-exercised code path where any subtle behavior change
+  would be far more disruptive to get wrong
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
