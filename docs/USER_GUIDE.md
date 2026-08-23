@@ -183,14 +183,33 @@ nothing else is found.
 
 ## Printing
 
-File → Print… opens the system print dialog. The area of the sheet
-containing data is printed, split across multiple pages automatically
-if needed. Even without a physical printer, Haiku ships "Preview" and
+File → Print… opens the system print dialog. By default the area of
+the sheet containing data is printed, split across multiple pages
+automatically if needed, with the row/column header band repeated on
+every page. Even without a physical printer, Haiku ships "Preview" and
 "Save as PDF" print transports, usable from the same dialog to check
 the result without printing.
 
-**Known limitation**: row/column headers appear only on the first page
-of a multi-page print job, not repeated on every page.
+**File → Imposta pagina…** (Page Setup) opens a dialog with a live
+preview of the printed page, updated as you change:
+
+- **Margins** (top/bottom/left/right, in cm).
+- **Scale**: a fixed percentage, or "Adatta" (fit) to a page's width,
+  height, or both — never enlarges content that already fits.
+
+A "Stampa…" button in the dialog applies the pending settings and
+prints in one step.
+
+**File → Imposta area di stampa / Cancella area di stampa** restricts
+printing (and the page setup preview) to the current selection instead
+of every cell with content — useful for printing one table out of a
+larger sheet.
+
+**Margins/scale and the print area are saved per sheet** in the native
+file format — each sheet remembers its own page setup, independently
+of any other open document. A sheet that has never been through
+"Imposta pagina" falls back to the app's default margins/scale (also
+configurable, and shared across any document that hasn't set its own).
 
 ## Number formatting
 

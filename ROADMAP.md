@@ -370,6 +370,17 @@ What shipped in v0.2.5, on top of v0.2.1:
   fix already applied to the UI's Makefile once before) — editing
   `Container.h` could silently leave stale object files built against
   a different, incompatible layout of `CContainer` linked together
+- Print area, margins and scale ("Imposta pagina") are now saved in
+  the file, per sheet — previously session-only (explicitly documented
+  as such), lost on reopening. Margins/scale used to be a single
+  GLOBAL app preference shared by every open document; on explicit
+  request this became per-sheet instead, matching how the print area
+  already worked and how Excel itself scopes page setup. A sheet
+  without its own saved settings still falls back to the app-wide
+  default, unchanged from before. New `AscdPrintSettings` struct and
+  two new EOF-tolerant trailing sections in the ASCD/ASCB format
+  (mirroring the existing AutoFilter section's exact shape), so files
+  written before this change stay fully readable
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
