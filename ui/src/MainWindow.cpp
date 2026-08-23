@@ -1527,11 +1527,18 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 	// con un'immagine incorporata la perdeva silenziosamente allo
 	// stesso modo, dato che passa dalla stessa funzione. LoadASCDBook
 	// (poco sotto) li passa gia' tutti correttamente.
+	// skipInitialRecalc=true (Fase 30): ReadSingleSheetASCD ha come
+	// UNICO chiamante MainWindow::OpenFile, che ricalcola comunque
+	// l'intera cartella (RecalculateWorkbook) subito dopo aver
+	// collegato ISheetResolver -- vedi il commento su skipInitialRecalc
+	// in AscdIO.h per il bug reale (fino a 50 passate sprecate) che
+	// questo evita.
 	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts, &outSheet->colWidths,
 		&outSheet->rowHeights, &outSheet->frozenRows, &outSheet->frozenCols, &outSheet->images,
 		&outSheet->showGrid, &outSheet->hasTabColor, &outSheet->tabColor,
 		&outSheet->hiddenRows, &outSheet->hasAutoFilter, &outSheet->autoFilterRange,
-		&outSheet->hasPrintArea, &outSheet->printArea, &outSheet->printSettings);
+		&outSheet->hasPrintArea, &outSheet->printArea, &outSheet->printSettings,
+		true);
 	if (err != B_OK)
 	{
 		outSheet->doc->Release();
@@ -1569,8 +1576,12 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	{
 		// Cartella di lavoro nativa multi-foglio (Fase 9): si legge
 		// direttamente, senza passare dal Translation Kit -- stesso
-		// motivo di IsASCDFile sotto.
-		ok = LoadASCDBook(&file, &newSheets) == B_OK;
+		// motivo di IsASCDFile sotto. skipInitialRecalc=true (Fase 30):
+		// AttachSheetResolver()/RecalculateWorkbook() sotto ricalcolano
+		// comunque l'intera cartella appena collegata, il ricalcolo per
+		// singolo foglio qui sarebbe solo lavoro sprecato (e bloccato al
+		// limite di 50 passate: vedi il commento in AscdIO.h).
+		ok = LoadASCDBook(&file, &newSheets, true) == B_OK;
 	}
 	else if (IsASCDFile(&file))
 	{
@@ -1606,7 +1617,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 
 		ascd.Seek(0, SEEK_SET);
 		if (IsASCDBookFile(&ascd))
-			ok = LoadASCDBook(&ascd, &newSheets) == B_OK;
+			ok = LoadASCDBook(&ascd, &newSheets, true) == B_OK; // vedi il commento gemello sopra
 		else
 		{
 			AscdSheet sheet;

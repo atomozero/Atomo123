@@ -9,6 +9,7 @@
 
 #include "AscdIO.h"
 
+#include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <map>
@@ -920,7 +921,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<int>* hiddenRows,
 	bool* hasAutoFilter, range* autoFilterRange,
 	bool* hasPrintArea, range* printArea,
-	AscdPrintSettings* printSettings)
+	AscdPrintSettings* printSettings,
+	bool skipInitialRecalc)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1014,7 +1016,16 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
-	RecalculateAll(doc);
+	// Fase 30: saltato quando il chiamante ricalcolera' comunque
+	// l'intera cartella di lavoro subito dopo (MainWindow::OpenFile) --
+	// vedi il commento su skipInitialRecalc in AscdIO.h e quello sopra
+	// RecalculateAll/RecalculateWorkbook piu' sotto per il bug reale
+	// (fino a 50 passate sprecate per foglio, MAI in grado di
+	// convergere davvero qui: i riferimenti fra fogli non si possono
+	// ancora risolvere, nessun ISheetResolver e' collegato in questo
+	// punto) che questo evita.
+	if (!skipInitialRecalc)
+		RecalculateAll(doc);
 
 	// Sezione grafici incorporati, in coda al formato: puo' non esserci
 	// affatto (file scritto prima che questa sezione esistesse). Read()
@@ -2073,7 +2084,8 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 	return B_OK;
 }
 
-status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
+status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
+	bool skipInitialRecalc)
 {
 	outSheets->clear();
 
@@ -2110,7 +2122,8 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
 			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
-			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings);
+			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
+			skipInitialRecalc);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

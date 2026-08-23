@@ -119,7 +119,18 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<int>* hiddenRows = NULL,
 	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL,
 	bool* hasPrintArea = NULL, range* printArea = NULL,
-	AscdPrintSettings* printSettings = NULL);
+	AscdPrintSettings* printSettings = NULL,
+	// Fase 30: un chiamante che ricalchera' comunque l'intera cartella
+	// di lavoro subito dopo (MainWindow::OpenFile, sempre seguito da
+	// RecalculateWorkbook una volta collegato ISheetResolver) puo'
+	// saltare il ricalcolo interno qui -- vedi il commento sopra
+	// RecalculateAll in AscdIO.cpp per il bug reale (bloccato al limite
+	// di 50 passate) che questo evita. false di default: ogni chiamante
+	// esistente (test compresi, che spesso leggono un valore calcolato
+	// SUBITO dopo LoadASCD senza mai chiamare RecalculateWorkbook a
+	// parte) continua a ricevere un documento gia' ricalcolato, come
+	// sempre.
+	bool skipInitialRecalc = false);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -242,7 +253,8 @@ bool IsASCDBookFile(BPositionIO* source);
 // LoadASCD funziona senza bisogno di offset o lunghezze esplicite fra
 // un foglio e il successivo.
 status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest);
-status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets);
+status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
+	bool skipInitialRecalc = false);
 
 // Ricalcola tutte le celle con formula del documento fino a
 // convergenza (o a un limite di passate). Usata da LoadASCD dopo aver
