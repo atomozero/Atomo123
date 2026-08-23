@@ -331,18 +331,31 @@ What shipped in v0.2.5, on top of v0.2.1:
   copied a text cell's heap pointer — invisible until this feature
   became the first code in the project to put `Value` in a
   `std::vector` (which copies elements around, e.g. on reallocation)
+- Merging/splitting cells is now undoable: previously a documented,
+  deliberate gap (`fMergedRanges` is per-sheet, not per-cell, and
+  didn't fit the dense per-cell `UndoSnapshot` format). Fixed the same
+  way Data Validation/Conditional Formatting were: capture the whole
+  merged-range list before the mutation, restore it whole on Undo/Redo
+- File-type icons in Tracker: `.ods`/`.csv`/`.ascd` (native) files now
+  show a distinct icon instead of the generic placeholder, registered
+  on the specific MIME type via `BMimeType::SetIcon` (never overwriting
+  an icon another app or the user already set). `.xlsx`/`.xlsm`/`.xls`
+  share a generic file icon: the authorized icon source (the official
+  Haiku FileTypes HVIF set) has no dedicated "Excel" icon, since it's a
+  proprietary Microsoft format — a real gap, not a silent omission
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
 Two planned major versions, not yet started beyond the print work above:
 
-**v3.0** — remaining items: array formulas (spill ranges — the largest
-single item, touches the engine's evaluation model), and identifying a
-proper per-file-type icon set from the HVIF store (www.hvif-store.art)
-— the app currently uses generic/placeholder icons for its own file
-type(s) in Tracker, not distinct icons per format the way Excel/Calc
-distinguish .xlsx/.csv/.ods at a glance. The "functions still missing
-versus Excel" item is done (30 functions across five batches). So are
+**v3.0** — remaining item: array formulas (spill ranges — the largest
+single item, touches the engine's evaluation model; see "Not currently
+planned" below, scoping in progress). File-type icons from the HVIF
+store (www.hvif-store.art) are done (see "Current focus" above — full
+per-format distinction where the source icon set actually has one;
+.xlsx/.xlsm/.xls share a generic icon by necessity, documented gap).
+The "functions still missing versus Excel" item is done (30 functions
+across five batches). So are
 live formula export (already covers both XLSX and ODS symmetrically,
 see "Current focus" above — XLS has no export path at all,
 deliberately, not a gap), the print settings backlog (margins/scale/
