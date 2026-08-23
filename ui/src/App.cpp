@@ -18,9 +18,11 @@
 #include <Roster.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <unistd.h>
 
+#include "FileTypeIcons.h"
 #include "FunctionUtils.h"
 #include "Globals.h"
 #include "MyError.h"
@@ -49,6 +51,25 @@ static const char* kSupportedTypes[] = {
 	"application/vnd.oasis.opendocument.spreadsheet", // .ods
 	"text/csv",
 	NULL
+};
+
+// Icona per tipo MIME (Fase 29, ultima voce del backlog v3.0
+// "Consolidation": icone HVIF distinte per tipo di file in Tracker,
+// vedi FileTypeIcons.h), stesso ordine/stessa lunghezza di
+// kSupportedTypes sopra -- un array parallelo invece di una struct
+// combinata per non dover toccare kSupportedTypes, gia' usato altrove
+// (Atomo123.rdef elenca la stessa lista separatamente). .xlsx e .xlsm
+// condividono l'icona generica con .xls: il catalogo HVIF scaricato
+// (il set ufficiale Haiku, vedi FileTypeIcons.h) non ha un'icona
+// "Excel" dedicata, essendo un formato proprietario Microsoft --
+// limite noto, non un'omissione silenziosa.
+static const IconData* kSupportedTypeIcons[] = {
+	&kFileTypeIconAscd,     // .ascd nativo
+	&kFileTypeIconGeneric,  // .xlsx
+	&kFileTypeIconGeneric,  // .xlsm
+	&kFileTypeIconGeneric,  // .xls
+	&kFileTypeIconOds,      // .ods
+	&kFileTypeIconCsv,      // .csv
 };
 
 App::App()
@@ -220,6 +241,26 @@ void App::RegisterFileTypes()
 		// applicazione installata.
 		if (type.GetPreferredApp(preferred) != B_OK || preferred[0] == 0)
 			type.SetPreferredApp(kAppSignature);
+
+		// Icona per tipo di file (Fase 29): stesso principio "non
+		// scavalcare mai una scelta gia' fatta" di SetPreferredApp
+		// sopra -- un'icona gia' presente (magari impostata da
+		// un'altra applicazione, es. LibreOffice, o dall'utente a
+		// mano) resta quella che c'era. Niente HasIcon() nell'API di
+		// Haiku: GetIcon(uint8**, size_t*) e' l'unico modo per
+		// scoprirlo, B_OK solo se un'icona vettoriale esiste gia' --
+		// il buffer restituito va liberato subito, serve solo per il
+		// controllo, non per il contenuto.
+		const IconData* icon = kSupportedTypeIcons[i];
+		if (icon && icon->bytes)
+		{
+			uint8* existing = NULL;
+			size_t existingSize = 0;
+			if (type.GetIcon(&existing, &existingSize) != B_OK)
+				type.SetIcon(icon->bytes, icon->length);
+			else
+				free(existing);
+		}
 	}
 } // App::RegisterFileTypes
 
