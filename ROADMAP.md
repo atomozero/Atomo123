@@ -510,6 +510,30 @@ What shipped in v0.2.5, on top of v0.2.1:
   untouched — out of scope for this fix, and a much more
   frequently-exercised code path where any subtle behavior change
   would be far more disruptive to get wrong
+- Moved the file-opening progress indicator into the main window's own
+  footer (Fase 33, requested live by the user after trying the
+  separate `ProgressWindow` from the previous phase): removed
+  `ProgressWindow` entirely, replaced by `fFooterProgressLabel`
+  (phase text) and a new hand-drawn `FooterProgressBar` view sharing
+  the same footer row as `fCellMode`/`fSelectionStats` (hidden while
+  loading, restored afterward). Two follow-up rounds of live feedback
+  from the user while watching it run on the real 13-sheet file:
+  (1) "it's ugly that the bar stays still" during `Translate()` — a
+  single opaque call with no real intermediate progress — fixed with
+  a periodic 150ms "pulse" (`BMessageRunner`) that eases the bar
+  toward a capped ceiling between real updates, so it's always
+  visibly moving even with zero real progress data; (2) "bar and text
+  on the same line, full width" — `BStatusBar` always reserves a
+  separate text line above its bar even with no label, which can't be
+  made to share a line with adjacent text, so it was replaced with a
+  minimal custom-drawn `FooterProgressBar` (single line, same height
+  as the surrounding footer text) placed right next to the phase
+  label, both getting a large layout weight so they fill the row once
+  `fCellMode`/`fSelectionStats` are hidden. Verified live via
+  screenshots at each iteration, plus new coverage in
+  `test_open_async.cpp` (`IsFooterProgressVisible()`, a new public
+  getter, checked both right after `OpenFileAsync()` starts and after
+  it finishes)
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
