@@ -381,6 +381,15 @@ What shipped in v0.2.5, on top of v0.2.1:
   two new EOF-tolerant trailing sections in the ASCD/ASCB format
   (mirroring the existing AutoFilter section's exact shape), so files
   written before this change stay fully readable
+- Fixed a real bug reported by the user: long chart labels (category
+  names under a bar/point, legend entries) ran past the edge of the
+  chart instead of wrapping — `BView::DrawString` alone never
+  truncates or wraps. Added a shared word-wrap helper (up to 2 lines,
+  the last one ellipsis-truncated if it still doesn't fit) used by
+  every chart type's category labels and legend, plus a truncation
+  guard on the chart title. Category labels are now centered under
+  their bar/point instead of left-aligned, which reads better wrapped
+  across two lines
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
