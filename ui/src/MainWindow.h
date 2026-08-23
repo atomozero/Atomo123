@@ -278,18 +278,29 @@ public:
 		bool showSplash, char thousandSep, const char* currencySymbol,
 		bool autoSaveEnabled, int autoSaveIntervalMinutes);
 
-	// Margini/scala di stampa (Fase 27): tutte e sei le impostazioni
-	// scritte direttamente in gPrefs (preferenze GLOBALI dell'app,
-	// come showSplash/autoSaveInterval -- non per-documento, a
-	// differenza dell'area di stampa sotto, che invece e' per-foglio),
-	// PrintDocument le rilegge da li' ogni volta che stampa davvero.
+	// Margini/scala di stampa (Fase 27, resi per-foglio in Fase 29):
+	// persistiti in fSheets[fActiveSheetIndex].printSettings (vedi
+	// AscdPrintSettings in AscdIO.h) E ANCHE in gPrefs -- gPrefs resta
+	// il valore di ripiego per qualunque foglio che non abbia ancora
+	// una propria impostazione (un file scritto prima di questa fase,
+	// o un foglio nuovo mai passato da "Imposta pagina"), vedi
+	// GetActivePrintSettings sotto.
 	void HandlePageSetupRequest(double marginTop, double marginBottom, double marginLeft,
 		double marginRight, int scaleMode, double scalePercent);
-	// Anteprima (Fase 28): stessi sei parametri, ma NON scritti in
-	// gPrefs -- rigenera solo le bitmap di anteprima e le manda a
+	// Anteprima (Fase 28): stessi sei parametri, ma NON persistiti --
+	// rigenera solo le bitmap di anteprima e le manda a
 	// fPageSetupWindow, vedi GeneratePrintPreviewPages.
 	void HandlePageSetupPreviewRequest(double marginTop, double marginBottom, double marginLeft,
 		double marginRight, int scaleMode, double scalePercent);
+	// Margini/scala EFFETTIVI del foglio attivo (Fase 29): quelli propri
+	// del foglio se mai impostati (fSheets[fActiveSheetIndex].
+	// printSettings.hasSettings), altrimenti la preferenza globale
+	// (gPrefs) -- stesso identico fallback per ShowPageSetupWindow
+	// (valori iniziali del dialogo) e ComputePrintJobLayoutForActiveSheet
+	// (stampa/anteprima vera), centralizzato qui per non duplicare la
+	// logica di fallback in due punti diversi.
+	void GetActivePrintSettings(double* marginTop, double* marginBottom, double* marginLeft,
+		double* marginRight, int* scaleMode, double* scalePercent) const;
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che

@@ -20,6 +20,7 @@
 
 #include <Application.h>
 #include <File.h>
+#include <NodeInfo.h>
 
 #include "AscdIO.h"
 #include "Cell.h"
@@ -209,6 +210,19 @@ int main()
 	}
 
 	status_t err = SaveASCDBook(sheets, &file);
+
+	// Senza questo, un doppio clic su questo stesso file in Tracker non
+	// apre Atomo123: nessuna applicazione preferita per il tipo generico
+	// a cui il file ricadrebbe altrimenti -- bug reale scoperto
+	// dall'utente proprio su un file generato cosi', vedi il commento
+	// gemello su kAtomoNativeMimeType in MainWindow.cpp (che soffriva
+	// dello stesso problema in "Salva"/"Salva con nome").
+	if (err == B_OK)
+	{
+		BNodeInfo nodeInfo(&file);
+		if (nodeInfo.InitCheck() == B_OK)
+			nodeInfo.SetType("application/x-vnd.atomo-sheet-data");
+	}
 	file.Unset();
 
 	sales->Release();

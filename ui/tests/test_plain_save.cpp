@@ -27,6 +27,7 @@
 #include <Entry.h>
 #include <File.h>
 #include <Message.h>
+#include <NodeInfo.h>
 
 #include "Cell.h"
 #include "Value.h"
@@ -73,6 +74,22 @@ int main()
 		TryToParseString("1", cell(1, 1), setupDoc, true); // A1
 		SaveViaRealMessage(setup, "/tmp", "test_plain_save.ascd");
 		setup->Unlock();
+
+		// Bug reale scoperto dall'utente con un doppio clic su un file
+		// .ascd appena creato, che non apriva Atomo123: nessun
+		// salvataggio nativo aveva mai impostato l'attributo BEOS:TYPE,
+		// Tracker ricadeva quindi sul tipo generico "application/
+		// octet-stream", senza applicazione preferita -- vedi il
+		// commento su kAtomoNativeMimeType in MainWindow.cpp.
+		{
+			BFile typeCheck("/tmp/test_plain_save.ascd", B_READ_ONLY);
+			BNodeInfo nodeInfo(&typeCheck);
+			char mimeType[B_MIME_TYPE_LENGTH] = { 0 };
+			nodeInfo.GetType(mimeType);
+			Check(strcmp(mimeType, "application/x-vnd.atomo-sheet-data") == 0,
+				"un file .ascd salvato con \"Salva con nome\" ha il tipo MIME nativo "
+				"(Tracker sa quale applicazione aprire con un doppio clic)");
+		}
 
 		MainWindow* win = new MainWindow();
 		win->Show();

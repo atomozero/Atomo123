@@ -84,7 +84,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const bool* showGrid,
 	const bool* hasTabColor, const rgb_color* tabColor,
 	const std::vector<int>* hiddenRows,
-	const bool* hasAutoFilter, const range* autoFilterRange)
+	const bool* hasAutoFilter, const range* autoFilterRange,
+	const bool* hasPrintArea, const range* printArea,
+	const AscdPrintSettings* printSettings)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -865,6 +867,45 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione area di stampa, in coda (Fase 29): stesso schema esatto
+	// della sezione AutoFilter piu' sopra (un byte "presente si'/no"
+	// seguito da quattro interi, sempre scritti).
+	{
+		uint8 has = (hasPrintArea && *hasPrintArea) ? 1 : 0;
+		range r = (has && printArea) ? *printArea : range();
+		int16 top = r.top, left = r.left, bottom = r.bottom, right = r.right;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+			|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+			|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+			|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+			return B_IO_ERROR;
+	}
+
+	// Sezione margini/scala di "Imposta pagina", in coda (Fase 29,
+	// vedi AscdPrintSettings in AscdIO.h): un byte "presente si'/no"
+	// seguito da quattro margini (cm), la modalita' di scala e la
+	// percentuale, sempre scritti -- stesso principio "singolo valore"
+	// delle altre sezioni sopra. "has"=0 (nessuna impostazione propria
+	// per questo foglio, il caso comune) scrive comunque i valori
+	// predefiniti di AscdPrintSettings, mai byte a caso.
+	{
+		AscdPrintSettings ps = (printSettings) ? *printSettings : AscdPrintSettings();
+		uint8 has = ps.hasSettings ? 1 : 0;
+		double marginTop = ps.marginTopCm, marginBottom = ps.marginBottomCm,
+			marginLeft = ps.marginLeftCm, marginRight = ps.marginRightCm;
+		int32 scaleMode = ps.scaleMode;
+		double scalePercent = ps.scalePercent;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
+			|| dest->Write(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
+			|| dest->Write(&marginLeft, sizeof(marginLeft)) != (ssize_t)sizeof(marginLeft)
+			|| dest->Write(&marginRight, sizeof(marginRight)) != (ssize_t)sizeof(marginRight)
+			|| dest->Write(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
+			|| dest->Write(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
@@ -877,7 +918,9 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	bool* showGrid,
 	bool* hasTabColor, rgb_color* tabColor,
 	std::vector<int>* hiddenRows,
-	bool* hasAutoFilter, range* autoFilterRange)
+	bool* hasAutoFilter, range* autoFilterRange,
+	bool* hasPrintArea, range* printArea,
+	AscdPrintSettings* printSettings)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1844,6 +1887,67 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione area di stampa, in coda: stesso schema EOF-tollerante
+	// della sezione AutoFilter piu' sopra (vedi il commento gemello in
+	// SaveASCD). Un file scritto prima di questa sezione lascia
+	// hasPrintArea/printArea ai valori predefiniti (nessuna area
+	// impostata, tutto il contenuto viene stampato).
+	{
+		uint8 has = 0;
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has))
+				return B_BAD_DATA;
+
+			int16 top, left, bottom, right;
+			if (source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+				|| source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+				|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+				|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right))
+				return B_BAD_DATA;
+
+			if (hasPrintArea) *hasPrintArea = has != 0;
+			if (printArea) *printArea = range(left, top, right, bottom);
+		}
+	}
+
+	// Sezione margini/scala di "Imposta pagina", in coda (Fase 29):
+	// stesso schema EOF-tollerante delle sezioni sopra. Un file scritto
+	// prima di questa sezione lascia AscdPrintSettings::hasSettings a
+	// false: MainWindow ricade sulla preferenza globale (gPrefs), lo
+	// stesso comportamento di prima di questa fase.
+	{
+		uint8 has = 0;
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has))
+				return B_BAD_DATA;
+
+			double marginTop, marginBottom, marginLeft, marginRight, scalePercent;
+			int32 scaleMode;
+			if (source->Read(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
+				|| source->Read(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
+				|| source->Read(&marginLeft, sizeof(marginLeft)) != (ssize_t)sizeof(marginLeft)
+				|| source->Read(&marginRight, sizeof(marginRight)) != (ssize_t)sizeof(marginRight)
+				|| source->Read(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
+				|| source->Read(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
+				return B_BAD_DATA;
+
+			if (printSettings)
+			{
+				printSettings->hasSettings = has != 0;
+				printSettings->marginTopCm = marginTop;
+				printSettings->marginBottomCm = marginBottom;
+				printSettings->marginLeftCm = marginLeft;
+				printSettings->marginRightCm = marginRight;
+				printSettings->scaleMode = scaleMode;
+				printSettings->scalePercent = scalePercent;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1960,7 +2064,8 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts, &sheet.colWidths,
 			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
-			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange);
+			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
+			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings);
 		if (err != B_OK)
 			return err;
 	}
@@ -2004,7 +2109,8 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets)
 		status_t err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths,
 			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
-			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange);
+			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
+			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

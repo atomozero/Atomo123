@@ -81,6 +81,20 @@ int main()
 	bool hasAutoFilter = true;
 	range autoFilterRange(1, 1, 1, 1); // intestazione riga 1, sola colonna A
 
+	// Area di stampa e margini/scala di "Imposta pagina" (Fase 29): ora
+	// persistiti, non piu' solo di sessione -- vedi AscdPrintSettings
+	// in AscdIO.h.
+	bool hasPrintArea = true;
+	range printArea(1, 1, 2, 3); // A1:B3
+	AscdPrintSettings printSettings;
+	printSettings.hasSettings = true;
+	printSettings.marginTopCm = 1.5;
+	printSettings.marginBottomCm = 1.5;
+	printSettings.marginLeftCm = 2.5;
+	printSettings.marginRightCm = 2.5;
+	printSettings.scaleMode = 1; // kPrintFitWidth
+	printSettings.scalePercent = 85.0;
+
 	// Font non predefinito su A2 (grassetto), sulla famiglia REALE del
 	// font di sistema (vedi il commento in cima al file sul perche').
 	font_family sysFamily;
@@ -214,7 +228,8 @@ int main()
 		BFile file(path, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 		status_t err = SaveASCD(doc, &file, NULL, NULL, &rowHeights, &frozenRows, &frozenCols,
 			&images, &showGrid, &hasTabColor, &tabColor,
-			&hiddenRows, &hasAutoFilter, &autoFilterRange);
+			&hiddenRows, &hasAutoFilter, &autoFilterRange,
+			&hasPrintArea, &printArea, &printSettings);
 		Check(err == B_OK, "SaveASCD con altezze di riga e Blocca riquadri riesce");
 	}
 	doc->Release();
@@ -229,15 +244,28 @@ int main()
 	std::vector<int> loadedHiddenRows;
 	bool loadedHasAutoFilter = false;
 	range loadedAutoFilterRange;
+	bool loadedHasPrintArea = false;
+	range loadedPrintArea;
+	AscdPrintSettings loadedPrintSettings;
 
 	{
 		BFile file(path, B_READ_ONLY);
 		status_t err = LoadASCD(&file, reloaded, NULL, NULL,
 			&loadedHeights, &loadedFrozenRows, &loadedFrozenCols, &loadedImages, &loadedShowGrid,
 			&loadedHasTabColor, &loadedTabColor,
-			&loadedHiddenRows, &loadedHasAutoFilter, &loadedAutoFilterRange);
+			&loadedHiddenRows, &loadedHasAutoFilter, &loadedAutoFilterRange,
+			&loadedHasPrintArea, &loadedPrintArea, &loadedPrintSettings);
 		Check(err == B_OK, "LoadASCD dallo stesso file riesce");
 	}
+
+	Check(loadedHasPrintArea && loadedPrintArea.left == 1 && loadedPrintArea.top == 1
+			&& loadedPrintArea.right == 2 && loadedPrintArea.bottom == 3,
+		"l'area di stampa (A1:B3) sopravvive al giro di salvataggio/ricarica");
+	Check(loadedPrintSettings.hasSettings
+			&& loadedPrintSettings.marginTopCm == 1.5 && loadedPrintSettings.marginBottomCm == 1.5
+			&& loadedPrintSettings.marginLeftCm == 2.5 && loadedPrintSettings.marginRightCm == 2.5
+			&& loadedPrintSettings.scaleMode == 1 && loadedPrintSettings.scalePercent == 85.0,
+		"i margini/la scala di \"Imposta pagina\" sopravvivono al giro di salvataggio/ricarica");
 
 	Check(loadedFrozenRows == 2 && loadedFrozenCols == 1,
 		"Blocca riquadri (2 righe, 1 colonna) sopravvive al giro di salvataggio/ricarica");
@@ -428,11 +456,14 @@ int main()
 	bool oldHasAutoFilter = true; // opposto del default (false): stesso motivo
 	std::vector<int> oldHiddenRows;
 	oldHiddenRows.push_back(99); // valore a caso: deve sparire (svuotato da LoadASCD), non restare
+	bool oldHasPrintArea = true; // opposto del default (false): stesso motivo
+	AscdPrintSettings oldPrintSettings;
+	oldPrintSettings.hasSettings = true; // opposto del default (false): stesso motivo
 	{
 		BFile file(oldPath, B_READ_ONLY);
 		status_t err = LoadASCD(&file, oldStyleReloaded, NULL, NULL,
 			&oldHeights, &oldFrozenRows, &oldFrozenCols, NULL, &oldShowGrid, &oldHasTabColor, NULL,
-			&oldHiddenRows, &oldHasAutoFilter);
+			&oldHiddenRows, &oldHasAutoFilter, NULL, &oldHasPrintArea, NULL, &oldPrintSettings);
 		Check(err == B_OK, "un file senza le nuove sezioni resta leggibile");
 	}
 	Check(oldFrozenRows == 0 && oldFrozenCols == 0 && oldHeights.empty(),
@@ -441,6 +472,9 @@ int main()
 	Check(!oldHasTabColor, "un file senza la sezione colore linguetta riceve il default (nessun colore)");
 	Check(oldHiddenRows.empty(), "un file senza la sezione righe nascoste riceve il default (nessuna)");
 	Check(!oldHasAutoFilter, "un file senza la sezione AutoFilter riceve il default (nessun filtro)");
+	Check(!oldHasPrintArea, "un file senza la sezione area di stampa riceve il default (nessuna)");
+	Check(!oldPrintSettings.hasSettings,
+		"un file senza la sezione margini/scala riceve il default (nessuna impostazione propria)");
 
 	doc = NULL; // gia' rilasciato sopra
 	reloaded->Release();

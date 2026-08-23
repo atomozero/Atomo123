@@ -63,6 +63,7 @@
 #include <MenuBar.h>
 #include <MenuItem.h>
 #include <MessageRunner.h>
+#include <NodeInfo.h>
 #include <Path.h>
 #include <PopUpMenu.h>
 #include <PrintJob.h>
@@ -254,6 +255,19 @@ static const uint32 kAtomoCsvFormat = 'ACSV';
 // valore del FourCC, non condividono altro.
 static const uint32 kAtomoXlsxFormat = 'AXSX';
 static const uint32 kAtomoOdsFormat = 'AODS';
+
+// Stesso identico tipo MIME registrato da App::RegisterFileTypes
+// (kSupportedTypes[0] in App.cpp) -- SaveToFile/AutoSaveBackup lo
+// scrivono qui sull'attributo BEOS:TYPE del file appena creato. Bug
+// reale scoperto dall'utente con un doppio clic su un file .ascd
+// appena creato: NESSUN salvataggio nativo (ne' "Salva"/"Salva con
+// nome" ne' i generatori headless in ui/examples/) aveva mai
+// impostato questo attributo, quindi Tracker non sapeva quale
+// applicazione aprire -- verificato anche sul file di esempio gia'
+// distribuito nel repository, che risultava "application/octet-
+// stream" invece del tipo nativo. Senza questo attributo Tracker
+// ricade sul tipo generico, che non ha un'applicazione preferita.
+static const char* kAtomoNativeMimeType = "application/x-vnd.atomo-sheet-data";
 
 // Toolbar dinamica: i pulsanti vengono generati da questa tabella
 // invece che scritti uno per uno a mano (com'era prima di questo
@@ -1516,7 +1530,8 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 	status_t err = LoadASCD(source, outSheet->doc, &outSheet->charts, &outSheet->colWidths,
 		&outSheet->rowHeights, &outSheet->frozenRows, &outSheet->frozenCols, &outSheet->images,
 		&outSheet->showGrid, &outSheet->hasTabColor, &outSheet->tabColor,
-		&outSheet->hiddenRows, &outSheet->hasAutoFilter, &outSheet->autoFilterRange);
+		&outSheet->hiddenRows, &outSheet->hasAutoFilter, &outSheet->autoFilterRange,
+		&outSheet->hasPrintArea, &outSheet->printArea, &outSheet->printSettings);
 	if (err != B_OK)
 	{
 		outSheet->doc->Release();
@@ -1792,6 +1807,17 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 			alert->Go();
 			return;
 		}
+
+		// Vedi il commento su kAtomoNativeMimeType sopra: senza questo,
+		// un doppio clic su questo stesso file in Tracker non apre
+		// Atomo123 (nessuna applicazione preferita per il tipo generico
+		// a cui il file ricadrebbe altrimenti). Esito ignorato apposta:
+		// un fallimento qui (BFS non disponibile, permessi) non deve
+		// impedire il salvataggio vero e proprio, gia' riuscito sopra.
+		BNodeInfo nodeInfo(&file);
+		if (nodeInfo.InitCheck() == B_OK)
+			nodeInfo.SetType(kAtomoNativeMimeType);
+
 		fDocumentName = name;
 		fFileDirRef = dir;
 		fModified = false;
@@ -1935,6 +1961,9 @@ void MainWindow::AutoSaveBackup()
 		fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 		fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
 		SaveASCDBook(fSheets, &file); // esito ignorato, vedi il commento sopra su file.InitCheck()
+		BNodeInfo nodeInfo(&file);
+		if (nodeInfo.InitCheck() == B_OK)
+			nodeInfo.SetType(kAtomoNativeMimeType);
 		return;
 	}
 
@@ -2634,17 +2663,42 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 	}
 }
 
+void MainWindow::GetActivePrintSettings(double* marginTop, double* marginBottom,
+	double* marginLeft, double* marginRight, int* scaleMode, double* scalePercent) const
+{
+	if (fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size()
+		&& fSheets[fActiveSheetIndex].printSettings.hasSettings)
+	{
+		const AscdPrintSettings& ps = fSheets[fActiveSheetIndex].printSettings;
+		*marginTop = ps.marginTopCm;
+		*marginBottom = ps.marginBottomCm;
+		*marginLeft = ps.marginLeftCm;
+		*marginRight = ps.marginRightCm;
+		*scaleMode = ps.scaleMode;
+		*scalePercent = ps.scalePercent;
+		return;
+	}
+
+	// Nessuna impostazione propria per questo foglio: ripiego sulla
+	// preferenza globale, esattamente il comportamento di prima della
+	// Fase 29.
+	*marginTop = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
+	*marginBottom = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
+	*marginLeft = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
+	*marginRight = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
+	*scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
+	*scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+}
+
 void MainWindow::ShowPageSetupWindow()
 {
 	if (!fPageSetupWindow)
 		fPageSetupWindow = new PageSetupWindow(BMessenger(this));
 
-	double marginTop = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
-	double marginBottom = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
-	double marginLeft = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
-	double marginRight = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
-	int scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
-	double scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+	double marginTop, marginBottom, marginLeft, marginRight, scalePercent;
+	int scaleMode;
+	GetActivePrintSettings(&marginTop, &marginBottom, &marginLeft, &marginRight,
+		&scaleMode, &scalePercent);
 
 	// Generata QUI, PRIMA di Lock() su fPageSetupWindow (Fase 28):
 	// GeneratePrintPreviewPages tocca fSheetView, che vive sul thread
@@ -2677,10 +2731,25 @@ void MainWindow::ShowPageSetupWindow()
 void MainWindow::HandlePageSetupRequest(double marginTop, double marginBottom,
 	double marginLeft, double marginRight, int scaleMode, double scalePercent)
 {
-	// Nessuno stato "vivo" da aggiornare in memoria (a differenza di
-	// HandlePreferencesRequest sopra): PrintDocument rilegge sempre
-	// gPrefs da zero al momento di stampare davvero, non c'e' un fXxx
-	// a specchio qui.
+	// Persistiti PER FOGLIO (Fase 29) in fSheets[fActiveSheetIndex],
+	// cosi' sopravvivono al salvataggio -- vedi AscdPrintSettings in
+	// AscdIO.h. gPrefs resta comunque scritto anche qui, come ripiego
+	// per qualunque ALTRO foglio/documento che non abbia ancora una
+	// propria impostazione (vedi GetActivePrintSettings), esattamente
+	// il comportamento di prima di questa fase.
+	if (fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size())
+	{
+		AscdPrintSettings& ps = fSheets[fActiveSheetIndex].printSettings;
+		ps.hasSettings = true;
+		ps.marginTopCm = marginTop;
+		ps.marginBottomCm = marginBottom;
+		ps.marginLeftCm = marginLeft;
+		ps.marginRightCm = marginRight;
+		ps.scaleMode = scaleMode;
+		ps.scalePercent = scalePercent;
+		MarkModified();
+	}
+
 	if (!gPrefs)
 		return;
 
@@ -2723,6 +2792,7 @@ void MainWindow::SetPrintArea()
 	range sel = fSheetView->SelectionRange();
 	fSheets[fActiveSheetIndex].hasPrintArea = true;
 	fSheets[fActiveSheetIndex].printArea = sel;
+	MarkModified(); // ora persistita nel file (Fase 29), non piu' solo di sessione
 }
 
 void MainWindow::ClearPrintArea()
@@ -2731,6 +2801,7 @@ void MainWindow::ClearPrintArea()
 		return;
 
 	fSheets[fActiveSheetIndex].hasPrintArea = false;
+	MarkModified();
 }
 
 void MainWindow::PrintAreaText(char* out, size_t outSize) const
@@ -3934,18 +4005,17 @@ BRect MainWindow::ActivePrintContentRect()
 PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWidth,
 	float printableHeight, int32 xDPI, int32 yDPI)
 {
-	// Margini/scala (Fase 27, "Imposta pagina"): salvati in gPrefs,
-	// riletti da zero a ogni stampa -- nessuno stato "vivo" specchiato
-	// in MainWindow, vedi HandlePageSetupRequest. GeneratePrintPreviewPages
-	// sotto usa invece i valori ANCORA IN MODIFICA nel dialogo, passati
-	// come parametri: sono due chiamanti diversi con esigenze diverse,
-	// entrambi delegano pero' allo stesso ComputePrintJobLayout.
-	double marginTopCm = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
-	double marginBottomCm = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
-	double marginLeftCm = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
-	double marginRightCm = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
-	int scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
-	double scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+	// Margini/scala (Fase 27, "Imposta pagina", per-foglio dalla Fase
+	// 29): quelli propri del foglio attivo se mai impostati, altrimenti
+	// la preferenza globale di ripiego -- vedi GetActivePrintSettings.
+	// GeneratePrintPreviewPages sotto usa invece i valori ANCORA IN
+	// MODIFICA nel dialogo, passati come parametri: sono due chiamanti
+	// diversi con esigenze diverse, entrambi delegano pero' allo stesso
+	// ComputePrintJobLayout.
+	double marginTopCm, marginBottomCm, marginLeftCm, marginRightCm, scalePercent;
+	int scaleMode;
+	GetActivePrintSettings(&marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
+		&scaleMode, &scalePercent);
 
 	float headerW = fSheetView->HeaderWidth();
 	float headerH = fSheetView->HeaderHeight();

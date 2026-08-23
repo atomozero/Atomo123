@@ -31,6 +31,28 @@
 
 class CContainer;
 
+// Margini/scala di "Imposta pagina" (Fase 29), PER FOGLIO -- prima
+// un'unica preferenza globale dell'app (gPrefs, vedi ROADMAP.md),
+// spostata qui su richiesta esplicita dell'utente: ogni foglio ricorda
+// i propri margini/scala nel file, invece di condividerli con
+// qualunque altro documento aperto. "hasSettings"=false (il default)
+// vuol dire "mai impostati per questo foglio": MainWindow ricade sulla
+// preferenza globale in quel caso, esattamente come si comportava
+// sempre prima di questa fase -- vedi MainWindow::GetActivePrintSettings.
+// I valori di default qui (2cm, scala fissa 100%) combaciano con quelli
+// gia' usati da gPrefs, cosi' un foglio con hasSettings=true ma mai
+// davvero toccato dall'utente (caso raro, solo se costruito a mano) si
+// comporta comunque in modo sensato.
+struct AscdPrintSettings {
+	bool hasSettings = false;
+	double marginTopCm = 2.0;
+	double marginBottomCm = 2.0;
+	double marginLeftCm = 2.0;
+	double marginRightCm = 2.0;
+	int scaleMode = 0; // 0=percentuale fissa, vedi kPrintFitWidth/Height/Both in PrintLayout.h
+	double scalePercent = 100.0;
+};
+
 // "charts"/"colWidths" sono opzionali (NULL = non legge/scrive nulla
 // di quella sezione, comportamento invariato per chi non ne ha
 // bisogno, es. i test di round-trip gia' esistenti) -- entrambe
@@ -95,7 +117,9 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	bool* showGrid = NULL,
 	bool* hasTabColor = NULL, rgb_color* tabColor = NULL,
 	std::vector<int>* hiddenRows = NULL,
-	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL);
+	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL,
+	bool* hasPrintArea = NULL, range* printArea = NULL,
+	AscdPrintSettings* printSettings = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -105,7 +129,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const bool* showGrid = NULL,
 	const bool* hasTabColor = NULL, const rgb_color* tabColor = NULL,
 	const std::vector<int>* hiddenRows = NULL,
-	const bool* hasAutoFilter = NULL, const range* autoFilterRange = NULL);
+	const bool* hasAutoFilter = NULL, const range* autoFilterRange = NULL,
+	const bool* hasPrintArea = NULL, const range* printArea = NULL,
+	const AscdPrintSettings* printSettings = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -177,15 +203,25 @@ struct AscdSheet {
 	// LoadASCD/SaveASCD -- un file riaperto parte sempre dall'angolo in
 	// alto a sinistra di ogni foglio, come sempre.
 	BPoint scrollPosition = BPoint(0, 0);
-	// Area di stampa (Fase 27, vedi ROADMAP.md "v3.0 Consolidation"):
-	// se impostata, MainWindow::PrintDocument stampa SOLO questo
-	// intervallo invece di SheetView::ContentRect() (tutte le celle con
-	// contenuto). Stesso principio "solo per la sessione corrente" di
-	// scrollPosition sopra: nessuno spazio riservato per questo nel
-	// formato ASCD/ASCB, un file riaperto non ha mai un'area di stampa
-	// gia' impostata.
+	// Area di stampa (Fase 27, vedi ROADMAP.md "v3.0 Consolidation"): se
+	// impostata, MainWindow::PrintDocument stampa SOLO questo intervallo
+	// invece di SheetView::ContentRect() (tutte le celle con contenuto).
+	// Persistita nel formato ASCD/ASCB (sezione in coda, vedi
+	// SaveASCD/LoadASCD sotto) -- a differenza di scrollPosition sopra,
+	// che resta deliberatamente solo di sessione, un'area di stampa e'
+	// una vera decisione dell'utente su COSA stampare, non un dettaglio
+	// di navigazione della UI.
 	bool hasPrintArea = false;
 	range printArea;
+	// Margini/scala di "Imposta pagina" (Fase 29): PER FOGLIO, non piu'
+	// una preferenza globale dell'app (gPrefs) come prima -- vedi
+	// AscdPrintSettings sotto. hasSettings=false (il default) vuol dire
+	// "questo foglio non ha mai avuto un'impostazione propria", nel
+	// qual caso MainWindow ricade su gPrefs esattamente come sempre
+	// (vedi MainWindow::GetActivePrintSettings) -- un file scritto prima
+	// di questo campo, o un foglio nuovo mai passato da "Imposta
+	// pagina", si comporta quindi in modo identico a prima.
+	AscdPrintSettings printSettings;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di
