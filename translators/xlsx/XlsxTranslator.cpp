@@ -836,6 +836,44 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione area di stampa, in coda (Fase 29 di ui/src/AscdIO.cpp):
+	// questo translator non legge ancora l'area di stampa/le
+	// impostazioni pagina dal file XLSX originale, quindi scrive sempre
+	// "assente" (has=0). Va comunque scritta per OGNI foglio, stesso
+	// motivo del BUG REALE spiegato nel commento della sezione titolo
+	// di grafico qui sopra: senza questi byte fissi, LoadASCD (chiamato
+	// da LoadASCDBook una volta per foglio) legge l'inizio del blocco
+	// del foglio successivo come se fosse questa sezione, disallineando
+	// la lettura di ogni foglio dopo il primo in un file multi-foglio.
+	{
+		uint8 has = 0;
+		int16 top = 0, left = 0, bottom = 0, right = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+			|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+			|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+			|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+			return B_IO_ERROR;
+	}
+
+	// Sezione margini/scala di "Imposta pagina", in coda (Fase 29):
+	// stesso motivo e stesso principio "sempre scritta, has=0" della
+	// sezione area di stampa appena sopra.
+	{
+		uint8 has = 0;
+		double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
+		int32 scaleMode = 0;
+		double scalePercent = 100.0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
+			|| dest->Write(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
+			|| dest->Write(&marginLeft, sizeof(marginLeft)) != (ssize_t)sizeof(marginLeft)
+			|| dest->Write(&marginRight, sizeof(marginRight)) != (ssize_t)sizeof(marginRight)
+			|| dest->Write(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
+			|| dest->Write(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
@@ -1484,6 +1522,52 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				if (i < (int32)outCharts->size())
 					(*outCharts)[i].title = title;
 			}
+		}
+	}
+
+	// Sezione area di stampa, in coda (Fase 29 di ui/src/AscdIO.cpp):
+	// questo translator non usa ancora l'area di stampa, ma deve
+	// comunque consumare i byte scritti da WriteASCD per restare
+	// allineato al blocco del foglio successivo in un file multi-foglio
+	// (vedi il commento gemello nel writer qui sopra). Tollerante a EOF
+	// per restare compatibile con un file scritto prima di questa fase.
+	{
+		uint8 has = 0;
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has))
+				return B_BAD_DATA;
+
+			int16 top, left, bottom, right;
+			if (source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+				|| source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+				|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+				|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right))
+				return B_BAD_DATA;
+		}
+	}
+
+	// Sezione margini/scala di "Imposta pagina", in coda (Fase 29):
+	// stesso motivo e stesso principio EOF-tollerante della sezione
+	// area di stampa appena sopra. ULTIMA sezione del formato.
+	{
+		uint8 has = 0;
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has))
+				return B_BAD_DATA;
+
+			double marginTop, marginBottom, marginLeft, marginRight, scalePercent;
+			int32 scaleMode;
+			if (source->Read(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
+				|| source->Read(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
+				|| source->Read(&marginLeft, sizeof(marginLeft)) != (ssize_t)sizeof(marginLeft)
+				|| source->Read(&marginRight, sizeof(marginRight)) != (ssize_t)sizeof(marginRight)
+				|| source->Read(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
+				|| source->Read(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
+				return B_BAD_DATA;
 		}
 	}
 

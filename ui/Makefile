@@ -194,6 +194,21 @@ test-ascd-book: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
 	./tests/test_ascd_book
 
+# Regressione del disallineamento fra il formato ASCD duplicato dal
+# translator XLSX e quello vero letto da AscdIO.cpp (vedi il commento
+# in cima a test_translator_multisheet_import.cpp) -- a differenza di
+# test-ascd-book sopra, passa DAVVERO per il translator installato
+# (BTranslatorRoster, -ltranslation), l'unico modo per rilevare un
+# disallineamento fra i due formati duplicati.
+test-translator-multisheet: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_translator_multisheet_import.cpp -o tests/test_translator_multisheet_import.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/AscdIO.cpp -o tests/AscdIO_translator_multisheet.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_translator_multisheet_import \
+		tests/test_translator_multisheet_import.o tests/AscdIO_translator_multisheet.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -ltranslation
+	./tests/test_translator_multisheet_import
+
 # Test dei bordi di cella (Fase 11): un lato alla volta, applicati a
 # tutta la selezione, indipendenti fra loro, ClearBorders. Stessa
 # ragione di test-paste-range (serve una vera MainWindow).

@@ -944,6 +944,38 @@ int main()
 								"nessun grafico in sample.xlsx, il contatore dei titoli e' zero");
 						}
 
+						// Area di stampa (Fase 29 di ui/src/AscdIO.cpp):
+						// questo translator non legge ancora l'area di
+						// stampa dal file XLSX originale, quindi scrive
+						// sempre "assente" -- un byte "presente" (qui
+						// zero) seguito da quattro interi, sempre
+						// scritti anche quando "presente" e' zero.
+						if (pos + 9 <= ascdLen)
+						{
+							uint8 hasPrintArea = ascdData[pos]; pos += 1;
+							pos += 8; // top/left/bottom/right, int16 ciascuno
+							Check(hasPrintArea == 0,
+								"nessuna area di stampa in sample.xlsx, il byte presente/assente e' zero");
+						}
+
+						// Margini/scala di "Imposta pagina" (Fase 29):
+						// stesso principio della sezione area di stampa
+						// appena sopra, ULTIMA sezione del formato --
+						// byte "presente" (qui zero) seguito da quattro
+						// margini (double), la modalita' di scala
+						// (int32) e la percentuale (double), sempre
+						// scritti anche quando "presente" e' zero.
+						if (pos + 45 <= ascdLen)
+						{
+							uint8 hasPrintSettings = ascdData[pos]; pos += 1;
+							pos += 32; // quattro margini, double ciascuno
+							pos += 4; // modalita' di scala, int32
+							pos += 8; // percentuale di scala, double
+							Check(hasPrintSettings == 0,
+								"nessuna impostazione di stampa propria in sample.xlsx, il byte "
+								"presente/assente e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
