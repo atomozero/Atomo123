@@ -35,13 +35,13 @@ class BMenu;
 class BMenuItem;
 class BTextControl;
 class BStringView;
+class FooterProgressBar;
 class SheetView;
 class SheetTabView;
 class FindWindow;
 class ChartWindow;
 class PivotWindow;
 class NameWindow;
-class ProgressWindow;
 class PasteSpecialWindow;
 class GoToWindow;
 class RenameSheetWindow;
@@ -199,6 +199,13 @@ public:
 	// vedi tests/test_open_async.cpp -- vero fra OpenFileAsync() e
 	// l'arrivo di kMsgFileLoadResult (thread di lavoro ancora in corso).
 	bool IsOpeningFile() const { return fOpeningFile; }
+	// Pubblico apposta per essere testabile senza leggere pixel (stesso
+	// principio di IsOpeningFile sopra): vero mentre la barra di
+	// avanzamento nel footer e' visibile al posto di fCellMode/
+	// fSelectionStats (Fase 33). Definita in MainWindow.cpp (non
+	// inline): richiede la definizione completa di BStatusBar, qui solo
+	// dichiarata in avanti.
+	bool IsFooterProgressVisible() const;
 	// Pubblico apposta per essere testabile direttamente (stesso
 	// principio di GetSheetView sopra): verifica che SelectionChanged
 	// anteponga davvero "=" al testo di una cella con formula (vedi il
@@ -519,6 +526,31 @@ private:
 	bool fEditingCell;
 	BStringView* fSelectionStats;
 	int fFooterStatsMask;
+	// Avanzamento dell'apertura file (Fase 33, richiesta esplicita
+	// dell'utente: "spostami la barra nel footer" invece di una
+	// finestra a parte, poi "la barra e il testo sulla stessa riga per
+	// un footer piu' compatto" -- BStatusBar riserva sempre una riga di
+	// testo SOPRA la barra anche senza etichetta, quindi non puo' mai
+	// stare sulla stessa riga di fFooterProgressLabel: FooterProgressBar
+	// e' una barra disegnata a mano, alta quanto una singola riga di
+	// testo). Vivono nella STESSA riga del footer di fCellMode/
+	// fSelectionStats sopra, che nascondono mentre sono visibili (vedi
+	// OpenFileAsync/HandleFileLoadResult in MainWindow.cpp) -- il peso
+	// di layout molto maggiore di fFooterProgressBar fa si' che occupi
+	// quasi tutta la riga quando gli altri due sono nascosti.
+	BStringView* fFooterProgressLabel;
+	FooterProgressBar* fFooterProgressBar;
+	// "Impulso" periodico (Fase 33, richiesta esplicita dell'utente:
+	// "e' brutto che la barra sta ferma" durante Translate(), un'unica
+	// chiamata opaca senza avanzamento reale intermedio -- vedi
+	// OpenFileThreadEntry) che fa avanzare LEGGERMENTE la barra fra un
+	// vero aggiornamento e il successivo, cosi' non sembra mai bloccata
+	// anche quando non arriva nessun dato reale per decine di secondi.
+	// fFooterProgressBaseline e' l'ultimo valore VERO ricevuto (limite
+	// superiore di quanto l'impulso puo' avvicinarsi al prossimo
+	// aggiornamento reale, mai superarlo).
+	BMessageRunner* fFooterProgressPulseRunner;
+	float fFooterProgressBaseline;
 	CContainer* fDoc;
 	BFilePanel* fOpenPanel;
 	BFilePanel* fSavePanel;
@@ -526,16 +558,14 @@ private:
 	ChartWindow* fChartWindow;
 	PivotWindow* fPivotWindow;
 	NameWindow* fNameWindow;
-	// Apertura file su un thread separato (Fase 31): creata al bisogno
-	// (come le altre finestre sopra) e riusata a ogni apertura
-	// successiva. fOpeningFile impedisce un secondo OpenFile() mentre
-	// il primo e' ancora in corso -- il thread di lavoro scrive
+	// Apertura file su un thread separato (Fase 31, avanzamento nel
+	// footer -- Fase 33): fOpeningFile impedisce un secondo OpenFile()
+	// mentre il primo e' ancora in corso -- il thread di lavoro scrive
 	// direttamente su un CContainer/AscdSheet nuovo di zecca, mai su
 	// fSheets/fDoc finche' non e' del tutto pronto (vedi il commento su
-	// _OpenFileWorker in MainWindow.cpp), ma due aperture in corso
+	// OpenFileThreadEntry in MainWindow.cpp), ma due aperture in corso
 	// contemporaneamente finirebbero comunque per litigare su QUALE
 	// risultato applicare per ultimo.
-	ProgressWindow* fProgressWindow;
 	bool fOpeningFile;
 	PasteSpecialWindow* fPasteSpecialWindow;
 	GoToWindow* fGoToWindow;

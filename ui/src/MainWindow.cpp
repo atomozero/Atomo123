@@ -27,7 +27,7 @@
 #include "PreferencesWindow.h"
 #include "BorderWindow.h"
 #include "PageSetupWindow.h"
-#include "ProgressWindow.h"
+#include "FooterProgressBar.h"
 #include "AboutWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
@@ -156,6 +156,12 @@ static const uint32 kMsgAutoSaveTick = 'atck';
 // Apertura file su un thread separato (Fase 31): inviato dal thread di
 // lavoro a fine caricamento, vedi _OpenFileWorker/OpenFile sotto.
 static const uint32 kMsgFileLoadResult = 'flrs';
+// Avanzamento dell'apertura file nel footer (Fase 33): inviato dal
+// thread di lavoro a ogni fase/passata, vedi SendFooterProgress sotto.
+static const uint32 kMsgFooterProgressUpdate = 'fpup';
+// "Impulso" periodico della stessa barra (Fase 33): vedi il commento
+// su fFooterProgressPulseRunner in MainWindow.h.
+static const uint32 kMsgFooterProgressPulse = 'fppl';
 static const uint32 kMsgToggleBorder = 'tbrd';
 static const uint32 kMsgClearBorders = 'cbrd';
 static const uint32 kMsgShowBorderColor = 'shbd';
@@ -916,6 +922,18 @@ MainWindow::MainWindow()
 	fSelectionStats = new FooterStatsView("selectionStats", this);
 	fSelectionStats->SetAlignment(B_ALIGN_RIGHT);
 
+	// Avanzamento dell'apertura file (Fase 33): nella STESSA riga di
+	// fCellMode/fSelectionStats sopra (vedi il BLayoutBuilder sotto),
+	// nascosta finche' non c'e' davvero un'apertura in corso --
+	// OpenFileAsync la mostra al posto di fCellMode/fSelectionStats
+	// (Hide()/Show() reciproci), HandleFileLoadResult li ripristina.
+	fFooterProgressLabel = new BStringView("footerProgressLabel", "");
+	fFooterProgressLabel->Hide();
+	fFooterProgressBar = new FooterProgressBar("footerProgressBar");
+	fFooterProgressBar->Hide();
+	fFooterProgressPulseRunner = NULL;
+	fFooterProgressBaseline = 0.0f;
+
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.Add(toolbar)
@@ -940,6 +958,13 @@ MainWindow::MainWindow()
 		.AddGroup(B_HORIZONTAL, 4)
 			.SetInsets(4, 2, 4, 2)
 			.Add(fCellMode)
+			.Add(fFooterProgressLabel)
+			// Peso molto maggiore del resto della riga: quando fCellMode/
+			// fSelectionStats sono nascosti (durante il caricamento),
+			// fFooterProgressBar si allarga a occupare quasi tutta la
+			// riga del footer invece di restare compressa alla sua
+			// dimensione preferita.
+			.Add(fFooterProgressBar, 20.0f)
 			.AddGlue()
 			.Add(fSelectionStats)
 		.End();
@@ -963,7 +988,6 @@ MainWindow::MainWindow()
 	fPreferencesWindow = NULL;
 	fBorderWindow = NULL;
 	fPageSetupWindow = NULL;
-	fProgressWindow = NULL;
 	fOpeningFile = false;
 
 	UpdateTitle();
@@ -972,6 +996,7 @@ MainWindow::MainWindow()
 MainWindow::~MainWindow()
 {
 	delete fAutoSaveRunner;
+	delete fFooterProgressPulseRunner;
 	delete fOpenPanel;
 	delete fSavePanel;
 	if (fFindWindow)
@@ -1053,11 +1078,6 @@ MainWindow::~MainWindow()
 	{
 		fPageSetupWindow->Lock();
 		fPageSetupWindow->Quit();
-	}
-	if (fProgressWindow)
-	{
-		fProgressWindow->Lock();
-		fProgressWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -1194,6 +1214,11 @@ void MainWindow::AttachSheetResolver()
 {
 	for (size_t i = 0; i < fSheets.size(); i++)
 		fSheets[i].doc->SetSheetResolver(this);
+}
+
+bool MainWindow::IsFooterProgressVisible() const
+{
+	return !fFooterProgressBar->IsHidden();
 }
 
 void MainWindow::RecalculateActiveWorkbook()
@@ -1594,8 +1619,22 @@ public:
 struct OpenFileJob {
 	entry_ref ref;
 	BMessenger target; // la MainWindow che ha avviato l'apertura
-	ProgressWindow* progressWindow;
 };
+
+// Avanzamento dell'apertura file nel footer (Fase 33, richiesta
+// esplicita dell'utente: "spostami la barra nel footer" invece di una
+// finestra a parte, vedi il commento su fFooterProgress in
+// MainWindow.h): un solo BMessage a "target" (kMsgFooterProgressUpdate,
+// gestito in MainWindow::MessageReceived) -- thread-safe di suo
+// (BMessenger::SendMessage), esattamente come ogni altro messaggio che
+// il thread di lavoro invia alla finestra.
+static void SendFooterProgress(BMessenger target, float fraction, const char* phaseText)
+{
+	BMessage msg(kMsgFooterProgressUpdate);
+	msg.AddFloat("fraction", fraction);
+	msg.AddString("phase", phaseText);
+	target.SendMessage(&msg);
+}
 
 // Callback di RecalculateWorkbook (vedi RecalcProgressFunc in
 // AscdIO.h): l'ultimo terzo della barra di avanzamento e' dedicato al
@@ -1607,12 +1646,12 @@ struct OpenFileJob {
 static void OpenFileRecalcProgress(void* context, int sheetIndex, int sheetCount,
 	int passIndex, const char* sheetName)
 {
-	ProgressWindow* progressWindow = (ProgressWindow*)context;
+	BMessenger* target = (BMessenger*)context;
 	float withinPhase = sheetCount > 0 ? (float)(sheetIndex + 1) / sheetCount : 1.0f;
-	BString detail;
-	detail.SetToFormat(B_TRANSLATE("Ricalcolo: foglio %d di %d (passata %d) - %s"),
+	BString phase;
+	phase.SetToFormat(B_TRANSLATE("Ricalcolo: foglio %d di %d (passata %d) - %s"),
 		sheetIndex + 1, sheetCount, passIndex + 1, sheetName);
-	progressWindow->Update(0.66f + withinPhase * 0.34f, NULL, detail.String());
+	SendFooterProgress(*target, 0.66f + withinPhase * 0.34f, phase.String());
 }
 
 // Corpo del thread di caricamento (Fase 31, richiesta esplicita
@@ -1621,12 +1660,13 @@ static void OpenFileRecalcProgress(void* context, int sheetIndex, int sheetCount
 // dentro MainWindow::OpenFile, spostata qui perche' gira su un thread
 // A PARTE -- non tocca MAI direttamente this->fSheets/fDoc/fSheetView
 // (tutto cio' che e' Interface Kit va toccato solo dal thread della
-// finestra), solo dati locali (newSheets) e la finestra di avanzamento
-// (thread-safe di suo, vedi ProgressWindow::Update). Il risultato
-// (esito, i nuovi fogli, l'extension del translator) torna al thread
-// principale con un solo BMessage, gestito in
-// MainWindow::MessageReceived (case kMsgFileLoadResult) esattamente
-// come faceva la seconda meta' della vecchia OpenFile.
+// finestra), solo dati locali (newSheets) e messaggi verso la finestra
+// per l'avanzamento nel footer (thread-safe di suo, vedi
+// SendFooterProgress sopra). Il risultato (esito, i nuovi fogli,
+// l'extension del translator) torna al thread principale con un solo
+// BMessage, gestito in MainWindow::MessageReceived (case
+// kMsgFileLoadResult) esattamente come faceva la seconda meta' della
+// vecchia OpenFile.
 static int32 OpenFileThreadEntry(void* data)
 {
 	OpenFileJob* job = (OpenFileJob*)data;
@@ -1644,7 +1684,7 @@ static int32 OpenFileThreadEntry(void* data)
 	}
 	else
 	{
-		job->progressWindow->Update(0.05f, B_TRANSLATE("Lettura del file..."));
+		SendFooterProgress(job->target, 0.05f, B_TRANSLATE("Lettura del file..."));
 
 		if (IsASCDBookFile(&file))
 		{
@@ -1679,7 +1719,7 @@ static int32 OpenFileThreadEntry(void* data)
 			// (per .xlsx/.xlsm con piu' fogli) produce una cartella di
 			// lavoro "ASCB"; gli altri restano a un solo foglio, senza
 			// grafici.
-			job->progressWindow->Update(0.15f, B_TRANSLATE("Traduzione del file in corso..."));
+			SendFooterProgress(job->target, 0.15f, B_TRANSLATE("Traduzione del file in corso..."));
 			BMallocIO ascd;
 			status_t translateErr = BTranslatorRoster::Default()->Translate(&file, NULL,
 				&translateExtension, &ascd, kAtomoNativeFormat);
@@ -1707,7 +1747,7 @@ static int32 OpenFileThreadEntry(void* data)
 	OpenFileLocalResolver* resolver = NULL;
 	if (ok && !newSheets->empty())
 	{
-		job->progressWindow->Update(0.66f, B_TRANSLATE("Ricalcolo in corso..."));
+		SendFooterProgress(job->target, 0.66f, B_TRANSLATE("Ricalcolo in corso..."));
 
 		// Collega il resolver PRIMA di ricalcolare: ogni foglio e'
 		// stato letto (e gia' ricalcolato una prima volta) da
@@ -1725,7 +1765,7 @@ static int32 OpenFileThreadEntry(void* data)
 		for (size_t i = 0; i < newSheets->size(); i++)
 			(*newSheets)[i].doc->SetSheetResolver(resolver);
 
-		RecalculateWorkbook(*newSheets, OpenFileRecalcProgress, job->progressWindow);
+		RecalculateWorkbook(*newSheets, OpenFileRecalcProgress, &job->target);
 	}
 	else
 	{
@@ -1977,22 +2017,41 @@ void MainWindow::OpenFileAsync(const entry_ref& ref)
 	checkFile.Unset();
 
 	fOpeningFile = true;
-	if (!fProgressWindow)
-		fProgressWindow = new ProgressWindow();
-	fProgressWindow->Update(0.0f, B_TRANSLATE("Apertura del file in corso..."));
-	fProgressWindow->Show();
+	// Nel footer, al posto di fCellMode/fSelectionStats (vedi il
+	// commento su fFooterProgressLabel/fFooterProgressBar in
+	// MainWindow.h) -- ripristinati da HandleFileLoadResult a
+	// caricamento finito.
+	fCellMode->Hide();
+	fSelectionStats->Hide();
+	fFooterProgressLabel->SetText(B_TRANSLATE("Apertura del file in corso..."));
+	fFooterProgressLabel->Show();
+	fFooterProgressBar->SetFraction(0.0f);
+	fFooterProgressBar->Show();
+	fFooterProgressBaseline = 0.0f;
+	// Impulso ogni 150ms (vedi il commento su fFooterProgressPulseRunner
+	// in MainWindow.h): senza questo, la barra resta immobile per
+	// decine di secondi durante Translate() (bug reale segnalato
+	// dall'utente guardando l'app dal vivo -- "e' brutto che la barra
+	// sta ferma").
+	delete fFooterProgressPulseRunner;
+	fFooterProgressPulseRunner = new BMessageRunner(BMessenger(this),
+		new BMessage(kMsgFooterProgressPulse), 150000);
 
 	OpenFileJob* job = new OpenFileJob();
 	job->ref = ref;
 	job->target = BMessenger(this);
-	job->progressWindow = fProgressWindow;
 
 	thread_id workerThread = spawn_thread(OpenFileThreadEntry, "Atomo123 file loader",
 		B_NORMAL_PRIORITY, job);
 	if (workerThread < 0 || resume_thread(workerThread) != B_OK)
 	{
 		fOpeningFile = false;
-		fProgressWindow->Hide();
+		fFooterProgressLabel->Hide();
+		fFooterProgressBar->Hide();
+		fCellMode->Show();
+		fSelectionStats->Show();
+		delete fFooterProgressPulseRunner;
+		fFooterProgressPulseRunner = NULL;
 		delete job;
 		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
 			B_TRANSLATE("Impossibile avviare il caricamento del file."), B_TRANSLATE("OK"));
@@ -2008,8 +2067,12 @@ void MainWindow::OpenFileAsync(const entry_ref& ref)
 void MainWindow::HandleFileLoadResult(BMessage* message)
 {
 	fOpeningFile = false;
-	if (fProgressWindow)
-		fProgressWindow->Finish();
+	fFooterProgressLabel->Hide();
+	fFooterProgressBar->Hide();
+	fCellMode->Show();
+	fSelectionStats->Show();
+	delete fFooterProgressPulseRunner;
+	fFooterProgressPulseRunner = NULL;
 
 	bool ok = false;
 	message->FindBool("ok", &ok);
@@ -5489,6 +5552,46 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgFileLoadResult:
 			HandleFileLoadResult(message);
 			break;
+
+		case kMsgFooterProgressUpdate:
+		{
+			float fraction = 0.0f;
+			message->FindFloat("fraction", &fraction);
+			if (fraction < 0.0f)
+				fraction = 0.0f;
+			if (fraction > 1.0f)
+				fraction = 1.0f;
+			BString phase;
+			message->FindString("phase", &phase);
+			fFooterProgressLabel->SetText(phase);
+			fFooterProgressBar->SetFraction(fraction);
+			// Nuovo limite superiore per l'impulso (vedi il case sotto):
+			// un aggiornamento VERO puo' sempre saltare avanti (o
+			// indietro, non capita mai in pratica) senza restrizioni,
+			// solo l'impulso fra un aggiornamento e il successivo deve
+			// restare entro un budget.
+			fFooterProgressBaseline = fraction;
+			break;
+		}
+
+		case kMsgFooterProgressPulse:
+		{
+			// Fra un aggiornamento vero e il successivo (soprattutto
+			// durante Translate(), un'unica chiamata opaca che puo'
+			// restare "muta" per decine di secondi -- bug reale
+			// segnalato dall'utente guardando l'app dal vivo), avanza
+			// LEGGERMENTE la barra verso un limite superiore mai
+			// raggiunto del tutto (avvicinamento esponenziale, si
+			// rallenta man mano che si avvicina) -- cosi' non sembra mai
+			// bloccata anche senza nessun dato reale nel frattempo.
+			float ceiling = fFooterProgressBaseline + 0.5f;
+			if (ceiling > 0.95f)
+				ceiling = 0.95f;
+			float current = fFooterProgressBar->Fraction();
+			if (current < ceiling)
+				fFooterProgressBar->SetFraction(current + (ceiling - current) * 0.03f);
+			break;
+		}
 
 		case B_ABOUT_REQUESTED:
 			(new AboutWindow())->Show();

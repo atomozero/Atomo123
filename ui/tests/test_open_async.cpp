@@ -84,6 +84,8 @@ int main()
 
 	win->Lock();
 	Check(!win->IsOpeningFile(), "IsOpeningFile() e' falso prima di qualunque apertura");
+	Check(!win->IsFooterProgressVisible(),
+		"la barra di avanzamento nel footer e' nascosta prima di qualunque apertura");
 	win->OpenFileAsync(ref);
 	// Vero subito dopo che OpenFileAsync ritorna, PRIMA che il thread
 	// di lavoro possa aver gia' finito -- la prova diretta che la
@@ -92,10 +94,14 @@ int main()
 	// caricamento GIA' finito, IsOpeningFile() sarebbe sempre stato
 	// falso a questo punto).
 	bool wasOpeningRightAfterCall = win->IsOpeningFile();
+	bool footerVisibleRightAfterCall = win->IsFooterProgressVisible();
 	win->Unlock();
 	Check(wasOpeningRightAfterCall,
 		"OpenFileAsync ritorna subito (IsOpeningFile() e' vero appena dopo la chiamata, "
 		"il thread di lavoro sta ancora caricando)");
+	Check(footerVisibleRightAfterCall,
+		"la barra di avanzamento nel footer (Fase 33) e' visibile appena dopo la chiamata, "
+		"al posto dell'indicatore di modalita'/statistiche di selezione");
 
 	// Il thread della finestra deve restare libero di elaborare i
 	// propri messaggi (incluso kMsgFileLoadResult a fine caricamento)
@@ -116,6 +122,8 @@ int main()
 	Check(finished, "il caricamento asincrono finisce entro il timeout di 10s");
 
 	win->Lock();
+	Check(!win->IsFooterProgressVisible(),
+		"la barra di avanzamento nel footer torna nascosta a caricamento finito");
 	Check(win->SheetCount() == 2, "l'apertura asincrona legge entrambi i fogli");
 	if (win->SheetCount() == 2)
 	{
