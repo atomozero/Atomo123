@@ -213,6 +213,14 @@ enum {
 	kINDIRECTFuncNr,
 	kADDRESSFuncNr,
 	kXMATCHFuncNr,
+	// SEQUENCE (Fase 29, vedi ROADMAP.md "v3.0 Consolidation", ultimo
+	// elemento del backlog): l'unica funzione "spill" di questa prima
+	// versione -- vedi il commento su CContainer::ApplySpill in
+	// Container.h per il design completo. Usata annidata/non come
+	// intera formula di una cella si comporta come uno scalare
+	// (restituisce solo il primo elemento, "start"), niente spill in
+	// quel caso: limite noto, non un errore.
+	kSEQUENCEFuncNr,
 	kFunctionCount
 };
 
@@ -353,5 +361,6 @@ void SUBTOTALFunction(Value *stack, int argCnt, CContainer *cells);
 void INDIRECTFunction(Value *stack, int argCnt, CContainer *cells);
 void ADDRESSFunction(Value *stack, int argCnt, CContainer *cells);
 void XMATCHFunction(Value *stack, int argCnt, CContainer *cells);
+void SEQUENCEFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

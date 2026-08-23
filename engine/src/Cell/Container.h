@@ -343,6 +343,65 @@ public:
 	void ClearMergedRanges()				{ fMergedRanges.clear(); }
 	const std::vector<range>& GetMergedRanges() const	{ return fMergedRanges; }
 
+	// Formule array/spill range (Fase 29, backlog v3.0 "Consolidation"
+	// -- vedi SEQUENCEFunction in Functions.spreadsheet.cpp per l'unico
+	// caso d'uso oggi): una formula come "=SEQUENCE(3,1)" scrive il suo
+	// risultato in PIU' celle vicine vuote, non solo nella propria.
+	// Bookkeeping SOLO in memoria (mai scritto su ASCD): non serve --
+	// riaprire un file gia' ri-esegue ogni formula (compresa quella
+	// dell'owner) al primo ricalcolo completo dopo l'apertura, che
+	// ricostruisce questi elenchi da zero chiamando ApplySpill di
+	// nuovo. fSpillOwnerOf include anche l'owner stesso (owner -> se
+	// stesso), cosi' IsSpillMember/GetSpillOwner restano uniformi senza
+	// un caso speciale per la cella con la formula vera.
+	//
+	// ApplySpill sostituisce SEMPRE l'intero contenuto spill
+	// precedente di "owner" (ClearSpill interno) prima di scrivere
+	// quello nuovo -- necessario perche' l'array puo' cambiare forma a
+	// ogni ricalcolo (es. SEQUENCE(3,1) diventato SEQUENCE(2,1) dopo
+	// una modifica: la terza cella, non piu' parte dell'array, va
+	// ripulita, non lasciata con un valore ormai orfano).
+	//
+	// Collisione = la cella bersaglio ha una FORMULA PROPRIA (non
+	// semplicemente "un valore qualunque"): una cella con solo un
+	// valore letterale viene sovrascritta senza pieta'. Scelta
+	// deliberata (Excel vero blocca su QUALUNQUE contenuto preesistente,
+	// non solo su un'altra formula), che rende il ricalcolo dopo
+	// l'apertura di un file idempotente SENZA bisogno di persistere
+	// fSpillOwnerOf/fSpillRangeOf: le celle spill di un file appena
+	// aperto sono gia' valori letterali (mai formule), quindi il primo
+	// ApplySpill dopo l'apertura le sovrascrive silenziosamente con lo
+	// stesso risultato (nessun cambiamento visibile), invece di
+	// rifiutarsi credendole un conflitto reale. Vero limite, non un
+	// bug nascosto: mai distrugge una formula altrui, ma NON riproduce
+	// il blocco di Excel su un valore digitato a mano nell'area di
+	// spill (verrebbe silenziosamente sovrascritto).
+	//
+	// "values" e' denso, ordine per righe (values[row*cols+col]),
+	// values.size() deve essere rows*cols. Restituisce false (nessuna
+	// scrittura, "owner" tiene il valore scalare gia' calcolato da
+	// Calculate) se una cella bersaglio (diversa da "owner" stesso) ha
+	// una formula propria.
+	bool ApplySpill(const cell& owner, int rows, int cols, const std::vector<Value>& values);
+	// Da chiamare quando una cella smette di essere una formula spill
+	// (es. l'utente sovrascrive "owner" con un valore normale): pulisce
+	// le celle che erano parte del suo array, altrimenti resterebbero
+	// con un valore ormai orfano, indistinguibile da un valore digitato
+	// a mano dall'utente.
+	void ClearSpill(const cell& owner);
+	bool IsSpillMember(const cell& c) const
+		{ return fSpillOwnerOf.find(c) != fSpillOwnerOf.end(); }
+	// "c" stesso se non fa parte di nessuno spill -- stessa convenzione
+	// di comodo di GetMergedRange, che pero' restituisce l'intervallo
+	// invece della sola cella proprietaria.
+	cell GetSpillOwner(const cell& c) const;
+	// Intervallo pieno dello spill di "owner" (owner incluso, angolo in
+	// alto a sinistra) -- range() vuoto (IsValid()==false) se "owner"
+	// non e' proprietario di nessuno spill attivo. Usato da SheetView
+	// per disegnare un contorno intorno all'intera area, stesso
+	// principio del contorno di selezione.
+	range GetSpillRange(const cell& owner) const;
+
 	// true se "c" fa parte di un intervallo unito (compresa la cella in
 	// alto a sinistra, che lo "possiede" agli effetti del contenuto
 	// disegnato/modificabile) -- "outRange" riceve l'intervallo intero,
@@ -472,6 +531,11 @@ private:
 	std::map<cell, ValidationRule> fValidations;
 	std::vector<ConditionalFormatRule> fCondFormatRules;
 	std::map<std::string, CTableDef> fTables;
+	// Vedi ApplySpill/ClearSpill sopra: fSpillOwnerOf include anche
+	// owner->owner (owner e' "membro" del proprio spill), fSpillRangeOf
+	// e' indicizzato SOLO dalla cella owner.
+	std::map<cell, cell> fSpillOwnerOf;
+	std::map<cell, range> fSpillRangeOf;
 };
 
 inline bool CContainer::WriteLock()

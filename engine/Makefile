@@ -6,13 +6,25 @@
 # e ../docs/ENGINE_API.md per la mappa dei file inclusi/esclusi).
 
 CXX := g++
-CXXFLAGS := -std=gnu++17 -Wall -g -fPIC
+# -MMD -MP (Fase 29): senza tracciamento delle dipendenze sugli header,
+# modificare un .h condiviso (es. Container.h) non forzava la
+# ricompilazione di OGNI .cpp che lo include -- risultato: un binario
+# linkato da object file costruiti contro DUE layout diversi della
+# stessa struct (CContainer con/senza i nuovi campi fSpillOwnerOf/
+# fSpillRangeOf), che scriveva fuori dai limiti del vero oggetto
+# allocato invece di crashare in modo pulito. Bug reale, root-caused
+# solo dopo un blocco silenzioso apparentemente casuale in ApplySpill
+# (Container.spill.cpp) che spariva con una "make clean" completa --
+# stessa identica classe di bug gia' corretta nel Makefile della UI
+# (commit 8c895e5), mai applicata qui al motore fino ad ora.
+CXXFLAGS := -std=gnu++17 -Wall -g -fPIC -MMD -MP
 SRCDIRS := src/Cell src/Formula src/Functions src/Excel src/FileSys src/Collections src/Misc-Classes src/Utils src/Config src/bsl src/Metrowerks src/Stubs
 INCLUDES := $(addprefix -I, $(SRCDIRS))
 OBJDIR := obj
 
 SOURCES := $(wildcard $(addsuffix /*.cpp, $(SRCDIRS)))
 OBJECTS := $(patsubst %.cpp, $(OBJDIR)/%.o, $(notdir $(SOURCES)))
+DEPS := $(patsubst %.o, %.d, $(OBJECTS))
 
 vpath %.cpp $(SRCDIRS)
 
@@ -22,6 +34,8 @@ all: $(LIB)
 
 $(LIB): $(OBJDIR) $(OBJECTS)
 	ar -cru $(LIB) $(OBJECTS)
+
+-include $(DEPS)
 
 $(OBJDIR)/%.o: %.cpp
 	@echo "-> $(<F)"

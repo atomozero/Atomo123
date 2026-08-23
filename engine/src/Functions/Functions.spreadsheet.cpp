@@ -43,6 +43,10 @@
 #include "Container.h"
 #endif
 
+#ifndef   FORMULA_H
+#include "Formula.h"
+#endif
+
 #ifndef   CELLVIEW_H
 #include "EngineViewStub.h"
 #endif
@@ -65,6 +69,8 @@
 
 
 #include <Window.h>
+
+#include <vector>
 
 void CHOOSEFunction(Value *stack, int argCnt, CContainer *cells)
 {
@@ -873,6 +879,169 @@ void XMATCHFunction(Value *stack, int argCnt, CContainer *cells)
 		stack[0] = (double)bestLargerPos;
 	else
 		stack[0] = gRefNan;
+}
+
+// true se il bytecode di "formulaBytecode" (vedi CContainer::
+// GetCellFormula(const cell&), che restituisce il puntatore grezzo
+// SENZA mai passare da CFormula::UnMangle) e' ESATTAMENTE una singola
+// chiamata a "funcNr", niente altro prima o dopo -- distingue
+// "=SEQUENCE(3,1)" (l'intera formula, spilla) da "=SEQUENCE(3,1)+0" o
+// "=SUM(SEQUENCE(3,1))" (annidata, NON deve spillare: altrimenti
+// scriverebbe nelle celle vicine come effetto collaterale di una
+// formula che l'utente non ha scritto per fare quello).
+//
+// Cammina il bytecode grezzo (lo stesso formato di CFormula::Calculate/
+// UnMangle in Formula.cpp, che questa funzione rispecchia SOLO per la
+// parte "quanti word occupa ogni token", copiata da CFormula::AddToken)
+// senza pero' costruire NESSUN testo -- e apposta: chiamare UnMangle
+// da qui aveva prodotto un blocco reale, root-caused solo dopo
+// un'intera sessione di debug a un dettaglio "ovvio" solo in
+// retrospettiva, gia' documentato altrove in questo stesso file per
+// CContainer: ftoa() (usata da UnMangle per formattare ogni valNum)
+// chiama Font().StringWidth(), che richiede una vera connessione
+// all'app_server -- si blocca per sempre in QUALUNQUE contesto
+// headless (motore isolato senza BApplication, compresi TUTTI i test
+// automatici di questo progetto). L'app vera non ne soffre (ha sempre
+// una BApplication viva), ma un test headless si', quindi questa
+// funzione non puo' permettersi di chiamare UnMangle in nessun caso.
+//
+// L'unica cosa che serve davvero e' sapere qual e' l'ULTIMO token
+// prima di opEnd: se e' un opFunc verso "funcNr", la chiamata e'
+// necessariamente l'operazione piu' esterna dell'intera formula (in
+// notazione postfissa, l'ultimo token e' sempre la radice
+// dell'albero) -- "=SUM(SEQUENCE(3,1))" finisce con opFunc(SUM), non
+// opFunc(SEQUENCE), quindi viene gia' correttamente escluso senza
+// bisogno di contare quante volte SEQUENCE compare in tutto.
+static bool IsWholeFunctionCall(void *formulaBytecode, int funcNr)
+{
+	if (!formulaBytecode)
+		return false;
+
+	const int32 *fString = (const int32 *)formulaBytecode;
+	int indx = 0;
+	bool lastWasTargetCall = false;
+	PFToken nextOpcode;
+
+	while ((nextOpcode = (PFToken)fString[indx++]) != opEnd)
+	{
+		lastWasTargetCall = false;
+		int toAdd = 0;
+
+		switch (nextOpcode)
+		{
+			case opFunc:
+			{
+				FuncCallData fcd = *((FuncCallData *)(fString + indx));
+				lastWasTargetCall = (fcd.funcNr == funcNr);
+				toAdd = sizeof(FuncCallData);
+				break;
+			}
+			case valBool:
+				toAdd = sizeof(bool);
+				break;
+			case valNum:
+			case valPerc:
+				toAdd = sizeof(double);
+				break;
+			case valTime:
+				toAdd = sizeof(time_t);
+				break;
+			case valName:
+			case valStr:
+				toAdd = strlen((const char *)(fString + indx)) + 1;
+				break;
+			case valCell:
+				toAdd = sizeof(cell);
+				break;
+			case valRange:
+				toAdd = sizeof(range);
+				break;
+			case valXRef:
+				toAdd = strlen((const char *)(fString + indx)) + 1 + sizeof(cell);
+				break;
+			case valXRange:
+				toAdd = strlen((const char *)(fString + indx)) + 1 + sizeof(range);
+				break;
+			default:
+				toAdd = 0;
+				break;
+		}
+
+		if (toAdd & kPFAlignBits)
+			toAdd = (toAdd & ~kPFAlignBits) + kPFWordSize;
+		indx += toAdd / kPFWordSize;
+	}
+
+	return lastWasTargetCall;
+}
+
+// SEQUENCE(rows, [columns], [start], [step]) -- Fase 29, vedi
+// ROADMAP.md "v3.0 Consolidation", ultimo elemento del backlog: la
+// prima (e per ora unica) funzione "spill" di Atomo123, che scrive il
+// proprio risultato in un intero blocco di celle invece che in una
+// sola. Il meccanismo vero e proprio (collisione, sostituzione di uno
+// spill precedente di forma diversa) vive in CContainer::ApplySpill
+// (Container.spill.cpp) -- vedi il commento esteso li' per il design
+// completo, in particolare il perche' NON serve persistere lo spill
+// su ASCD.
+//
+// stack[0] resta sempre il valore "start" (l'angolo in alto a
+// sinistra dell'array, riga 0 colonna 0): e' il valore che un
+// chiamante annidato (es. "=SUM(SEQUENCE(3,1))") vede al posto
+// dell'intero array -- limite dichiarato, non un errore. Lo spill vero
+// e proprio scatta SOLO se IsWholeFunctionCall sopra conferma che
+// questa chiamata e' l'INTERA formula della cella: annidata dentro
+// un'altra funzione (o con qualunque altra cosa prima/dopo) si comporta
+// come una normale funzione scalare, senza toccare nessun'altra cella.
+void SEQUENCEFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	double rowsArg = 0, colsArg = 1, start = 1, step = 1;
+	if (!GetDoubleArgument(stack, argCnt, 1, &rowsArg))
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+	GetDoubleArgument(stack, argCnt, 2, &colsArg);
+	GetDoubleArgument(stack, argCnt, 3, &start);
+	GetDoubleArgument(stack, argCnt, 4, &step);
+
+	int rows = static_cast<int>(rint(rowsArg));
+	int cols = static_cast<int>(rint(colsArg));
+	// Stesso limite del resto del motore (nessun controllo esplicito
+	// altrove su dimensioni "ragionevoli" di un intervallo): un blocco
+	// enorme (es. SEQUENCE(1000000,1) per errore di battitura) non
+	// crasha, ma puo' essere lento -- nessun tetto arbitrario imposto
+	// qui, coerente con come il resto del foglio si comporta gia'.
+	if (rows <= 0 || cols <= 0)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	stack[0] = start; // angolo in alto a sinistra, vedi il commento sopra la funzione
+
+	if (rows * cols <= 1 || !cells)
+		return; // una sola cella: niente da spillare, il valore sopra basta
+
+	cell owner = cells->CalculatingCell();
+	if (!IsWholeFunctionCall(cells->GetCellFormula(owner), kSEQUENCEFuncNr))
+		return; // annidata in un'altra formula: nessuno spill, vedi il commento sopra
+	std::vector<Value> values;
+	values.reserve(rows * cols);
+	for (int r = 0; r < rows; r++)
+		for (int c = 0; c < cols; c++)
+			values.push_back(Value(start + step * (r * cols + c)));
+
+	// Se ApplySpill rifiuta (collisione con la formula propria di
+	// un'altra cella), stack[0] resta comunque "start" impostato sopra
+	// -- nessun indicatore d'errore dedicato in questa prima versione
+	// (vedi il commento su ApplySpill in Container.h): la cella owner
+	// mostra silenziosamente solo il primo valore invece dell'intero
+	// array. Limite dichiarato.
+	cells->ApplySpill(owner, rows, cols, values);
 }
 
 // XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found],

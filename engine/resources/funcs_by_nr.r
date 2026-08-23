@@ -229,6 +229,11 @@ resource 'Func' (128, "Functions")
 		// lunghezza fissa.
 		"INDIRECT", 65535, 135, 1,
 		"ADDRESS", 65535, 136, 1,
-		"XMATCH", 65535, 137, 1
+		"XMATCH", 65535, 137, 1,
+		// SEQUENCE (Fase 29, vedi ROADMAP.md "v3.0 Consolidation"):
+		// ultimo elemento del backlog, unica funzione "spill" di
+		// questa prima versione -- vedi CContainer::ApplySpill in
+		// Container.h.
+		"SEQUENCE", 65535, 138, 1
 	}
 };

@@ -39,6 +39,8 @@
 
 */
 
+#include <cstdio>
+
 #ifndef   FORMULA_H
 #include "Formula.h"
 #endif
@@ -703,15 +705,15 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 				{
 					theFuncData = *((FuncCallData *)(fString + indx));
 					indx += sizeof(FuncCallData) / kPFWordSize;
-	
+
 					if (theFuncData.funcNr >= 0 &&
 						theFuncData.funcNr < gFuncCount)
 						strlcpy(outString, gFuncArrayByNr[theFuncData.funcNr].funcName, kMaxStringLength);
 					else
 						snprintf(outString, kMaxStringLength, GetIndString(1, 19), theFuncData.funcNr);
-						
+
 					stackIndx -= theFuncData.argCnt - 1;
-	
+
 						// cannot guarantee that theFuncData.argCnt is always correct anymore
 						// since we now build formula's from Excel formula's and those, yeah, well.. Microsoft huh?
 					if (stackIndx < 0)
@@ -739,7 +741,7 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 						strlcat(outString, stack[stackIndx + i], kMaxStringLength);
 					}
 					strlcat(outString, ")", kMaxStringLength);
-	
+
 					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 				}

@@ -50,6 +50,8 @@ static void Check(bool condition, const char *what)
 
 int main()
 {
+	setbuf(stdout, NULL); // output immediato, utile per isolare un blocco/crash a meta' file
+
 	BPath path("tests/named_functions.rsrc");
 	gAppName = path;
 	if (gResourceManager.SetTo(&path) != B_OK)
@@ -68,7 +70,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 138, "InitFunctions carica tutte le 138 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 139, "InitFunctions carica tutte le 139 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -1646,6 +1648,157 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =XMATCH (piu' piccolo): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// SEQUENCE (Fase 29, ultimo elemento del backlog v3.0
+	// "Consolidation", vedi ROADMAP.md): prima funzione "spill" di
+	// Atomo123 -- vedi CContainer::ApplySpill in Container.h per il
+	// design. Colonna 70, ben lontano da tutto il resto usato sopra.
+	try
+	{
+		TryToParseString("=SEQUENCE(3,1)", cell(70, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(70, 1));
+		doc.GetValue(cell(70, 1), v);
+		Check(v.fType == eNumData && (double)v == 1.0,
+			"=SEQUENCE(3,1) in A(70,1): la cella owner stessa vale 1 (l'angolo in alto a sinistra)");
+		doc.GetValue(cell(70, 2), v);
+		Check(v.fType == eNumData && (double)v == 2.0,
+			"=SEQUENCE(3,1) spilla 2 nella cella sotto");
+		doc.GetValue(cell(70, 3), v);
+		Check(v.fType == eNumData && (double)v == 3.0,
+			"=SEQUENCE(3,1) spilla 3 due celle sotto");
+		Check(doc.IsSpillMember(cell(70, 1)) && doc.IsSpillMember(cell(70, 2))
+				&& doc.IsSpillMember(cell(70, 3)),
+			"tutte e tre le celle risultano membri dello spill (owner compreso)");
+		Check(doc.GetSpillOwner(cell(70, 3)) == cell(70, 1),
+			"GetSpillOwner sulla cella spillata restituisce la cella owner, non se stessa");
+		range spillRange = doc.GetSpillRange(cell(70, 1));
+		Check(spillRange.IsValid() && spillRange.top == 1 && spillRange.bottom == 3
+				&& spillRange.left == 70 && spillRange.right == 70,
+			"GetSpillRange sull'owner restituisce l'intero intervallo (70,1):(70,3)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SEQUENCE (verticale semplice): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// Due righe, tre colonne: valori per RIGHE (1,2,3 sulla prima
+		// riga, 4,5,6 sulla seconda), come il vero SEQUENCE di Excel.
+		TryToParseString("=SEQUENCE(2,3)", cell(71, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(71, 1));
+		doc.GetValue(cell(71, 1), v);
+		Check(v.fType == eNumData && (double)v == 1.0, "=SEQUENCE(2,3): (71,1) vale 1");
+		doc.GetValue(cell(72, 1), v);
+		Check(v.fType == eNumData && (double)v == 2.0, "=SEQUENCE(2,3): (72,1) vale 2");
+		doc.GetValue(cell(73, 1), v);
+		Check(v.fType == eNumData && (double)v == 3.0, "=SEQUENCE(2,3): (73,1) vale 3");
+		doc.GetValue(cell(71, 2), v);
+		Check(v.fType == eNumData && (double)v == 4.0,
+			"=SEQUENCE(2,3): (71,2) vale 4 (seconda riga, non seconda colonna)");
+		doc.GetValue(cell(73, 2), v);
+		Check(v.fType == eNumData && (double)v == 6.0, "=SEQUENCE(2,3): (73,2) vale 6, l'ultimo");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SEQUENCE (2 righe x 3 colonne): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// start/step personalizzati, passo negativo compreso.
+		TryToParseString("=SEQUENCE(3,1,10,-2)", cell(74, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(74, 1));
+		doc.GetValue(cell(74, 1), v);
+		Check(v.fType == eNumData && (double)v == 10.0, "=SEQUENCE(3,1,10,-2): 10");
+		doc.GetValue(cell(74, 2), v);
+		Check(v.fType == eNumData && (double)v == 8.0, "=SEQUENCE(3,1,10,-2): 8 (passo -2)");
+		doc.GetValue(cell(74, 3), v);
+		Check(v.fType == eNumData && (double)v == 6.0, "=SEQUENCE(3,1,10,-2): 6");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SEQUENCE (start/step personalizzati): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// Restringimento: SEQUENCE(3,1) diventato SEQUENCE(2,1) dopo
+		// una modifica deve ripulire la terza cella, non lasciarla con
+		// un 3 ormai orfano (vedi il commento su ApplySpill/ClearSpill).
+		TryToParseString("=SEQUENCE(3,1)", cell(75, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(75, 1));
+		doc.GetValue(cell(75, 3), v);
+		Check(v.fType == eNumData && (double)v == 3.0,
+			"prima del restringimento, (75,3) fa parte dello spill (vale 3)");
+
+		TryToParseString("=SEQUENCE(2,1)", cell(75, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(75, 1));
+		doc.GetValue(cell(75, 2), v);
+		Check(v.fType == eNumData && (double)v == 2.0,
+			"dopo il restringimento a SEQUENCE(2,1), (75,2) e' ancora valido (vale 2)");
+		doc.GetValue(cell(75, 3), v);
+		Check(v.fType == eNoData,
+			"dopo il restringimento a SEQUENCE(2,1), (75,3) e' stata ripulita, non resta orfana a 3");
+		Check(!doc.IsSpillMember(cell(75, 3)),
+			"(75,3) non risulta piu' membro di nessuno spill dopo il restringimento");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SEQUENCE (restringimento): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// Collisione: una cella bersaglio ha gia' una formula propria
+		// -> ApplySpill si rifiuta, la cella owner mostra solo lo
+		// scalare "start" (vedi il commento sopra SEQUENCEFunction),
+		// la formula altrui in (76,2) resta intatta.
+		TryToParseString("=1+1", cell(76, 2), &doc, true);
+		doc.CalcCell(cell(76, 2));
+
+		TryToParseString("=SEQUENCE(3,1,100)", cell(76, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(76, 1));
+		doc.GetValue(cell(76, 1), v);
+		Check(v.fType == eNumData && (double)v == 100.0,
+			"con una collisione, la cella owner mostra comunque lo scalare (100)");
+		doc.GetValue(cell(76, 2), v);
+		Check(v.fType == eNumData && (double)v == 2.0,
+			"la formula preesistente in (76,2) non e' stata sovrascritta dalla collisione (=1+1 vale ancora 2)");
+		Check(!doc.IsSpillMember(cell(76, 1)),
+			"con una collisione, nessuno spill viene registrato (nemmeno per l'owner)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SEQUENCE (collisione con formula altrui): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// Annidata dentro un'altra funzione: nessuno spill (limite
+		// dichiarato, vedi il commento sopra SEQUENCEFunction), si
+		// comporta come un semplice scalare (il suo "start").
+		TryToParseString("=SUM(SEQUENCE(3,1))+0", cell(77, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(77, 1));
+		doc.GetValue(cell(77, 1), v);
+		Check(v.fType == eNumData && (double)v == 1.0,
+			"=SUM(SEQUENCE(3,1))+0 annidata calcola 1 (solo lo scalare, nessuno spill)");
+		doc.GetValue(cell(77, 2), v);
+		Check(v.fType == eNoData,
+			"annidata: la cella sotto (77,2) resta vuota, NESSUN effetto collaterale sulle celle vicine");
+		Check(!doc.IsSpillMember(cell(77, 1)),
+			"annidata: (77,1) non risulta owner/membro di nessuno spill");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SEQUENCE (annidata): %s\n", (char *)e);
 		gFailures++;
 	}
 

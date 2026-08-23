@@ -333,6 +333,7 @@ void SetupDefaultFuncs()
 	gFuncs[kINDIRECTFuncNr] = INDIRECTFunction;
 	gFuncs[kADDRESSFuncNr] = ADDRESSFunction;
 	gFuncs[kXMATCHFuncNr] = XMATCHFunction;
+	gFuncs[kSEQUENCEFuncNr] = SEQUENCEFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()
