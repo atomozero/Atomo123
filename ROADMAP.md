@@ -464,6 +464,30 @@ What shipped in v0.2.5, on top of v0.2.1:
   pass with it. The other three translators (CSV/XLS/ODS) don't have
   a `WriteASCDBook` equivalent (no multi-sheet concatenation), so
   they can't hit this bug class
+- Added a progress window for opening large files (Fase 31, measured
+  on the same 13-sheet real user file above: ~3 minutes total —
+  translate, load, recalculate — with the window completely frozen
+  and unresponsive to even scripting messages the whole time, since
+  everything ran synchronously on the window's own thread). The real
+  interactive open paths (menu, drag & drop, "Apri recenti") now go
+  through a new `MainWindow::OpenFileAsync`, which does the same work
+  on a separate thread and shows a `ProgressWindow` (phase text +
+  percentage, updated live during the recalculation phase with a
+  "sheet X of N, pass Y" detail line) while the window keeps
+  responding normally — verified live: `hey` round-trips in ~100ms
+  while the file is still loading, versus never returning before this
+  fix. `MainWindow::OpenFile` (synchronous) is kept, unchanged, as a
+  separate method: every existing test calls it while holding the
+  window's lock and checks the result immediately after — a real
+  background thread delivering its result through the same lock would
+  deadlock against that pattern, so the two paths intentionally
+  duplicate the load logic instead of sharing it (same reasoning as
+  the translator/engine duplication elsewhere in this project). New
+  test `ui/tests/test_open_async.cpp` covers the async path
+  specifically, including that a cross-sheet formula resolves
+  correctly even though the recalculation happens against a
+  temporary, worker-thread-local `ISheetResolver` before the sheets
+  are handed to the window
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
