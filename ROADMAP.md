@@ -390,6 +390,80 @@ What shipped in v0.2.5, on top of v0.2.1:
   guard on the chart title. Category labels are now centered under
   their bar/point instead of left-aligned, which reads better wrapped
   across two lines
+- Fixed a real bug found while building the `ui/examples/
+  generate_cda_report.cpp` function catalog: `MATCH`/`XMATCH`/
+  `XLOOKUP` signaled "not found" with `#REF!` instead of `#N/A`, so
+  `IFNA(MATCH(...), fallback)` — a very common real-world pattern —
+  silently never caught it (`IFNA` only checks the specific `#N/A` tag
+  inside the error, not a generic NaN). Fixed at the source in all
+  three functions; `VLOOKUP`/`HLOOKUP` (older, Sum-It-heritage
+  functions) were deliberately left as-is, out of scope
+- Fixed a serious, real data-integrity bug reported by the user with a
+  screenshot: plain text typed into a cell that happened to match a
+  function name — no leading `=`, no parentheses, e.g. just typing
+  `TODAY` as a column label — was silently CALCULATED as if that
+  formula had been entered (`TODAY` became today's date, `CONCAT`
+  became an empty string, `IF`/`XOR`/`AND`/`OR`/`SUM` and every other
+  variable-argument function became a miscalculated value), instead of
+  staying as the literal text the user typed. This affected the real
+  app directly (`SheetView::CommitEditing`, the normal cell-typing
+  path), not just file generation. Root cause: two compounding bugs in
+  the parser — a `short` field truncating the "variable argument
+  count" resource value (`65535`) into `-1`, which happened to collide
+  with the unrelated "unknown function" sentinel, and a bare-word
+  fallback that implicitly called ANY function whose (corrupted or
+  genuine) expected-arg-count was `0` or `-1` with zero arguments,
+  with no exception ever thrown to trigger the existing "fall back to
+  literal text" path. Fixed by never implicitly calling a bare
+  function name without explicit `()` — except `TRUE`/`FALSE`, kept as
+  a deliberate exception since real Excel treats them as boolean
+  literal keywords usable without parentheses, and existing formulas
+  in this project already relied on that specific case
+- Fixed a real performance bug reported by the user (opening a file
+  felt slow, one CPU core busy): `MainWindow::OpenFile` recalculates
+  the whole workbook once after linking all sheets together
+  (`RecalculateWorkbook`, needed so cross-sheet formulas resolve), but
+  `LoadASCD`/`LoadASCDBook` were ALSO recalculating each sheet on its
+  own right after reading it — work that's provably wasted for this
+  call path (cross-sheet references can't resolve yet, no
+  `ISheetResolver` attached at that point) and, worse, never actually
+  converges: the per-sheet pass hit its full 50-iteration safety cap
+  every time instead of settling early. Measured on a real 4-sheet,
+  700-row workbook: opening it dropped from ~2.36s to ~1.52s (35%)
+  after adding an opt-in `skipInitialRecalc` parameter that
+  `MainWindow::OpenFile`'s three load paths now pass — every other
+  caller (tests included) keeps the old default behavior unchanged.
+  The remaining ~1.5s is the engine's brute-force whole-sheet
+  recalculation itself (no dependency graph, by design) doing real
+  work across ~11,000+ cells and several full-column `SUMIF`/
+  `AVERAGEIFS`-style formulas — a much larger, riskier change than a
+  quick fix, not attempted here
+- Fixed a critical data-corruption bug found while investigating a
+  real user file that wouldn't open (a 13-sheet, ~11MB XLSX):
+  `translators/xlsx/XlsxTranslator.cpp`'s own hand-duplicated ASCD
+  writer (`WriteASCD`, never linked against `ui/src/AscdIO.cpp` by
+  design) was never updated with the `printArea`/`printSettings`
+  trailing sections that `AscdIO.cpp`'s `SaveASCD`/`LoadASCD` gained
+  in an earlier phase — a recurrence of the exact bug class fixed
+  once before (see the chart-title trailing-section fix earlier in
+  this list). For a single-sheet file this is invisible (EOF-tolerant
+  reading treats the missing section as "absent, we're at the end of
+  the file"), but `WriteASCDBook` concatenates one ASCD block per
+  sheet on the same stream: the missing 54 bytes for every sheet
+  except the last silently swallow the start of the NEXT sheet's own
+  header, permanently desyncing every sheet after the first. This
+  broke opening ANY multi-sheet XLSX with more than one sheet. Fixed
+  by adding the two missing sections (always "absent", matching this
+  translator's current scope — it doesn't parse print area/settings
+  from XLSX yet) to both the writer and its matching reader. Verified
+  with a new end-to-end regression test
+  (`ui/tests/test_translator_multisheet_import.cpp`) that goes through
+  the real installed translator + real engine reader together (the
+  only way to catch a format mismatch between the two independently
+  duplicated implementations) — confirmed to fail without the fix and
+  pass with it. The other three translators (CSV/XLS/ODS) don't have
+  a `WriteASCDBook` equivalent (no multi-sheet concatenation), so
+  they can't hit this bug class
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
