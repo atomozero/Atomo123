@@ -105,6 +105,21 @@ optional — if omitted, the first range is used. The criterion can be a
 number, text (case-insensitive), or a comparison with `>`, `>=`, `<`,
 `<=` or `<>` followed by a number, e.g. `=SUMIF(B1:B10;">100")`.
 
+**Spilling formulas**: `=SEQUENCE(rows;[columns];[start];[step])`
+generates a block of numbers directly from a single formula, the same
+way Excel's dynamic arrays work — type it into one cell and it fills
+the cells below/to the right by itself (Excel-style light gray border
+around the whole filled area). `=SEQUENCE(5;1)` fills 5 rows with
+1,2,3,4,5; `=SEQUENCE(2;3)` fills 2 rows × 3 columns, numbering across
+each row first; `=SEQUENCE(3;1;10;-2)` starts at 10 and counts down by
+2 (10, 8, 6). Only works when `SEQUENCE(...)` is the *entire* content
+of the cell — wrapping it in another formula (`=SUM(SEQUENCE(3;1))`)
+just uses its first value, without filling anything. If the cells
+SEQUENCE would fill already contain a formula of their own, it backs
+off and shows only its first value instead of overwriting that
+formula (a plain typed value in the way gets overwritten, unlike real
+Excel).
+
 ## Files: open, save, new
 
 - **File → New**: blank sheet. If the current document has unsaved

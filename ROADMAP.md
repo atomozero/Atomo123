@@ -51,8 +51,6 @@ existing code to build on):
   (a second pivot axis) or multiple simultaneous measures, both would
   need a real 2D output layout, not an incremental change to the
   current flat-list one
-- **Array formulas** (spill ranges) — touches the engine's evaluation
-  model, not an incremental change
 - **Goal Seek / Solver** — needs a new iterative numeric solver
 - **Legacy XLS writing** (BIFF/OLE2) — import only today; writing BIFF8
   from scratch has no library to build on, deliberately excluded (XLSX
@@ -343,24 +341,49 @@ What shipped in v0.2.5, on top of v0.2.1:
   share a generic file icon: the authorized icon source (the official
   Haiku FileTypes HVIF set) has no dedicated "Excel" icon, since it's a
   proprietary Microsoft format — a real gap, not a silent omission
+- Array formulas, v1: `SEQUENCE(rows, [columns], [start], [step])`
+  spills its result into a block of cells, Excel-style — the first
+  (and so far only) "spill" function. Deliberately scoped down:
+  spilling only happens when the call is the ENTIRE formula of its
+  cell (`=SEQUENCE(3,1)`); nested inside another expression (`=SUM(
+  SEQUENCE(3,1))`) it behaves as a plain scalar (its `start` value)
+  with no side effect on neighboring cells — detected by walking the
+  compiled bytecode directly (mirroring `CFormula::AddToken`'s
+  per-opcode word sizes) rather than decompiling to text, and for a
+  real reason: `CFormula::UnMangle` calls `ftoa()`, which calls
+  `Font().StringWidth()` — that blocks forever in any headless context
+  (no live `BApplication`/app_server connection), including every
+  automated test in this project. This was a real, if latent, bug
+  simply never triggered before because nothing else in the engine or
+  its test suite had ever called `GetCellFormula`'s text form on a
+  formula containing a numeric literal outside of the full GUI app.
+  Collision detection only blocks on another cell's own formula, not
+  on a plain typed value (Excel blocks on any existing content) — a
+  deliberate simplification that makes reopening a saved file
+  self-healing without needing new ASCD persistence: the spilled
+  cells' values already round-trip as plain literals, and the first
+  recalculation after loading silently re-derives the same values.
+  `UNIQUE` (the other commonly-requested dynamic array function) is
+  not implemented yet — same spill mechanism, future work. Also fixed
+  a real, unrelated build bug found along the way: the engine's own
+  Makefile never tracked header dependencies (`-MMD -MP`, matching a
+  fix already applied to the UI's Makefile once before) — editing
+  `Container.h` could silently leave stale object files built against
+  a different, incompatible layout of `CContainer` linked together
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
-Two planned major versions, not yet started beyond the print work above:
-
-**v3.0** — remaining item: array formulas (spill ranges — the largest
-single item, touches the engine's evaluation model; see "Not currently
-planned" below, scoping in progress). File-type icons from the HVIF
-store (www.hvif-store.art) are done (see "Current focus" above — full
-per-format distinction where the source icon set actually has one;
-.xlsx/.xlsm/.xls share a generic icon by necessity, documented gap).
-The "functions still missing versus Excel" item is done (30 functions
-across five batches). So are
-live formula export (already covers both XLSX and ODS symmetrically,
-see "Current focus" above — XLS has no export path at all,
-deliberately, not a gap), the print settings backlog (margins/scale/
-print area), and the ambiguous-text translator parity gap (see above
-for both).
+**v3.0 is functionally complete** as of the array formulas item above
+(a deliberately-scoped v1 — see "Current focus"; `UNIQUE` and spilling
+inside a nested expression remain explicit future work, not blocking
+gaps). Every other v3.0 backlog item is also done: the "functions
+still missing versus Excel" item (30 functions across five batches),
+live formula export (XLSX and ODS symmetrically), the print settings
+backlog (margins/scale/print area), the ambiguous-text translator
+parity gap, and file-type icons from the HVIF store (www.hvif-store.art
+— full per-format distinction where the source icon set actually has
+one; .xlsx/.xlsm/.xls share a generic icon by necessity, documented
+gap). XLS has no export path at all, deliberately, not a gap.
 
 **v4.0** — scripting: expose the app to Haiku's native BHandler/
 BMessage scripting protocol, with macro execution provided by an
