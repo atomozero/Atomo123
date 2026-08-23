@@ -748,6 +748,25 @@ test-open-async: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_open_async
 
+# Ottimizzazione "celle sporche" di RecalculateWorkbook (Fase 32):
+# verifica che l'elenco delle celle con formula, raccolto una sola
+# volta prima di tutte le passate, resti corretto anche con una
+# formula ad array (SEQUENCE, spilla VALORI nei vicini) su una cartella
+# di lavoro multi-foglio con centinaia di celle letterali e un
+# riferimento incrociato.
+test-recalc-dirty-cells: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
+	$(CXX) -c tests/test_recalc_dirty_cells.cpp -o tests/test_recalc_dirty_cells.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_recalc_dirty_cells tests/test_recalc_dirty_cells.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/ProgressWindow.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	xres -o tests/test_recalc_dirty_cells $(RSRC)
+	./tests/test_recalc_dirty_cells
+
 # Menu File > "Apri recenti": elenco degli ultimi 5 file aperti,
 # persistito in gPrefs (vedi il commento in test_recent_files.cpp sul
 # perche' questo test, a differenza degli altri test UI, imposta un

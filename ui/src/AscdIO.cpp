@@ -2014,6 +2014,23 @@ void RecalculateAll(CContainer* doc)
 	}
 }
 
+// Elenco delle sole celle CON formula di "doc" (Fase 32, celle
+// "sporche" -- vedi il commento su RecalculateWorkbook sotto per il
+// motivo): una cella puramente letterale non puo' mai cambiare per
+// effetto di un ricalcolo (il suo valore cambia solo per una modifica
+// esplicita dell'utente, mai qui), quindi non ha senso includerla in
+// un elenco pensato per essere rivisitato piu' volte.
+static void CollectFormulaCells(CContainer* doc, std::vector<cell>* outCells)
+{
+	CCellIterator iter(doc, NULL);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		if (doc->GetCellFormula(c) != NULL)
+			outCells->push_back(c);
+	}
+}
+
 // Stesso principio di RecalculateAll, esteso a TUTTI i fogli di una
 // cartella di lavoro invece di un solo CContainer: una formula puo'
 // referenziare un foglio diverso dal proprio (Fase 9, vedi
@@ -2026,9 +2043,33 @@ void RecalculateAll(CContainer* doc)
 // ancora il valore vecchio di B, richiedendo un'altra passata
 // completa per propagarsi -- esattamente cio' che il ciclo esterno
 // "changed" gia' gestisce, come per un singolo foglio.
+//
+// Ottimizzazione "celle sporche" (Fase 32, richiesta esplicita
+// dell'utente dopo aver misurato 91s di ricalcolo su un file XLSX
+// reale a 13 fogli): a differenza di RecalculateAll sopra (che usa
+// RecalculatePass, invariata -- resta il percorso generico dopo una
+// singola modifica dell'utente, non quello da ottimizzare qui), questa
+// funzione raccoglie UNA SOLA VOLTA (CollectFormulaCells sopra, prima
+// di qualunque passata) l'elenco delle celle CON formula di ogni
+// foglio, invece di riscandire OGNI cella con contenuto -- comprese le
+// celle puramente letterali -- fino a 50 volte. Su un foglio con
+// migliaia di righe di soli dati (es. un elenco di comuni) e poche
+// formule, quasi tutto quel lavoro ripetuto era sprecato: le celle
+// letterali non possono mai "cambiare" da un ricalcolo, quindi
+// includerle in ogni passata non serviva a nient'altro che a rallentare
+// l'apertura del file. Sicuro rispetto alle formule ad array
+// (SEQUENCE ecc.): le celle "spillate" nei vicini sono scritte come
+// VALORI, mai come formule proprie, quindi l'insieme delle celle CON
+// formula di un documento non cambia mai durante queste passate, solo
+// i loro valori -- l'elenco raccolto all'inizio resta valido fino alla
+// fine.
 void RecalculateWorkbook(std::vector<AscdSheet>& sheets, RecalcProgressFunc progress,
 	void* progressContext)
 {
+	std::vector<std::vector<cell> > formulaCells(sheets.size());
+	for (size_t i = 0; i < sheets.size(); i++)
+		CollectFormulaCells(sheets[i].doc, &formulaCells[i]);
+
 	bool changed = true;
 	int guard = 0;
 	while (changed && guard < 50)
@@ -2036,7 +2077,13 @@ void RecalculateWorkbook(std::vector<AscdSheet>& sheets, RecalcProgressFunc prog
 		changed = false;
 		for (size_t i = 0; i < sheets.size(); i++)
 		{
-			if (RecalculatePass(sheets[i].doc))
+			bool sheetChanged = false;
+			for (size_t j = 0; j < formulaCells[i].size(); j++)
+			{
+				if (sheets[i].doc->CalcCell(formulaCells[i][j]))
+					sheetChanged = true;
+			}
+			if (sheetChanged)
 				changed = true;
 			if (progress)
 				progress(progressContext, (int)i, (int)sheets.size(), guard, sheets[i].name.String());
