@@ -3037,6 +3037,36 @@ void SheetView::Draw(BRect updateRect)
 	int lastRow = std::min((int)kRowCount, RowAtY(updateRect.bottom - kHeaderHeight) + 1);
 	DrawCellBand(updateRect, firstCol, lastCol, firstRow, lastRow, 0, 0);
 
+	// Contorno delle formule spill (Fase 29, SEQUENCE): un riquadro
+	// sottile grigio chiaro intorno all'intero intervallo che una
+	// formula come "=SEQUENCE(3,1)" ha riempito, stessa convenzione
+	// visiva di Excel -- distingue le celle "possedute" da una formula
+	// altrove da un valore digitato a mano. Semplificazione dichiarata:
+	// disegnato solo se la cella OWNER (l'angolo in alto a sinistra,
+	// con la formula vera) e' nell'intervallo visibile in questo
+	// passaggio -- scorrendo fino a vedere solo il MEZZO di uno spill
+	// molto lungo senza il suo owner, il contorno non compare. Nessun
+	// costo aggiuntivo di query: GetSpillRange su una cella che non e'
+	// owner di nulla restituisce semplicemente un range non valido.
+	if (fDoc)
+	{
+		SetHighColor(180, 180, 180);
+		for (int row = firstRow; row <= lastRow; row++)
+		{
+			for (int col = firstCol; col <= lastCol; col++)
+			{
+				range spillRange = fDoc->GetSpillRange(cell(col, row));
+				if (!spillRange.IsValid())
+					continue;
+				if (spillRange.left == spillRange.right && spillRange.top == spillRange.bottom)
+					continue; // una sola cella: nessuno spill davvero visibile da segnare
+				BRect spillRect = PinnedCellRect(spillRange.TopLeft())
+					| PinnedCellRect(spillRange.BotRight());
+				StrokeRect(spillRect);
+			}
+		}
+	}
+
 	// Blocca riquadri: le bande congelate si disegnano SEMPRE per
 	// intero (non ritagliate su updateRect come il riquadro scorrevole
 	// sopra) -- sono in genere poche righe/colonne, il costo e'
