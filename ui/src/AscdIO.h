@@ -273,6 +273,15 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 // verificato al caricamento file.
 void RecalculateAll(CContainer* doc);
 
+// Chiamato da RecalculateWorkbook dopo ogni foglio elaborato in ogni
+// passata (Fase 31, apertura di file grandi su un thread separato con
+// una finestra di avanzamento): "sheetIndex"/"sheetCount" e
+// "passIndex" descrivono l'avanzamento, "sheetName" e' quello del
+// foglio appena elaborato. NULL (il default) non chiama nulla, stesso
+// costo di prima per ogni chiamante che non ne ha bisogno.
+typedef void (*RecalcProgressFunc)(void* context, int sheetIndex, int sheetCount,
+	int passIndex, const char* sheetName);
+
 // Stessa convergenza di RecalculateAll, estesa a tutti i fogli di
 // "sheets" invece di un solo documento: una formula puo' referenziare
 // un foglio diverso dal proprio (Fase 9, "NomeFoglio!Cella" --
@@ -280,6 +289,7 @@ void RecalculateAll(CContainer* doc);
 // richiedere di ricalcolare anche gli altri. Usata da MainWindow al
 // posto di RecalculateAll quando la cartella di lavoro ha piu' di un
 // foglio (vedi MainWindow::RecalculateActiveWorkbook).
-void RecalculateWorkbook(std::vector<AscdSheet>& sheets);
+void RecalculateWorkbook(std::vector<AscdSheet>& sheets,
+	RecalcProgressFunc progress = NULL, void* progressContext = NULL);
 
 #endif

@@ -2026,7 +2026,8 @@ void RecalculateAll(CContainer* doc)
 // ancora il valore vecchio di B, richiedendo un'altra passata
 // completa per propagarsi -- esattamente cio' che il ciclo esterno
 // "changed" gia' gestisce, come per un singolo foglio.
-void RecalculateWorkbook(std::vector<AscdSheet>& sheets)
+void RecalculateWorkbook(std::vector<AscdSheet>& sheets, RecalcProgressFunc progress,
+	void* progressContext)
 {
 	bool changed = true;
 	int guard = 0;
@@ -2037,6 +2038,8 @@ void RecalculateWorkbook(std::vector<AscdSheet>& sheets)
 		{
 			if (RecalculatePass(sheets[i].doc))
 				changed = true;
+			if (progress)
+				progress(progressContext, (int)i, (int)sheets.size(), guard, sheets[i].name.String());
 		}
 		guard++;
 	}

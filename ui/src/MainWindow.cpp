@@ -27,6 +27,7 @@
 #include "PreferencesWindow.h"
 #include "BorderWindow.h"
 #include "PageSetupWindow.h"
+#include "ProgressWindow.h"
 #include "AboutWindow.h"
 #include "Chart.h"
 #include "Pivot.h"
@@ -64,6 +65,7 @@
 #include <MenuItem.h>
 #include <MessageRunner.h>
 #include <NodeInfo.h>
+#include <OS.h>
 #include <Path.h>
 #include <PopUpMenu.h>
 #include <PrintJob.h>
@@ -151,6 +153,9 @@ static const uint32 kMsgShowTextColor = 'shtc';
 static const uint32 kMsgShowBgColor = 'shbc';
 static const uint32 kMsgShowPreferences = 'shpr';
 static const uint32 kMsgAutoSaveTick = 'atck';
+// Apertura file su un thread separato (Fase 31): inviato dal thread di
+// lavoro a fine caricamento, vedi _OpenFileWorker/OpenFile sotto.
+static const uint32 kMsgFileLoadResult = 'flrs';
 static const uint32 kMsgToggleBorder = 'tbrd';
 static const uint32 kMsgClearBorders = 'cbrd';
 static const uint32 kMsgShowBorderColor = 'shbd';
@@ -958,6 +963,8 @@ MainWindow::MainWindow()
 	fPreferencesWindow = NULL;
 	fBorderWindow = NULL;
 	fPageSetupWindow = NULL;
+	fProgressWindow = NULL;
+	fOpeningFile = false;
 
 	UpdateTitle();
 }
@@ -1046,6 +1053,11 @@ MainWindow::~MainWindow()
 	{
 		fPageSetupWindow->Lock();
 		fPageSetupWindow->Quit();
+	}
+	if (fProgressWindow)
+	{
+		fProgressWindow->Lock();
+		fProgressWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -1547,6 +1559,202 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 	return true;
 }
 
+// ISheetResolver di lavoro, usato SOLO dal thread di caricamento
+// (Fase 31): MainWindow::ResolveSheetByName/FindSheetWithTable cercano
+// in this->fSheets, il documento ATTUALMENTE aperto -- durante il
+// caricamento in background di un file NUOVO, fSheets e' ancora quello
+// vecchio (mai toccato finche' il risultato non torna sul thread
+// principale, vedi kMsgFileLoadResult sotto), quindi cercherebbe nel
+// posto sbagliato. Questo resolver cerca invece nel vettore locale del
+// thread di lavoro (newSheets), esattamente equivalente per un file
+// che a quel punto e' gia' completamente popolato.
+class OpenFileLocalResolver : public ISheetResolver {
+public:
+	std::vector<AscdSheet>* sheets;
+
+	CContainer* ResolveSheetByName(const char* inName) override
+	{
+		for (size_t i = 0; i < sheets->size(); i++)
+			if ((*sheets)[i].name == inName)
+				return (*sheets)[i].doc;
+		return NULL;
+	}
+
+	CContainer* FindSheetWithTable(const std::string& tableName) override
+	{
+		for (size_t i = 0; i < sheets->size(); i++)
+			if ((*sheets)[i].doc->GetTables().count(tableName))
+				return (*sheets)[i].doc;
+		return NULL;
+	}
+};
+
+// Cookie passato al thread di caricamento (Fase 31): allocato da
+// OpenFile, liberato da OpenFileThreadEntry alla fine.
+struct OpenFileJob {
+	entry_ref ref;
+	BMessenger target; // la MainWindow che ha avviato l'apertura
+	ProgressWindow* progressWindow;
+};
+
+// Callback di RecalculateWorkbook (vedi RecalcProgressFunc in
+// AscdIO.h): l'ultimo terzo della barra di avanzamento e' dedicato al
+// ricalcolo (le prime due fasi, lettura/traduzione, sono gia' passate
+// a questo punto) -- passIndex non ha un limite noto in anticipo (fino
+// a 50, ma converge quasi sempre molto prima), quindi il progresso qui
+// dentro e' stimato solo sul foglio corrente/totale della PASSATA
+// corrente, non sull'intero ricalcolo.
+static void OpenFileRecalcProgress(void* context, int sheetIndex, int sheetCount,
+	int passIndex, const char* sheetName)
+{
+	ProgressWindow* progressWindow = (ProgressWindow*)context;
+	float withinPhase = sheetCount > 0 ? (float)(sheetIndex + 1) / sheetCount : 1.0f;
+	BString detail;
+	detail.SetToFormat(B_TRANSLATE("Ricalcolo: foglio %d di %d (passata %d) - %s"),
+		sheetIndex + 1, sheetCount, passIndex + 1, sheetName);
+	progressWindow->Update(0.66f + withinPhase * 0.34f, NULL, detail.String());
+}
+
+// Corpo del thread di caricamento (Fase 31, richiesta esplicita
+// dell'utente dopo aver misurato ~3 minuti di finestra bloccata su un
+// file XLSX reale a 13 fogli): stessa identica logica che prima stava
+// dentro MainWindow::OpenFile, spostata qui perche' gira su un thread
+// A PARTE -- non tocca MAI direttamente this->fSheets/fDoc/fSheetView
+// (tutto cio' che e' Interface Kit va toccato solo dal thread della
+// finestra), solo dati locali (newSheets) e la finestra di avanzamento
+// (thread-safe di suo, vedi ProgressWindow::Update). Il risultato
+// (esito, i nuovi fogli, l'extension del translator) torna al thread
+// principale con un solo BMessage, gestito in
+// MainWindow::MessageReceived (case kMsgFileLoadResult) esattamente
+// come faceva la seconda meta' della vecchia OpenFile.
+static int32 OpenFileThreadEntry(void* data)
+{
+	OpenFileJob* job = (OpenFileJob*)data;
+
+	std::vector<AscdSheet>* newSheets = new std::vector<AscdSheet>();
+	bool ok = true;
+	// 0 = dati non validi dopo la lettura, 1 = nessun translator adatto.
+	int32 errorKind = 0;
+	BMessage translateExtension;
+
+	BFile file(&job->ref, B_READ_ONLY);
+	if (file.InitCheck() != B_OK)
+	{
+		ok = false;
+	}
+	else
+	{
+		job->progressWindow->Update(0.05f, B_TRANSLATE("Lettura del file..."));
+
+		if (IsASCDBookFile(&file))
+		{
+			// Cartella di lavoro nativa multi-foglio (Fase 9): si legge
+			// direttamente, senza passare dal Translation Kit -- stesso
+			// motivo di IsASCDFile sotto. skipInitialRecalc=true (Fase
+			// 30): il ricalcolo completo poco sotto lo fa comunque, il
+			// ricalcolo per singolo foglio qui sarebbe solo lavoro
+			// sprecato (e bloccato al limite di 50 passate: vedi il
+			// commento in AscdIO.h).
+			ok = LoadASCDBook(&file, newSheets, true) == B_OK;
+		}
+		else if (IsASCDFile(&file))
+		{
+			// Vecchio file .ascd a un solo foglio (senza il wrapper
+			// "ASCB"): si legge direttamente, senza passare dal
+			// Translation Kit -- che per un file gia' ASCD lo farebbe
+			// comunque rileggere/riscrivere tramite la copia duplicata
+			// di ReadASCD/WriteASCD di un translator qualunque,
+			// perdendo la sezione dei grafici incorporati che quella
+			// copia non conosce.
+			AscdSheet sheet;
+			ok = ReadSingleSheetASCD(&file, &sheet);
+			if (ok)
+				newSheets->push_back(sheet);
+		}
+		else
+		{
+			// BTranslatorRoster sceglie automaticamente il translator
+			// installato adatto (CSV/XLS/XLSX/ODS) in base al contenuto
+			// reale del file, non all'estensione. Solo XlsxTranslator
+			// (per .xlsx/.xlsm con piu' fogli) produce una cartella di
+			// lavoro "ASCB"; gli altri restano a un solo foglio, senza
+			// grafici.
+			job->progressWindow->Update(0.15f, B_TRANSLATE("Traduzione del file in corso..."));
+			BMallocIO ascd;
+			status_t translateErr = BTranslatorRoster::Default()->Translate(&file, NULL,
+				&translateExtension, &ascd, kAtomoNativeFormat);
+			if (translateErr != B_OK)
+			{
+				ok = false;
+				errorKind = 1;
+			}
+			else
+			{
+				ascd.Seek(0, SEEK_SET);
+				if (IsASCDBookFile(&ascd))
+					ok = LoadASCDBook(&ascd, newSheets, true) == B_OK; // vedi il commento gemello sopra
+				else
+				{
+					AscdSheet sheet;
+					ok = ReadSingleSheetASCD(&ascd, &sheet);
+					if (ok)
+						newSheets->push_back(sheet);
+				}
+			}
+		}
+	}
+
+	OpenFileLocalResolver* resolver = NULL;
+	if (ok && !newSheets->empty())
+	{
+		job->progressWindow->Update(0.66f, B_TRANSLATE("Ricalcolo in corso..."));
+
+		// Collega il resolver PRIMA di ricalcolare: ogni foglio e'
+		// stato letto (e gia' ricalcolato una prima volta) da
+		// LoadASCDBook/LoadASCD singolarmente, quando gli altri fogli
+		// della stessa cartella di lavoro non erano ancora tutti
+		// presenti -- un riferimento incrociato (Fase 9, "NomeFoglio!
+		// Cella") non poteva quindi risolversi in quella prima
+		// passata. Questo ricalcolo, con tutti i fogli di newSheets
+		// gia' collegati fra loro, e' il primo punto in cui puo'
+		// farlo correttamente. Il resolver resta agganciato ai
+		// CContainer finche' il thread principale non lo sostituisce
+		// con "this" (vedi kMsgFileLoadResult sotto) e lo libera.
+		resolver = new OpenFileLocalResolver();
+		resolver->sheets = newSheets;
+		for (size_t i = 0; i < newSheets->size(); i++)
+			(*newSheets)[i].doc->SetSheetResolver(resolver);
+
+		RecalculateWorkbook(*newSheets, OpenFileRecalcProgress, job->progressWindow);
+	}
+	else
+	{
+		ok = false;
+	}
+
+	BMessage result(kMsgFileLoadResult);
+	result.AddBool("ok", ok);
+	result.AddInt32("errorKind", errorKind);
+	result.AddPointer("sheets", newSheets);
+	result.AddPointer("resolver", resolver);
+	result.AddMessage("extension", &translateExtension);
+	result.AddRef("ref", &job->ref);
+	job->target.SendMessage(&result);
+
+	delete job;
+	return 0;
+}
+
+// Apertura file SINCRONA (bloccante finche' non e' del tutto finita):
+// usata dai test (vedi es. tests/test_multisheet.cpp, che chiama
+// questo metodo tenendo gia' Lock() sulla finestra e controlla lo
+// stato subito dopo che ritorna) e da qualunque altro chiamante
+// programmatico che ha bisogno del risultato immediato. L'apertura
+// interattiva vera (menu, drag&drop, "Apri recenti") passa invece da
+// OpenFileAsync sotto, che fa lo stesso lavoro su un thread separato
+// con una finestra di avanzamento -- vedi il commento li' per il
+// perche' i due percorsi restano separati invece di condividere
+// codice.
 void MainWindow::OpenFile(const entry_ref& ref)
 {
 	if (!ConfirmDiscardChanges())
@@ -1676,6 +1884,201 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	// e' il primo punto in cui puo' farlo correttamente.
 	AttachSheetResolver();
 	RecalculateWorkbook(fSheets);
+
+	fDocumentName = ref.name;
+	{
+		BEntry openedEntry(&ref);
+		BEntry parentEntry;
+		if (openedEntry.GetParent(&parentEntry) == B_OK)
+			parentEntry.GetRef(&fFileDirRef);
+	}
+	fModified = false;
+	UpdateTitle();
+	StartOrUpdateAutoSaveRunner();
+
+	AddToRecentFiles(ref);
+
+	// Grafici incorporati non disegnabili (Fase 25): un dialogo mostrato
+	// QUI, dopo che il file e' gia' aperto con successo -- mai dentro il
+	// translator stesso (vedi il commento su "translateExtension" sopra),
+	// solo quando l'utente ha davvero aperto un file da questa finestra.
+	int32 unsupportedCount = 0;
+	BString unsupportedList;
+	{
+		type_code type;
+		int32 count = 0;
+		if (translateExtension.GetInfo("atomo:unsupportedChart", &type, &count) == B_OK)
+		{
+			unsupportedCount = count;
+			for (int32 i = 0; i < count; i++)
+			{
+				const char* name = NULL;
+				if (translateExtension.FindString("atomo:unsupportedChart", i, &name) == B_OK)
+				{
+					if (unsupportedList.Length() > 0)
+						unsupportedList << "\n";
+					unsupportedList << "- " << name;
+				}
+			}
+		}
+	}
+	if (unsupportedCount > 0)
+	{
+		BString text;
+		if (unsupportedCount == 1)
+			text = B_TRANSLATE("Il file conteneva un grafico non implementato in Atomo123:\n");
+		else
+			text = B_TRANSLATE("Il file conteneva grafici non implementati in Atomo123:\n");
+		text << unsupportedList;
+		BAlert* alert = new BAlert(B_TRANSLATE("Grafico non implementato"), text,
+			B_TRANSLATE("OK"));
+		alert->Go();
+	}
+}
+
+// Apertura file su un thread separato, con finestra di avanzamento
+// (Fase 31, richiesta esplicita dell'utente dopo aver misurato ~3
+// minuti di finestra bloccata su un file XLSX reale a 13 fogli): usata
+// dai VERI punti di ingresso interattivi (menu File>Apri, B_REFS_
+// RECEIVED da Tracker/drag&drop, "Apri recenti" -- vedi le due
+// chiamate piu' sotto in questo file). NON usata da OpenFile() sopra,
+// che resta sincrona apposta: ogni test esistente la chiama tenendo
+// gia' Lock() sulla finestra (vedi es. tests/test_multisheet.cpp) e
+// controlla lo stato subito dopo che ritorna -- un vero secondo thread
+// che aspetta lo stesso Lock() per consegnare il risultato
+// (BMessenger::SendMessage -> MessageReceived) resterebbe bloccato
+// finche' il test non chiama Unlock(), quindi si sarebbe rotta ogni
+// aspettativa "OpenFile ritorna solo a caricamento finito" di quei
+// test. Duplica la logica di lettura/traduzione di OpenFile invece di
+// condividerla (vedi OpenFileThreadEntry sotto) -- stesso principio
+// gia' scelto altrove in questo progetto (translators/xlsx/
+// XlsxTranslator.cpp non linka contro ui/src/): tenere il thread di
+// lavoro autosufficiente, senza toccare mai lo stato di "this" finche'
+// il risultato non torna sul thread giusto.
+void MainWindow::OpenFileAsync(const entry_ref& ref)
+{
+	if (fOpeningFile)
+		return;
+	if (!ConfirmDiscardChanges())
+		return;
+
+	// Solo un controllo rapido e sincrono (il file esiste, si puo'
+	// aprire) prima di passare la parte lenta al thread di lavoro --
+	// niente finestra di avanzamento per un errore che si scopre
+	// subito.
+	BFile checkFile(&ref, B_READ_ONLY);
+	if (checkFile.InitCheck() != B_OK)
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Impossibile aprire il file selezionato."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+	checkFile.Unset();
+
+	fOpeningFile = true;
+	if (!fProgressWindow)
+		fProgressWindow = new ProgressWindow();
+	fProgressWindow->Update(0.0f, B_TRANSLATE("Apertura del file in corso..."));
+	fProgressWindow->Show();
+
+	OpenFileJob* job = new OpenFileJob();
+	job->ref = ref;
+	job->target = BMessenger(this);
+	job->progressWindow = fProgressWindow;
+
+	thread_id workerThread = spawn_thread(OpenFileThreadEntry, "Atomo123 file loader",
+		B_NORMAL_PRIORITY, job);
+	if (workerThread < 0 || resume_thread(workerThread) != B_OK)
+	{
+		fOpeningFile = false;
+		fProgressWindow->Hide();
+		delete job;
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Impossibile avviare il caricamento del file."), B_TRANSLATE("OK"));
+		alert->Go();
+	}
+}
+
+// Gestisce il risultato del thread di caricamento avviato da OpenFile
+// sopra (Fase 31) -- stessa identica logica che prima stava nella
+// seconda meta' di OpenFile, invariata a parte l'origine dei dati
+// (dal BMessage invece che da variabili locali) e il ricalcolo, gia'
+// fatto sul thread di lavoro (non ripetuto qui).
+void MainWindow::HandleFileLoadResult(BMessage* message)
+{
+	fOpeningFile = false;
+	if (fProgressWindow)
+		fProgressWindow->Finish();
+
+	bool ok = false;
+	message->FindBool("ok", &ok);
+	int32 errorKind = 0;
+	message->FindInt32("errorKind", &errorKind);
+	std::vector<AscdSheet>* newSheets = NULL;
+	message->FindPointer("sheets", (void**)&newSheets);
+	OpenFileLocalResolver* resolver = NULL;
+	message->FindPointer("resolver", (void**)&resolver);
+	entry_ref ref;
+	message->FindRef("ref", &ref);
+	BMessage translateExtension;
+	message->FindMessage("extension", &translateExtension);
+
+	if (!ok)
+	{
+		if (newSheets)
+		{
+			for (size_t i = 0; i < newSheets->size(); i++)
+				(*newSheets)[i].doc->Release();
+			delete newSheets;
+		}
+		delete resolver;
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			errorKind == 1
+				? B_TRANSLATE("Formato file non riconosciuto da nessun translator installato.")
+				: B_TRANSLATE("Il file e' stato tradotto ma i dati risultanti non sono validi."),
+			B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	for (size_t i = 0; i < fSheets.size(); i++)
+		fSheets[i].doc->Release();
+	fSheets = *newSheets;
+	delete newSheets; // solo il vettore: i CContainer sono ora posseduti da fSheets
+	fActiveSheetIndex = 0;
+	fDoc = fSheets[0].doc;
+	fCharts = fSheets[0].charts;
+	fImages = fSheets[0].images;
+	fSheetView->SetDocument(fDoc);
+	fSheetView->SetCharts(&fCharts);
+	fSheetView->SetImages(&fImages);
+	fSheetView->SetColumnWidths(fSheets[0].colWidths);
+	fSheetView->SetRowHeights(fSheets[0].rowHeights);
+	// Testo a capo (Fase 12): copre sia i documenti nativi (fWrapText
+	// gia' persistito per cella) sia quelli importati da un translator
+	// (XLSX imposta fWrapText, ma non puo' calcolare l'altezza senza
+	// una view/font vivi -- questa chiamata lo fa qui, con entrambi
+	// disponibili).
+	fSheetView->RecalculateWrappedRowHeights();
+	fSheetView->SetFreezePanes(fSheets[0].frozenRows, fSheets[0].frozenCols);
+	fSheetView->SetShowGrid(fSheets[0].showGrid);
+	fSheetView->SetHiddenRows(fSheets[0].hiddenRows);
+	if (fSheets[0].hasAutoFilter)
+		fSheetView->SetAutoFilter(fSheets[0].autoFilterRange);
+	else
+		fSheetView->ClearAutoFilter();
+	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
+	RebuildSheetTabs();
+
+	// Sostituisce il resolver "locale" del thread di lavoro (vedi
+	// OpenFileThreadEntry) con "this", ora che fSheets e' finalmente
+	// quello vero: da questo momento in poi ogni modifica passa dal
+	// resolver normale della finestra, come sempre. Il resolver
+	// temporaneo si libera SUBITO dopo, non prima: nessun CContainer
+	// deve restare agganciato a un oggetto che sta per sparire.
+	AttachSheetResolver();
+	delete resolver;
 
 	fDocumentName = ref.name;
 	{
@@ -4570,7 +4973,7 @@ void MainWindow::MessageReceived(BMessage* message)
 				alert->Go();
 				break;
 			}
-			OpenFile(ref);
+			OpenFileAsync(ref);
 			break;
 		}
 
@@ -4640,7 +5043,7 @@ void MainWindow::MessageReceived(BMessage* message)
 			{
 				if (IsUntouched())
 				{
-					OpenFile(ref);
+					OpenFileAsync(ref);
 					continue;
 				}
 				MainWindow* target = new MainWindow();
@@ -5081,6 +5484,10 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgAutoSaveTick:
 			AutoSaveBackup();
+			break;
+
+		case kMsgFileLoadResult:
+			HandleFileLoadResult(message);
 			break;
 
 		case B_ABOUT_REQUESTED:

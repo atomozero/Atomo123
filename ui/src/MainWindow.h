@@ -41,6 +41,7 @@ class FindWindow;
 class ChartWindow;
 class PivotWindow;
 class NameWindow;
+class ProgressWindow;
 class PasteSpecialWindow;
 class GoToWindow;
 class RenameSheetWindow;
@@ -93,6 +94,13 @@ public:
 	virtual void MenusBeginning();
 
 	void OpenFile(const entry_ref& ref);
+	// Stesso risultato finale di OpenFile sopra, ma su un thread
+	// separato con una finestra di avanzamento (Fase 31) -- usata dai
+	// veri punti di ingresso interattivi (menu, drag&drop, "Apri
+	// recenti"); vedi il commento su MainWindow::OpenFileAsync in
+	// MainWindow.cpp sul perche' non sostituisce OpenFile invece di
+	// affiancarla.
+	void OpenFileAsync(const entry_ref& ref);
 	// "Salva" (Fase 22): riscrive lo stesso file gia' noto
 	// (fFileDirRef/fDocumentName) senza pannello, o mostra il pannello
 	// "Salva con nome" se il documento non e' ancora mai stato salvato.
@@ -186,6 +194,11 @@ public:
 	bool AutoSaveEnabled() const { return fAutoSaveEnabled; }
 	int AutoSaveIntervalMinutes() const { return fAutoSaveIntervalMinutes; }
 	bool IsAutoSaveArmed() const { return fAutoSaveRunner != NULL; }
+	// Pubblico apposta per essere testabile senza passare da una vera
+	// finestra di avanzamento (stesso principio di GetSheetView sopra):
+	// vedi tests/test_open_async.cpp -- vero fra OpenFileAsync() e
+	// l'arrivo di kMsgFileLoadResult (thread di lavoro ancora in corso).
+	bool IsOpeningFile() const { return fOpeningFile; }
 	// Pubblico apposta per essere testabile direttamente (stesso
 	// principio di GetSheetView sopra): verifica che SelectionChanged
 	// anteponga davvero "=" al testo di una cella con formula (vedi il
@@ -513,6 +526,17 @@ private:
 	ChartWindow* fChartWindow;
 	PivotWindow* fPivotWindow;
 	NameWindow* fNameWindow;
+	// Apertura file su un thread separato (Fase 31): creata al bisogno
+	// (come le altre finestre sopra) e riusata a ogni apertura
+	// successiva. fOpeningFile impedisce un secondo OpenFile() mentre
+	// il primo e' ancora in corso -- il thread di lavoro scrive
+	// direttamente su un CContainer/AscdSheet nuovo di zecca, mai su
+	// fSheets/fDoc finche' non e' del tutto pronto (vedi il commento su
+	// _OpenFileWorker in MainWindow.cpp), ma due aperture in corso
+	// contemporaneamente finirebbero comunque per litigare su QUALE
+	// risultato applicare per ultimo.
+	ProgressWindow* fProgressWindow;
+	bool fOpeningFile;
 	PasteSpecialWindow* fPasteSpecialWindow;
 	GoToWindow* fGoToWindow;
 	RenameSheetWindow* fRenameSheetWindow;
@@ -560,6 +584,11 @@ private:
 	// scollegamento esplicito quando un foglio viene rilasciato, dato
 	// che a quel punto il puntatore stesso smette di essere usato.
 	void AttachSheetResolver();
+
+	// Riceve il risultato del thread di caricamento avviato da
+	// OpenFile (Fase 31, kMsgFileLoadResult) e applica i nuovi fogli
+	// esattamente come faceva la vecchia OpenFile sincrona.
+	void HandleFileLoadResult(BMessage* message);
 
 	// Nome del file corrente (solo il nome, non il percorso completo:
 	// basta per il titolo -- vedi UpdateTitle) e se il documento ha

@@ -270,8 +270,8 @@ void App::RefsReceived(BMessage* message)
 	// puo' toccare direttamente le BView di una finestra da qui senza il
 	// suo lock. Si inoltra invece un B_REFS_RECEIVED per ogni ref alla
 	// finestra scelta (nuova o riusata sotto): MainWindow::MessageReceived
-	// gestisce gia' quel messaggio chiamando OpenFile sul thread corretto,
-	// con il lock preso automaticamente dal message loop.
+	// gestisce gia' quel messaggio chiamando OpenFileAsync sul thread
+	// corretto, con il lock preso automaticamente dal message loop.
 	//
 	// Una finestra con un documento gia' aperto (anche solo aperto e mai
 	// modificato) non va MAI rimpiazzata da un file successivo: se
