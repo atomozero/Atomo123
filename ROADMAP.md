@@ -5,7 +5,7 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.2.5 released.** All planned phases
+**Status: v0.2.6 released.** All planned phases
 through "closing the gap with Excel" are done or in good shape; a
 handful of large, optional features remain unplanned backlog items
 (see "Not currently planned" below). Full history of individual fixes
@@ -34,6 +34,7 @@ project-level status only.
 | Release prep (v0.2.0) | Done | Tagged on GitHub, translators bundled in the hpkg, doc rewrite, splash/About-panel polish (see "Current focus" below) |
 | Release prep (v0.2.1) | Done | Intermediate beta-tester release, tagged on GitHub: chart import from XLSX, repeated print headers |
 | Release prep (v0.2.5) | Done | Tagged on GitHub: five function batches (30 functions), print settings + preview, pivot table multi-level grouping, translator ambiguous-text parity, AutoFill (see "Current focus" below) |
+| Release prep (v0.2.6) | Done | Tagged on GitHub: critical multi-sheet XLSX corruption fix, background file loading with a footer progress bar, ~7x faster large-file opening (see "Current focus" below) |
 
 ### Phase 13 detail
 
@@ -561,6 +562,37 @@ What shipped in v0.2.5, on top of v0.2.1:
   struct (no default member initializers) — harmless in practice
   (every read is already guarded by its own `has*` flag) but free to
   fix properly with explicit defaults
+
+What shipped in v0.2.6, on top of v0.2.5:
+- Fixed a critical bug: any XLSX with more than one sheet failed to
+  open with "i dati risultanti non sono validi", because the XLSX
+  translator's own duplicated ASCD writer had never been updated with
+  the printArea/printSettings trailing sections the engine's real
+  reader expects, silently desyncing every sheet after the first
+- Opening a file no longer freezes the window: `MainWindow::
+  OpenFileAsync` moves translation/loading/recalculation to a
+  background thread, with a live progress bar and phase text built
+  into the main window's own footer (not a separate window) — full
+  width, single line, with a pulsing animation so it never looks
+  stuck even during the one long opaque translation step that has no
+  real intermediate progress to report
+- Recalculating a freshly-opened multi-sheet workbook is now ~44x
+  faster by only re-visiting cells that actually contain a formula
+  instead of every cell with any content, up to 50 times per open
+- The entire project (engine, UI, all four translators) now builds
+  with `-O2` — it never had any optimization flag before, only `-g`.
+  Combined with the fixes above, opening a real 13-sheet, ~11MB XLSX
+  file dropped from about 3 minutes to about 25-30 seconds
+- Also fixed along the way: a redundant double tree-lookup in the
+  engine's hot cell-insertion path (`CContainer::NewCell`), and a set
+  of uninitialized struct fields in the XLSX translator's style
+  resolver that `-O2`'s stricter warnings surfaced
+- Added a "path to full Excel parity" section to this roadmap,
+  ordered by priority tier (data-safety issues and small-effort/
+  high-value items first, foundational architecture work like a real
+  calc-engine dependency graph given its own tier rather than being
+  buried at the bottom by raw size) rather than just grouped by
+  feature category
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
