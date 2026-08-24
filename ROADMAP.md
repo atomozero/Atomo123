@@ -534,6 +534,33 @@ What shipped in v0.2.5, on top of v0.2.1:
   `test_open_async.cpp` (`IsFooterProgressVisible()`, a new public
   getter, checked both right after `OpenFileAsync()` starts and after
   it finishes)
+- Found and fixed the real bottleneck behind the remaining ~86s of
+  `Translate()`+`LoadASCDBook` on the same 13-sheet real file (Fase
+  34): profiling showed a strikingly uniform ~50-90 microseconds per
+  imported cell regardless of sheet content (plain text lookup tables
+  and formula-heavy sheets alike), which turned out to have nothing to
+  do with algorithms — **the entire project (engine, UI, all four
+  translators) had never been compiled with any optimization flag,
+  only `-g`**. Adding `-O2` everywhere (kept alongside `-g`, so crash
+  reports stay readable) measured directly on this file: `Translate()`
+  53.9s → 17.1s, `LoadASCDBook` 30.0s → 9.2s, `RecalculateWorkbook`
+  2.0s → 0.26s — roughly 3x across the board on top of the earlier
+  dirty-cell win, for a total pipeline of ~180s → ~27s since the start
+  of this investigation. Also fixed, alongside this: `CContainer::
+  NewCell` (the function both `Translate()` and `LoadASCD` funnel every
+  single imported cell through) did two full tree descents per call
+  (`find()` then a second implicit lookup inside `fCellData[loc] = `)
+  instead of one — rewritten with `lower_bound()` once, reused both to
+  check existence and as the insertion hint. New test `engine/tests/
+  newcell_test.cpp` pins the two behaviors this rewrite must never
+  break: a brand-new cell inserts correctly, and overwriting an
+  existing cell's value preserves its style (a real bug fixed once
+  before, the most concrete risk of touching this function). Also
+  fixed along the way: `-O2` surfaced real `-Wmaybe-uninitialized`
+  warnings on every field of `XlsxTranslator.cpp`'s `ResolvedStyle`
+  struct (no default member initializers) — harmless in practice
+  (every read is already guarded by its own `has*` flag) but free to
+  fix properly with explicit defaults
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
