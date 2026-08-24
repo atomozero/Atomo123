@@ -587,6 +587,23 @@ What shipped since v0.2.6, not yet in a tagged release:
   test_sheet_tabs.cpp`'s pixel-level checks updated to match (verifies
   the accent bar's presence/color, not an exact background shade that
   is now theme-dependent by design)
+- Fixed a real follow-up bug in the BControlLook tabs above, caught by
+  the user from a screenshot right after: the active tab looked
+  "flipped", boxed in on all four sides like the inactive ones instead
+  of visually merging with the sheet above it. Two things were wrong,
+  both needed together — changing only the first has no visible effect
+  on its own: the `side` parameter passed to `DrawActiveTab`/
+  `DrawInactiveTab` was `B_TOP_BORDER`, correct for a typical
+  top-anchored `BTabView` (content below the strip) but backwards for
+  this strip, which sits at the *bottom* of the window with the sheet
+  above and the footer below — fixed to `B_BOTTOM_BORDER`. That alone
+  changed nothing visible, because the `borders` bitmask was always
+  `B_ALL_BORDERS` for both tab states, never omitting the one border
+  where a folder-tab is supposed to fuse with its content — fixed by
+  omitting the active tab's top border specifically (`B_ALL_BORDERS &
+  ~B_TOP_BORDER`), so it now blends into the sheet above it the way
+  Excel's own active tab does, while inactive tabs keep all four
+  borders as distinct boxes
 
 What shipped in v0.2.6, on top of v0.2.5:
 - Fixed a critical bug: any XLSX with more than one sheet failed to
