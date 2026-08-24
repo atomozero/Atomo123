@@ -585,6 +585,108 @@ only mature open implementation and is deeply coupled to its own UNO
 API, not extractable as-is) — falls back to a self-written VBA-subset
 interpreter if the spike finds nothing usable.
 
+## Path to full Excel parity (beyond v4.0)
+
+A systematic look at what's still missing for Atomo123 to be a
+drop-in Excel replacement for most real-world files, beyond the
+"Not currently planned" items already called out above. Grouped by
+area, roughly ordered by how much a typical user would miss it —
+none of this is scheduled yet, it's a reference list for future
+planning sessions.
+
+**Calculation engine**
+- Dynamic arrays beyond `SEQUENCE`: `UNIQUE`, `SORT`/`SORTBY`,
+  `FILTER` — same spill mechanism already built (see the array
+  formulas v1 entry above), "just" more functions that produce a
+  range instead of a scalar. Spilling from inside a nested expression
+  (`=SUM(SEQUENCE(3,1))` today evaluates as a scalar, no spill) is
+  the one deliberately-deferred piece of the existing mechanism, not
+  a new one
+- A real dependency graph for the calc engine. Today every
+  recalculation (`RecalculateAll`/`RecalculateWorkbook`) is a
+  brute-force fixed-point loop over every formula cell, up to 50
+  passes — fine for file-open (see the "dirty cell" fix above, which
+  only trims *which* cells get re-scanned, not the underlying
+  algorithm) but the same brute-force pass also runs after *every*
+  single interactive edit. A file large enough to need the dirty-cell
+  fix on open will still feel sluggish while editing. This is the
+  single biggest remaining architectural gap — a proper dependency
+  graph (track which cells reference which, only re-evaluate what
+  actually changed) would fix both, but touches the core of the
+  engine and needs its own dedicated effort, not a quick patch
+- Iterative calculation (Excel's "enable iterative calculation" option
+  for intentional circular references, e.g. a self-referencing
+  running total) — today a circular reference just doesn't resolve
+- More financial functions (`NPV`, `IRR`, `PMT`, `FV`, `PV`, `RATE`
+  and similar) — not covered by any of the five v3.0 function
+  batches, a real gap for anyone using this for budgeting/loan sheets
+
+**Data analysis**
+- Real 2D pivot tables (a "Columns" field, multiple simultaneous
+  measures) — already called out as not planned; still the biggest
+  gap in the pivot feature specifically
+- What-if Data Tables (one/two-variable) and Scenario Manager — no
+  work started, no design yet
+- Goal Seek / Solver — already called out as not planned (needs a new
+  iterative numeric solver from scratch)
+
+**Charts**
+- More chart types: scatter/XY, area, combo (bar+line sharing one
+  chart), stock. Radar is unlikely to be worth it (rare in practice)
+- Sparklines (small in-cell trend charts, no separate chart object) —
+  a distinct rendering path from the existing embedded-chart code
+- Secondary axis, trendlines, error bars on existing chart types
+
+**Formatting**
+- Conditional formatting only supports two rule types today
+  (`eCondCellIsEqual`, `eCondDuplicateValues`) — icon sets, color
+  scales and data bars (Excel's other three built-in conditional
+  format families) are not implemented at all
+- Named cell styles and a swappable theme color palette (Excel's
+  "Cell Styles" gallery / theme colors that cascade when the theme
+  changes) — today formatting is always a literal, one-off style per
+  cell
+
+**Tables (Excel structured tables)**
+- Structured references (`Tabella12[Colonna]`) and cross-sheet table
+  lookups already work (see the XLOOKUP/table-refs work). Still
+  missing: a Total Row with per-column aggregation functions, and
+  named table styles (banded rows today are the only styling)
+
+**File format / interop**
+- Legacy XLS *writing* (BIFF/OLE2) — already called out as not
+  planned, deliberately excluded (no library to build from, XLSX
+  already covers export)
+- XLSM (macro-enabled) round-trip: today an XLSM with macros opens
+  like any XLSX (macros silently dropped, no crash) — preserving the
+  macro project blind (even without executing it) so re-saving
+  doesn't destroy it is worth doing independently of v4.0 scripting
+- Password-protected / encrypted workbooks — not supported at all,
+  no design yet
+- Sheet/workbook protection (cell locking): `CellStyle::fLocked`
+  already exists as a field and round-trips through every file
+  format, but nothing in the UI currently *enforces* it (a locked
+  cell can still be edited) — the data model is ready, the
+  enforcement isn't
+
+**Formula auditing / UI parity**
+- Trace Precedents/Dependents, the Watch Window, Show Formulas view
+  (Ctrl+`) — none exist; all are read-only auxiliary views over data
+  the engine already has, likely the cheapest category here per
+  feature
+- Slicers (for both pivot tables and structured tables) — depends on
+  the 2D pivot table gap above for the pivot case
+
+**Explicitly out of scope, not just "not yet"**
+- Collaboration features (track changes, shared/co-authored
+  workbooks, comment threads with replies) — this is a native
+  single-user desktop app, not a sync-backed one; no design makes
+  sense without a server component that doesn't exist
+- External data connections (Power Query, ODBC/database links, web
+  queries) — same reasoning as VBA in the "Not currently planned"
+  list: effectively its own sub-project, no existing library to build
+  from on Haiku
+
 ## Related work
 
 A separate concept proposal by Jürgen Ihlau ("Haiku Office UI
