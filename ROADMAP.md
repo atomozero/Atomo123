@@ -654,6 +654,28 @@ What shipped in v0.2.7, on top of v0.2.6 (in progress):
   with a `.xlsm` extension specifically. Saving the same document as
   plain `.xlsx` still strips the macros on purpose, matching Excel's
   own behavior when it resaves a macro workbook without them enabled
+- Added sheet protection and cell locking ("Proteggi foglio", "Blocca/
+  Sblocca celle selezionate" — Dati menu). `CellStyle::fLocked` existed
+  as a field but was never actually wired up: not persisted anywhere,
+  not read by any UI code, and defaulted to *unlocked* — the opposite
+  of Excel, where every cell is locked by default and protection alone
+  makes that matter. Fixed the default, added persistence (a new
+  per-cell "unlocked cells" section and a per-sheet "protected" flag in
+  the ASCD/ASCB format, plus real `<protection locked="0"/>` and
+  `<sheetProtection/>` reading/writing in the XLSX translator — a
+  minimal two-entry `xl/styles.xml` is now written on export
+  specifically to carry this, XLSX export previously wrote no style
+  information at all), and a real edit guard: typing, Delete, Paste,
+  Fill/AutoFill, and every formatting command (bold/italic/underline/
+  colors/borders/alignment/wrap/number format) now refuse to touch a
+  locked cell on a protected sheet, with an Excel-style warning.
+  Unlocked cells stay editable even when the sheet is protected, same
+  as Excel. Two real bugs caught along the way: both `OpenFile` code
+  paths (synchronous and the background-thread one) never applied a
+  freshly-opened document's protection state to the live view, and
+  `SaveToFile`'s non-native export path never threaded the protection
+  flag through to the writer at all — both silently would have lost
+  protection on next save/reopen
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
@@ -714,11 +736,12 @@ list deliberately deviates from pure effort-sorting:
 
 ### Tier 1 — do first: small effort, hits most users, low risk
 
-- **Sheet/workbook protection (enforce cell locking).**
-  `CellStyle::fLocked` already exists as a field and already
-  round-trips through every file format — nothing in the UI currently
-  *reads* it. A "Proteggi foglio" toggle plus a locked-cell edit guard
-  is mostly wiring, not new design
+- ~~**Sheet/workbook protection (enforce cell locking).**~~ Shipped in
+  v0.2.7 — see above. Turned out bigger than the original estimate: the
+  roadmap's premise was wrong (`CellStyle::fLocked` was never actually
+  persisted anywhere, and defaulted to *unlocked*, the opposite of
+  Excel) — verified before implementing, per this project's own
+  discipline
 - ~~**XLSM round-trip preservation.**~~ Shipped in v0.2.7 — see above
 - **More financial functions** (`NPV`, `IRR`, `PMT`, `FV`, `PV`,
   `RATE`). Same shape as the five function batches already shipped in
