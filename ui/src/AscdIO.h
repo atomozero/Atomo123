@@ -130,7 +130,14 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// SUBITO dopo LoadASCD senza mai chiamare RecalculateWorkbook a
 	// parte) continua a ricevere un documento gia' ricalcolato, come
 	// sempre.
-	bool skipInitialRecalc = false);
+	bool skipInitialRecalc = false,
+	// XLSM (Fase 31): bytes grezzi di "xl/vbaProject.bin", mai analizzati
+	// ne' eseguiti -- solo trasportati cosi' come sono cosi' che riaprire
+	// e risalvare un file con macro non le distrugga piu' in silenzio
+	// (vedi ROADMAP.md, Tier 1). NULL/vettore vuoto = nessun progetto
+	// VBA, il comportamento di sempre. Ultimo parametro apposta: aggiunto
+	// in coda cosi' ogni chiamata esistente resta valida senza modifiche.
+	std::vector<unsigned char>* vbaProject = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -142,7 +149,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<int>* hiddenRows = NULL,
 	const bool* hasAutoFilter = NULL, const range* autoFilterRange = NULL,
 	const bool* hasPrintArea = NULL, const range* printArea = NULL,
-	const AscdPrintSettings* printSettings = NULL);
+	const AscdPrintSettings* printSettings = NULL,
+	// Vedi il commento gemello sopra in LoadASCD.
+	const std::vector<unsigned char>* vbaProject = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -233,6 +242,13 @@ struct AscdSheet {
 	// di questo campo, o un foglio nuovo mai passato da "Imposta
 	// pagina", si comporta quindi in modo identico a prima.
 	AscdPrintSettings printSettings;
+	// Progetto VBA (Fase 31), vedi il commento su LoadASCD/SaveASCD
+	// sopra: quasi sempre vuoto. Quando un'importazione XLSM lo popola,
+	// lo fa SOLO sul primo foglio della cartella (un progetto VBA e' un
+	// concetto per l'intera cartella di lavoro, non per foglio, ma
+	// questa struct e' per-foglio) -- MainWindow lo cerca scandendo
+	// fSheets, non assumendo l'indice 0 in particolare.
+	std::vector<unsigned char> vbaProject;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

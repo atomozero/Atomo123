@@ -976,6 +976,20 @@ int main()
 								"presente/assente e' zero");
 						}
 
+						// Progetto VBA (XLSM, Fase 31): stesso principio
+						// della sezione margini/scala appena sopra, ORA
+						// l'ULTIMA sezione del formato -- un byte
+						// "presente" (qui zero, sample.xlsx non ha
+						// macro) e nient'altro quando e' zero (nessuna
+						// lunghezza/bytes a seguire, a differenza delle
+						// sezioni con valori di default fissi sopra).
+						if (pos + 1 <= ascdLen)
+						{
+							uint8 hasVbaProject = ascdData[pos]; pos += 1;
+							Check(hasVbaProject == 0,
+								"nessun progetto VBA in sample.xlsx, il byte presente/assente e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte

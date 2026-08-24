@@ -87,7 +87,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<int>* hiddenRows,
 	const bool* hasAutoFilter, const range* autoFilterRange,
 	const bool* hasPrintArea, const range* printArea,
-	const AscdPrintSettings* printSettings)
+	const AscdPrintSettings* printSettings,
+	const std::vector<unsigned char>* vbaProject)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -907,6 +908,28 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione progetto VBA (XLSM, Fase 31), in coda, ULTIMA sezione del
+	// formato: bytes grezzi di "xl/vbaProject.bin" cosi' come letti
+	// dall'archivio XLSX originale, mai analizzati -- vedi il commento
+	// su LoadASCD/SaveASCD in AscdIO.h. Stesso schema "presente si'/no"
+	// delle altre sezioni sopra, sempre scritta anche quando vuota per
+	// restare allineata al blocco del foglio successivo in un file
+	// multi-foglio (vedi il commento gemello sulla sezione area di
+	// stampa).
+	{
+		uint8 has = (vbaProject && !vbaProject->empty()) ? 1 : 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has))
+			return B_IO_ERROR;
+		if (has)
+		{
+			int32 len = (int32)vbaProject->size();
+			if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(vbaProject->data(), len) != len)
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -922,7 +945,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	bool* hasAutoFilter, range* autoFilterRange,
 	bool* hasPrintArea, range* printArea,
 	AscdPrintSettings* printSettings,
-	bool skipInitialRecalc)
+	bool skipInitialRecalc,
+	std::vector<unsigned char>* vbaProject)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1959,6 +1983,39 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione progetto VBA (XLSM, Fase 31), in coda, ULTIMA sezione del
+	// formato: stesso schema EOF-tollerante delle sezioni sopra -- vedi
+	// il commento gemello nel writer (SaveASCD). Un file scritto prima
+	// di questa sezione (o senza macro) lascia "vbaProject" intatto
+	// (vuoto, se il chiamante lo passa gia' cosi').
+	{
+		uint8 has = 0;
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has))
+				return B_BAD_DATA;
+
+			int32 len = 0;
+			if (has)
+			{
+				if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+				if (len < 0 || len > 64 * 1024 * 1024)
+					return B_BAD_DATA;
+			}
+
+			if (has && len > 0)
+			{
+				std::vector<unsigned char> buf(len);
+				if (source->Read(buf.data(), len) != len)
+					return B_BAD_DATA;
+				if (vbaProject)
+					*vbaProject = buf;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -2126,7 +2183,8 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
-			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings);
+			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
+			&sheet.vbaProject);
 		if (err != B_OK)
 			return err;
 	}
@@ -2173,7 +2231,7 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
-			skipInitialRecalc);
+			skipInitialRecalc, &sheet.vbaProject);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

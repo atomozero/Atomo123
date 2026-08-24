@@ -168,6 +168,10 @@ public:
 	// ridisegno di SheetView (stesso principio di GetSheetView sopra):
 	// vedi tests/test_insert_chart.cpp.
 	const std::vector<ChartObject>& Charts() const { return fCharts; }
+	// Pubblico apposta per essere testabile (stesso principio di sopra):
+	// vedi il commento su AscdSheet::vbaProject in ui/src/AscdIO.h e
+	// tests/test_xlsm_macro_preservation.cpp.
+	const std::vector<unsigned char>* WorkbookVbaProject() const;
 	// Esposti pubblicamente apposta per essere testabili direttamente
 	// (stesso principio di CopySelection/HandlePasteSpecialRequest
 	// sopra): a differenza di PrintDocument (mostra un vero dialogo di

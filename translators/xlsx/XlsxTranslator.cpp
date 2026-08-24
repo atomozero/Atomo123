@@ -118,7 +118,10 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const bool* hasTabColor = NULL, const rgb_color* tabColor = NULL,
 	const std::vector<int>* hiddenRows = NULL,
 	const bool* hasAutoFilter = NULL, const range* autoFilterRange = NULL,
-	const std::vector<XlsxChartInfo>* charts = NULL)
+	const std::vector<XlsxChartInfo>* charts = NULL,
+	// XLSM (Fase 31): vedi il commento gemello in ui/src/AscdIO.h --
+	// bytes grezzi di "xl/vbaProject.bin", mai analizzati.
+	const std::vector<unsigned char>* vbaProject = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -874,6 +877,25 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Sezione progetto VBA (XLSM, Fase 31), in coda, ULTIMA sezione del
+	// formato: stesso schema "presente si'/no" delle sezioni sopra,
+	// duplicato da ui/src/AscdIO.cpp (SaveASCD) per lo stesso motivo di
+	// ogni altra sezione di questo file -- vedi il commento su
+	// WriteASCD sopra.
+	{
+		uint8 has = (vbaProject && !vbaProject->empty()) ? 1 : 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has))
+			return B_IO_ERROR;
+		if (has)
+		{
+			int32 len = (int32)vbaProject->size();
+			if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(vbaProject->data(), len) != len)
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -891,7 +913,8 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 // byte per restare allineati fino in fondo, stesso principio
 // EOF-tollerante gia' documentato li'.
 static status_t ReadASCD(BPositionIO* source, CContainer* doc,
-	std::vector<XlsxChartInfo>* outCharts = NULL)
+	std::vector<XlsxChartInfo>* outCharts = NULL,
+	std::vector<unsigned char>* outVbaProject = NULL)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1571,6 +1594,37 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione progetto VBA (XLSM, Fase 31), in coda, ULTIMA sezione del
+	// formato: stesso schema EOF-tollerante delle sezioni sopra -- vedi
+	// il commento gemello in ui/src/AscdIO.cpp (LoadASCD).
+	{
+		uint8 has = 0;
+		ssize_t got = source->Read(&has, sizeof(has));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(has))
+				return B_BAD_DATA;
+
+			int32 len = 0;
+			if (has)
+			{
+				if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_BAD_DATA;
+				if (len < 0 || len > 64 * 1024 * 1024)
+					return B_BAD_DATA;
+			}
+
+			if (has && len > 0)
+			{
+				std::vector<unsigned char> buf(len);
+				if (source->Read(buf.data(), len) != len)
+					return B_BAD_DATA;
+				if (outVbaProject)
+					*outVbaProject = buf;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -2077,8 +2131,23 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 	return xml;
 }
 
-static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& charts, BPositionIO* dest)
+static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& charts, BPositionIO* dest,
+	const std::vector<unsigned char>& vbaProject = std::vector<unsigned char>())
 {
+	// Presenza di un progetto VBA (XLSM, Fase 31): un file .xlsx puro
+	// non ha mai xl/vbaProject.bin, quindi "hasMacros" e' sempre false
+	// per ogni chiamante che non lo passa esplicitamente (compatibile
+	// con ogni chiamata precedente a questo parametro). Il tipo MIME
+	// del foglio di lavoro principale CAMBIA in presenza di macro
+	// (application/vnd.ms-excel.sheet.macroEnabled.main+xml invece di
+	// .../spreadsheetml.sheet.main+xml): Excel usa QUESTO per decidere
+	// se fidarsi delle macro, non solo l'estensione del nome file --
+	// scriverlo comunque sotto un nome ".xlsx" produrrebbe un file che
+	// Excel apre riparandolo (macro perse comunque), MainWindow::
+	// SaveToFile passa "vbaProject" solo quando l'utente salva con
+	// estensione ".xlsm" apposta per questo.
+	bool hasMacros = !vbaProject.empty();
+
 	static const char kRootRels[] =
 		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 		"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
@@ -2090,11 +2159,17 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
 		"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
 		"</workbook>\n";
-	static const char kWorkbookRels[] =
-		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+
+	// La relazione verso xl/vbaProject.bin (rId2) va aggiunta SOLO in
+	// presenza di macro: un file .xlsx normale non deve avere una
+	// relazione verso una parte che non scrive.
+	std::string workbookRels;
+	workbookRels += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 		"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
-		"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
-		"</Relationships>\n";
+		"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n";
+	if (hasMacros)
+		workbookRels += "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/vbaProject\" Target=\"vbaProject.bin\"/>\n";
+	workbookRels += "</Relationships>\n";
 
 	// Costruisce prima ogni xl/charts/chartN.xml: un ChartObject il cui
 	// intervallo dati non produce nessun punto valido (stesso caso in
@@ -2124,9 +2199,13 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	contentTypes += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 		"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
 		"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
-		"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
-		"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
-		"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n";
+		"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n";
+	if (hasMacros)
+		contentTypes += "<Default Extension=\"bin\" ContentType=\"application/vnd.ms-office.vbaProject\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.ms-excel.sheet.macroEnabled.main+xml\"/>\n";
+	else
+		contentTypes += "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n";
+	contentTypes += "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n";
 	if (hasDrawing)
 	{
 		contentTypes += "<Override PartName=\"/xl/drawings/drawing1.xml\" "
@@ -2152,10 +2231,16 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		return B_IO_ERROR;
 	if (!zip.AddEntry("xl/workbook.xml", kWorkbook, strlen(kWorkbook)))
 		return B_IO_ERROR;
-	if (!zip.AddEntry("xl/_rels/workbook.xml.rels", kWorkbookRels, strlen(kWorkbookRels)))
+	if (!zip.AddEntry("xl/_rels/workbook.xml.rels", workbookRels.data(), workbookRels.size()))
 		return B_IO_ERROR;
 	if (!zip.AddEntry("xl/worksheets/sheet1.xml", sheet.data(), sheet.size()))
 		return B_IO_ERROR;
+
+	if (hasMacros)
+	{
+		if (!zip.AddEntry("xl/vbaProject.bin", vbaProject.data(), vbaProject.size()))
+			return B_IO_ERROR;
+	}
 
 	if (hasDrawing)
 	{
@@ -4791,6 +4876,11 @@ struct ParsedSheet {
 	bool hasAutoFilter = false;
 	range autoFilterRange;
 	std::vector<XlsxChartInfo> charts;
+	// Progetto VBA (XLSM, Fase 31): popolato SOLO sul primo foglio (un
+	// progetto VBA e' un concetto per l'intera cartella di lavoro, non
+	// per foglio, vedi il commento gemello su AscdSheet::vbaProject in
+	// ui/src/AscdIO.h), quasi sempre vuoto.
+	std::vector<unsigned char> vbaProject;
 };
 
 // Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
@@ -4819,7 +4909,7 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			&sheets[i].rowHeights, &sheets[i].showGrid,
 			&sheets[i].hasTabColor, &sheets[i].tabColor,
 			&sheets[i].hiddenRows, &sheets[i].hasAutoFilter, &sheets[i].autoFilterRange,
-			&sheets[i].charts);
+			&sheets[i].charts, &sheets[i].vbaProject);
 		if (err != B_OK)
 			return err;
 	}
@@ -4911,10 +5001,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		// multi-foglio, che riguarda solo l'IMPORTAZIONE (vedi sotto).
 		CContainer* doc = new CContainer(NULL, NULL);
 		std::vector<XlsxChartInfo> charts;
-		status_t err = ReadASCD(source, doc, &charts);
+		std::vector<unsigned char> vbaProject;
+		status_t err = ReadASCD(source, doc, &charts, &vbaProject);
 		if (err == B_OK)
 			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
-				: WriteXLSX(doc, charts, destination);
+				: WriteXLSX(doc, charts, destination, vbaProject);
 		doc->Release();
 		return err;
 	}
@@ -5281,6 +5372,15 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		sheets.push_back(parsed);
 	}
 
+	// Progetto VBA (XLSM, Fase 31): se l'archivio originale ne ha uno,
+	// lo si legge grezzo e lo si appende SOLO al primo foglio (vedi il
+	// commento su ParsedSheet::vbaProject sopra) -- ne' l'importazione
+	// ne' l'esportazione qui sotto lo analizzano mai, solo lo
+	// trasportano cosi' com'e' cosi' che riaprire e risalvare un file
+	// con macro non le distrugga piu' in silenzio.
+	if (err == B_OK && !sheets.empty())
+		zip.ReadEntry("xl/vbaProject.bin", sheets[0].vbaProject); // opzionale
+
 	if (err == B_OK)
 	{
 		if (outType == kAtomoNativeFormat)
@@ -5293,7 +5393,8 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			// xl/charts/*.xml) vengono ripassati cosi' com'e' a
 			// WriteXLSX: un vero file XLSX in ingresso riscritto in
 			// uscita mantiene i suoi grafici invece di perderli.
-			err = WriteXLSX(sheets[0].doc, sheets[0].charts, destination);
+			err = WriteXLSX(sheets[0].doc, sheets[0].charts, destination,
+				sheets[0].vbaProject);
 	}
 
 	if (err == B_OK && extension != NULL && !unsupportedCharts.empty())

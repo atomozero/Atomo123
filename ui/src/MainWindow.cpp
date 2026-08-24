@@ -2223,6 +2223,16 @@ void MainWindow::Save()
 		fSavePanel->Show();
 }
 
+const std::vector<unsigned char>* MainWindow::WorkbookVbaProject() const
+{
+	for (size_t i = 0; i < fSheets.size(); i++)
+	{
+		if (!fSheets[i].vbaProject.empty())
+			return &fSheets[i].vbaProject;
+	}
+	return NULL;
+}
+
 void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 {
 	// Il formato di destinazione si sceglie dall'estensione del nome
@@ -2236,16 +2246,29 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	// (vedi XlsTranslator.cpp) -- ricade sul ramo generico piu' sotto,
 	// che mostra l'errore "Nessun translator installato sa esportare
 	// in questo formato" quando la Translate fallisce, invece di
-	// scrivere silenziosamente byte ASCD sotto un nome ".xls".
+	// scrivere silenziosamente byte ASCD sotto un nome ".xls". ".xlsm"
+	// (Fase 31) usa lo STESSO translator/outType di ".xlsx" -- e'
+	// letteralmente un XLSX con in piu' xl/vbaProject.bin -- "isXlsm"
+	// serve solo piu' sotto per decidere se allegare il progetto VBA
+	// eventualmente gia' in memoria (vedi WorkbookVbaProject): salvare
+	// esplicitamente come ".xlsx" deve continuare a spogliare le macro,
+	// esattamente come fa Excel stesso.
 	BString nameStr(name);
 	uint32 outType = kAtomoNativeFormat;
+	bool isXlsm = false;
 	int32 csvPos = nameStr.IFindLast(".csv");
 	int32 xlsxPos = nameStr.IFindLast(".xlsx");
+	int32 xlsmPos = nameStr.IFindLast(".xlsm");
 	int32 odsPos = nameStr.IFindLast(".ods");
 	if (csvPos >= 0 && csvPos == nameStr.Length() - 4)
 		outType = kAtomoCsvFormat;
 	else if (xlsxPos >= 0 && xlsxPos == nameStr.Length() - 5)
 		outType = kAtomoXlsxFormat;
+	else if (xlsmPos >= 0 && xlsmPos == nameStr.Length() - 5)
+	{
+		outType = kAtomoXlsxFormat;
+		isXlsm = true;
+	}
 	else if (odsPos >= 0 && odsPos == nameStr.Length() - 4)
 		outType = kAtomoOdsFormat;
 
@@ -2322,7 +2345,16 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	// grafico, quindi non aveva letteralmente nulla da esportare,
 	// anche dopo aver insegnato a XlsxTranslator::ReadASCD/WriteXLSX a
 	// leggerli/scriverli.
-	status_t err = SaveASCD(fDoc, &ascd, &fCharts);
+	// Progetto VBA (XLSM, Fase 31): allegato SOLO quando si salva con
+	// estensione ".xlsm" apposta -- vedi il commento su "isXlsm" sopra.
+	const std::vector<unsigned char>* vbaProject = isXlsm ? WorkbookVbaProject() : NULL;
+	status_t err = SaveASCD(fDoc, &ascd, &fCharts,
+		NULL /* colWidths */, NULL /* rowHeights */,
+		NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+		NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+		NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+		NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+		vbaProject);
 	if (err != B_OK)
 	{
 		BAlert* alert = new BAlert(B_TRANSLATE("Errore"), B_TRANSLATE("Serializzazione del documento fallita."), B_TRANSLATE("OK"));
@@ -2407,13 +2439,20 @@ void MainWindow::AutoSaveBackup()
 
 	BString nameStr(fDocumentName);
 	uint32 outType = kAtomoNativeFormat;
+	bool isXlsm = false;
 	int32 csvPos = nameStr.IFindLast(".csv");
 	int32 xlsxPos = nameStr.IFindLast(".xlsx");
+	int32 xlsmPos = nameStr.IFindLast(".xlsm");
 	int32 odsPos = nameStr.IFindLast(".ods");
 	if (csvPos >= 0 && csvPos == nameStr.Length() - 4)
 		outType = kAtomoCsvFormat;
 	else if (xlsxPos >= 0 && xlsxPos == nameStr.Length() - 5)
 		outType = kAtomoXlsxFormat;
+	else if (xlsmPos >= 0 && xlsmPos == nameStr.Length() - 5)
+	{
+		outType = kAtomoXlsxFormat;
+		isXlsm = true;
+	}
 	else if (odsPos >= 0 && odsPos == nameStr.Length() - 4)
 		outType = kAtomoOdsFormat;
 
@@ -2445,7 +2484,16 @@ void MainWindow::AutoSaveBackup()
 	}
 
 	BMallocIO ascd;
-	if (SaveASCD(fDoc, &ascd) != B_OK)
+	// Progetto VBA (XLSM, Fase 31): vedi il commento gemello in
+	// SaveToFile sopra.
+	const std::vector<unsigned char>* vbaProject = isXlsm ? WorkbookVbaProject() : NULL;
+	if (SaveASCD(fDoc, &ascd,
+			NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+			NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+			NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+			NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+			NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+			vbaProject) != B_OK)
 		return;
 
 	translator_id chosenId = 0;
