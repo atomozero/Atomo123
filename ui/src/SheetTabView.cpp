@@ -10,7 +10,9 @@
 #include "SheetTabView.h"
 
 #include <Catalog.h>
+#include <ControlLook.h>
 #include <Font.h>
+#include <InterfaceDefs.h>
 #include <Looper.h>
 #include <MenuItem.h>
 #include <Message.h>
@@ -179,10 +181,18 @@ void SheetTabView::Draw(BRect updateRect)
 {
 	Layout();
 
+	rgb_color base = ui_color(B_PANEL_BACKGROUND_COLOR);
+
 	BRect b = Bounds();
-	SetHighColor(216, 216, 216);
+	SetHighColor(base);
 	FillRect(b);
 
+	// Frecce di scorrimento (Fase 33, BControlLook): stesso disegno
+	// nativo usato da ogni ScrollBar/BTabView di sistema, invece di due
+	// triangoli con colori RGB fissi che restavano grigi anche sotto un
+	// tema scuro -- vedi il commento sopra SheetTabView.h sul perche'
+	// non e' un vero BTabView (il resto -- scorrimento, colore per
+	// foglio, menu contestuale -- non cambia).
 	if (fScrolling)
 	{
 		BRect leftRect = LeftArrowRect();
@@ -191,17 +201,10 @@ void SheetTabView::Draw(BRect updateRect)
 		bool canRight = !fVisible.empty()
 			&& fVisible.back().index < (int)fTabs.size() - 1;
 
-		SetHighColor(canLeft ? 90 : 190, canLeft ? 90 : 190, canLeft ? 90 : 190);
-		FillTriangle(
-			BPoint(leftRect.right - 6, leftRect.top + 5),
-			BPoint(leftRect.right - 6, leftRect.bottom - 5),
-			BPoint(leftRect.left + 4, (leftRect.top + leftRect.bottom) / 2));
-
-		SetHighColor(canRight ? 90 : 190, canRight ? 90 : 190, canRight ? 90 : 190);
-		FillTriangle(
-			BPoint(rightRect.left + 6, rightRect.top + 5),
-			BPoint(rightRect.left + 6, rightRect.bottom - 5),
-			BPoint(rightRect.right - 4, (rightRect.top + rightRect.bottom) / 2));
+		be_control_look->DrawArrowShape(this, leftRect, updateRect, base,
+			BControlLook::B_LEFT_ARROW, canLeft ? 0 : BControlLook::B_DISABLED);
+		be_control_look->DrawArrowShape(this, rightRect, updateRect, base,
+			BControlLook::B_RIGHT_ARROW, canRight ? 0 : BControlLook::B_DISABLED);
 	}
 
 	BFont font;
@@ -209,40 +212,60 @@ void SheetTabView::Draw(BRect updateRect)
 	font_height fh;
 	font.GetHeight(&fh);
 
+	// Posizione (dentro fVisible, non l'indice assoluto del foglio) della
+	// scheda attiva nella striscia CORRENTEMENTE visibile -- BControlLook
+	// la usa per disegnare correttamente il bordo condiviso fra una
+	// scheda attiva e le sue vicine (niente doppio bordo). -1 se la
+	// scheda attiva non e' fra quelle visibili in questo momento
+	// (scorsa fuori vista): nessuna "selected" in quel caso.
+	int32 selectedPos = -1;
+	for (size_t j = 0; j < fVisible.size(); j++)
+	{
+		if (fVisible[j].index == fActiveIndex)
+		{
+			selectedPos = (int32)j;
+			break;
+		}
+	}
+
 	for (size_t v = 0; v < fVisible.size(); v++)
 	{
 		const VisibleTab& tab = fVisible[v];
 		const TabInfo& info = fTabs[tab.index];
 		bool active = tab.index == fActiveIndex;
 
-		// Scheda colorata (import XLSX, <sheetPr><tabColor>): stesso
-		// linguaggio visivo di Excel -- la scheda NON attiva mostra il
-		// colore a tutta area (si nota anche senza guardarla da vicino,
-		// esattamente come l'originale), quella attiva resta bianca
-		// (deve confondersi con il foglio sopra, non spiccare) con solo
-		// una barra colorata in basso a ricordare la scelta.
+		BRect rect = tab.rect; // copia: DrawActiveTab/DrawInactiveTab la modificano (rimpiccioliscono al bordo interno)
 		if (active)
-			SetHighColor(255, 255, 255);
-		else if (info.hasColor)
-			SetHighColor(info.color);
-		else
-			SetHighColor(220, 220, 220);
-		FillRect(tab.rect);
-
-		if (active && info.hasColor)
 		{
-			BRect bar(tab.rect.left, tab.rect.bottom - 3, tab.rect.right, tab.rect.bottom);
+			be_control_look->DrawActiveTab(this, rect, updateRect, base, 0,
+				BControlLook::B_ALL_BORDERS, BControlLook::B_TOP_BORDER,
+				(int32)v, selectedPos, 0, (int32)fVisible.size() - 1);
+		}
+		else
+		{
+			be_control_look->DrawInactiveTab(this, rect, updateRect, base, 0,
+				BControlLook::B_ALL_BORDERS, BControlLook::B_TOP_BORDER,
+				(int32)v, selectedPos, 0, (int32)fVisible.size() - 1);
+		}
+
+		// Scheda colorata (import XLSX, <sheetPr><tabColor>): una barra
+		// d'accento sotto il testo, MAI un riempimento a piena scheda
+		// (proposta discussa e approvata dall'utente) -- BControlLook
+		// deriva le sue sfumature da un "colore base" del tema, non da
+		// un RGB arbitrario per scheda, quindi il colore-per-foglio non
+		// puo' piu' sostituire il colore di sfondo nativo come faceva
+		// prima. Stesso trattamento per la scheda attiva e per quelle
+		// non attive, a differenza di prima (solo l'attiva aveva la
+		// barra, le altre avevano il riempimento pieno).
+		if (info.hasColor)
+		{
+			BRect bar(tab.rect.left + 3, tab.rect.bottom - 3, tab.rect.right - 3, tab.rect.bottom - 1);
 			SetHighColor(info.color);
 			FillRect(bar);
 		}
 
-		SetHighColor(140, 140, 140);
-		StrokeRect(tab.rect);
-
-		if (active)
-			SetHighColor(0, 0, 0);
-		else
-			SetHighColor(90, 90, 90);
+		SetHighColor(active ? ui_color(B_PANEL_TEXT_COLOR)
+			: tint_color(ui_color(B_PANEL_TEXT_COLOR), B_LIGHTEN_1_TINT));
 
 		float textY = tab.rect.top
 			+ (tab.rect.Height() - (fh.ascent + fh.descent)) / 2 + fh.ascent;
