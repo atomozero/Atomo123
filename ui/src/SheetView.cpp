@@ -138,6 +138,7 @@ SheetView::SheetView(CContainer* doc)
 	fResizeStartSize(0),
 	fHoverCursor(0),
 	fShowGrid(gPrefs ? gPrefs->GetPrefInt("showGrid", 1) != 0 : true),
+	fSheetProtected(false),
 	fFrozenRows(0),
 	fFrozenCols(0),
 	fDoc(doc),
@@ -1032,6 +1033,8 @@ void SheetView::ClearSelection()
 		return;
 
 	range sel = SelectionRange();
+	if (!GuardProtectedEdit(sel))
+		return;
 	SaveUndoState(sel);
 
 	CCellIterator iter(fDoc, &sel);
@@ -1053,6 +1056,11 @@ void SheetView::FillDown()
 	range sel = SelectionRange();
 	if (sel.top == sel.bottom)
 		return; // una sola riga: niente da riempire
+
+	// Protezione foglio (Fase 32): solo le righe di DESTINAZIONE
+	// contano (sel.top e' la sola sorgente, mai sovrascritta).
+	if (!GuardProtectedEdit(range(sel.left, sel.top + 1, sel.right, sel.bottom)))
+		return;
 
 	SaveUndoState(sel);
 
@@ -1077,6 +1085,11 @@ void SheetView::FillRight()
 	range sel = SelectionRange();
 	if (sel.left == sel.right)
 		return; // una sola colonna: niente da riempire
+
+	// Protezione foglio (Fase 32): solo le colonne di DESTINAZIONE
+	// contano (sel.left e' la sola sorgente, mai sovrascritta).
+	if (!GuardProtectedEdit(range(sel.left + 1, sel.top, sel.right, sel.bottom)))
+		return;
 
 	SaveUndoState(sel);
 
@@ -3868,6 +3881,20 @@ void SheetView::MouseUp(BPoint where)
 		range preview = fAutoFillPreviewRange;
 		if (fDoc && (preview.bottom > src.bottom || preview.right > src.right))
 		{
+			// Protezione foglio (Fase 32): solo le celle NUOVE (oltre
+			// src, mai la selezione di partenza) contano -- stesso
+			// principio di FillDown/FillRight sopra.
+			range destOnly = (preview.bottom > src.bottom)
+				? range(src.left, src.bottom + 1, src.right, preview.bottom)
+				: range(src.right + 1, src.top, preview.right, src.bottom);
+			if (!GuardProtectedEdit(destOnly))
+			{
+				Invalidate();
+				fAutoFilling = false;
+				BView::MouseUp(where);
+				return;
+			}
+
 			SaveUndoState(preview);
 
 			if (preview.bottom > src.bottom)
@@ -4503,6 +4530,47 @@ void SheetView::StartEditing(cell c, const char* initialText)
 	}
 }
 
+// Protezione foglio (Fase 32): vedi il commento in SheetView.h. Un
+// intervallo con "left"/"right"/"top"/"bottom" fuori dai limiti del
+// foglio (es. una selezione a riga/colonna intera, non ancora
+// supportata da questa app -- vedi il commento in MainWindow.cpp sul
+// menu Dati) non puo' capitare oggi, ma range::Set gia' usato ovunque
+// in questo file non fa mai controlli sui limiti: nessuno aggiunto
+// neppure qui, stesso principio.
+bool SheetView::RangeHasLockedCell(range affected) const
+{
+	if (!fDoc)
+		return false;
+
+	for (int row = affected.top; row <= affected.bottom; row++)
+	{
+		for (int col = affected.left; col <= affected.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			if (cs.fLocked)
+				return true;
+		}
+	}
+	return false;
+}
+
+bool SheetView::GuardProtectedEdit(range affected)
+{
+	if (!fSheetProtected || !RangeHasLockedCell(affected))
+		return true;
+
+	BAlert* alert = new BAlert(B_TRANSLATE("Foglio protetto"),
+		B_TRANSLATE("La cella che stai cercando di modificare e' protetta. "
+			"Per modificarla, sblocca prima la cella (Dati > Sblocca celle "
+			"selezionate) oppure disattiva la protezione del foglio (Dati > "
+			"Proteggi foglio)."),
+		B_TRANSLATE("OK"));
+	alert->Go();
+	return false;
+}
+
 void SheetView::CommitEditing(bool cancel, int moveH, int moveV)
 {
 	if (!fEditor)
@@ -4538,6 +4606,12 @@ void SheetView::CommitEditing(bool cancel, int moveH, int moveV)
 			}
 		}
 	}
+
+	// Protezione foglio (Fase 32): stesso principio della convalida dati
+	// appena sopra, controllata PRIMA di scrivere il valore.
+	if (!cancel && fDoc
+		&& !GuardProtectedEdit(range(editedCell.h, editedCell.v, editedCell.h, editedCell.v)))
+		cancel = true;
 
 	if (!cancel && fDoc)
 	{

@@ -121,7 +121,11 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<XlsxChartInfo>* charts = NULL,
 	// XLSM (Fase 31): vedi il commento gemello in ui/src/AscdIO.h --
 	// bytes grezzi di "xl/vbaProject.bin", mai analizzati.
-	const std::vector<unsigned char>* vbaProject = NULL)
+	const std::vector<unsigned char>* vbaProject = NULL,
+	// Protezione foglio (Fase 32): vedi il commento gemello in
+	// ui/src/AscdIO.h -- il blocco per-cella viaggia dentro "doc" come
+	// ogni altro attributo di CellStyle, nessun parametro dedicato qui.
+	const bool* isProtected = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -896,6 +900,46 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione celle SBLOCCATE + protezione foglio (Fase 32), in coda,
+	// ULTIME due sezioni del formato: stesso schema di ui/src/AscdIO.cpp
+	// (SaveASCD), duplicato qui per lo stesso motivo di ogni altra
+	// sezione di questo file. Il default e' ora fLocked=true (vedi il
+	// costruttore di CellStyle), quindi l'elenco contiene le celle
+	// esplicitamente SBLOCCATE -- gia' applicate a "doc" da ParseSheet
+	// (vedi <protection locked="0"/> in xl/styles.xml) quando questa
+	// funzione e' chiamata per l'esportazione ASCD -> XLSX di un
+	// documento riletto da un file XLSX originale.
+	{
+		CellStyle defaultStyle;
+		std::vector<cell> unlocked;
+		CCellIterator lockIter(doc, NULL);
+		cell lc;
+		while (lockIter.NextExisting(lc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(lc, cs);
+			if (cs.fLocked != defaultStyle.fLocked)
+				unlocked.push_back(lc);
+		}
+
+		int32 unlockedCount = (int32)unlocked.size();
+		if (dest->Write(&unlockedCount, sizeof(unlockedCount)) != (ssize_t)sizeof(unlockedCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < unlockedCount; i++)
+		{
+			int16 row = unlocked[i].v, col = unlocked[i].h;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+				return B_IO_ERROR;
+		}
+	}
+	{
+		uint8 protectedByte = (isProtected && *isProtected) ? 1 : 0;
+		if (dest->Write(&protectedByte, sizeof(protectedByte)) != (ssize_t)sizeof(protectedByte))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
@@ -914,7 +958,14 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 // EOF-tollerante gia' documentato li'.
 static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<XlsxChartInfo>* outCharts = NULL,
-	std::vector<unsigned char>* outVbaProject = NULL)
+	std::vector<unsigned char>* outVbaProject = NULL,
+	// Protezione foglio (Fase 32): a differenza delle sezioni colori/
+	// allineamento/bordi qui sotto (ancora scartate, questo export non
+	// le riporta), il blocco per-cella vive gia' dentro "doc" (letto
+	// direttamente da TryToParseString/NewCell sopra? no -- vedi sotto)
+	// e la protezione per-foglio e' un valore a parte: catturata qui
+	// SOLO se il chiamante la vuole (NULL = scartata, come le altre).
+	bool* outIsProtected = NULL)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1625,6 +1676,47 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione celle SBLOCCATE + protezione foglio (Fase 32), in coda,
+	// ULTIME due sezioni del formato. A differenza delle sezioni
+	// colori/allineamento/bordi piu' sopra (ancora scartate: questa
+	// esportazione non le riporta), il blocco/la protezione VANNO
+	// applicati a "doc"/restituiti al chiamante: e' lo scenario reale
+	// piu' comune di questa funzione (MainWindow::SaveToFile per un
+	// documento GIA' aperto da un vero file XLSX protetto -- vedi
+	// tests/test_cell_protection.cpp), non solo un caso limite.
+	{
+		int32 unlockedCount = 0;
+		ssize_t got = source->Read(&unlockedCount, sizeof(unlockedCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(unlockedCount))
+				return B_BAD_DATA;
+			for (int32 i = 0; i < unlockedCount; i++)
+			{
+				int16 row, col;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_BAD_DATA;
+
+				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA;
+				CellStyle cs;
+				doc->GetCellStyle(loc, cs);
+				cs.fLocked = false;
+				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+	{
+		uint8 protectedByte = 0;
+		ssize_t got = source->Read(&protectedByte, sizeof(protectedByte));
+		if (got != 0 && got != (ssize_t)sizeof(protectedByte))
+			return B_BAD_DATA;
+		if (outIsProtected)
+			*outIsProtected = protectedByte != 0;
+	}
+
 	return B_OK;
 }
 
@@ -1660,7 +1752,7 @@ static void AppendXmlEscaped(std::string& out, const char* text)
 // raccogliere i valori unici, complessita' non necessaria per i
 // fogli tipici esportati da questo programma, ed e' comunque sintassi
 // OOXML valida (Excel/LibreOffice la leggono correttamente).
-static std::string BuildSheetXml(CContainer* doc, bool hasDrawing)
+static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtected)
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -1705,6 +1797,15 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing)
 
 		c.GetName(nameBuf);
 
+		// Blocco cella (Fase 32): "s=\"1\"" referenzia il secondo (indice
+		// 1) xf di xl/styles.xml, l'UNICO che ha <protection locked="0"/>
+		// -- vedi il commento su kStyles sotto in WriteXLSX. L'indice 0
+		// (nessun attributo s="...") e' implicitamente bloccato, stessa
+		// convenzione del default di CellStyle::fLocked.
+		CellStyle cellStyle;
+		doc->GetCellStyle(c, cellStyle);
+		bool unlocked = !cellStyle.fLocked;
+
 		bool writeFormula = false;
 		void* rawFormula = doc->GetCellFormula(c);
 		if (rawFormula)
@@ -1722,6 +1823,8 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing)
 			snprintf(numBuf, sizeof(numBuf), "%.15g", (double)v);
 			xml += "<c r=\"";
 			xml += nameBuf;
+			if (unlocked)
+				xml += "\" s=\"1";
 			xml += "\">";
 			if (writeFormula)
 			{
@@ -1737,6 +1840,8 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing)
 		{
 			xml += "<c r=\"";
 			xml += nameBuf;
+			if (unlocked)
+				xml += "\" s=\"1";
 			xml += "\" t=\"";
 			xml += writeFormula ? "str" : "inlineStr";
 			xml += "\">";
@@ -1760,6 +1865,13 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing)
 		xml += "</row>";
 
 	xml += "</sheetData>";
+	// <sheetProtection/> (Fase 32): la sola presenza vuol dire "foglio
+	// protetto" per Excel -- va DOPO </sheetData> e PRIMA di <drawing>
+	// nell'ordine richiesto dallo schema OOXML (CT_Worksheet). Nessun
+	// attributo di password: questo formato non ne ha uno da esportare
+	// (l'app non protegge mai con password, solo on/off).
+	if (isProtected)
+		xml += "<sheetProtection sheetId=\"1\"/>";
 	// <drawing> e' un fratello di <sheetData> (mai al suo interno),
 	// deve venire DOPO nello schema OOXML del foglio -- ancora i grafici
 	// incorporati (Fase 24) tramite xl/drawings/drawing1.xml, sempre
@@ -2132,7 +2244,10 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 }
 
 static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& charts, BPositionIO* dest,
-	const std::vector<unsigned char>& vbaProject = std::vector<unsigned char>())
+	const std::vector<unsigned char>& vbaProject = std::vector<unsigned char>(),
+	// Protezione foglio (Fase 32): vedi il commento gemello in
+	// ui/src/AscdIO.h. false di default, come vbaProject sopra.
+	bool isProtected = false)
 {
 	// Presenza di un progetto VBA (XLSM, Fase 31): un file .xlsx puro
 	// non ha mai xl/vbaProject.bin, quindi "hasMacros" e' sempre false
@@ -2160,15 +2275,17 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
 		"</workbook>\n";
 
-	// La relazione verso xl/vbaProject.bin (rId2) va aggiunta SOLO in
+	// xl/styles.xml (rId2) e' sempre presente (vedi kStyles sotto), la
+	// relazione verso xl/vbaProject.bin (rId3) va aggiunta SOLO in
 	// presenza di macro: un file .xlsx normale non deve avere una
 	// relazione verso una parte che non scrive.
 	std::string workbookRels;
 	workbookRels += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 		"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
-		"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n";
+		"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+		"<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>\n";
 	if (hasMacros)
-		workbookRels += "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/vbaProject\" Target=\"vbaProject.bin\"/>\n";
+		workbookRels += "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/vbaProject\" Target=\"vbaProject.bin\"/>\n";
 	workbookRels += "</Relationships>\n";
 
 	// Costruisce prima ogni xl/charts/chartN.xml: un ChartObject il cui
@@ -2193,7 +2310,31 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	}
 
 	bool hasDrawing = !chartXmls.empty();
-	std::string sheet = BuildSheetXml(doc, hasDrawing);
+	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected);
+
+	// xl/styles.xml (Fase 32): finora questo export non scriveva NESSUNO
+	// stile (solo valori/formule, vedi BuildSheetXml) -- una vera tabella
+	// stili completa (colori/font/bordi/formati) resta fuori scopo qui,
+	// ma il blocco cella e' cosi' semplice (un solo bit) da non
+	// richiederla: due sole voci <xf>, la seconda (indice 1, referenziata
+	// da "s=\"1\"" sulle celle sbloccate in BuildSheetXml) con
+	// <protection locked="0"/>. Il boilerplate fonts/fills/borders resta
+	// il minimo che Excel accetta come styles.xml valido (fills conta
+	// SEMPRE almeno "none" e "gray125" anche se inutilizzati, per
+	// convenzione OOXML).
+	static const char kStyles[] =
+		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+		"<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+		"<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>\n"
+		"<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill>"
+		"<fill><patternFill patternType=\"gray125\"/></fill></fills>\n"
+		"<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>\n"
+		"<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>\n"
+		"<cellXfs count=\"2\">"
+		"<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>"
+		"<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"><protection locked=\"0\"/></xf>"
+		"</cellXfs>\n"
+		"</styleSheet>\n";
 
 	std::string contentTypes;
 	contentTypes += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
@@ -2206,6 +2347,7 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	else
 		contentTypes += "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n";
 	contentTypes += "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n";
+	contentTypes += "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>\n";
 	if (hasDrawing)
 	{
 		contentTypes += "<Override PartName=\"/xl/drawings/drawing1.xml\" "
@@ -2234,6 +2376,8 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	if (!zip.AddEntry("xl/_rels/workbook.xml.rels", workbookRels.data(), workbookRels.size()))
 		return B_IO_ERROR;
 	if (!zip.AddEntry("xl/worksheets/sheet1.xml", sheet.data(), sheet.size()))
+		return B_IO_ERROR;
+	if (!zip.AddEntry("xl/styles.xml", kStyles, strlen(kStyles)))
 		return B_IO_ERROR;
 
 	if (hasMacros)
@@ -2684,6 +2828,7 @@ struct ResolvedStyle {
 	uchar borderT = 0, borderL = 0, borderB = 0, borderR = 0; // 0/1, pronti per CellStyle::fTBorderColor ecc (Fase 11: booleano per lato, non un vero colore)
 	bool underline = false; // pronto per CellStyle::fUnderline (nessun campo "has": false coincide gia' col predefinito)
 	bool wrapText = false; // pronto per CellStyle::fWrapText (nessun campo "has", stesso motivo di underline sopra)
+	bool locked = true; // pronto per CellStyle::fLocked (Fase 32, nessun campo "has": true coincide gia' col predefinito)
 };
 
 enum StylesSection { kStylesNone, kStylesNumFmts, kStylesFills, kStylesFonts, kStylesBorders, kStylesCellXfs };
@@ -2696,6 +2841,11 @@ struct XfInfo {
 	int borderId;
 	char alignment; // EAlignment, eAlignGeneral se <alignment> assente
 	bool wrapText;
+	// Blocco cella (Fase 32, <protection locked="0|1"/>, figlio di
+	// <xf> come <alignment>): true di default -- ECMA-376 dice che
+	// un xf SENZA <protection> esplicito eredita "bloccata", stessa
+	// convenzione del default di CellStyle::fLocked (vedi CellStyle.cpp).
+	bool locked;
 };
 
 // Quattro lati di una voce di <borders>: presente/assente, stesso
@@ -3041,6 +3191,7 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			xf.borderId = 0;
 			xf.alignment = eAlignGeneral;
 			xf.wrapText = false;
+			xf.locked = true;
 			for (int i = 0; atts[i]; i += 2)
 			{
 				if (strcmp(atts[i], "fontId") == 0)
@@ -3073,6 +3224,18 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 				// a destra -- vedi XlsxAttrIsTrue sopra.
 				else if (strcmp(atts[i], "wrapText") == 0)
 					ctx->cellXfs.back().wrapText = XlsxAttrIsTrue(atts[i + 1]);
+			}
+		}
+		// <protection locked="0"/> e' un altro figlio di <xf>, stesso
+		// principio di <alignment> sopra -- assente = resta bloccata (il
+		// default gia' impostato sopra), "locked=0" e' l'UNICO modo in
+		// cui un file XLSX marca una cella sbloccata.
+		else if (strcmp(name, "protection") == 0 && !ctx->cellXfs.empty())
+		{
+			for (int i = 0; atts[i]; i += 2)
+			{
+				if (strcmp(atts[i], "locked") == 0)
+					ctx->cellXfs.back().locked = XlsxAttrIsTrue(atts[i + 1]);
 			}
 		}
 	}
@@ -3186,6 +3349,7 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 		rs.underline = fontId >= 0 && (size_t)fontId < ctx.fontUnderline.size()
 			&& ctx.fontUnderline[fontId];
 		rs.wrapText = ctx.cellXfs[i].wrapText;
+		rs.locked = ctx.cellXfs[i].locked;
 
 		(*out)[i] = rs;
 	}
@@ -3328,6 +3492,7 @@ struct SheetContext {
 	std::vector<int>* hiddenRows; // opzionale (NULL = non raccolte)
 	bool* hasAutoFilter; // opzionale (NULL = non raccolto)
 	range* autoFilterRange; // valido solo se *hasAutoFilter diventa true
+	bool* isProtected; // opzionale (NULL = non raccolto), da <sheetProtection/> (Fase 32)
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
 	bool date1904; // Fase 12: epoca del sistema data, da <workbookPr>
@@ -3513,6 +3678,15 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				*ctx->hasAutoFilter = true;
 		}
 	}
+	// <sheetProtection .../> (Fase 32, "Proteggi foglio"): la sola
+	// PRESENZA dell'elemento vuol dire "foglio protetto" in Excel,
+	// indipendentemente dai suoi attributi (password, quali comandi
+	// restano permessi ecc. -- questo translator non li legge, solo il
+	// blocco/sblocco effettivo delle celle interessa qui).
+	else if (strcmp(name, "sheetProtection") == 0 && ctx->isProtected)
+	{
+		*ctx->isProtected = true;
+	}
 	else if (strcmp(name, "c") == 0)
 	{
 		ctx->cellRef.clear();
@@ -3645,7 +3819,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 			{
 				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
 				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
-					|| rs.hasBorders || rs.underline || rs.wrapText)
+					|| rs.hasBorders || rs.underline || rs.wrapText || !rs.locked)
 				{
 					for (int col = min; col <= clampedMax; col++)
 					{
@@ -3665,6 +3839,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 						}
 						if (rs.underline) cs.fUnderline = true;
 						if (rs.wrapText) cs.fWrapText = true;
+						cs.fLocked = rs.locked;
 						ctx->doc->SetColumnStyle(col, cs);
 					}
 				}
@@ -3816,7 +3991,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		{
 			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
 			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
-				|| rs.hasBorders || rs.underline || rs.wrapText)
+				|| rs.hasBorders || rs.underline || rs.wrapText || !rs.locked)
 			{
 				CellStyle cs;
 				ctx->doc->GetCellStyle(loc, cs);
@@ -3834,6 +4009,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 				}
 				if (rs.underline) cs.fUnderline = true;
 				if (rs.wrapText) cs.fWrapText = true;
+				cs.fLocked = rs.locked;
 				ctx->doc->SetCellStyle(loc, cs);
 			}
 		}
@@ -3861,7 +4037,8 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	bool* showGrid = NULL,
 	bool* hasTabColor = NULL, rgb_color* tabColor = NULL,
 	std::vector<int>* hiddenRows = NULL,
-	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL)
+	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL,
+	bool* isProtected = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -3874,6 +4051,7 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.hiddenRows = hiddenRows;
 	ctx.hasAutoFilter = hasAutoFilter;
 	ctx.autoFilterRange = autoFilterRange;
+	ctx.isProtected = isProtected;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
 	ctx.date1904 = date1904;
@@ -4881,6 +5059,11 @@ struct ParsedSheet {
 	// per foglio, vedi il commento gemello su AscdSheet::vbaProject in
 	// ui/src/AscdIO.h), quasi sempre vuoto.
 	std::vector<unsigned char> vbaProject;
+	// Protezione foglio (Fase 32): da <sheetProtection/> nel foglio
+	// XLSX originale, vedi ParseSheet/SheetStart e AscdSheet::
+	// isProtected in ui/src/AscdIO.h. Il blocco delle singole celle
+	// (CellStyle::fLocked) vive gia' dentro "doc", nessun campo qui.
+	bool isProtected = false;
 };
 
 // Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
@@ -4909,7 +5092,7 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			&sheets[i].rowHeights, &sheets[i].showGrid,
 			&sheets[i].hasTabColor, &sheets[i].tabColor,
 			&sheets[i].hiddenRows, &sheets[i].hasAutoFilter, &sheets[i].autoFilterRange,
-			&sheets[i].charts, &sheets[i].vbaProject);
+			&sheets[i].charts, &sheets[i].vbaProject, &sheets[i].isProtected);
 		if (err != B_OK)
 			return err;
 	}
@@ -5002,10 +5185,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		CContainer* doc = new CContainer(NULL, NULL);
 		std::vector<XlsxChartInfo> charts;
 		std::vector<unsigned char> vbaProject;
-		status_t err = ReadASCD(source, doc, &charts, &vbaProject);
+		bool isProtected = false;
+		status_t err = ReadASCD(source, doc, &charts, &vbaProject, &isProtected);
 		if (err == B_OK)
 			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
-				: WriteXLSX(doc, charts, destination, vbaProject);
+				: WriteXLSX(doc, charts, destination, vbaProject, isProtected);
 		doc->Release();
 		return err;
 	}
@@ -5126,7 +5310,8 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles,
 			&condRules, date1904, &parsed.rowHeights, &parsed.showGrid,
 			&parsed.hasTabColor, &parsed.tabColor,
-			&parsed.hiddenRows, &parsed.hasAutoFilter, &parsed.autoFilterRange))
+			&parsed.hiddenRows, &parsed.hasAutoFilter, &parsed.autoFilterRange,
+			&parsed.isProtected))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
@@ -5394,7 +5579,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			// WriteXLSX: un vero file XLSX in ingresso riscritto in
 			// uscita mantiene i suoi grafici invece di perderli.
 			err = WriteXLSX(sheets[0].doc, sheets[0].charts, destination,
-				sheets[0].vbaProject);
+				sheets[0].vbaProject, sheets[0].isProtected);
 	}
 
 	if (err == B_OK && extension != NULL && !unsupportedCharts.empty())

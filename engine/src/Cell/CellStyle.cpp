@@ -59,6 +59,14 @@ CellStyle::CellStyle()
 {
 	memset(this, 0, sizeof(CellStyle));
 	fFormat = CFormatter(eGeneral, 2, false).OldFormatID();
+	// fLocked=true di default (Fase 32, protezione foglio): stessa
+	// semantica di Excel, dove OGNI cella e' bloccata finche' non la si
+	// sblocca esplicitamente -- la protezione del foglio da sola non fa
+	// nulla altrimenti. Il memset sopra lascerebbe false (sbloccata),
+	// l'opposto: va impostato a mano qui, come fLowColor/fHighColor/
+	// fBorderColor sotto per lo stesso motivo (il default POD di questi
+	// campi non e' quello voluto).
+	fLocked = true;
 	fLowColor.red = fLowColor.green = fLowColor.blue = 255;
 	fLowColor.alpha = 255;
 	// fHighColor resta nero (0,0,0) dal memset sopra: solo l'alpha va

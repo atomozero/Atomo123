@@ -137,7 +137,14 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// (vedi ROADMAP.md, Tier 1). NULL/vettore vuoto = nessun progetto
 	// VBA, il comportamento di sempre. Ultimo parametro apposta: aggiunto
 	// in coda cosi' ogni chiamata esistente resta valida senza modifiche.
-	std::vector<unsigned char>* vbaProject = NULL);
+	std::vector<unsigned char>* vbaProject = NULL,
+	// Protezione foglio (Fase 32): vedi il commento su AscdSheet::
+	// isProtected sotto. Il blocco per-cella (CellStyle::fLocked) non ha
+	// un parametro qui: viaggia gia' dentro "doc" come ogni altro
+	// attributo di stile (allineamento, bordi, ecc.), stesso principio
+	// gia' seguito da quei campi. NULL/false = foglio non protetto, il
+	// comportamento di sempre.
+	bool* isProtected = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -151,7 +158,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const bool* hasPrintArea = NULL, const range* printArea = NULL,
 	const AscdPrintSettings* printSettings = NULL,
 	// Vedi il commento gemello sopra in LoadASCD.
-	const std::vector<unsigned char>* vbaProject = NULL);
+	const std::vector<unsigned char>* vbaProject = NULL,
+	const bool* isProtected = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -249,6 +257,14 @@ struct AscdSheet {
 	// questa struct e' per-foglio) -- MainWindow lo cerca scandendo
 	// fSheets, non assumendo l'indice 0 in particolare.
 	std::vector<unsigned char> vbaProject;
+	// Protezione foglio (Fase 32, "Proteggi foglio"): quando true, la
+	// UI rifiuta di modificare contenuto/formattazione delle celle con
+	// CellStyle::fLocked=true (il default, vedi il costruttore di
+	// CellStyle) su QUESTO foglio -- una cella esplicitamente sbloccata
+	// resta modificabile anche a foglio protetto, esattamente come in
+	// Excel. false di default: nessun documento scritto prima di questo
+	// campo era mai protetto.
+	bool isProtected = false;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

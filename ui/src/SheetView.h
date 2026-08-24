@@ -293,6 +293,36 @@ public:
 	void SetShowGrid(bool show);
 	bool ShowGrid() const { return fShowGrid; }
 
+	// Protezione foglio (Fase 32, "Proteggi foglio"): quando true, ogni
+	// tentativo di modificare contenuto/formattazione di una cella con
+	// CellStyle::fLocked=true (il default) su QUESTO foglio va rifiutato
+	// -- vedi MainWindow::GuardProtectedEdit, l'unico punto che legge
+	// questo flag per decidere se bloccare un comando. SheetView stesso
+	// non applica NESSUN blocco da solo: resta un semplice contenitore
+	// di stato per-foglio, stesso principio di ShowGrid/HasAutoFilter
+	// sopra/sotto.
+	void SetProtected(bool protect) { fSheetProtected = protect; }
+	bool IsProtected() const { return fSheetProtected; }
+	// Vero se almeno una cella dell'intervallo ha CellStyle::fLocked=
+	// true -- pura interrogazione, nessun avviso mostrato. Pubblico
+	// apposta per essere testabile senza passare da GuardProtectedEdit
+	// sotto (che mostra un vero BAlert bloccante quando nega, non
+	// richiamabile a occhi chiusi da un test headless): vedi
+	// tests/test_cell_protection.cpp, che verifica la sola PRECONDIZIONE
+	// del blocco (IsProtected() && RangeHasLockedCell(...)) invece di
+	// invocare davvero un comando che finirebbe per mostrare l'avviso.
+	bool RangeHasLockedCell(range affected) const;
+	// Vero se si puo' procedere: o il foglio non e' protetto, o nessuna
+	// cella dell'intervallo e' bloccata (vedi RangeHasLockedCell sopra).
+	// Se falso, mostra gia' da sola l'avviso (stesso stile di "Convalida
+	// dati" in CommitEditing sotto) -- il chiamante deve solo annullare
+	// l'azione, non mostrare un secondo messaggio. Usato sia dai comandi
+	// di modifica di QUESTA classe (CommitEditing, FillDown/FillRight,
+	// trascinamento AutoFill) sia da MainWindow per i propri (Canc,
+	// Incolla, grassetto/corsivo/colore/bordo/allineamento/a-capo,
+	// unione celle -- vedi MainWindow::MessageReceived).
+	bool GuardProtectedEdit(range affected);
+
 	// Blocca riquadri (Fase 7): righe/colonne "congelate" -- restano
 	// sempre visibili, ferme sullo schermo, invece di scorrere col
 	// resto del foglio (stessa tecnica gia' usata per le intestazioni,
@@ -596,6 +626,9 @@ private:
 
 	// Mostra/nascondi griglia: vedi SetShowGrid/ShowGrid sopra.
 	bool fShowGrid;
+
+	// Protezione foglio: vedi SetProtected/IsProtected sopra.
+	bool fSheetProtected;
 
 	// Blocca riquadri: vedi ToggleFreezePanes/SetFreezePanes sopra.
 	int fFrozenRows;

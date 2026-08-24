@@ -88,7 +88,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const bool* hasAutoFilter, const range* autoFilterRange,
 	const bool* hasPrintArea, const range* printArea,
 	const AscdPrintSettings* printSettings,
-	const std::vector<unsigned char>* vbaProject)
+	const std::vector<unsigned char>* vbaProject,
+	const bool* isProtected)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -930,6 +931,50 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione celle SBLOCCATE, in coda (Fase 32, protezione foglio):
+	// stesso principio della sezione allineamento sopra (elenco delle
+	// SOLE celle diverse dal default), ma qui il default e'
+	// fLocked=true (vedi il costruttore di CellStyle) -- quindi l'elenco
+	// contiene le celle esplicitamente SBLOCCATE, non quelle bloccate
+	// (la stragrande maggioranza in un foglio tipico, dato il default).
+	// Nessun valore per cella: la sola presenza in elenco vuol dire
+	// "sbloccata", non serve altro byte.
+	{
+		CellStyle defaultStyle;
+		std::vector<cell> unlocked;
+		CCellIterator lockIter(doc, NULL);
+		cell lc;
+		while (lockIter.NextExisting(lc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(lc, cs);
+			if (cs.fLocked != defaultStyle.fLocked)
+				unlocked.push_back(lc);
+		}
+
+		int32 unlockedCount = (int32)unlocked.size();
+		if (dest->Write(&unlockedCount, sizeof(unlockedCount)) != (ssize_t)sizeof(unlockedCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < unlockedCount; i++)
+		{
+			int16 row = unlocked[i].v, col = unlocked[i].h;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione protezione foglio (Fase 32), in coda, ULTIMA sezione del
+	// formato: un solo byte, stesso schema "presente si'/no" delle
+	// sezioni booleane sopra (es. AutoFilter) ma senza dati aggiuntivi
+	// da leggere quando e' zero.
+	{
+		uint8 protectedByte = (isProtected && *isProtected) ? 1 : 0;
+		if (dest->Write(&protectedByte, sizeof(protectedByte)) != (ssize_t)sizeof(protectedByte))
+			return B_IO_ERROR;
+	}
+
 	return B_OK;
 }
 
@@ -946,7 +991,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	bool* hasPrintArea, range* printArea,
 	AscdPrintSettings* printSettings,
 	bool skipInitialRecalc,
-	std::vector<unsigned char>* vbaProject)
+	std::vector<unsigned char>* vbaProject,
+	bool* isProtected)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -2016,6 +2062,49 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione celle SBLOCCATE, in coda (Fase 32): stesso schema "got !=
+	// 0" delle sezioni sopra (font/allineamento/bordi) -- vedi il
+	// commento gemello nel writer (SaveASCD) sul perche' l'elenco
+	// contiene le celle SBLOCCATE (il default e' ora fLocked=true), non
+	// il contrario.
+	{
+		int32 unlockedCount = 0;
+		ssize_t got = source->Read(&unlockedCount, sizeof(unlockedCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(unlockedCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < unlockedCount; i++)
+			{
+				int16 row, col;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_BAD_DATA;
+
+				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA;
+				CellStyle cs;
+				doc->GetCellStyle(loc, cs);
+				cs.fLocked = false;
+				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione protezione foglio (Fase 32), in coda, ULTIMA sezione del
+	// formato: stesso schema EOF-tollerante di showGrid sopra (un solo
+	// byte, nessun dato aggiuntivo quando assente).
+	{
+		uint8 protectedByte = 0;
+		ssize_t got = source->Read(&protectedByte, sizeof(protectedByte));
+		if (got != 0 && got != (ssize_t)sizeof(protectedByte))
+			return B_BAD_DATA;
+		if (isProtected)
+			*isProtected = protectedByte != 0;
+	}
+
 	return B_OK;
 }
 
@@ -2184,7 +2273,7 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
-			&sheet.vbaProject);
+			&sheet.vbaProject, &sheet.isProtected);
 		if (err != B_OK)
 			return err;
 	}
@@ -2231,7 +2320,7 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
-			skipInitialRecalc, &sheet.vbaProject);
+			skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected);
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

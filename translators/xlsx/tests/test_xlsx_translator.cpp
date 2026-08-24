@@ -990,6 +990,27 @@ int main()
 								"nessun progetto VBA in sample.xlsx, il byte presente/assente e' zero");
 						}
 
+						// Celle sbloccate (Fase 32): un conteggio (qui
+						// zero, sample.xlsx non ha celle esplicitamente
+						// sbloccate) senza record a seguire quando e'
+						// zero.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 unlockedCount;
+							memcpy(&unlockedCount, ascdData + pos, 4); pos += 4;
+							Check(unlockedCount == 0,
+								"nessuna cella sbloccata in sample.xlsx, il conteggio e' zero");
+						}
+
+						// Protezione foglio (Fase 32): un solo byte, ORA
+						// l'ULTIMA sezione del formato.
+						if (pos + 1 <= ascdLen)
+						{
+							uint8 isProtected = ascdData[pos]; pos += 1;
+							Check(isProtected == 0,
+								"sample.xlsx non e' protetto, il byte e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte

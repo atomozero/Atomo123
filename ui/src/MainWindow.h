@@ -523,6 +523,8 @@ private:
 	BScrollBar* fVScrollBar;
 	BScrollBar* fHScrollBar;
 	BMenuItem* fFreezeMenuItem;
+	// Protezione foglio (Fase 32): vedi il commento nel costruttore.
+	BMenuItem* fProtectMenuItem;
 	BMenu* fRecentMenu;
 	BTextControl* fFormulaBar;
 	BStringView* fCellLabel;

@@ -138,6 +138,9 @@ static const uint32 kMsgShowNames = 'shnm';
 static const uint32 kMsgShowPasteSpecial = 'shps';
 static const uint32 kMsgShowGoTo = 'shgt';
 static const uint32 kMsgToggleFreeze = 'frzp';
+static const uint32 kMsgToggleProtectSheet = 'prsh';
+static const uint32 kMsgLockSelection = 'lcks';
+static const uint32 kMsgUnlockSelection = 'ulks';
 static const uint32 kMsgToggleBold = 'tbld';
 static const uint32 kMsgToggleItalic = 'tita';
 static const uint32 kMsgToggleUnderline = 'tund';
@@ -527,6 +530,7 @@ MainWindow::MainWindow()
 	fSheetView = NULL;
 	fSheetTabView = NULL;
 	fFreezeMenuItem = NULL; // stesso motivo di fSheetView/fSheetTabView sopra
+	fProtectMenuItem = NULL;
 	fRecentMenu = NULL; // stesso motivo, azzerato prima di essere creato piu' sotto
 	// Letto da gPrefs PRIMA di RebuildRecentMenu() piu' sotto (usa
 	// fMaxRecentFiles per decidere quante voci mostrare): gPrefs puo'
@@ -807,6 +811,20 @@ MainWindow::MainWindow()
 	// attivazione/cambio foglio -- vedi SheetView::ToggleFreezePanes.
 	fFreezeMenuItem = new BMenuItem(B_TRANSLATE("Blocca riquadri"), new BMessage(kMsgToggleFreeze));
 	dataMenu->AddItem(fFreezeMenuItem);
+	dataMenu->AddSeparatorItem();
+	// Protezione foglio (Fase 32): voce con segno di spunta, stesso
+	// principio di fFreezeMenuItem sopra -- sincronizzata a ogni
+	// attivazione/cambio foglio (vedi SwitchToSheet). Le celle
+	// bloccate/sbloccate sono un attributo separato per cella
+	// (CellStyle::fLocked, tutte bloccate di default): questi due
+	// comandi scelgono ESPLICITAMENTE blocca/sblocca sulla selezione
+	// corrente invece di un'unica voce "a interruttore" (una selezione
+	// mista bloccata+sbloccata non avrebbe uno stato singolo da
+	// invertire).
+	fProtectMenuItem = new BMenuItem(B_TRANSLATE("Proteggi foglio"), new BMessage(kMsgToggleProtectSheet));
+	dataMenu->AddItem(fProtectMenuItem);
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Blocca celle selezionate"), new BMessage(kMsgLockSelection)));
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Sblocca celle selezionate"), new BMessage(kMsgUnlockSelection)));
 	menuBar->AddItem(dataMenu);
 
 	// Grafico e tabella pivot leggono un intervallo di due colonne
@@ -1177,8 +1195,11 @@ void MainWindow::ResetWorkbook(const char* name)
 			fSheetView->SetAutoFilter(fSheets[0].autoFilterRange);
 		else
 			fSheetView->ClearAutoFilter();
+		fSheetView->SetProtected(fSheets[0].isProtected);
 		if (fFreezeMenuItem)
 			fFreezeMenuItem->SetMarked(false);
+		if (fProtectMenuItem)
+			fProtectMenuItem->SetMarked(false);
 	}
 	if (fSheetTabView)
 		RebuildSheetTabs();
@@ -1252,6 +1273,7 @@ void MainWindow::SwitchToSheet(int index)
 	fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
 	fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 	fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
+	fSheets[fActiveSheetIndex].isProtected = fSheetView->IsProtected();
 	// Posizione di scorrimento (bug reale segnalato dall'utente: uscire
 	// da un foglio scorso e passare a un altro mostrava lo stesso punto
 	// scorso invece dell'angolo in alto a sinistra o di dove l'utente
@@ -1275,12 +1297,15 @@ void MainWindow::SwitchToSheet(int index)
 	fSheetView->RecalculateWrappedRowHeights();
 	fSheetView->SetFreezePanes(fSheets[index].frozenRows, fSheets[index].frozenCols);
 	fSheetView->SetShowGrid(fSheets[index].showGrid);
+	fSheetView->SetProtected(fSheets[index].isProtected);
 	fSheetView->SetHiddenRows(fSheets[index].hiddenRows);
 	if (fSheets[index].hasAutoFilter)
 		fSheetView->SetAutoFilter(fSheets[index].autoFilterRange);
 	else
 		fSheetView->ClearAutoFilter();
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
+	if (fProtectMenuItem)
+		fProtectMenuItem->SetMarked(fSheetView->IsProtected());
 	fFormulaBar->SetText("");
 	// Ripristina lo scorrimento di QUESTO foglio (catturato sopra
 	// l'ultima volta che era attivo, (0,0) se non lo e' mai stato) --
@@ -1911,7 +1936,10 @@ void MainWindow::OpenFile(const entry_ref& ref)
 		fSheetView->SetAutoFilter(fSheets[0].autoFilterRange);
 	else
 		fSheetView->ClearAutoFilter();
+	fSheetView->SetProtected(fSheets[0].isProtected);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
+	if (fProtectMenuItem)
+		fProtectMenuItem->SetMarked(fSheetView->IsProtected());
 	RebuildSheetTabs();
 
 	// Collega il resolver PRIMA di ricalcolare: ogni foglio e' stato
@@ -2131,7 +2159,10 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 		fSheetView->SetAutoFilter(fSheets[0].autoFilterRange);
 	else
 		fSheetView->ClearAutoFilter();
+	fSheetView->SetProtected(fSheets[0].isProtected);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
+	if (fProtectMenuItem)
+		fProtectMenuItem->SetMarked(fSheetView->IsProtected());
 	RebuildSheetTabs();
 
 	// Sostituisce il resolver "locale" del thread di lavoro (vedi
@@ -2299,6 +2330,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
 		fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 		fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
+		fSheets[fActiveSheetIndex].isProtected = fSheetView->IsProtected();
 
 		status_t err = SaveASCDBook(fSheets, &file);
 		if (err != B_OK)
@@ -2347,14 +2379,20 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	// leggerli/scriverli.
 	// Progetto VBA (XLSM, Fase 31): allegato SOLO quando si salva con
 	// estensione ".xlsm" apposta -- vedi il commento su "isXlsm" sopra.
+	// Protezione foglio (Fase 32): non legata a ".xlsm", va sempre
+	// letta da fSheetView -- senza questo, SaveASCD scriverebbe
+	// sempre isProtected=false qui, indipendentemente da come il
+	// documento e' impostato davvero (stesso bug gia' descritto sopra
+	// per fCharts, stavolta per la protezione).
 	const std::vector<unsigned char>* vbaProject = isXlsm ? WorkbookVbaProject() : NULL;
+	bool isProtectedNow = fSheetView->IsProtected();
 	status_t err = SaveASCD(fDoc, &ascd, &fCharts,
 		NULL /* colWidths */, NULL /* rowHeights */,
 		NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
 		NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
 		NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
 		NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
-		vbaProject);
+		vbaProject, &isProtectedNow);
 	if (err != B_OK)
 	{
 		BAlert* alert = new BAlert(B_TRANSLATE("Errore"), B_TRANSLATE("Serializzazione del documento fallita."), B_TRANSLATE("OK"));
@@ -2476,6 +2514,7 @@ void MainWindow::AutoSaveBackup()
 		fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
 		fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 		fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
+		fSheets[fActiveSheetIndex].isProtected = fSheetView->IsProtected();
 		SaveASCDBook(fSheets, &file); // esito ignorato, vedi il commento sopra su file.InitCheck()
 		BNodeInfo nodeInfo(&file);
 		if (nodeInfo.InitCheck() == B_OK)
@@ -2484,16 +2523,17 @@ void MainWindow::AutoSaveBackup()
 	}
 
 	BMallocIO ascd;
-	// Progetto VBA (XLSM, Fase 31): vedi il commento gemello in
-	// SaveToFile sopra.
+	// Progetto VBA (XLSM, Fase 31) e protezione foglio (Fase 32): vedi
+	// il commento gemello in SaveToFile sopra.
 	const std::vector<unsigned char>* vbaProject = isXlsm ? WorkbookVbaProject() : NULL;
+	bool isProtectedNow = fSheetView->IsProtected();
 	if (SaveASCD(fDoc, &ascd,
 			NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
 			NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
 			NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
 			NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
 			NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
-			vbaProject) != B_OK)
+			vbaProject, &isProtectedNow) != B_OK)
 		return;
 
 	translator_id chosenId = 0;
@@ -2720,39 +2760,44 @@ void MainWindow::PasteSelection()
 				anchor.h + numCols - 1, anchor.v + numRows - 1);
 		}
 
-		fSheetView->SaveUndoState(destRange);
-
-		for (int row = destRange.top; row <= destRange.bottom; row++)
+		// Protezione foglio (Fase 32): controllata PRIMA di scrivere,
+		// stesso principio di SheetView::CommitEditing.
+		if (fSheetView->GuardProtectedEdit(destRange))
 		{
-			int srcRow = std::min(row - destRange.top, numRows - 1);
-			for (int col = destRange.left; col <= destRange.right; col++)
-			{
-				int srcCol = std::min(col - destRange.left, numCols - 1);
-				const char* fieldText = "";
-				if (srcRow < (int)grid.size() && srcCol < (int)grid[srcRow].size())
-					fieldText = grid[srcRow][srcCol].String();
+			fSheetView->SaveUndoState(destRange);
 
-				cell dest(col, row);
-				if (fieldText[0] == 0)
-					fDoc->DisposeCell(dest);
-				else
+			for (int row = destRange.top; row <= destRange.bottom; row++)
+			{
+				int srcRow = std::min(row - destRange.top, numRows - 1);
+				for (int col = destRange.left; col <= destRange.right; col++)
 				{
-					try
+					int srcCol = std::min(col - destRange.left, numCols - 1);
+					const char* fieldText = "";
+					if (srcRow < (int)grid.size() && srcCol < (int)grid[srcRow].size())
+						fieldText = grid[srcRow][srcCol].String();
+
+					cell dest(col, row);
+					if (fieldText[0] == 0)
+						fDoc->DisposeCell(dest);
+					else
 					{
-						TryToParseString(fieldText, dest, fDoc, true);
-					}
-					catch (...)
-					{
+						try
+						{
+							TryToParseString(fieldText, dest, fDoc, true);
+						}
+						catch (...)
+						{
+						}
 					}
 				}
 			}
-		}
 
-		RecalculateActiveWorkbook();
-		fSheetView->Invalidate();
-		fSheetView->SetSelection(destRange.TopLeft());
-		fSheetView->ExtendSelection(destRange.BotRight());
-		MarkModified();
+			RecalculateActiveWorkbook();
+			fSheetView->Invalidate();
+			fSheetView->SetSelection(destRange.TopLeft());
+			fSheetView->ExtendSelection(destRange.BotRight());
+			MarkModified();
+		}
 	}
 
 	be_clipboard->Unlock();
@@ -2826,6 +2871,14 @@ void MainWindow::HandlePasteSpecialRequest(int32 content, int32 operation, bool 
 		else
 			destRange = range(anchor.h, anchor.v,
 				anchor.h + numCols - 1, anchor.v + numRows - 1);
+
+		// Protezione foglio (Fase 32): controllata PRIMA di scrivere,
+		// stesso principio di PasteSelection/CommitEditing.
+		if (!fSheetView->GuardProtectedEdit(destRange))
+		{
+			be_clipboard->Unlock();
+			return;
+		}
 
 		fSheetView->SaveUndoState(destRange);
 
@@ -3398,6 +3451,8 @@ void MainWindow::ToggleBold()
 {
 	if (!fDoc)
 		return;
+	if (!fSheetView->GuardProtectedEdit(fSheetView->SelectionRange()))
+		return;
 
 	// Bug reale segnalato dall'utente: "Annulla" non toccava affatto la
 	// formattazione, solo i valori delle celle -- SaveUndoState cattura
@@ -3441,6 +3496,8 @@ void MainWindow::ToggleItalic()
 {
 	if (!fDoc)
 		return;
+	if (!fSheetView->GuardProtectedEdit(fSheetView->SelectionRange()))
+		return;
 
 	// Stesso motivo di ToggleBold sopra.
 	fSheetView->SaveUndoState(fSheetView->SelectionRange());
@@ -3478,6 +3535,8 @@ void MainWindow::SetAlignment(char alignment)
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -3498,6 +3557,8 @@ void MainWindow::SetTextColor(rgb_color color)
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -3518,6 +3579,8 @@ void MainWindow::SetBackgroundColor(rgb_color color)
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -3562,6 +3625,8 @@ void MainWindow::ToggleBorder(int side)
 	uchar newValue = hadBorder ? 0 : 1;
 
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -3582,6 +3647,8 @@ void MainWindow::ClearBorders()
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -3606,6 +3673,8 @@ void MainWindow::SetBorderThickness(uchar thickness)
 	// attivare un lato che non c'era (quello resta compito di
 	// ToggleBorder).
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -3631,6 +3700,8 @@ void MainWindow::SetBorderColor(rgb_color color)
 		return;
 
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -3662,6 +3733,8 @@ void MainWindow::HandleBorderFormatRequest(bool top, bool left, bool bottom, boo
 	// scelto in BorderWindow -- un solo passo di Annulla per l'intera
 	// scelta, non quattro.
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel);
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -3695,6 +3768,8 @@ void MainWindow::ToggleUnderline()
 	bool newValue = !activeStyle.fUnderline;
 
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -3727,6 +3802,8 @@ void MainWindow::ToggleWrapText()
 	bool newValue = !activeStyle.fWrapText;
 
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -4496,6 +4573,8 @@ void MainWindow::SetCellFormat(int32 format)
 	// colonna/predefinito), quindi non "sporca" con voci vuote le
 	// celle dell'intervallo che restano senza contenuto.
 	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
 	fSheetView->SaveUndoState(sel); // stesso motivo di ToggleBold
 	for (int row = sel.top; row <= sel.bottom; row++)
 		for (int col = sel.left; col <= sel.right; col++)
@@ -4807,6 +4886,14 @@ void MainWindow::CommitFormulaBar()
 
 	cell sel = fSheetView->Selection();
 	const char* text = fFormulaBar->Text();
+
+	// Protezione foglio (Fase 32): stesso principio di
+	// SheetView::CommitEditing (l'altro modo di confermare una cella).
+	if (!fSheetView->GuardProtectedEdit(range(sel.h, sel.v, sel.h, sel.v)))
+	{
+		SetCellMode(false);
+		return;
+	}
 
 	try
 	{
@@ -5341,6 +5428,43 @@ void MainWindow::MessageReceived(BMessage* message)
 			fSheetView->ToggleFreezePanes();
 			fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 			break;
+
+		// Protezione foglio (Fase 32): vedi il commento nel costruttore
+		// (dove i tre comandi vengono aggiunti al menu Dati).
+		case kMsgToggleProtectSheet:
+		{
+			bool nowProtected = !fSheetView->IsProtected();
+			fSheetView->SetProtected(nowProtected);
+			fSheets[fActiveSheetIndex].isProtected = nowProtected;
+			if (fProtectMenuItem)
+				fProtectMenuItem->SetMarked(nowProtected);
+			MarkModified();
+			break;
+		}
+
+		case kMsgLockSelection:
+		case kMsgUnlockSelection:
+		{
+			bool lock = (message->what == kMsgLockSelection);
+			range sel = fSheetView->SelectionRange();
+			for (int row = sel.top; row <= sel.bottom; row++)
+			{
+				for (int col = sel.left; col <= sel.right; col++)
+				{
+					cell c(col, row);
+					CellStyle cs;
+					fDoc->GetCellStyle(c, cs);
+					if (cs.fLocked != lock)
+					{
+						cs.fLocked = lock;
+						fDoc->SetCellStyle(c, cs);
+					}
+				}
+			}
+			fSheetView->Invalidate();
+			MarkModified();
+			break;
+		}
 
 		case kMsgToggleBold:
 			ToggleBold();
