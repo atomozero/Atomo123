@@ -2578,21 +2578,27 @@ static bool ResolveColorAttrs(const char** atts, const XlsxTheme& theme, rgb_col
 // specifica un colore per quel canale, il motore resta al suo
 // predefinito.
 struct ResolvedStyle {
-	bool hasBg;
-	rgb_color bg;
-	bool hasFg;
-	rgb_color fg;
-	bool hasFormat;
-	int format; // valore gia' pronto per CellStyle::fFormat
-	bool isDateFormat; // Fase 12: true se numFmtId e' un formato data/ora (vedi IsDateNumFmt) -- il valore numerico grezzo va convertito in eTimeData, non lasciato come numero
-	bool hasFontStyle; // true solo se grassetto e/o corsivo (il Regular predefinito non serve applicarlo)
-	int fontID; // indice gia' risolto in gFontSizeTable, pronto per CellStyle::fFont
-	bool hasAlignment; // true solo se diverso da eAlignGeneral (il predefinito non serve applicarlo)
-	char alignment; // EAlignment, pronto per CellStyle::fAlignment
-	bool hasBorders; // true solo se almeno un lato e' impostato
-	uchar borderT, borderL, borderB, borderR; // 0/1, pronti per CellStyle::fTBorderColor ecc (Fase 11: booleano per lato, non un vero colore)
-	bool underline; // pronto per CellStyle::fUnderline (nessun campo "has": false coincide gia' col predefinito)
-	bool wrapText; // pronto per CellStyle::fWrapText (nessun campo "has", stesso motivo di underline sopra)
+	// Valori predefiniti espliciti (Fase 34): senza questi, -O2 segnala
+	// correttamente -Wmaybe-uninitialized su ogni campo qui sotto --
+	// ogni lettura e' gia' protetta dal suo "has*" corrispondente (mai
+	// letto un rgb_color/int a caso), ma un campo POD senza inizializzo
+	// resta comunque un valore indeterminato finche' non viene scritto,
+	// un rischio inutile da lasciare in giro quando costa zero evitarlo.
+	bool hasBg = false;
+	rgb_color bg = { 0, 0, 0, 255 };
+	bool hasFg = false;
+	rgb_color fg = { 0, 0, 0, 255 };
+	bool hasFormat = false;
+	int format = 0; // valore gia' pronto per CellStyle::fFormat
+	bool isDateFormat = false; // Fase 12: true se numFmtId e' un formato data/ora (vedi IsDateNumFmt) -- il valore numerico grezzo va convertito in eTimeData, non lasciato come numero
+	bool hasFontStyle = false; // true solo se grassetto e/o corsivo (il Regular predefinito non serve applicarlo)
+	int fontID = 0; // indice gia' risolto in gFontSizeTable, pronto per CellStyle::fFont
+	bool hasAlignment = false; // true solo se diverso da eAlignGeneral (il predefinito non serve applicarlo)
+	char alignment = 0; // EAlignment, pronto per CellStyle::fAlignment
+	bool hasBorders = false; // true solo se almeno un lato e' impostato
+	uchar borderT = 0, borderL = 0, borderB = 0, borderR = 0; // 0/1, pronti per CellStyle::fTBorderColor ecc (Fase 11: booleano per lato, non un vero colore)
+	bool underline = false; // pronto per CellStyle::fUnderline (nessun campo "has": false coincide gia' col predefinito)
+	bool wrapText = false; // pronto per CellStyle::fWrapText (nessun campo "has", stesso motivo di underline sopra)
 };
 
 enum StylesSection { kStylesNone, kStylesNumFmts, kStylesFills, kStylesFonts, kStylesBorders, kStylesCellXfs };
