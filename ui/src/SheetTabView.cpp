@@ -235,16 +235,33 @@ void SheetTabView::Draw(BRect updateRect)
 		bool active = tab.index == fActiveIndex;
 
 		BRect rect = tab.rect; // copia: DrawActiveTab/DrawInactiveTab la modificano (rimpiccioliscono al bordo interno)
+		// "side" = B_BOTTOM_BORDER, non B_TOP_BORDER (bug reale segnalato
+		// dall'utente guardando lo screenshot: le schede sembravano
+		// "capovolte", attaccate al pavimento della striscia invece che
+		// al soffitto): questa striscia sta in FONDO alla finestra, con
+		// il foglio sopra e il footer sotto -- l'opposto di un BTabView
+		// tipico (schede sopra, contenuto sotto). "side" indica il
+		// bordo ESTERNO della striscia (quello lontano dal contenuto
+		// vero), quindi va sul lato opposto a dove sta il foglio.
+		//
+		// La scheda ATTIVA in piu' omette il bordo SUPERIORE (quello
+		// verso il foglio): e' il modo in cui una scheda "attaccata al
+		// soffitto" si fonde visivamente col contenuto sopra di lei,
+		// invece di restare un riquadro chiuso su tutti e quattro i
+		// lati come le schede non attive -- cambiare solo "side" da
+		// solo (tentativo precedente) non bastava, il parametro
+		// "borders" con B_ALL_BORDERS non omette mai nulla di suo.
 		if (active)
 		{
 			be_control_look->DrawActiveTab(this, rect, updateRect, base, 0,
-				BControlLook::B_ALL_BORDERS, BControlLook::B_TOP_BORDER,
+				BControlLook::B_ALL_BORDERS & ~BControlLook::B_TOP_BORDER,
+				BControlLook::B_BOTTOM_BORDER,
 				(int32)v, selectedPos, 0, (int32)fVisible.size() - 1);
 		}
 		else
 		{
 			be_control_look->DrawInactiveTab(this, rect, updateRect, base, 0,
-				BControlLook::B_ALL_BORDERS, BControlLook::B_TOP_BORDER,
+				BControlLook::B_ALL_BORDERS, BControlLook::B_BOTTOM_BORDER,
 				(int32)v, selectedPos, 0, (int32)fVisible.size() - 1);
 		}
 
