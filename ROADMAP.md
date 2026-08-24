@@ -563,6 +563,31 @@ What shipped in v0.2.5, on top of v0.2.1:
   (every read is already guarded by its own `has*` flag) but free to
   fix properly with explicit defaults
 
+What shipped since v0.2.6, not yet in a tagged release:
+- Sheet tabs now use `BControlLook::DrawActiveTab`/`DrawInactiveTab`
+  (the same drawing primitives `BTabView` itself uses internally)
+  instead of hand-drawn flat-color rectangles — real user feedback (a
+  couple of users asked about it), evaluated `BTabView`/`BTab` first
+  and ruled it out: it manages one content view per tab, but every
+  sheet here shares the same `SheetView` instance, and it has no
+  built-in overflow scrolling for a workbook with dozens of sheets
+  (both already solved by the existing custom `SheetTabView`, kept
+  as-is). `BControlLook` gets the native theme-aware chrome (dark
+  mode, accent colors, consistent bevels) without touching any of
+  that architecture — only the fill/stroke calls inside `Draw()`
+  changed. One deliberate design change along the way: a sheet's tab
+  color (`<sheetPr><tabColor>`) used to fill a non-active tab's whole
+  area and only show as a thin accent bar on the active one —
+  `BControlLook` derives its shading from a single theme-aware "base"
+  color, not an arbitrary per-tab RGB, so a full-tab fill isn't
+  possible anymore. Both active and inactive colored tabs now show
+  the same thin accent bar instead, closer to modern Excel's own tab
+  color treatment. The scroll arrows also moved to `BControlLook::
+  DrawArrowShape`, from hand-drawn triangles. `tests/
+  test_sheet_tabs.cpp`'s pixel-level checks updated to match (verifies
+  the accent bar's presence/color, not an exact background shade that
+  is now theme-dependent by design)
+
 What shipped in v0.2.6, on top of v0.2.5:
 - Fixed a critical bug: any XLSX with more than one sheet failed to
   open with "i dati risultanti non sono validi", because the XLSX
