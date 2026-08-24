@@ -17,7 +17,15 @@ CXX := g++
 # (Container.spill.cpp) che spariva con una "make clean" completa --
 # stessa identica classe di bug gia' corretta nel Makefile della UI
 # (commit 8c895e5), mai applicata qui al motore fino ad ora.
-CXXFLAGS := -std=gnu++17 -Wall -g -fPIC -MMD -MP
+# -O2 (Fase 34, richiesta esplicita dell'utente dopo aver misurato
+# l'apertura di un file XLSX reale a 13 fogli): l'intero progetto non
+# aveva mai avuto un flag di ottimizzazione, solo -g -- confermato con
+# un confronto diretto (stesso identico binario/libreria, solo -O2 in
+# piu'): Translate() 53,9s -> 17,1s, LoadASCDBook 30,0s -> 9,2s,
+# RecalculateWorkbook 2,0s -> 0,26s. -g resta insieme a -O2 (entrambi
+# supportati da gcc): i crash report restano leggibili, vedi il
+# commento su feedback_debugger_save_report nella memoria di progetto.
+CXXFLAGS := -std=gnu++17 -Wall -g -O2 -fPIC -MMD -MP
 SRCDIRS := src/Cell src/Formula src/Functions src/Excel src/FileSys src/Collections src/Misc-Classes src/Utils src/Config src/bsl src/Metrowerks src/Stubs
 INCLUDES := $(addprefix -I, $(SRCDIRS))
 OBJDIR := obj
@@ -93,6 +101,14 @@ test-names: $(LIB)
 	$(CXX) -c tests/named_ranges_test.cpp -o $(OBJDIR)/named_ranges_test.o $(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/named_ranges_test $(OBJDIR)/named_ranges_test.o -L. -lengine -lbe
 	./tests/named_ranges_test
+
+# Test di CContainer::NewCell dopo la riscrittura per una sola discesa
+# nell'albero invece di due (Fase 34): vedi il commento in cima a
+# newcell_test.cpp.
+test-newcell: $(LIB)
+	$(CXX) -c tests/newcell_test.cpp -o $(OBJDIR)/newcell_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/newcell_test $(OBJDIR)/newcell_test.o -L. -lengine -lbe
+	./tests/newcell_test
 
 # Test dei riferimenti a tabella strutturata di Excel (Fase 14,
 # "Tabella12[Codice]"): CContainer::AddTable/ResolveName -- vedi il

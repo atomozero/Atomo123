@@ -8,7 +8,10 @@
 # sistema da installare).
 
 CXX := g++
-CXXFLAGS := -std=gnu++17 -Wall -g -fPIC
+# -O2 (Fase 34): vedi il commento in ../../engine/Makefile -- misurato
+# proprio su questo translator (Translate() 53,9s -> 17,1s su un file
+# XLSX reale a 13 fogli).
+CXXFLAGS := -std=gnu++17 -Wall -g -O2 -fPIC
 ENGINE_DIR := ../../engine
 ENGINE_SRCDIRS := $(ENGINE_DIR)/src/Cell $(ENGINE_DIR)/src/Formula \
 	$(ENGINE_DIR)/src/Functions $(ENGINE_DIR)/src/Excel \

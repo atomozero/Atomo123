@@ -191,16 +191,37 @@ void CContainer::NewCell(const cell& inLocation, const Value& inValue, void *inF
 	// screenshot, ogni riscrittura del valore perdeva completamente la
 	// formattazione della cella. Una cella davvero nuova (nessuna voce
 	// preesistente) resta col comportamento di sempre.
-	cellmap::iterator existing = fCellData.find(inLocation);
-	int preservedStyle = (existing != fCellData.end())
-		? (*existing).second.mStyle : fDefaultCellStyle;
+	//
+	// lower_bound() invece di find() (Fase 34, richiesta esplicita
+	// dell'utente dopo aver profilato l'apertura di un file XLSX reale
+	// a 13 fogli: ~50-100 microsecondi per NewCell su fogli da centinaia
+	// di migliaia di celle, il vero collo di bottiglia sia di Translate()
+	// sia di LoadASCD -- entrambi passano da qui per ogni cella): il
+	// vecchio codice cercava la cella due volte, una con find() qui
+	// sopra e una seconda volta dentro fCellData[inLocation]="assegna
+	// dentro un vero e proprio std::map (cellmap in Container.h), dove
+	// ogni ricerca costa O(log n) con un fattore costante reale (nodi
+	// sparsi in memoria, non contigui). lower_bound() restituisce la
+	// STESSA informazione (esiste gia'? qual e' il suo iteratore?) E la
+	// posizione corretta per un inserimento nuovo, quindi la seconda
+	// ricerca sotto sparisce del tutto -- insert(hint, ...) con
+	// quell'iteratore inserisce in tempo costante quando la cella e'
+	// davvero nuova (il caso comune importando un file, celle scritte
+	// in ordine crescente), o comunque non piu' lento di prima nel
+	// caso peggiore.
+	cellmap::iterator it = fCellData.lower_bound(inLocation);
+	bool exists = it != fCellData.end() && !fCellData.key_comp()(inLocation, it->first);
+	int preservedStyle = exists ? it->second.mStyle : fDefaultCellStyle;
 
 	data = inValue;
 	data.mFormula = inFormula;
 	data.mConstant = !inFormula || CFormula(inFormula).IsConstant();
 	data.mStyle = preservedStyle;
 
-	fCellData[inLocation] = data;
+	if (exists)
+		it->second = data;
+	else
+		fCellData.insert(it, cellmap::value_type(inLocation, data));
 } /* NewCell */
 
 void CContainer::DisposeCell(const cell& inLoc)

@@ -21,7 +21,10 @@ CXX := g++
 # perche' i loro .cpp non erano stati toccati direttamente in
 # quell'ultima modifica -- stesso sizeof(MultiChartData) atteso da
 # funzioni diverse, in realta' diverso fra le unita' di compilazione.
-CXXFLAGS := -std=gnu++17 -Wall -g -MMD -MP
+# -O2 (Fase 34): vedi il commento gemello in engine/Makefile -- stesso
+# identico riscontro misurato (LoadASCDBook 30,0s -> 9,2s su un file
+# XLSX reale a 13 fogli).
+CXXFLAGS := -std=gnu++17 -Wall -g -O2 -MMD -MP
 ENGINE_DIR := ../engine
 ENGINE_SRCDIRS := $(ENGINE_DIR)/src/Cell $(ENGINE_DIR)/src/Formula \
 	$(ENGINE_DIR)/src/Functions $(ENGINE_DIR)/src/Excel \
