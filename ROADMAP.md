@@ -636,6 +636,25 @@ What shipped in v0.2.6, on top of v0.2.5:
   buried at the bottom by raw size) rather than just grouped by
   feature category
 
+What shipped in v0.2.7, on top of v0.2.6 (in progress):
+- Fixed a real data-loss bug: opening an XLSM (macro-enabled workbook)
+  and resaving it used to silently drop the entire VBA project — the
+  XLSX translator never read `xl/vbaProject.bin` on import, and
+  `MainWindow::SaveToFile`'s extension dispatch didn't even recognize
+  `.xlsm` (it fell through to the native ASCB writer, which would have
+  written raw native-format bytes under a `.xlsm` name). Fixed blind
+  (bytes stored and carried through, never parsed or executed): the
+  macro project is now read on import, threaded through the ASCD/ASCB
+  format as a new optional trailing section (workbook-level, attached
+  to the first sheet — same "always write, EOF-tolerant read" pattern
+  as every other optional section in this format), and written back
+  correctly (including the macro-enabled content-type override Excel
+  itself checks, `application/vnd.ms-excel.sheet.macroEnabled.main+xml`,
+  and the `xl/vbaProject.bin` relationship) whenever the user saves
+  with a `.xlsm` extension specifically. Saving the same document as
+  plain `.xlsx` still strips the macros on purpose, matching Excel's
+  own behavior when it resaves a macro workbook without them enabled
+
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
 **v3.0 is functionally complete** as of the array formulas item above
@@ -700,11 +719,7 @@ list deliberately deviates from pure effort-sorting:
   round-trips through every file format — nothing in the UI currently
   *reads* it. A "Proteggi foglio" toggle plus a locked-cell edit guard
   is mostly wiring, not new design
-- **XLSM round-trip preservation.** Today an XLSM with macros opens
-  like any XLSX and the macro project is silently dropped — reopening
-  and resaving destroys it. Preserving the macro part blind (store
-  the bytes, never parse or execute them) so a round-trip doesn't lose
-  data is independent of v4.0 scripting and far cheaper
+- ~~**XLSM round-trip preservation.**~~ Shipped in v0.2.7 — see above
 - **More financial functions** (`NPV`, `IRR`, `PMT`, `FV`, `PV`,
   `RATE`). Same shape as the five function batches already shipped in
   v3.0 — register, implement, test, no engine changes needed. High
