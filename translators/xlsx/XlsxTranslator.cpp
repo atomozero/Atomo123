@@ -24,6 +24,7 @@
 
 #include <Catalog.h>
 #include <Cursor.h>
+#include <DataIO.h>
 #include <Entry.h>
 #include <Font.h>
 #include <image.h>
@@ -80,7 +81,15 @@ enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2
 // duplicazione gia' esistente di WriteASCD/ReadASCD sopra -- i
 // translator non linkano contro ui/src/, per non introdurre una
 // dipendenza di link fra loro e l'app.
-static const char kASCDBookMagic[4] = { 'A', 'S', 'C', 'B' };
+// "ASC2" (Fase 32b), non piu' "ASCB": duplicato da ui/src/AscdIO.cpp,
+// stesso motivo di ogni altra sezione di questo file -- vedi il
+// commento su kASCDBook2Magic li' sul BUG REALE che questo cambio di
+// formato risolve (un foglio senza le sezioni vbaProject/blocco
+// celle/protezione, in mezzo a una cartella multi-foglio, faceva
+// leggere a LoadASCD i primi byte del foglio successivo come se fossero
+// l'inizio di quelle sezioni). Ogni blocco per foglio e' ora preceduto
+// dalla propria lunghezza in byte.
+static const char kASCDBook2Magic[4] = { 'A', 'S', 'C', '2' };
 
 // Duplicati da ui/src/AscdIO.cpp (stesso formato binario per la
 // sezione colori, vedi il commento su WriteASCD sotto).
@@ -5066,13 +5075,13 @@ struct ParsedSheet {
 	bool isProtected = false;
 };
 
-// Scrive una cartella di lavoro multi-foglio in formato "ASCB" (vedi
-// il commento su kASCDBookMagic sopra): riusa WriteASCD cosi' com'e'
+// Scrive una cartella di lavoro multi-foglio in formato "ASC2" (vedi
+// il commento su kASCDBook2Magic sopra): riusa WriteASCD cosi' com'e'
 // per ogni foglio, nessuna duplicazione della serializzazione per
 // cella.
 static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionIO* dest)
 {
-	if (dest->Write(kASCDBookMagic, 4) != 4)
+	if (dest->Write(kASCDBook2Magic, 4) != 4)
 		return B_IO_ERROR;
 
 	int32 sheetCount = (int32)sheets.size();
@@ -5088,13 +5097,24 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 		if (nameLen > 0 && dest->Write(name.data(), nameLen) != nameLen)
 			return B_IO_ERROR;
 
-		status_t err = WriteASCD(sheets[i].doc, dest, &sheets[i].colWidths, &sheets[i].images,
+		// Il blocco del foglio si scrive prima in memoria (per conoscerne
+		// la lunghezza) e poi si riversa nello stream vero, con la sua
+		// lunghezza anteposta -- vedi il commento gemello in
+		// ui/src/AscdIO.cpp (SaveASCDBook).
+		BMallocIO block;
+		status_t err = WriteASCD(sheets[i].doc, &block, &sheets[i].colWidths, &sheets[i].images,
 			&sheets[i].rowHeights, &sheets[i].showGrid,
 			&sheets[i].hasTabColor, &sheets[i].tabColor,
 			&sheets[i].hiddenRows, &sheets[i].hasAutoFilter, &sheets[i].autoFilterRange,
 			&sheets[i].charts, &sheets[i].vbaProject, &sheets[i].isProtected);
 		if (err != B_OK)
 			return err;
+
+		int32 blockLen = (int32)block.BufferLength();
+		if (dest->Write(&blockLen, sizeof(blockLen)) != (ssize_t)sizeof(blockLen))
+			return B_IO_ERROR;
+		if (blockLen > 0 && dest->Write(block.Buffer(), blockLen) != blockLen)
+			return B_IO_ERROR;
 	}
 
 	return B_OK;

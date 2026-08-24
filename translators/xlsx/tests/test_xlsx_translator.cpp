@@ -260,6 +260,49 @@ static status_t WriteASCDWithChartForTest(CContainer* doc, int16 chartLeft, int1
 static bool UnwrapFirstSheet(const unsigned char* data, size_t len,
 	const unsigned char** outAscd, size_t* outLen)
 {
+	// "ASC2" (Fase 32b, vedi il commento su kASCDBook2Magic in
+	// XlsxTranslator.cpp): come "ASCB" sotto, ma ogni blocco per foglio
+	// e' preceduto dalla propria lunghezza in byte -- qui basta leggerla
+	// per sapere ESATTAMENTE dove finisce il primo foglio, invece di
+	// assumere "tutto cio' che resta nel buffer" (falso non appena il
+	// buffer contiene piu' di un foglio).
+	if (len >= 4 && memcmp(data, "ASC2", 4) == 0)
+	{
+		if (len < 8)
+			return false;
+		int32 sheetCount;
+		memcpy(&sheetCount, data + 4, 4);
+		if (sheetCount < 1)
+			return false;
+
+		size_t pos = 8;
+		if (pos + 4 > len)
+			return false;
+		int32 nameLen;
+		memcpy(&nameLen, data + pos, 4);
+		pos += 4;
+		if (nameLen < 0 || pos + (size_t)nameLen > len)
+			return false;
+		pos += nameLen;
+
+		if (pos + 4 > len)
+			return false;
+		int32 blockLen;
+		memcpy(&blockLen, data + pos, 4);
+		pos += 4;
+		if (blockLen < 0 || pos + (size_t)blockLen > len)
+			return false;
+
+		*outAscd = data + pos;
+		*outLen = blockLen;
+		return true;
+	}
+
+	// "ASCB": formato LEGACY (congelato, mai piu' scritto da
+	// WriteASCDBook -- vedi il commento su kASCDBookMagic li'), nessun
+	// confine di lunghezza esplicito per blocco: "tutto cio' che resta
+	// nel buffer" e' corretto SOLO perche' questo formato non viene piu'
+	// prodotto da un vero export a piu' di un foglio in questi test.
 	if (len >= 4 && memcmp(data, "ASCB", 4) == 0)
 	{
 		if (len < 8)

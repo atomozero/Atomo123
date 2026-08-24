@@ -42,7 +42,32 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // lo stesso identico bug all'importazione diretta da un file XLSX.
 static const int32 kASCDVersion = 2;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
+// "ASCB": formato cartella di lavoro LEGACY, congelato per sempre a
+// questo elenco di sezioni per foglio (fino a "Imposta pagina", Fase
+// 29) -- MAI piu' esteso, vedi il commento su kASCDBook2Magic sotto sul
+// perche'. SaveASCDBook non lo scrive piu' (solo LoadASCDBook lo
+// riconosce ancora, per aprire i file gia' scritti da prima).
 static const char kASCDBookMagic[4] = { 'A', 'S', 'C', 'B' };
+// "ASC2" (Fase 32b): sostituisce "ASCB" come formato scritto da
+// SaveASCDBook -- ogni blocco per foglio e' preceduto dalla propria
+// LUNGHEZZA in byte (int32), cosi' LoadASCDBook puo' delimitare
+// esattamente dove finisce un foglio e comincia il successivo SENZA
+// dover sapere in anticipo quali sezioni finali il lettore riconosce.
+// BUG REALE che questo risolve: aggiungere una sezione in coda al
+// formato ASCD (fatto piu' volte in questo progetto, es. il titolo dei
+// grafici in Fase 17, l'area di stampa in Fase 29, il progetto VBA in
+// Fase 31, il blocco/la protezione in Fase 32) e' sicuro SOLO se ogni
+// file esistente sul disco ha gia' quella sezione per OGNI foglio --
+// falso per qualunque cartella multi-foglio scritta prima
+// dell'aggiunta: LoadASCD, non trovando la sezione attesa alla fine del
+// blocco del foglio N, leggeva i primi byte del blocco del foglio N+1
+// come se fossero l'inizio di quella sezione, corrompendo tutta la
+// lettura successiva -- scoperto aprendo un vero file .ascd
+// dell'utente (4 fogli) scritto il giorno prima dell'aggiunta delle
+// sezioni vbaProject/blocco celle/protezione. Il confine di lunghezza
+// esplicito qui elimina la classe di bug per QUALUNQUE sezione futura,
+// non serve piu' un cambio di formato ogni volta.
+static const char kASCDBook2Magic[4] = { 'A', 'S', 'C', '2' };
 
 bool IsASCDFile(BPositionIO* source)
 {
@@ -992,7 +1017,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	AscdPrintSettings* printSettings,
 	bool skipInitialRecalc,
 	std::vector<unsigned char>* vbaProject,
-	bool* isProtected)
+	bool* isProtected,
+	bool skipVbaAndProtectionSections)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -2029,6 +2055,16 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// BUG REALE (Fase 32b): vedi il commento su
+	// "skipVbaAndProtectionSections" in AscdIO.h -- una cartella di
+	// lavoro LEGACY (magic "ASCB", congelata qui per sempre) non ha
+	// nessuna di queste tre sezioni per NESSUN foglio, quindi provare a
+	// leggerle qui finirebbe per consumare i primi byte del blocco del
+	// foglio SUCCESSIVO nello stream concatenato, corrompendo tutto il
+	// resto della lettura.
+	if (skipVbaAndProtectionSections)
+		return B_OK;
+
 	// Sezione progetto VBA (XLSM, Fase 31), in coda, ULTIMA sezione del
 	// formato: stesso schema EOF-tollerante delle sezioni sopra -- vedi
 	// il commento gemello nel writer (SaveASCD). Un file scritto prima
@@ -2243,7 +2279,8 @@ bool IsASCDBookFile(BPositionIO* source)
 	off_t pos = source->Position();
 
 	char magic[4];
-	bool isBook = source->Read(magic, 4) == 4 && memcmp(magic, kASCDBookMagic, 4) == 0;
+	bool isBook = source->Read(magic, 4) == 4
+		&& (memcmp(magic, kASCDBookMagic, 4) == 0 || memcmp(magic, kASCDBook2Magic, 4) == 0);
 
 	source->Seek(pos, SEEK_SET);
 	return isBook;
@@ -2251,7 +2288,10 @@ bool IsASCDBookFile(BPositionIO* source)
 
 status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 {
-	if (dest->Write(kASCDBookMagic, 4) != 4)
+	// "ASC2" (Fase 32b), non piu' "ASCB": vedi il commento su
+	// kASCDBook2Magic sopra sul perche' -- ogni blocco per foglio e'
+	// preceduto dalla propria lunghezza in byte.
+	if (dest->Write(kASCDBook2Magic, 4) != 4)
 		return B_IO_ERROR;
 
 	int32 sheetCount = (int32)sheets.size();
@@ -2268,7 +2308,12 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 		if (nameLen > 0 && dest->Write(sheet.name.String(), nameLen) != nameLen)
 			return B_IO_ERROR;
 
-		status_t err = SaveASCD(sheet.doc, dest, &sheet.charts, &sheet.colWidths,
+		// Il blocco del foglio si scrive prima in memoria (per conoscerne
+		// la lunghezza) e poi si riversa nello stream vero -- lo stesso
+		// blocco che SaveASCD scriverebbe direttamente, solo con la sua
+		// lunghezza anteposta.
+		BMallocIO block;
+		status_t err = SaveASCD(sheet.doc, &block, &sheet.charts, &sheet.colWidths,
 			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
@@ -2276,6 +2321,12 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			&sheet.vbaProject, &sheet.isProtected);
 		if (err != B_OK)
 			return err;
+
+		int32 blockLen = (int32)block.BufferLength();
+		if (dest->Write(&blockLen, sizeof(blockLen)) != (ssize_t)sizeof(blockLen))
+			return B_IO_ERROR;
+		if (blockLen > 0 && dest->Write(block.Buffer(), blockLen) != blockLen)
+			return B_IO_ERROR;
 	}
 
 	return B_OK;
@@ -2289,7 +2340,16 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
 		return B_BAD_DATA;
-	if (memcmp(magic, kASCDBookMagic, 4) != 0)
+
+	// "ASCB": formato LEGACY (vedi il commento su kASCDBookMagic sopra)
+	// -- ogni blocco per foglio non ha un confine di lunghezza esplicito,
+	// quindi LoadASCD deve fermarsi ESATTAMENTE dove si fermava prima
+	// dell'aggiunta di vbaProject/blocco celle/protezione (Fase 31/32),
+	// altrimenti leggerebbe i primi byte del foglio successivo come se
+	// fossero l'inizio di quelle sezioni -- bug reale, vedi il commento
+	// su "skipVbaAndProtectionSections" in AscdIO.h.
+	bool legacy = memcmp(magic, kASCDBookMagic, 4) == 0;
+	if (!legacy && memcmp(magic, kASCDBook2Magic, 4) != 0)
 		return B_BAD_DATA;
 
 	int32 sheetCount;
@@ -2315,12 +2375,59 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 		sheet.name = nameBuf;
 		sheet.doc = new CContainer(NULL, NULL);
 
-		status_t err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths,
-			&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
-			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
-			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
-			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
-			skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected);
+		status_t err;
+		if (legacy)
+		{
+			// Nessun confine di lunghezza: si legge direttamente dallo
+			// stream condiviso, saltando le tre sezioni che un file
+			// "ASCB" non ha mai avuto per nessun foglio (vedi sopra).
+			err = LoadASCD(source, sheet.doc, &sheet.charts, &sheet.colWidths,
+				&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
+				&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
+				&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
+				&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
+				skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected,
+				true /* skipVbaAndProtectionSections */);
+		}
+		else
+		{
+			int32 blockLen;
+			if (source->Read(&blockLen, sizeof(blockLen)) != (ssize_t)sizeof(blockLen)
+				|| blockLen < 0)
+			{
+				sheet.doc->Release();
+				for (size_t j = 0; j < outSheets->size(); j++)
+					(*outSheets)[j].doc->Release();
+				outSheets->clear();
+				return B_BAD_DATA;
+			}
+
+			// Il blocco si legge per intero in memoria e si analizza li'
+			// dentro: qualunque sezione LoadASCD non trovi si ferma
+			// all'esatta fine di QUESTO buffer (vera fine del blocco di
+			// questo foglio), mai sconfinando nel foglio successivo --
+			// stesso principio del confine di lunghezza scritto da
+			// SaveASCDBook sopra, ma dal lato lettura. Protegge anche
+			// contro qualunque sezione aggiunta in futuro, senza dover
+			// piu' cambiare formato ogni volta.
+			std::vector<char> blockBuf(blockLen);
+			if (blockLen > 0 && source->Read(blockBuf.data(), blockLen) != blockLen)
+			{
+				sheet.doc->Release();
+				for (size_t j = 0; j < outSheets->size(); j++)
+					(*outSheets)[j].doc->Release();
+				outSheets->clear();
+				return B_BAD_DATA;
+			}
+
+			BMemoryIO block(blockBuf.data(), blockLen);
+			err = LoadASCD(&block, sheet.doc, &sheet.charts, &sheet.colWidths,
+				&sheet.rowHeights, &sheet.frozenRows, &sheet.frozenCols, &sheet.images,
+				&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
+				&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
+				&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
+				skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected);
+		}
 		if (err != B_OK)
 		{
 			sheet.doc->Release();

@@ -144,7 +144,25 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// attributo di stile (allineamento, bordi, ecc.), stesso principio
 	// gia' seguito da quei campi. NULL/false = foglio non protetto, il
 	// comportamento di sempre.
-	bool* isProtected = NULL);
+	bool* isProtected = NULL,
+	// BUG REALE (Fase 32b): un file .ascd/.ascb multi-foglio scritto
+	// PRIMA delle sezioni vbaProject/celle sbloccate/protezione (Fase
+	// 31/32) smetteva di aprirsi -- non solo perdeva quei dati, l'intero
+	// file falliva con B_BAD_DATA. Motivo: dentro una cartella di lavoro
+	// concatenata (LoadASCDBook), "fine sezione assente" e "fine del
+	// blocco di QUESTO foglio, inizia quello successivo" sono
+	// indistinguibili senza un confine esplicito -- un foglio vecchio
+	// SENZA queste sezioni fa leggere a LoadASCD i primi byte del foglio
+	// SUCCESSIVO come se fossero l'inizio di queste sezioni, corrompendo
+	// tutto il resto della lettura. Vedi LoadASCDBook in questo stesso
+	// file: la cartella "ASCB" legacy (congelata per sempre a questo
+	// elenco di sezioni, mai piu' toccata) passa true qui per SALTARE
+	// del tutto queste tre sezioni via ogni chiamata a LoadASCD, esatto
+	// comportamento di prima che esistessero. La cartella "ASC2" (nuovo
+	// formato, con un confine di lunghezza esplicito per foglio) passa
+	// false: li' il confine stesso protegge dallo stesso problema per
+	// QUALUNQUE sezione futura, non serve piu' un interruttore dedicato.
+	bool skipVbaAndProtectionSections = false);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
