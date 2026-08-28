@@ -71,6 +71,15 @@ had stopped opening. Not yet tagged as a release. See `CHANGELOG.md`
 for the full detail on each, including the real bugs found while
 building them.
 
+**Next up (starting 2026-08-28): closing the gaps in XLSX standard
+compatibility** — see "Path to 100% XLSX standard compatibility"
+below. This became the priority after this session's `.ascd` bugfix
+work, which found several real, silent data-loss patterns in the XLSX
+translator while investigating an unrelated bug; auditing the
+translator systematically against the OOXML spec (rather than waiting
+for the next one to surface in a user's file) is worth doing before
+anything else.
+
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
 **v3.0 is functionally complete** as of the array formulas item above
@@ -94,15 +103,194 @@ only mature open implementation and is deeply coupled to its own UNO
 API, not extractable as-is) — falls back to a self-written VBA-subset
 interpreter if the spike finds nothing usable.
 
+## Path to 100% XLSX standard compatibility
+
+This is a different axis from "Path to full Excel parity" below: that
+list is about **app features** Excel has that Atomo123 doesn't yet
+(more functions, more chart types, Goal Seek...). This list is about
+**file-format round-trip fidelity** — parts of a real `.xlsx` file
+(OOXML/ECMA-376) that this translator either mis-reads, silently
+drops, or never writes, even for things the app itself already
+supports natively (comments, hyperlinks, freeze panes, print
+settings...). A perfectly feature-complete app can still corrupt or
+lose a user's data through the file format if the translator has
+gaps — which is exactly the bug class this session's `.ascd` fix and
+the XLSM/protection work both belong to.
+
+Compiled 2026-08-28 by auditing `translators/xlsx/XlsxTranslator.cpp`
+directly against the OOXML parts/attributes it does and doesn't
+inspect (not from the outdated prose in `docs/TRANSLATORS.md`, which
+still claims — incorrectly — that only `sheet1.xml` is ever read;
+multi-sheet import via `xl/workbook.xml`/`_rels` has in fact worked
+for a long time). `docs/TRANSLATORS.md` needs a rewrite alongside this
+work, not just this roadmap.
+
+### How this is ordered
+
+Same principle as "Path to full Excel parity" below: silent data loss
+beats an absent feature, which beats a cosmetic gap. A file that
+*looks* like it opened correctly but quietly turned live formulas into
+frozen numbers is worse than a file that visibly can't do something.
+
+### Phase 1 — silent data loss on import (do first, no exceptions)
+
+- **Shared formulas (`<f t="shared" si="N"/>`) import as static
+  numbers, not formulas.** This is the single most consequential gap
+  found in this audit. When a user fills/copies a formula across a
+  range in real Microsoft Excel, Excel very commonly writes it as a
+  "shared formula" group: one master cell carries the actual formula
+  text (`<f t="shared" ref="B2:B20" si="0">A2*2</f>`), every other
+  cell in the range carries only an empty
+  `<f t="shared" si="0"/>` and relies on the reader to reconstruct its
+  formula from the master, shifted by the relative offset. This
+  translator's parser doesn't look at `<f>`'s attributes at all — it
+  only ever uses the literal text between the tags — so every
+  non-master cell in the range has `ctx->formula` empty and silently
+  falls through to importing its cached `<v>` as a plain, dead number.
+  For a typical financial/budget model (formula filled down a whole
+  column) this can mean **the master cell recalculates and every other
+  cell in the column does not**, with no error, dialog, or visual
+  difference until the user changes an input and wonders why most of
+  the column didn't update. Fix: track `si` → (anchor cell, formula
+  text) per sheet while parsing, and for an empty-bodied shared `<f>`,
+  reconstruct its formula by shifting the anchor's relative references
+  by (current cell − `ref`'s top-left)
+- **Legacy array formulas (`<f t="array" ref="...">`) have the same
+  failure mode** for any array formula spanning more than one cell
+  (entered with Ctrl+Shift+Enter in real Excel): only the top-left
+  cell of the range carries formula text, the rest are empty and
+  silently import as static values. Same root cause as shared
+  formulas, same fix shape, but no relative-reference shifting needed
+  (an array formula's other cells all show the *same* formula, not a
+  shifted one) — simpler than the shared-formula fix, should probably
+  be done first as a warm-up
+- **Named ranges / defined names (`<definedNames>` in
+  `xl/workbook.xml`) are not read or written at all.** The engine
+  already has full named-range support (`engine/tests/
+  named_ranges_test.cpp`, used today for CSV/native files and even
+  parsed out of legacy BIFF `.xls` via `Excel.pass1.cpp`) — XLSX is the
+  one format that never wires it up. Two real consequences: (1) a
+  formula in an imported XLSX that references a named range Excel
+  defined (`=SUM(Budget2026)`) fails to resolve, since the name was
+  never registered; (2) Excel itself stores **Print Area and Print
+  Titles as special defined names** (`_xlnm.Print_Area`,
+  `_xlnm.Print_Titles`), so a real Excel file's print area is silently
+  lost on import, and this app's own print area/settings (already
+  saved per-sheet in the native format since v0.2.5) are lost on every
+  export to `.xlsx` — the two features look done, but only for the
+  native round-trip
+
+### Phase 2 — real native features with zero XLSX round-trip
+
+Everything here already works in the app and persists correctly in
+the native `.ascd` format; none of it survives a trip through
+`.xlsx`, in either direction, today.
+
+- **Cell comments/notes.** `CContainer::SetComment`/`GetComment` are a
+  real, working feature — the XLSX translator writes and reads an
+  always-empty placeholder section specifically so multi-sheet books
+  stay aligned (see the `.ascd` book-format fix above), but never
+  actually parses `<comments>`/the legacy-drawing VML anchor on
+  import, or emits them on export. A commented real Excel file loses
+  every comment on import; a commented Atomo123 file loses every
+  comment on export to `.xlsx`
+- **Hyperlinks.** Same shape as comments exactly: `<hyperlinks>` (plus
+  its `r:id` → URL indirection through `sheetN.xml.rels`) is never
+  parsed on import, never written on export
+- **Data validation.** `<dataValidations>` is never parsed on import
+  (dropdown lists, numeric/date range rules, custom formula rules all
+  silently vanish); need to also verify/add the export side
+- **Freeze/split panes.** The app has real freeze-pane support
+  (Phase 7), but `<pane>` inside `<sheetView>` is never read or
+  written — only `showGridLines` is extracted from `<sheetView>`
+  today. A file with frozen headers loses that on both import and
+  export
+- **Print settings for XLSX specifically** (margins, scale,
+  header/footer, print area). The native format has carried all of
+  this per-sheet since v0.2.5 (`AscdPrintSettings`) — none of it maps
+  to `<pageSetup>`/`<pageMargins>`/`<headerFooter>` or the
+  `_xlnm.Print_Area`/`_xlnm.Print_Titles` defined names (see Phase 1)
+  on the XLSX side. Do this together with the defined-names fix above,
+  since print area needs it anyway
+- **Border color is read as presence/absence per side only**, not the
+  actual RGB (`ParseStyles` tracks which sides have a border, not what
+  color) — a real but narrower gap than the others in this phase,
+  included here because it's the same "partially wired" pattern
+
+### Phase 3 — partial fidelity, moderate value
+
+- **Conditional formatting rule types beyond `cellIs`/
+  `duplicateValues`.** `colorScale`/`dataBar`/`iconSet`/`containsText`/
+  `top10`/arbitrary-formula `expression` rules are recognized and
+  safely ignored (no rule added) rather than misapplied — correct but
+  incomplete. This should happen together with the identically-named
+  item already in "Path to full Excel parity" Tier 1 below (icon
+  sets/color scales/data bars as an app feature) — implementing the
+  app-side rule type and its XLSX import in the same pass avoids
+  building the evaluator twice
+- **Legacy indexed color palette** (`indexed="N"`, the fixed 56-color
+  Excel 97-2003 table) resolves to the engine's default color instead
+  of the real one. Rare in files saved by modern Excel/LibreOffice,
+  more likely in old files re-saved without a full re-color pass
+- **Real Excel pivot tables** (`<pivotTable>`/
+  `xl/pivotCache/pivotCacheDefinition*.xml`) have no XLSX round-trip
+  at all — a pivot table in an imported file is invisible today (only
+  its underlying source data imports, if that's on a separate visible
+  sheet), and this app's own pivot feature never exports as a real
+  OOXML pivot table, only as plain calculated cells. Large: needs its
+  own design pass, likely comparable in effort to the chart
+  import/export work already done, probably belongs after Phase 1/2
+  land
+
+### Phase 4 — rare spec corners, low priority
+
+- `calcChain.xml`, `connections.xml`, `externalLinks/*`,
+  `customXml/*` — safe to keep ignoring; Excel regenerates
+  `calcChain.xml` itself and doesn't require any of these to open a
+  file
+- **Threaded comments** (`xl/threadedComments/*.xml` + `xl/persons.xml`,
+  the modern "Notes vs. Comments" format Excel has used since 2019) —
+  once Phase 2's legacy `<comments>` support lands, decide whether
+  threaded comments need separate handling or can degrade to a plain
+  comment (likely acceptable: this app has no concept of comment
+  threads/replies either)
+- **Sparklines, embedded OLE objects/form controls, digital
+  signatures** — no support and no plan; each would need real design
+  work disproportionate to how often a typical file uses them
+- **Password-hash sheet/workbook protection** (Excel's actual
+  `<sheetProtection password="..."/>` legacy hash or the newer
+  `algorithmName`/`hashValue`/`saltValue`/`spinCount` form) — this
+  app's protection (shipped in v0.2.7) is an unauthenticated on/off
+  flag, matching the *behavior* Excel shows to a casual user but not
+  the actual security mechanism. Already called out as a real gap in
+  "Path to full Excel parity" Tier 4 below (encrypted workbooks); the
+  simple flag is intentionally not advertised as real protection
+- **`docProps/core.xml`/`app.xml`** (author, title, company, revision
+  metadata) are never written on export — cosmetic, Excel opens the
+  file fine without them
+- **Row/column outline/grouping** (Excel's +/- expand-collapse groups)
+  doesn't exist as an app feature at all yet, native or otherwise —
+  this would need real engine/UI work first, not just a translator
+  change, so it's out of scope for "XLSX compatibility" specifically
+  until the feature exists to round-trip
+- **Per-run rich text formatting inside a single cell** (part of a
+  cell's text bold, another part not) collapses to plain concatenated
+  text on import, by design — `CellStyle` is one style per cell, not
+  per character range. Fixing this for real would mean changing the
+  engine's cell model itself; noted here as an explicit, likely
+  permanent limit rather than deferred work
+
 ## Path to full Excel parity (beyond v4.0)
 
 A systematic look at what's still missing for Atomo123 to be a
 drop-in Excel replacement for most real-world files, beyond the
-"Not currently planned" items already called out above. Ordered by
-**priority tier**, not just by category or raw implementation effort
-— see "How this ordering was decided" below for the reasoning. None
-of this is scheduled yet, it's a reference list for future planning
-sessions.
+"Not currently planned" items already called out above. This list is
+about **app features**, not file-format fidelity — see "Path to 100%
+XLSX standard compatibility" above for the translator-specific gaps.
+Ordered by **priority tier**, not just by category or raw
+implementation effort — see "How this ordering was decided" below for
+the reasoning. None of this is scheduled yet, it's a reference list
+for future planning sessions.
 
 ### How this ordering was decided
 
