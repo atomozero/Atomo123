@@ -153,34 +153,27 @@ file — these are two separate lists.)
   all show the *same* formula, not a shifted one) — done first as the
   simpler warm-up, before the shared-formula fix above tackled the
   harder shifting problem
-- **Named ranges / defined names (`<definedNames>` in
-  `xl/workbook.xml`) are not read or written at all — and this turns
-  out to be a bigger gap than just XLSX.** The engine resolves named
-  ranges correctly at formula-evaluation time today (`CContainer::
-  GetOrCreateNameTable`/`ResolveName`, exercised live by the "Intervalli
-  con nome" window and covered by `engine/tests/
-  named_ranges_test.cpp`), but **no file format persists the name
-  table at all** — not XLSX, not the native `.ascd`/`.ascb` either.
-  Closing and reopening any file, in any format, silently loses every
-  named range already defined; only the current session keeps them.
-  Legacy `.xls` import doesn't help either: `Excel.pass1.cpp` does
-  parse BIFF `NAME` records, but the translator runs the importer
-  against a no-op `EngineViewStub` (headless, no live UI to attach
-  to), which the code's own comment already documents as discarding
-  every parsed name — dead code today, not a working path. Fixing this
-  properly means adding `CNameTable` (de)serialization to the engine/
-  native format FIRST (a prerequisite, not XLSX-specific), then wiring
-  XLSX's `<definedNames>` to it — at which point the legacy `.xls`
-  parsing above would need a real `CCellView` to attach to as well,
-  not the stub, to stop being dead code. Separately but for the same
-  underlying reason: Excel stores **Print Area and Print Titles as
-  special defined names** (`_xlnm.Print_Area`, `_xlnm.Print_Titles`),
-  so a real Excel file's print area is silently lost on import, and
-  this app's own print area/settings (already saved per-sheet in the
-  native format since v0.2.5, via a dedicated `AscdPrintSettings`
-  section unrelated to the name table) are lost on every export to
-  `.xlsx` specifically — this half of the item **is** XLSX-specific
-  and doesn't need the name-table prerequisite above
+- ~~**Named ranges / defined names (`<definedNames>` in
+  `xl/workbook.xml`) are not read or written at all**~~ Core fixed —
+  see `CHANGELOG.md`. `CNameTable` (de)serialization landed in the
+  engine/native format first (the real prerequisite — no format
+  persisted names at all before this, not just XLSX), then
+  `<definedNames>` import/export on top of it: a workbook-scoped name
+  is added to every sheet's own table (the closest match to "visible
+  from any sheet" without a cross-sheet name-resolution redesign), a
+  `localSheetId`-scoped one only to that sheet, and Excel's reserved
+  `_xlnm.*` bookkeeping names (Print Area, Print Titles, ...) are
+  recognized and skipped rather than polluting the table. **Two
+  explicit pieces still open**, not attempted in this pass: legacy
+  `.xls` import still discards every named range it parses (runs
+  against a no-op stub with no live document to attach to — dead code,
+  already documented as such in the code); and Excel's
+  `_xlnm.Print_Area`/`_xlnm.Print_Titles` are only *skipped* today, not
+  wired to this app's own print-area/print-settings persistence
+  (`AscdPrintSettings`, unrelated to the name table) — so a real
+  Excel file's print area still doesn't survive an XLSX round-trip,
+  the one piece of this item that was always XLSX-specific rather than
+  blocked on the name-table prerequisite
 
 ### Tier 2 — real native features with zero XLSX round-trip
 

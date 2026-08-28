@@ -694,3 +694,45 @@ What shipped since v0.2.7, not yet in a tagged release:
   closes Tier 1 of the "100% XLSX standard compatibility" plan except
   for named ranges/defined names, which needs engine-level name-table
   persistence first (see `ROADMAP.md`)
+- Added named-range persistence, closing the core of the last Tier 1
+  item. `CContainer`'s name table (`CNameTable`, the engine structure
+  behind "Intervalli con nome") worked correctly at runtime — a name
+  defined in one session correctly resolved in formulas — but was
+  never written to any file format, not even the native one: closing
+  and reopening any file lost every named range, XLSX or otherwise.
+  Fixed at the source: `ui/src/AscdIO.cpp`'s `SaveASCD`/`LoadASCD`
+  gained a new trailing section (name → range, EOF-tolerant like every
+  other optional section in this format) so the native `.ascd`/`.ascb`
+  round-trip finally carries names at all. `translators/xlsx/
+  XlsxTranslator.cpp` then wires `<definedNames>` in `xl/workbook.xml`
+  to that same mechanism in both directions: import parses each
+  `<definedName>`, skips Excel's own reserved bookkeeping names
+  (prefix `_xlnm.`, e.g. `_xlnm.Print_Area`) rather than polluting the
+  name table with them, and adds a workbook-scoped name (no
+  `localSheetId`) to every sheet's own table — the closest match to
+  "visible from any sheet" this engine's per-sheet-only name
+  resolution can offer without a larger cross-sheet redesign; a
+  sheet-scoped name (`localSheetId` present) goes only to that sheet.
+  Export writes every name back out the same way, workbook-scoped
+  (this export path is single-sheet only, nothing to disambiguate).
+  Two duplicated copies of the ASCD writer/reader needed the identical
+  new section (the translator's own private `WriteASCD`/`ReadASCD`,
+  separate from `ui/src/AscdIO.cpp` by design, same reasoning as every
+  other section already duplicated there) — a gap in only one of the
+  two would have silently dropped every name on that specific code
+  path, the same bug class fixed for real earlier this session (the
+  `.ascd` multi-sheet corruption). New regression tests cover the
+  native round-trip (`ui/tests/test_names.cpp`) and both XLSX
+  directions including the reserved-name exclusion
+  (`translators/xlsx/tests/test_xlsx_translator.cpp`) — the export
+  side needed its own from-scratch minimal ASCD fixture builder, since
+  real named-range data has to land at the very end of the format,
+  after every other optional section, all of which had to be
+  represented too (empty) to keep the fixture aligned.
+  **Not done in this pass, explicitly deferred**: legacy `.xls`
+  import still discards any named ranges it parses (runs against a
+  no-op stub with no live document to attach to, already documented in
+  the code as dead code); Excel's `_xlnm.Print_Area`/`_xlnm.
+  Print_Titles` reserved names are recognized and skipped but not yet
+  wired to this app's own print-area/print-settings persistence — see
+  `ROADMAP.md`
