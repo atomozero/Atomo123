@@ -132,7 +132,11 @@ beats an absent feature, which beats a cosmetic gap. A file that
 *looks* like it opened correctly but quietly turned live formulas into
 frozen numbers is worse than a file that visibly can't do something.
 
-### Phase 1 — silent data loss on import (do first, no exceptions)
+### Tier 1 — silent data loss on import (do first, no exceptions)
+
+(Called "Tier" here, not "Phase", to avoid confusion with the
+unrelated, already-closed numbered `Phases` table at the top of this
+file — these are two separate lists.)
 
 - **Shared formulas (`<f t="shared" si="N"/>`) import as static
   numbers, not formulas.** This is the single most consequential gap
@@ -165,22 +169,35 @@ frozen numbers is worse than a file that visibly can't do something.
   shifted one) — simpler than the shared-formula fix, should probably
   be done first as a warm-up
 - **Named ranges / defined names (`<definedNames>` in
-  `xl/workbook.xml`) are not read or written at all.** The engine
-  already has full named-range support (`engine/tests/
-  named_ranges_test.cpp`, used today for CSV/native files and even
-  parsed out of legacy BIFF `.xls` via `Excel.pass1.cpp`) — XLSX is the
-  one format that never wires it up. Two real consequences: (1) a
-  formula in an imported XLSX that references a named range Excel
-  defined (`=SUM(Budget2026)`) fails to resolve, since the name was
-  never registered; (2) Excel itself stores **Print Area and Print
-  Titles as special defined names** (`_xlnm.Print_Area`,
-  `_xlnm.Print_Titles`), so a real Excel file's print area is silently
-  lost on import, and this app's own print area/settings (already
-  saved per-sheet in the native format since v0.2.5) are lost on every
-  export to `.xlsx` — the two features look done, but only for the
-  native round-trip
+  `xl/workbook.xml`) are not read or written at all — and this turns
+  out to be a bigger gap than just XLSX.** The engine resolves named
+  ranges correctly at formula-evaluation time today (`CContainer::
+  GetOrCreateNameTable`/`ResolveName`, exercised live by the "Intervalli
+  con nome" window and covered by `engine/tests/
+  named_ranges_test.cpp`), but **no file format persists the name
+  table at all** — not XLSX, not the native `.ascd`/`.ascb` either.
+  Closing and reopening any file, in any format, silently loses every
+  named range already defined; only the current session keeps them.
+  Legacy `.xls` import doesn't help either: `Excel.pass1.cpp` does
+  parse BIFF `NAME` records, but the translator runs the importer
+  against a no-op `EngineViewStub` (headless, no live UI to attach
+  to), which the code's own comment already documents as discarding
+  every parsed name — dead code today, not a working path. Fixing this
+  properly means adding `CNameTable` (de)serialization to the engine/
+  native format FIRST (a prerequisite, not XLSX-specific), then wiring
+  XLSX's `<definedNames>` to it — at which point the legacy `.xls`
+  parsing above would need a real `CCellView` to attach to as well,
+  not the stub, to stop being dead code. Separately but for the same
+  underlying reason: Excel stores **Print Area and Print Titles as
+  special defined names** (`_xlnm.Print_Area`, `_xlnm.Print_Titles`),
+  so a real Excel file's print area is silently lost on import, and
+  this app's own print area/settings (already saved per-sheet in the
+  native format since v0.2.5, via a dedicated `AscdPrintSettings`
+  section unrelated to the name table) are lost on every export to
+  `.xlsx` specifically — this half of the item **is** XLSX-specific
+  and doesn't need the name-table prerequisite above
 
-### Phase 2 — real native features with zero XLSX round-trip
+### Tier 2 — real native features with zero XLSX round-trip
 
 Everything here already works in the app and persists correctly in
 the native `.ascd` format; none of it survives a trip through
@@ -199,7 +216,8 @@ the native `.ascd` format; none of it survives a trip through
   parsed on import, never written on export
 - **Data validation.** `<dataValidations>` is never parsed on import
   (dropdown lists, numeric/date range rules, custom formula rules all
-  silently vanish); need to also verify/add the export side
+  silently vanish) and never written on export either — the whole
+  round-trip is missing, not just one direction
 - **Freeze/split panes.** The app has real freeze-pane support
   (Phase 7), but `<pane>` inside `<sheetView>` is never read or
   written — only `showGridLines` is extracted from `<sheetView>`
@@ -209,15 +227,15 @@ the native `.ascd` format; none of it survives a trip through
   header/footer, print area). The native format has carried all of
   this per-sheet since v0.2.5 (`AscdPrintSettings`) — none of it maps
   to `<pageSetup>`/`<pageMargins>`/`<headerFooter>` or the
-  `_xlnm.Print_Area`/`_xlnm.Print_Titles` defined names (see Phase 1)
+  `_xlnm.Print_Area`/`_xlnm.Print_Titles` defined names (see Tier 1)
   on the XLSX side. Do this together with the defined-names fix above,
   since print area needs it anyway
 - **Border color is read as presence/absence per side only**, not the
   actual RGB (`ParseStyles` tracks which sides have a border, not what
-  color) — a real but narrower gap than the others in this phase,
+  color) — a real but narrower gap than the others in this tier,
   included here because it's the same "partially wired" pattern
 
-### Phase 3 — partial fidelity, moderate value
+### Tier 3 — partial fidelity, moderate value
 
 - **Conditional formatting rule types beyond `cellIs`/
   `duplicateValues`.** `colorScale`/`dataBar`/`iconSet`/`containsText`/
@@ -239,10 +257,10 @@ the native `.ascd` format; none of it survives a trip through
   sheet), and this app's own pivot feature never exports as a real
   OOXML pivot table, only as plain calculated cells. Large: needs its
   own design pass, likely comparable in effort to the chart
-  import/export work already done, probably belongs after Phase 1/2
+  import/export work already done, probably belongs after Tier 1/2
   land
 
-### Phase 4 — rare spec corners, low priority
+### Tier 4 — rare spec corners, low priority
 
 - `calcChain.xml`, `connections.xml`, `externalLinks/*`,
   `customXml/*` — safe to keep ignoring; Excel regenerates
@@ -250,21 +268,24 @@ the native `.ascd` format; none of it survives a trip through
   file
 - **Threaded comments** (`xl/threadedComments/*.xml` + `xl/persons.xml`,
   the modern "Notes vs. Comments" format Excel has used since 2019) —
-  once Phase 2's legacy `<comments>` support lands, decide whether
+  once Tier 2's legacy `<comments>` support lands, decide whether
   threaded comments need separate handling or can degrade to a plain
   comment (likely acceptable: this app has no concept of comment
   threads/replies either)
 - **Sparklines, embedded OLE objects/form controls, digital
   signatures** — no support and no plan; each would need real design
   work disproportionate to how often a typical file uses them
-- **Password-hash sheet/workbook protection** (Excel's actual
-  `<sheetProtection password="..."/>` legacy hash or the newer
-  `algorithmName`/`hashValue`/`saltValue`/`spinCount` form) — this
-  app's protection (shipped in v0.2.7) is an unauthenticated on/off
-  flag, matching the *behavior* Excel shows to a casual user but not
-  the actual security mechanism. Already called out as a real gap in
-  "Path to full Excel parity" Tier 4 below (encrypted workbooks); the
-  simple flag is intentionally not advertised as real protection
+- **Password-hash sheet protection** (Excel's actual
+  `<sheetProtection password="..."/>` legacy hash, or the newer
+  `algorithmName`/`hashValue`/`saltValue`/`spinCount` form) is not
+  read or written — this app's own protection (shipped in v0.2.7) is
+  an unauthenticated on/off flag, matching the *behavior* a casual
+  user sees but not the real mechanism: opening a real password-locked
+  sheet imports it as simply protected, with no password required to
+  unprotect it again in this app. **Distinct from** whole-workbook
+  open-password encryption (the file itself is AES-encrypted, can't be
+  opened at all without the password) — that's a separate, larger gap,
+  already called out in "Path to full Excel parity" Tier 4 below
 - **`docProps/core.xml`/`app.xml`** (author, title, company, revision
   metadata) are never written on export — cosmetic, Excel opens the
   file fine without them
