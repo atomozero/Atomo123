@@ -3406,6 +3406,155 @@ int main()
 		}
 	}
 
+	// Formule condivise (<f t="shared" si="N"/>): a differenza delle
+	// formule array appena verificate, qui i riferimenti RELATIVI
+	// devono spostarsi in base alla posizione di ogni cella -- un
+	// riferimento assoluto ($A$1) invece resta fisso. Due gruppi
+	// indipendenti nello stesso foglio (si="0" e si="1", come farebbe
+	// Excel vero con due trascinamenti separati) per verificare
+	// entrambi i casi insieme: colonna B (solo riferimenti relativi,
+	// B1:B3 = A1:A3 * 2) e colonna C (un riferimento fisso piu' uno
+	// relativo nella stessa formula, C1:C3 = $A$1 + A1:A3). Valore in
+	// cache deliberatamente sbagliato (999) su ogni cella, come per il
+	// test delle formule array sopra.
+	{
+		static const char kShContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kShRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kShWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kShWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kShSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\"><v>5</v></c>"
+			"<c r=\"B1\"><f t=\"shared\" ref=\"B1:B3\" si=\"0\">A1*2</f><v>999</v></c>"
+			"<c r=\"C1\"><f t=\"shared\" ref=\"C1:C3\" si=\"1\">$A$1+A1</f><v>999</v></c></row>"
+			"<row r=\"2\"><c r=\"A2\"><v>10</v></c>"
+			"<c r=\"B2\"><f t=\"shared\" si=\"0\"/><v>999</v></c>"
+			"<c r=\"C2\"><f t=\"shared\" si=\"1\"/><v>999</v></c></row>"
+			"<row r=\"3\"><c r=\"A3\"><v>15</v></c>"
+			"<c r=\"B3\"><f t=\"shared\" si=\"0\"/><v>999</v></c>"
+			"<c r=\"C3\"><f t=\"shared\" si=\"1\"/><v>999</v></c></row>"
+			"</sheetData>"
+			"</worksheet>\n";
+
+		BMallocIO shXlsx;
+		CZipWriter shZip;
+		shZip.Begin(&shXlsx);
+		shZip.AddEntry("[Content_Types].xml", kShContentTypes, strlen(kShContentTypes));
+		shZip.AddEntry("_rels/.rels", kShRootRels, strlen(kShRootRels));
+		shZip.AddEntry("xl/workbook.xml", kShWorkbook, strlen(kShWorkbook));
+		shZip.AddEntry("xl/_rels/workbook.xml.rels", kShWorkbookRels, strlen(kShWorkbookRels));
+		shZip.AddEntry("xl/worksheets/sheet1.xml", kShSheet, strlen(kShSheet));
+		Check(shZip.Close(), "costruzione del file XLSX di prova per le formule condivise riuscita");
+
+		shXlsx.Seek(0, SEEK_SET);
+		translator_info shInfo;
+		err = translator->Identify(&shXlsx, NULL, NULL, &shInfo, 0);
+		Check(err == B_OK && shInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova per le formule condivise");
+
+		shXlsx.Seek(0, SEEK_SET);
+		BMallocIO shAscdOut;
+		err = translator->Translate(&shXlsx, &shInfo, NULL, kAtomoNativeFormat, &shAscdOut);
+		Check(err == B_OK, "Translate del file di prova per le formule condivise riesce");
+
+		const unsigned char* shAscdData = NULL;
+		size_t shAscdLen = 0;
+		bool shUnwrapped = UnwrapFirstSheet((const unsigned char*)shAscdOut.Buffer(),
+			shAscdOut.BufferLength(), &shAscdData, &shAscdLen);
+		Check(shUnwrapped, "l'output di Translate del file di prova per le formule condivise e' un ASCD valido");
+
+		if (shUnwrapped && shAscdLen > 12 && memcmp(shAscdData, "ASCD", 4) == 0)
+		{
+			int32 shCount;
+			memcpy(&shCount, shAscdData + 8, 4);
+
+			CContainer& shDoc = *new CContainer(NULL, NULL);
+			bool foundB2Formula = false, foundB3Formula = false;
+			bool foundC2Formula = false, foundC3Formula = false;
+
+			size_t pos = 12;
+			for (int32 i = 0; i < shCount && pos + 8 <= shAscdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, shAscdData + pos, 2); pos += 2;
+				memcpy(&col, shAscdData + pos, 2); pos += 2;
+				memcpy(&len, shAscdData + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD)
+				if (pos + (size_t)len > shAscdLen)
+					break;
+
+				std::string text((const char*)shAscdData + pos, len);
+				pos += len;
+
+				cell loc(col, row);
+				TryToParseString(text.c_str(), loc, &shDoc, true);
+
+				// B2/B3 (colonna 2): la formula ricostruita deve
+				// riferirsi alla riga PROPRIA (A2/A3), non sempre ad A1
+				// come l'ancora -- e' proprio questo lo spostamento dei
+				// riferimenti relativi che si sta verificando.
+				if (row == 2 && col == 2 && text.find("A2") != std::string::npos)
+					foundB2Formula = true;
+				if (row == 3 && col == 2 && text.find("A3") != std::string::npos)
+					foundB3Formula = true;
+				// C2/C3 (colonna 3): devono contenere SIA il riferimento
+				// fisso ($A$1, sempre A1) SIA quello relativo spostato
+				// (A2/A3) nella stessa formula.
+				if (row == 2 && col == 3 && text.find("$A$1") != std::string::npos
+					&& text.find("A2") != std::string::npos)
+					foundC2Formula = true;
+				if (row == 3 && col == 3 && text.find("$A$1") != std::string::npos
+					&& text.find("A3") != std::string::npos)
+					foundC3Formula = true;
+			}
+
+			Check(foundB2Formula,
+				"B2 (formula condivisa, si=\"0\" vuota) importata riferendosi ad A2, non A1 come l'ancora");
+			Check(foundB3Formula,
+				"B3 (formula condivisa, si=\"0\" vuota) importata riferendosi ad A3, non A1 come l'ancora");
+			Check(foundC2Formula,
+				"C2 (formula condivisa mista) tiene fisso $A$1 e sposta il riferimento relativo ad A2");
+			Check(foundC3Formula,
+				"C3 (formula condivisa mista) tiene fisso $A$1 e sposta il riferimento relativo ad A3");
+
+			cell b1(2, 1), b2(2, 2), b3(2, 3), c1(3, 1), c2(3, 2), c3(3, 3);
+			shDoc.CalcCell(b1); shDoc.CalcCell(b2); shDoc.CalcCell(b3);
+			shDoc.CalcCell(c1); shDoc.CalcCell(c2); shDoc.CalcCell(c3);
+			Value vb1, vb2, vb3, vc1, vc2, vc3;
+			shDoc.GetValue(b1, vb1); shDoc.GetValue(b2, vb2); shDoc.GetValue(b3, vb3);
+			shDoc.GetValue(c1, vc1); shDoc.GetValue(c2, vc2); shDoc.GetValue(c3, vc3);
+			Check((double)vb1 == 10.0, "B1 (ancora, A1*2) ricalcola 10, non il valore congelato 999");
+			Check((double)vb2 == 20.0, "B2 (condivisa, A2*2 dopo lo spostamento) ricalcola 20, non 999");
+			Check((double)vb3 == 30.0, "B3 (condivisa, A3*2 dopo lo spostamento) ricalcola 30, non 999");
+			Check((double)vc1 == 10.0, "C1 (ancora, $A$1+A1) ricalcola 10, non il valore congelato 999");
+			Check((double)vc2 == 15.0, "C2 (condivisa, $A$1+A2 dopo lo spostamento) ricalcola 15, non 999");
+			Check((double)vc3 == 20.0, "C3 (condivisa, $A$1+A3 dopo lo spostamento) ricalcola 20, non 999");
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

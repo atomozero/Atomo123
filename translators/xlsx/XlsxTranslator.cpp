@@ -47,6 +47,7 @@
 #include "FontMetrics.h"
 #include "Formula.h"
 #include "FunctionUtils.h"
+#include "parser.h"
 #include "Globals.h"
 
 static const translation_format sInputFormats[] = {
@@ -3528,6 +3529,20 @@ struct SheetContext {
 	std::string formulaRef;
 	std::vector<std::pair<range, std::string> > arrayFormulas;
 
+	// Formule condivise (<f t="shared" si="N" ref="B2:B20">FORMULA</f>,
+	// scritte da Excel vero quasi sempre quando si trascina una formula
+	// su un intervallo): come una formula array, solo la cella ancora
+	// del gruppo porta il testo -- le altre hanno solo una <f t="shared"
+	// si="N"/> vuota. A differenza di una formula array pero', qui i
+	// riferimenti RELATIVI vanno spostati in base alla nuova posizione
+	// (un riferimento assoluto con "$" invece resta fisso): non basta
+	// riusare lo stesso testo, serve compilarlo con CompileSharedFormulaAt
+	// (vedi sopra SheetStart/SheetEnd). formulaSi legge l'attributo si="..."
+	// di <f>; sharedFormulaAnchors mappa si -> (cella ancora, testo) ogni
+	// volta che una <f t="shared"> con testo non vuoto viene chiusa.
+	std::string formulaSi;
+	std::map<int, std::pair<cell, std::string> > sharedFormulaAnchors;
+
 	// Stato per <conditionalFormatting>/<cfRule>/<formula> (solo se
 	// condRules non e' NULL).
 	std::vector<range> currentSqref;
@@ -3601,6 +3616,34 @@ static float ExcelColWidthToPixels(double charWidth)
 	const double kMDW = 7.0;
 	double n = std::floor(128.0 / kMDW);
 	return (float)std::floor(((256.0 * charWidth + n) / 256.0) * kMDW);
+}
+
+// Compiles formulaText as if it had been typed into anchorLoc, but
+// stores the resulting formula in targetLoc -- reproduces Excel's
+// shared-formula semantics ($-absolute references stay fixed,
+// everything else shifts by the offset between the two cells) without
+// any manual text-level reference rewriting, by exploiting how this
+// engine already encodes cell references: cell::GetFormulaCell (Cell.cpp)
+// stores a reference WITHOUT "$" as a signed delta relative to the cell
+// the formula is parsed against, and a reference WITH "$" as an
+// absolute value regardless of that base (see the VFIXED/HFIXED flags
+// in Cell.h). CContainer::CalcCell (Container.graph.cpp) always
+// evaluates a formula's references against whatever cell currently
+// holds its bytecode, not the cell it was originally parsed against --
+// so compiling here with anchorLoc as the parse base, then writing the
+// result into targetLoc, makes the SAME bytecode resolve its relative
+// references correctly shifted the moment it's evaluated in place.
+static bool CompileSharedFormulaAt(const std::string& formulaText,
+	cell anchorLoc, cell targetLoc, CContainer* doc)
+{
+	// decSep='.'/listSep=',' explicit, same reasoning as every other
+	// <f> text parse in this file: XLSX formula text is always in
+	// canonical ECMA-376 form, independent of the user's locale prefs.
+	CParser p(doc, ',', '.', 0, 0);
+	if (!p.Parse(formulaText.c_str(), anchorLoc))
+		return false;
+	doc->NewCell(targetLoc, Value(), p.Formula().CopyString());
+	return true;
 }
 
 static void XMLCALL SheetStart(void* userData, const char* name, const char** atts)
@@ -3716,6 +3759,9 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 		ctx->cellType.clear();
 		ctx->value.clear();
 		ctx->formula.clear();
+		ctx->formulaType.clear();
+		ctx->formulaRef.clear();
+		ctx->formulaSi.clear();
 		ctx->cellStyleIndex = -1;
 		for (int i = 0; atts[i]; i += 2)
 		{
@@ -3784,12 +3830,15 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 		ctx->inFormula = true;
 		ctx->formulaType.clear();
 		ctx->formulaRef.clear();
+		ctx->formulaSi.clear();
 		for (int i = 0; atts[i]; i += 2)
 		{
 			if (strcmp(atts[i], "t") == 0)
 				ctx->formulaType = atts[i + 1];
 			else if (strcmp(atts[i], "ref") == 0)
 				ctx->formulaRef = atts[i + 1];
+			else if (strcmp(atts[i], "si") == 0)
+				ctx->formulaSi = atts[i + 1];
 		}
 	}
 	// Le stringhe inline (t="inlineStr", scritte dal nostro export
@@ -3901,6 +3950,19 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 			if (ParseSqrefToken(ctx->formulaRef, &r))
 				ctx->arrayFormulas.push_back(std::make_pair(r, ctx->formula));
 		}
+		// Registra l'ancora di una formula condivisa (vedi il commento
+		// su SheetContext::sharedFormulaAnchors sopra): serve la cella
+		// corrente (ctx->cellRef, gia' letto all'apertura di <c> --
+		// <f> e' sempre annidata dentro <c>) come base per lo
+		// spostamento dei riferimenti relativi di ogni cella successiva
+		// con la stessa si.
+		else if (ctx->formulaType == "shared" && !ctx->formulaSi.empty() && !ctx->formula.empty())
+		{
+			int col, row;
+			if (CellRefToColRow(ctx->cellRef, col, row))
+				ctx->sharedFormulaAnchors[atoi(ctx->formulaSi.c_str())] =
+					std::make_pair(cell(col, row), ctx->formula);
+		}
 	}
 	else if (strcmp(name, "formula") == 0 && ctx->inCondFormula)
 	{
@@ -3928,10 +3990,9 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		// Cella dentro l'intervallo di una formula array (vedi il
 		// commento su SheetContext::arrayFormulas) ma senza un <f>
 		// proprio: eredita la STESSA formula della cella ancora -- a
-		// differenza delle formule condivise (<f t="shared">, non
-		// ancora gestite), un'array formula CSE mostra il testo
-		// IDENTICO in ogni cella dell'intervallo, nessuno spostamento
-		// di riferimenti relativi.
+		// differenza delle formule condivise sotto, un'array formula
+		// CSE mostra il testo IDENTICO in ogni cella dell'intervallo,
+		// nessuno spostamento di riferimenti relativi.
 		if (ctx->formula.empty())
 		{
 			for (size_t i = 0; i < ctx->arrayFormulas.size(); i++)
@@ -3944,8 +4005,34 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 			}
 		}
 
+		// Cella con una formula condivisa (<f t="shared" si="N"/> vuota,
+		// vedi il commento su SheetContext::sharedFormulaAnchors) ma
+		// senza testo proprio: a differenza di una formula array, qui i
+		// riferimenti relativi vanno spostati rispetto alla nuova
+		// posizione, non ripetuti identici -- CompileSharedFormulaAt
+		// (sopra SheetStart) lo fa scrivendo gia' la cella qui stesso,
+		// quindi il ramo generico "!text.empty()" sotto va saltato per
+		// questa cella (ne scriverebbe una seconda volta, buttando via
+		// la formula appena compilata e tornando al valore congelato).
+		bool sharedFormulaHandled = false;
+		if (ctx->formula.empty() && ctx->formulaType == "shared" && !ctx->formulaSi.empty())
+		{
+			std::map<int, std::pair<cell, std::string> >::iterator found =
+				ctx->sharedFormulaAnchors.find(atoi(ctx->formulaSi.c_str()));
+			if (found != ctx->sharedFormulaAnchors.end())
+				sharedFormulaHandled = CompileSharedFormulaAt(
+					found->second.second, found->second.first, loc, ctx->doc);
+		}
+
 		std::string text;
-		if (!ctx->formula.empty())
+		if (sharedFormulaHandled)
+		{
+			// Gia' scritta sopra: "text" resta vuota apposta, cosi' il
+			// blocco "!text.empty()" sotto non tocca piu' questa cella,
+			// ma lo stile (vedi oltre) va comunque applicato come per
+			// ogni altra.
+		}
+		else if (!ctx->formula.empty())
 			text = "=" + ctx->formula;
 		else if (ctx->cellType == "s")
 		{
