@@ -138,32 +138,21 @@ frozen numbers is worse than a file that visibly can't do something.
 unrelated, already-closed numbered `Phases` table at the top of this
 file — these are two separate lists.)
 
-- **Shared formulas (`<f t="shared" si="N"/>`) import as static
-  numbers, not formulas.** This is the single most consequential gap
-  found in this audit. When a user fills/copies a formula across a
-  range in real Microsoft Excel, Excel very commonly writes it as a
-  "shared formula" group: one master cell carries the actual formula
-  text (`<f t="shared" ref="B2:B20" si="0">A2*2</f>`), every other
-  cell in the range carries only an empty
-  `<f t="shared" si="0"/>` and relies on the reader to reconstruct its
-  formula from the master, shifted by the relative offset. This
-  translator's parser doesn't look at `<f>`'s attributes at all — it
-  only ever uses the literal text between the tags — so every
-  non-master cell in the range has `ctx->formula` empty and silently
-  falls through to importing its cached `<v>` as a plain, dead number.
-  For a typical financial/budget model (formula filled down a whole
-  column) this can mean **the master cell recalculates and every other
-  cell in the column does not**, with no error, dialog, or visual
-  difference until the user changes an input and wonders why most of
-  the column didn't update. Fix: track `si` → (anchor cell, formula
-  text) per sheet while parsing, and for an empty-bodied shared `<f>`,
-  reconstruct its formula by shifting the anchor's relative references
-  by (current cell − `ref`'s top-left)
+- ~~**Shared formulas (`<f t="shared" si="N"/>`) import as static
+  numbers, not formulas.**~~ Fixed — see `CHANGELOG.md`. Was the
+  single most consequential gap found in this audit (real Microsoft
+  Excel writes this very commonly whenever a formula is filled/copied
+  across a range). Solved without any text-level reference rewriting,
+  by exploiting how the engine already encodes relative-vs-`$`-fixed
+  cell references and always evaluates a formula against whatever cell
+  currently holds it
 - ~~**Legacy array formulas (`<f t="array" ref="...">`) have the same
   failure mode**~~ Fixed — see `CHANGELOG.md`. Same root cause as
-  shared formulas below, same fix shape, but no relative-reference
-  shifting needed (an array formula's other cells all show the *same*
-  formula, not a shifted one) — done first as the simpler warm-up
+  the shared-formula bug above, same fix shape, but no
+  relative-reference shifting needed (an array formula's other cells
+  all show the *same* formula, not a shifted one) — done first as the
+  simpler warm-up, before the shared-formula fix above tackled the
+  harder shifting problem
 - **Named ranges / defined names (`<definedNames>` in
   `xl/workbook.xml`) are not read or written at all — and this turns
   out to be a bigger gap than just XLSX.** The engine resolves named

@@ -660,3 +660,37 @@ What shipped since v0.2.7, not yet in a tagged release:
   recalculates both independently instead of trusting the cache.
   Shared formulas (`<f t="shared" si="N"/>`, the more common and more
   consequential case in real files) are next
+- Fixed the second, most consequential item of the XLSX compatibility
+  audit: a shared formula (`<f t="shared" si="N" ref="B2:B20">FORMULA
+  </f>` on the anchor cell, `<f t="shared" si="N"/>` empty on every
+  other cell of the range) was imported the same way the array-formula
+  bug above described — anchor cell fine, every other cell in the
+  range silently frozen to its last cached `<v>`. Unlike an array
+  formula, a shared formula's non-fixed (no `$`) references must shift
+  by the offset between each cell and the anchor, while `$`-fixed
+  references stay put — reusing the anchor's raw text unchanged (like
+  the array-formula fix) would be wrong here. Rather than writing a
+  text-level reference-rewriter (regex over column letters, tracking
+  `$`, sheet-qualified refs, etc. — its own source of bugs), the fix
+  leans on how this engine already encodes cell references
+  (`cell::GetFormulaCell`/`GetFlatCell`, `engine/src/Cell/Cell.cpp`): a
+  reference without `$` is stored as a signed delta from whatever cell
+  the formula text is parsed against, a `$` reference is stored
+  absolute regardless — and `CContainer::CalcCell` always evaluates a
+  formula's references against whichever cell currently holds its
+  bytecode, not the cell it was originally parsed against. So
+  compiling the anchor's formula text with the *anchor's* location as
+  the parse base, then writing the resulting bytecode into the
+  *sibling* cell, makes the exact same bytecode resolve its relative
+  references correctly shifted the moment it's evaluated in place —
+  no manual text surgery needed, and `$`-fixed references naturally
+  stay fixed for free. New helper `CompileSharedFormulaAt` in
+  `XlsxTranslator.cpp` does exactly this (a decoupled version of what
+  `TryToParseString` normally does in one step). New regression test
+  covers two independent shared-formula groups in the same sheet, one
+  purely relative and one mixing a `$A$1` fixed reference with a
+  relative one in the same formula, each cell getting a deliberately
+  wrong cached value to prove the engine recalculates for real. This
+  closes Tier 1 of the "100% XLSX standard compatibility" plan except
+  for named ranges/defined names, which needs engine-level name-table
+  persistence first (see `ROADMAP.md`)
