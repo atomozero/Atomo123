@@ -11,7 +11,7 @@ If Atomo123 saves you time, consider supporting development: [![Buy Me A Coffee]
 
 ## Status
 
-**v0.2.6 released** — see [ROADMAP.md](ROADMAP.md) for the phased plan
+**v0.2.6 released; v0.2.7 in progress** — see [ROADMAP.md](ROADMAP.md) for the phased plan
 and up-to-date status. In short: the calculation engine and legacy
 Excel importer reuse and modernize the old BeOS **Sum-It** project
 (community fork `OpenSumIt`), ported to build on modern 64-bit Haiku;
@@ -132,9 +132,9 @@ historical code (not a rewrite from scratch), so it stays under that same
 binary distribution that includes `legacy/opensumit/` or `engine/` code must
 honor the advertising clause.
 
-## Be careful
-> **Developer's Note**: This software may contain traces of peanuts and LLM.
-> It has been developed with passion for the Haiku platform.
+## Development notes
+> This software is developed with the assistance of LLM-based tools,
+> under human review and testing, with passion for the Haiku platform.
 
 ## Support
 
