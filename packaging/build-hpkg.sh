@@ -5,7 +5,7 @@
 # radice del repository).
 #
 # Costruisce un .hpkg locale per un primo test di installazione, senza
-# passare da haikuporter/atomo123-0.2.6.recipe: quella recipe richiede
+# passare da haikuporter/atomo123-0.2.7.recipe: quella recipe richiede
 # un tag + checksum SHA256 reale dell'archivio sorgente pubblicato su
 # GitHub per QUESTA versione, che non esistono finche' non si taggia e
 # pubblica la release (vedi i commenti nella recipe stessa). Questo
@@ -19,16 +19,16 @@
 #   packaging/build-hpkg.sh
 #
 # Il pacchetto risultante va provato con:
-#   cp atomo123-0.2.6-1-x86_64.hpkg ~/config/packages/   # solo per l'utente corrente
+#   cp atomo123-0.2.7-1-x86_64.hpkg ~/config/packages/   # solo per l'utente corrente
 # oppure, per tutto il sistema (richiede privilegi):
-#   cp atomo123-0.2.6-1-x86_64.hpkg /boot/system/packages/
+#   cp atomo123-0.2.7-1-x86_64.hpkg /boot/system/packages/
 # packagefs lo monta automaticamente, senza bisogno di riavviare.
 
 set -e
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-VERSION="0.2.6-1"
+VERSION="0.2.7-1"
 OUT="$ROOT/packaging/atomo123-$VERSION-x86_64.hpkg"
 WORKDIR="$ROOT/packaging/hpkg-root"
 
@@ -66,8 +66,8 @@ copyrights {
 	"1996-2000 Hekkelman Programmatuur B.V."
 }
 provides {
-	atomo123 = 0.2.6
-	app:Atomo123 = 0.2.6
+	atomo123 = 0.2.7
+	app:Atomo123 = 0.2.7
 }
 requires {
 	haiku
