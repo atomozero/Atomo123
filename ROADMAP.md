@@ -159,15 +159,11 @@ file — these are two separate lists.)
   text) per sheet while parsing, and for an empty-bodied shared `<f>`,
   reconstruct its formula by shifting the anchor's relative references
   by (current cell − `ref`'s top-left)
-- **Legacy array formulas (`<f t="array" ref="...">`) have the same
-  failure mode** for any array formula spanning more than one cell
-  (entered with Ctrl+Shift+Enter in real Excel): only the top-left
-  cell of the range carries formula text, the rest are empty and
-  silently import as static values. Same root cause as shared
-  formulas, same fix shape, but no relative-reference shifting needed
-  (an array formula's other cells all show the *same* formula, not a
-  shifted one) — simpler than the shared-formula fix, should probably
-  be done first as a warm-up
+- ~~**Legacy array formulas (`<f t="array" ref="...">`) have the same
+  failure mode**~~ Fixed — see `CHANGELOG.md`. Same root cause as
+  shared formulas below, same fix shape, but no relative-reference
+  shifting needed (an array formula's other cells all show the *same*
+  formula, not a shifted one) — done first as the simpler warm-up
 - **Named ranges / defined names (`<definedNames>` in
   `xl/workbook.xml`) are not read or written at all — and this turns
   out to be a bigger gap than just XLSX.** The engine resolves named

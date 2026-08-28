@@ -640,3 +640,23 @@ What shipped in v0.2.7, on top of v0.2.6 (in progress):
   byte-for-byte as before. Verified against the user's actual file
   (all 4 sheets, correct names and content) plus the full existing
   regression suite
+
+What shipped since v0.2.7, not yet in a tagged release:
+- Fixed the first item of the new "100% XLSX standard compatibility"
+  audit: a legacy array formula (`<f t="array" ref="B1:B2">FORMULA</f>`,
+  entered in real Excel with Ctrl+Shift+Enter across more than one
+  cell) only carries its formula text on the top-left cell of the
+  range — every other cell in the range has no `<f>` of its own, only
+  a frozen cached `<v>`. The XLSX parser never looked at `<f>`'s
+  attributes at all, so those other cells silently imported as dead
+  static numbers instead of live formulas. Fixed by recording each
+  array formula's range and text when its anchor `<f>` closes, then
+  reusing that same text (no relative-reference shifting — a CSE
+  array formula shows the identical formula in every cell of its
+  range, unlike a shared formula) for any later cell that falls inside
+  that range with no formula of its own. New regression test builds a
+  minimal real XLSX in memory (via the existing `CZipWriter`) with a
+  deliberately wrong cached value on both cells, confirming the engine
+  recalculates both independently instead of trusting the cache.
+  Shared formulas (`<f t="shared" si="N"/>`, the more common and more
+  consequential case in real files) are next
