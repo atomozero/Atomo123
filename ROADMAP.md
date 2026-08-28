@@ -5,9 +5,10 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.2.6 released; v0.2.7 functionally complete, not yet
-tagged** (XLSM macro preservation, sheet/cell protection, a critical
-multi-sheet `.ascd` open bug). All planned phases through "closing the
+**Status: v0.2.7 released** (XLSM macro preservation, sheet/cell
+protection, a critical multi-sheet `.ascd` open bug, and Tier 1 of the
+XLSX standard compatibility plan: array/shared formulas, named
+ranges). All planned phases through "closing the
 gap with Excel" are done or in good shape; a handful of large,
 optional features remain unplanned backlog items (see "Not currently
 planned" below, and "Path to full Excel parity" for what's next).
@@ -38,6 +39,7 @@ along the way lives in `CHANGELOG.md`.
 | Release prep (v0.2.1) | Done | Intermediate beta-tester release, tagged on GitHub: chart import from XLSX, repeated print headers |
 | Release prep (v0.2.5) | Done | Tagged on GitHub: five function batches (30 functions), print settings + preview, pivot table multi-level grouping, translator ambiguous-text parity, AutoFill (see CHANGELOG.md) |
 | Release prep (v0.2.6) | Done | Tagged on GitHub: critical multi-sheet XLSX corruption fix, background file loading with a footer progress bar, ~7x faster large-file opening (see CHANGELOG.md) |
+| Release prep (v0.2.7) | Done | Tagged on GitHub: XLSM macro preservation, sheet/cell protection, critical `.ascd` multi-sheet open fix, XLSX Tier 1 compatibility (array/shared formulas, named ranges) (see CHANGELOG.md) |
 
 ### Phase 13 detail
 
@@ -64,14 +66,16 @@ existing code to build on):
 
 ## Current focus
 
-v0.2.7 is functionally complete, on top of v0.2.6: XLSM macro
-preservation on save, sheet protection and cell locking (with XLSX
-round-trip), and a critical fix for a multi-sheet `.ascd` file that
-had stopped opening. Not yet tagged as a release. See `CHANGELOG.md`
-for the full detail on each, including the real bugs found while
-building them.
+**v0.2.7 tagged and released on GitHub** (2026-08-28), on top of
+v0.2.6: XLSM macro preservation on save, sheet protection and cell
+locking (with XLSX round-trip), a critical fix for a multi-sheet
+`.ascd` file that had stopped opening, and Tier 1 of the "Path to
+100% XLSX standard compatibility" plan below (array/shared formulas
+importing as frozen values, named-range persistence). See
+`CHANGELOG.md` for the full detail on each, including the real bugs
+found while building them.
 
-**Next up (starting 2026-08-28): closing the gaps in XLSX standard
+**Next up: closing the remaining gaps in XLSX standard
 compatibility** — see "Path to 100% XLSX standard compatibility"
 below. This became the priority after this session's `.ascd` bugfix
 work, which found several real, silent data-loss patterns in the XLSX
