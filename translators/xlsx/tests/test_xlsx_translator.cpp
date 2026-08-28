@@ -45,6 +45,7 @@
 #include "FunctionUtils.h"
 #include "Globals.h"
 #include "Globals.h"
+#include "NameTable.h"
 #include "ResourceManager.h"
 
 static int gFailures = 0;
@@ -243,6 +244,205 @@ static status_t WriteASCDWithChartForTest(CContainer* doc, int16 chartLeft, int1
 			return B_IO_ERROR;
 		if (titleLen > 0 && dest->Write(chartTitle, titleLen) != titleLen)
 			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
+// Same idea as WriteASCDWithChartForTest above, but for a named range
+// instead of a chart: real named-range data has to go at the very END
+// of the format (see the comment on the same section in WriteASCD,
+// XlsxTranslator.cpp), so every OTHER trailing section in between has
+// to be written too, all empty -- can't just append after
+// WriteASCDForTest like the chart helper does, since that would put
+// the real data right after the cells instead of at the end.
+static status_t WriteASCDWithNameForTest(CContainer* doc, BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati: chartCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi a zero.
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+
+	// commenti, collegamenti ipertestuali: due conteggi a zero.
+	for (int i = 0; i < 2; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Tipo di grafico incorporato: chartTypeCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Colore del bordo di cella: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Convalida dati, formattazione condizionale, tabelle strutturate:
+	// tre conteggi a zero.
+	for (int i = 0; i < 3; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Titolo di grafico incorporato: chartTitleCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Area di stampa: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+
+	// Margini/scala di "Imposta pagina": un byte "has" + quattro
+	// margini (double), la modalita' di scala (int32) e la percentuale
+	// (double), sempre presenti.
+	{
+		uint8 has = 0;
+		double zD = 0;
+		int32 zeroMode = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zeroMode, sizeof(zeroMode)) != (ssize_t)sizeof(zeroMode)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD))
+			return B_IO_ERROR;
+	}
+
+	// Progetto VBA: un byte "has"=0, nient'altro.
+	{
+		uint8 has = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has))
+			return B_IO_ERROR;
+	}
+
+	// Celle sbloccate: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Protezione foglio: un byte a zero.
+	{
+		uint8 protectedByte = 0;
+		if (dest->Write(&protectedByte, sizeof(protectedByte)) != (ssize_t)sizeof(protectedByte))
+			return B_IO_ERROR;
+	}
+
+	// Intervalli con nome, ULTIMA sezione del formato: i dati veri,
+	// stesso motivo di questa intera funzione.
+	{
+		CNameTable* names = doc->GetNameTable();
+		int32 nameCount = names ? (int32)names->size() : 0;
+		if (dest->Write(&nameCount, sizeof(nameCount)) != (ssize_t)sizeof(nameCount))
+			return B_IO_ERROR;
+		if (names)
+		{
+			for (CNameTable::const_iterator it = names->begin(); it != names->end(); ++it)
+			{
+				const char* nameStr = (const char*)it->first;
+				int32 nameLen = (int32)strlen(nameStr);
+				const range& r = it->second;
+				int16 top = r.top, left = r.left, bottom = r.bottom, right = r.right;
+				if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_IO_ERROR;
+				if (nameLen > 0 && dest->Write(nameStr, nameLen) != nameLen)
+					return B_IO_ERROR;
+				if (dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+					return B_IO_ERROR;
+			}
+		}
 	}
 
 	return B_OK;
@@ -467,6 +667,113 @@ static bool ReadFirstChartForTest(const unsigned char* ascdData, size_t ascdLen,
 	if (titleLen < 0 || pos + (size_t)titleLen > ascdLen) return false;
 	outTitle->assign((const char*)ascdData + pos, titleLen);
 
+	return true;
+}
+
+// After a per-cell reconstruction loop has advanced "pos" past every
+// cell of an ASCD block, walks every EOF-tolerant trailing section in
+// the exact order WriteASCD writes them (XlsxTranslator.cpp) up to
+// and including named ranges (the last section), applying any name
+// found to "doc" -- same principle as ReadFirstChartForTest above,
+// but for the section at the very end instead of the one in the
+// middle. Assumes every fixture calling this has no chart and no VBA
+// project (both asserted, not just skipped), matching every actual
+// caller today; a real caller with either would need its own walk,
+// same as ReadFirstChartForTest is its own dedicated walk for charts.
+static bool ApplyNamesFromAscdForTest(const unsigned char* data, size_t len, size_t pos, CContainer* doc)
+{
+	if (pos + 4 > len) return false;
+	int32 chartCount;
+	memcpy(&chartCount, data + pos, 4); pos += 4;
+	if (chartCount != 0) return false;
+
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi.
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Blocca riquadri: due interi fissi.
+	if (pos + 8 > len) return false;
+	pos += 8;
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi.
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Visibilita' griglia: un byte.
+	if (pos + 1 > len) return false;
+	pos += 1;
+	// Colore linguetta: 4 byte fissi.
+	if (pos + 4 > len) return false;
+	pos += 4;
+	// Righe nascoste: un conteggio.
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	// AutoFilter: 9 byte fissi.
+	if (pos + 9 > len) return false;
+	pos += 9;
+	// Commenti, collegamenti: due conteggi.
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Tipo di grafico: un conteggio (0, nessun grafico in questi fixture).
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	// Colore bordo, convalida dati, formattazione condizionale, tabelle: quattro conteggi.
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Titolo di grafico: un conteggio (0).
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	// Area di stampa: 1 byte "has" + 4 int16 fissi (9 byte totali).
+	if (pos + 9 > len) return false;
+	pos += 9;
+	// Margini/scala: 1 byte "has" + 4 double + 1 int32 + 1 double (45 byte totali).
+	if (pos + 45 > len) return false;
+	pos += 45;
+	// Progetto VBA: 1 byte "has", assunto 0 (nessun progetto in questi fixture).
+	if (pos + 1 > len) return false;
+	if (data[pos] != 0) return false;
+	pos += 1;
+	// Celle sbloccate: un conteggio.
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	// Protezione foglio: un byte.
+	if (pos + 1 > len) return false;
+	pos += 1;
+
+	// Intervalli con nome, ULTIMA sezione: i dati veri.
+	if (pos + 4 > len) return false;
+	int32 nameCount;
+	memcpy(&nameCount, data + pos, 4); pos += 4;
+	for (int32 i = 0; i < nameCount; i++)
+	{
+		if (pos + 4 > len) return false;
+		int32 nameLen;
+		memcpy(&nameLen, data + pos, 4); pos += 4;
+		if (nameLen < 0 || pos + (size_t)nameLen > len) return false;
+		std::string nameStr((const char*)data + pos, nameLen);
+		pos += nameLen;
+		if (pos + 8 > len) return false;
+		int16 top, left, bottom, right;
+		memcpy(&top, data + pos, 2); pos += 2;
+		memcpy(&left, data + pos, 2); pos += 2;
+		memcpy(&bottom, data + pos, 2); pos += 2;
+		memcpy(&right, data + pos, 2); pos += 2;
+		(*doc->GetOrCreateNameTable())[CName(nameStr.c_str())] = range(left, top, right, bottom);
+	}
 	return true;
 }
 
@@ -1003,8 +1310,7 @@ int main()
 
 						// Margini/scala di "Imposta pagina" (Fase 29):
 						// stesso principio della sezione area di stampa
-						// appena sopra, ULTIMA sezione del formato --
-						// byte "presente" (qui zero) seguito da quattro
+						// appena sopra -- byte "presente" (qui zero) seguito da quattro
 						// margini (double), la modalita' di scala
 						// (int32) e la percentuale (double), sempre
 						// scritti anche quando "presente" e' zero.
@@ -1020,8 +1326,7 @@ int main()
 						}
 
 						// Progetto VBA (XLSM, Fase 31): stesso principio
-						// della sezione margini/scala appena sopra, ORA
-						// l'ULTIMA sezione del formato -- un byte
+						// della sezione margini/scala appena sopra -- un byte
 						// "presente" (qui zero, sample.xlsx non ha
 						// macro) e nient'altro quando e' zero (nessuna
 						// lunghezza/bytes a seguire, a differenza delle
@@ -1045,13 +1350,24 @@ int main()
 								"nessuna cella sbloccata in sample.xlsx, il conteggio e' zero");
 						}
 
-						// Protezione foglio (Fase 32): un solo byte, ORA
-						// l'ULTIMA sezione del formato.
+						// Protezione foglio (Fase 32): un solo byte.
 						if (pos + 1 <= ascdLen)
 						{
 							uint8 isProtected = ascdData[pos]; pos += 1;
 							Check(isProtected == 0,
 								"sample.xlsx non e' protetto, il byte e' zero");
+						}
+
+						// Intervalli con nome ("100% XLSX standard
+						// compatibility" plan): un conteggio (qui zero,
+						// sample.xlsx non ha <definedNames>), ORA
+						// l'ULTIMA sezione del formato.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 nameCount;
+							memcpy(&nameCount, ascdData + pos, 4); pos += 4;
+							Check(nameCount == 0,
+								"nessun intervallo con nome in sample.xlsx, il conteggio e' zero");
 						}
 
 						// sample.xlsx e' un solo foglio: dopo tutte le
@@ -3552,6 +3868,217 @@ int main()
 			Check((double)vc1 == 10.0, "C1 (ancora, $A$1+A1) ricalcola 10, non il valore congelato 999");
 			Check((double)vc2 == 15.0, "C2 (condivisa, $A$1+A2 dopo lo spostamento) ricalcola 15, non 999");
 			Check((double)vc3 == 20.0, "C3 (condivisa, $A$1+A3 dopo lo spostamento) ricalcola 20, non 999");
+		}
+	}
+
+	// Named ranges (<definedNames> in xl/workbook.xml), the last item
+	// of Tier 1 in the "100% XLSX standard compatibility" plan: a
+	// workbook-scoped name (no localSheetId) should resolve on this
+	// sheet's document after import, while Excel's own reserved
+	// "_xlnm.Print_Area" bookkeeping name should NOT show up as a
+	// resolvable name (see ApplyDefinedNames in XlsxTranslator.cpp).
+	{
+		static const char kNameContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kNameRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kNameWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"<definedNames>"
+			"<definedName name=\"Budget\">Foglio1!$A$1:$A$2</definedName>"
+			"<definedName name=\"_xlnm.Print_Area\">Foglio1!$A$1:$A$2</definedName>"
+			"</definedNames>\n"
+			"</workbook>\n";
+		static const char kNameWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kNameSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\"><v>5</v></c></row>"
+			"<row r=\"2\"><c r=\"A2\"><v>10</v></c></row>"
+			"</sheetData>"
+			"</worksheet>\n";
+
+		BMallocIO nameXlsx;
+		CZipWriter nameZip;
+		nameZip.Begin(&nameXlsx);
+		nameZip.AddEntry("[Content_Types].xml", kNameContentTypes, strlen(kNameContentTypes));
+		nameZip.AddEntry("_rels/.rels", kNameRootRels, strlen(kNameRootRels));
+		nameZip.AddEntry("xl/workbook.xml", kNameWorkbook, strlen(kNameWorkbook));
+		nameZip.AddEntry("xl/_rels/workbook.xml.rels", kNameWorkbookRels, strlen(kNameWorkbookRels));
+		nameZip.AddEntry("xl/worksheets/sheet1.xml", kNameSheet, strlen(kNameSheet));
+		Check(nameZip.Close(), "costruzione del file XLSX di prova con <definedNames> riuscita");
+
+		nameXlsx.Seek(0, SEEK_SET);
+		translator_info nameInfo;
+		err = translator->Identify(&nameXlsx, NULL, NULL, &nameInfo, 0);
+		Check(err == B_OK && nameInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con <definedNames>");
+
+		nameXlsx.Seek(0, SEEK_SET);
+		BMallocIO nameAscdOut;
+		err = translator->Translate(&nameXlsx, &nameInfo, NULL, kAtomoNativeFormat, &nameAscdOut);
+		Check(err == B_OK, "Translate del file di prova con <definedNames> riesce");
+
+		const unsigned char* nameAscdData = NULL;
+		size_t nameAscdLen = 0;
+		bool nameUnwrapped = UnwrapFirstSheet((const unsigned char*)nameAscdOut.Buffer(),
+			nameAscdOut.BufferLength(), &nameAscdData, &nameAscdLen);
+		Check(nameUnwrapped, "l'output di Translate del file di prova con <definedNames> e' un ASCD valido");
+
+		if (nameUnwrapped && nameAscdLen > 12 && memcmp(nameAscdData, "ASCD", 4) == 0)
+		{
+			CContainer& importedDoc = *new CContainer(NULL, NULL);
+			int32 importedCount;
+			memcpy(&importedCount, nameAscdData + 8, 4);
+
+			size_t pos = 12;
+			for (int32 i = 0; i < importedCount && pos + 8 <= nameAscdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, nameAscdData + pos, 2); pos += 2;
+				memcpy(&col, nameAscdData + pos, 2); pos += 2;
+				memcpy(&len, nameAscdData + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD)
+				if (pos + (size_t)len > nameAscdLen)
+					break;
+				std::string text((const char*)nameAscdData + pos, len);
+				pos += len;
+				TryToParseString(text.c_str(), cell(col, row), &importedDoc, true);
+			}
+
+			// "pos" e' ferma alla fine delle celle: il nome e' gia'
+			// stato applicato al documento usato DENTRO al translator
+			// (ApplyDefinedNames, prima ancora che WriteASCD scrivesse
+			// l'ASCD), quindi qui va letta la sezione dei nomi in coda
+			// del blocco appena prodotto e riapplicata a "importedDoc"
+			// (un documento diverso, ricostruito solo dalle celle sopra).
+			bool namesApplied = ApplyNamesFromAscdForTest(nameAscdData, nameAscdLen, pos, &importedDoc);
+			Check(namesApplied, "la sezione degli intervalli con nome in coda all'ASCD si legge correttamente");
+
+			range budgetRange = importedDoc.ResolveName("Budget");
+			Check(budgetRange.TopLeft() == cell(1, 1) && budgetRange.BotRight() == cell(1, 2),
+				"\"Budget\" (nome a livello di cartella, senza localSheetId) importato "
+				"da <definedNames> e risolvibile su A1:A2");
+
+			bool printAreaLeaked = true;
+			try { importedDoc.ResolveName("_xlnm.Print_Area"); }
+			catch (...) { printAreaLeaked = false; }
+			Check(!printAreaLeaked,
+				"\"_xlnm.Print_Area\" (nome riservato di Excel, non un intervallo con nome vero) "
+				"NON compare nella tabella nomi importata");
+		}
+	}
+
+	// Stesso scenario, direzione opposta (ASCD -> XLSX): un documento
+	// con un nome definito esporta un vero <definedName> in
+	// xl/workbook.xml, e quel file si rilegge correttamente.
+	{
+		CContainer& nameExportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &nameExportDoc, true);  // A1
+		TryToParseString("10", cell(1, 2), &nameExportDoc, true); // A2
+		(*nameExportDoc.GetOrCreateNameTable())[CName("Budget")] = range(1, 1, 1, 2);
+
+		BMallocIO nameAscdIn;
+		status_t saveErr = WriteASCDWithNameForTest(&nameExportDoc, &nameAscdIn);
+		Check(saveErr == B_OK, "preparazione dell'ASCD di prova con un nome definito riesce");
+		nameExportDoc.Release();
+
+		nameAscdIn.Seek(0, SEEK_SET);
+		translator_info nameExportInfo;
+		err = translator->Identify(&nameAscdIn, NULL, NULL, &nameExportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD con un nome definito come sorgente per l'export");
+
+		nameAscdIn.Seek(0, SEEK_SET);
+		BMallocIO nameXlsxOut;
+		err = translator->Translate(&nameAscdIn, &nameExportInfo, NULL, kAtomoXlsxFormat, &nameXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con un nome definito) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			nameXlsxOut.Seek(0, SEEK_SET);
+			CZipReader nameOutZip;
+			Check(nameOutZip.Open(&nameXlsxOut), "il file XLSX esportato con un nome e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> exportedWorkbookXml;
+			bool readWorkbook = nameOutZip.ReadEntry("xl/workbook.xml", exportedWorkbookXml);
+			Check(readWorkbook, "il file XLSX esportato contiene xl/workbook.xml");
+
+			std::string workbookText(exportedWorkbookXml.begin(), exportedWorkbookXml.end());
+			Check(workbookText.find("<definedName name=\"Budget\">Foglio1!$A$1:$A$2</definedName>")
+				!= std::string::npos,
+				"xl/workbook.xml esportato contiene <definedName name=\"Budget\">Foglio1!$A$1:$A$2</definedName>");
+
+			// Round-trip completo: rileggendo il file appena esportato,
+			// il nome deve risolversi di nuovo.
+			nameXlsxOut.Seek(0, SEEK_SET);
+			translator_info nameReimportInfo;
+			err = translator->Identify(&nameXlsxOut, NULL, NULL, &nameReimportInfo, 0);
+			Check(err == B_OK && nameReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX esportato con un nome si riconosce ancora come XLSX valido rileggendolo");
+
+			nameXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO nameRoundTripAscd;
+			err = translator->Translate(&nameXlsxOut, &nameReimportInfo, NULL,
+				kAtomoNativeFormat, &nameRoundTripAscd);
+			Check(err == B_OK, "il file XLSX esportato con un nome si rilegge correttamente (round-trip)");
+
+			if (err == B_OK)
+			{
+				const unsigned char* rtData = NULL;
+				size_t rtLen = 0;
+				bool rtUnwrapped = UnwrapFirstSheet((const unsigned char*)nameRoundTripAscd.Buffer(),
+					nameRoundTripAscd.BufferLength(), &rtData, &rtLen);
+				Check(rtUnwrapped, "il round-trip del nome produce anch'esso una cartella ASCB valida");
+
+				if (rtUnwrapped && rtLen > 12 && memcmp(rtData, "ASCD", 4) == 0)
+				{
+					CContainer& rtDoc = *new CContainer(NULL, NULL);
+					int32 rtCount;
+					memcpy(&rtCount, rtData + 8, 4);
+
+					size_t pos = 12;
+					for (int32 i = 0; i < rtCount && pos + 8 <= rtLen; i++)
+					{
+						int16 row, col;
+						int32 len;
+						memcpy(&row, rtData + pos, 2); pos += 2;
+						memcpy(&col, rtData + pos, 2); pos += 2;
+						memcpy(&len, rtData + pos, 4); pos += 4;
+						pos += 1;
+						if (pos + (size_t)len > rtLen)
+							break;
+						std::string text((const char*)rtData + pos, len);
+						pos += len;
+						TryToParseString(text.c_str(), cell(col, row), &rtDoc, true);
+					}
+
+					bool rtNamesApplied = ApplyNamesFromAscdForTest(rtData, rtLen, pos, &rtDoc);
+					Check(rtNamesApplied,
+						"la sezione degli intervalli con nome si legge correttamente anche dopo il giro completo");
+
+					range rtRange = rtDoc.ResolveName("Budget");
+					Check(rtRange.TopLeft() == cell(1, 1) && rtRange.BotRight() == cell(1, 2),
+						"dopo il giro completo ASCD -> XLSX -> ASCD, \"Budget\" si risolve ancora su A1:A2");
+				}
+			}
 		}
 	}
 

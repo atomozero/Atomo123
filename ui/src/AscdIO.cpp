@@ -23,6 +23,7 @@
 #include "CellParser.h"
 #include "FontMetrics.h"
 #include "Formatter.h"
+#include "NameTable.h"
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // Versione 2 (era 1): aggiunge un byte "kind" per cella subito dopo
@@ -934,10 +935,10 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	// Sezione progetto VBA (XLSM, Fase 31), in coda, ULTIMA sezione del
-	// formato: bytes grezzi di "xl/vbaProject.bin" cosi' come letti
-	// dall'archivio XLSX originale, mai analizzati -- vedi il commento
-	// su LoadASCD/SaveASCD in AscdIO.h. Stesso schema "presente si'/no"
+	// Sezione progetto VBA (XLSM, Fase 31), in coda: bytes grezzi di
+	// "xl/vbaProject.bin" cosi' come letti dall'archivio XLSX originale,
+	// mai analizzati -- vedi il commento su LoadASCD/SaveASCD in
+	// AscdIO.h. Stesso schema "presente si'/no"
 	// delle altre sezioni sopra, sempre scritta anche quando vuota per
 	// restare allineata al blocco del foglio successivo in un file
 	// multi-foglio (vedi il commento gemello sulla sezione area di
@@ -990,14 +991,52 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Sezione protezione foglio (Fase 32), in coda, ULTIMA sezione del
-	// formato: un solo byte, stesso schema "presente si'/no" delle
-	// sezioni booleane sopra (es. AutoFilter) ma senza dati aggiuntivi
-	// da leggere quando e' zero.
+	// Sezione protezione foglio (Fase 32): un solo byte, stesso schema
+	// "presente si'/no" delle sezioni booleane sopra (es. AutoFilter)
+	// ma senza dati aggiuntivi da leggere quando e' zero.
 	{
 		uint8 protectedByte = (isProtected && *isProtected) ? 1 : 0;
 		if (dest->Write(&protectedByte, sizeof(protectedByte)) != (ssize_t)sizeof(protectedByte))
 			return B_IO_ERROR;
+	}
+
+	// Sezione intervalli con nome, in coda, ULTIMA sezione del formato
+	// (percorso di compatibilita' XLSX al 100%, Tier 1): CContainer::
+	// GetNameTable() non era mai stata persistita in NESSUN formato
+	// prima d'ora, nemmeno quello nativo -- vedi ROADMAP.md. Un nome e'
+	// scoperto per QUESTO foglio soltanto: il motore non ha risoluzione
+	// dei nomi tra fogli diversi (CContainer::ResolveName guarda solo
+	// il proprio fNames), quindi ogni foglio ha la sua tabella
+	// indipendente, stesso principio gia' vero a runtime. Ogni voce:
+	// lunghezza+testo del nome (CName tronca internamente a 31
+	// caratteri, un limite reale e preesistente del motore rispetto ai
+	// 255 di Excel -- non e' stato toccato qui), poi i quattro estremi
+	// dell'intervallo.
+	{
+		CNameTable* names = doc->GetNameTable();
+		int32 nameCount = names ? (int32)names->size() : 0;
+		if (dest->Write(&nameCount, sizeof(nameCount)) != (ssize_t)sizeof(nameCount))
+			return B_IO_ERROR;
+
+		if (names)
+		{
+			for (CNameTable::const_iterator it = names->begin(); it != names->end(); ++it)
+			{
+				const char* nameStr = (const char*)it->first;
+				int32 nameLen = (int32)strlen(nameStr);
+				const range& r = it->second;
+				int16 top = r.top, left = r.left, bottom = r.bottom, right = r.right;
+				if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_IO_ERROR;
+				if (nameLen > 0 && dest->Write(nameStr, nameLen) != nameLen)
+					return B_IO_ERROR;
+				if (dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+					return B_IO_ERROR;
+			}
+		}
 	}
 
 	return B_OK;
@@ -2065,10 +2104,10 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	if (skipVbaAndProtectionSections)
 		return B_OK;
 
-	// Sezione progetto VBA (XLSM, Fase 31), in coda, ULTIMA sezione del
-	// formato: stesso schema EOF-tollerante delle sezioni sopra -- vedi
-	// il commento gemello nel writer (SaveASCD). Un file scritto prima
-	// di questa sezione (o senza macro) lascia "vbaProject" intatto
+	// Sezione progetto VBA (XLSM, Fase 31), in coda: stesso schema
+	// EOF-tollerante delle sezioni sopra -- vedi il commento gemello
+	// nel writer (SaveASCD). Un file scritto prima di questa sezione
+	// (o senza macro) lascia "vbaProject" intatto
 	// (vuoto, se il chiamante lo passa gia' cosi').
 	{
 		uint8 has = 0;
@@ -2129,9 +2168,9 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
-	// Sezione protezione foglio (Fase 32), in coda, ULTIMA sezione del
-	// formato: stesso schema EOF-tollerante di showGrid sopra (un solo
-	// byte, nessun dato aggiuntivo quando assente).
+	// Sezione protezione foglio (Fase 32), in coda: stesso schema
+	// EOF-tollerante di showGrid sopra (un solo byte, nessun dato
+	// aggiuntivo quando assente).
 	{
 		uint8 protectedByte = 0;
 		ssize_t got = source->Read(&protectedByte, sizeof(protectedByte));
@@ -2139,6 +2178,52 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 			return B_BAD_DATA;
 		if (isProtected)
 			*isProtected = protectedByte != 0;
+	}
+
+	// Sezione intervalli con nome, in coda, ULTIMA sezione del formato:
+	// stesso schema EOF-tollerante delle sezioni sopra -- vedi il
+	// commento gemello nel writer (SaveASCD) sul perche' ogni foglio ha
+	// la propria tabella indipendente e sul limite dei 31 caratteri di
+	// CName. Un nome vuoto (lunghezza zero) non viene mai scritto da
+	// SaveASCD, ma viene comunque scartato in sicurezza qui se letto
+	// (dato corrotto o scritto da un'altra implementazione).
+	{
+		int32 nameCount = 0;
+		ssize_t got = source->Read(&nameCount, sizeof(nameCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(nameCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < nameCount; i++)
+			{
+				int32 nameLen = 0;
+				if (source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_BAD_DATA;
+				if (nameLen < 0 || nameLen > 1024)
+					return B_BAD_DATA;
+
+				std::string nameStr;
+				if (nameLen > 0)
+				{
+					std::vector<char> buf(nameLen);
+					if (source->Read(buf.data(), nameLen) != nameLen)
+						return B_BAD_DATA;
+					nameStr.assign(buf.data(), nameLen);
+				}
+
+				int16 top, left, bottom, right;
+				if (source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+					|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right))
+					return B_BAD_DATA;
+
+				range r(left, top, right, bottom);
+				if (!nameStr.empty() && r.IsValid())
+					(*doc->GetOrCreateNameTable())[CName(nameStr.c_str())] = r;
+			}
+		}
 	}
 
 	return B_OK;

@@ -16,6 +16,7 @@
 #include <cstring>
 
 #include <Application.h>
+#include <DataIO.h>
 
 #include "Cell.h"
 #include "Value.h"
@@ -23,6 +24,7 @@
 #include "CellParser.h"
 #include "SheetView.h"
 #include "MainWindow.h"
+#include "AscdIO.h"
 
 static int gFailures = 0;
 
@@ -99,6 +101,29 @@ int main()
 	try { doc->ResolveName("Totale"); }
 	catch (...) { threw = true; }
 	Check(threw, "dopo HandleDeleteName(\"Totale\"), ResolveName(\"Totale\") non trova piu' nulla");
+
+	// Persistence round-trip (Tier 1 of the "100% XLSX standard
+	// compatibility" roadmap plan, ROADMAP.md): CContainer's name
+	// table was never written to ANY file format before, not even the
+	// native one -- SaveASCD/LoadASCD now carry it as the last section
+	// of the format. Re-define a name on the still-open document, save
+	// it, load it into a brand new CContainer, and confirm the name
+	// still resolves there.
+	win->HandleDefineName("Doubled", "A1:A2");
+
+	BMallocIO ascd;
+	status_t saveErr = SaveASCD(doc, &ascd);
+	Check(saveErr == B_OK, "SaveASCD succeeds with a named range defined");
+
+	ascd.Seek(0, SEEK_SET);
+	CContainer& reloaded = *new CContainer(NULL, NULL);
+	status_t loadErr = LoadASCD(&ascd, &reloaded);
+	Check(loadErr == B_OK, "LoadASCD succeeds reading the named range back");
+
+	range reloadedRange = reloaded.ResolveName("Doubled");
+	Check(reloadedRange.TopLeft() == cell(1, 1) && reloadedRange.BotRight() == cell(1, 2),
+		"the named range survives a save/reload round-trip into a fresh document, "
+		"unlike before this fix (the name table was never persisted at all)");
 
 	win->Unlock();
 

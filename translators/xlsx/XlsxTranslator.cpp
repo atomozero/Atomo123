@@ -49,6 +49,7 @@
 #include "FunctionUtils.h"
 #include "parser.h"
 #include "Globals.h"
+#include "NameTable.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -891,11 +892,10 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	// Sezione progetto VBA (XLSM, Fase 31), in coda, ULTIMA sezione del
-	// formato: stesso schema "presente si'/no" delle sezioni sopra,
-	// duplicato da ui/src/AscdIO.cpp (SaveASCD) per lo stesso motivo di
-	// ogni altra sezione di questo file -- vedi il commento su
-	// WriteASCD sopra.
+	// Sezione progetto VBA (XLSM, Fase 31), in coda: stesso schema
+	// "presente si'/no" delle sezioni sopra, duplicato da
+	// ui/src/AscdIO.cpp (SaveASCD) per lo stesso motivo di ogni altra
+	// sezione di questo file -- vedi il commento su WriteASCD sopra.
 	{
 		uint8 has = (vbaProject && !vbaProject->empty()) ? 1 : 0;
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has))
@@ -910,10 +910,10 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Sezione celle SBLOCCATE + protezione foglio (Fase 32), in coda,
-	// ULTIME due sezioni del formato: stesso schema di ui/src/AscdIO.cpp
-	// (SaveASCD), duplicato qui per lo stesso motivo di ogni altra
-	// sezione di questo file. Il default e' ora fLocked=true (vedi il
+	// Sezione celle SBLOCCATE + protezione foglio (Fase 32), in coda:
+	// stesso schema di ui/src/AscdIO.cpp (SaveASCD), duplicato qui per
+	// lo stesso motivo di ogni altra sezione di questo file. Il default
+	// e' ora fLocked=true (vedi il
 	// costruttore di CellStyle), quindi l'elenco contiene le celle
 	// esplicitamente SBLOCCATE -- gia' applicate a "doc" da ParseSheet
 	// (vedi <protection locked="0"/> in xl/styles.xml) quando questa
@@ -948,6 +948,39 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		uint8 protectedByte = (isProtected && *isProtected) ? 1 : 0;
 		if (dest->Write(&protectedByte, sizeof(protectedByte)) != (ssize_t)sizeof(protectedByte))
 			return B_IO_ERROR;
+	}
+
+	// Sezione intervalli con nome, in coda, ULTIMA sezione del formato:
+	// stesso schema di ui/src/AscdIO.cpp (SaveASCD), duplicato qui per
+	// lo stesso motivo di ogni altra sezione di questo file -- "doc" ha
+	// gia' i nomi applicati da ApplyDefinedNames (vedi sopra) quando
+	// questa funzione e' chiamata per l'importazione XLSX -> ASCD di un
+	// file reale.
+	{
+		CNameTable* names = doc->GetNameTable();
+		int32 nameCount = names ? (int32)names->size() : 0;
+		if (dest->Write(&nameCount, sizeof(nameCount)) != (ssize_t)sizeof(nameCount))
+			return B_IO_ERROR;
+
+		if (names)
+		{
+			for (CNameTable::const_iterator it = names->begin(); it != names->end(); ++it)
+			{
+				const char* nameStr = (const char*)it->first;
+				int32 nameLen = (int32)strlen(nameStr);
+				const range& r = it->second;
+				int16 top = r.top, left = r.left, bottom = r.bottom, right = r.right;
+				if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_IO_ERROR;
+				if (nameLen > 0 && dest->Write(nameStr, nameLen) != nameLen)
+					return B_IO_ERROR;
+				if (dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+					return B_IO_ERROR;
+			}
+		}
 	}
 
 	return B_OK;
@@ -1634,7 +1667,7 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 
 	// Sezione margini/scala di "Imposta pagina", in coda (Fase 29):
 	// stesso motivo e stesso principio EOF-tollerante della sezione
-	// area di stampa appena sopra. ULTIMA sezione del formato.
+	// area di stampa appena sopra.
 	{
 		uint8 has = 0;
 		ssize_t got = source->Read(&has, sizeof(has));
@@ -1655,9 +1688,9 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
-	// Sezione progetto VBA (XLSM, Fase 31), in coda, ULTIMA sezione del
-	// formato: stesso schema EOF-tollerante delle sezioni sopra -- vedi
-	// il commento gemello in ui/src/AscdIO.cpp (LoadASCD).
+	// Sezione progetto VBA (XLSM, Fase 31), in coda: stesso schema
+	// EOF-tollerante delle sezioni sopra -- vedi il commento gemello in
+	// ui/src/AscdIO.cpp (LoadASCD).
 	{
 		uint8 has = 0;
 		ssize_t got = source->Read(&has, sizeof(has));
@@ -1686,10 +1719,10 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
-	// Sezione celle SBLOCCATE + protezione foglio (Fase 32), in coda,
-	// ULTIME due sezioni del formato. A differenza delle sezioni
-	// colori/allineamento/bordi piu' sopra (ancora scartate: questa
-	// esportazione non le riporta), il blocco/la protezione VANNO
+	// Sezione celle SBLOCCATE + protezione foglio (Fase 32), in coda. A
+	// differenza delle sezioni colori/allineamento/bordi piu' sopra
+	// (ancora scartate: questa esportazione non le riporta), il
+	// blocco/la protezione VANNO
 	// applicati a "doc"/restituiti al chiamante: e' lo scenario reale
 	// piu' comune di questa funzione (MainWindow::SaveToFile per un
 	// documento GIA' aperto da un vero file XLSX protetto -- vedi
@@ -1725,6 +1758,53 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 			return B_BAD_DATA;
 		if (outIsProtected)
 			*outIsProtected = protectedByte != 0;
+	}
+
+	// Sezione intervalli con nome, in coda, ULTIMA sezione del formato:
+	// stesso schema EOF-tollerante delle sezioni sopra -- vedi il
+	// commento gemello in ui/src/AscdIO.cpp (LoadASCD). A differenza
+	// delle sezioni colori/allineamento/bordi piu' sopra (ancora
+	// scartate), qui i nomi VANNO applicati a "doc": e' lo scenario
+	// reale di questa funzione (ASCD -> XLSX, sia per un documento
+	// nativo con nomi definiti sia per un file XLSX gia' importato con
+	// <definedNames> e poi risalvato), non un caso limite.
+	{
+		int32 nameCount = 0;
+		ssize_t got = source->Read(&nameCount, sizeof(nameCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(nameCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < nameCount; i++)
+			{
+				int32 nameLen = 0;
+				if (source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_BAD_DATA;
+				if (nameLen < 0 || nameLen > 1024)
+					return B_BAD_DATA;
+
+				std::string nameStr;
+				if (nameLen > 0)
+				{
+					std::vector<char> buf(nameLen);
+					if (source->Read(buf.data(), nameLen) != nameLen)
+						return B_BAD_DATA;
+					nameStr.assign(buf.data(), nameLen);
+				}
+
+				int16 top, left, bottom, right;
+				if (source->Read(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| source->Read(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+					|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right))
+					return B_BAD_DATA;
+
+				range r(left, top, right, bottom);
+				if (!nameStr.empty() && r.IsValid())
+					(*doc->GetOrCreateNameTable())[CName(nameStr.c_str())] = r;
+			}
+		}
 	}
 
 	return B_OK;
@@ -1938,6 +2018,18 @@ static std::string AbsCellRef(int col, int row)
 static std::string AbsColumnRangeRef(const char* sheetName, int col, int topRow, int bottomRow)
 {
 	return std::string(sheetName) + "!" + AbsCellRef(col, topRow) + ":" + AbsCellRef(col, bottomRow);
+}
+
+// "Foglio1!$A$1:$B$2", or just "Foglio1!$A$1" for a single cell
+// (matching Excel's own convention of omitting the redundant
+// ":$A$1" for a 1x1 named range) -- used when writing <definedName>
+// on export.
+static std::string AbsRangeRef(const char* sheetName, const range& r)
+{
+	std::string ref = std::string(sheetName) + "!" + AbsCellRef(r.left, r.top);
+	if (r.left != r.right || r.top != r.bottom)
+		ref += ":" + AbsCellRef(r.right, r.bottom);
+	return ref;
 }
 
 static std::string FormatChartNumber(double v)
@@ -2278,12 +2370,35 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
 		"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
 		"</Relationships>\n";
-	static const char kWorkbook[] =
+	static const char kWorkbookHeader[] =
 		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 		"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
 		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
-		"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
-		"</workbook>\n";
+		"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n";
+
+	// <definedNames> (named ranges, "100% XLSX standard compatibility"
+	// plan, see ROADMAP.md): CContainer::GetNameTable(), written as
+	// workbook-scoped (no localSheetId -- this export is single-sheet
+	// only, nothing to disambiguate). Skipped entirely when the
+	// document has no names defined, matching how every other
+	// optional part of this export is only added when it has content.
+	std::string definedNamesXml;
+	{
+		CNameTable* names = doc->GetNameTable();
+		if (names && !names->empty())
+		{
+			definedNamesXml = "<definedNames>";
+			for (CNameTable::const_iterator it = names->begin(); it != names->end(); ++it)
+			{
+				definedNamesXml += "<definedName name=\"";
+				AppendXmlEscaped(definedNamesXml, (const char*)it->first);
+				definedNamesXml += "\">" + AbsRangeRef("Foglio1", it->second) + "</definedName>";
+			}
+			definedNamesXml += "</definedNames>\n";
+		}
+	}
+
+	std::string workbookXmlOut = std::string(kWorkbookHeader) + definedNamesXml + "</workbook>\n";
 
 	// xl/styles.xml (rId2) e' sempre presente (vedi kStyles sotto), la
 	// relazione verso xl/vbaProject.bin (rId3) va aggiunta SOLO in
@@ -2381,7 +2496,7 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		return B_IO_ERROR;
 	if (!zip.AddEntry("_rels/.rels", kRootRels, strlen(kRootRels)))
 		return B_IO_ERROR;
-	if (!zip.AddEntry("xl/workbook.xml", kWorkbook, strlen(kWorkbook)))
+	if (!zip.AddEntry("xl/workbook.xml", workbookXmlOut.data(), workbookXmlOut.size()))
 		return B_IO_ERROR;
 	if (!zip.AddEntry("xl/_rels/workbook.xml.rels", workbookRels.data(), workbookRels.size()))
 		return B_IO_ERROR;
@@ -4380,10 +4495,28 @@ struct WorkbookSheetInfo {
 	std::string rId;
 };
 
+// A single <definedName> (named range, "100% XLSX standard
+// compatibility" plan, ROADMAP.md): "name" and an optional
+// "localSheetId" (0-based index into WorkbookContext::sheets, present
+// only for a sheet-scoped name) come from <definedName>'s own
+// attributes; "refText" is the raw text between its tags (e.g.
+// "Foglio1!$A$1:$A$5"), resolved into an actual sheet+range later by
+// ApplyDefinedNames, once every sheet's CContainer exists.
+struct DefinedNameInfo {
+	std::string name;
+	bool hasLocalSheetId = false;
+	int localSheetId = -1;
+	std::string refText;
+};
+
 struct WorkbookContext {
 	std::vector<WorkbookSheetInfo> sheets;
 	bool inSheets;
 	bool date1904; // <workbookPr date1904="1"/>: epoca Mac storica (1904-01-01) invece della predefinita (1899-12-30, Fase 12)
+	std::vector<DefinedNameInfo> definedNames;
+	bool inDefinedNames = false;
+	bool inDefinedName = false;
+	DefinedNameInfo currentName;
 };
 
 static void XMLCALL WorkbookStart(void* userData, const char* name, const char** atts)
@@ -4404,6 +4537,23 @@ static void XMLCALL WorkbookStart(void* userData, const char* name, const char**
 		if (!info.rId.empty())
 			ctx->sheets.push_back(info);
 	}
+	else if (strcmp(name, "definedNames") == 0)
+		ctx->inDefinedNames = true;
+	else if (ctx->inDefinedNames && strcmp(name, "definedName") == 0)
+	{
+		ctx->inDefinedName = true;
+		ctx->currentName = DefinedNameInfo();
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "name") == 0)
+				ctx->currentName.name = atts[i + 1];
+			else if (strcmp(atts[i], "localSheetId") == 0)
+			{
+				ctx->currentName.hasLocalSheetId = true;
+				ctx->currentName.localSheetId = atoi(atts[i + 1]);
+			}
+		}
+	}
 	else if (strcmp(name, "workbookPr") == 0)
 	{
 		for (int i = 0; atts[i]; i += 2)
@@ -4417,10 +4567,26 @@ static void XMLCALL WorkbookEnd(void* userData, const char* name)
 	WorkbookContext* ctx = (WorkbookContext*)userData;
 	if (strcmp(name, "sheets") == 0)
 		ctx->inSheets = false;
+	else if (strcmp(name, "definedNames") == 0)
+		ctx->inDefinedNames = false;
+	else if (strcmp(name, "definedName") == 0 && ctx->inDefinedName)
+	{
+		ctx->inDefinedName = false;
+		if (!ctx->currentName.name.empty())
+			ctx->definedNames.push_back(ctx->currentName);
+	}
+}
+
+static void XMLCALL WorkbookChars(void* userData, const char* s, int len)
+{
+	WorkbookContext* ctx = (WorkbookContext*)userData;
+	if (ctx->inDefinedName)
+		ctx->currentName.refText.append(s, len);
 }
 
 static bool ParseWorkbookSheetList(const std::vector<unsigned char>& xml,
-	std::vector<WorkbookSheetInfo>& out, bool* outDate1904 = NULL)
+	std::vector<WorkbookSheetInfo>& out, bool* outDate1904 = NULL,
+	std::vector<DefinedNameInfo>* outDefinedNames = NULL)
 {
 	if (xml.empty())
 		return false;
@@ -4432,6 +4598,7 @@ static bool ParseWorkbookSheetList(const std::vector<unsigned char>& xml,
 	XML_Parser parser = XML_ParserCreate(NULL);
 	XML_SetUserData(parser, &ctx);
 	XML_SetElementHandler(parser, WorkbookStart, WorkbookEnd);
+	XML_SetCharacterDataHandler(parser, WorkbookChars);
 
 	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
 	XML_ParserFree(parser);
@@ -4442,6 +4609,8 @@ static bool ParseWorkbookSheetList(const std::vector<unsigned char>& xml,
 	out = ctx.sheets;
 	if (outDate1904)
 		*outDate1904 = ctx.date1904;
+	if (outDefinedNames)
+		*outDefinedNames = ctx.definedNames;
 	return true;
 }
 
@@ -5218,6 +5387,50 @@ struct ParsedSheet {
 	bool isProtected = false;
 };
 
+// Applies each parsed <definedName> (see WorkbookContext::definedNames
+// above) to the sheet(s) it belongs to, once every sheet's CContainer
+// exists ("100% XLSX standard compatibility" plan, ROADMAP.md).
+// Excel's own reserved names (prefix "_xlnm.", e.g. "_xlnm.Print_Area"
+// for the print area, "_xlnm.Print_Titles" for repeated print rows/
+// columns) are internal bookkeeping, not real named ranges -- skipped
+// here rather than polluting the name table; wiring them to this
+// app's own print-area/print-settings persistence (AscdIO.h,
+// unrelated to the name table) is a separate, not-yet-done follow-up,
+// see ROADMAP.md. A workbook-scoped name (no localSheetId) has no
+// cross-sheet equivalent in this engine -- CContainer::ResolveName
+// only ever looks at its own document's name table, see the comment
+// on CContainer::fNames in Container.h -- so it's added to EVERY
+// sheet's own table instead: the closest approximation to "visible
+// from any sheet" without a bigger cross-sheet name-resolution
+// redesign. A sheet-scoped name (localSheetId present) goes only to
+// that one sheet.
+static void ApplyDefinedNames(const std::vector<DefinedNameInfo>& definedNames,
+	std::vector<ParsedSheet>& sheets)
+{
+	for (size_t i = 0; i < definedNames.size(); i++)
+	{
+		const DefinedNameInfo& dn = definedNames[i];
+		if (dn.name.compare(0, 6, "_xlnm.") == 0)
+			continue;
+
+		std::string sheetName;
+		range r;
+		if (!ParseSheetRangeRef(dn.refText, &sheetName, &r) || !r.IsValid())
+			continue;
+
+		if (dn.hasLocalSheetId)
+		{
+			if (dn.localSheetId >= 0 && (size_t)dn.localSheetId < sheets.size())
+				(*sheets[dn.localSheetId].doc->GetOrCreateNameTable())[CName(dn.name.c_str())] = r;
+		}
+		else
+		{
+			for (size_t s = 0; s < sheets.size(); s++)
+				(*sheets[s].doc->GetOrCreateNameTable())[CName(dn.name.c_str())] = r;
+		}
+	}
+}
+
 // Scrive una cartella di lavoro multi-foglio in formato "ASC2" (vedi
 // il commento su kASCDBook2Magic sopra): riusa WriteASCD cosi' com'e'
 // per ogni foglio, nessuna duplicazione della serializzazione per
@@ -5415,10 +5628,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 
 	std::vector<unsigned char> workbookXml, relsXml;
 	std::vector<WorkbookSheetInfo> sheetList;
+	std::vector<DefinedNameInfo> definedNames;
 	std::map<std::string, std::string> relTargets;
 	bool date1904 = false; // <workbookPr date1904="1"/>, Fase 12: resta false (predefinito) se il parse sotto non arriva a leggerlo
 	if (zip.ReadEntry("xl/workbook.xml", workbookXml)
-		&& ParseWorkbookSheetList(workbookXml, sheetList, &date1904)
+		&& ParseWorkbookSheetList(workbookXml, sheetList, &date1904, &definedNames)
 		&& zip.ReadEntry("xl/_rels/workbook.xml.rels", relsXml)
 		&& ParseRelationships(relsXml, relTargets))
 	{
@@ -5719,6 +5933,12 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 
 		sheets.push_back(parsed);
 	}
+
+	// Nomi definiti (<definedNames>, "100% XLSX standard compatibility"
+	// plan): applicati ORA che ogni foglio ha gia' il suo CContainer --
+	// vedi ApplyDefinedNames sopra.
+	if (err == B_OK)
+		ApplyDefinedNames(definedNames, sheets);
 
 	// Progetto VBA (XLSM, Fase 31): se l'archivio originale ne ha uno,
 	// lo si legge grezzo e lo si appende SOLO al primo foglio (vedi il
