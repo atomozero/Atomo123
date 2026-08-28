@@ -3514,6 +3514,20 @@ struct SheetContext {
 	bool inValue;
 	bool inFormula;
 
+	// Formule array legacy (CSE, Ctrl+Maiusc+Invio): <f t="array"
+	// ref="B2:D4">FORMULA</f> compare SOLO sulla cella in alto a
+	// sinistra dell'intervallo -- le altre celle dell'intervallo non
+	// hanno affatto un <f> proprio (niente formula, niente t="array",
+	// solo <v> col valore congelato). formulaType/formulaRef leggono
+	// gli attributi di <f> alla sua apertura; arrayFormulas accumula
+	// (intervallo -> testo) ogni volta che una <f t="array"> con testo
+	// non vuoto viene chiusa, cosi' una cella successiva SENZA <f>
+	// propria puo' recuperare la formula giusta da qui (vedi "c" in
+	// SheetEnd) invece di essere importata come valore statico morto.
+	std::string formulaType;
+	std::string formulaRef;
+	std::vector<std::pair<range, std::string> > arrayFormulas;
+
 	// Stato per <conditionalFormatting>/<cfRule>/<formula> (solo se
 	// condRules non e' NULL).
 	std::vector<range> currentSqref;
@@ -3766,7 +3780,18 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 	else if (strcmp(name, "v") == 0)
 		ctx->inValue = true;
 	else if (strcmp(name, "f") == 0)
+	{
 		ctx->inFormula = true;
+		ctx->formulaType.clear();
+		ctx->formulaRef.clear();
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "t") == 0)
+				ctx->formulaType = atts[i + 1];
+			else if (strcmp(atts[i], "ref") == 0)
+				ctx->formulaRef = atts[i + 1];
+		}
+	}
 	// Le stringhe inline (t="inlineStr", scritte dal nostro export
 	// invece di usare una tabella di stringhe condivise) mettono il
 	// testo dentro <is><t>...</t></is> anziche' <v>: si riusa lo
@@ -3864,7 +3889,19 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 	if (strcmp(name, "v") == 0)
 		ctx->inValue = false;
 	else if (strcmp(name, "f") == 0)
+	{
 		ctx->inFormula = false;
+		// Registra la formula array (vedi il commento su
+		// SheetContext::arrayFormulas sopra) solo ora che ctx->formula
+		// contiene tutto il testo accumulato dal gestore di dati
+		// carattere tra <f> e </f>.
+		if (ctx->formulaType == "array" && !ctx->formulaRef.empty() && !ctx->formula.empty())
+		{
+			range r;
+			if (ParseSqrefToken(ctx->formulaRef, &r))
+				ctx->arrayFormulas.push_back(std::make_pair(r, ctx->formula));
+		}
+	}
 	else if (strcmp(name, "formula") == 0 && ctx->inCondFormula)
 	{
 		ctx->inCondFormula = false;
@@ -3887,6 +3924,25 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 			return;
 
 		cell loc(col, row);
+
+		// Cella dentro l'intervallo di una formula array (vedi il
+		// commento su SheetContext::arrayFormulas) ma senza un <f>
+		// proprio: eredita la STESSA formula della cella ancora -- a
+		// differenza delle formule condivise (<f t="shared">, non
+		// ancora gestite), un'array formula CSE mostra il testo
+		// IDENTICO in ogni cella dell'intervallo, nessuno spostamento
+		// di riferimenti relativi.
+		if (ctx->formula.empty())
+		{
+			for (size_t i = 0; i < ctx->arrayFormulas.size(); i++)
+			{
+				if (ctx->arrayFormulas[i].first.Contains(loc))
+				{
+					ctx->formula = ctx->arrayFormulas[i].second;
+					break;
+				}
+			}
+		}
 
 		std::string text;
 		if (!ctx->formula.empty())

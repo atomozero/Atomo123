@@ -3279,6 +3279,133 @@ int main()
 			"il nome del grafico non implementato menziona \"areaChart\", non generico");
 	}
 
+	// Formula array legacy (CSE, Ctrl+Maiusc+Invio): in un file XLSX
+	// vero, <f t="array" ref="B1:B2">FORMULA</f> compare SOLO sulla
+	// cella in alto a sinistra dell'intervallo (B1) -- B2 non ha
+	// affatto un <f> proprio, solo un <v> con il valore congelato che
+	// Excel aveva calcolato l'ultima volta. Prima della correzione,
+	// B2 veniva importata come quel valore statico invece che come la
+	// STESSA formula di B1 (nessuno spostamento di riferimenti
+	// relativi per un'array formula, a differenza di una formula
+	// condivisa). Il valore <v> di entrambe le celle e' deliberatamente
+	// SBAGLIATO (999) per dimostrare che il motore ricalcola davvero
+	// la formula importata invece di fidarsi della cache di Excel.
+	{
+		static const char kArrContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kArrRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kArrWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kArrWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kArrSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\"><v>10</v></c>"
+			"<c r=\"B1\"><f t=\"array\" ref=\"B1:B2\">A1+A2</f><v>999</v></c></row>"
+			"<row r=\"2\"><c r=\"A2\"><v>20</v></c>"
+			"<c r=\"B2\"><v>999</v></c></row>"
+			"</sheetData>"
+			"</worksheet>\n";
+
+		BMallocIO arrXlsx;
+		CZipWriter arrZip;
+		arrZip.Begin(&arrXlsx);
+		arrZip.AddEntry("[Content_Types].xml", kArrContentTypes, strlen(kArrContentTypes));
+		arrZip.AddEntry("_rels/.rels", kArrRootRels, strlen(kArrRootRels));
+		arrZip.AddEntry("xl/workbook.xml", kArrWorkbook, strlen(kArrWorkbook));
+		arrZip.AddEntry("xl/_rels/workbook.xml.rels", kArrWorkbookRels, strlen(kArrWorkbookRels));
+		arrZip.AddEntry("xl/worksheets/sheet1.xml", kArrSheet, strlen(kArrSheet));
+		Check(arrZip.Close(), "costruzione del file XLSX di prova per la formula array riuscita");
+
+		arrXlsx.Seek(0, SEEK_SET);
+		translator_info arrInfo;
+		err = translator->Identify(&arrXlsx, NULL, NULL, &arrInfo, 0);
+		Check(err == B_OK && arrInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova per la formula array");
+
+		arrXlsx.Seek(0, SEEK_SET);
+		BMallocIO arrAscdOut;
+		err = translator->Translate(&arrXlsx, &arrInfo, NULL, kAtomoNativeFormat, &arrAscdOut);
+		Check(err == B_OK, "Translate del file di prova per la formula array riesce");
+
+		const unsigned char* arrAscdData = NULL;
+		size_t arrAscdLen = 0;
+		bool arrUnwrapped = UnwrapFirstSheet((const unsigned char*)arrAscdOut.Buffer(),
+			arrAscdOut.BufferLength(), &arrAscdData, &arrAscdLen);
+		Check(arrUnwrapped, "l'output di Translate del file di prova per la formula array e' un ASCD valido");
+
+		if (arrUnwrapped && arrAscdLen > 12 && memcmp(arrAscdData, "ASCD", 4) == 0)
+		{
+			int32 arrCount;
+			memcpy(&arrCount, arrAscdData + 8, 4);
+
+			CContainer& arrDoc = *new CContainer(NULL, NULL);
+			bool foundB1Formula = false, foundB2Formula = false;
+
+			size_t pos = 12;
+			for (int32 i = 0; i < arrCount && pos + 8 <= arrAscdLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, arrAscdData + pos, 2); pos += 2;
+				memcpy(&col, arrAscdData + pos, 2); pos += 2;
+				memcpy(&len, arrAscdData + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella (versione 2 del formato ASCD)
+				if (pos + (size_t)len > arrAscdLen)
+					break;
+
+				std::string text((const char*)arrAscdData + pos, len);
+				pos += len;
+
+				cell loc(col, row);
+				TryToParseString(text.c_str(), loc, &arrDoc, true);
+
+				if (row == 1 && col == 2 && text.find("A1") != std::string::npos
+					&& text.find("A2") != std::string::npos)
+					foundB1Formula = true;
+				if (row == 2 && col == 2 && text.find("A1") != std::string::npos
+					&& text.find("A2") != std::string::npos)
+					foundB2Formula = true;
+			}
+
+			Check(foundB1Formula,
+				"B1 (ancora della formula array, <f t=\"array\"> col testo) importata come formula");
+			Check(foundB2Formula,
+				"B2 (nell'intervallo dell'array ma senza <f> proprio) importata come formula, "
+				"non come il valore congelato 999");
+
+			cell b1(2, 1), b2(2, 2);
+			arrDoc.CalcCell(b1);
+			arrDoc.CalcCell(b2);
+			Value v1, v2;
+			arrDoc.GetValue(b1, v1);
+			arrDoc.GetValue(b2, v2);
+			Check((double)v1 == 30.0,
+				"il motore ricalcola B1 e ottiene 30 (10+20), non il valore congelato 999");
+			Check((double)v2 == 30.0,
+				"il motore ricalcola B2 e ottiene 30 (10+20), non il valore congelato 999");
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
