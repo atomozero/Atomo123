@@ -196,9 +196,15 @@ the native `.ascd` format; none of it survives a trip through
   round-trip (its own indicator is drawn purely from
   `CContainer::HasComment`), so real Excel/LibreOffice both display the
   plain `<comments>` content with their own default-styled box
-- **Hyperlinks.** Same shape as comments exactly: `<hyperlinks>` (plus
-  its `r:id` → URL indirection through `sheetN.xml.rels`) is never
-  parsed on import, never written on export
+- ~~**Hyperlinks.**~~ Fixed — see `CHANGELOG.md`. Same shape as
+  comments: the translator now parses `<hyperlinks>` (a child of
+  `<worksheet>`, unlike comments which live in their own part), with
+  its `r:id` → URL indirection resolved through the sheet's own
+  `.rels` (`TargetMode="External"`), and writes it back on export. An
+  internal link (`location="..."` instead of `r:id`) is also imported
+  directly, with no `.rels` involved; this engine stores only one
+  string per hyperlink, so it can't distinguish the two forms on
+  export — every exported link is written as external
 - **Data validation.** `<dataValidations>` is never parsed on import
   (dropdown lists, numeric/date range rules, custom formula rules all
   silently vanish) and never written on export either — the whole
