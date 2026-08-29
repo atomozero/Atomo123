@@ -742,15 +742,37 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	// Sezione convalida dati, in coda (vedi ui/src/AscdIO.cpp): sempre
-	// vuota, stesso principio delle sezioni sopra -- questo translator
-	// non estrae la convalida dati (<dataValidations>) da un file XLSX
-	// vero, rimandato come le altre sezioni "non ancora estratte" qui
-	// sopra.
+	// Sezione convalida dati, in coda (100% XLSX standard compatibility,
+	// Tier 2): stesso schema esatto di ui/src/AscdIO.cpp (SaveASCD),
+	// stessa fonte (CContainer::GetValidations) -- scritta con i valori
+	// reali ora che ParseSheet/WriteXLSX estraggono/scrivono davvero
+	// <dataValidations> (solo elenco letterale e intervallo numerico
+	// "between": gli unici due tipi che questo motore modella, vedi
+	// ValidationRule in Container.h).
 	{
-		int32 validationCount = 0;
+		const std::map<cell, ValidationRule>& validations = doc->GetValidations();
+		int32 validationCount = (int32)validations.size();
 		if (dest->Write(&validationCount, sizeof(validationCount)) != (ssize_t)sizeof(validationCount))
 			return B_IO_ERROR;
+
+		for (std::map<cell, ValidationRule>::const_iterator it = validations.begin();
+			it != validations.end(); ++it)
+		{
+			int16 row = it->first.v, col = it->first.h;
+			int8 type = (int8)it->second.type;
+			int32 len = (int32)it->second.list.size();
+			double min = it->second.min, max = it->second.max;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(it->second.list.data(), len) != len)
+				return B_IO_ERROR;
+			if (dest->Write(&min, sizeof(min)) != (ssize_t)sizeof(min)
+				|| dest->Write(&max, sizeof(max)) != (ssize_t)sizeof(max))
+				return B_IO_ERROR;
+		}
 	}
 
 	// Sezione formattazione condizionale VIVA, in coda (vedi
@@ -1553,7 +1575,9 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	}
 	{
 		// Convalida dati: (int16 row, col, int8 tipo, int32 len, len
-		// byte elenco, 2 double min/max).
+		// byte elenco, 2 double min/max). Stesso schema di ui/src/
+		// AscdIO.cpp (LoadASCD) -- applicata davvero a "doc" ora (100%
+		// XLSX standard compatibility, Tier 2), non piu' solo scartata.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1567,14 +1591,30 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&type, sizeof(type)) != (ssize_t)sizeof(type)
 					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 					return B_BAD_DATA;
+				if (!cell(col, row).IsValid())
+					return B_BAD_DATA;
 				if (len < 0 || len > 16 * 1024 * 1024)
 					return B_BAD_DATA;
-				if (len > 0 && source->Seek(len, SEEK_CUR) < 0)
-					return B_BAD_DATA;
+
+				std::string list;
+				if (len > 0)
+				{
+					list.resize(len);
+					if (source->Read(&list[0], len) != len)
+						return B_BAD_DATA;
+				}
+
 				double minV, maxV;
 				if (source->Read(&minV, sizeof(minV)) != (ssize_t)sizeof(minV)
 					|| source->Read(&maxV, sizeof(maxV)) != (ssize_t)sizeof(maxV))
 					return B_BAD_DATA;
+
+				ValidationRule rule;
+				rule.type = (ValidationType)type;
+				rule.list = list;
+				rule.min = minV;
+				rule.max = maxV;
+				doc->SetValidation(cell(col, row), rule);
 			}
 		}
 	}
@@ -1890,7 +1930,11 @@ static void AppendXmlEscaped(std::string& out, const char* text)
 // fogli tipici esportati da questo programma, ed e' comunque sintassi
 // OOXML valida (Excel/LibreOffice la leggono correttamente).
 static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtected,
-	const std::string& hyperlinksXml = std::string())
+	// Gia' pronto da WriteXLSX sopra: <dataValidations>...</dataValidations>
+	// seguito da <hyperlinks>...</hyperlinks> (100% XLSX standard
+	// compatibility, Tier 2), nell'ordine richiesto dallo schema OOXML
+	// -- questa funzione lo inserisce solo al punto giusto, vedi sotto.
+	const std::string& dataValidationAndHyperlinksXml = std::string())
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -2010,11 +2054,10 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// (l'app non protegge mai con password, solo on/off).
 	if (isProtected)
 		xml += "<sheetProtection sheetId=\"1\"/>";
-	// <hyperlinks> (100% XLSX standard compatibility, Tier 2): DOPO
-	// <sheetProtection>, PRIMA di <drawing> nell'ordine richiesto dallo
-	// schema OOXML (CT_Worksheet) -- gia' pronto (con i suoi r:id) da
-	// WriteXLSX sopra, questa funzione lo inserisce solo al punto giusto.
-	xml += hyperlinksXml;
+	// <dataValidations>/<hyperlinks> (100% XLSX standard compatibility,
+	// Tier 2): DOPO <sheetProtection>, PRIMA di <drawing> nell'ordine
+	// richiesto dallo schema OOXML (CT_Worksheet).
+	xml += dataValidationAndHyperlinksXml;
 	// <drawing> e' un fratello di <sheetData> (mai al suo interno),
 	// deve venire DOPO nello schema OOXML del foglio -- ancora i grafici
 	// incorporati (Fase 24) tramite xl/drawings/drawing1.xml, sempre
@@ -2519,6 +2562,61 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		commentsXml += "</commentList></comments>\n";
 	}
 
+	// <dataValidations> dentro <worksheet> (100% XLSX standard
+	// compatibility, Tier 2): CContainer::GetValidations() -> un
+	// <dataValidation> per cella (stesso principio "una voce per
+	// cella" dei commenti sopra, niente raggruppamento di celle con la
+	// stessa regola in un solo sqref multiplo -- piu' semplice, e
+	// comunque OOXML valido). Solo le due forme che questo motore
+	// modella davvero (vedi ValidationRule in Container.h): elenco
+	// letterale fra virgolette per eListValidation, "whole"/operator
+	// "between" per eNumberRangeValidation (Excel tratta "whole" come
+	// intero, ma un limite non intero e' comunque valido da leggere;
+	// non c'e' un secondo tipo "decimal" da scegliere qui perche' il
+	// motore non distingue le due cose).
+	const std::map<cell, ValidationRule>& validations = doc->GetValidations();
+	bool hasValidations = !validations.empty();
+	std::string dataValidationXml;
+	if (hasValidations)
+	{
+		dataValidationXml = "<dataValidations count=\"";
+		char countBuf[16];
+		snprintf(countBuf, sizeof(countBuf), "%zu", validations.size());
+		dataValidationXml += countBuf;
+		dataValidationXml += "\">";
+		for (std::map<cell, ValidationRule>::const_iterator it = validations.begin();
+			it != validations.end(); ++it)
+		{
+			char ref[32];
+			it->first.GetName(ref);
+			const ValidationRule& rule = it->second;
+			if (rule.type == eListValidation)
+			{
+				dataValidationXml += "<dataValidation type=\"list\" allowBlank=\"1\" "
+					"showInputMessage=\"1\" showErrorMessage=\"1\" sqref=\"";
+				dataValidationXml += ref;
+				dataValidationXml += "\"><formula1>\"";
+				AppendXmlEscaped(dataValidationXml, rule.list.c_str());
+				dataValidationXml += "\"</formula1></dataValidation>";
+			}
+			else if (rule.type == eNumberRangeValidation)
+			{
+				char minBuf[64], maxBuf[64];
+				snprintf(minBuf, sizeof(minBuf), "%.15g", rule.min);
+				snprintf(maxBuf, sizeof(maxBuf), "%.15g", rule.max);
+				dataValidationXml += "<dataValidation type=\"whole\" operator=\"between\" "
+					"allowBlank=\"1\" showInputMessage=\"1\" showErrorMessage=\"1\" sqref=\"";
+				dataValidationXml += ref;
+				dataValidationXml += "\"><formula1>";
+				dataValidationXml += minBuf;
+				dataValidationXml += "</formula1><formula2>";
+				dataValidationXml += maxBuf;
+				dataValidationXml += "</formula2></dataValidation>";
+			}
+		}
+		dataValidationXml += "</dataValidations>";
+	}
+
 	// <hyperlinks> dentro <worksheet> (100% XLSX standard compatibility,
 	// Tier 2): CContainer::GetHyperlinks() -> un <hyperlink ref="A1"
 	// r:id="rIdX"/> per cella, sempre un collegamento ESTERNO
@@ -2552,7 +2650,7 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		hyperlinksXml += "</hyperlinks>";
 	}
 
-	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected, hyperlinksXml);
+	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected, dataValidationXml + hyperlinksXml);
 
 	// xl/styles.xml (Fase 32): finora questo export non scriveva NESSUNO
 	// stile (solo valori/formule, vedi BuildSheetXml) -- una vera tabella
@@ -3782,6 +3880,25 @@ struct HyperlinkRefInfo {
 	std::string location; // non vuoto per un collegamento interno (nessun r:id)
 };
 
+// Un <dataValidation type="..." sqref="A1 B2:B4"><formula1>...</formula1>
+// [<formula2>...</formula2>]</dataValidation>, dentro <dataValidations>
+// (100% XLSX standard compatibility, Tier 2). Solo due forme si
+// traducono in una ValidationRule reale (vedi Container.h): type="list"
+// (formula1 e' un elenco letterale fra virgolette, es. "\"Rosso,Verde\"")
+// e type="whole"/"decimal" con operator assente o "between" (formula1/2
+// numerici letterali) -- ogni altra combinazione (elenco da intervallo
+// di celle, operatori diversi da "between", date/orari, formula
+// personalizzata) non ha un equivalente in questo motore e viene
+// scartata all'applicazione, non qui: qui si raccoglie tutto cosi'
+// com'e' nel file.
+struct DataValidationRefInfo {
+	std::string sqref;
+	std::string type;
+	std::string operatorAttr;
+	std::string formula1;
+	std::string formula2;
+};
+
 struct SheetContext {
 	CContainer* doc;
 	const std::vector<std::string>* sharedStrings;
@@ -3795,6 +3912,7 @@ struct SheetContext {
 	range* autoFilterRange; // valido solo se *hasAutoFilter diventa true
 	bool* isProtected; // opzionale (NULL = non raccolto), da <sheetProtection/> (Fase 32)
 	std::vector<HyperlinkRefInfo>* hyperlinkRefs; // opzionale (NULL = non raccolti)
+	std::vector<DataValidationRefInfo>* dataValidationRefs; // opzionale (NULL = non raccolte)
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
 	bool date1904; // Fase 12: epoca del sistema data, da <workbookPr>
@@ -3806,6 +3924,15 @@ struct SheetContext {
 	int cellStyleIndex;   // valore di s="..." sulla cella corrente, -1 se assente
 	bool inValue;
 	bool inFormula;
+
+	// <dataValidation>/<formula1>/<formula2>: stato di parsing, stesso
+	// principio di inValue/inFormula sopra ma per gli elementi di
+	// convalida dati (nomi diversi per non confondersi con la formula
+	// di una CELLA, un contesto completamente diverso).
+	bool inDataValidation;
+	bool inValidationFormula1;
+	bool inValidationFormula2;
+	DataValidationRefInfo currentValidation;
 
 	// Formule array legacy (CSE, Ctrl+Maiusc+Invio): <f t="array"
 	// ref="B2:D4">FORMULA</f> compare SOLO sulla cella in alto a
@@ -4055,6 +4182,30 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 		if (!info.ref.empty() && (!info.rId.empty() || !info.location.empty()))
 			ctx->hyperlinkRefs->push_back(info);
 	}
+	// <dataValidation type="..." sqref="..."> (100% XLSX standard
+	// compatibility, Tier 2), dentro <dataValidations>, fratello di
+	// <sheetData>: "operator" e' assente per type="list" (non si
+	// applica), e vale implicitamente "between" quando assente per un
+	// intervallo numerico (default OOXML) -- vedi DataValidationRefInfo
+	// sopra per quali combinazioni diventano davvero una ValidationRule.
+	else if (strcmp(name, "dataValidation") == 0 && ctx->dataValidationRefs)
+	{
+		ctx->inDataValidation = true;
+		ctx->currentValidation = DataValidationRefInfo();
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "sqref") == 0)
+				ctx->currentValidation.sqref = atts[i + 1];
+			else if (strcmp(atts[i], "type") == 0)
+				ctx->currentValidation.type = atts[i + 1];
+			else if (strcmp(atts[i], "operator") == 0)
+				ctx->currentValidation.operatorAttr = atts[i + 1];
+		}
+	}
+	else if (ctx->inDataValidation && strcmp(name, "formula1") == 0)
+		ctx->inValidationFormula1 = true;
+	else if (ctx->inDataValidation && strcmp(name, "formula2") == 0)
+		ctx->inValidationFormula2 = true;
 	// <sheetProtection .../> (Fase 32, "Proteggi foglio"): la sola
 	// PRESENZA dell'elemento vuol dire "foglio protetto" in Excel,
 	// indipendentemente dai suoi attributi (password, quali comandi
@@ -4248,6 +4399,16 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 
 	if (strcmp(name, "v") == 0)
 		ctx->inValue = false;
+	else if (strcmp(name, "formula1") == 0 && ctx->inDataValidation)
+		ctx->inValidationFormula1 = false;
+	else if (strcmp(name, "formula2") == 0 && ctx->inDataValidation)
+		ctx->inValidationFormula2 = false;
+	else if (strcmp(name, "dataValidation") == 0 && ctx->inDataValidation)
+	{
+		ctx->inDataValidation = false;
+		if (!ctx->currentValidation.sqref.empty() && !ctx->currentValidation.formula1.empty())
+			ctx->dataValidationRefs->push_back(ctx->currentValidation);
+	}
 	else if (strcmp(name, "f") == 0)
 	{
 		ctx->inFormula = false;
@@ -4488,6 +4649,10 @@ static void XMLCALL SheetChars(void* userData, const char* s, int len)
 		ctx->formula.append(s, len);
 	else if (ctx->inCondFormula)
 		ctx->condFormula.append(s, len);
+	else if (ctx->inValidationFormula1)
+		ctx->currentValidation.formula1.append(s, len);
+	else if (ctx->inValidationFormula2)
+		ctx->currentValidation.formula2.append(s, len);
 }
 
 static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
@@ -4502,7 +4667,8 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	std::vector<int>* hiddenRows = NULL,
 	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL,
 	bool* isProtected = NULL,
-	std::vector<HyperlinkRefInfo>* hyperlinkRefs = NULL)
+	std::vector<HyperlinkRefInfo>* hyperlinkRefs = NULL,
+	std::vector<DataValidationRefInfo>* dataValidationRefs = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -4517,6 +4683,7 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.autoFilterRange = autoFilterRange;
 	ctx.isProtected = isProtected;
 	ctx.hyperlinkRefs = hyperlinkRefs;
+	ctx.dataValidationRefs = dataValidationRefs;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
 	ctx.date1904 = date1904;
@@ -4525,6 +4692,9 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.inFormula = false;
 	ctx.inCfRule = false;
 	ctx.inCondFormula = false;
+	ctx.inDataValidation = false;
+	ctx.inValidationFormula1 = false;
+	ctx.inValidationFormula2 = false;
 
 	XML_Parser parser = XML_ParserCreate(NULL);
 	XML_SetUserData(parser, &ctx);
@@ -5037,6 +5207,59 @@ static void ApplyConditionalFormatting(CContainer* doc,
 			continue; // altri tipi: ignorati, vedi il commento sopra la funzione.
 
 		doc->AddConditionalFormatRule(engineRule);
+	}
+}
+
+// Applica ogni <dataValidation> raccolto da ParseSheet (100% XLSX
+// standard compatibility, Tier 2) a "doc": solo due forme diventano
+// davvero una ValidationRule (vedi DataValidationRefInfo sopra) --
+// tutto il resto (elenco da un intervallo di celle invece che
+// letterale, un operatore diverso da "between", date/orari, formula
+// personalizzata) non ha equivalente in questo motore e viene
+// scartato in silenzio, stesso principio di ApplyConditionalFormatting
+// sopra per i tipi di regola che non sa modellare.
+static void ApplyDataValidation(CContainer* doc, const std::vector<DataValidationRefInfo>& refs)
+{
+	for (size_t i = 0; i < refs.size(); i++)
+	{
+		const DataValidationRefInfo& info = refs[i];
+		ValidationRule rule;
+
+		if (info.type == "list")
+		{
+			const std::string& f = info.formula1;
+			if (f.size() < 2 || f.front() != '"' || f.back() != '"')
+				continue; // elenco da intervallo di celle: non modellabile qui
+			rule.type = eListValidation;
+			rule.list = f.substr(1, f.size() - 2);
+		}
+		else if (info.type == "whole" || info.type == "decimal")
+		{
+			if (!info.operatorAttr.empty() && info.operatorAttr != "between")
+				continue;
+			if (info.formula1.empty() || info.formula2.empty())
+				continue;
+			char* end1 = NULL; char* end2 = NULL;
+			double v1 = strtod(info.formula1.c_str(), &end1);
+			double v2 = strtod(info.formula2.c_str(), &end2);
+			if (end1 == info.formula1.c_str() || *end1 != 0
+				|| end2 == info.formula2.c_str() || *end2 != 0)
+				continue; // riferimento a cella, non un numero letterale
+			rule.type = eNumberRangeValidation;
+			rule.min = v1;
+			rule.max = v2;
+		}
+		else
+			continue; // date/orari/lunghezza testo/formula personalizzata: non modellabili qui
+
+		std::vector<range> ranges;
+		ParseSqref(info.sqref, &ranges);
+		for (size_t r = 0; r < ranges.size(); r++)
+		{
+			for (int row = ranges[r].top; row <= ranges[r].bottom; row++)
+				for (int col = ranges[r].left; col <= ranges[r].right; col++)
+					doc->SetValidation(cell(col, row), rule);
+		}
 	}
 }
 
@@ -5966,11 +6189,12 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		parsed.doc = new CContainer(NULL, NULL);
 		std::vector<CondFormatRule> condRules;
 		std::vector<HyperlinkRefInfo> hyperlinkRefs;
+		std::vector<DataValidationRefInfo> dataValidationRefs;
 		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles,
 			&condRules, date1904, &parsed.rowHeights, &parsed.showGrid,
 			&parsed.hasTabColor, &parsed.tabColor,
 			&parsed.hiddenRows, &parsed.hasAutoFilter, &parsed.autoFilterRange,
-			&parsed.isProtected, &hyperlinkRefs))
+			&parsed.isProtected, &hyperlinkRefs, &dataValidationRefs))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
@@ -5992,6 +6216,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 					parsed.doc->SetHyperlink(c, hyperlinkRefs[hi].location);
 			}
 		}
+
+		// Convalida dati (100% XLSX standard compatibility, Tier 2):
+		// nessun _rels da risolvere, applicata direttamente da quanto
+		// raccolto sopra da ParseSheet.
+		ApplyDataValidation(parsed.doc, dataValidationRefs);
 
 		// Formattazione condizionale (Fase 12): valutata ORA, dopo che
 		// l'intero foglio e' stato letto e ogni cella ha gia' il suo

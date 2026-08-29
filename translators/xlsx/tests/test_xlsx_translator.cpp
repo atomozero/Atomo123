@@ -437,6 +437,121 @@ static status_t WriteASCDWithHyperlinkForTest(CContainer* doc, const char* ref, 
 	return B_OK;
 }
 
+// Same idea as WriteASCDWithHyperlinkForTest above, but for a data
+// validation rule instead (100% XLSX standard compatibility, Tier 2):
+// the validation section comes after hyperlinks, chart-type, and
+// border-color (all zero here), see the section order in WriteASCD.
+// "type" is 1 for eListValidation, 2 for eNumberRangeValidation (see
+// ValidationType in Container.h) -- only "list" ever writes to
+// "listText", only "range" ever writes real min/max.
+static status_t WriteASCDWithValidationForTest(CContainer* doc, const char* ref, int8 type,
+	const char* listText, double min, double max, BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati: chartCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi a zero.
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+	// Commenti, collegamenti ipertestuali: nessuno.
+	for (int i = 0; i < 2; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Tipo di grafico incorporato: chartTypeCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Colore del bordo di cella: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Convalida dati: un record vero.
+	{
+		cell c;
+		c.Set(ref);
+		int32 validationCount = 1;
+		int16 row = c.v, col = c.h;
+		int32 len = (int32)strlen(listText);
+		if (dest->Write(&validationCount, sizeof(validationCount)) != (ssize_t)sizeof(validationCount)
+			|| dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+			|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+			|| dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type)
+			|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (len > 0 && dest->Write(listText, len) != len)
+			return B_IO_ERROR;
+		if (dest->Write(&min, sizeof(min)) != (ssize_t)sizeof(min)
+			|| dest->Write(&max, sizeof(max)) != (ssize_t)sizeof(max))
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
 // Same idea as WriteASCDWithChartForTest above, but for a named range
 // instead of a chart: real named-range data has to go at the very END
 // of the format (see the comment on the same section in WriteASCD,
@@ -1039,6 +1154,127 @@ static bool ReadFirstHyperlinkFromAscdForTest(const unsigned char* ascdData, siz
 
 	outCell->Set(col, row);
 	outUrl->assign((const char*)ascdData + pos, urlLen);
+
+	return true;
+}
+
+// Same idea as ReadFirstHyperlinkFromAscdForTest above, but for the
+// data validation section (100% XLSX standard compatibility, Tier 2):
+// continues past hyperlinks, chart-type, and border-color (assumed
+// zero) into the real validation record.
+static bool ReadFirstValidationFromAscdForTest(const unsigned char* ascdData, size_t ascdLen,
+	cell* outCell, int8* outType, std::string* outList, double* outMin, double* outMax)
+{
+	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
+		return false;
+
+	int32 cellCount;
+	memcpy(&cellCount, ascdData + 8, 4);
+
+	size_t pos = 12;
+	for (int32 i = 0; i < cellCount; i++)
+	{
+		if (pos + 9 > ascdLen)
+			return false;
+		int32 len;
+		memcpy(&len, ascdData + pos + 4, 4);
+		pos += 9 + len;
+	}
+
+	// Grafici incorporati: un contatore (0 in questo documento di prova).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// colWidths, cellColors, columnColors, rowHeights: quattro contatori.
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Blocca riquadri: due interi fissi.
+	if (pos + 8 > ascdLen) return false;
+	pos += 8;
+
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto contatori.
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Visibilita' griglia: un byte fisso.
+	if (pos + 1 > ascdLen) return false;
+	pos += 1;
+
+	// Colore della linguetta: 4 byte fissi.
+	if (pos + 4 > ascdLen) return false;
+	pos += 4;
+
+	// Righe nascoste: un contatore.
+	if (pos + 4 > ascdLen) return false;
+	{
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// AutoFilter: 9 byte fissi.
+	if (pos + 9 > ascdLen) return false;
+	pos += 9;
+
+	// Commenti, collegamenti ipertestuali: due contatori (0 in questo
+	// documento di prova).
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Tipo di grafico: un contatore (0 in questo documento di prova).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// Colore del bordo: un contatore (0 in questo documento di prova).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// Convalida dati: i dati veri, primo (e unico atteso) record.
+	if (pos + 4 > ascdLen) return false;
+	int32 validationCount;
+	memcpy(&validationCount, ascdData + pos, 4); pos += 4;
+	if (validationCount != 1) return false;
+
+	if (pos + 9 > ascdLen) return false;
+	int16 row, col;
+	int8 type;
+	int32 listLen;
+	memcpy(&row, ascdData + pos, 2); pos += 2;
+	memcpy(&col, ascdData + pos, 2); pos += 2;
+	memcpy(&type, ascdData + pos, 1); pos += 1;
+	memcpy(&listLen, ascdData + pos, 4); pos += 4;
+	if (listLen < 0 || pos + (size_t)listLen > ascdLen) return false;
+
+	std::string list((const char*)ascdData + pos, listLen);
+	pos += listLen;
+
+	if (pos + 16 > ascdLen) return false;
+	double min, max;
+	memcpy(&min, ascdData + pos, 8); pos += 8;
+	memcpy(&max, ascdData + pos, 8); pos += 8;
+
+	outCell->Set(col, row);
+	*outType = type;
+	*outList = list;
+	*outMin = min;
+	*outMax = max;
 
 	return true;
 }
@@ -4795,6 +5031,264 @@ int main()
 					Check(rtLinkRead && rtLinkCell == cell(2, 2)
 						&& rtLinkUrl == "https://www.haiku-os.org/",
 						"dopo il giro completo ASCD -> XLSX -> ASCD, il collegamento si ritrova ancora su B2");
+				}
+			}
+		}
+	}
+
+	// Data validation (<dataValidations> inside xl/worksheets/sheet1.xml),
+	// the third item of Tier 2 in the "100% XLSX standard compatibility"
+	// plan: only two shapes have a real equivalent in this engine (see
+	// DataValidationRefInfo in XlsxTranslator.cpp) -- a literal list
+	// (tested here) and a numeric "between" range (tested further
+	// below). A commented-out example, or anything else, is silently
+	// skipped, not a bug to fix.
+	{
+		static const char kListValContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kListValRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kListValWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kListValWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kListValSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\"><v>5</v></c></row></sheetData>"
+			"<dataValidations count=\"1\">"
+			"<dataValidation type=\"list\" allowBlank=\"1\" showInputMessage=\"1\" showErrorMessage=\"1\" sqref=\"B2\">"
+			"<formula1>\"Rosso,Verde,Blu\"</formula1></dataValidation>"
+			"</dataValidations>"
+			"</worksheet>\n";
+
+		BMallocIO listValXlsx;
+		CZipWriter listValZip;
+		listValZip.Begin(&listValXlsx);
+		listValZip.AddEntry("[Content_Types].xml", kListValContentTypes, strlen(kListValContentTypes));
+		listValZip.AddEntry("_rels/.rels", kListValRootRels, strlen(kListValRootRels));
+		listValZip.AddEntry("xl/workbook.xml", kListValWorkbook, strlen(kListValWorkbook));
+		listValZip.AddEntry("xl/_rels/workbook.xml.rels", kListValWorkbookRels, strlen(kListValWorkbookRels));
+		listValZip.AddEntry("xl/worksheets/sheet1.xml", kListValSheet, strlen(kListValSheet));
+		Check(listValZip.Close(), "costruzione del file XLSX di prova con <dataValidation type=\"list\"> riuscita");
+
+		listValXlsx.Seek(0, SEEK_SET);
+		translator_info listValInfo;
+		err = translator->Identify(&listValXlsx, NULL, NULL, &listValInfo, 0);
+		Check(err == B_OK && listValInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con la convalida a elenco");
+
+		listValXlsx.Seek(0, SEEK_SET);
+		BMallocIO listValAscdOut;
+		err = translator->Translate(&listValXlsx, &listValInfo, NULL, kAtomoNativeFormat, &listValAscdOut);
+		Check(err == B_OK, "Translate del file di prova con la convalida a elenco riesce");
+
+		const unsigned char* listValAscdData = NULL;
+		size_t listValAscdLen = 0;
+		bool listValUnwrapped = UnwrapFirstSheet((const unsigned char*)listValAscdOut.Buffer(),
+			listValAscdOut.BufferLength(), &listValAscdData, &listValAscdLen);
+		Check(listValUnwrapped, "l'output di Translate con la convalida a elenco e' un ASCD valido");
+
+		if (listValUnwrapped)
+		{
+			cell importedValCell;
+			int8 importedValType = -1;
+			std::string importedValList;
+			double importedValMin = 0, importedValMax = 0;
+			bool valRead = ReadFirstValidationFromAscdForTest(listValAscdData, listValAscdLen,
+				&importedValCell, &importedValType, &importedValList, &importedValMin, &importedValMax);
+			Check(valRead, "la sezione convalida dati dell'ASCD prodotto si legge correttamente");
+			Check(valRead && importedValCell == cell(2, 2),
+				"la convalida importata e' ancorata a B2, lo stesso riferimento di sqref=\"B2\"");
+			Check(valRead && importedValType == (int8)eListValidation,
+				"la convalida importata e' di tipo elenco (eListValidation)");
+			Check(valRead && importedValList == "Rosso,Verde,Blu",
+				"l'elenco importato e' quello vero (\"Rosso,Verde,Blu\"), senza le virgolette "
+				"del letterale XLSX, non piu' scartato in silenzio");
+		}
+	}
+
+	// Same fixture shape, but for a numeric "between" range instead of
+	// a list -- the other real shape this engine models.
+	{
+		static const char kRangeValSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\"><v>5</v></c></row></sheetData>"
+			"<dataValidations count=\"1\">"
+			"<dataValidation type=\"whole\" operator=\"between\" allowBlank=\"1\" "
+			"showInputMessage=\"1\" showErrorMessage=\"1\" sqref=\"C3\">"
+			"<formula1>1</formula1><formula2>100</formula2></dataValidation>"
+			"</dataValidations>"
+			"</worksheet>\n";
+		static const char kRangeValContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kRangeValRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kRangeValWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kRangeValWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+
+		BMallocIO rangeValXlsx;
+		CZipWriter rangeValZip;
+		rangeValZip.Begin(&rangeValXlsx);
+		rangeValZip.AddEntry("[Content_Types].xml", kRangeValContentTypes, strlen(kRangeValContentTypes));
+		rangeValZip.AddEntry("_rels/.rels", kRangeValRootRels, strlen(kRangeValRootRels));
+		rangeValZip.AddEntry("xl/workbook.xml", kRangeValWorkbook, strlen(kRangeValWorkbook));
+		rangeValZip.AddEntry("xl/_rels/workbook.xml.rels", kRangeValWorkbookRels, strlen(kRangeValWorkbookRels));
+		rangeValZip.AddEntry("xl/worksheets/sheet1.xml", kRangeValSheet, strlen(kRangeValSheet));
+		Check(rangeValZip.Close(), "costruzione del file XLSX di prova con <dataValidation type=\"whole\"> riuscita");
+
+		rangeValXlsx.Seek(0, SEEK_SET);
+		translator_info rangeValInfo;
+		err = translator->Identify(&rangeValXlsx, NULL, NULL, &rangeValInfo, 0);
+		Check(err == B_OK && rangeValInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con la convalida a intervallo");
+
+		rangeValXlsx.Seek(0, SEEK_SET);
+		BMallocIO rangeValAscdOut;
+		err = translator->Translate(&rangeValXlsx, &rangeValInfo, NULL, kAtomoNativeFormat, &rangeValAscdOut);
+		Check(err == B_OK, "Translate del file di prova con la convalida a intervallo riesce");
+
+		const unsigned char* rangeValAscdData = NULL;
+		size_t rangeValAscdLen = 0;
+		bool rangeValUnwrapped = UnwrapFirstSheet((const unsigned char*)rangeValAscdOut.Buffer(),
+			rangeValAscdOut.BufferLength(), &rangeValAscdData, &rangeValAscdLen);
+		Check(rangeValUnwrapped, "l'output di Translate con la convalida a intervallo e' un ASCD valido");
+
+		if (rangeValUnwrapped)
+		{
+			cell importedRangeCell;
+			int8 importedRangeType = -1;
+			std::string importedRangeList;
+			double importedRangeMin = 0, importedRangeMax = 0;
+			bool rangeRead = ReadFirstValidationFromAscdForTest(rangeValAscdData, rangeValAscdLen,
+				&importedRangeCell, &importedRangeType, &importedRangeList,
+				&importedRangeMin, &importedRangeMax);
+			Check(rangeRead, "la sezione convalida dati (intervallo) dell'ASCD prodotto si legge correttamente");
+			Check(rangeRead && importedRangeCell == cell(3, 3),
+				"la convalida importata e' ancorata a C3, lo stesso riferimento di sqref=\"C3\"");
+			Check(rangeRead && importedRangeType == (int8)eNumberRangeValidation,
+				"la convalida importata e' di tipo intervallo numerico (eNumberRangeValidation)");
+			Check(rangeRead && importedRangeMin == 1.0 && importedRangeMax == 100.0,
+				"l'intervallo importato e' quello vero (1-100), risolto da formula1/formula2 letterali, "
+				"non piu' scartato in silenzio");
+		}
+	}
+
+	// Stesso scenario, direzione opposta (ASCD -> XLSX): un documento
+	// con una convalida a elenco su una cella esporta un vero
+	// <dataValidation type="list"> nel foglio, e quel file si rilegge
+	// correttamente.
+	{
+		CContainer& valExportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &valExportDoc, true); // A1
+		ValidationRule listRule;
+		listRule.type = eListValidation;
+		listRule.list = "Rosso,Verde,Blu";
+		valExportDoc.SetValidation(cell(2, 2), listRule); // B2
+
+		BMallocIO valAscdIn;
+		status_t valSaveErr = WriteASCDWithValidationForTest(&valExportDoc, "B2",
+			(int8)eListValidation, "Rosso,Verde,Blu", 0.0, 0.0, &valAscdIn);
+		Check(valSaveErr == B_OK, "preparazione dell'ASCD di prova con una convalida a elenco riesce");
+		valExportDoc.Release();
+
+		valAscdIn.Seek(0, SEEK_SET);
+		translator_info valExportInfo;
+		err = translator->Identify(&valAscdIn, NULL, NULL, &valExportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD con una convalida a elenco come sorgente per l'export");
+
+		valAscdIn.Seek(0, SEEK_SET);
+		BMallocIO valXlsxOut;
+		err = translator->Translate(&valAscdIn, &valExportInfo, NULL, kAtomoXlsxFormat, &valXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con una convalida a elenco) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			valXlsxOut.Seek(0, SEEK_SET);
+			CZipReader valOutZip;
+			Check(valOutZip.Open(&valXlsxOut),
+				"il file XLSX esportato con una convalida a elenco e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> exportedSheetXml;
+			bool readSheet = valOutZip.ReadEntry("xl/worksheets/sheet1.xml", exportedSheetXml);
+			std::string sheetText(exportedSheetXml.begin(), exportedSheetXml.end());
+			Check(readSheet && sheetText.find("<dataValidation type=\"list\"") != std::string::npos
+				&& sheetText.find("sqref=\"B2\"") != std::string::npos
+				&& sheetText.find("Rosso,Verde,Blu") != std::string::npos,
+				"xl/worksheets/sheet1.xml esportato contiene <dataValidation type=\"list\"> su B2 "
+				"con l'elenco vero");
+
+			// Round-trip completo: rileggendo il file appena esportato,
+			// la convalida deve arrivare di nuovo.
+			valXlsxOut.Seek(0, SEEK_SET);
+			translator_info valReimportInfo;
+			err = translator->Identify(&valXlsxOut, NULL, NULL, &valReimportInfo, 0);
+			Check(err == B_OK && valReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX esportato con una convalida a elenco si riconosce ancora come XLSX valido rileggendolo");
+
+			valXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO valRoundTripAscd;
+			err = translator->Translate(&valXlsxOut, &valReimportInfo, NULL,
+				kAtomoNativeFormat, &valRoundTripAscd);
+			Check(err == B_OK,
+				"il file XLSX esportato con una convalida a elenco si rilegge correttamente (round-trip)");
+
+			if (err == B_OK)
+			{
+				const unsigned char* rtValData = NULL;
+				size_t rtValLen = 0;
+				bool rtValUnwrapped = UnwrapFirstSheet((const unsigned char*)valRoundTripAscd.Buffer(),
+					valRoundTripAscd.BufferLength(), &rtValData, &rtValLen);
+				Check(rtValUnwrapped,
+					"il round-trip della convalida a elenco produce anch'esso una cartella ASCB valida");
+
+				if (rtValUnwrapped)
+				{
+					cell rtValCell;
+					int8 rtValType = -1;
+					std::string rtValList;
+					double rtValMin = 0, rtValMax = 0;
+					bool rtValRead = ReadFirstValidationFromAscdForTest(rtValData, rtValLen,
+						&rtValCell, &rtValType, &rtValList, &rtValMin, &rtValMax);
+					Check(rtValRead && rtValCell == cell(2, 2)
+						&& rtValType == (int8)eListValidation && rtValList == "Rosso,Verde,Blu",
+						"dopo il giro completo ASCD -> XLSX -> ASCD, la convalida a elenco "
+						"si ritrova ancora su B2");
 				}
 			}
 		}
