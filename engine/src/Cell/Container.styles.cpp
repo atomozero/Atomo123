@@ -38,6 +38,8 @@
 
 */
 
+#include <algorithm>
+
 #include <support/Debug.h>
 
 #include "Cell.h"
@@ -178,6 +180,45 @@ int CContainer::CollectStyles(int *styleList)
 	return result;
 } // CContainer::CollectStyles
 
+// Risolve un ColorScalePoint (Fase 33) in una soglia numerica vera,
+// dati il minimo/massimo REALI trovati fra le celle numeriche
+// dell'intervallo e i loro valori ordinati (serve solo per
+// "percentile", interpolazione lineare fra i due valori piu' vicini
+// al rango richiesto -- stesso metodo comune di numpy/Excel).
+// "percent" e' diverso da "percentile": e' una posizione fra min e
+// max (es. 25% = un quarto della strada da min a max), non un
+// percentile della distribuzione reale dei dati.
+static double ResolveColorScaleThreshold(const ColorScalePoint& point,
+	double rangeMin, double rangeMax, const std::vector<double>& sortedValues)
+{
+	if (point.cfvoType == "max")
+		return rangeMax;
+	if (point.cfvoType == "num")
+		return point.cfvoValue;
+	if (point.cfvoType == "percent")
+		return rangeMin + (point.cfvoValue / 100.0) * (rangeMax - rangeMin);
+	if (point.cfvoType == "percentile" && !sortedValues.empty())
+	{
+		double rank = (point.cfvoValue / 100.0) * (double)(sortedValues.size() - 1);
+		if (rank < 0) rank = 0;
+		size_t lo = (size_t)rank;
+		size_t hi = (lo + 1 < sortedValues.size()) ? lo + 1 : lo;
+		double frac = rank - (double)lo;
+		return sortedValues[lo] + frac * (sortedValues[hi] - sortedValues[lo]);
+	}
+	return rangeMin; // "min", o un cfvoType sconosciuto: ripiego sicuro
+}
+
+static rgb_color InterpolateColor(const rgb_color& a, const rgb_color& b, double t)
+{
+	rgb_color result;
+	result.red = (uint8)(a.red + t * ((double)b.red - (double)a.red));
+	result.green = (uint8)(a.green + t * ((double)b.green - (double)a.green));
+	result.blue = (uint8)(a.blue + t * ((double)b.blue - (double)a.blue));
+	result.alpha = 255;
+	return result;
+}
+
 // Formattazione condizionale viva (Fase 13): stessa identica logica di
 // valutazione gia' scritta per l'importazione XLSX (Fase 12,
 // ApplyConditionalFormatting/XlsxTranslator.cpp) -- solo il risultato
@@ -235,6 +276,72 @@ std::map<cell, rgb_color> CContainer::EvaluateConditionalFormatting()
 						GetCellResult(c, text, sizeof(text), true);
 						if (text[0] != 0 && counts[text] > 1)
 							result[c] = rule.bgColor;
+					}
+				}
+			}
+		}
+		else if (rule.type == eCondColorScale && rule.colorScalePoints.size() >= 2)
+		{
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+
+				// Prima passata: raccoglie i valori numerici di TUTTO
+				// l'intervallo -- servono min/max (o percentile) PRIMA
+				// di poter colorare qualsiasi singola cella, a
+				// differenza dei due tipi sopra dove ogni cella si
+				// valuta da sola.
+				std::vector<double> values;
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						Value v;
+						GetValue(cell(col, row), v);
+						if (v.fType == eNumData && !v.IsNan())
+							values.push_back((double)v);
+					}
+				}
+				if (values.empty())
+					continue;
+
+				std::vector<double> sortedValues = values;
+				std::sort(sortedValues.begin(), sortedValues.end());
+				double rangeMin = sortedValues.front();
+				double rangeMax = sortedValues.back();
+
+				std::vector<double> thresholds(rule.colorScalePoints.size());
+				for (size_t p = 0; p < rule.colorScalePoints.size(); p++)
+					thresholds[p] = ResolveColorScaleThreshold(rule.colorScalePoints[p],
+						rangeMin, rangeMax, sortedValues);
+
+				// Seconda passata: interpola il colore di ogni cella
+				// numerica in base al segmento (fra due soglie
+				// consecutive) in cui cade il suo valore.
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						Value v;
+						GetValue(c, v);
+						if (v.fType != eNumData || v.IsNan())
+							continue;
+
+						double val = (double)v;
+						size_t segment = 0;
+						while (segment + 1 < thresholds.size() && val > thresholds[segment + 1])
+							segment++;
+						size_t nextSegment = (segment + 1 < thresholds.size())
+							? segment + 1 : segment;
+
+						double lo = thresholds[segment], hi = thresholds[nextSegment];
+						double t = (hi > lo) ? (val - lo) / (hi - lo) : 0.0;
+						if (t < 0) t = 0;
+						if (t > 1) t = 1;
+
+						result[c] = InterpolateColor(rule.colorScalePoints[segment].color,
+							rule.colorScalePoints[nextSegment].color, t);
 					}
 				}
 			}
