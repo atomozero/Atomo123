@@ -143,25 +143,59 @@ public:
 // documento e viene rivalutata a ogni ridisegno contro i valori
 // CORRENTI delle celle (vedi CContainer::EvaluateConditionalFormatting
 // e SheetView::Draw) -- se il valore di una cella cambia, il colore
-// si aggiorna da solo, senza toccare mai CellStyle. Solo due tipi di
-// regola, gli stessi due gia' supportati dall'importazione XLSX (gli
-// unici davvero comuni in un file reale): eCondCellIsEqual (confronto
-// testuale con un letterale) ed eCondDuplicateValues (valore che
-// compare piu' di una volta nello stesso intervallo). Solo il colore
-// di SFONDO (non anche il colore del testo, a differenza del dxf XLSX
+// si aggiorna da solo, senza toccare mai CellStyle. Tre tipi di
+// regola: eCondCellIsEqual (confronto testuale con un letterale) ed
+// eCondDuplicateValues (valore che compare piu' di una volta nello
+// stesso intervallo) erano gia' gli unici due davvero comuni in un
+// file reale fra i tipi "un confronto indipendente per cella";
+// eCondColorScale (Fase 33, vedi sotto) e' il primo dei tipi
+// "relativi all'intervallo" (colorScale/dataBar/iconSet in XLSX),
+// dove il risultato di ogni cella dipende dalle ALTRE celle
+// dell'intervallo, non solo dal proprio valore. Solo il colore di
+// SFONDO (non anche il colore del testo, a differenza del dxf XLSX
 // che puo' portare entrambi): scelta di scope, lo sfondo e' di gran
 // lunga l'uso piu' comune ("evidenzia i duplicati", "evidenzia se >
 // soglia").
 enum CondFormatRuleType {
 	eCondCellIsEqual,
-	eCondDuplicateValues
+	eCondDuplicateValues,
+	// Scala di colori (Fase 33, "Path to full Excel parity" Tier 1):
+	// a differenza dei due tipi sopra (un confronto indipendente per
+	// cella), qui il colore di OGNI cella dipende dal minimo/massimo
+	// (o percentile) di TUTTE le celle numeriche dell'intervallo --
+	// vedi CContainer::EvaluateConditionalFormatting per il calcolo
+	// vero e ColorScalePoint sotto per come sono descritte le soglie.
+	eCondColorScale
+};
+
+// Un punto di controllo di una scala di colori: stesso vocabolario di
+// <cfvo type="..."> in XLSX (min/max/percentile/percent/num), cosi'
+// l'importazione (Fase 33) non deve tradurre nulla in un formato
+// diverso. "min"/"max" ignorano cfvoValue (si risolvono sempre al
+// minimo/massimo REALE trovato fra le celle numeriche dell'intervallo
+// al momento della valutazione, mai un valore fisso) -- "percentile"/
+// "percent"/"num" lo usano per calcolare la soglia vera (vedi
+// ResolveColorScaleThreshold in Container.styles.cpp).
+struct ColorScalePoint {
+	std::string cfvoType; // "min", "max", "percentile", "percent", "num"
+	double cfvoValue;     // usato solo per percentile/percent/num
+	rgb_color color;
+
+	ColorScalePoint() : cfvoType("min"), cfvoValue(0)
+	{
+		color.red = color.green = color.blue = color.alpha = 255;
+	}
 };
 
 struct ConditionalFormatRule {
 	CondFormatRuleType type;
 	std::string compareValue; // solo per eCondCellIsEqual
-	rgb_color bgColor;
+	rgb_color bgColor; // per eCondCellIsEqual/eCondDuplicateValues; ignorato per eCondColorScale
 	std::vector<range> ranges;
+	// Solo per eCondColorScale: 2 punti (scala a due colori) o 3
+	// (scala a tre colori, il caso piu' comune in Excel) -- vuoto per
+	// gli altri due tipi.
+	std::vector<ColorScalePoint> colorScalePoints;
 
 	ConditionalFormatRule() : type(eCondCellIsEqual)
 	{
