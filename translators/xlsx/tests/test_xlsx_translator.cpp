@@ -249,6 +249,99 @@ static status_t WriteASCDWithChartForTest(CContainer* doc, int16 chartLeft, int1
 	return B_OK;
 }
 
+// Same idea as WriteASCDWithChartForTest above, but for a cell comment
+// (100% XLSX standard compatibility, Tier 2): comments sit much
+// earlier in the real WriteASCD section order (right after
+// AutoFilter, well before charts-type/print-area/named-range) -- only
+// the sections up to and including comments need a real (if empty)
+// entry, everything after can simply be omitted, relying on the same
+// EOF-tolerant reading WriteASCDForTest above already depends on for
+// every trailing section.
+static status_t WriteASCDWithCommentForTest(CContainer* doc, const char* ref, const char* text,
+	BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati: chartCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi a zero.
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+	// Commenti: un record vero.
+	{
+		cell c;
+		c.Set(ref);
+		int32 commentCount = 1;
+		int16 row = c.v, col = c.h;
+		int32 len = (int32)strlen(text);
+		if (dest->Write(&commentCount, sizeof(commentCount)) != (ssize_t)sizeof(commentCount)
+			|| dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+			|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+			|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (len > 0 && dest->Write(text, len) != len)
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
 // Same idea as WriteASCDWithChartForTest above, but for a named range
 // instead of a chart: real named-range data has to go at the very END
 // of the format (see the comment on the same section in WriteASCD,
@@ -666,6 +759,97 @@ static bool ReadFirstChartForTest(const unsigned char* ascdData, size_t ascdLen,
 	memcpy(&titleLen, ascdData + pos, 4); pos += 4;
 	if (titleLen < 0 || pos + (size_t)titleLen > ascdLen) return false;
 	outTitle->assign((const char*)ascdData + pos, titleLen);
+
+	return true;
+}
+
+// Same idea as ReadFirstChartForTest above, but for the comments
+// section instead (100% XLSX standard compatibility, Tier 2): stops
+// right after reading the first comment instead of continuing to the
+// chart-type/title sections, since a fixture built for this test has
+// no chart. Assumes exactly one comment, matching every caller today.
+static bool ReadFirstCommentFromAscdForTest(const unsigned char* ascdData, size_t ascdLen,
+	cell* outCell, std::string* outText)
+{
+	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
+		return false;
+
+	int32 cellCount;
+	memcpy(&cellCount, ascdData + 8, 4);
+
+	size_t pos = 12;
+	for (int32 i = 0; i < cellCount; i++)
+	{
+		if (pos + 9 > ascdLen)
+			return false;
+		int32 len;
+		memcpy(&len, ascdData + pos + 4, 4);
+		pos += 9 + len;
+	}
+
+	// Grafici incorporati: un contatore (0 in questo documento di prova).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// colWidths, cellColors, columnColors, rowHeights: quattro contatori.
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Blocca riquadri: due interi fissi.
+	if (pos + 8 > ascdLen) return false;
+	pos += 8;
+
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto contatori.
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Visibilita' griglia: un byte fisso.
+	if (pos + 1 > ascdLen) return false;
+	pos += 1;
+
+	// Colore della linguetta: 4 byte fissi.
+	if (pos + 4 > ascdLen) return false;
+	pos += 4;
+
+	// Righe nascoste: un contatore.
+	if (pos + 4 > ascdLen) return false;
+	{
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// AutoFilter: 9 byte fissi.
+	if (pos + 9 > ascdLen) return false;
+	pos += 9;
+
+	// Commenti: i dati veri, primo (e unico atteso) record.
+	if (pos + 4 > ascdLen) return false;
+	int32 commentCount;
+	memcpy(&commentCount, ascdData + pos, 4); pos += 4;
+	if (commentCount != 1) return false;
+
+	if (pos + 8 > ascdLen) return false;
+	int16 row, col;
+	int32 textLen;
+	memcpy(&row, ascdData + pos, 2); pos += 2;
+	memcpy(&col, ascdData + pos, 2); pos += 2;
+	memcpy(&textLen, ascdData + pos, 4); pos += 4;
+	if (textLen < 0 || pos + (size_t)textLen > ascdLen) return false;
+
+	outCell->Set(col, row);
+	outText->assign((const char*)ascdData + pos, textLen);
 
 	return true;
 }
@@ -4077,6 +4261,181 @@ int main()
 					range rtRange = rtDoc.ResolveName("Budget");
 					Check(rtRange.TopLeft() == cell(1, 1) && rtRange.BotRight() == cell(1, 2),
 						"dopo il giro completo ASCD -> XLSX -> ASCD, \"Budget\" si risolve ancora su A1:A2");
+				}
+			}
+		}
+	}
+
+	// Cell comments/notes (<comments> in xl/comments1.xml + the sheet's
+	// own _rels), the first item of Tier 2 in the "100% XLSX standard
+	// compatibility" plan: a comment on B2 should arrive in the
+	// imported document via CContainer::SetComment, not be silently
+	// discarded like before this fix.
+	{
+		static const char kCommentContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"<Override PartName=\"/xl/comments1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml\"/>\n"
+			"</Types>\n";
+		static const char kCommentRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kCommentWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kCommentWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kCommentSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\"><v>5</v></c></row></sheetData>"
+			"</worksheet>\n";
+		static const char kCommentSheetRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments\" "
+			"Target=\"../comments1.xml\"/>\n</Relationships>\n";
+		static const char kComment1[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+			"<authors><author>Un revisore</author></authors>"
+			"<commentList><comment ref=\"B2\" authorId=\"0\">"
+			"<text><r><t>Da ricontrollare</t></r></text></comment></commentList></comments>\n";
+
+		BMallocIO commentXlsx;
+		CZipWriter commentZip;
+		commentZip.Begin(&commentXlsx);
+		commentZip.AddEntry("[Content_Types].xml", kCommentContentTypes, strlen(kCommentContentTypes));
+		commentZip.AddEntry("_rels/.rels", kCommentRootRels, strlen(kCommentRootRels));
+		commentZip.AddEntry("xl/workbook.xml", kCommentWorkbook, strlen(kCommentWorkbook));
+		commentZip.AddEntry("xl/_rels/workbook.xml.rels", kCommentWorkbookRels, strlen(kCommentWorkbookRels));
+		commentZip.AddEntry("xl/worksheets/sheet1.xml", kCommentSheet, strlen(kCommentSheet));
+		commentZip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kCommentSheetRels, strlen(kCommentSheetRels));
+		commentZip.AddEntry("xl/comments1.xml", kComment1, strlen(kComment1));
+		Check(commentZip.Close(), "costruzione del file XLSX di prova con <comments> riuscita");
+
+		commentXlsx.Seek(0, SEEK_SET);
+		translator_info commentInfo;
+		err = translator->Identify(&commentXlsx, NULL, NULL, &commentInfo, 0);
+		Check(err == B_OK && commentInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con <comments>");
+
+		commentXlsx.Seek(0, SEEK_SET);
+		BMallocIO commentAscdOut;
+		err = translator->Translate(&commentXlsx, &commentInfo, NULL, kAtomoNativeFormat, &commentAscdOut);
+		Check(err == B_OK, "Translate del file di prova con <comments> riesce");
+
+		const unsigned char* commentAscdData = NULL;
+		size_t commentAscdLen = 0;
+		bool commentUnwrapped = UnwrapFirstSheet((const unsigned char*)commentAscdOut.Buffer(),
+			commentAscdOut.BufferLength(), &commentAscdData, &commentAscdLen);
+		Check(commentUnwrapped, "l'output di Translate del file di prova con <comments> e' un ASCD valido");
+
+		if (commentUnwrapped)
+		{
+			cell importedCommentCell;
+			std::string importedCommentText;
+			bool commentRead = ReadFirstCommentFromAscdForTest(commentAscdData, commentAscdLen,
+				&importedCommentCell, &importedCommentText);
+			Check(commentRead, "la sezione commenti dell'ASCD prodotto si legge correttamente");
+			Check(commentRead && importedCommentCell == cell(2, 2),
+				"il commento importato e' ancorato a B2, lo stesso riferimento di <comment ref=\"B2\">");
+			Check(commentRead && importedCommentText == "Da ricontrollare",
+				"il testo del commento importato e' quello vero (\"Da ricontrollare\"), "
+				"non piu' scartato in silenzio");
+		}
+	}
+
+	// Stesso scenario, direzione opposta (ASCD -> XLSX): un documento
+	// con un commento su una cella esporta un vero xl/comments1.xml,
+	// collegato al foglio tramite i suoi _rels, e quel file si rilegge
+	// correttamente.
+	{
+		CContainer& commentExportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &commentExportDoc, true); // A1
+		commentExportDoc.SetComment(cell(2, 2), "Da ricontrollare"); // B2
+
+		BMallocIO commentAscdIn;
+		status_t commentSaveErr = WriteASCDWithCommentForTest(&commentExportDoc, "B2",
+			"Da ricontrollare", &commentAscdIn);
+		Check(commentSaveErr == B_OK, "preparazione dell'ASCD di prova con un commento riesce");
+		commentExportDoc.Release();
+
+		commentAscdIn.Seek(0, SEEK_SET);
+		translator_info commentExportInfo;
+		err = translator->Identify(&commentAscdIn, NULL, NULL, &commentExportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD con un commento come sorgente per l'export");
+
+		commentAscdIn.Seek(0, SEEK_SET);
+		BMallocIO commentXlsxOut;
+		err = translator->Translate(&commentAscdIn, &commentExportInfo, NULL, kAtomoXlsxFormat, &commentXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con un commento) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			commentXlsxOut.Seek(0, SEEK_SET);
+			CZipReader commentOutZip;
+			Check(commentOutZip.Open(&commentXlsxOut),
+				"il file XLSX esportato con un commento e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> exportedCommentsXml;
+			bool readComments = commentOutZip.ReadEntry("xl/comments1.xml", exportedCommentsXml);
+			Check(readComments, "il file XLSX esportato contiene xl/comments1.xml");
+
+			std::string commentsText(exportedCommentsXml.begin(), exportedCommentsXml.end());
+			Check(commentsText.find("ref=\"B2\"") != std::string::npos
+				&& commentsText.find("Da ricontrollare") != std::string::npos,
+				"xl/comments1.xml esportato contiene il commento vero, ancorato a B2");
+
+			std::vector<unsigned char> exportedSheetRels;
+			bool readSheetRels = commentOutZip.ReadEntry("xl/worksheets/_rels/sheet1.xml.rels",
+				exportedSheetRels);
+			std::string sheetRelsText(exportedSheetRels.begin(), exportedSheetRels.end());
+			Check(readSheetRels && sheetRelsText.find("comments1.xml") != std::string::npos,
+				"il foglio esportato si collega a xl/comments1.xml tramite i propri _rels");
+
+			// Round-trip completo: rileggendo il file appena esportato,
+			// il commento deve arrivare di nuovo.
+			commentXlsxOut.Seek(0, SEEK_SET);
+			translator_info commentReimportInfo;
+			err = translator->Identify(&commentXlsxOut, NULL, NULL, &commentReimportInfo, 0);
+			Check(err == B_OK && commentReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX esportato con un commento si riconosce ancora come XLSX valido rileggendolo");
+
+			commentXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO commentRoundTripAscd;
+			err = translator->Translate(&commentXlsxOut, &commentReimportInfo, NULL,
+				kAtomoNativeFormat, &commentRoundTripAscd);
+			Check(err == B_OK, "il file XLSX esportato con un commento si rilegge correttamente (round-trip)");
+
+			if (err == B_OK)
+			{
+				const unsigned char* rtCommentData = NULL;
+				size_t rtCommentLen = 0;
+				bool rtCommentUnwrapped = UnwrapFirstSheet((const unsigned char*)commentRoundTripAscd.Buffer(),
+					commentRoundTripAscd.BufferLength(), &rtCommentData, &rtCommentLen);
+				Check(rtCommentUnwrapped, "il round-trip del commento produce anch'esso una cartella ASCB valida");
+
+				if (rtCommentUnwrapped)
+				{
+					cell rtCommentCell;
+					std::string rtCommentText;
+					bool rtCommentRead = ReadFirstCommentFromAscdForTest(rtCommentData, rtCommentLen,
+						&rtCommentCell, &rtCommentText);
+					Check(rtCommentRead && rtCommentCell == cell(2, 2) && rtCommentText == "Da ricontrollare",
+						"dopo il giro completo ASCD -> XLSX -> ASCD, il commento si ritrova ancora su B2");
 				}
 			}
 		}

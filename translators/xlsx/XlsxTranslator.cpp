@@ -666,19 +666,30 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	// Sezione commenti/note per cella, in coda (Fase 13, vedi
-	// ui/src/AscdIO.cpp): questo translator non estrae ancora
-	// <comments>/<legacyDrawing> da un file XLSX vero (rimandato, vedi
-	// ROADMAP.md), quindi qui e' sempre vuota -- scritta comunque,
-	// stesso principio delle altre sezioni "sempre presenti anche se
-	// vuote" sopra: senza, il flusso prodotto da questo WriteASCD non
-	// sarebbe piu' allineato con quanto ReadASCD/LoadASCD si aspettano
-	// di leggere per QUALUNQUE altro foglio scritto dopo di questo in
-	// una cartella di lavoro multi-foglio.
+	// Sezione commenti/note per cella, in coda (100% XLSX standard
+	// compatibility, Tier 2): stesso schema binario e stessa fonte
+	// (CContainer::GetComments) di ui/src/AscdIO.cpp (SaveASCD) --
+	// scritta con i valori reali ora che ParseSheet/il ciclo dei _rels
+	// del foglio (vedi Translate) popolano davvero "doc" tramite
+	// <comments>/xl/worksheets/_rels/sheetN.xml.rels.
 	{
-		int32 commentCount = 0;
+		const std::map<cell, std::string>& comments = doc->GetComments();
+		int32 commentCount = (int32)comments.size();
 		if (dest->Write(&commentCount, sizeof(commentCount)) != (ssize_t)sizeof(commentCount))
 			return B_IO_ERROR;
+
+		for (std::map<cell, std::string>::const_iterator it = comments.begin();
+			it != comments.end(); ++it)
+		{
+			int16 row = it->first.v, col = it->first.h;
+			int32 len = (int32)it->second.size();
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(it->second.data(), len) != len)
+				return B_IO_ERROR;
+		}
 	}
 
 	// Sezione collegamenti ipertestuali, in coda: stesso principio
@@ -1425,6 +1436,9 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	}
 	{
 		// Commenti: (int16 row, col, int32 len, poi len byte di testo).
+		// Stesso schema di ui/src/AscdIO.cpp (LoadASCD) -- applicati
+		// davvero a "doc" ora (100% XLSX standard compatibility, Tier 2),
+		// non piu' solo scartati per restare allineati.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1437,10 +1451,19 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 					return B_BAD_DATA;
+				if (!cell(col, row).IsValid())
+					return B_BAD_DATA;
 				if (len < 0 || len > 16 * 1024 * 1024)
 					return B_BAD_DATA;
-				if (len > 0 && source->Seek(len, SEEK_CUR) < 0)
-					return B_BAD_DATA;
+
+				std::string text;
+				if (len > 0)
+				{
+					text.resize(len);
+					if (source->Read(&text[0], len) != len)
+						return B_BAD_DATA;
+				}
+				doc->SetComment(cell(col, row), text);
 			}
 		}
 	}
@@ -2437,6 +2460,36 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	bool hasDrawing = !chartXmls.empty();
 	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected);
 
+	// xl/comments1.xml (100% XLSX standard compatibility, Tier 2):
+	// CContainer::GetComments() -> un solo <author> generico (questo
+	// motore non ha un concetto di autore per commento) piu' un
+	// <comment ref="A1" authorId="0"><text><t>...</t></text></comment>
+	// per cella. Nessun VML legacy scritto (vedi il commento gemello
+	// nel ramo di importazione, Translate sopra): il contenuto
+	// sopravvive comunque, solo la posizione/visibilita' del riquadro
+	// che Excel disegnerebbe in piu' non viene replicata.
+	const std::map<cell, std::string>& comments = doc->GetComments();
+	bool hasComments = !comments.empty();
+	std::string commentsXml;
+	if (hasComments)
+	{
+		commentsXml += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+			"<authors><author>Atomo123</author></authors><commentList>";
+		for (std::map<cell, std::string>::const_iterator it = comments.begin();
+			it != comments.end(); ++it)
+		{
+			char ref[32];
+			it->first.GetName(ref);
+			commentsXml += "<comment ref=\"";
+			commentsXml += ref;
+			commentsXml += "\" authorId=\"0\"><text><t xml:space=\"preserve\">";
+			AppendXmlEscaped(commentsXml, it->second.c_str());
+			commentsXml += "</t></text></comment>";
+		}
+		commentsXml += "</commentList></comments>\n";
+	}
+
 	// xl/styles.xml (Fase 32): finora questo export non scriveva NESSUNO
 	// stile (solo valori/formule, vedi BuildSheetXml) -- una vera tabella
 	// stili completa (colori/font/bordi/formati) resta fuori scopo qui,
@@ -2487,6 +2540,9 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 			contentTypes += buf;
 		}
 	}
+	if (hasComments)
+		contentTypes += "<Override PartName=\"/xl/comments1.xml\" "
+			"ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml\"/>\n";
 	contentTypes += "</Types>\n";
 
 	CZipWriter zip;
@@ -2511,19 +2567,41 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 			return B_IO_ERROR;
 	}
 
+	if (hasDrawing || hasComments)
+	{
+		// Il foglio si collega al drawing tramite rId1 (vedi
+		// <drawing r:id="rId1"/> scritto da BuildSheetXml sopra, solo in
+		// presenza di grafici) e ai commenti tramite l'rId successivo --
+		// nessun elemento equivalente nel foglio stesso per i commenti,
+		// si trovano solo tramite questa relazione (vedi il commento sul
+		// VML legacy piu' sopra).
+		std::string sheetRels;
+		sheetRels += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n";
+		if (hasDrawing)
+			sheetRels += "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" "
+				"Target=\"../drawings/drawing1.xml\"/>\n";
+		if (hasComments)
+		{
+			sheetRels += hasDrawing
+				? "<Relationship Id=\"rId2\" "
+				: "<Relationship Id=\"rId1\" ";
+			sheetRels += "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments\" "
+				"Target=\"../comments1.xml\"/>\n";
+		}
+		sheetRels += "</Relationships>\n";
+		if (!zip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", sheetRels.data(), sheetRels.size()))
+			return B_IO_ERROR;
+	}
+
+	if (hasComments)
+	{
+		if (!zip.AddEntry("xl/comments1.xml", commentsXml.data(), commentsXml.size()))
+			return B_IO_ERROR;
+	}
+
 	if (hasDrawing)
 	{
-		// Il foglio si collega al drawing tramite rId1 (l'unica
-		// relazione che questo foglio ha, vedi <drawing r:id="rId1"/>
-		// scritto da BuildSheetXml sopra).
-		static const char kSheetRelsHeader[] =
-			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
-			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" "
-			"Target=\"../drawings/drawing1.xml\"/>\n</Relationships>\n";
-		if (!zip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kSheetRelsHeader, strlen(kSheetRelsHeader)))
-			return B_IO_ERROR;
-
 		// xl/drawings/drawing1.xml: un ancoraggio ASSOLUTO per grafico
 		// (posizione/dimensione in EMU, convertite direttamente dal
 		// rettangolo in pixel di ChartObject::frame) invece di un
@@ -5071,6 +5149,89 @@ static bool ParseDrawing(const std::vector<unsigned char>& xml, std::vector<Draw
 	return true;
 }
 
+// Un <comment> di xl/comments{N}.xml (100% XLSX standard compatibility,
+// Tier 2): "ref" e' un riferimento stile "A1" (attributo diretto, non
+// un ancoraggio disegno come per immagini/grafici sopra), "text" e' la
+// concatenazione di ogni <t> dentro <text> (uno o piu' <r> "rich text
+// run", ognuno col proprio <t> -- l'autore/formattazione per-run non
+// hanno equivalente in questo motore, solo il testo sopravvive, stesso
+// limite gia' documentato per il testo formattato per-carattere in una
+// cella normale).
+struct CommentEntry {
+	std::string ref;
+	std::string text;
+};
+
+struct CommentsContext {
+	std::vector<CommentEntry> comments;
+	CommentEntry current;
+	bool inComment;
+	bool captureText;
+};
+
+static void XMLCALL CommentsStart(void* userData, const char* name, const char** atts)
+{
+	CommentsContext* ctx = (CommentsContext*)userData;
+
+	if (strcmp(name, "comment") == 0)
+	{
+		ctx->inComment = true;
+		ctx->current = CommentEntry();
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "ref") == 0)
+				ctx->current.ref = atts[i + 1];
+		}
+	}
+	else if (ctx->inComment && strcmp(name, "t") == 0)
+		ctx->captureText = true;
+}
+
+static void XMLCALL CommentsEnd(void* userData, const char* name)
+{
+	CommentsContext* ctx = (CommentsContext*)userData;
+
+	if (strcmp(name, "comment") == 0)
+	{
+		ctx->inComment = false;
+		if (!ctx->current.ref.empty())
+			ctx->comments.push_back(ctx->current);
+	}
+	else if (strcmp(name, "t") == 0)
+		ctx->captureText = false;
+}
+
+static void XMLCALL CommentsChars(void* userData, const char* s, int len)
+{
+	CommentsContext* ctx = (CommentsContext*)userData;
+	if (ctx->captureText)
+		ctx->current.text.append(s, len);
+}
+
+static bool ParseComments(const std::vector<unsigned char>& xml, std::vector<CommentEntry>* out)
+{
+	if (xml.empty())
+		return false;
+
+	CommentsContext ctx;
+	ctx.inComment = false;
+	ctx.captureText = false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, CommentsStart, CommentsEnd);
+	XML_SetCharacterDataHandler(parser, CommentsChars);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), (int)xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK)
+		return false;
+
+	*out = ctx.comments;
+	return true;
+}
+
 // Legge larghezza/altezza in pixel dall'header IHDR di un PNG, senza
 // serve un decodificatore completo (il Translation Kit non e'
 // disponibile qui, questo translator resta senza dipendenze
@@ -5740,6 +5901,38 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							if (info.showStripes)
 								ApplyTableBanding(parsed.doc, info.tableRange);
 							RegisterTable(parsed.doc, info);
+						}
+					}
+					else if (target.compare(0, 8, "comments") == 0)
+					{
+						// Commenti/note per cella (100% XLSX standard
+						// compatibility, Tier 2): a differenza di
+						// tabelle/disegni sopra/sotto, xl/comments{N}.xml
+						// vive direttamente sotto "xl/", non in una
+						// propria sottocartella (il target del _rels e'
+						// tipicamente "../comments1.xml", non
+						// "comments/comments1.xml") -- e' gia' l'elenco
+						// finale (cella, testo), niente ulteriore livello
+						// di _rels da risolvere. Il VML legacy che Excel
+						// scrive di solito accanto (xl/drawings/
+						// vmlDrawingN.vml, solo posizione/visibilita' del
+						// riquadro) non serve: questa app disegna il
+						// proprio indicatore da CContainer::HasComment,
+						// senza leggere alcuna geometria dal file
+						// originale.
+						std::string commentsPath = "xl/" + target;
+						std::vector<unsigned char> commentsXml;
+						std::vector<CommentEntry> entries;
+						if (zip.ReadEntry(commentsPath.c_str(), commentsXml)
+							&& ParseComments(commentsXml, &entries))
+						{
+							for (size_t ci = 0; ci < entries.size(); ci++)
+							{
+								cell c;
+								c.Set(entries[ci].ref.c_str());
+								if (c.IsValid())
+									parsed.doc->SetComment(c, entries[ci].text);
+							}
 						}
 					}
 					else if (target.compare(0, 9, "drawings/") == 0)
