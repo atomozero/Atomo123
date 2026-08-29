@@ -228,10 +228,19 @@ the native `.ascd` format; none of it survives a trip through
   `_xlnm.Print_Area`/`_xlnm.Print_Titles` defined names (see Tier 1)
   on the XLSX side. Do this together with the defined-names fix above,
   since print area needs it anyway
-- **Border color is read as presence/absence per side only**, not the
-  actual RGB (`ParseStyles` tracks which sides have a border, not what
-  color) — a real but narrower gap than the others in this tier,
-  included here because it's the same "partially wired" pattern
+- ~~**Border color is read as presence/absence per side only**~~ Fixed
+  on import — see `CHANGELOG.md`. `ParseStyles` now resolves the real
+  `<color rgb="..."/>`/`theme="N"` on a border side into
+  `CellStyle::fBorderColor` (one color shared by all four sides, the
+  scope the engine itself already committed to — not a per-side
+  color), reusing the same `ResolveColorAttrs` helper fill/font colors
+  already used. **Export is NOT fixed**: this translator writes no
+  dynamic `styles.xml` at all yet (a single hardcoded 2-entry table,
+  only for locked/unlocked cells) — fill, font, and now border color
+  all still export as plain uncolored cells. Building a real per-style
+  XLSX export (collect distinct `CellStyle`s, emit `<fonts>`/
+  `<fills>`/`<borders>`/`<cellXfs>`) is a separate, larger effort, not
+  attempted here
 
 ### Tier 3 — partial fidelity, moderate value
 
