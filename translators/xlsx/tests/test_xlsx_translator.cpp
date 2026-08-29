@@ -473,6 +473,106 @@ static status_t WriteASCDWithHyperlinkForTest(CContainer* doc, const char* ref, 
 // "type" is 1 for eListValidation, 2 for eNumberRangeValidation (see
 // ValidationType in Container.h) -- only "list" ever writes to
 // "listText", only "range" ever writes real min/max.
+// Same idea as WriteASCDWithHyperlinkForTest above, but for a border
+// color instead (100% XLSX standard compatibility, Tier 2 -- border
+// color, the fifth item): the border-color section comes right after
+// chart-type, before data validation, see WriteASCDWithValidationForTest
+// below for the identical section order up to that point.
+static status_t WriteASCDWithBorderColorForTest(CContainer* doc, const char* ref, rgb_color color,
+	BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati: chartCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi a zero.
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+	// Commenti, collegamenti ipertestuali: nessuno.
+	for (int i = 0; i < 2; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Tipo di grafico incorporato: chartTypeCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Colore del bordo di cella: un record vero.
+	{
+		cell c;
+		c.Set(ref);
+		int32 colorCount = 1;
+		int16 row = c.v, col = c.h;
+		if (dest->Write(&colorCount, sizeof(colorCount)) != (ssize_t)sizeof(colorCount)
+			|| dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+			|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+			|| dest->Write(&color, sizeof(color)) != (ssize_t)sizeof(color))
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
 static status_t WriteASCDWithValidationForTest(CContainer* doc, const char* ref, int8 type,
 	const char* listText, double min, double max, BPositionIO* dest)
 {
@@ -1231,6 +1331,133 @@ static bool ReadFirstHyperlinkFromAscdForTest(const unsigned char* ascdData, siz
 	outCell->Set(col, row);
 	outUrl->assign((const char*)ascdData + pos, urlLen);
 
+	return true;
+}
+
+// Same idea as ReadFirstHyperlinkFromAscdForTest above, but for the
+// border-color section (100% XLSX standard compatibility, Tier 2 --
+// border color, the fifth item): unlike every other fixture in this
+// file, the test cell here DOES have a non-default border (a real
+// <color> requires a real <left style="thin"> etc. side to attach to,
+// see ParseStyles), so the "bordi di cella" (thickness) section --
+// distinct from "colore del bordo" here -- has exactly ONE real entry
+// too, not zero like every other section walked past.
+static bool ReadFirstBorderColorFromAscdForTest(const unsigned char* ascdData, size_t ascdLen,
+	cell* outCell, rgb_color* outColor)
+{
+	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
+		return false;
+
+	int32 cellCount;
+	memcpy(&cellCount, ascdData + 8, 4);
+
+	size_t pos = 12;
+	for (int32 i = 0; i < cellCount; i++)
+	{
+		if (pos + 9 > ascdLen)
+			return false;
+		int32 len;
+		memcpy(&len, ascdData + pos + 4, 4);
+		pos += 9 + len;
+	}
+
+	// Grafici incorporati, colWidths, cellColors, columnColors,
+	// rowHeights: cinque contatori (0 in questo documento di prova).
+	for (int s = 0; s < 5; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Blocca riquadri: due interi fissi.
+	if (pos + 8 > ascdLen) return false;
+	pos += 8;
+
+	// fonts, alignment: due contatori (0).
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Bordi di cella (SPESSORE per lato, sezione diversa dal colore
+	// letto piu' sotto): zero o piu' record, a seconda che il
+	// documento di prova abbia impostato anche lo spessore (import da
+	// un vero <border style="thin">) o solo il colore diretto (round-
+	// trip ASCD -> ASCD, vedi il commento sopra la funzione) -- non
+	// assunto fisso, solo saltato -- (int16 row, col, 4 byte di
+	// spessore per lato per record).
+	if (pos + 4 > ascdLen) return false;
+	{
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n < 0) return false;
+		size_t skip = (size_t)n * 8;
+		if (pos + skip > ascdLen) return false;
+		pos += skip;
+	}
+
+	// numberFormat, underline, wrapText, mergedCells, images: cinque contatori (0).
+	for (int s = 0; s < 5; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Visibilita' griglia: un byte fisso.
+	if (pos + 1 > ascdLen) return false;
+	pos += 1;
+
+	// Colore della linguetta: 4 byte fissi.
+	if (pos + 4 > ascdLen) return false;
+	pos += 4;
+
+	// Righe nascoste: un contatore.
+	if (pos + 4 > ascdLen) return false;
+	{
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// AutoFilter: 9 byte fissi.
+	if (pos + 9 > ascdLen) return false;
+	pos += 9;
+
+	// Commenti, collegamenti ipertestuali: due contatori (0).
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Tipo di grafico: un contatore (0).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// Colore del bordo: i dati veri, primo (e unico atteso) record.
+	if (pos + 4 > ascdLen) return false;
+	int32 colorCount;
+	memcpy(&colorCount, ascdData + pos, 4); pos += 4;
+	if (colorCount != 1) return false;
+
+	if (pos + 8 > ascdLen) return false;
+	int16 row, col;
+	memcpy(&row, ascdData + pos, 2); pos += 2;
+	memcpy(&col, ascdData + pos, 2); pos += 2;
+	if (pos + sizeof(rgb_color) > ascdLen) return false;
+	memcpy(outColor, ascdData + pos, sizeof(rgb_color));
+	pos += sizeof(rgb_color);
+
+	outCell->Set(col, row);
 	return true;
 }
 
@@ -5519,6 +5746,152 @@ int main()
 						"si ritrovano ancora a 2 righe, 1 colonna");
 				}
 			}
+		}
+	}
+
+	// Border color (<color rgb="..."/> inside a <border> side, xl/
+	// styles.xml), the fifth item of Tier 2 in the "100% XLSX standard
+	// compatibility" plan: before this fix, ParseStyles only tracked
+	// presence/absence per side, never the real RGB -- a red border
+	// imported as the engine's default black. Uses a distinctive color
+	// (red) rather than black specifically so this test can actually
+	// tell "real color read" apart from "never set, still default".
+	{
+		static const char kBorderColorContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>\n"
+			"</Types>\n";
+		static const char kBorderColorRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kBorderColorWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kBorderColorWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kBorderColorSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\"><v>5</v></c></row>"
+			"<row r=\"2\"><c r=\"B2\" s=\"1\"><v>7</v></c></row>"
+			"</sheetData>"
+			"</worksheet>\n";
+		static const char kBorderColorStyles[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>\n"
+			"<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill>"
+			"<fill><patternFill patternType=\"gray125\"/></fill></fills>\n"
+			"<borders count=\"2\">"
+			"<border><left/><right/><top/><bottom/><diagonal/></border>"
+			"<border><left style=\"thin\"><color rgb=\"FFFF0000\"/></left><right/><top/><bottom/><diagonal/></border>"
+			"</borders>\n"
+			"<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>\n"
+			"<cellXfs count=\"2\">"
+			"<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>"
+			"<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"1\" xfId=\"0\" applyBorder=\"1\"/>"
+			"</cellXfs>\n"
+			"</styleSheet>\n";
+
+		BMallocIO borderColorXlsx;
+		CZipWriter borderColorZip;
+		borderColorZip.Begin(&borderColorXlsx);
+		borderColorZip.AddEntry("[Content_Types].xml", kBorderColorContentTypes, strlen(kBorderColorContentTypes));
+		borderColorZip.AddEntry("_rels/.rels", kBorderColorRootRels, strlen(kBorderColorRootRels));
+		borderColorZip.AddEntry("xl/workbook.xml", kBorderColorWorkbook, strlen(kBorderColorWorkbook));
+		borderColorZip.AddEntry("xl/_rels/workbook.xml.rels", kBorderColorWorkbookRels, strlen(kBorderColorWorkbookRels));
+		borderColorZip.AddEntry("xl/worksheets/sheet1.xml", kBorderColorSheet, strlen(kBorderColorSheet));
+		borderColorZip.AddEntry("xl/styles.xml", kBorderColorStyles, strlen(kBorderColorStyles));
+		Check(borderColorZip.Close(), "costruzione del file XLSX di prova con <color rgb=\"FFFF0000\"> sul bordo riuscita");
+
+		borderColorXlsx.Seek(0, SEEK_SET);
+		translator_info borderColorInfo;
+		err = translator->Identify(&borderColorXlsx, NULL, NULL, &borderColorInfo, 0);
+		Check(err == B_OK && borderColorInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con il colore del bordo");
+
+		borderColorXlsx.Seek(0, SEEK_SET);
+		BMallocIO borderColorAscdOut;
+		err = translator->Translate(&borderColorXlsx, &borderColorInfo, NULL,
+			kAtomoNativeFormat, &borderColorAscdOut);
+		Check(err == B_OK, "Translate del file di prova con il colore del bordo riesce");
+
+		const unsigned char* borderColorAscdData = NULL;
+		size_t borderColorAscdLen = 0;
+		bool borderColorUnwrapped = UnwrapFirstSheet((const unsigned char*)borderColorAscdOut.Buffer(),
+			borderColorAscdOut.BufferLength(), &borderColorAscdData, &borderColorAscdLen);
+		Check(borderColorUnwrapped, "l'output di Translate con il colore del bordo e' un ASCD valido");
+
+		if (borderColorUnwrapped)
+		{
+			cell importedBorderCell;
+			rgb_color importedBorderColor = { 0, 0, 0, 0 };
+			bool borderColorRead = ReadFirstBorderColorFromAscdForTest(borderColorAscdData,
+				borderColorAscdLen, &importedBorderCell, &importedBorderColor);
+			Check(borderColorRead, "la sezione colore del bordo dell'ASCD prodotto si legge correttamente");
+			Check(borderColorRead && importedBorderCell == cell(2, 2),
+				"il colore del bordo importato e' ancorato a B2, la cella con borderId=\"1\"");
+			Check(borderColorRead && importedBorderColor.red == 255 && importedBorderColor.green == 0
+				&& importedBorderColor.blue == 0,
+				"il colore del bordo importato e' quello vero (rosso, FFFF0000), "
+				"non piu' sempre nero (il predefinito del motore)");
+		}
+	}
+
+	// Stesso scenario ma sull'infrastruttura ASCD intermedia di questo
+	// translator (ASCD -> ASCD, non ASCD -> XLSX: l'esportazione verso
+	// un vero styles.xml resta fuori scopo qui, vedi ROADMAP.md): un
+	// documento con un colore del bordo esplicito deve attraversare
+	// ReadASCD (che prima scartava questa sezione) e WriteASCD (che
+	// prima scriveva sempre un conteggio a zero) senza perdere il
+	// colore vero.
+	{
+		CContainer& borderColorExportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &borderColorExportDoc, true); // A1
+
+		rgb_color red = { 255, 0, 0, 255 };
+		BMallocIO borderColorAscdIn;
+		status_t borderColorSaveErr = WriteASCDWithBorderColorForTest(&borderColorExportDoc, "B2",
+			red, &borderColorAscdIn);
+		Check(borderColorSaveErr == B_OK, "preparazione dell'ASCD di prova con un colore del bordo riesce");
+		borderColorExportDoc.Release();
+
+		borderColorAscdIn.Seek(0, SEEK_SET);
+		translator_info borderColorNativeInfo;
+		err = translator->Identify(&borderColorAscdIn, NULL, NULL, &borderColorNativeInfo, kAtomoNativeFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD con un colore del bordo come sorgente nativa");
+
+		borderColorAscdIn.Seek(0, SEEK_SET);
+		BMallocIO borderColorAscdRoundTrip;
+		err = translator->Translate(&borderColorAscdIn, &borderColorNativeInfo, NULL,
+			kAtomoNativeFormat, &borderColorAscdRoundTrip);
+		Check(err == B_OK, "Translate ASCD (con un colore del bordo) -> ASCD riesce (ReadASCD + WriteASCD)");
+
+		if (err == B_OK)
+		{
+			cell rtBorderCell;
+			rgb_color rtBorderColor = { 0, 0, 0, 0 };
+			bool rtBorderRead = ReadFirstBorderColorFromAscdForTest(
+				(const unsigned char*)borderColorAscdRoundTrip.Buffer(),
+				borderColorAscdRoundTrip.BufferLength(), &rtBorderCell, &rtBorderColor);
+			Check(rtBorderRead && rtBorderCell == cell(2, 2)
+				&& rtBorderColor.red == 255 && rtBorderColor.green == 0 && rtBorderColor.blue == 0,
+				"dopo il giro ASCD -> ASCD attraverso questo translator, il colore del bordo "
+				"si ritrova ancora rosso su B2 (non piu' scartato da ReadASCD ne' azzerato da WriteASCD)");
 		}
 	}
 

@@ -737,16 +737,38 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Sezione colore del bordo di cella non predefinito, in coda (vedi
-	// ui/src/AscdIO.cpp): sempre vuota, stesso principio delle sezioni
-	// sopra -- questo translator non estrae ancora il colore del
-	// bordo da un file XLSX vero (solo la presenza/assenza per lato,
-	// vedi ParseStyles), rimandato come le altre sezioni "non ancora
-	// estratte" qui sopra.
+	// Sezione colore del bordo di cella non predefinito, in coda (100%
+	// XLSX standard compatibility, Tier 2): stesso schema esatto e
+	// stessa fonte (CContainer::GetCellStyle/CellStyle::fBorderColor)
+	// di ui/src/AscdIO.cpp (SaveASCD) -- scritta con i valori reali ora
+	// che ParseSheet estrae davvero il colore da un <color> XLSX vero
+	// (vedi ParseStyles/ResolveColorAttrs).
 	{
-		int32 borderColorCount = 0;
+		CellStyle defaultBorderStyle;
+		std::vector<std::pair<cell, rgb_color> > borderColorsToWrite;
+		CCellIterator borderColorIter(doc, NULL);
+		cell bcc;
+		while (borderColorIter.NextExisting(bcc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(bcc, cs);
+			if (!ColorsEqual(cs.fBorderColor, defaultBorderStyle.fBorderColor))
+				borderColorsToWrite.push_back(std::make_pair(bcc, cs.fBorderColor));
+		}
+
+		int32 borderColorCount = (int32)borderColorsToWrite.size();
 		if (dest->Write(&borderColorCount, sizeof(borderColorCount)) != (ssize_t)sizeof(borderColorCount))
 			return B_IO_ERROR;
+
+		for (int32 i = 0; i < borderColorCount; i++)
+		{
+			int16 row = borderColorsToWrite[i].first.v, col = borderColorsToWrite[i].first.h;
+			rgb_color color = borderColorsToWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&color, sizeof(color)) != (ssize_t)sizeof(color))
+				return B_IO_ERROR;
+		}
 	}
 
 	// Sezione convalida dati, in coda (100% XLSX standard compatibility,
@@ -1571,7 +1593,10 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 	{
-		// Colore del bordo di cella: (int16 row, col, rgb_color = 4 byte).
+		// Colore del bordo di cella: (int16 row, col, rgb_color = 4
+		// byte). Stesso schema di ui/src/AscdIO.cpp (LoadASCD) --
+		// applicato davvero a "doc" ora (100% XLSX standard
+		// compatibility, Tier 2), non piu' solo scartato.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1579,11 +1604,19 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
 			for (int32 i = 0; i < count; i++)
 			{
-				int16 row, col; uint8 colorBuf[4];
+				int16 row, col; rgb_color color;
 				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
-					|| source->Read(colorBuf, sizeof(colorBuf)) != (ssize_t)sizeof(colorBuf))
+					|| source->Read(&color, sizeof(color)) != (ssize_t)sizeof(color))
 					return B_BAD_DATA;
+				if (!cell(col, row).IsValid())
+					return B_BAD_DATA;
+
+				cell c(col, row);
+				CellStyle cs;
+				doc->GetCellStyle(c, cs);
+				cs.fBorderColor = color;
+				doc->SetCellStyle(c, cs);
 			}
 		}
 	}
@@ -3266,6 +3299,8 @@ struct ResolvedStyle {
 	char alignment = 0; // EAlignment, pronto per CellStyle::fAlignment
 	bool hasBorders = false; // true solo se almeno un lato e' impostato
 	uchar borderT = 0, borderL = 0, borderB = 0, borderR = 0; // 0/1, pronti per CellStyle::fTBorderColor ecc (Fase 11: booleano per lato, non un vero colore)
+	bool hasBorderColor = false; // 100% XLSX standard compatibility, Tier 2
+	rgb_color borderColor = { 0, 0, 0, 255 }; // pronto per CellStyle::fBorderColor
 	bool underline = false; // pronto per CellStyle::fUnderline (nessun campo "has": false coincide gia' col predefinito)
 	bool wrapText = false; // pronto per CellStyle::fWrapText (nessun campo "has", stesso motivo di underline sopra)
 	bool locked = true; // pronto per CellStyle::fLocked (Fase 32, nessun campo "has": true coincide gia' col predefinito)
@@ -3291,8 +3326,17 @@ struct XfInfo {
 // Quattro lati di una voce di <borders>: presente/assente, stesso
 // significato "booleano per lato" definito in Fase 11 (CellStyle::
 // fTBorderColor ecc, non un vero colore/spessore nonostante il nome).
+// "color"/"hasColor" (100% XLSX standard compatibility, Tier 2): il
+// PRIMO <color> risolvibile fra i quattro lati -- stessa scelta di
+// scope gia' fatta dal motore stesso (CellStyle::fBorderColor e' UN
+// colore condiviso da tutti i lati di una cella, non un colore per
+// lato, vedi il commento gemello in ui/src/AscdIO.cpp), quindi non
+// serve tenere quattro colori distinti qui che nessun campo potrebbe
+// mai ricevere separatamente.
 struct BorderSides {
 	bool top, left, bottom, right;
+	bool hasColor;
+	rgb_color color;
 };
 
 // "general"/assente -> eAlignGeneral (nessuna preferenza esplicita,
@@ -3619,6 +3663,25 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			else if (name[0] == 't') sides.top = hasStyle;
 			else sides.bottom = hasStyle;
 		}
+		// <color rgb="FFxxxxxx"/> (o theme="N"), figlio di <left>/
+		// <right>/<top>/<bottom> (100% XLSX standard compatibility,
+		// Tier 2): il PRIMO risolvibile fra i quattro lati vince, vedi
+		// il commento su BorderSides sopra -- indexed non gestito (vedi
+		// ResolveColorAttrs), stesso limite gia' noto per gli altri
+		// colori di questo file.
+		else if (strcmp(name, "color") == 0 && !ctx->borders.empty())
+		{
+			BorderSides& sides = ctx->borders.back();
+			if (!sides.hasColor)
+			{
+				rgb_color c;
+				if (ResolveColorAttrs(atts, *ctx->theme, &c))
+				{
+					sides.color = c;
+					sides.hasColor = true;
+				}
+			}
+		}
 	}
 	else if (ctx->section == kStylesCellXfs)
 	{
@@ -3782,6 +3845,11 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 			rs.borderB = sides.bottom ? 1 : 0;
 			rs.borderR = sides.right ? 1 : 0;
 			rs.hasBorders = sides.top || sides.left || sides.bottom || sides.right;
+			if (sides.hasColor)
+			{
+				rs.hasBorderColor = true;
+				rs.borderColor = sides.color;
+			}
 		}
 		else
 			rs.hasBorders = false;
@@ -4446,7 +4514,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 			{
 				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
 				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
-					|| rs.hasBorders || rs.underline || rs.wrapText || !rs.locked)
+					|| rs.hasBorders || rs.hasBorderColor || rs.underline || rs.wrapText || !rs.locked)
 				{
 					for (int col = min; col <= clampedMax; col++)
 					{
@@ -4464,6 +4532,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 							cs.fBBorderColor = rs.borderB;
 							cs.fRBorderColor = rs.borderR;
 						}
+						if (rs.hasBorderColor) cs.fBorderColor = rs.borderColor;
 						if (rs.underline) cs.fUnderline = true;
 						if (rs.wrapText) cs.fWrapText = true;
 						cs.fLocked = rs.locked;
@@ -4697,7 +4766,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		{
 			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
 			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
-				|| rs.hasBorders || rs.underline || rs.wrapText || !rs.locked)
+				|| rs.hasBorders || rs.hasBorderColor || rs.underline || rs.wrapText || !rs.locked)
 			{
 				CellStyle cs;
 				ctx->doc->GetCellStyle(loc, cs);
@@ -4713,6 +4782,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 					cs.fBBorderColor = rs.borderB;
 					cs.fRBorderColor = rs.borderR;
 				}
+				if (rs.hasBorderColor) cs.fBorderColor = rs.borderColor;
 				if (rs.underline) cs.fUnderline = true;
 				if (rs.wrapText) cs.fWrapText = true;
 				cs.fLocked = rs.locked;
