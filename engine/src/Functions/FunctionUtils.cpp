@@ -334,6 +334,7 @@ void SetupDefaultFuncs()
 	gFuncs[kADDRESSFuncNr] = ADDRESSFunction;
 	gFuncs[kXMATCHFuncNr] = XMATCHFunction;
 	gFuncs[kSEQUENCEFuncNr] = SEQUENCEFunction;
+	gFuncs[kRATEFuncNr] = RATEFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

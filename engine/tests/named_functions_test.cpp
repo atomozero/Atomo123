@@ -70,7 +70,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 139, "InitFunctions carica tutte le 139 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 140, "InitFunctions carica tutte le 140 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -2227,6 +2227,35 @@ int main()
 		Check(v.fType == eTextData && strcmp((const char*)v, "vero") == 0,
 			"=IF(TRUE;...) con TRUE nudo (senza parentesi) dentro una formula vera continua a "
 			"funzionare come letterale booleano");
+
+		doc.Release();
+	}
+
+	// RATE (Fase 30, vedi ROADMAP.md "Path to full Excel parity" Tier
+	// 1): l'unica delle sei funzioni finanziarie gia' elencate nel
+	// roadmap che mancava davvero -- NPV/IRR/PMT/FV/PV erano gia'
+	// tutte implementate. A differenza di PMT/PV/FV in questo motore
+	// (tutti "positivi", senza convenzione di segno), RATE richiede
+	// pv e pmt di segno OPPOSTO come il vero RATE di Excel: l'equazione
+	// di flusso di cassa che risolve non ha soluzione reale altrimenti
+	// (due grandezze positive che crescono insieme non si annullano mai).
+	{
+		CContainer& doc = *new CContainer(NULL, NULL);
+
+		TryToParseString("=RATE(8;-150;1000)", cell(1, 1), &doc, true);
+		doc.CalcCell(cell(1, 1));
+		Value v;
+		doc.GetValue(cell(1, 1), v);
+		Check(v.fType == eNumData && fabs((double)v - 0.0423946432) < 0.0000001,
+			"=RATE(8;-150;1000) (prestito di 1000 restituito in 8 rate da 150) calcola "
+			"circa il 4.24% per periodo");
+
+		TryToParseString("=RATE(5;-100;500;100)", cell(1, 2), &doc, true);
+		doc.CalcCell(cell(1, 2));
+		doc.GetValue(cell(1, 2), v);
+		Check(v.fType == eNumData && fabs((double)v - (-0.0836454175)) < 0.0000001,
+			"=RATE(5;-100;500;100), col valore futuro opzionale, calcola circa -8.36% "
+			"(fv diverso da zero cambia il risultato rispetto a RATE senza quel argomento)");
 
 		doc.Release();
 	}

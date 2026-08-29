@@ -234,6 +234,12 @@ resource 'Func' (128, "Functions")
 		// ultimo elemento del backlog, unica funzione "spill" di
 		// questa prima versione -- vedi CContainer::ApplySpill in
 		// Container.h.
-		"SEQUENCE", 65535, 138, 1
+		"SEQUENCE", 65535, 138, 1,
+		// RATE (Fase 30, vedi ROADMAP.md "Path to full Excel parity"
+		// Tier 1): l'unica delle sei funzioni finanziarie elencate nel
+		// roadmap che mancava davvero -- NPV/IRR/PMT/FV/PV erano gia'
+		// tutte implementate. 65535 (argCnt variabile): fv e type sono
+		// opzionali, come per SEQUENCE/ADDRESS/XMATCH sopra.
+		"RATE", 65535, 139, 3
 	}
 };

@@ -221,6 +221,12 @@ enum {
 	// (restituisce solo il primo elemento, "start"), niente spill in
 	// quel caso: limite noto, non un errore.
 	kSEQUENCEFuncNr,
+	// RATE (Fase 30, vedi ROADMAP.md "Path to full Excel parity" Tier
+	// 1): l'unica delle sei funzioni finanziarie elencate nel roadmap
+	// che mancava davvero -- NPV/IRR/PMT/FV/PV erano gia' tutte
+	// implementate da prima (verificato leggendo Functions.finance.cpp
+	// prima di aggiungere altro).
+	kRATEFuncNr,
 	kFunctionCount
 };
 
@@ -285,6 +291,7 @@ void PIFunction(Value *stack, int argCnt, CContainer *cells);
 void PMTFunction(Value *stack, int argCnt, CContainer *cells);
 void PVFunction(Value *stack, int argCnt, CContainer *cells);
 void RANDOMFunction(Value *stack, int argCnt, CContainer *cells);
+void RATEFunction(Value *stack, int argCnt, CContainer *cells);
 void RIGHTFunction(Value *stack, int argCnt, CContainer *cells);
 void ROUNDFunction(Value *stack, int argCnt, CContainer *cells);
 void ROWFunction(Value *stack, int argCnt, CContainer *cells);

@@ -141,6 +141,73 @@ void PVFunction(Value *stack, int argCnt, CContainer *cells)
 		stack[0] = gRefNan;
 }
 
+// RATE(nper, pmt, pv, [fv], [type]): il periodico "rate" della stessa
+// equazione di flusso di cassa che PMT/PV/FV (sopra) risolvono ognuna
+// per un'altra incognita -- qui pero' non esiste una formula chiusa
+// (rate compare sia moltiplicato che come base di una potenza), serve
+// un solutore iterativo come IRRFunction sotto. Il metodo delle
+// secanti (nessuna derivata esplicita da calcolare a mano) parte da
+// due ipotesi vicine (10%/11%, la stessa zona di partenza comune ai
+// solutori RATE di uso pratico) e converge verso lo zero della
+// funzione di flusso di cassa; fv/type (valore futuro, rendita
+// anticipata vs posticipata) sono opzionali con lo stesso 0 di
+// default di Excel quando assenti -- GetDoubleArgument restituisce
+// false su un argomento oltre argCnt, lasciando fv/type al loro
+// valore iniziale invece di un errore, esattamente il comportamento
+// "opzionale" voluto.
+static double RateCashFlow(double rate, double nper, double pmt, double pv,
+	double fv, double type)
+{
+	if (rate == 0)
+		return pv + pmt * nper + fv;
+
+	double factor = pow(1 + rate, nper);
+	return pv * factor + pmt * (1 + rate * type) * (factor - 1) / rate + fv;
+}
+
+void RATEFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	double nper, pmt, pv, fv = 0.0, type = 0.0;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetDoubleArgument(stack, argCnt, 1, &nper) ||
+	    !GetDoubleArgument(stack, argCnt, 2, &pmt) ||
+	    !GetDoubleArgument(stack, argCnt, 3, &pv))
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+	GetDoubleArgument(stack, argCnt, 4, &fv);
+	GetDoubleArgument(stack, argCnt, 5, &type);
+
+	try
+	{
+		double r0 = 0.1, r1 = 0.11;
+		double f0 = RateCashFlow(r0, nper, pmt, pv, fv, type);
+		double f1 = RateCashFlow(r1, nper, pmt, pv, fv, type);
+		int i = 0;
+
+		while (fabs(f1) > 0.0000001)
+		{
+			if (++i >= 100 || f1 == f0)
+				throw gFinanceNan;
+
+			double r2 = r1 - f1 * (r1 - r0) / (f1 - f0);
+			r0 = r1;
+			f0 = f1;
+			r1 = r2;
+			f1 = RateCashFlow(r1, nper, pmt, pv, fv, type);
+		}
+		stack[0] = r1;
+	}
+	catch (double d)
+	{
+		stack[0] = d;
+	}
+}
+
 void SLFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	double inv, residual, periods;
