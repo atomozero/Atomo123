@@ -1101,7 +1101,15 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	// catturati SOLO se il chiamante li vuole (NULL = scartati, come
 	// isProtected sopra) -- servono all'esportazione ASCD -> XLSX per
 	// scrivere un vero <pane> (vedi WriteXLSX).
-	int* outFrozenRows = NULL, int* outFrozenCols = NULL)
+	int* outFrozenRows = NULL, int* outFrozenCols = NULL,
+	// Margini/scala di "Imposta pagina" (100% XLSX standard
+	// compatibility, Tier 2, passo 2/4): stesso principio, servono
+	// all'esportazione ASCD -> XLSX per scrivere un vero
+	// <pageMargins>/<pageSetup> (vedi WriteXLSX).
+	bool* outHasPrintSettings = NULL,
+	double* outMarginTopCm = NULL, double* outMarginBottomCm = NULL,
+	double* outMarginLeftCm = NULL, double* outMarginRightCm = NULL,
+	int* outScaleMode = NULL, double* outScalePercent = NULL)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1812,9 +1820,11 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
-	// Sezione margini/scala di "Imposta pagina", in coda (Fase 29):
-	// stesso motivo e stesso principio EOF-tollerante della sezione
-	// area di stampa appena sopra.
+	// Sezione margini/scala di "Imposta pagina", in coda: stesso
+	// motivo e stesso principio EOF-tollerante della sezione area di
+	// stampa appena sopra. Applicata davvero agli out-param ora (100%
+	// XLSX standard compatibility, Tier 2, passo 2/4), non piu' solo
+	// scartata -- serve all'esportazione ASCD -> XLSX (vedi WriteXLSX).
 	{
 		uint8 has = 0;
 		ssize_t got = source->Read(&has, sizeof(has));
@@ -1832,6 +1842,14 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				|| source->Read(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
 				|| source->Read(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
 				return B_BAD_DATA;
+
+			if (outHasPrintSettings) *outHasPrintSettings = (has != 0);
+			if (outMarginTopCm) *outMarginTopCm = marginTop;
+			if (outMarginBottomCm) *outMarginBottomCm = marginBottom;
+			if (outMarginLeftCm) *outMarginLeftCm = marginLeft;
+			if (outMarginRightCm) *outMarginRightCm = marginRight;
+			if (outScaleMode) *outScaleMode = scaleMode;
+			if (outScalePercent) *outScalePercent = scalePercent;
 		}
 	}
 
@@ -2000,7 +2018,16 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// di apertura <worksheet>, PRIMA di <sheetData>, per lo schema
 	// OOXML (CT_Worksheet); vuoto quando non c'e' nessun riquadro
 	// bloccato da scrivere.
-	const std::string& sheetViewsXml = std::string())
+	const std::string& sheetViewsXml = std::string(),
+	// <sheetPr>...</sheetPr> (margini/scala di "Imposta pagina", 100%
+	// XLSX standard compatibility, Tier 2): va PRIMA di <sheetViews>,
+	// non dopo -- contiene solo <pageSetUpPr fitToPage="1"/> quando la
+	// modalita' e' "adatta a" (vedi WriteXLSX), vuoto altrimenti.
+	const std::string& sheetPrXml = std::string(),
+	// <pageMargins>/<pageSetup> (100% XLSX standard compatibility,
+	// Tier 2), gia' pronti da WriteXLSX sopra -- vanno DOPO <hyperlinks>,
+	// PRIMA di <drawing> per lo schema OOXML.
+	const std::string& pageSetupXml = std::string())
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -2012,6 +2039,7 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// quando non usato.
 	xml += "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
 		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">";
+	xml += sheetPrXml;
 	xml += sheetViewsXml;
 	xml += "<sheetData>";
 
@@ -2125,6 +2153,7 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// Tier 2): DOPO <sheetProtection>, PRIMA di <drawing> nell'ordine
 	// richiesto dallo schema OOXML (CT_Worksheet).
 	xml += dataValidationAndHyperlinksXml;
+	xml += pageSetupXml;
 	// <drawing> e' un fratello di <sheetData> (mai al suo interno),
 	// deve venire DOPO nello schema OOXML del foglio -- ancora i grafici
 	// incorporati (Fase 24) tramite xl/drawings/drawing1.xml, sempre
@@ -2516,7 +2545,14 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	// Blocca riquadri (100% XLSX standard compatibility, Tier 2): 0,0
 	// di default (nessun riquadro bloccato), come ogni altro parametro
 	// opzionale qui sopra.
-	int frozenRows = 0, int frozenCols = 0)
+	int frozenRows = 0, int frozenCols = 0,
+	// Margini/scala di "Imposta pagina" (100% XLSX standard
+	// compatibility, Tier 2, passo 2/4): false/2cm/100% di default,
+	// come ogni altro parametro opzionale qui sopra.
+	bool hasPrintSettings = false,
+	double marginTopCm = 2.0, double marginBottomCm = 2.0,
+	double marginLeftCm = 2.0, double marginRightCm = 2.0,
+	int scaleMode = 0, double scalePercent = 100.0)
 {
 	// Presenza di un progetto VBA (XLSM, Fase 31): un file .xlsx puro
 	// non ha mai xl/vbaProject.bin, quindi "hasMacros" e' sempre false
@@ -2749,8 +2785,48 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		sheetViewsXml = buf;
 	}
 
+	// <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr> +
+	// <pageMargins>/<pageSetup> (100% XLSX standard compatibility,
+	// Tier 2, passo 2/4 -- direzione ASCD -> XLSX, il gemello
+	// dell'import gia' fatto al passo 1): margini SEMPRE in pollici in
+	// XLSX (l'unita' nativa di questo attributo), riconvertiti da cm.
+	// "scale" va scritto solo quando la modalita' e' percentuale fissa
+	// -- con fitToPage attivo Excel stesso lo ignora anche se presente,
+	// quindi non serve scriverlo (vedi il commento gemello
+	// nell'importazione).
+	std::string sheetPrXml;
+	std::string pageSetupXml;
+	if (hasPrintSettings)
+	{
+		static const double kInchPerCm = 1.0 / 2.54;
+		char marginsBuf[256];
+		snprintf(marginsBuf, sizeof(marginsBuf),
+			"<pageMargins left=\"%.4g\" right=\"%.4g\" top=\"%.4g\" bottom=\"%.4g\" "
+			"header=\"0\" footer=\"0\"/>",
+			marginLeftCm * kInchPerCm, marginRightCm * kInchPerCm,
+			marginTopCm * kInchPerCm, marginBottomCm * kInchPerCm);
+		pageSetupXml = marginsBuf;
+
+		if (scaleMode == 0)
+		{
+			char buf[64];
+			snprintf(buf, sizeof(buf), "<pageSetup scale=\"%d\"/>", (int)(scalePercent + 0.5));
+			pageSetupXml += buf;
+		}
+		else
+		{
+			sheetPrXml = "<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>";
+			int fitToWidth = (scaleMode == 1 /* kPrintFitWidth */ || scaleMode == 3 /* kPrintFitBoth */) ? 1 : 0;
+			int fitToHeight = (scaleMode == 2 /* kPrintFitHeight */ || scaleMode == 3 /* kPrintFitBoth */) ? 1 : 0;
+			char buf[64];
+			snprintf(buf, sizeof(buf), "<pageSetup fitToWidth=\"%d\" fitToHeight=\"%d\"/>",
+				fitToWidth, fitToHeight);
+			pageSetupXml += buf;
+		}
+	}
+
 	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected,
-		dataValidationXml + hyperlinksXml, sheetViewsXml);
+		dataValidationXml + hyperlinksXml, sheetViewsXml, sheetPrXml, pageSetupXml);
 
 	// xl/styles.xml (Fase 32): finora questo export non scriveva NESSUNO
 	// stile (solo valori/formule, vedi BuildSheetXml) -- una vera tabella
@@ -6353,12 +6429,20 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		std::vector<unsigned char> vbaProject;
 		bool isProtected = false;
 		int frozenRows = 0, frozenCols = 0;
+		bool hasPrintSettings = false;
+		double marginTopCm = 2.0, marginBottomCm = 2.0, marginLeftCm = 2.0, marginRightCm = 2.0;
+		int scaleMode = 0;
+		double scalePercent = 100.0;
 		status_t err = ReadASCD(source, doc, &charts, &vbaProject, &isProtected,
-			&frozenRows, &frozenCols);
+			&frozenRows, &frozenCols,
+			&hasPrintSettings, &marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
+			&scaleMode, &scalePercent);
 		if (err == B_OK)
 			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
 				: WriteXLSX(doc, charts, destination, vbaProject, isProtected,
-					frozenRows, frozenCols);
+					frozenRows, frozenCols,
+					hasPrintSettings, marginTopCm, marginBottomCm, marginLeftCm, marginRightCm,
+					scaleMode, scalePercent);
 		doc->Release();
 		return err;
 	}
@@ -6833,7 +6917,10 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			// uscita mantiene i suoi grafici invece di perderli.
 			err = WriteXLSX(sheets[0].doc, sheets[0].charts, destination,
 				sheets[0].vbaProject, sheets[0].isProtected,
-				sheets[0].frozenRows, sheets[0].frozenCols);
+				sheets[0].frozenRows, sheets[0].frozenCols,
+				sheets[0].hasPrintSettings, sheets[0].marginTopCm, sheets[0].marginBottomCm,
+				sheets[0].marginLeftCm, sheets[0].marginRightCm,
+				sheets[0].scaleMode, sheets[0].scalePercent);
 	}
 
 	if (err == B_OK && extension != NULL && !unsupportedCharts.empty())

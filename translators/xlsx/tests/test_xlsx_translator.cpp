@@ -573,6 +573,129 @@ static status_t WriteASCDWithBorderColorForTest(CContainer* doc, const char* ref
 	return B_OK;
 }
 
+// Same idea as WriteASCDWithValidationForTest below, but for page
+// margins/scale instead (100% XLSX standard compatibility, Tier 2 --
+// print settings, step 2 of 4): margins/scale come much later in the
+// real WriteASCD section order (after comments, hyperlinks, chart-
+// type, border-color, data validation, conditional formatting,
+// tables, chart title, and print area, all zero/absent here), so this
+// helper needs to write through all of them first.
+static status_t WriteASCDWithPrintSettingsForTest(CContainer* doc, double marginTopCm,
+	double marginBottomCm, double marginLeftCm, double marginRightCm,
+	int32 scaleMode, double scalePercent, BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati, colWidths, cellColors, columnColors,
+	// rowHeights: cinque conteggi a zero.
+	for (int i = 0; i < 5; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+	// Commenti, collegamenti ipertestuali: nessuno.
+	for (int i = 0; i < 2; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Tipo di grafico incorporato: chartTypeCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Colore del bordo, convalida dati, formattazione condizionale,
+	// tabelle: quattro conteggi a zero.
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Titolo di grafico incorporato: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Area di stampa: un byte "has" + 4 int16, sempre presenti (assente qui).
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+	// Margini/scala: i dati veri, un byte "has=1" + 4 double + int32 + double.
+	{
+		uint8 has = 1;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&marginTopCm, sizeof(marginTopCm)) != (ssize_t)sizeof(marginTopCm)
+			|| dest->Write(&marginBottomCm, sizeof(marginBottomCm)) != (ssize_t)sizeof(marginBottomCm)
+			|| dest->Write(&marginLeftCm, sizeof(marginLeftCm)) != (ssize_t)sizeof(marginLeftCm)
+			|| dest->Write(&marginRightCm, sizeof(marginRightCm)) != (ssize_t)sizeof(marginRightCm)
+			|| dest->Write(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
+			|| dest->Write(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
 static status_t WriteASCDWithValidationForTest(CContainer* doc, const char* ref, int8 type,
 	const char* listText, double min, double max, BPositionIO* dest)
 {
@@ -6165,6 +6288,173 @@ int main()
 			Check(fitRead && scaleMode == 1,
 				"con fitToPage attivo e fitToHeight=\"0\", la modalita' importata e' "
 				"\"adatta alla larghezza\" (kPrintFitWidth=1), non la percentuale ignorata da Excel stesso");
+		}
+	}
+
+	// Stesso scenario ma sull'export (ASCD -> XLSX), il passo 2 di 4
+	// per le impostazioni di stampa: un documento con margini/scala
+	// espliciti (percentuale fissa) esporta un vero <pageMargins>/
+	// <pageSetup scale="..."> nel foglio, e quel file si rilegge
+	// correttamente. Margini scelti (3cm/1.5cm) per non coincidere con
+	// il predefinito 2cm.
+	{
+		CContainer& printExportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &printExportDoc, true); // A1
+
+		BMallocIO printAscdIn;
+		status_t printSaveErr = WriteASCDWithPrintSettingsForTest(&printExportDoc,
+			3.0, 3.0, 1.5, 1.5, 0, 150.0, &printAscdIn);
+		Check(printSaveErr == B_OK, "preparazione dell'ASCD di prova con margini/scala riesce");
+		printExportDoc.Release();
+
+		printAscdIn.Seek(0, SEEK_SET);
+		translator_info printExportInfo;
+		err = translator->Identify(&printAscdIn, NULL, NULL, &printExportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD con margini/scala come sorgente per l'export");
+
+		printAscdIn.Seek(0, SEEK_SET);
+		BMallocIO printXlsxOut;
+		err = translator->Translate(&printAscdIn, &printExportInfo, NULL, kAtomoXlsxFormat, &printXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con margini/scala) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			printXlsxOut.Seek(0, SEEK_SET);
+			CZipReader printOutZip;
+			Check(printOutZip.Open(&printXlsxOut),
+				"il file XLSX esportato con margini/scala e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> exportedSheetXml;
+			bool readSheet = printOutZip.ReadEntry("xl/worksheets/sheet1.xml", exportedSheetXml);
+			std::string sheetText(exportedSheetXml.begin(), exportedSheetXml.end());
+			// 3cm / 2.54 = 1.181... pollici, 1.5cm / 2.54 = 0.5906 pollici (arrotondato a 4 cifre significative).
+			Check(readSheet && sheetText.find("<pageMargins ") != std::string::npos
+				&& sheetText.find("top=\"1.181") != std::string::npos
+				&& sheetText.find("left=\"0.5906") != std::string::npos,
+				"xl/worksheets/sheet1.xml esportato contiene <pageMargins> con i valori "
+				"veri in pollici (3cm/1.5cm riconvertiti)");
+			Check(readSheet && sheetText.find("<pageSetup scale=\"150\"") != std::string::npos,
+				"xl/worksheets/sheet1.xml esportato contiene <pageSetup scale=\"150\">, "
+				"la percentuale fissa vera");
+
+			// Round-trip completo: rileggendo il file appena esportato,
+			// margini/scala devono arrivare di nuovo (arrotondati
+			// dall'andata e ritorno pollici/cm, non piu' precisi al
+			// millesimo ma comunque vicini agli originali).
+			printXlsxOut.Seek(0, SEEK_SET);
+			translator_info printReimportInfo;
+			err = translator->Identify(&printXlsxOut, NULL, NULL, &printReimportInfo, 0);
+			Check(err == B_OK && printReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX esportato con margini/scala si riconosce ancora come XLSX valido rileggendolo");
+
+			printXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO printRoundTripAscd;
+			err = translator->Translate(&printXlsxOut, &printReimportInfo, NULL,
+				kAtomoNativeFormat, &printRoundTripAscd);
+			Check(err == B_OK, "il file XLSX esportato con margini/scala si rilegge correttamente (round-trip)");
+
+			if (err == B_OK)
+			{
+				const unsigned char* rtPrintData = NULL;
+				size_t rtPrintLen = 0;
+				bool rtPrintUnwrapped = UnwrapFirstSheet((const unsigned char*)printRoundTripAscd.Buffer(),
+					printRoundTripAscd.BufferLength(), &rtPrintData, &rtPrintLen);
+				Check(rtPrintUnwrapped, "il round-trip di margini/scala produce anch'esso una cartella ASCB valida");
+
+				if (rtPrintUnwrapped)
+				{
+					bool rtHasSettings = false;
+					double rtMarginTop = -1, rtMarginBottom = -1, rtMarginLeft = -1, rtMarginRight = -1;
+					int32 rtScaleMode = -1;
+					double rtScalePercent = -1;
+					bool rtPrintRead = ReadPrintSettingsFromAscdForTest(rtPrintData, rtPrintLen,
+						&rtHasSettings, &rtMarginTop, &rtMarginBottom, &rtMarginLeft, &rtMarginRight,
+						&rtScaleMode, &rtScalePercent);
+					Check(rtPrintRead && rtHasSettings
+						&& fabs(rtMarginTop - 3.0) < 0.01 && fabs(rtMarginLeft - 1.5) < 0.01
+						&& rtScaleMode == 0 && fabs(rtScalePercent - 150.0) < 0.5,
+						"dopo il giro completo ASCD -> XLSX -> ASCD, margini/scala si ritrovano "
+						"ancora vicini agli originali (3cm/1.5cm, 150%)");
+				}
+			}
+		}
+	}
+
+	// Stesso scenario ma con modalita' "adatta alla larghezza"
+	// (kPrintFitWidth=1): deve esportare <sheetPr><pageSetUpPr
+	// fitToPage="1"/></sheetPr> e <pageSetup fitToWidth="1"
+	// fitToHeight="0"/>, non una percentuale.
+	{
+		CContainer& fitExportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &fitExportDoc, true); // A1
+
+		BMallocIO fitAscdIn;
+		status_t fitSaveErr = WriteASCDWithPrintSettingsForTest(&fitExportDoc,
+			2.0, 2.0, 2.0, 2.0, 1 /* kPrintFitWidth */, 100.0, &fitAscdIn);
+		Check(fitSaveErr == B_OK, "preparazione dell'ASCD di prova con fitToPage riesce");
+		fitExportDoc.Release();
+
+		fitAscdIn.Seek(0, SEEK_SET);
+		translator_info fitExportInfo;
+		err = translator->Identify(&fitAscdIn, NULL, NULL, &fitExportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD con fitToPage come sorgente per l'export");
+
+		fitAscdIn.Seek(0, SEEK_SET);
+		BMallocIO fitXlsxOut;
+		err = translator->Translate(&fitAscdIn, &fitExportInfo, NULL, kAtomoXlsxFormat, &fitXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con fitToPage) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			fitXlsxOut.Seek(0, SEEK_SET);
+			CZipReader fitOutZip;
+			Check(fitOutZip.Open(&fitXlsxOut),
+				"il file XLSX esportato con fitToPage e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> exportedFitSheetXml;
+			bool readFitSheet = fitOutZip.ReadEntry("xl/worksheets/sheet1.xml", exportedFitSheetXml);
+			std::string fitSheetText(exportedFitSheetXml.begin(), exportedFitSheetXml.end());
+			Check(readFitSheet && fitSheetText.find("<pageSetUpPr fitToPage=\"1\"") != std::string::npos,
+				"xl/worksheets/sheet1.xml esportato contiene <pageSetUpPr fitToPage=\"1\">");
+			Check(readFitSheet
+				&& fitSheetText.find("<pageSetup fitToWidth=\"1\" fitToHeight=\"0\"") != std::string::npos,
+				"xl/worksheets/sheet1.xml esportato contiene fitToWidth=\"1\" fitToHeight=\"0\", "
+				"non una percentuale (kPrintFitWidth)");
+
+			fitXlsxOut.Seek(0, SEEK_SET);
+			translator_info fitReimportInfo;
+			err = translator->Identify(&fitXlsxOut, NULL, NULL, &fitReimportInfo, 0);
+			Check(err == B_OK && fitReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX esportato con fitToPage si riconosce ancora come XLSX valido rileggendolo");
+
+			fitXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO fitRoundTripAscd;
+			err = translator->Translate(&fitXlsxOut, &fitReimportInfo, NULL,
+				kAtomoNativeFormat, &fitRoundTripAscd);
+			Check(err == B_OK, "il file XLSX esportato con fitToPage si rilegge correttamente (round-trip)");
+
+			if (err == B_OK)
+			{
+				const unsigned char* rtFitData = NULL;
+				size_t rtFitLen = 0;
+				bool rtFitUnwrapped = UnwrapFirstSheet((const unsigned char*)fitRoundTripAscd.Buffer(),
+					fitRoundTripAscd.BufferLength(), &rtFitData, &rtFitLen);
+				Check(rtFitUnwrapped, "il round-trip di fitToPage produce anch'esso una cartella ASCB valida");
+
+				if (rtFitUnwrapped)
+				{
+					bool rtFitHasSettings = false;
+					double rtFitMarginTop = -1, rtFitMarginBottom = -1, rtFitMarginLeft = -1, rtFitMarginRight = -1;
+					int32 rtFitScaleMode = -1;
+					double rtFitScalePercent = -1;
+					bool rtFitRead = ReadPrintSettingsFromAscdForTest(rtFitData, rtFitLen,
+						&rtFitHasSettings, &rtFitMarginTop, &rtFitMarginBottom,
+						&rtFitMarginLeft, &rtFitMarginRight, &rtFitScaleMode, &rtFitScalePercent);
+					Check(rtFitRead && rtFitHasSettings && rtFitScaleMode == 1,
+						"dopo il giro completo ASCD -> XLSX -> ASCD, la modalita' \"adatta alla "
+						"larghezza\" si ritrova ancora impostata");
+				}
+			}
 		}
 	}
 
