@@ -5,10 +5,10 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.2.7 released** (XLSM macro preservation, sheet/cell
-protection, a critical multi-sheet `.ascd` open bug, and Tier 1 of the
-XLSX standard compatibility plan: array/shared formulas, named
-ranges). All planned phases through "closing the
+**Status: v0.2.8 released** (Tiers 1 and 2 of the XLSX standard
+compatibility plan: array/shared formulas, named ranges, comments,
+hyperlinks, data validation, freeze panes, border color, print
+settings). All planned phases through "closing the
 gap with Excel" are done or in good shape; a handful of large,
 optional features remain unplanned backlog items (see "Not currently
 planned" below, and "Path to full Excel parity" for what's next).
@@ -40,6 +40,7 @@ along the way lives in `CHANGELOG.md`.
 | Release prep (v0.2.5) | Done | Tagged on GitHub: five function batches (30 functions), print settings + preview, pivot table multi-level grouping, translator ambiguous-text parity, AutoFill (see CHANGELOG.md) |
 | Release prep (v0.2.6) | Done | Tagged on GitHub: critical multi-sheet XLSX corruption fix, background file loading with a footer progress bar, ~7x faster large-file opening (see CHANGELOG.md) |
 | Release prep (v0.2.7) | Done | Tagged on GitHub: XLSM macro preservation, sheet/cell protection, critical `.ascd` multi-sheet open fix, XLSX Tier 1 compatibility (array/shared formulas, named ranges) (see CHANGELOG.md) |
+| Release prep (v0.2.8) | Done | Tagged on GitHub: XLSX Tier 2 compatibility complete — comments, hyperlinks, data validation, freeze panes, border color, print settings (see CHANGELOG.md) |
 
 ### Phase 13 detail
 
@@ -66,23 +67,18 @@ existing code to build on):
 
 ## Current focus
 
-**v0.2.7 tagged and released on GitHub** (2026-08-28), on top of
-v0.2.6: XLSM macro preservation on save, sheet protection and cell
-locking (with XLSX round-trip), a critical fix for a multi-sheet
-`.ascd` file that had stopped opening, and Tier 1 of the "Path to
-100% XLSX standard compatibility" plan below (array/shared formulas
-importing as frozen values, named-range persistence). See
-`CHANGELOG.md` for the full detail on each, including the real bugs
-found while building them.
+**v0.2.8 tagged and released on GitHub** (2026-08-29), on top of
+v0.2.7: Tier 1 (array/shared formulas, named ranges) and the entire
+Tier 2 of the "Path to 100% XLSX standard compatibility" plan below —
+comments, hyperlinks, data validation, freeze panes, border color
+(import), and the full four-step print settings plan (margins/scale +
+print area, both directions). See `CHANGELOG.md` for the full detail
+on each, including the real bugs found while building them.
 
-**Tier 1 and Tier 2 of "Path to 100% XLSX standard compatibility" are
-both done** (2026-08-29, not yet tagged as a release): comments,
-hyperlinks, data validation, freeze panes, border color (import), and
-the full four-step print settings plan (margins/scale + print area,
-both directions). Next up is Tier 3 (conditional formatting rule
-types beyond `cellIs`/`duplicateValues`, the legacy indexed color
-palette, real Excel pivot table round-trip) — see "Path to 100% XLSX
-standard compatibility" below for the full detail.
+**Next up is Tier 3** (conditional formatting rule types beyond
+`cellIs`/`duplicateValues`, the legacy indexed color palette, real
+Excel pivot table round-trip) — see "Path to 100% XLSX standard
+compatibility" below for the full detail.
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 

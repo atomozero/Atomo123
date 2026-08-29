@@ -641,7 +641,7 @@ What shipped in v0.2.7, on top of v0.2.6 (in progress):
   (all 4 sheets, correct names and content) plus the full existing
   regression suite
 
-What shipped since v0.2.7, not yet in a tagged release:
+What shipped in v0.2.8, on top of v0.2.7:
 - Fixed the first item of the new "100% XLSX standard compatibility"
   audit: a legacy array formula (`<f t="array" ref="B1:B2">FORMULA</f>`,
   entered in real Excel with Ctrl+Shift+Enter across more than one
@@ -736,3 +736,76 @@ What shipped since v0.2.7, not yet in a tagged release:
   Print_Titles` reserved names are recognized and skipped but not yet
   wired to this app's own print-area/print-settings persistence — see
   `ROADMAP.md`
+- Closed Tier 1 of "100% XLSX standard compatibility" and completed
+  the whole of Tier 2 (six items, twelve commits, code and docs kept
+  separate throughout): cell comments, hyperlinks, data validation,
+  freeze panes, border color, and the full print-settings plan
+  (margins/scale and print area, both import and export). Every item
+  followed the same pattern found while auditing the translator: this
+  app's own native feature already worked and persisted correctly in
+  `.ascd`, but the XLSX translator's `WriteASCD`/`ReadASCD` (its own
+  private, duplicated copy of the ASCD reader/writer, kept separate
+  from `ui/src/AscdIO.cpp` by design) had a hardcoded stub for that
+  section — always writing "absent", always discarding what it read —
+  so the data silently vanished the moment it passed through XLSX,
+  even though the underlying app feature was never broken.
+  - **Cell comments**: `xl/comments{N}.xml` lives directly under `xl/`,
+    not a `comments/` subdirectory like drawings/tables — a wrong
+    assumption caught immediately by the first import test. No legacy
+    VML drawing is read or written; this app has no comment-box
+    position/visibility to round-trip, only the text content, which
+    survives fully without it
+  - **Hyperlinks**: `<hyperlinks>` lives inside `<worksheet>` itself
+    (unlike comments), with `r:id` resolved to a real URL through the
+    sheet's own `.rels` (`TargetMode="External"`); an internal link
+    (`location="..."` instead of `r:id`) is also imported directly.
+    This engine stores only one string per hyperlink, so every
+    exported link is written as external even if it started as an
+    internal same-workbook reference
+  - **Data validation**: scoped to the two shapes `ValidationRule`
+    actually models — a literal comma-separated dropdown list
+    (`type="list"` with a quoted literal, not a cell-range source) and
+    a numeric range with an implicit or explicit `operator="between"`.
+    Date/time ranges, other operators, a list sourced from a cell
+    range, and custom-formula rules have no engine equivalent and are
+    silently skipped, the same way conditional formatting already
+    skips rule types it can't model
+  - **Freeze panes**: only `<pane state="frozen"/>` (or
+    `"frozenSplit"`) round-trips, matching what this app's own feature
+    actually is — a real freeze, not a draggable split, whose
+    `xSplit`/`ySplit` would mean twentieths of a point instead of a
+    row/column count in that other case
+  - **Border color**: import only. `ParseStyles` now resolves the real
+    `<color rgb="..."/>`/`theme="N"` on a border side (reusing the
+    same color-resolution helper fill/font colors already used) into
+    one color shared by all four sides, the scope the engine's own
+    model already committed to. Export is **not** fixed: this
+    translator writes no dynamic `styles.xml` at all yet (fill and
+    font colors aren't exported either) — a separate, larger effort
+  - **Print settings**, the largest of the six, split into four steps:
+    margins/scale import (`<pageMargins>`, always inches in XLSX,
+    converted to the centimeters `AscdPrintSettings` already uses;
+    `<pageSetup scale/fitToWidth/fitToHeight>`, honoring the sibling
+    `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>` flag exactly like
+    Excel itself does), margins/scale export (the reverse conversion,
+    plus a bonus fix for the XLSX-to-XLSX re-export path that had been
+    silently dropping print settings too), print-area import
+    (`_xlnm.Print_Area`'s raw range text was already captured while
+    parsing defined names, just discarded like every other `_xlnm.*`
+    name — a multi-area value, rare in practice, keeps only the first
+    rectangle), and print-area export (written as a real, always
+    sheet-scoped defined name alongside real named ranges). Print
+    header/footer text and repeated print titles (rows/columns) are
+    explicitly out of scope: neither has a native-format field or UI
+    at all today, and Excel's own `&P`/`&D`/`&F` placeholder codes have
+    no equivalent syntax here — both would need new modeling and UI
+    before any translator work makes sense, unlike everything else on
+    this list
+  - Confirmed live in the running app (2026-08-29): opened a real
+    `.xlsx` with custom margins/scale and checked "Imposta pagina"
+    showed the real imported values, not the previous always-default
+    2cm/100%. Also found, while testing this: `atomo123 file.xlsx`
+    from the command line doesn't open the file at all (`App.cpp` has
+    no `ArgvReceived` override, only drag-and-drop/Tracker/the app's
+    own File menu work) — tracked as a small, separate item in "Path
+    to full Excel parity"
