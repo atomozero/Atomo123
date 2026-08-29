@@ -382,6 +382,17 @@ list deliberately deviates from pure effort-sorting:
   of the two already done. The live-evaluation framework already
   exists, this is new rule types plus new per-cell rendering, not a
   new subsystem
+- **Open a file passed on the command line** (`atomo123 file.xlsx`).
+  `App.cpp` has no `ArgvReceived` override at all today — launching
+  with a path argument silently opens a blank new document instead,
+  confirmed live while testing print settings (2026-08-29): `open
+  file.xlsx` also doesn't help, since the file's MIME type isn't
+  associated with this app in a dev/non-packaged build, and there's no
+  fallback for a bare command-line path either way. `RefsReceived`
+  (drag-and-drop, Tracker "Open With", the app's own File→Open dialog)
+  already works correctly — this just needs `ArgvReceived` to convert
+  each path argument into a `BEntry`/`entry_ref` and reuse the same
+  open path `RefsReceived` already calls
 
 ### Tier 2 — do next: moderate effort, real but narrower value
 
