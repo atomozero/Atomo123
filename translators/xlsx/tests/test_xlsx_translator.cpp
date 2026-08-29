@@ -342,6 +342,101 @@ static status_t WriteASCDWithCommentForTest(CContainer* doc, const char* ref, co
 	return B_OK;
 }
 
+// Same idea as WriteASCDWithCommentForTest above, but for a hyperlink
+// instead (100% XLSX standard compatibility, Tier 2): the hyperlinks
+// section comes right after comments, so a real comment count of zero
+// is still needed in between.
+static status_t WriteASCDWithHyperlinkForTest(CContainer* doc, const char* ref, const char* url,
+	BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati: chartCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi a zero.
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+	// Commenti: nessuno.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Collegamenti ipertestuali: un record vero.
+	{
+		cell c;
+		c.Set(ref);
+		int32 linkCount = 1;
+		int16 row = c.v, col = c.h;
+		int32 len = (int32)strlen(url);
+		if (dest->Write(&linkCount, sizeof(linkCount)) != (ssize_t)sizeof(linkCount)
+			|| dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+			|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+			|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+			return B_IO_ERROR;
+		if (len > 0 && dest->Write(url, len) != len)
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
 // Same idea as WriteASCDWithChartForTest above, but for a named range
 // instead of a chart: real named-range data has to go at the very END
 // of the format (see the comment on the same section in WriteASCD,
@@ -850,6 +945,100 @@ static bool ReadFirstCommentFromAscdForTest(const unsigned char* ascdData, size_
 
 	outCell->Set(col, row);
 	outText->assign((const char*)ascdData + pos, textLen);
+
+	return true;
+}
+
+// Same idea as ReadFirstCommentFromAscdForTest above, but for the
+// hyperlinks section right after it (100% XLSX standard compatibility,
+// Tier 2): assumes no comments and exactly one hyperlink, matching
+// every caller today.
+static bool ReadFirstHyperlinkFromAscdForTest(const unsigned char* ascdData, size_t ascdLen,
+	cell* outCell, std::string* outUrl)
+{
+	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
+		return false;
+
+	int32 cellCount;
+	memcpy(&cellCount, ascdData + 8, 4);
+
+	size_t pos = 12;
+	for (int32 i = 0; i < cellCount; i++)
+	{
+		if (pos + 9 > ascdLen)
+			return false;
+		int32 len;
+		memcpy(&len, ascdData + pos + 4, 4);
+		pos += 9 + len;
+	}
+
+	// Grafici incorporati: un contatore (0 in questo documento di prova).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// colWidths, cellColors, columnColors, rowHeights: quattro contatori.
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Blocca riquadri: due interi fissi.
+	if (pos + 8 > ascdLen) return false;
+	pos += 8;
+
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto contatori.
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Visibilita' griglia: un byte fisso.
+	if (pos + 1 > ascdLen) return false;
+	pos += 1;
+
+	// Colore della linguetta: 4 byte fissi.
+	if (pos + 4 > ascdLen) return false;
+	pos += 4;
+
+	// Righe nascoste: un contatore.
+	if (pos + 4 > ascdLen) return false;
+	{
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// AutoFilter: 9 byte fissi.
+	if (pos + 9 > ascdLen) return false;
+	pos += 9;
+
+	// Commenti: un contatore (0 in questo documento di prova).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// Collegamenti ipertestuali: i dati veri, primo (e unico atteso) record.
+	if (pos + 4 > ascdLen) return false;
+	int32 linkCount;
+	memcpy(&linkCount, ascdData + pos, 4); pos += 4;
+	if (linkCount != 1) return false;
+
+	if (pos + 8 > ascdLen) return false;
+	int16 row, col;
+	int32 urlLen;
+	memcpy(&row, ascdData + pos, 2); pos += 2;
+	memcpy(&col, ascdData + pos, 2); pos += 2;
+	memcpy(&urlLen, ascdData + pos, 4); pos += 4;
+	if (urlLen < 0 || pos + (size_t)urlLen > ascdLen) return false;
+
+	outCell->Set(col, row);
+	outUrl->assign((const char*)ascdData + pos, urlLen);
 
 	return true;
 }
@@ -4436,6 +4625,176 @@ int main()
 						&rtCommentCell, &rtCommentText);
 					Check(rtCommentRead && rtCommentCell == cell(2, 2) && rtCommentText == "Da ricontrollare",
 						"dopo il giro completo ASCD -> XLSX -> ASCD, il commento si ritrova ancora su B2");
+				}
+			}
+		}
+	}
+
+	// Hyperlinks (<hyperlinks> inside xl/worksheets/sheet1.xml + the
+	// sheet's own _rels, TargetMode="External"), the second item of
+	// Tier 2 in the "100% XLSX standard compatibility" plan, same exact
+	// shape as the comments fix above: a link on B2 should arrive in
+	// the imported document via CContainer::SetHyperlink, not be
+	// silently discarded like before this fix.
+	{
+		static const char kLinkContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kLinkRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kLinkWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kLinkWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kLinkSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\"><v>5</v></c></row></sheetData>"
+			"<hyperlinks><hyperlink ref=\"B2\" r:id=\"rId1\"/></hyperlinks>"
+			"</worksheet>\n";
+		static const char kLinkSheetRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" "
+			"Target=\"https://www.haiku-os.org/\" TargetMode=\"External\"/>\n</Relationships>\n";
+
+		BMallocIO linkXlsx;
+		CZipWriter linkZip;
+		linkZip.Begin(&linkXlsx);
+		linkZip.AddEntry("[Content_Types].xml", kLinkContentTypes, strlen(kLinkContentTypes));
+		linkZip.AddEntry("_rels/.rels", kLinkRootRels, strlen(kLinkRootRels));
+		linkZip.AddEntry("xl/workbook.xml", kLinkWorkbook, strlen(kLinkWorkbook));
+		linkZip.AddEntry("xl/_rels/workbook.xml.rels", kLinkWorkbookRels, strlen(kLinkWorkbookRels));
+		linkZip.AddEntry("xl/worksheets/sheet1.xml", kLinkSheet, strlen(kLinkSheet));
+		linkZip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kLinkSheetRels, strlen(kLinkSheetRels));
+		Check(linkZip.Close(), "costruzione del file XLSX di prova con <hyperlinks> riuscita");
+
+		linkXlsx.Seek(0, SEEK_SET);
+		translator_info linkInfo;
+		err = translator->Identify(&linkXlsx, NULL, NULL, &linkInfo, 0);
+		Check(err == B_OK && linkInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con <hyperlinks>");
+
+		linkXlsx.Seek(0, SEEK_SET);
+		BMallocIO linkAscdOut;
+		err = translator->Translate(&linkXlsx, &linkInfo, NULL, kAtomoNativeFormat, &linkAscdOut);
+		Check(err == B_OK, "Translate del file di prova con <hyperlinks> riesce");
+
+		const unsigned char* linkAscdData = NULL;
+		size_t linkAscdLen = 0;
+		bool linkUnwrapped = UnwrapFirstSheet((const unsigned char*)linkAscdOut.Buffer(),
+			linkAscdOut.BufferLength(), &linkAscdData, &linkAscdLen);
+		Check(linkUnwrapped, "l'output di Translate del file di prova con <hyperlinks> e' un ASCD valido");
+
+		if (linkUnwrapped)
+		{
+			cell importedLinkCell;
+			std::string importedLinkUrl;
+			bool linkRead = ReadFirstHyperlinkFromAscdForTest(linkAscdData, linkAscdLen,
+				&importedLinkCell, &importedLinkUrl);
+			Check(linkRead, "la sezione collegamenti dell'ASCD prodotto si legge correttamente");
+			Check(linkRead && importedLinkCell == cell(2, 2),
+				"il collegamento importato e' ancorato a B2, lo stesso riferimento di <hyperlink ref=\"B2\">");
+			Check(linkRead && importedLinkUrl == "https://www.haiku-os.org/",
+				"l'URL del collegamento importato e' quello vero, risolto tramite r:id "
+				"nei _rels del foglio, non piu' scartato in silenzio");
+		}
+	}
+
+	// Stesso scenario, direzione opposta (ASCD -> XLSX): un documento
+	// con un collegamento su una cella esporta un vero <hyperlinks> nel
+	// foglio, con la relazione esterna corrispondente nei suoi _rels, e
+	// quel file si rilegge correttamente.
+	{
+		CContainer& linkExportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &linkExportDoc, true); // A1
+		linkExportDoc.SetHyperlink(cell(2, 2), "https://www.haiku-os.org/"); // B2
+
+		BMallocIO linkAscdIn;
+		status_t linkSaveErr = WriteASCDWithHyperlinkForTest(&linkExportDoc, "B2",
+			"https://www.haiku-os.org/", &linkAscdIn);
+		Check(linkSaveErr == B_OK, "preparazione dell'ASCD di prova con un collegamento riesce");
+		linkExportDoc.Release();
+
+		linkAscdIn.Seek(0, SEEK_SET);
+		translator_info linkExportInfo;
+		err = translator->Identify(&linkAscdIn, NULL, NULL, &linkExportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD con un collegamento come sorgente per l'export");
+
+		linkAscdIn.Seek(0, SEEK_SET);
+		BMallocIO linkXlsxOut;
+		err = translator->Translate(&linkAscdIn, &linkExportInfo, NULL, kAtomoXlsxFormat, &linkXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con un collegamento) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			linkXlsxOut.Seek(0, SEEK_SET);
+			CZipReader linkOutZip;
+			Check(linkOutZip.Open(&linkXlsxOut),
+				"il file XLSX esportato con un collegamento e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> exportedSheetXml;
+			bool readSheet = linkOutZip.ReadEntry("xl/worksheets/sheet1.xml", exportedSheetXml);
+			std::string sheetText(exportedSheetXml.begin(), exportedSheetXml.end());
+			Check(readSheet && sheetText.find("<hyperlink ref=\"B2\"") != std::string::npos,
+				"xl/worksheets/sheet1.xml esportato contiene <hyperlink ref=\"B2\">");
+
+			std::vector<unsigned char> exportedSheetRels;
+			bool readSheetRels = linkOutZip.ReadEntry("xl/worksheets/_rels/sheet1.xml.rels",
+				exportedSheetRels);
+			std::string sheetRelsText(exportedSheetRels.begin(), exportedSheetRels.end());
+			Check(readSheetRels
+				&& sheetRelsText.find("https://www.haiku-os.org/") != std::string::npos
+				&& sheetRelsText.find("TargetMode=\"External\"") != std::string::npos,
+				"i _rels del foglio esportato contengono l'URL vero, con TargetMode=\"External\"");
+
+			// Round-trip completo: rileggendo il file appena esportato,
+			// il collegamento deve arrivare di nuovo.
+			linkXlsxOut.Seek(0, SEEK_SET);
+			translator_info linkReimportInfo;
+			err = translator->Identify(&linkXlsxOut, NULL, NULL, &linkReimportInfo, 0);
+			Check(err == B_OK && linkReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX esportato con un collegamento si riconosce ancora come XLSX valido rileggendolo");
+
+			linkXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO linkRoundTripAscd;
+			err = translator->Translate(&linkXlsxOut, &linkReimportInfo, NULL,
+				kAtomoNativeFormat, &linkRoundTripAscd);
+			Check(err == B_OK, "il file XLSX esportato con un collegamento si rilegge correttamente (round-trip)");
+
+			if (err == B_OK)
+			{
+				const unsigned char* rtLinkData = NULL;
+				size_t rtLinkLen = 0;
+				bool rtLinkUnwrapped = UnwrapFirstSheet((const unsigned char*)linkRoundTripAscd.Buffer(),
+					linkRoundTripAscd.BufferLength(), &rtLinkData, &rtLinkLen);
+				Check(rtLinkUnwrapped, "il round-trip del collegamento produce anch'esso una cartella ASCB valida");
+
+				if (rtLinkUnwrapped)
+				{
+					cell rtLinkCell;
+					std::string rtLinkUrl;
+					bool rtLinkRead = ReadFirstHyperlinkFromAscdForTest(rtLinkData, rtLinkLen,
+						&rtLinkCell, &rtLinkUrl);
+					Check(rtLinkRead && rtLinkCell == cell(2, 2)
+						&& rtLinkUrl == "https://www.haiku-os.org/",
+						"dopo il giro completo ASCD -> XLSX -> ASCD, il collegamento si ritrova ancora su B2");
 				}
 			}
 		}

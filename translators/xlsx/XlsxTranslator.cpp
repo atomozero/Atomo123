@@ -692,14 +692,27 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Sezione collegamenti ipertestuali, in coda: stesso principio
-	// della sezione commenti appena sopra -- questo translator non
-	// estrae ancora <hyperlinks> da un file XLSX vero (rimandato,
-	// vedi ROADMAP.md), quindi sempre vuota.
+	// Sezione collegamenti ipertestuali, in coda (100% XLSX standard
+	// compatibility, Tier 2): stesso schema esatto della sezione
+	// commenti appena sopra, stessa fonte (CContainer::GetHyperlinks).
 	{
-		int32 linkCount = 0;
+		const std::map<cell, std::string>& links = doc->GetHyperlinks();
+		int32 linkCount = (int32)links.size();
 		if (dest->Write(&linkCount, sizeof(linkCount)) != (ssize_t)sizeof(linkCount))
 			return B_IO_ERROR;
+
+		for (std::map<cell, std::string>::const_iterator it = links.begin();
+			it != links.end(); ++it)
+		{
+			int16 row = it->first.v, col = it->first.h;
+			int32 len = (int32)it->second.size();
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(it->second.data(), len) != len)
+				return B_IO_ERROR;
+		}
 	}
 
 	// Sezione tipo di grafico incorporato, in coda (Fase 25, vedi
@@ -1468,7 +1481,9 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 	{
-		// Collegamenti ipertestuali: stesso schema esatto dei commenti sopra.
+		// Collegamenti ipertestuali: stesso schema esatto dei commenti
+		// sopra, ora applicati davvero a "doc" (100% XLSX standard
+		// compatibility, Tier 2), non piu' solo scartati.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1481,10 +1496,19 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
 					return B_BAD_DATA;
+				if (!cell(col, row).IsValid())
+					return B_BAD_DATA;
 				if (len < 0 || len > 16 * 1024 * 1024)
 					return B_BAD_DATA;
-				if (len > 0 && source->Seek(len, SEEK_CUR) < 0)
-					return B_BAD_DATA;
+
+				std::string text;
+				if (len > 0)
+				{
+					text.resize(len);
+					if (source->Read(&text[0], len) != len)
+						return B_BAD_DATA;
+				}
+				doc->SetHyperlink(cell(col, row), text);
 			}
 		}
 	}
@@ -1865,7 +1889,8 @@ static void AppendXmlEscaped(std::string& out, const char* text)
 // raccogliere i valori unici, complessita' non necessaria per i
 // fogli tipici esportati da questo programma, ed e' comunque sintassi
 // OOXML valida (Excel/LibreOffice la leggono correttamente).
-static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtected)
+static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtected,
+	const std::string& hyperlinksXml = std::string())
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -1985,6 +2010,11 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// (l'app non protegge mai con password, solo on/off).
 	if (isProtected)
 		xml += "<sheetProtection sheetId=\"1\"/>";
+	// <hyperlinks> (100% XLSX standard compatibility, Tier 2): DOPO
+	// <sheetProtection>, PRIMA di <drawing> nell'ordine richiesto dallo
+	// schema OOXML (CT_Worksheet) -- gia' pronto (con i suoi r:id) da
+	// WriteXLSX sopra, questa funzione lo inserisce solo al punto giusto.
+	xml += hyperlinksXml;
 	// <drawing> e' un fratello di <sheetData> (mai al suo interno),
 	// deve venire DOPO nello schema OOXML del foglio -- ancora i grafici
 	// incorporati (Fase 24) tramite xl/drawings/drawing1.xml, sempre
@@ -2458,7 +2488,6 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	}
 
 	bool hasDrawing = !chartXmls.empty();
-	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected);
 
 	// xl/comments1.xml (100% XLSX standard compatibility, Tier 2):
 	// CContainer::GetComments() -> un solo <author> generico (questo
@@ -2489,6 +2518,41 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		}
 		commentsXml += "</commentList></comments>\n";
 	}
+
+	// <hyperlinks> dentro <worksheet> (100% XLSX standard compatibility,
+	// Tier 2): CContainer::GetHyperlinks() -> un <hyperlink ref="A1"
+	// r:id="rIdX"/> per cella, sempre un collegamento ESTERNO
+	// (TargetMode="External" nel .rels sotto, mai "location" per un
+	// riferimento interno: questo motore memorizza solo una stringa
+	// per collegamento, senza distinguere le due forme). Gli Id vanno
+	// assegnati DOPO quello del drawing/dei commenti (se presenti),
+	// visto che sono relazioni nello stesso file .rels del foglio --
+	// "hyperlinkRidStart" e' il primo libero.
+	const std::map<cell, std::string>& links = doc->GetHyperlinks();
+	bool hasHyperlinks = !links.empty();
+	int hyperlinkRidStart = (hasDrawing ? 1 : 0) + (hasComments ? 1 : 0) + 1;
+	std::string hyperlinksXml;
+	if (hasHyperlinks)
+	{
+		hyperlinksXml = "<hyperlinks>";
+		int rid = hyperlinkRidStart;
+		for (std::map<cell, std::string>::const_iterator it = links.begin();
+			it != links.end(); ++it, ++rid)
+		{
+			char ref[32];
+			it->first.GetName(ref);
+			char buf[16];
+			snprintf(buf, sizeof(buf), "rId%d", rid);
+			hyperlinksXml += "<hyperlink ref=\"";
+			hyperlinksXml += ref;
+			hyperlinksXml += "\" r:id=\"";
+			hyperlinksXml += buf;
+			hyperlinksXml += "\"/>";
+		}
+		hyperlinksXml += "</hyperlinks>";
+	}
+
+	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected, hyperlinksXml);
 
 	// xl/styles.xml (Fase 32): finora questo export non scriveva NESSUNO
 	// stile (solo valori/formule, vedi BuildSheetXml) -- una vera tabella
@@ -2567,14 +2631,19 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 			return B_IO_ERROR;
 	}
 
-	if (hasDrawing || hasComments)
+	if (hasDrawing || hasComments || hasHyperlinks)
 	{
 		// Il foglio si collega al drawing tramite rId1 (vedi
 		// <drawing r:id="rId1"/> scritto da BuildSheetXml sopra, solo in
-		// presenza di grafici) e ai commenti tramite l'rId successivo --
-		// nessun elemento equivalente nel foglio stesso per i commenti,
-		// si trovano solo tramite questa relazione (vedi il commento sul
-		// VML legacy piu' sopra).
+		// presenza di grafici), ai commenti tramite l'rId successivo, e
+		// a ogni collegamento ipertestuale tramite gli rId da
+		// "hyperlinkRidStart" in poi (stesso ordine di iterazione su
+		// "links" usato sopra per costruire hyperlinksXml) -- nessun
+		// elemento equivalente nel foglio stesso per i commenti, si
+		// trovano solo tramite questa relazione (vedi il commento sul
+		// VML legacy piu' sopra); i collegamenti invece HANNO un
+		// elemento (<hyperlink r:id="..."/> in hyperlinksXml) che
+		// referenzia questi stessi Id.
 		std::string sheetRels;
 		sheetRels += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n";
@@ -2588,6 +2657,22 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 				: "<Relationship Id=\"rId1\" ";
 			sheetRels += "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments\" "
 				"Target=\"../comments1.xml\"/>\n";
+		}
+		if (hasHyperlinks)
+		{
+			int rid = hyperlinkRidStart;
+			for (std::map<cell, std::string>::const_iterator it = links.begin();
+				it != links.end(); ++it, ++rid)
+			{
+				char idBuf[16];
+				snprintf(idBuf, sizeof(idBuf), "rId%d", rid);
+				sheetRels += "<Relationship Id=\"";
+				sheetRels += idBuf;
+				sheetRels += "\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" "
+					"Target=\"";
+				AppendXmlEscaped(sheetRels, it->second.c_str());
+				sheetRels += "\" TargetMode=\"External\"/>\n";
+			}
 		}
 		sheetRels += "</Relationships>\n";
 		if (!zip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", sheetRels.data(), sheetRels.size()))
@@ -3684,6 +3769,19 @@ struct CondFormatRule {
 	int dxfId;
 };
 
+// Un <hyperlink ref="A1" r:id="rIdX"/> (o, per un collegamento INTERNO
+// alla stessa cartella di lavoro, <hyperlink ref="A1"
+// location="Foglio2!A1"/>, senza r:id) dentro <worksheet> (100% XLSX
+// standard compatibility, Tier 2) -- l'URL vero, per il caso r:id, si
+// risolve solo dopo, tramite i _rels DI QUESTO foglio (stesso
+// indirizzamento gia' usato per commenti/disegni/tabelle sopra), non
+// qui: ParseSheet non ha accesso ai _rels, solo al testo del foglio.
+struct HyperlinkRefInfo {
+	std::string ref;
+	std::string rId;      // non vuoto per un collegamento esterno
+	std::string location; // non vuoto per un collegamento interno (nessun r:id)
+};
+
 struct SheetContext {
 	CContainer* doc;
 	const std::vector<std::string>* sharedStrings;
@@ -3696,6 +3794,7 @@ struct SheetContext {
 	bool* hasAutoFilter; // opzionale (NULL = non raccolto)
 	range* autoFilterRange; // valido solo se *hasAutoFilter diventa true
 	bool* isProtected; // opzionale (NULL = non raccolto), da <sheetProtection/> (Fase 32)
+	std::vector<HyperlinkRefInfo>* hyperlinkRefs; // opzionale (NULL = non raccolti)
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
 	bool date1904; // Fase 12: epoca del sistema data, da <workbookPr>
@@ -3936,6 +4035,25 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 			if (strcmp(atts[i], "ref") == 0 && ParseMergeCellRef(atts[i + 1], ctx->autoFilterRange))
 				*ctx->hasAutoFilter = true;
 		}
+	}
+	// <hyperlink ref="A1" r:id="rIdX"/> (o location="..." per un
+	// collegamento interno, vedi HyperlinkRefInfo sopra), dentro
+	// <hyperlinks>, fratello di <sheetData>: solo raccolto qui, risolto
+	// (r:id -> URL vero) dopo, tramite i _rels del foglio (vedi Translate).
+	else if (strcmp(name, "hyperlink") == 0 && ctx->hyperlinkRefs)
+	{
+		HyperlinkRefInfo info;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "ref") == 0)
+				info.ref = atts[i + 1];
+			else if (strcmp(atts[i], "r:id") == 0)
+				info.rId = atts[i + 1];
+			else if (strcmp(atts[i], "location") == 0)
+				info.location = atts[i + 1];
+		}
+		if (!info.ref.empty() && (!info.rId.empty() || !info.location.empty()))
+			ctx->hyperlinkRefs->push_back(info);
 	}
 	// <sheetProtection .../> (Fase 32, "Proteggi foglio"): la sola
 	// PRESENZA dell'elemento vuol dire "foglio protetto" in Excel,
@@ -4383,7 +4501,8 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	bool* hasTabColor = NULL, rgb_color* tabColor = NULL,
 	std::vector<int>* hiddenRows = NULL,
 	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL,
-	bool* isProtected = NULL)
+	bool* isProtected = NULL,
+	std::vector<HyperlinkRefInfo>* hyperlinkRefs = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -4397,6 +4516,7 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.hasAutoFilter = hasAutoFilter;
 	ctx.autoFilterRange = autoFilterRange;
 	ctx.isProtected = isProtected;
+	ctx.hyperlinkRefs = hyperlinkRefs;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
 	ctx.date1904 = date1904;
@@ -5845,15 +5965,32 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		parsed.name = sheetsToRead[i].first;
 		parsed.doc = new CContainer(NULL, NULL);
 		std::vector<CondFormatRule> condRules;
+		std::vector<HyperlinkRefInfo> hyperlinkRefs;
 		if (!ParseSheet(sheetXml, parsed.doc, sharedStrings, &parsed.colWidths, &resolvedStyles,
 			&condRules, date1904, &parsed.rowHeights, &parsed.showGrid,
 			&parsed.hasTabColor, &parsed.tabColor,
 			&parsed.hiddenRows, &parsed.hasAutoFilter, &parsed.autoFilterRange,
-			&parsed.isProtected))
+			&parsed.isProtected, &hyperlinkRefs))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
 			break;
+		}
+
+		// Collegamenti ipertestuali INTERNI (100% XLSX standard
+		// compatibility, Tier 2): "location" e' gia' il riferimento
+		// vero (es. "Foglio1!A1"), nessun _rels da risolvere -- quelli
+		// ESTERNI (r:id) si risolvono sotto, insieme a tabelle/disegni/
+		// commenti, con gli stessi _rels di questo foglio.
+		for (size_t hi = 0; hi < hyperlinkRefs.size(); hi++)
+		{
+			if (hyperlinkRefs[hi].rId.empty() && !hyperlinkRefs[hi].location.empty())
+			{
+				cell c;
+				c.Set(hyperlinkRefs[hi].ref.c_str());
+				if (c.IsValid())
+					parsed.doc->SetHyperlink(c, hyperlinkRefs[hi].location);
+			}
 		}
 
 		// Formattazione condizionale (Fase 12): valutata ORA, dopo che
@@ -5883,6 +6020,24 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			if (zip.ReadEntry(sheetRelsPath.c_str(), sheetRelsXml)
 				&& ParseRelationships(sheetRelsXml, sheetRelTargets))
 			{
+				// Collegamenti ipertestuali ESTERNI: il target di una
+				// relazione "hyperlink" (TargetMode="External") e' gia'
+				// l'URL vero, a differenza di tabelle/disegni/commenti
+				// sotto -- nessun prefisso "xl/" da ricostruire.
+				for (size_t hi = 0; hi < hyperlinkRefs.size(); hi++)
+				{
+					if (hyperlinkRefs[hi].rId.empty())
+						continue;
+					std::map<std::string, std::string>::iterator rit =
+						sheetRelTargets.find(hyperlinkRefs[hi].rId);
+					if (rit == sheetRelTargets.end())
+						continue;
+					cell c;
+					c.Set(hyperlinkRefs[hi].ref.c_str());
+					if (c.IsValid())
+						parsed.doc->SetHyperlink(c, rit->second);
+				}
+
 				for (std::map<std::string, std::string>::iterator it = sheetRelTargets.begin();
 					it != sheetRelTargets.end(); ++it)
 				{
