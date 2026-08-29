@@ -185,14 +185,17 @@ Everything here already works in the app and persists correctly in
 the native `.ascd` format; none of it survives a trip through
 `.xlsx`, in either direction, today.
 
-- **Cell comments/notes.** `CContainer::SetComment`/`GetComment` are a
-  real, working feature — the XLSX translator writes and reads an
-  always-empty placeholder section specifically so multi-sheet books
-  stay aligned (see the `.ascd` book-format fix above), but never
-  actually parses `<comments>`/the legacy-drawing VML anchor on
-  import, or emits them on export. A commented real Excel file loses
-  every comment on import; a commented Atomo123 file loses every
-  comment on export to `.xlsx`
+- ~~**Cell comments/notes.**~~ Fixed — see `CHANGELOG.md`.
+  `CContainer::SetComment`/`GetComment` were already a real, working
+  feature; the XLSX translator now really parses `<comments>` (via the
+  sheet's own `_rels`, `xl/comments{N}.xml` lives directly under `xl/`,
+  not a `comments/` subdirectory like drawings/tables) on import and
+  writes it on export, instead of the always-empty placeholder kept
+  only to keep multi-sheet `.ascd` books aligned. No legacy VML drawing
+  is read or written — this app has no comment-box geometry to
+  round-trip (its own indicator is drawn purely from
+  `CContainer::HasComment`), so real Excel/LibreOffice both display the
+  plain `<comments>` content with their own default-styled box
 - **Hyperlinks.** Same shape as comments exactly: `<hyperlinks>` (plus
   its `r:id` → URL indirection through `sheetN.xml.rels`) is never
   parsed on import, never written on export
