@@ -238,11 +238,14 @@ the native `.ascd` format; none of it survives a trip through
     `<pageSetup fitToWidth/fitToHeight>` for the three "fit" modes —
     this export wrote no `<sheetPr>`/`<pageMargins>`/`<pageSetup>` at
     all before this fix
-  - **Import print area** (`_xlnm.Print_Area`) — the raw range text is
-    already captured while parsing defined names, just discarded
-    (`continue` on every `_xlnm.*` name); wiring this one specific
-    name to `AscdSheet::hasPrintArea`/`printArea` is a small, separate
-    step
+  - ~~**Import print area** (`_xlnm.Print_Area`).~~ Fixed — see
+    `CHANGELOG.md`. The raw range text was already captured while
+    parsing defined names, just discarded (`continue` on every
+    `_xlnm.*` name) — now applied to `AscdSheet::hasPrintArea`/
+    `printArea` via the same range-parsing helper real named ranges
+    already use. A multi-area value (comma-separated rectangles, rare)
+    keeps only the first, matching the native model's single-range
+    limit
   - **Export print area** — write `_xlnm.Print_Area` alongside real
     named ranges, not done yet
   - **Explicitly out of scope**: print header/footer text and repeated
