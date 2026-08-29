@@ -809,3 +809,27 @@ What shipped in v0.2.8, on top of v0.2.7:
     no `ArgvReceived` override, only drag-and-drop/Tracker/the app's
     own File menu work) — tracked as a small, separate item in "Path
     to full Excel parity"
+
+What shipped since v0.2.8, not yet in a tagged release:
+- Added the `RATE` function. The roadmap's "more financial functions"
+  item listed `NPV`/`IRR`/`PMT`/`FV`/`PV`/`RATE` as all missing, but
+  checking `Functions.finance.cpp` before writing anything (this
+  project's own discipline) found five of the six already fully
+  implemented and working — only `RATE` was genuinely absent. `RATE`
+  has no closed-form solution (the discount rate appears both
+  multiplied and as the base of a power in the annuity cash-flow
+  equation `PMT`/`PV`/`FV` each already solve for a different unknown
+  variable of), so it uses an iterative secant-method solver, the same
+  shape already used by `IRR` right below it in the same file.
+  Supports the optional `fv` and `type` arguments Excel's own `RATE`
+  has (defaulting to 0 when absent, via the existing
+  `GetDoubleArgument` convention that already treats an argument past
+  `argCnt` as "not given" rather than an error). Registered end-to-end
+  the same way every earlier function batch was: a new entry in the
+  `Functions.h` enum, the `'Func'` resource table
+  (`funcs_by_nr.r`/`FuncNames.txt`/`FuncDescs.txt`), and
+  `FunctionUtils.cpp`'s dispatch table — appended at the very end of
+  each list rather than in alphabetical order, since `GetFunctionNr`'s
+  binary-search array is built fresh at runtime from a sorted copy, so
+  the resource file's own row order never mattered functionally, only
+  for human readability.

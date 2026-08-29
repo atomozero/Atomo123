@@ -383,10 +383,15 @@ list deliberately deviates from pure effort-sorting:
   Excel) — verified before implementing, per this project's own
   discipline
 - ~~**XLSM round-trip preservation.**~~ Shipped in v0.2.7 — see above
-- **More financial functions** (`NPV`, `IRR`, `PMT`, `FV`, `PV`,
-  `RATE`). Same shape as the five function batches already shipped in
-  v3.0 — register, implement, test, no engine changes needed. High
-  real-world hit rate (budgeting/loan sheets) for low effort
+- ~~**More financial functions.**~~ Fixed — see `CHANGELOG.md`. This
+  item's own premise was wrong: checking `Functions.finance.cpp`
+  before implementing anything (this project's own discipline) found
+  `NPV`/`IRR`/`PMT`/`FV`/`PV` already fully implemented and working —
+  only `RATE` (the periodic rate of the same cash-flow equation
+  `PMT`/`PV`/`FV` each solve for a different unknown) was genuinely
+  missing. No closed-form solution exists for `RATE`, so it uses an
+  iterative secant-method solver, the same shape as the existing `IRR`
+  solver right below it in the same file
 - **Conditional formatting: icon sets, color scales, data bars.**
   Only two rule types exist today (`eCondCellIsEqual`,
   `eCondDuplicateValues`); these three are Excel's *other* built-in
