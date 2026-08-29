@@ -231,7 +231,13 @@ the native `.ascd` format; none of it survives a trip through
     `scale` or the fit-to-page mode applies, exactly like Excel itself
     does) now populate real `AscdPrintSettings` values instead of
     always defaulting to 2 cm / 100%
-  - **Export margins/scale** — the reverse direction, not done yet
+  - ~~**Export margins/scale.**~~ Fixed — see `CHANGELOG.md`. Writes a
+    real `<pageMargins>` (cm converted back to inches) and either
+    `<pageSetup scale="N"/>` for a fixed percentage, or
+    `<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>` +
+    `<pageSetup fitToWidth/fitToHeight>` for the three "fit" modes —
+    this export wrote no `<sheetPr>`/`<pageMargins>`/`<pageSetup>` at
+    all before this fix
   - **Import print area** (`_xlnm.Print_Area`) — the raw range text is
     already captured while parsing defined names, just discarded
     (`continue` on every `_xlnm.*` name); wiring this one specific
