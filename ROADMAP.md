@@ -214,11 +214,13 @@ the native `.ascd` format; none of it survives a trip through
   literal `formula1`/`formula2`, not cell references). Date/time
   ranges, other operators, and custom-formula rules still silently
   vanish, since the engine has nothing to round-trip them into
-- **Freeze/split panes.** The app has real freeze-pane support
-  (Phase 7), but `<pane>` inside `<sheetView>` is never read or
-  written — only `showGridLines` is extracted from `<sheetView>`
-  today. A file with frozen headers loses that on both import and
-  export
+- ~~**Freeze/split panes.**~~ Fixed — see `CHANGELOG.md`. Only
+  `<pane state="frozen"/>` (or `"frozenSplit"`) round-trips, matching
+  what this app's own feature actually is: a real freeze, not a
+  draggable split. A plain split (no `state`, or `state="split"`) has
+  no equivalent here — its `xSplit`/`ySplit` mean twentieths of a
+  point in that case, not a row/column count, and is left at 0/0 on
+  import rather than misread as a freeze
 - **Print settings for XLSX specifically** (margins, scale,
   header/footer, print area). The native format has carried all of
   this per-sheet since v0.2.5 (`AscdPrintSettings`) — none of it maps
