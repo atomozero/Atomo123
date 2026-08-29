@@ -10,7 +10,7 @@
 #
 # Per lo stesso motivo questa recipe vive in packaging/ dentro il
 # repository del progetto, non in un vero albero haikuports (categoria
-# apps/atomo123/atomo123-0.2.7.recipe): andrebbe spostata li' per una
+# apps/atomo123/atomo123-0.2.8.recipe): andrebbe spostata li' per una
 # sottomissione reale a HaikuPorts.
 
 SUMMARY="Foglio di calcolo nativo per Haiku OS"
