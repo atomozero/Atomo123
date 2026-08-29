@@ -1461,6 +1461,106 @@ static bool ReadFirstBorderColorFromAscdForTest(const unsigned char* ascdData, s
 	return true;
 }
 
+// Same idea as ApplyNamesFromAscdForTest above, but stops at the page
+// margins/scale section instead of continuing to named ranges (100%
+// XLSX standard compatibility, Tier 2 -- print settings, item 6):
+// assumes a plain fixture with no chart/comment/hyperlink/border/
+// validation/table/print-area, matching every actual caller today.
+static bool ReadPrintSettingsFromAscdForTest(const unsigned char* ascdData, size_t ascdLen,
+	bool* outHasSettings, double* outMarginTop, double* outMarginBottom,
+	double* outMarginLeft, double* outMarginRight, int32* outScaleMode, double* outScalePercent)
+{
+	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
+		return false;
+
+	int32 cellCount;
+	memcpy(&cellCount, ascdData + 8, 4);
+
+	size_t pos = 12;
+	for (int32 i = 0; i < cellCount; i++)
+	{
+		if (pos + 9 > ascdLen)
+			return false;
+		int32 len;
+		memcpy(&len, ascdData + pos + 4, 4);
+		pos += 9 + len;
+	}
+
+	// Grafici incorporati, colWidths, cellColors, columnColors,
+	// rowHeights: cinque contatori (0 in questo documento di prova).
+	for (int s = 0; s < 5; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Blocca riquadri: due interi fissi.
+	if (pos + 8 > ascdLen) return false;
+	pos += 8;
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto contatori (0).
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Visibilita' griglia: un byte fisso.
+	if (pos + 1 > ascdLen) return false;
+	pos += 1;
+	// Colore della linguetta: 4 byte fissi.
+	if (pos + 4 > ascdLen) return false;
+	pos += 4;
+	// Righe nascoste: un contatore.
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+	// AutoFilter: 9 byte fissi.
+	if (pos + 9 > ascdLen) return false;
+	pos += 9;
+	// Commenti, collegamenti: due contatori (0).
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Tipo di grafico, colore bordo, convalida dati, formattazione
+	// condizionale, tabelle: cinque contatori (0).
+	for (int s = 0; s < 5; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Titolo di grafico: un contatore (0).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+	// Area di stampa: 1 byte "has" + 4 int16 fissi (9 byte totali),
+	// assunta assente (0) -- item separato dal roadmap, non toccato qui.
+	if (pos + 9 > ascdLen) return false;
+	if (ascdData[pos] != 0) return false;
+	pos += 9;
+
+	// Margini/scala: i dati veri, 1 byte "has" + 4 double + 1 int32 + 1 double.
+	if (pos + 1 > ascdLen) return false;
+	uint8 has = ascdData[pos]; pos += 1;
+	*outHasSettings = (has != 0);
+
+	if (pos + 4 * 8 + 4 + 8 > ascdLen) return false;
+	memcpy(outMarginTop, ascdData + pos, 8); pos += 8;
+	memcpy(outMarginBottom, ascdData + pos, 8); pos += 8;
+	memcpy(outMarginLeft, ascdData + pos, 8); pos += 8;
+	memcpy(outMarginRight, ascdData + pos, 8); pos += 8;
+	memcpy(outScaleMode, ascdData + pos, 4); pos += 4;
+	memcpy(outScalePercent, ascdData + pos, 8); pos += 8;
+
+	return true;
+}
+
 // Same idea as ReadFirstHyperlinkFromAscdForTest above, but for the
 // data validation section (100% XLSX standard compatibility, Tier 2):
 // continues past hyperlinks, chart-type, and border-color (assumed
@@ -5892,6 +5992,179 @@ int main()
 				&& rtBorderColor.red == 255 && rtBorderColor.green == 0 && rtBorderColor.blue == 0,
 				"dopo il giro ASCD -> ASCD attraverso questo translator, il colore del bordo "
 				"si ritrova ancora rosso su B2 (non piu' scartato da ReadASCD ne' azzerato da WriteASCD)");
+		}
+	}
+
+	// Page margins/scale (<pageMargins>/<pageSetup>), the sixth item of
+	// Tier 2 in the "100% XLSX standard compatibility" plan (import
+	// only -- export is a separate follow-up, see ROADMAP.md): a fixed
+	// percentage scale, the common case (no <pageSetUpPr fitToPage>).
+	// Margins are always in inches in XLSX, converted to cm here
+	// (AscdPrintSettings' own unit) -- 0.5in and 1in were picked
+	// specifically because they don't round-trip to a suspiciously
+	// "already the default" 2cm, so this test can tell a real
+	// conversion from a value that was never actually read.
+	{
+		static const char kPrintContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kPrintRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kPrintWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kPrintWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kPrintSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\"><v>5</v></c></row></sheetData>"
+			"<pageMargins left=\"0.5\" right=\"0.5\" top=\"1\" bottom=\"1\" header=\"0.3\" footer=\"0.3\"/>"
+			"<pageSetup scale=\"150\"/>"
+			"</worksheet>\n";
+
+		BMallocIO printXlsx;
+		CZipWriter printZip;
+		printZip.Begin(&printXlsx);
+		printZip.AddEntry("[Content_Types].xml", kPrintContentTypes, strlen(kPrintContentTypes));
+		printZip.AddEntry("_rels/.rels", kPrintRootRels, strlen(kPrintRootRels));
+		printZip.AddEntry("xl/workbook.xml", kPrintWorkbook, strlen(kPrintWorkbook));
+		printZip.AddEntry("xl/_rels/workbook.xml.rels", kPrintWorkbookRels, strlen(kPrintWorkbookRels));
+		printZip.AddEntry("xl/worksheets/sheet1.xml", kPrintSheet, strlen(kPrintSheet));
+		Check(printZip.Close(), "costruzione del file XLSX di prova con <pageMargins>/<pageSetup> riuscita");
+
+		printXlsx.Seek(0, SEEK_SET);
+		translator_info printInfo;
+		err = translator->Identify(&printXlsx, NULL, NULL, &printInfo, 0);
+		Check(err == B_OK && printInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con margini/scala");
+
+		printXlsx.Seek(0, SEEK_SET);
+		BMallocIO printAscdOut;
+		err = translator->Translate(&printXlsx, &printInfo, NULL, kAtomoNativeFormat, &printAscdOut);
+		Check(err == B_OK, "Translate del file di prova con margini/scala riesce");
+
+		const unsigned char* printAscdData = NULL;
+		size_t printAscdLen = 0;
+		bool printUnwrapped = UnwrapFirstSheet((const unsigned char*)printAscdOut.Buffer(),
+			printAscdOut.BufferLength(), &printAscdData, &printAscdLen);
+		Check(printUnwrapped, "l'output di Translate con margini/scala e' un ASCD valido");
+
+		if (printUnwrapped)
+		{
+			bool hasSettings = false;
+			double marginTop = -1, marginBottom = -1, marginLeft = -1, marginRight = -1;
+			int32 scaleMode = -1;
+			double scalePercent = -1;
+			bool printRead = ReadPrintSettingsFromAscdForTest(printAscdData, printAscdLen,
+				&hasSettings, &marginTop, &marginBottom, &marginLeft, &marginRight,
+				&scaleMode, &scalePercent);
+			Check(printRead, "la sezione margini/scala dell'ASCD prodotto si legge correttamente");
+			Check(printRead && hasSettings, "le impostazioni di stampa importate risultano presenti");
+			Check(printRead && fabs(marginTop - 2.54) < 0.001 && fabs(marginBottom - 2.54) < 0.001,
+				"i margini superiore/inferiore importati sono 2.54cm (1 pollice reale), non piu' sempre 2cm");
+			Check(printRead && fabs(marginLeft - 1.27) < 0.001 && fabs(marginRight - 1.27) < 0.001,
+				"i margini sinistro/destro importati sono 1.27cm (0.5 pollici reali), non piu' sempre 2cm");
+			Check(printRead && scaleMode == 0,
+				"la modalita' di scala importata e' \"percentuale fissa\" (0), <pageSetUpPr fitToPage> assente");
+			Check(printRead && fabs(scalePercent - 150.0) < 0.001,
+				"la percentuale di scala importata e' quella vera (150), non piu' sempre 100");
+		}
+	}
+
+	// Stesso scenario ma con <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
+	// e fitToHeight="0": Excel usa questo per dire "adatta alla
+	// larghezza, nessun limite di pagine in altezza" -- deve mappare su
+	// kPrintFitWidth (1), non sulla percentuale letta da scale (che
+	// Excel stesso ignora quando fitToPage e' attivo).
+	{
+		static const char kFitSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetPr><pageSetUpPr fitToPage=\"1\"/></sheetPr>"
+			"<sheetData><row r=\"1\"><c r=\"A1\"><v>5</v></c></row></sheetData>"
+			"<pageMargins left=\"0.5\" right=\"0.5\" top=\"1\" bottom=\"1\"/>"
+			"<pageSetup scale=\"150\" fitToWidth=\"1\" fitToHeight=\"0\"/>"
+			"</worksheet>\n";
+		static const char kFitContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kFitRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kFitWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kFitWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+
+		BMallocIO fitXlsx;
+		CZipWriter fitZip;
+		fitZip.Begin(&fitXlsx);
+		fitZip.AddEntry("[Content_Types].xml", kFitContentTypes, strlen(kFitContentTypes));
+		fitZip.AddEntry("_rels/.rels", kFitRootRels, strlen(kFitRootRels));
+		fitZip.AddEntry("xl/workbook.xml", kFitWorkbook, strlen(kFitWorkbook));
+		fitZip.AddEntry("xl/_rels/workbook.xml.rels", kFitWorkbookRels, strlen(kFitWorkbookRels));
+		fitZip.AddEntry("xl/worksheets/sheet1.xml", kFitSheet, strlen(kFitSheet));
+		Check(fitZip.Close(), "costruzione del file XLSX di prova con fitToPage riuscita");
+
+		fitXlsx.Seek(0, SEEK_SET);
+		translator_info fitInfo;
+		err = translator->Identify(&fitXlsx, NULL, NULL, &fitInfo, 0);
+		Check(err == B_OK && fitInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con fitToPage");
+
+		fitXlsx.Seek(0, SEEK_SET);
+		BMallocIO fitAscdOut;
+		err = translator->Translate(&fitXlsx, &fitInfo, NULL, kAtomoNativeFormat, &fitAscdOut);
+		Check(err == B_OK, "Translate del file di prova con fitToPage riesce");
+
+		const unsigned char* fitAscdData = NULL;
+		size_t fitAscdLen = 0;
+		bool fitUnwrapped = UnwrapFirstSheet((const unsigned char*)fitAscdOut.Buffer(),
+			fitAscdOut.BufferLength(), &fitAscdData, &fitAscdLen);
+		Check(fitUnwrapped, "l'output di Translate con fitToPage e' un ASCD valido");
+
+		if (fitUnwrapped)
+		{
+			bool hasSettings = false;
+			double marginTop = -1, marginBottom = -1, marginLeft = -1, marginRight = -1;
+			int32 scaleMode = -1;
+			double scalePercent = -1;
+			bool fitRead = ReadPrintSettingsFromAscdForTest(fitAscdData, fitAscdLen,
+				&hasSettings, &marginTop, &marginBottom, &marginLeft, &marginRight,
+				&scaleMode, &scalePercent);
+			Check(fitRead, "la sezione margini/scala (fitToPage) dell'ASCD prodotto si legge correttamente");
+			Check(fitRead && scaleMode == 1,
+				"con fitToPage attivo e fitToHeight=\"0\", la modalita' importata e' "
+				"\"adatta alla larghezza\" (kPrintFitWidth=1), non la percentuale ignorata da Excel stesso");
 		}
 	}
 

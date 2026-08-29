@@ -141,7 +141,16 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// il commento gemello in ui/src/AscdIO.h -- un valore vero ora che
 	// ParseSheet/WriteXLSX estraggono/scrivono davvero <pane> (prima
 	// sempre 0,0, vedi il commento piu' sotto dove venivano scritti).
-	int frozenRows = 0, int frozenCols = 0)
+	int frozenRows = 0, int frozenCols = 0,
+	// Margini/scala di "Imposta pagina" (100% XLSX standard
+	// compatibility, Tier 2): NULL = nessuna sezione da un file XLSX
+	// vero -- l'export ASCD -> XLSX (ReadASCD sotto) non li estrae
+	// ancora da un .ascd nativo, rimandato a un prossimo passo, vedi
+	// ROADMAP.md.
+	const bool* hasPrintSettings = NULL,
+	double marginTopCm = 2.0, double marginBottomCm = 2.0,
+	double marginLeftCm = 2.0, double marginRightCm = 2.0,
+	int scaleMode = 0, double scalePercent = 100.0)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -949,21 +958,25 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	// Sezione margini/scala di "Imposta pagina", in coda (Fase 29):
-	// stesso motivo e stesso principio "sempre scritta, has=0" della
-	// sezione area di stampa appena sopra.
+	// Sezione margini/scala di "Imposta pagina", in coda (100% XLSX
+	// standard compatibility, Tier 2): un valore vero ora che ParseSheet
+	// estrae davvero <pageMargins>/<pageSetup> da un file XLSX vero
+	// (import); l'esportazione ASCD -> XLSX resta un passo successivo
+	// (vedi ROADMAP.md), "hasPrintSettings" e' quindi sempre NULL per
+	// quella direzione, comportamento identico a prima.
 	{
-		uint8 has = 0;
-		double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
-		int32 scaleMode = 0;
-		double scalePercent = 100.0;
+		uint8 has = (hasPrintSettings && *hasPrintSettings) ? 1 : 0;
+		double marginTop = marginTopCm, marginBottom = marginBottomCm;
+		double marginLeft = marginLeftCm, marginRight = marginRightCm;
+		int32 scaleMode32 = scaleMode;
+		double scalePercentVal = scalePercent;
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
 			|| dest->Write(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
 			|| dest->Write(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
 			|| dest->Write(&marginLeft, sizeof(marginLeft)) != (ssize_t)sizeof(marginLeft)
 			|| dest->Write(&marginRight, sizeof(marginRight)) != (ssize_t)sizeof(marginRight)
-			|| dest->Write(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
-			|| dest->Write(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
+			|| dest->Write(&scaleMode32, sizeof(scaleMode32)) != (ssize_t)sizeof(scaleMode32)
+			|| dest->Write(&scalePercentVal, sizeof(scalePercentVal)) != (ssize_t)sizeof(scalePercentVal))
 			return B_IO_ERROR;
 	}
 
@@ -4037,6 +4050,19 @@ struct SheetContext {
 	int* frozenCols; // idem, colonne bloccate
 	std::vector<HyperlinkRefInfo>* hyperlinkRefs; // opzionale (NULL = non raccolti)
 	std::vector<DataValidationRefInfo>* dataValidationRefs; // opzionale (NULL = non raccolte)
+	// Margini/scala di "Imposta pagina" (100% XLSX standard
+	// compatibility, Tier 2): da <pageMargins>/<pageSetup>, vedi
+	// ParsedSheet sopra per il significato di ogni campo.
+	bool* hasPrintSettings; // opzionale (NULL = non raccolto)
+	double* marginTopCm; double* marginBottomCm; double* marginLeftCm; double* marginRightCm;
+	int* scaleMode; double* scalePercent;
+	// <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr> viene letto PRIMA
+	// di <pageSetup> nell'ordine XLSX reale (sheetPr e' un fratello di
+	// sheetData che precede sempre pageMargins/pageSetup, entrambi DOPO
+	// sheetData) -- stato interno, non un puntatore in uscita: dice a
+	// <pageSetup> se scale="..." va ignorato a favore di fitToWidth/
+	// fitToHeight, esattamente come fa Excel stesso.
+	bool sheetFitToPage;
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
 	std::vector<CondFormatRule>* condRules; // opzionale (NULL = non raccolte)
 	bool date1904; // Fase 12: epoca del sistema data, da <workbookPr>
@@ -4364,6 +4390,75 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 	else if (strcmp(name, "sheetProtection") == 0 && ctx->isProtected)
 	{
 		*ctx->isProtected = true;
+	}
+	// <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr> (100% XLSX
+	// standard compatibility, Tier 2): <sheetPr> e' sempre PRIMA di
+	// <sheetData>, mentre <pageMargins>/<pageSetup> sotto sono sempre
+	// DOPO -- questo flag arriva quindi gia' impostato quando
+	// <pageSetup> viene letto, esattamente nell'ordine in cui un file
+	// XLSX reale li scrive.
+	else if (strcmp(name, "pageSetUpPr") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "fitToPage") == 0)
+				ctx->sheetFitToPage = XlsxAttrIsTrue(atts[i + 1]);
+	}
+	// <pageMargins left=".7" right=".7" top=".75" bottom=".75" .../>
+	// (100% XLSX standard compatibility, Tier 2): valori SEMPRE in
+	// pollici in XLSX (l'unita' nativa di questo attributo, indipendente
+	// dalle impostazioni regionali dell'utente Excel) -- convertiti in
+	// cm, l'unita' di AscdPrintSettings (vedi ui/src/AscdIO.h). I
+	// margini di intestazione/piede (header=.../footer=...) non hanno
+	// equivalente in questo motore (nessun campo header/footer, vedi
+	// ROADMAP.md), ignorati.
+	else if (strcmp(name, "pageMargins") == 0 && ctx->hasPrintSettings)
+	{
+		static const double kCmPerInch = 2.54;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			double cm = atof(atts[i + 1]) * kCmPerInch;
+			if (strcmp(atts[i], "top") == 0 && ctx->marginTopCm) *ctx->marginTopCm = cm;
+			else if (strcmp(atts[i], "bottom") == 0 && ctx->marginBottomCm) *ctx->marginBottomCm = cm;
+			else if (strcmp(atts[i], "left") == 0 && ctx->marginLeftCm) *ctx->marginLeftCm = cm;
+			else if (strcmp(atts[i], "right") == 0 && ctx->marginRightCm) *ctx->marginRightCm = cm;
+		}
+		*ctx->hasPrintSettings = true;
+	}
+	// <pageSetup scale="100" fitToWidth="1" fitToHeight="1" .../> (100%
+	// XLSX standard compatibility, Tier 2): "scale" e' un intero
+	// percentuale, usato SOLO se <pageSetUpPr fitToPage="1"/> non era
+	// presente (altrimenti Excel stesso lo ignora, anche se scritto) --
+	// stessa regola applicata qui. Con fitToPage attivo, il modello di
+	// questo motore (una sola modalita' "adatta a": larghezza, altezza,
+	// o entrambe, vedi AscdPrintSettings::scaleMode) si ricava da quale
+	// dei due fitToWidth/fitToHeight e' assente/zero: quello resta
+	// "senza limite di pagine", l'altro (o entrambi, se nessuno dei due
+	// e' zero) e' il vincolo vero.
+	else if (strcmp(name, "pageSetup") == 0 && ctx->hasPrintSettings)
+	{
+		double scale = 100.0;
+		int fitToWidth = 1, fitToHeight = 1;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "scale") == 0) scale = atof(atts[i + 1]);
+			else if (strcmp(atts[i], "fitToWidth") == 0) fitToWidth = atoi(atts[i + 1]);
+			else if (strcmp(atts[i], "fitToHeight") == 0) fitToHeight = atoi(atts[i + 1]);
+		}
+		if (ctx->scaleMode && ctx->scalePercent)
+		{
+			if (ctx->sheetFitToPage)
+			{
+				bool wantWidth = fitToWidth > 0, wantHeight = fitToHeight > 0;
+				*ctx->scaleMode = (wantWidth && wantHeight) ? 3 /* kPrintFitBoth */
+					: wantHeight ? 2 /* kPrintFitHeight */ : 1 /* kPrintFitWidth */;
+			}
+			else
+			{
+				*ctx->scaleMode = 0; // percentuale fissa
+				*ctx->scalePercent = scale;
+			}
+		}
+		*ctx->hasPrintSettings = true;
 	}
 	else if (strcmp(name, "c") == 0)
 	{
@@ -4821,7 +4916,11 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	bool* isProtected = NULL,
 	std::vector<HyperlinkRefInfo>* hyperlinkRefs = NULL,
 	std::vector<DataValidationRefInfo>* dataValidationRefs = NULL,
-	int* frozenRows = NULL, int* frozenCols = NULL)
+	int* frozenRows = NULL, int* frozenCols = NULL,
+	bool* hasPrintSettings = NULL,
+	double* marginTopCm = NULL, double* marginBottomCm = NULL,
+	double* marginLeftCm = NULL, double* marginRightCm = NULL,
+	int* scaleMode = NULL, double* scalePercent = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -4839,6 +4938,14 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.dataValidationRefs = dataValidationRefs;
 	ctx.frozenRows = frozenRows;
 	ctx.frozenCols = frozenCols;
+	ctx.hasPrintSettings = hasPrintSettings;
+	ctx.marginTopCm = marginTopCm;
+	ctx.marginBottomCm = marginBottomCm;
+	ctx.marginLeftCm = marginLeftCm;
+	ctx.marginRightCm = marginRightCm;
+	ctx.scaleMode = scaleMode;
+	ctx.scalePercent = scalePercent;
+	ctx.sheetFitToPage = false;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
 	ctx.date1904 = date1904;
@@ -6050,6 +6157,20 @@ struct ParsedSheet {
 	// bloccato, come SheetView::fFrozenRows/fFrozenCols di default.
 	int frozenRows = 0;
 	int frozenCols = 0;
+	// Margini/scala di "Imposta pagina" (100% XLSX standard
+	// compatibility, Tier 2): da <pageMargins>/<pageSetup> nel foglio
+	// XLSX originale, vedi ParseSheet/SheetStart e AscdPrintSettings in
+	// ui/src/AscdIO.h -- gli stessi valori di default (2cm, scala fissa
+	// 100%) di quella struct, per un foglio senza queste sezioni.
+	bool hasPrintSettings = false;
+	double marginTopCm = 2.0, marginBottomCm = 2.0, marginLeftCm = 2.0, marginRightCm = 2.0;
+	// 0=percentuale fissa, 1/2/3=adatta a larghezza/altezza/entrambe --
+	// stessi valori di kPrintFitWidth/Height/Both in ui/src/
+	// PrintLayout.h, duplicati qui come semplici interi (questo
+	// translator non linka contro ui/src/, stesso motivo di ogni altro
+	// "enum" condiviso in questo file, es. ValidationType/ChartType).
+	int scaleMode = 0;
+	double scalePercent = 100.0;
 };
 
 // Applies each parsed <definedName> (see WorkbookContext::definedNames
@@ -6128,7 +6249,10 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			&sheets[i].hasTabColor, &sheets[i].tabColor,
 			&sheets[i].hiddenRows, &sheets[i].hasAutoFilter, &sheets[i].autoFilterRange,
 			&sheets[i].charts, &sheets[i].vbaProject, &sheets[i].isProtected,
-			sheets[i].frozenRows, sheets[i].frozenCols);
+			sheets[i].frozenRows, sheets[i].frozenCols,
+			&sheets[i].hasPrintSettings, sheets[i].marginTopCm, sheets[i].marginBottomCm,
+			sheets[i].marginLeftCm, sheets[i].marginRightCm,
+			sheets[i].scaleMode, sheets[i].scalePercent);
 		if (err != B_OK)
 			return err;
 
@@ -6360,7 +6484,10 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			&parsed.hasTabColor, &parsed.tabColor,
 			&parsed.hiddenRows, &parsed.hasAutoFilter, &parsed.autoFilterRange,
 			&parsed.isProtected, &hyperlinkRefs, &dataValidationRefs,
-			&parsed.frozenRows, &parsed.frozenCols))
+			&parsed.frozenRows, &parsed.frozenCols,
+			&parsed.hasPrintSettings, &parsed.marginTopCm, &parsed.marginBottomCm,
+			&parsed.marginLeftCm, &parsed.marginRightCm,
+			&parsed.scaleMode, &parsed.scalePercent))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
