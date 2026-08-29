@@ -222,12 +222,30 @@ the native `.ascd` format; none of it survives a trip through
   point in that case, not a row/column count, and is left at 0/0 on
   import rather than misread as a freeze
 - **Print settings for XLSX specifically** (margins, scale,
-  header/footer, print area). The native format has carried all of
-  this per-sheet since v0.2.5 (`AscdPrintSettings`) — none of it maps
-  to `<pageSetup>`/`<pageMargins>`/`<headerFooter>` or the
-  `_xlnm.Print_Area`/`_xlnm.Print_Titles` defined names (see Tier 1)
-  on the XLSX side. Do this together with the defined-names fix above,
-  since print area needs it anyway
+  header/footer, print area), split into four steps given its size:
+  - ~~**Import margins/scale.**~~ Fixed — see `CHANGELOG.md`.
+    `<pageMargins>` (always inches in XLSX, converted to the cm
+    `AscdPrintSettings` already uses) and `<pageSetup scale/
+    fitToWidth/fitToHeight>` (honoring the sibling `<sheetPr>
+    <pageSetUpPr fitToPage="1"/></sheetPr>` flag that decides whether
+    `scale` or the fit-to-page mode applies, exactly like Excel itself
+    does) now populate real `AscdPrintSettings` values instead of
+    always defaulting to 2 cm / 100%
+  - **Export margins/scale** — the reverse direction, not done yet
+  - **Import print area** (`_xlnm.Print_Area`) — the raw range text is
+    already captured while parsing defined names, just discarded
+    (`continue` on every `_xlnm.*` name); wiring this one specific
+    name to `AscdSheet::hasPrintArea`/`printArea` is a small, separate
+    step
+  - **Export print area** — write `_xlnm.Print_Area` alongside real
+    named ranges, not done yet
+  - **Explicitly out of scope**: print header/footer text and repeated
+    print titles (rows/columns) have no native-format field or UI at
+    all today (`PageSetupWindow` deliberately has no such controls,
+    and Excel's own `&P`/`&D`/`&F` placeholder codes have no
+    equivalent syntax here) — adding either would mean designing new
+    model fields and UI first, not just translator wiring like the
+    four steps above
 - ~~**Border color is read as presence/absence per side only**~~ Fixed
   on import — see `CHANGELOG.md`. `ParseStyles` now resolves the real
   `<color rgb="..."/>`/`theme="N"` on a border side into
