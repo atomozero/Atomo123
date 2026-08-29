@@ -108,6 +108,35 @@ static status_t WriteASCDForTest(CContainer* doc, BPositionIO* dest)
 	return B_OK;
 }
 
+// Same idea as WriteASCDForTest above, but with a real frozen-panes
+// value instead of the implicit 0,0 (100% XLSX standard compatibility,
+// Tier 2): freeze comes right after rowHeights in the real WriteASCD
+// section order, well before comments/hyperlinks/validation -- only
+// chart/colWidths/cellColors/columnColors/rowHeights need a real
+// (empty) entry before it, everything after can be omitted.
+static status_t WriteASCDWithFreezeForTest(CContainer* doc, int32 frozenRows, int32 frozenCols,
+	BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati, colWidths, cellColors, columnColors,
+	// rowHeights: cinque conteggi a zero.
+	for (int i = 0; i < 5; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Blocca riquadri: due int32 veri, MAI un conteggio davanti.
+	if (dest->Write(&frozenRows, sizeof(frozenRows)) != (ssize_t)sizeof(frozenRows)
+		|| dest->Write(&frozenCols, sizeof(frozenCols)) != (ssize_t)sizeof(frozenCols))
+		return B_IO_ERROR;
+
+	return B_OK;
+}
+
 // Come WriteASCDForTest sopra, ma scrive anche UN grafico incorporato
 // (Fase 24, esportazione dei grafici verso XLSX) -- replica a mano
 // l'INTERO formato ASCD in coda (vedi SaveASCD in ui/src/AscdIO.cpp),
@@ -838,6 +867,53 @@ static bool UnwrapFirstSheet(const unsigned char* data, size_t len,
 	}
 
 	return false;
+}
+
+// Rilegge il blocca-riquadri da un blocco ASCD (100% XLSX standard
+// compatibility, Tier 2): cammina fino alla sezione freeze (subito
+// dopo rowHeights, PRIMA di font/allineamento/ecc. -- vedi il
+// commento su WriteASCDWithFreezeForTest sopra), assumendo un
+// documento di prova minimo con chart/colWidths/cellColors/
+// columnColors/rowHeights tutti vuoti. Usato SOLO su output prodotto
+// dal vero WriteASCD del translator (mai direttamente sull'ASCD di
+// prova costruito a mano), quindi ogni cella ha il byte "kind"
+// (formato versione 2, "9 + len" -- stesso principio di
+// ReadFirstChartForTest/ReadFirstCommentForTest sopra).
+static bool ReadFreezeFromAscdForTest(const unsigned char* ascdData, size_t ascdLen,
+	int32* outFrozenRows, int32* outFrozenCols)
+{
+	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
+		return false;
+
+	int32 cellCount;
+	memcpy(&cellCount, ascdData + 8, 4);
+
+	size_t pos = 12;
+	for (int32 i = 0; i < cellCount; i++)
+	{
+		if (pos + 9 > ascdLen)
+			return false;
+		int32 len;
+		memcpy(&len, ascdData + pos + 4, 4);
+		pos += 9 + len;
+	}
+
+	// Grafici incorporati, colWidths, cellColors, columnColors,
+	// rowHeights: cinque contatori (0 in questo documento di prova).
+	for (int s = 0; s < 5; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	// Blocca riquadri: i dati veri, due int32 senza contatore davanti.
+	if (pos + 8 > ascdLen) return false;
+	memcpy(outFrozenRows, ascdData + pos, 4); pos += 4;
+	memcpy(outFrozenCols, ascdData + pos, 4); pos += 4;
+
+	return true;
 }
 
 // Rilegge dataRange/tipo/titolo del PRIMO grafico incorporato da un
@@ -5289,6 +5365,158 @@ int main()
 						&& rtValType == (int8)eListValidation && rtValList == "Rosso,Verde,Blu",
 						"dopo il giro completo ASCD -> XLSX -> ASCD, la convalida a elenco "
 						"si ritrova ancora su B2");
+				}
+			}
+		}
+	}
+
+	// Freeze panes (<pane state="frozen"/> inside <sheetView>), the
+	// fourth item of Tier 2 in the "100% XLSX standard compatibility"
+	// plan: only state="frozen"/"frozenSplit" means a real freeze
+	// (xSplit/ySplit as row/column counts) -- a plain draggable split
+	// (no "state", or state="split") has no equivalent in this app and
+	// is correctly NOT tested here, since it should stay 0,0.
+	{
+		static const char kFreezeContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kFreezeRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kFreezeWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kFreezeWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kFreezeSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetViews><sheetView tabSelected=\"1\" workbookViewId=\"0\">"
+			"<pane xSplit=\"1\" ySplit=\"2\" topLeftCell=\"B3\" activePane=\"bottomRight\" state=\"frozen\"/>"
+			"</sheetView></sheetViews>"
+			"<sheetData><row r=\"1\"><c r=\"A1\"><v>5</v></c></row></sheetData>"
+			"</worksheet>\n";
+
+		BMallocIO freezeXlsx;
+		CZipWriter freezeZip;
+		freezeZip.Begin(&freezeXlsx);
+		freezeZip.AddEntry("[Content_Types].xml", kFreezeContentTypes, strlen(kFreezeContentTypes));
+		freezeZip.AddEntry("_rels/.rels", kFreezeRootRels, strlen(kFreezeRootRels));
+		freezeZip.AddEntry("xl/workbook.xml", kFreezeWorkbook, strlen(kFreezeWorkbook));
+		freezeZip.AddEntry("xl/_rels/workbook.xml.rels", kFreezeWorkbookRels, strlen(kFreezeWorkbookRels));
+		freezeZip.AddEntry("xl/worksheets/sheet1.xml", kFreezeSheet, strlen(kFreezeSheet));
+		Check(freezeZip.Close(), "costruzione del file XLSX di prova con <pane state=\"frozen\"> riuscita");
+
+		freezeXlsx.Seek(0, SEEK_SET);
+		translator_info freezeInfo;
+		err = translator->Identify(&freezeXlsx, NULL, NULL, &freezeInfo, 0);
+		Check(err == B_OK && freezeInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con i riquadri bloccati");
+
+		freezeXlsx.Seek(0, SEEK_SET);
+		BMallocIO freezeAscdOut;
+		err = translator->Translate(&freezeXlsx, &freezeInfo, NULL, kAtomoNativeFormat, &freezeAscdOut);
+		Check(err == B_OK, "Translate del file di prova con i riquadri bloccati riesce");
+
+		const unsigned char* freezeAscdData = NULL;
+		size_t freezeAscdLen = 0;
+		bool freezeUnwrapped = UnwrapFirstSheet((const unsigned char*)freezeAscdOut.Buffer(),
+			freezeAscdOut.BufferLength(), &freezeAscdData, &freezeAscdLen);
+		Check(freezeUnwrapped, "l'output di Translate con i riquadri bloccati e' un ASCD valido");
+
+		if (freezeUnwrapped)
+		{
+			int32 importedFrozenRows = -1, importedFrozenCols = -1;
+			bool freezeRead = ReadFreezeFromAscdForTest(freezeAscdData, freezeAscdLen,
+				&importedFrozenRows, &importedFrozenCols);
+			Check(freezeRead, "la sezione blocca-riquadri dell'ASCD prodotto si legge correttamente");
+			Check(freezeRead && importedFrozenRows == 2 && importedFrozenCols == 1,
+				"i riquadri bloccati importati sono quelli veri (2 righe, 1 colonna), "
+				"da <pane ySplit=\"2\" xSplit=\"1\" state=\"frozen\">, non piu' sempre 0");
+		}
+	}
+
+	// Stesso scenario, direzione opposta (ASCD -> XLSX): un documento
+	// con i riquadri bloccati esporta un vero <pane state="frozen">
+	// dentro <sheetView>, e quel file si rilegge correttamente.
+	{
+		CContainer& freezeExportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &freezeExportDoc, true); // A1
+
+		BMallocIO freezeAscdIn;
+		status_t freezeSaveErr = WriteASCDWithFreezeForTest(&freezeExportDoc, 2, 1, &freezeAscdIn);
+		Check(freezeSaveErr == B_OK, "preparazione dell'ASCD di prova con i riquadri bloccati riesce");
+		freezeExportDoc.Release();
+
+		freezeAscdIn.Seek(0, SEEK_SET);
+		translator_info freezeExportInfo;
+		err = translator->Identify(&freezeAscdIn, NULL, NULL, &freezeExportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD con i riquadri bloccati come sorgente per l'export");
+
+		freezeAscdIn.Seek(0, SEEK_SET);
+		BMallocIO freezeXlsxOut;
+		err = translator->Translate(&freezeAscdIn, &freezeExportInfo, NULL, kAtomoXlsxFormat, &freezeXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con i riquadri bloccati) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			freezeXlsxOut.Seek(0, SEEK_SET);
+			CZipReader freezeOutZip;
+			Check(freezeOutZip.Open(&freezeXlsxOut),
+				"il file XLSX esportato con i riquadri bloccati e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> exportedSheetXml;
+			bool readSheet = freezeOutZip.ReadEntry("xl/worksheets/sheet1.xml", exportedSheetXml);
+			std::string sheetText(exportedSheetXml.begin(), exportedSheetXml.end());
+			Check(readSheet && sheetText.find("<pane xSplit=\"1\" ySplit=\"2\"") != std::string::npos
+				&& sheetText.find("state=\"frozen\"") != std::string::npos,
+				"xl/worksheets/sheet1.xml esportato contiene <pane xSplit=\"1\" ySplit=\"2\" ... state=\"frozen\">");
+
+			// Round-trip completo: rileggendo il file appena esportato,
+			// i riquadri bloccati devono arrivare di nuovo.
+			freezeXlsxOut.Seek(0, SEEK_SET);
+			translator_info freezeReimportInfo;
+			err = translator->Identify(&freezeXlsxOut, NULL, NULL, &freezeReimportInfo, 0);
+			Check(err == B_OK && freezeReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX esportato con i riquadri bloccati si riconosce ancora come XLSX valido rileggendolo");
+
+			freezeXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO freezeRoundTripAscd;
+			err = translator->Translate(&freezeXlsxOut, &freezeReimportInfo, NULL,
+				kAtomoNativeFormat, &freezeRoundTripAscd);
+			Check(err == B_OK,
+				"il file XLSX esportato con i riquadri bloccati si rilegge correttamente (round-trip)");
+
+			if (err == B_OK)
+			{
+				const unsigned char* rtFreezeData = NULL;
+				size_t rtFreezeLen = 0;
+				bool rtFreezeUnwrapped = UnwrapFirstSheet((const unsigned char*)freezeRoundTripAscd.Buffer(),
+					freezeRoundTripAscd.BufferLength(), &rtFreezeData, &rtFreezeLen);
+				Check(rtFreezeUnwrapped,
+					"il round-trip dei riquadri bloccati produce anch'esso una cartella ASCB valida");
+
+				if (rtFreezeUnwrapped)
+				{
+					int32 rtFrozenRows = -1, rtFrozenCols = -1;
+					bool rtFreezeRead = ReadFreezeFromAscdForTest(rtFreezeData, rtFreezeLen,
+						&rtFrozenRows, &rtFrozenCols);
+					Check(rtFreezeRead && rtFrozenRows == 2 && rtFrozenCols == 1,
+						"dopo il giro completo ASCD -> XLSX -> ASCD, i riquadri bloccati "
+						"si ritrovano ancora a 2 righe, 1 colonna");
 				}
 			}
 		}

@@ -136,7 +136,12 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// Protezione foglio (Fase 32): vedi il commento gemello in
 	// ui/src/AscdIO.h -- il blocco per-cella viaggia dentro "doc" come
 	// ogni altro attributo di CellStyle, nessun parametro dedicato qui.
-	const bool* isProtected = NULL)
+	const bool* isProtected = NULL,
+	// Blocca riquadri (100% XLSX standard compatibility, Tier 2): vedi
+	// il commento gemello in ui/src/AscdIO.h -- un valore vero ora che
+	// ParseSheet/WriteXLSX estraggono/scrivono davvero <pane> (prima
+	// sempre 0,0, vedi il commento piu' sotto dove venivano scritti).
+	int frozenRows = 0, int frozenCols = 0)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -315,9 +320,11 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// dall'utente (immagini incorporate ancorate a righe alte
 	// nell'originale finivano sovrapposte al testo sottostante,
 	// disegnate sulle righe piu' basse di 20px predefinite invece delle
-	// altezze vere del file). Blocca riquadri resta a zero: questo
-	// translator non lo estrae ancora dal file XLSX originale. Il campo
-	// va comunque scritto sempre, mai omesso, per lo stesso motivo della
+	// altezze vere del file). Blocca riquadri (100% XLSX standard
+	// compatibility, Tier 2) ora arriva dal parametro "frozenRows"/
+	// "frozenCols" -- prima sempre a zero, questo translator non lo
+	// estraeva ancora dal file XLSX originale. Il campo va comunque
+	// scritto sempre, mai omesso, per lo stesso motivo della
 	// sezione grafici sopra: LoadASCD (in ui/src/AscdIO.cpp, che legge
 	// questo stesso flusso) si aspetta ORA tutte queste sezioni in coda
 	// a ogni blocco ASCD -- ometterle disallineerebbe la lettura del
@@ -340,9 +347,9 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	int32 frozenRows = 0, frozenCols = 0;
-	if (dest->Write(&frozenRows, sizeof(frozenRows)) != (ssize_t)sizeof(frozenRows)
-		|| dest->Write(&frozenCols, sizeof(frozenCols)) != (ssize_t)sizeof(frozenCols))
+	int32 frozenRows32 = frozenRows, frozenCols32 = frozenCols;
+	if (dest->Write(&frozenRows32, sizeof(frozenRows32)) != (ssize_t)sizeof(frozenRows32)
+		|| dest->Write(&frozenCols32, sizeof(frozenCols32)) != (ssize_t)sizeof(frozenCols32))
 		return B_IO_ERROR;
 
 	// Sezione font di cella non predefinito, in coda (Fase 10, vedi
@@ -1054,7 +1061,12 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	// direttamente da TryToParseString/NewCell sopra? no -- vedi sotto)
 	// e la protezione per-foglio e' un valore a parte: catturata qui
 	// SOLO se il chiamante la vuole (NULL = scartata, come le altre).
-	bool* outIsProtected = NULL)
+	bool* outIsProtected = NULL,
+	// Blocca riquadri (100% XLSX standard compatibility, Tier 2):
+	// catturati SOLO se il chiamante li vuole (NULL = scartati, come
+	// isProtected sopra) -- servono all'esportazione ASCD -> XLSX per
+	// scrivere un vero <pane> (vedi WriteXLSX).
+	int* outFrozenRows = NULL, int* outFrozenCols = NULL)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1278,6 +1290,8 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				|| source->Read(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
 				return B_BAD_DATA;
 		}
+		if (outFrozenRows) *outFrozenRows = fr;
+		if (outFrozenCols) *outFrozenCols = fc;
 	}
 	{
 		// Font di cella: (int16 row, int16 col, font_family, font_style, float size).
@@ -1934,7 +1948,13 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// seguito da <hyperlinks>...</hyperlinks> (100% XLSX standard
 	// compatibility, Tier 2), nell'ordine richiesto dallo schema OOXML
 	// -- questa funzione lo inserisce solo al punto giusto, vedi sotto.
-	const std::string& dataValidationAndHyperlinksXml = std::string())
+	const std::string& dataValidationAndHyperlinksXml = std::string(),
+	// <sheetViews>...</sheetViews> (100% XLSX standard compatibility,
+	// Tier 2), gia' pronto da WriteXLSX sopra -- va SUBITO dopo il tag
+	// di apertura <worksheet>, PRIMA di <sheetData>, per lo schema
+	// OOXML (CT_Worksheet); vuoto quando non c'e' nessun riquadro
+	// bloccato da scrivere.
+	const std::string& sheetViewsXml = std::string())
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -1946,6 +1966,7 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// quando non usato.
 	xml += "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
 		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">";
+	xml += sheetViewsXml;
 	xml += "<sheetData>";
 
 	CCellIterator iter(doc, &bounds);
@@ -2445,7 +2466,11 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	const std::vector<unsigned char>& vbaProject = std::vector<unsigned char>(),
 	// Protezione foglio (Fase 32): vedi il commento gemello in
 	// ui/src/AscdIO.h. false di default, come vbaProject sopra.
-	bool isProtected = false)
+	bool isProtected = false,
+	// Blocca riquadri (100% XLSX standard compatibility, Tier 2): 0,0
+	// di default (nessun riquadro bloccato), come ogni altro parametro
+	// opzionale qui sopra.
+	int frozenRows = 0, int frozenCols = 0)
 {
 	// Presenza di un progetto VBA (XLSM, Fase 31): un file .xlsx puro
 	// non ha mai xl/vbaProject.bin, quindi "hasMacros" e' sempre false
@@ -2650,7 +2675,36 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		hyperlinksXml += "</hyperlinks>";
 	}
 
-	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected, dataValidationXml + hyperlinksXml);
+	// <sheetViews><sheetView><pane .../></sheetView></sheetViews> (100%
+	// XLSX standard compatibility, Tier 2): solo quando c'e' davvero un
+	// riquadro bloccato -- questo export non scriveva <sheetViews> per
+	// nessun motivo prima d'ora. "state=\"frozen\"" e' cio' che distingue
+	// un vero blocco riquadri da uno split trascinabile (dove xSplit/
+	// ySplit sarebbero ventesimi di punto, non un numero di righe/
+	// colonne) -- vedi il commento gemello nel ramo di importazione.
+	// "topLeftCell" e' la prima cella VISIBILE nella zona scorrevole
+	// (subito dopo l'ultima riga/colonna bloccata), "activePane"
+	// indica quale dei quattro riquadri ha il focus, per convenzione lo
+	// stesso che Excel sceglie: in basso a destra se sono bloccate sia
+	// righe che colonne, altrimenti il riquadro opposto al lato bloccato.
+	std::string sheetViewsXml;
+	if (frozenRows > 0 || frozenCols > 0)
+	{
+		char topLeft[32];
+		cell(frozenCols + 1, frozenRows + 1).GetName(topLeft);
+		const char* activePane = (frozenCols > 0 && frozenRows > 0) ? "bottomRight"
+			: (frozenCols > 0) ? "topRight" : "bottomLeft";
+		char buf[256];
+		snprintf(buf, sizeof(buf),
+			"<sheetViews><sheetView tabSelected=\"1\" workbookViewId=\"0\">"
+			"<pane xSplit=\"%d\" ySplit=\"%d\" topLeftCell=\"%s\" activePane=\"%s\" state=\"frozen\"/>"
+			"</sheetView></sheetViews>",
+			frozenCols, frozenRows, topLeft, activePane);
+		sheetViewsXml = buf;
+	}
+
+	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected,
+		dataValidationXml + hyperlinksXml, sheetViewsXml);
 
 	// xl/styles.xml (Fase 32): finora questo export non scriveva NESSUNO
 	// stile (solo valori/formule, vedi BuildSheetXml) -- una vera tabella
@@ -3911,6 +3965,8 @@ struct SheetContext {
 	bool* hasAutoFilter; // opzionale (NULL = non raccolto)
 	range* autoFilterRange; // valido solo se *hasAutoFilter diventa true
 	bool* isProtected; // opzionale (NULL = non raccolto), da <sheetProtection/> (Fase 32)
+	int* frozenRows; // opzionale (NULL = non raccolto), da <pane state="frozen"/> (100% XLSX standard compatibility, Tier 2)
+	int* frozenCols; // idem, colonne bloccate
 	std::vector<HyperlinkRefInfo>* hyperlinkRefs; // opzionale (NULL = non raccolti)
 	std::vector<DataValidationRefInfo>* dataValidationRefs; // opzionale (NULL = non raccolte)
 	const std::vector<ResolvedStyle>* styles; // opzionale (NULL = non applica colori)
@@ -4181,6 +4237,32 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 		}
 		if (!info.ref.empty() && (!info.rId.empty() || !info.location.empty()))
 			ctx->hyperlinkRefs->push_back(info);
+	}
+	// <pane xSplit="M" ySplit="N" state="frozen"/> dentro <sheetView>
+	// (100% XLSX standard compatibility, Tier 2): SOLO
+	// state="frozen"/"frozenSplit" vuol dire un vero blocco riquadri --
+	// senza "state" (o state="split"), xSplit/ySplit sono ventesimi di
+	// punto per uno split trascinabile, non un numero di righe/colonne,
+	// e questa app non ha un concetto di split non bloccato da
+	// rappresentare.
+	else if (strcmp(name, "pane") == 0 && ctx->frozenRows && ctx->frozenCols)
+	{
+		std::string state;
+		int xSplit = 0, ySplit = 0;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "state") == 0)
+				state = atts[i + 1];
+			else if (strcmp(atts[i], "xSplit") == 0)
+				xSplit = atoi(atts[i + 1]);
+			else if (strcmp(atts[i], "ySplit") == 0)
+				ySplit = atoi(atts[i + 1]);
+		}
+		if (state == "frozen" || state == "frozenSplit")
+		{
+			*ctx->frozenRows = ySplit;
+			*ctx->frozenCols = xSplit;
+		}
 	}
 	// <dataValidation type="..." sqref="..."> (100% XLSX standard
 	// compatibility, Tier 2), dentro <dataValidations>, fratello di
@@ -4668,7 +4750,8 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	bool* hasAutoFilter = NULL, range* autoFilterRange = NULL,
 	bool* isProtected = NULL,
 	std::vector<HyperlinkRefInfo>* hyperlinkRefs = NULL,
-	std::vector<DataValidationRefInfo>* dataValidationRefs = NULL)
+	std::vector<DataValidationRefInfo>* dataValidationRefs = NULL,
+	int* frozenRows = NULL, int* frozenCols = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -4684,6 +4767,8 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.isProtected = isProtected;
 	ctx.hyperlinkRefs = hyperlinkRefs;
 	ctx.dataValidationRefs = dataValidationRefs;
+	ctx.frozenRows = frozenRows;
+	ctx.frozenCols = frozenCols;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
 	ctx.date1904 = date1904;
@@ -5889,6 +5974,12 @@ struct ParsedSheet {
 	// isProtected in ui/src/AscdIO.h. Il blocco delle singole celle
 	// (CellStyle::fLocked) vive gia' dentro "doc", nessun campo qui.
 	bool isProtected = false;
+	// Blocca riquadri (100% XLSX standard compatibility, Tier 2): da
+	// <pane state="frozen".../> dentro <sheetView> nel foglio XLSX
+	// originale, vedi ParseSheet/SheetStart. 0,0 = nessun riquadro
+	// bloccato, come SheetView::fFrozenRows/fFrozenCols di default.
+	int frozenRows = 0;
+	int frozenCols = 0;
 };
 
 // Applies each parsed <definedName> (see WorkbookContext::definedNames
@@ -5966,7 +6057,8 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			&sheets[i].rowHeights, &sheets[i].showGrid,
 			&sheets[i].hasTabColor, &sheets[i].tabColor,
 			&sheets[i].hiddenRows, &sheets[i].hasAutoFilter, &sheets[i].autoFilterRange,
-			&sheets[i].charts, &sheets[i].vbaProject, &sheets[i].isProtected);
+			&sheets[i].charts, &sheets[i].vbaProject, &sheets[i].isProtected,
+			sheets[i].frozenRows, sheets[i].frozenCols);
 		if (err != B_OK)
 			return err;
 
@@ -6066,10 +6158,13 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		std::vector<XlsxChartInfo> charts;
 		std::vector<unsigned char> vbaProject;
 		bool isProtected = false;
-		status_t err = ReadASCD(source, doc, &charts, &vbaProject, &isProtected);
+		int frozenRows = 0, frozenCols = 0;
+		status_t err = ReadASCD(source, doc, &charts, &vbaProject, &isProtected,
+			&frozenRows, &frozenCols);
 		if (err == B_OK)
 			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
-				: WriteXLSX(doc, charts, destination, vbaProject, isProtected);
+				: WriteXLSX(doc, charts, destination, vbaProject, isProtected,
+					frozenRows, frozenCols);
 		doc->Release();
 		return err;
 	}
@@ -6194,7 +6289,8 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			&condRules, date1904, &parsed.rowHeights, &parsed.showGrid,
 			&parsed.hasTabColor, &parsed.tabColor,
 			&parsed.hiddenRows, &parsed.hasAutoFilter, &parsed.autoFilterRange,
-			&parsed.isProtected, &hyperlinkRefs, &dataValidationRefs))
+			&parsed.isProtected, &hyperlinkRefs, &dataValidationRefs,
+			&parsed.frozenRows, &parsed.frozenCols))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
@@ -6539,7 +6635,8 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			// WriteXLSX: un vero file XLSX in ingresso riscritto in
 			// uscita mantiene i suoi grafici invece di perderli.
 			err = WriteXLSX(sheets[0].doc, sheets[0].charts, destination,
-				sheets[0].vbaProject, sheets[0].isProtected);
+				sheets[0].vbaProject, sheets[0].isProtected,
+				sheets[0].frozenRows, sheets[0].frozenCols);
 	}
 
 	if (err == B_OK && extension != NULL && !unsupportedCharts.empty())
