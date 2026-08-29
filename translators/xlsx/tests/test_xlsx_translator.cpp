@@ -1684,6 +1684,96 @@ static bool ReadPrintSettingsFromAscdForTest(const unsigned char* ascdData, size
 	return true;
 }
 
+// Same idea as ReadPrintSettingsFromAscdForTest above, but stops at
+// the print-area section instead of continuing to margins/scale (100%
+// XLSX standard compatibility, Tier 2 -- print settings, step 3 of 4):
+// same plain-fixture assumptions (no chart/comment/hyperlink/border/
+// validation/table).
+static bool ReadFirstPrintAreaFromAscdForTest(const unsigned char* ascdData, size_t ascdLen,
+	bool* outHasArea, int16* outTop, int16* outLeft, int16* outBottom, int16* outRight)
+{
+	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
+		return false;
+
+	int32 cellCount;
+	memcpy(&cellCount, ascdData + 8, 4);
+
+	size_t pos = 12;
+	for (int32 i = 0; i < cellCount; i++)
+	{
+		if (pos + 9 > ascdLen)
+			return false;
+		int32 len;
+		memcpy(&len, ascdData + pos + 4, 4);
+		pos += 9 + len;
+	}
+
+	// Grafici incorporati, colWidths, cellColors, columnColors,
+	// rowHeights: cinque contatori (0 in questo documento di prova).
+	for (int s = 0; s < 5; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Blocca riquadri: due interi fissi.
+	if (pos + 8 > ascdLen) return false;
+	pos += 8;
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto contatori (0).
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Visibilita' griglia: un byte fisso.
+	if (pos + 1 > ascdLen) return false;
+	pos += 1;
+	// Colore della linguetta: 4 byte fissi.
+	if (pos + 4 > ascdLen) return false;
+	pos += 4;
+	// Righe nascoste: un contatore.
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+	// AutoFilter: 9 byte fissi.
+	if (pos + 9 > ascdLen) return false;
+	pos += 9;
+	// Commenti, collegamenti: due contatori (0).
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Tipo di grafico, colore bordo, convalida dati, formattazione
+	// condizionale, tabelle: cinque contatori (0).
+	for (int s = 0; s < 5; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Titolo di grafico: un contatore (0).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// Area di stampa: i dati veri, 1 byte "has" + 4 int16.
+	if (pos + 9 > ascdLen) return false;
+	uint8 has = ascdData[pos]; pos += 1;
+	*outHasArea = (has != 0);
+	memcpy(outTop, ascdData + pos, 2); pos += 2;
+	memcpy(outLeft, ascdData + pos, 2); pos += 2;
+	memcpy(outBottom, ascdData + pos, 2); pos += 2;
+	memcpy(outRight, ascdData + pos, 2); pos += 2;
+
+	return true;
+}
+
 // Same idea as ReadFirstHyperlinkFromAscdForTest above, but for the
 // data validation section (100% XLSX standard compatibility, Tier 2):
 // continues past hyperlinks, chart-type, and border-color (assumed
@@ -6455,6 +6545,92 @@ int main()
 						"larghezza\" si ritrova ancora impostata");
 				}
 			}
+		}
+	}
+
+	// Print area (_xlnm.Print_Area, a reserved defined name), the third
+	// step of 4 for XLSX print settings: the raw range text was
+	// already captured while parsing defined names (DefinedNameInfo::
+	// refText), just discarded for every "_xlnm.*" name including this
+	// one -- now applied to AscdSheet::hasPrintArea/printArea instead,
+	// via the same ParseSheetRangeRef helper already used for real
+	// named ranges. A multi-area value (comma-separated, rare) is cut
+	// down to just the first rectangle, matching the native model's
+	// single-range limit.
+	{
+		static const char kPrintAreaContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kPrintAreaRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kPrintAreaWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"<definedNames>"
+			"<definedName name=\"_xlnm.Print_Area\" localSheetId=\"0\">"
+			"Foglio1!$A$1:$C$10,Foglio1!$E$1:$F$2</definedName>"
+			"</definedNames>\n"
+			"</workbook>\n";
+		static const char kPrintAreaWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kPrintAreaSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\"><v>5</v></c></row></sheetData>"
+			"</worksheet>\n";
+
+		BMallocIO printAreaXlsx;
+		CZipWriter printAreaZip;
+		printAreaZip.Begin(&printAreaXlsx);
+		printAreaZip.AddEntry("[Content_Types].xml", kPrintAreaContentTypes, strlen(kPrintAreaContentTypes));
+		printAreaZip.AddEntry("_rels/.rels", kPrintAreaRootRels, strlen(kPrintAreaRootRels));
+		printAreaZip.AddEntry("xl/workbook.xml", kPrintAreaWorkbook, strlen(kPrintAreaWorkbook));
+		printAreaZip.AddEntry("xl/_rels/workbook.xml.rels", kPrintAreaWorkbookRels, strlen(kPrintAreaWorkbookRels));
+		printAreaZip.AddEntry("xl/worksheets/sheet1.xml", kPrintAreaSheet, strlen(kPrintAreaSheet));
+		Check(printAreaZip.Close(), "costruzione del file XLSX di prova con _xlnm.Print_Area riuscita");
+
+		printAreaXlsx.Seek(0, SEEK_SET);
+		translator_info printAreaInfo;
+		err = translator->Identify(&printAreaXlsx, NULL, NULL, &printAreaInfo, 0);
+		Check(err == B_OK && printAreaInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con _xlnm.Print_Area");
+
+		printAreaXlsx.Seek(0, SEEK_SET);
+		BMallocIO printAreaAscdOut;
+		err = translator->Translate(&printAreaXlsx, &printAreaInfo, NULL,
+			kAtomoNativeFormat, &printAreaAscdOut);
+		Check(err == B_OK, "Translate del file di prova con _xlnm.Print_Area riesce");
+
+		const unsigned char* printAreaAscdData = NULL;
+		size_t printAreaAscdLen = 0;
+		bool printAreaUnwrapped = UnwrapFirstSheet((const unsigned char*)printAreaAscdOut.Buffer(),
+			printAreaAscdOut.BufferLength(), &printAreaAscdData, &printAreaAscdLen);
+		Check(printAreaUnwrapped, "l'output di Translate con _xlnm.Print_Area e' un ASCD valido");
+
+		if (printAreaUnwrapped)
+		{
+			bool hasArea = false;
+			int16 top = -1, left = -1, bottom = -1, right = -1;
+			bool areaRead = ReadFirstPrintAreaFromAscdForTest(printAreaAscdData, printAreaAscdLen,
+				&hasArea, &top, &left, &bottom, &right);
+			Check(areaRead, "la sezione area di stampa dell'ASCD prodotto si legge correttamente");
+			Check(areaRead && hasArea, "l'area di stampa importata risulta presente");
+			Check(areaRead && top == 1 && left == 1 && bottom == 10 && right == 3,
+				"l'area di stampa importata e' A1:C10, la PRIMA delle due aree di "
+				"_xlnm.Print_Area (separate da virgola), non piu' scartata in silenzio");
 		}
 	}
 

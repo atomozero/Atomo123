@@ -150,7 +150,13 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const bool* hasPrintSettings = NULL,
 	double marginTopCm = 2.0, double marginBottomCm = 2.0,
 	double marginLeftCm = 2.0, double marginRightCm = 2.0,
-	int scaleMode = 0, double scalePercent = 100.0)
+	int scaleMode = 0, double scalePercent = 100.0,
+	// Area di stampa (100% XLSX standard compatibility, Tier 2, passo
+	// 3/4): da _xlnm.Print_Area fra i nomi definiti del file XLSX
+	// originale (vedi ApplyDefinedNames) -- un valore vero ora, prima
+	// sempre "assente" (vedi il commento piu' sotto dove veniva
+	// scritto).
+	const bool* hasPrintArea = NULL, const range* printArea = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -938,18 +944,20 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Sezione area di stampa, in coda (Fase 29 di ui/src/AscdIO.cpp):
-	// questo translator non legge ancora l'area di stampa/le
-	// impostazioni pagina dal file XLSX originale, quindi scrive sempre
-	// "assente" (has=0). Va comunque scritta per OGNI foglio, stesso
-	// motivo del BUG REALE spiegato nel commento della sezione titolo
-	// di grafico qui sopra: senza questi byte fissi, LoadASCD (chiamato
-	// da LoadASCDBook una volta per foglio) legge l'inizio del blocco
-	// del foglio successivo come se fosse questa sezione, disallineando
-	// la lettura di ogni foglio dopo il primo in un file multi-foglio.
+	// Sezione area di stampa, in coda (100% XLSX standard compatibility,
+	// Tier 2, passo 3/4): un valore vero ora che ApplyDefinedNames
+	// estrae davvero _xlnm.Print_Area da un file XLSX vero -- prima
+	// sempre "assente" (has=0). Va comunque scritta per OGNI foglio,
+	// stesso motivo del BUG REALE spiegato nel commento della sezione
+	// titolo di grafico qui sopra: senza questi byte fissi, LoadASCD
+	// (chiamato da LoadASCDBook una volta per foglio) legge l'inizio
+	// del blocco del foglio successivo come se fosse questa sezione,
+	// disallineando la lettura di ogni foglio dopo il primo in un file
+	// multi-foglio.
 	{
-		uint8 has = 0;
-		int16 top = 0, left = 0, bottom = 0, right = 0;
+		uint8 has = (hasPrintArea && *hasPrintArea) ? 1 : 0;
+		range r = (has && printArea) ? *printArea : range();
+		int16 top = r.top, left = r.left, bottom = r.bottom, right = r.right;
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
 			|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
 			|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
@@ -6247,6 +6255,14 @@ struct ParsedSheet {
 	// "enum" condiviso in questo file, es. ValidationType/ChartType).
 	int scaleMode = 0;
 	double scalePercent = 100.0;
+	// Area di stampa (100% XLSX standard compatibility, Tier 2): da
+	// _xlnm.Print_Area fra i nomi definiti del file XLSX originale,
+	// vedi ApplyDefinedNames e AscdSheet::hasPrintArea/printArea in
+	// ui/src/AscdIO.h. Un solo rettangolo: un vero _xlnm.Print_Area con
+	// piu' aree separate da virgola (raro) usa solo la prima, stesso
+	// limite del modello nativo (un singolo range, non un elenco).
+	bool hasPrintArea = false;
+	range printArea;
 };
 
 // Applies each parsed <definedName> (see WorkbookContext::definedNames
@@ -6272,6 +6288,29 @@ static void ApplyDefinedNames(const std::vector<DefinedNameInfo>& definedNames,
 	for (size_t i = 0; i < definedNames.size(); i++)
 	{
 		const DefinedNameInfo& dn = definedNames[i];
+		if (dn.name == "_xlnm.Print_Area")
+		{
+			// Sempre con ambito di foglio in un vero file Excel (l'area
+			// di stampa e' per definizione un concetto per foglio, mai
+			// per l'intera cartella di lavoro) -- un file senza
+			// localSheetId qui sarebbe malformato, scartato per
+			// sicurezza invece di indovinare un foglio. Piu' aree
+			// separate da virgola (raro): si usa solo la prima, vedi
+			// il commento su ParsedSheet::printArea sopra.
+			if (dn.hasLocalSheetId && dn.localSheetId >= 0
+				&& (size_t)dn.localSheetId < sheets.size())
+			{
+				std::string firstArea = dn.refText.substr(0, dn.refText.find(','));
+				std::string sheetName;
+				range r;
+				if (ParseSheetRangeRef(firstArea, &sheetName, &r) && r.IsValid())
+				{
+					sheets[dn.localSheetId].hasPrintArea = true;
+					sheets[dn.localSheetId].printArea = r;
+				}
+			}
+			continue;
+		}
 		if (dn.name.compare(0, 6, "_xlnm.") == 0)
 			continue;
 
@@ -6328,7 +6367,8 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			sheets[i].frozenRows, sheets[i].frozenCols,
 			&sheets[i].hasPrintSettings, sheets[i].marginTopCm, sheets[i].marginBottomCm,
 			sheets[i].marginLeftCm, sheets[i].marginRightCm,
-			sheets[i].scaleMode, sheets[i].scalePercent);
+			sheets[i].scaleMode, sheets[i].scalePercent,
+			&sheets[i].hasPrintArea, &sheets[i].printArea);
 		if (err != B_OK)
 			return err;
 
