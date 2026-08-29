@@ -205,10 +205,15 @@ the native `.ascd` format; none of it survives a trip through
   directly, with no `.rels` involved; this engine stores only one
   string per hyperlink, so it can't distinguish the two forms on
   export — every exported link is written as external
-- **Data validation.** `<dataValidations>` is never parsed on import
-  (dropdown lists, numeric/date range rules, custom formula rules all
-  silently vanish) and never written on export either — the whole
-  round-trip is missing, not just one direction
+- ~~**Data validation.**~~ Fixed — see `CHANGELOG.md`, for the two
+  shapes this engine actually models (`ValidationRule` in
+  `Container.h`): a literal dropdown list (`type="list"`, a quoted
+  comma-separated literal — a list sourced from a cell range has no
+  equivalent here and is skipped) and a numeric range with an implicit
+  or explicit `operator="between"` (`type="whole"`/`"decimal"` with
+  literal `formula1`/`formula2`, not cell references). Date/time
+  ranges, other operators, and custom-formula rules still silently
+  vanish, since the engine has nothing to round-trip them into
 - **Freeze/split panes.** The app has real freeze-pane support
   (Phase 7), but `<pane>` inside `<sheetView>` is never read or
   written — only `showGridLines` is extracted from `<sheetView>`
