@@ -75,14 +75,14 @@ importing as frozen values, named-range persistence). See
 `CHANGELOG.md` for the full detail on each, including the real bugs
 found while building them.
 
-**Next up: closing the remaining gaps in XLSX standard
-compatibility** — see "Path to 100% XLSX standard compatibility"
-below. This became the priority after this session's `.ascd` bugfix
-work, which found several real, silent data-loss patterns in the XLSX
-translator while investigating an unrelated bug; auditing the
-translator systematically against the OOXML spec (rather than waiting
-for the next one to surface in a user's file) is worth doing before
-anything else.
+**Tier 1 and Tier 2 of "Path to 100% XLSX standard compatibility" are
+both done** (2026-08-29, not yet tagged as a release): comments,
+hyperlinks, data validation, freeze panes, border color (import), and
+the full four-step print settings plan (margins/scale + print area,
+both directions). Next up is Tier 3 (conditional formatting rule
+types beyond `cellIs`/`duplicateValues`, the legacy indexed color
+palette, real Excel pivot table round-trip) — see "Path to 100% XLSX
+standard compatibility" below for the full detail.
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
@@ -181,9 +181,12 @@ file — these are two separate lists.)
 
 ### Tier 2 — real native features with zero XLSX round-trip
 
-Everything here already works in the app and persists correctly in
-the native `.ascd` format; none of it survives a trip through
-`.xlsx`, in either direction, today.
+**All done** (2026-08-29) — every item below either fully round-trips
+now, or (border color) round-trips as far as the underlying model
+allows, with the remaining gap clearly scoped as a separate, larger
+effort. Everything here already worked in the app and persisted
+correctly in the native `.ascd` format; none of it survived a trip
+through `.xlsx`, in either direction, before this work.
 
 - ~~**Cell comments/notes.**~~ Fixed — see `CHANGELOG.md`.
   `CContainer::SetComment`/`GetComment` were already a real, working
@@ -246,8 +249,12 @@ the native `.ascd` format; none of it survives a trip through
     already use. A multi-area value (comma-separated rectangles, rare)
     keeps only the first, matching the native model's single-range
     limit
-  - **Export print area** — write `_xlnm.Print_Area` alongside real
-    named ranges, not done yet
+  - ~~**Export print area.**~~ Fixed — see `CHANGELOG.md`. Writes a
+    real `_xlnm.Print_Area` (always sheet-scoped, `localSheetId="0"`,
+    the only sheet this export ever produces) alongside real named
+    ranges from `AscdSheet::hasPrintArea`/`printArea`. All four print
+    settings steps are now done — the only remaining XLSX print gaps
+    are the two explicitly out-of-scope items just below
   - **Explicitly out of scope**: print header/footer text and repeated
     print titles (rows/columns) have no native-format field or UI at
     all today (`PageSetupWindow` deliberately has no such controls,
