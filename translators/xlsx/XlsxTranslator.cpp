@@ -1117,7 +1117,11 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	bool* outHasPrintSettings = NULL,
 	double* outMarginTopCm = NULL, double* outMarginBottomCm = NULL,
 	double* outMarginLeftCm = NULL, double* outMarginRightCm = NULL,
-	int* outScaleMode = NULL, double* outScalePercent = NULL)
+	int* outScaleMode = NULL, double* outScalePercent = NULL,
+	// Area di stampa (100% XLSX standard compatibility, Tier 2, passo
+	// 4/4): stesso principio, serve all'esportazione ASCD -> XLSX per
+	// scrivere un vero _xlnm.Print_Area (vedi WriteXLSX).
+	bool* outHasPrintArea = NULL, range* outPrintArea = NULL)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1805,12 +1809,12 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
-	// Sezione area di stampa, in coda (Fase 29 di ui/src/AscdIO.cpp):
-	// questo translator non usa ancora l'area di stampa, ma deve
-	// comunque consumare i byte scritti da WriteASCD per restare
-	// allineato al blocco del foglio successivo in un file multi-foglio
-	// (vedi il commento gemello nel writer qui sopra). Tollerante a EOF
-	// per restare compatibile con un file scritto prima di questa fase.
+	// Sezione area di stampa, in coda: applicata davvero agli out-param
+	// ora (100% XLSX standard compatibility, Tier 2, passo 4/4), non
+	// piu' solo consumata per restare allineata -- serve
+	// all'esportazione ASCD -> XLSX per scrivere un vero
+	// _xlnm.Print_Area (vedi WriteXLSX). Tollerante a EOF per restare
+	// compatibile con un file scritto prima di questa fase.
 	{
 		uint8 has = 0;
 		ssize_t got = source->Read(&has, sizeof(has));
@@ -1825,6 +1829,9 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
 				|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right))
 				return B_BAD_DATA;
+
+			if (outHasPrintArea) *outHasPrintArea = (has != 0);
+			if (outPrintArea) outPrintArea->Set(left, top, right, bottom);
 		}
 	}
 
@@ -2560,7 +2567,11 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	bool hasPrintSettings = false,
 	double marginTopCm = 2.0, double marginBottomCm = 2.0,
 	double marginLeftCm = 2.0, double marginRightCm = 2.0,
-	int scaleMode = 0, double scalePercent = 100.0)
+	int scaleMode = 0, double scalePercent = 100.0,
+	// Area di stampa (100% XLSX standard compatibility, Tier 2, passo
+	// 4/4): false/range vuoto di default, come ogni altro parametro
+	// opzionale qui sopra.
+	bool hasPrintArea = false, range printArea = range())
 {
 	// Presenza di un progetto VBA (XLSM, Fase 31): un file .xlsx puro
 	// non ha mai xl/vbaProject.bin, quindi "hasMacros" e' sempre false
@@ -2590,20 +2601,33 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	// <definedNames> (named ranges, "100% XLSX standard compatibility"
 	// plan, see ROADMAP.md): CContainer::GetNameTable(), written as
 	// workbook-scoped (no localSheetId -- this export is single-sheet
-	// only, nothing to disambiguate). Skipped entirely when the
-	// document has no names defined, matching how every other
-	// optional part of this export is only added when it has content.
+	// only, nothing to disambiguate). _xlnm.Print_Area (Tier 2, passo
+	// 4/4) is the one reserved name this export DOES write -- always
+	// sheet-scoped (localSheetId="0", the only sheet this export ever
+	// produces), from AscdSheet::hasPrintArea/printArea. The whole
+	// element is skipped only when NEITHER real names nor a print area
+	// exist, matching how every other optional part of this export is
+	// only added when it has content.
 	std::string definedNamesXml;
 	{
 		CNameTable* names = doc->GetNameTable();
-		if (names && !names->empty())
+		bool hasNames = names && !names->empty();
+		if (hasNames || hasPrintArea)
 		{
 			definedNamesXml = "<definedNames>";
-			for (CNameTable::const_iterator it = names->begin(); it != names->end(); ++it)
+			if (hasNames)
 			{
-				definedNamesXml += "<definedName name=\"";
-				AppendXmlEscaped(definedNamesXml, (const char*)it->first);
-				definedNamesXml += "\">" + AbsRangeRef("Foglio1", it->second) + "</definedName>";
+				for (CNameTable::const_iterator it = names->begin(); it != names->end(); ++it)
+				{
+					definedNamesXml += "<definedName name=\"";
+					AppendXmlEscaped(definedNamesXml, (const char*)it->first);
+					definedNamesXml += "\">" + AbsRangeRef("Foglio1", it->second) + "</definedName>";
+				}
+			}
+			if (hasPrintArea)
+			{
+				definedNamesXml += "<definedName name=\"_xlnm.Print_Area\" localSheetId=\"0\">"
+					+ AbsRangeRef("Foglio1", printArea) + "</definedName>";
 			}
 			definedNamesXml += "</definedNames>\n";
 		}
@@ -6473,16 +6497,18 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		double marginTopCm = 2.0, marginBottomCm = 2.0, marginLeftCm = 2.0, marginRightCm = 2.0;
 		int scaleMode = 0;
 		double scalePercent = 100.0;
+		bool hasPrintArea = false;
+		range printArea;
 		status_t err = ReadASCD(source, doc, &charts, &vbaProject, &isProtected,
 			&frozenRows, &frozenCols,
 			&hasPrintSettings, &marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
-			&scaleMode, &scalePercent);
+			&scaleMode, &scalePercent, &hasPrintArea, &printArea);
 		if (err == B_OK)
 			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
 				: WriteXLSX(doc, charts, destination, vbaProject, isProtected,
 					frozenRows, frozenCols,
 					hasPrintSettings, marginTopCm, marginBottomCm, marginLeftCm, marginRightCm,
-					scaleMode, scalePercent);
+					scaleMode, scalePercent, hasPrintArea, printArea);
 		doc->Release();
 		return err;
 	}
@@ -6960,7 +6986,8 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 				sheets[0].frozenRows, sheets[0].frozenCols,
 				sheets[0].hasPrintSettings, sheets[0].marginTopCm, sheets[0].marginBottomCm,
 				sheets[0].marginLeftCm, sheets[0].marginRightCm,
-				sheets[0].scaleMode, sheets[0].scalePercent);
+				sheets[0].scaleMode, sheets[0].scalePercent,
+				sheets[0].hasPrintArea, sheets[0].printArea);
 	}
 
 	if (err == B_OK && extension != NULL && !unsupportedCharts.empty())

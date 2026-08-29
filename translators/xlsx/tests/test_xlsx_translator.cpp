@@ -573,6 +573,106 @@ static status_t WriteASCDWithBorderColorForTest(CContainer* doc, const char* ref
 	return B_OK;
 }
 
+// Same idea as WriteASCDWithValidationForTest below, but for the print
+// area instead (100% XLSX standard compatibility, Tier 2 -- print
+// settings, step 4 of 4): print area comes right after chart title,
+// before margins/scale, in the real WriteASCD section order.
+static status_t WriteASCDWithPrintAreaForTest(CContainer* doc, int16 top, int16 left,
+	int16 bottom, int16 right, BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati, colWidths, cellColors, columnColors,
+	// rowHeights: cinque conteggi a zero.
+	for (int i = 0; i < 5; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+	// Commenti, collegamenti ipertestuali: nessuno.
+	for (int i = 0; i < 2; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Tipo di grafico incorporato, colore del bordo, convalida dati,
+	// formattazione condizionale, tabelle: cinque conteggi a zero.
+	for (int i = 0; i < 5; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Titolo di grafico incorporato: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Area di stampa: i dati veri, un byte "has=1" + 4 int16.
+	{
+		uint8 has = 1;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+			|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+			|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+			|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
 // Same idea as WriteASCDWithValidationForTest below, but for page
 // margins/scale instead (100% XLSX standard compatibility, Tier 2 --
 // print settings, step 2 of 4): margins/scale come much later in the
@@ -6631,6 +6731,87 @@ int main()
 			Check(areaRead && top == 1 && left == 1 && bottom == 10 && right == 3,
 				"l'area di stampa importata e' A1:C10, la PRIMA delle due aree di "
 				"_xlnm.Print_Area (separate da virgola), non piu' scartata in silenzio");
+		}
+	}
+
+	// Stesso scenario ma sull'export (ASCD -> XLSX), l'ULTIMO dei
+	// quattro passi per le impostazioni di stampa: un documento con
+	// un'area di stampa esplicita esporta un vero _xlnm.Print_Area
+	// (sempre con ambito di foglio, localSheetId="0", l'unico foglio
+	// che questo export produce) accanto ai nomi definiti reali, e
+	// quel file si rilegge correttamente.
+	{
+		CContainer& printAreaExportDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &printAreaExportDoc, true); // A1
+
+		BMallocIO printAreaAscdIn;
+		status_t printAreaSaveErr = WriteASCDWithPrintAreaForTest(&printAreaExportDoc,
+			1, 1, 10, 3, &printAreaAscdIn); // A1:C10
+		Check(printAreaSaveErr == B_OK, "preparazione dell'ASCD di prova con un'area di stampa riesce");
+		printAreaExportDoc.Release();
+
+		printAreaAscdIn.Seek(0, SEEK_SET);
+		translator_info printAreaExportInfo;
+		err = translator->Identify(&printAreaAscdIn, NULL, NULL, &printAreaExportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD con un'area di stampa come sorgente per l'export");
+
+		printAreaAscdIn.Seek(0, SEEK_SET);
+		BMallocIO printAreaXlsxOut;
+		err = translator->Translate(&printAreaAscdIn, &printAreaExportInfo, NULL,
+			kAtomoXlsxFormat, &printAreaXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con un'area di stampa) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			printAreaXlsxOut.Seek(0, SEEK_SET);
+			CZipReader printAreaOutZip;
+			Check(printAreaOutZip.Open(&printAreaXlsxOut),
+				"il file XLSX esportato con un'area di stampa e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> exportedWorkbookXml;
+			bool readWorkbook = printAreaOutZip.ReadEntry("xl/workbook.xml", exportedWorkbookXml);
+			Check(readWorkbook, "il file XLSX esportato contiene xl/workbook.xml");
+
+			std::string workbookText(exportedWorkbookXml.begin(), exportedWorkbookXml.end());
+			Check(workbookText.find(
+					"<definedName name=\"_xlnm.Print_Area\" localSheetId=\"0\">Foglio1!$A$1:$C$10</definedName>")
+					!= std::string::npos,
+				"xl/workbook.xml esportato contiene _xlnm.Print_Area con ambito di foglio, "
+				"su Foglio1!$A$1:$C$10");
+
+			printAreaXlsxOut.Seek(0, SEEK_SET);
+			translator_info printAreaReimportInfo;
+			err = translator->Identify(&printAreaXlsxOut, NULL, NULL, &printAreaReimportInfo, 0);
+			Check(err == B_OK && printAreaReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX esportato con un'area di stampa si riconosce ancora come XLSX valido rileggendolo");
+
+			printAreaXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO printAreaRoundTripAscd;
+			err = translator->Translate(&printAreaXlsxOut, &printAreaReimportInfo, NULL,
+				kAtomoNativeFormat, &printAreaRoundTripAscd);
+			Check(err == B_OK,
+				"il file XLSX esportato con un'area di stampa si rilegge correttamente (round-trip)");
+
+			if (err == B_OK)
+			{
+				const unsigned char* rtAreaData = NULL;
+				size_t rtAreaLen = 0;
+				bool rtAreaUnwrapped = UnwrapFirstSheet((const unsigned char*)printAreaRoundTripAscd.Buffer(),
+					printAreaRoundTripAscd.BufferLength(), &rtAreaData, &rtAreaLen);
+				Check(rtAreaUnwrapped, "il round-trip dell'area di stampa produce anch'esso una cartella ASCB valida");
+
+				if (rtAreaUnwrapped)
+				{
+					bool rtHasArea = false;
+					int16 rtTop = -1, rtLeft = -1, rtBottom = -1, rtRight = -1;
+					bool rtAreaRead = ReadFirstPrintAreaFromAscdForTest(rtAreaData, rtAreaLen,
+						&rtHasArea, &rtTop, &rtLeft, &rtBottom, &rtRight);
+					Check(rtAreaRead && rtHasArea
+						&& rtTop == 1 && rtLeft == 1 && rtBottom == 10 && rtRight == 3,
+						"dopo il giro completo ASCD -> XLSX -> ASCD, l'area di stampa si ritrova "
+						"ancora A1:C10");
+				}
+			}
 		}
 	}
 
