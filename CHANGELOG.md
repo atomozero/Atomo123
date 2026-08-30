@@ -884,3 +884,20 @@ What shipped since v0.2.8, not yet in a tagged release:
   the live SUMIF grouping, a named range, number-range validation, a
   duplicate-values conditional formatting example, sheet protection,
   frozen columns, and bold titles.
+- Added `UNIQUE`, `SORT`, `SORTBY`, and `FILTER` — dynamic array
+  functions beyond `SEQUENCE`, one commit each. All four are "spill"
+  functions using the exact same mechanism `SEQUENCE` already
+  established (`CContainer::ApplySpill`), not a new one. `UNIQUE`
+  dedups a single row/column in first-occurrence order. `SORT` is
+  genuinely 2D — sorts a range's rows by a chosen column, each row
+  moves as a unit, matching real Excel's behavior on a multi-column
+  table. `SORTBY` sorts by a separate key range instead of a column of
+  the array itself. `FILTER` keeps only the rows where a boolean/
+  nonzero condition holds, with an `if_empty` fallback. Writing
+  `FILTER`'s test surfaced a real, useful engine detail: a bare
+  `TRUE`/`FALSE` cell (no parentheses) is a function call in the
+  bytecode, not a pre-resolved literal — it needs an explicit
+  `CalcCell` before `GetValue()` reflects it. Showcased in the
+  `Financial_Sample_CdA.ascd` demo generator: `UNIQUE` runs on the
+  real 700-row dataset, `SORT`/`SORTBY`/`FILTER` on a small
+  purpose-built sample table.

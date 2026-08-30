@@ -414,11 +414,21 @@ list deliberately deviates from pure effort-sorting:
 
 ### Tier 2 — do next: moderate effort, real but narrower value
 
-- **Dynamic arrays beyond `SEQUENCE`**: `UNIQUE`, `SORT`/`SORTBY`,
-  `FILTER`. The spill mechanism is already built (see the array
-  formulas v1 entry above) — this is more functions that produce a
-  range instead of a scalar, not a new mechanism. Spilling from
-  inside a nested expression stays deferred either way
+- ~~**Dynamic arrays beyond `SEQUENCE`**: `UNIQUE`, `SORT`/`SORTBY`,
+  `FILTER`.~~ Shipped, one commit each: `UNIQUE` (single-row/column
+  dedup, first-occurrence order), `SORT` (genuinely 2D — sorts a
+  table's rows by a chosen column, each row moves as a unit),
+  `SORTBY` (same but the sort key comes from a separate range), and
+  `FILTER` (keeps only rows where a boolean/nonzero condition holds,
+  `if_empty` fallback when nothing matches). All five spill functions
+  now share the exact same mechanism `SEQUENCE` introduced
+  (`CContainer::ApplySpill`) — no new plumbing needed. Declared scope
+  limits, all rare in practice: no true 2D array dedup for `UNIQUE`,
+  no `by_col` for `SORT`, single sort key only for `SORTBY`, no
+  horizontal arrays for `SORTBY`/`FILTER`. Spilling from inside a
+  nested expression stays deferred (all four collapse to a scalar —
+  the first element — when nested, matching `SEQUENCE`'s own
+  documented limit)
 - **More chart types**: scatter/XY, area, combo (bar+line sharing one
   chart). The embedded-chart infrastructure (import/export/drag/
   resize/undo) already exists for bar/line/pie; this extends it, not
