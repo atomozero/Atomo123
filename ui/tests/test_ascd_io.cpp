@@ -533,6 +533,77 @@ int main()
 		oldDoc5.Release();
 	}
 
+	// Round-trip di una regola a scala di colori (Fase 33/A punto 4,
+	// versione 3 del formato): a differenza delle due regole sopra, qui
+	// il dato non e' un valore/colore singolo ma un elenco di
+	// ColorScalePoint, ognuno con un cfvoType, un cfvoValue e un
+	// colore proprio.
+	{
+		CContainer& scaleSaveDoc = *new CContainer(NULL, NULL);
+		ConditionalFormatRule scaleRule;
+		scaleRule.type = eCondColorScale;
+		scaleRule.ranges.push_back(range(1, 1, 1, 10));
+
+		ColorScalePoint minPoint;
+		minPoint.cfvoType = "min";
+		minPoint.color.red = 255; minPoint.color.green = 0;
+		minPoint.color.blue = 0; minPoint.color.alpha = 255;
+		scaleRule.colorScalePoints.push_back(minPoint);
+
+		ColorScalePoint midPoint;
+		midPoint.cfvoType = "percentile";
+		midPoint.cfvoValue = 50;
+		midPoint.color.red = 255; midPoint.color.green = 255;
+		midPoint.color.blue = 0; midPoint.color.alpha = 255;
+		scaleRule.colorScalePoints.push_back(midPoint);
+
+		ColorScalePoint maxPoint;
+		maxPoint.cfvoType = "max";
+		maxPoint.color.red = 0; maxPoint.color.green = 255;
+		maxPoint.color.blue = 0; maxPoint.color.alpha = 255;
+		scaleRule.colorScalePoints.push_back(maxPoint);
+
+		scaleSaveDoc.AddConditionalFormatRule(scaleRule);
+
+		BFile scaleFile("tests/roundtrip_colorscale.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&scaleSaveDoc, &scaleFile) == B_OK,
+			"SaveASCD con una regola a scala di colori (3 punti) riesce");
+		scaleSaveDoc.Release();
+
+		BFile scaleReopened("tests/roundtrip_colorscale.ascd", B_READ_ONLY);
+		CContainer& scaleReloaded = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&scaleReopened, &scaleReloaded) == B_OK,
+			"LoadASCD con una regola a scala di colori riesce");
+
+		const std::vector<ConditionalFormatRule>& scaleReloadedRules
+			= scaleReloaded.GetConditionalFormatRules();
+		Check(scaleReloadedRules.size() == 1, "la regola sopravvive al giro salva->ricarica");
+		if (scaleReloadedRules.size() == 1)
+		{
+			const ConditionalFormatRule& r = scaleReloadedRules[0];
+			Check(r.type == eCondColorScale, "il tipo scala di colori sopravvive al giro");
+			Check(r.colorScalePoints.size() == 3,
+				"tutti e tre i punti di controllo sopravvivono al giro");
+			if (r.colorScalePoints.size() == 3)
+			{
+				Check(r.colorScalePoints[0].cfvoType == "min"
+						&& r.colorScalePoints[0].color.red == 255
+						&& r.colorScalePoints[0].color.green == 0,
+					"il punto minimo (tipo e colore) sopravvive al giro");
+				Check(r.colorScalePoints[1].cfvoType == "percentile"
+						&& r.colorScalePoints[1].cfvoValue == 50
+						&& r.colorScalePoints[1].color.green == 255,
+					"il punto percentile (tipo, valore e colore) sopravvive al giro");
+				Check(r.colorScalePoints[2].cfvoType == "max"
+						&& r.colorScalePoints[2].color.green == 255
+						&& r.colorScalePoints[2].color.blue == 0,
+					"il punto massimo (tipo e colore) sopravvive al giro");
+			}
+		}
+		scaleReloaded.Release();
+	}
+
 	// --- Un file .ascd con la colonna di un commento manomessa (fuori
 	// dall'intervallo valido) viene rifiutato con B_BAD_DATA invece di
 	// causare una lettura fuori dai limiti. Bug reale trovato durante

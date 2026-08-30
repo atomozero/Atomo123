@@ -41,7 +41,20 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // valore testo letterale (scriverlo cosi' com'e', mai passarlo per
 // Parse()) -- stesso principio gia' in uso in XlsxTranslator.cpp per
 // lo stesso identico bug all'importazione diretta da un file XLSX.
-static const int32 kASCDVersion = 2;
+// Versione 3 (era 2): la sezione formattazione condizionale scrive,
+// per ogni regola, anche i punti di controllo della scala di colori
+// (Fase 33/A punto 4) -- un campo NUOVO IN MEZZO a una sezione gia'
+// esistente, non una sezione intera in coda, quindi il solito trucco
+// "EOF tollerante" (leggere finche' il file finisce, poi fermarsi) non
+// basta: un file versione 1/2 con ANCHE solo una regola successiva o
+// un'altra sezione dopo (tabelle strutturate, ecc.) farebbe leggere a
+// LoadASCD i primi byte di quel che segue come se fossero i punti di
+// scala della regola corrente, disallineando tutto il resto -- stesso
+// identico bug di principio gia' risolto una volta per i confini fra
+// fogli con "ASC2" (vedi il commento su kASCDBook2Magic sotto), qui
+// risolto con un controllo esplicito sulla versione del file invece
+// che su un nuovo formato di lunghezza.
+static const int32 kASCDVersion = 3;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // "ASCB": formato cartella di lavoro LEGACY, congelato per sempre a
 // questo elenco di sezioni per foglio (fino a "Imposta pagina", Fase
@@ -821,6 +834,26 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
 					return B_IO_ERROR;
 			}
+
+			// Punti di controllo della scala di colori (versione 3, vedi
+			// il commento su kASCDVersion): vuoto per eCondCellIsEqual/
+			// eCondDuplicateValues, 2-3 punti per eCondColorScale.
+			int32 pointCount = (int32)rule.colorScalePoints.size();
+			if (dest->Write(&pointCount, sizeof(pointCount)) != (ssize_t)sizeof(pointCount))
+				return B_IO_ERROR;
+			for (int32 p = 0; p < pointCount; p++)
+			{
+				const ColorScalePoint& point = rule.colorScalePoints[p];
+				int32 cfvoTypeLen = (int32)point.cfvoType.size();
+				if (dest->Write(&cfvoTypeLen, sizeof(cfvoTypeLen)) != (ssize_t)sizeof(cfvoTypeLen))
+					return B_IO_ERROR;
+				if (cfvoTypeLen > 0 && dest->Write(point.cfvoType.data(), cfvoTypeLen) != cfvoTypeLen)
+					return B_IO_ERROR;
+				if (dest->Write(&point.cfvoValue, sizeof(point.cfvoValue)) != (ssize_t)sizeof(point.cfvoValue))
+					return B_IO_ERROR;
+				if (dest->Write(&point.color, sizeof(point.color)) != (ssize_t)sizeof(point.color))
+					return B_IO_ERROR;
+			}
 		}
 	}
 
@@ -1068,12 +1101,12 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	// versione 1 (mai il byte "kind" per cella) e versione 2 (Fase 15,
-	// vedi il commento su kASCDVersion sopra) restano ENTRAMBE
-	// leggibili -- un file scritto da una versione precedente di
-	// questo formato non deve smettere di aprirsi solo perche' questo
-	// binario e' piu' recente.
-	if (version != 1 && version != kASCDVersion)
+	// versioni 1 (mai il byte "kind" per cella), 2 (Fase 15) e 3 (punti
+	// di scala di colori, vedi il commento su kASCDVersion sopra)
+	// restano TUTTE leggibili -- un file scritto da una versione
+	// precedente di questo formato non deve smettere di aprirsi solo
+	// perche' questo binario e' piu' recente.
+	if (version != 1 && version != 2 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -1922,6 +1955,38 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
 						return B_BAD_DATA;
 					rule.ranges.push_back(range(left, top, right, bottom));
+				}
+
+				// Punti di controllo della scala di colori: solo un file
+				// versione 3+ li ha scritti (vedi il commento su
+				// kASCDVersion) -- un file 1/2 non ha questi byte affatto,
+				// leggerli comunque disallineerebbe tutto quel che segue.
+				if (version >= 3)
+				{
+					int32 pointCount;
+					if (source->Read(&pointCount, sizeof(pointCount)) != (ssize_t)sizeof(pointCount))
+						return B_BAD_DATA;
+					for (int32 p = 0; p < pointCount; p++)
+					{
+						int32 cfvoTypeLen;
+						if (source->Read(&cfvoTypeLen, sizeof(cfvoTypeLen)) != (ssize_t)sizeof(cfvoTypeLen))
+							return B_BAD_DATA;
+						if (cfvoTypeLen < 0 || cfvoTypeLen > 256)
+							return B_BAD_DATA;
+
+						ColorScalePoint point;
+						if (cfvoTypeLen > 0)
+						{
+							point.cfvoType.resize(cfvoTypeLen);
+							if (source->Read(&point.cfvoType[0], cfvoTypeLen) != cfvoTypeLen)
+								return B_BAD_DATA;
+						}
+						if (source->Read(&point.cfvoValue, sizeof(point.cfvoValue)) != (ssize_t)sizeof(point.cfvoValue))
+							return B_BAD_DATA;
+						if (source->Read(&point.color, sizeof(point.color)) != (ssize_t)sizeof(point.color))
+							return B_BAD_DATA;
+						rule.colorScalePoints.push_back(point);
+					}
 				}
 
 				doc->AddConditionalFormatRule(rule);
