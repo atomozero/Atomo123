@@ -40,6 +40,7 @@
 #include "CellStyle.h"
 #include "Preferences.h"
 #include "MyError.h"
+#include "FunctionUtils.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -1695,6 +1696,19 @@ static void OpenFileRecalcProgress(void* context, int sheetIndex, int sheetCount
 static int32 OpenFileThreadEntry(void* data)
 {
 	OpenFileJob* job = (OpenFileJob*)data;
+
+	// Bug reale (crash report utente, 2026-08-30): App::RefsReceived
+	// puo' arrivare PRIMA di App::ReadyToRun (ordine non garantito,
+	// vedi il commento in App.cpp), e questo thread puo' gia' essere
+	// partito a quel punto -- senza questa chiamata, LoadASCD/
+	// TryToParseString piu' sotto potevano arrivare a GetFunctionNr()
+	// prima che InitFunctions() (dentro ReadyToRun, sul thread
+	// dell'app) avesse finito di popolare gFuncArrayByName, segfault
+	// su un puntatore nullo. EnsureFunctionsInitialized() e' idempotente
+	// e ora protetta da un lock (vedi sInitLock in FunctionUtils.cpp):
+	// se l'inizializzazione e' gia' in corso altrove, questa chiamata
+	// aspetta che finisca invece di correre avanti su uno stato a meta'.
+	EnsureFunctionsInitialized();
 
 	std::vector<AscdSheet>* newSheets = new std::vector<AscdSheet>();
 	bool ok = true;

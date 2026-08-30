@@ -24,16 +24,19 @@
 #include <cstring>
 #include <string>
 
+#include <OS.h>
 #include <Path.h>
 
 #include "Cell.h"
 #include "Value.h"
 #include "Container.h"
 #include "CellParser.h"
+#include "Functions.h"
 #include "FunctionUtils.h"
 #include "Globals.h"
 #include "MyError.h"
 #include "ResourceManager.h"
+#include "Utils.h"
 
 static int gFailures = 0;
 
@@ -2258,6 +2261,56 @@ int main()
 			"(fv diverso da zero cambia il risultato rispetto a RATE senza quel argomento)");
 
 		doc.Release();
+	}
+
+	// InitFunctions() concorrente da piu' thread (bug reale, crash
+	// report utente 2026-08-30): App::RefsReceived puo' arrivare PRIMA
+	// di App::ReadyToRun (ordine non garantito), quindi il thread di
+	// caricamento file in background puo' gia' essere partito mentre
+	// InitFunctions() sta ancora girando sul thread dell'app --
+	// GetFunctionNr() indicizzava gFuncArrayByName (ancora NULL a
+	// quel punto, scritto solo alla fine di InitFunctions) con
+	// gFuncCount gia' impostato (scritto molto prima), segfault. Fix:
+	// InitFunctions() ora e' protetta da sInitLock (CBenaphore) e
+	// idempotente (un flag sFunctionsReady, non gFuncCount, decide se
+	// il lavoro e' gia' stato fatto). Qui si spawnano piu' thread che
+	// chiamano TUTTI InitFunctions() insieme, a fabbrica gia' avviata
+	// (dal chiamata iniziale in cima a questo file): non riproduce la
+	// ESATTA finestra temporale del crash reale (che dipendeva da un
+	// timing preciso fra due thread specifici), ma verifica la garanzia
+	// che il fix offre davvero -- nessun crash, nessuna doppia
+	// inizializzazione, gFuncCount/GetFunctionNr restano corretti anche
+	// sotto chiamate concorrenti.
+	{
+		const int kThreadCount = 8;
+		thread_id threads[kThreadCount];
+
+		struct Racer {
+			static int32 Entry(void*)
+			{
+				try { InitFunctions(); }
+				catch (CErr&) { }
+				return 0;
+			}
+		};
+
+		for (int i = 0; i < kThreadCount; i++)
+			threads[i] = spawn_thread(Racer::Entry, "InitFunctions racer",
+				B_NORMAL_PRIORITY, NULL);
+		for (int i = 0; i < kThreadCount; i++)
+			resume_thread(threads[i]);
+		for (int i = 0; i < kThreadCount; i++)
+		{
+			status_t exitVal;
+			wait_for_thread(threads[i], &exitVal);
+		}
+
+		Check(gFuncCount == 140,
+			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 140 "
+			"(nessuna doppia inizializzazione)");
+		Check(GetFunctionNr("SUM") == kSUMFuncNr,
+			"GetFunctionNr(\"SUM\") funziona ancora dopo le chiamate concorrenti, "
+			"gFuncArrayByName non e' corrotto");
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

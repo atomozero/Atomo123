@@ -71,6 +71,8 @@
 #include "Globals.h"
 #endif
 
+#include "Benaphore.h"
+
 #include <AppFileInfo.h>
 #include <Application.h>
 #include <Path.h>
@@ -94,8 +96,33 @@ void SetupDefaultFuncs();
 void SortByName();
 int Compare(const void *e1, const void *e2);
 
+// Vero (non solo "gFuncCount > 0") solo DOPO che InitFunctions() ha
+// finito ogni sua fase, SetupDefaultFuncs() compresa -- vedi il
+// commento su sInitLock/InitFunctions sotto sul perche' serve un
+// flag a parte da gFuncCount stesso.
+static bool sFunctionsReady = false;
+
+// Protegge InitFunctions() da chiamate concorrenti da thread diversi.
+// Bug reale (crash report utente, 2026-08-30): App::RefsReceived puo'
+// arrivare PRIMA di App::ReadyToRun (ordine non garantito, vedi il
+// commento in App.cpp) -- se questo succede, MainWindow::OpenFileAsync
+// puo' gia' avere avviato il thread di caricamento file
+// (OpenFileThreadEntry) mentre ReadyToRun() sta ancora eseguendo
+// InitFunctions() sul thread dell'app. Senza questo lock, il thread di
+// caricamento vedeva gFuncCount gia' impostato (scritto presto in
+// questa funzione, riga poco sotto) ma gFuncArrayByName ANCORA NULL
+// (scritto molto piu' tardi, da SortByName() dopo LoadPlugIns()) --
+// GetFunctionNr() indicizzava quel puntatore nullo (NULL + i*sizeof
+// (FuncRec), un indirizzo piccolo e non valido come 0x450 nel crash
+// report reale) e mandava in segfault l'apertura del file.
+static CBenaphore sInitLock("Atomo123 function table init");
+
 void InitFunctions()
 {
+	StBenaphore lock(&sInitLock);
+	if (sFunctionsReady)
+		return; // gia' inizializzate da un'altra chiamata (vedi sopra)
+
 	gFuncs = (Function*)MALLOC(kFunctionCount * sizeof(Function));
 	FailNil(gFuncs);
 
@@ -108,25 +135,37 @@ void InitFunctions()
 	gFuncDescriptions = (const char**)MALLOC(gFuncCount * sizeof(char*));
 	FailNil(gFuncDescriptions);
 
-	int i;	
+	int i;
 	for (i = 0; i < gFuncCount; i++)
 		gFuncDescriptions[i] = GetIndString(8, i);
-	
+
 	gFuncPasteStrings = (const char**)MALLOC(gFuncCount * sizeof(char*));
 	FailNil(gFuncPasteStrings);
 
 	for (i = 0; i < gFuncCount; i++)
 		gFuncPasteStrings[i] = GetIndString(7, i);
-	
+
 	LoadPlugIns();
 	SortByName();
 
 	SetupDefaultFuncs();
+
+	// Ultima istruzione apposta: da qui in poi ogni thread, anche uno
+	// che non passa da questo lock (es. GetFunctionNr chiamato dopo che
+	// EnsureFunctionsInitialized e' gia' tornato altrove), trova
+	// gFuncArrayByName/gFuncCount/gFuncs gia' completi.
+	sFunctionsReady = true;
 } /* InitFunctions */
 
 void EnsureFunctionsInitialized()
 {
-	if (gFuncCount > 0 || be_app == NULL)
+	// sFunctionsReady, non "gFuncCount > 0": durante l'inizializzazione
+	// (dentro InitFunctions(), protetta da sInitLock) gFuncCount viene
+	// scritto MOLTO prima che gFuncArrayByName sia pronto -- un thread
+	// che leggesse gFuncCount qui senza aspettare l'esito completo
+	// prenderebbe esattamente la stessa scorciatoia pericolosa che ha
+	// causato il crash che sInitLock risolve (vedi il commento li').
+	if (sFunctionsReady || be_app == NULL)
 		return;
 
 	// be_app riflette sempre il VERO processo in esecuzione (Atomo123,
