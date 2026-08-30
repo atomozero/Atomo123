@@ -275,14 +275,14 @@ through `.xlsx`, in either direction, before this work.
 ### Tier 3 — partial fidelity, moderate value
 
 - **Conditional formatting rule types beyond `cellIs`/
-  `duplicateValues`.** `colorScale`/`dataBar`/`iconSet`/`containsText`/
-  `top10`/arbitrary-formula `expression` rules are recognized and
-  safely ignored (no rule added) rather than misapplied — correct but
-  incomplete. This should happen together with the identically-named
-  item already in "Path to full Excel parity" Tier 1 below (icon
-  sets/color scales/data bars as an app feature) — implementing the
-  app-side rule type and its XLSX import in the same pass avoids
-  building the evaluator twice
+  `duplicateValues`.** `colorScale` is now imported for real (see
+  "Path to full Excel parity" Tier 1 above). `dataBar`/`iconSet`/
+  `containsText`/`top10`/arbitrary-formula `expression` rules are
+  still recognized and safely ignored (no rule added) rather than
+  misapplied — correct but incomplete. `dataBar`/`iconSet` should
+  happen together with their app-side rule type (Fase B/C of the same
+  plan) — implementing the app-side rule type and its XLSX import in
+  the same pass avoids building the evaluator twice
 - **Legacy indexed color palette** (`indexed="N"`, the fixed 56-color
   Excel 97-2003 table) resolves to the engine's default color instead
   of the real one. Rare in files saved by modern Excel/LibreOffice,
@@ -392,13 +392,15 @@ list deliberately deviates from pure effort-sorting:
   missing. No closed-form solution exists for `RATE`, so it uses an
   iterative secant-method solver, the same shape as the existing `IRR`
   solver right below it in the same file
-- **Conditional formatting: icon sets, color scales, data bars.**
-  Only two rule types exist today (`eCondCellIsEqual`,
-  `eCondDuplicateValues`); these three are Excel's *other* built-in
-  families and arguably more commonly used in real files than either
-  of the two already done. The live-evaluation framework already
-  exists, this is new rule types plus new per-cell rendering, not a
-  new subsystem
+- ~~**Conditional formatting: color scales.**~~ Shipped (Fase A of a
+  3-phase plan — data bars and icon sets are Fase B/C, still to do).
+  Two-point min/max scale (a 3rd/percentile point is modeled and
+  evaluated but has no UI editor yet), live evaluation
+  (`eCondColorScale` in `Container.styles.cpp`), native `.ascd`
+  persistence (format version 3), and real XLSX import from
+  `<colorScale>`/`<cfvo>` — XLSX *export* of conditional formatting
+  (any rule type, old or new) is still a separate, unaddressed gap,
+  see Tier 3 below
 - **Open a file passed on the command line** (`atomo123 file.xlsx`).
   `App.cpp` has no `ArgvReceived` override at all today — launching
   with a path argument silently opens a blank new document instead,

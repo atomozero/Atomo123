@@ -833,3 +833,28 @@ What shipped since v0.2.8, not yet in a tagged release:
   binary-search array is built fresh at runtime from a sorted copy, so
   the resource file's own row order never mattered functionally, only
   for human readability.
+- Added the color scale conditional formatting rule type (Fase A of a
+  3-phase plan — data bars and icon sets are Fase B/C, still to come).
+  A cell's color now depends on the minimum/maximum of the whole rule
+  range instead of a per-cell independent comparison, a genuinely
+  different two-pass evaluation shape (`eCondColorScale` in
+  `Container.styles.cpp`): collect every numeric cell's value first,
+  resolve each control point's threshold (`min`/`max`/`percent`/
+  `percentile`/`num`, the same vocabulary OOXML's `<cfvo type="...">`
+  uses, adopted verbatim so XLSX import needs no translation), then
+  interpolate each cell's color between the two thresholds bounding
+  its value. The conditional formatting dialog gained a third rule
+  type with a two-color (min/max) editor. Persisted in the native
+  `.ascd` format (bumped to version 3 — files at version 1/2 stay
+  readable, the new per-rule field is only read when the file's own
+  version says it's there) and mirrored in the XLSX translator's own
+  private ASCD reader/writer. XLSX import now parses real
+  `<colorScale>`/`<cfvo>` rules instead of silently discarding them
+  (they don't use `dxfId` like `cellIs`/`duplicateValues` — colors and
+  thresholds are inline). XLSX *export* of conditional formatting (any
+  rule type, old or new) remains a separate, unaddressed gap. Along the
+  way, the version bump broke CSV/ODS export entirely (both
+  translators had their own separate, hardcoded "max readable version"
+  ceiling that rejected the new file version outright) — caught and
+  fixed before release by the full regression sweep, not by either
+  translator's own narrower unit tests.
