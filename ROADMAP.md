@@ -401,17 +401,16 @@ list deliberately deviates from pure effort-sorting:
   `<colorScale>`/`<cfvo>` — XLSX *export* of conditional formatting
   (any rule type, old or new) is still a separate, unaddressed gap,
   see Tier 3 below
-- **Open a file passed on the command line** (`atomo123 file.xlsx`).
-  `App.cpp` has no `ArgvReceived` override at all today — launching
-  with a path argument silently opens a blank new document instead,
-  confirmed live while testing print settings (2026-08-29): `open
-  file.xlsx` also doesn't help, since the file's MIME type isn't
-  associated with this app in a dev/non-packaged build, and there's no
-  fallback for a bare command-line path either way. `RefsReceived`
-  (drag-and-drop, Tracker "Open With", the app's own File→Open dialog)
-  already works correctly — this just needs `ArgvReceived` to convert
-  each path argument into a `BEntry`/`entry_ref` and reuse the same
-  open path `RefsReceived` already calls
+- ~~**Open a file passed on the command line** (`atomo123
+  file.xlsx`).~~ Shipped: `App::ArgvReceived` converts each argument
+  (skipping `argv[0]`, the executable's own path) into a `BEntry`/
+  `entry_ref` and reuses the exact same window-selection logic as
+  `RefsReceived` (`App::OpenOneRef`, extracted from the two functions'
+  previously-duplicated loop bodies) — a nonexistent path is ignored
+  rather than treated as fatal, matching the app's existing permissive
+  behavior for an unsupported format. Live-verified: `./Atomo123
+  file.ascd` opens the real file (confirmed via `hey Atomo123 get
+  Title of Window 0`), not a blank new document
 
 ### Tier 2 — do next: moderate effort, real but narrower value
 

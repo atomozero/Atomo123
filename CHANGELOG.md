@@ -858,3 +858,29 @@ What shipped since v0.2.8, not yet in a tagged release:
   ceiling that rejected the new file version outright) — caught and
   fixed before release by the full regression sweep, not by either
   translator's own narrower unit tests.
+- Fixed a real crash: `App::RefsReceived` can arrive before
+  `App::ReadyToRun` (order not guaranteed on Haiku/BeAPI), so the
+  async file-loader background thread could start parsing formulas
+  while `InitFunctions()` was still mid-flight on the app thread,
+  indexing a not-yet-populated `gFuncArrayByName`. `InitFunctions()`
+  is now protected by a `CBenaphore` and gated by a `sFunctionsReady`
+  flag set only as its last statement; the background loader calls
+  `EnsureFunctionsInitialized()` before touching any file data.
+- Added `App::ArgvReceived`: `atomo123 file.xlsx` from the command
+  line now actually opens the file instead of silently opening a
+  blank document. Reuses the same window-selection logic as
+  `RefsReceived` (extracted into `App::OpenOneRef`); a nonexistent
+  path is ignored rather than treated as fatal.
+- Made translator installation (`make install` in each
+  `translators/*/`) atomic (`cp` to a temp file, then `mv` into
+  place) after a real Tracker crash: its background thumbnail worker
+  calls into installed translators independently of anything the user
+  or a developer is doing, and could execute a half-overwritten
+  shared library if a build happened to land mid-copy.
+- Expanded the `Financial_Sample_CdA.ascd` demo generator
+  (`ui/examples/generate_cda_report.cpp`) to showcase nearly every
+  Atomo123 feature: a real hyperlink, an embedded image, a colored
+  border, all three chart types, a real static Pivot Table next to
+  the live SUMIF grouping, a named range, number-range validation, a
+  duplicate-values conditional formatting example, sheet protection,
+  frozen columns, and bold titles.
