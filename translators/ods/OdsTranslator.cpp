@@ -137,12 +137,17 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	// WriteASCD sopra scrive ormai sempre versione 2 (kASCDVersion, col
-	// byte "kind" per cella), ma un file .ascd piu' vecchio (versione 1
-	// genuina, senza quel byte) resta comunque leggibile:
-	// kASCDMaxReadableVersion e' un limite SEPARATO da kASCDVersion
-	// apposta, non lo stesso valore.
-	static const int32 kASCDMaxReadableVersion = 2;
+	// ui/src/AscdIO.cpp scrive ormai sempre versione 3 (kASCDVersion li',
+	// i punti di controllo della scala di colori per la formattazione
+	// condizionale -- vedi il commento su kASCDVersion in quel file), ma
+	// un file .ascd piu' vecchio (versione 1 genuina, o 2 col solo byte
+	// "kind" per cella) resta comunque leggibile: kASCDMaxReadableVersion
+	// e' un limite SEPARATO da kASCDVersion apposta, non lo stesso
+	// valore. Questa ReadASCD non legge MAI la sezione formattazione
+	// condizionale (si ferma subito dopo le celle, vedi sotto), quindi
+	// il nuovo campo per-regola introdotto in versione 3 non serve
+	// saltarlo qui: basta accettare la versione, non serve altro.
+	static const int32 kASCDMaxReadableVersion = 3;
 	if (version < 1 || version > kASCDMaxReadableVersion)
 		return B_MISMATCHED_VALUES;
 
