@@ -36,6 +36,13 @@ void ChartView::SetMultiData(const MultiChartData& data)
 	Invalidate();
 }
 
+void ChartView::SetScatterData(const std::vector<ScatterPoint>& data)
+{
+	fScatterData = data;
+	fIsMulti = false;
+	Invalidate();
+}
+
 void ChartView::SetSeriesShowValues(int index, bool show)
 {
 	if (index < 0 || index >= (int)fMultiData.showValues.size())
@@ -63,6 +70,15 @@ void ChartView::Draw(BRect updateRect)
 	// Chart.h) -- qui i dati arrivano gia' pronti via SetData/
 	// SetMultiData (ricevuti da MainWindow con un BMessage, vedi
 	// ChartWindow.cpp), non letti direttamente dal documento.
+	if (fType == eScatterChart)
+	{
+		// Percorso completamente a parte (fScatterData, mai fData/
+		// fMultiData): niente serie multiple ne' torta per un grafico a
+		// dispersione, vedi il commento su ScatterPoint in Chart.h.
+		DrawScatterChart(this, Bounds(), fScatterData, fTitle);
+		return;
+	}
+
 	if (!fIsMulti)
 	{
 		DrawChart(this, Bounds(), fData, fType, fTitle);

@@ -198,6 +198,33 @@ bool BuildChartSeries(CContainer* doc, const range& r,
 	return !out.empty();
 }
 
+// Stesso schema di BuildChartSeries sopra, ma ENTRAMBE le colonne
+// devono essere numeriche riga per riga -- niente colonna etichetta,
+// vedi il commento su ScatterPoint in Chart.h.
+bool BuildScatterSeries(CContainer* doc, const range& r, std::vector<ScatterPoint>& out)
+{
+	out.clear();
+	if (!doc || r.right - r.left != 1)
+		return false;
+
+	for (int row = r.top; row <= r.bottom; row++)
+	{
+		Value xv, yv;
+		doc->GetValue(cell(r.left, row), xv);
+		doc->GetValue(cell(r.left + 1, row), yv);
+
+		if (xv.fType != eNumData || yv.fType != eNumData)
+			continue;
+
+		ScatterPoint p;
+		p.x = (double)xv;
+		p.y = (double)yv;
+		out.push_back(p);
+	}
+
+	return !out.empty();
+}
+
 // Intervallo di valori della serie, sempre comprensivo dello zero (la
 // linea di base convenzionale di un grafico a barre/linee): con dati
 // tutti positivi (il caso comune) e' equivalente al vecchio
@@ -661,6 +688,164 @@ void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 		DrawWrappedLabel(view, data[i].label.String(), BPoint(centerX, categoryLabelY),
 			slotWidth - 2, kCategoryLabelMaxLines, true);
 	}
+}
+
+// Coordinata X di "value" dentro "bounds", scalata sull'intervallo
+// [minValue, maxValue] -- minValue cade su bounds.left, maxValue su
+// bounds.right. Stesso principio di ChartValueToY sopra, ma per l'asse
+// orizzontale: nessun altro tipo di grafico in questo file ne ha
+// bisogno (barre/linee/aree hanno sempre una categoria discreta sulle
+// ascisse, mai un valore continuo), quindi resta locale a questo
+// blocco invece di un parametro in piu' su ChartValueToY.
+static float ChartValueToX(double value, double minValue, double maxValue, BRect bounds)
+{
+	return bounds.left + bounds.Width() * (float)((value - minValue) / (maxValue - minValue));
+}
+
+// Intervallo VERO di X e Y (a differenza di ChartValueRange sopra, qui
+// NON si include mai lo zero forzatamente): un grafico a dispersione
+// tipico ha valori lontani da zero su entrambi gli assi (es.
+// temperatura vs pressione), includere lo zero sprecherebbe la
+// maggior parte dell'area disegnabile comprimendo i punti veri in un
+// angolo. Il chiamante deve garantire "data" non vuoto.
+static void ScatterValueRange(const std::vector<ScatterPoint>& data,
+	double* outMinX, double* outMaxX, double* outMinY, double* outMaxY)
+{
+	double minX = data[0].x, maxX = data[0].x;
+	double minY = data[0].y, maxY = data[0].y;
+	for (size_t i = 1; i < data.size(); i++)
+	{
+		if (data[i].x < minX) minX = data[i].x;
+		if (data[i].x > maxX) maxX = data[i].x;
+		if (data[i].y < minY) minY = data[i].y;
+		if (data[i].y > maxY) maxY = data[i].y;
+	}
+	// Un solo punto, o piu' punti tutti allineati su una sola X/Y:
+	// stesso principio di ChartValueRange sopra, allarga di 1 per non
+	// dividere per zero.
+	if (minX == maxX) { minX -= 1; maxX += 1; }
+	if (minY == maxY) { minY -= 1; maxY += 1; }
+	*outMinX = minX; *outMaxX = maxX; *outMinY = minY; *outMaxY = maxY;
+}
+
+void ComputeScatterLayout(const std::vector<ScatterPoint>& data, BRect bounds,
+	std::vector<BPoint>& out)
+{
+	out.clear();
+	if (data.empty())
+		return;
+
+	double minX, maxX, minY, maxY;
+	ScatterValueRange(data, &minX, &maxX, &minY, &maxY);
+
+	for (size_t i = 0; i < data.size(); i++)
+	{
+		float x = ChartValueToX(data[i].x, minX, maxX, bounds);
+		float y = ChartValueToY(data[i].y, minY, maxY, bounds);
+		out.push_back(BPoint(x, y));
+	}
+}
+
+void DrawScatterChart(BView* view, BRect frame, const std::vector<ScatterPoint>& data,
+	const BString& title)
+{
+	view->SetHighColor(255, 255, 255);
+	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
+
+	if (data.empty())
+	{
+		view->SetHighColor(120, 120, 120);
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
+		return;
+	}
+
+	BRect plotArea = frame;
+	plotArea.InsetBy(10, 10);
+	if (!title.IsEmpty())
+		plotArea.top += 18;
+
+	double minX, maxX, minY, maxY;
+	ScatterValueRange(data, &minX, &maxX, &minY, &maxY);
+
+	// Spazio per le etichette numeriche di entrambi gli assi, calcolate
+	// qui apposta invece che con ComputeYAxisTicks/DrawYAxisGrid
+	// (condivisi con barre/linee/aree, pensati per una scala che
+	// include sempre lo zero -- non adatta a un grafico a dispersione,
+	// vedi il commento su ScatterValueRange sopra).
+	font_height fh;
+	view->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+	plotArea.bottom -= lineHeight + 6;
+
+	const int kDivisions = 4;
+	float yLabelWidth = 0;
+	for (int i = 0; i <= kDivisions; i++)
+	{
+		double value = minY + (maxY - minY) * i / kDivisions;
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%g", value);
+		float width = view->StringWidth(buf);
+		if (width > yLabelWidth)
+			yLabelWidth = width;
+	}
+	plotArea.left += yLabelWidth + 6;
+
+	// Griglia orizzontale (asse Y) + etichette a sinistra.
+	view->SetHighColor(225, 225, 225);
+	for (int i = 0; i <= kDivisions; i++)
+	{
+		double value = minY + (maxY - minY) * i / kDivisions;
+		float y = ChartValueToY(value, minY, maxY, plotArea);
+		view->StrokeLine(BPoint(plotArea.left, y), BPoint(plotArea.right, y));
+	}
+	view->SetHighColor(90, 90, 90);
+	for (int i = 0; i <= kDivisions; i++)
+	{
+		double value = minY + (maxY - minY) * i / kDivisions;
+		float y = ChartValueToY(value, minY, maxY, plotArea);
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%g", value);
+		float width = view->StringWidth(buf);
+		view->DrawString(buf, BPoint(plotArea.left - width - 6, y + 4));
+	}
+
+	// Griglia verticale (asse X) + etichette sotto.
+	view->SetHighColor(225, 225, 225);
+	for (int i = 0; i <= kDivisions; i++)
+	{
+		double value = minX + (maxX - minX) * i / kDivisions;
+		float x = ChartValueToX(value, minX, maxX, plotArea);
+		view->StrokeLine(BPoint(x, plotArea.top), BPoint(x, plotArea.bottom));
+	}
+	view->SetHighColor(90, 90, 90);
+	for (int i = 0; i <= kDivisions; i++)
+	{
+		double value = minX + (maxX - minX) * i / kDivisions;
+		float x = ChartValueToX(value, minX, maxX, plotArea);
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%g", value);
+		float width = view->StringWidth(buf);
+		view->DrawString(buf, BPoint(x - width / 2, plotArea.bottom + lineHeight));
+	}
+
+	view->SetHighColor(0, 0, 0);
+	view->StrokeRect(plotArea);
+
+	// Soli punti, MAI una linea di collegamento -- il vero grafico
+	// "Dispersione" di Excel (non "Dispersione con linee dritte",
+	// variante rara nell'uso reale, non implementata).
+	std::vector<BPoint> points;
+	ComputeScatterLayout(data, plotArea, points);
+	view->SetHighColor(70, 110, 190);
+	for (size_t i = 0; i < points.size(); i++)
+	{
+		BRect dot(points[i].x - 3, points[i].y - 3, points[i].x + 3, points[i].y + 3);
+		view->FillEllipse(dot);
+	}
+
+	view->SetHighColor(0, 0, 0);
+	view->StrokeRect(frame);
 }
 
 // Tavolozza fissa per gli spicchi della torta: a differenza di barre/

@@ -25,6 +25,10 @@ public:
 	ChartView();
 
 	void SetData(const std::vector<ChartSeries>& data);
+	// Grafico a dispersione (Fase 35): percorso a parte da SetData/
+	// SetMultiData, i dati non condividono la stessa forma (coppie
+	// (x, y), non etichetta+valore) -- vedi ScatterPoint in Chart.h.
+	void SetScatterData(const std::vector<ScatterPoint>& data);
 	// Fase 17 (serie multiple): percorso alternativo a SetData, usato
 	// quando l'intervallo richiesto ha piu' di due colonne -- vedi il
 	// commento su MultiChartData in Chart.h. fIsMulti sceglie quale dei
@@ -45,6 +49,7 @@ public:
 private:
 	std::vector<ChartSeries> fData;
 	MultiChartData fMultiData;
+	std::vector<ScatterPoint> fScatterData;
 	bool fIsMulti;
 	ChartType fType;
 	BString fTitle;

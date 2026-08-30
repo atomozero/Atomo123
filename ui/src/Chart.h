@@ -42,7 +42,8 @@ enum ChartType {
 	// appesi in coda, mai in mezzo -- lo stesso principio di eBarChart=0
 	// sopra, un file .ascd scritto prima di un nuovo tipo non deve mai
 	// vedere un valore esistente cambiare significato.
-	eAreaChart = 3
+	eAreaChart = 3,
+	eScatterChart = 4
 };
 
 // Un grafico incorporato nel foglio (vedi SheetView::Draw): posizione
@@ -151,6 +152,46 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 // negativo riempie sotto lo zero fino al punto, mai sopra: coerente con
 // come ComputeLineLayout gia' posiziona un punto negativo.
 void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title = BString());
+
+// Grafico a dispersione/XY (Fase 35): a differenza di TUTTI i tipi
+// sopra (una categoria testuale + un valore), qui ENTRAMBE le colonne
+// dell'intervallo sono numeriche -- niente asse a categorie, un vero
+// asse X a valori come quello Y. Non condivide ChartSeries/
+// BuildChartSeries per questo motivo: un punto e' una coppia (x, y),
+// non un'etichetta con un valore. Percorso di disegno completamente a
+// parte in DrawChart e nei chiamanti (ChartView/SheetView), mai
+// mescolato con gli altri tipi.
+struct ScatterPoint {
+	double x, y;
+};
+
+// L'intervallo deve avere esattamente due colonne, ENTRAMBE numeriche
+// riga per riga (a differenza di BuildChartSeries, dove la prima e'
+// sempre un'etichetta testuale) -- una riga con un valore non
+// numerico in una delle due colonne viene saltata, stesso principio
+// permissivo di BuildChartSeries. Restituisce false se l'intervallo
+// non ha due colonne o se non risulta nessuna riga valida.
+bool BuildScatterSeries(CContainer* doc, const range& r, std::vector<ScatterPoint>& out);
+
+// Calcola la posizione pixel di ogni punto dentro "bounds", scalando
+// X e Y ciascuno sul proprio intervallo minimo/massimo VERO (a
+// differenza di ChartValueRange usato da barre/linee/aree, qui NON si
+// forza lo zero nella scala: un grafico a dispersione tipico ha
+// valori lontani da zero su entrambi gli assi, includerlo sprecherebbe
+// la maggior parte dell'area disegnabile). Funzione pura, verificabile
+// senza BView/Draw.
+void ComputeScatterLayout(const std::vector<ScatterPoint>& data, BRect bounds,
+	std::vector<BPoint>& out);
+
+// Disegna soli punti (pallini), MAI una linea di collegamento fra loro
+// -- il vero grafico "Dispersione" di Excel, distinto da "Dispersione
+// con linee dritte" (non implementato, variante rara nell'uso reale).
+// Asse X e asse Y entrambi con griglia/etichette numeriche, calcolate
+// qui apposta (non tramite ComputeYAxisTicks/DrawYAxisGrid, condivisi
+// con barre/linee/aree e pensati per una scala che include sempre lo
+// zero).
+void DrawScatterChart(BView* view, BRect frame, const std::vector<ScatterPoint>& data,
 	const BString& title = BString());
 
 // Smista verso DrawBarChart/DrawLineChart/DrawPieChart secondo "type"

@@ -704,7 +704,7 @@ private:
 	void ShowFindWindow();
 	void ShowChartWindow();
 	void ShowPivotWindow();
-	void HandleChartRequest(const char* rangeText);
+	void HandleChartRequest(const char* rangeText, ChartType type);
 	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg);
 	void ShowNameWindow();
 	void RefreshNameWindow();

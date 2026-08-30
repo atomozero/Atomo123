@@ -3276,6 +3276,28 @@ void SheetView::Draw(BRect updateRect)
 			if (!obj.frame.Intersects(updateRect))
 				continue;
 
+			// Dispersione (Fase 35): percorso a parte PRIMA del
+			// controllo "piu' di due colonne" sotto -- un grafico a
+			// dispersione ha SEMPRE esattamente due colonne (X, Y
+			// entrambe numeriche), la stessa forma di un grafico a
+			// barre/linee a singola serie, quindi va intercettato qui
+			// per tipo, non dedotto dalla forma dell'intervallo.
+			if (obj.type == eScatterChart)
+			{
+				std::vector<ScatterPoint> points;
+				BuildScatterSeries(fDoc, obj.dataRange, points);
+				DrawScatterChart(this, obj.frame, points, obj.title);
+
+				SetHighColor(80, 80, 80);
+				FillRect(ChartResizeHandle(obj));
+				if ((int)i == fSelectedChartIndex)
+				{
+					SetHighColor(30, 100, 200);
+					StrokeRect(obj.frame);
+				}
+				continue;
+			}
+
 			// Un intervallo con piu' di due colonne e' un grafico a
 			// serie multiple (Fase 17, vedi MultiChartData in
 			// Chart.h) -- non supportato dalla torta (vedi il

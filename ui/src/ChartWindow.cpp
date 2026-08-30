@@ -68,6 +68,7 @@ ChartWindow::ChartWindow(BMessenger target)
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Linee"), new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Torta"), new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Area"), new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Dispersione (XY)"), new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->ItemAt(0)->SetMarked(true);
 	fTypeField = new BMenuField("type", B_TRANSLATE("Tipo:"), typeMenu);
 	fTypeField->Menu()->SetTargetForItems(this);
@@ -138,15 +139,16 @@ ChartWindow::ChartWindow(BMessenger target)
 ChartType ChartWindow::SelectedType() const
 {
 	// Corrispondenza posizionale con l'ordine di inserimento in
-	// BPopUpMenu sopra (0=Barre, 1=Linee, 2=Torta, 3=Area) e con i
-	// valori dell'enum ChartType in Chart.h -- niente da cercare per
-	// nome.
+	// BPopUpMenu sopra (0=Barre, 1=Linee, 2=Torta, 3=Area,
+	// 4=Dispersione) e con i valori dell'enum ChartType in Chart.h --
+	// niente da cercare per nome.
 	int32 index = fTypeField->Menu()->IndexOf(fTypeField->Menu()->FindMarked());
 	switch (index)
 	{
 		case 1: return eLineChart;
 		case 2: return ePieChart;
 		case 3: return eAreaChart;
+		case 4: return eScatterChart;
 		default: return eBarChart;
 	}
 }
@@ -162,6 +164,13 @@ void ChartWindow::RequestDraw()
 	fChartView->SetTitle(fTitleField->Text());
 	BMessage request(kMsgChartRequest);
 	request.AddString("range", fRangeField->Text());
+	// Il tipo scelto viaggia con la richiesta (Fase 35): un grafico a
+	// dispersione (Chart.h, ScatterPoint) legge l'intervallo in un modo
+	// completamente diverso (entrambe le colonne numeriche, niente
+	// etichetta) da MainWindow::HandleChartRequest, che altrimenti non
+	// avrebbe modo di saperlo dalla sola forma dell'intervallo (due
+	// colonne e' anche la forma normale di un grafico a barre/linee).
+	request.AddInt32("type", (int32)SelectedType());
 	fTarget.SendMessage(&request);
 }
 
@@ -262,6 +271,26 @@ void ChartWindow::MessageReceived(BMessage* message)
 				data.push_back(s);
 			}
 			fChartView->SetData(data);
+			return;
+		}
+
+		case kMsgChartDataScatter:
+		{
+			// Nessuna checkbox qui neanche: un grafico a dispersione non
+			// ha serie multiple, stesso principio di kMsgChartData sopra.
+			ClearSeriesCheckboxes();
+
+			std::vector<ScatterPoint> data;
+			double x, y;
+			for (int32 i = 0; message->FindDouble("x", i, &x) == B_OK
+					&& message->FindDouble("y", i, &y) == B_OK; i++)
+			{
+				ScatterPoint p;
+				p.x = x;
+				p.y = y;
+				data.push_back(p);
+			}
+			fChartView->SetScatterData(data);
 			return;
 		}
 

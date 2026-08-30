@@ -160,6 +160,75 @@ int main()
 	DrawMultiAreaChart(view, wideFrame, multi, "");
 	Check(true, "DrawMultiAreaChart (Fase 35) con le stesse categorie/serie non va in crash");
 
+	// DrawScatterChart (Fase 35, dispersione/XY): a differenza degli
+	// altri tipi non passa dal dispatcher DrawChart (i dati sono
+	// ScatterPoint, non ChartSeries), va chiamata direttamente. Titolo
+	// lunghissimo e un frame molto largo, stesso stress dei controlli
+	// sopra.
+	std::vector<ScatterPoint> longTitleScatter;
+	for (int i = 0; i < 5; i++)
+	{
+		ScatterPoint sp; sp.x = i; sp.y = i * i;
+		longTitleScatter.push_back(sp);
+	}
+	DrawScatterChart(view, wideFrame, longTitleScatter,
+		"Un titolo di grafico a dispersione estremamente lungo che non dovrebbe mai sconfinare fuori dal frame");
+	Check(true, "DrawScatterChart con un titolo lunghissimo non va in crash");
+
+	DrawScatterChart(view, tinyFrame, longTitleScatter, "");
+	Check(true, "DrawScatterChart in un frame minuscolo non va in crash");
+
+	std::vector<ScatterPoint> emptyScatter;
+	DrawScatterChart(view, wideFrame, emptyScatter, "");
+	Check(true, "DrawScatterChart senza dati non va in crash");
+
+	// Verifica pixel-per-pixel (stesso principio del blocco Area sopra):
+	// un solo pallino disegnato esattamente al centro del plotArea deve
+	// lasciare un pixel non bianco li', mentre l'angolo del frame (fuori
+	// da plotArea) resta bianco puro.
+	{
+		std::vector<ScatterPoint> onePoint;
+		ScatterPoint centerPoint; centerPoint.x = 0; centerPoint.y = 0;
+		onePoint.push_back(centerPoint);
+		BRect scatterFrame(0, 0, 199, 199);
+		DrawScatterChart(view, scatterFrame, onePoint, "");
+		view->Sync();
+
+		uint8* bits = (uint8*)bitmap.Bits();
+		int32 bpr = bitmap.BytesPerRow();
+		// (5,5): dentro il margine riservato agli assi, fuori sia dal
+		// plotArea che dal bordo nero StrokeRect(frame) -- stessa
+		// convenzione di campionamento del blocco Area sopra.
+		uint8* margin = bits + 5 * bpr + 5 * 4;
+		Check(margin[0] > 250 && margin[1] > 250 && margin[2] > 250,
+			"il margine del frame (fuori da plotArea) resta bianco puro con un solo punto disegnato");
+
+		// plotArea non e' centrato esattamente a (100,100) nel frame
+		// (margine sinistro/inferiore allargati per le etichette degli
+		// assi, vedi DrawScatterChart), quindi invece di campionare un
+		// singolo pixel si cerca il colore pieno del pallino (70,110,190,
+		// vedi FillEllipse in DrawScatterChart) da qualche parte nel
+		// bitmap -- prova che il punto singolo (intervallo degenere su
+		// entrambi gli assi) e' stato disegnato davvero, non solo che
+		// "qualcosa non e' bianco".
+		bool dotFound = false;
+		for (int32 y = 0; y < (int32)scatterFrame.Height() && !dotFound; y++)
+		{
+			uint8* row = bits + y * bpr;
+			for (int32 x = 0; x < (int32)scatterFrame.Width(); x++)
+			{
+				uint8* px = row + x * 4;
+				if (px[0] == 190 && px[1] == 110 && px[2] == 70)
+				{
+					dotFound = true;
+					break;
+				}
+			}
+		}
+		Check(dotFound,
+			"il pallino di un punto singolo (intervallo degenere) e' visibile da qualche parte nel plotArea");
+	}
+
 	bitmap.Unlock();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

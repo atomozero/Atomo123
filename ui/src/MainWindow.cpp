@@ -4221,7 +4221,7 @@ void MainWindow::HandleGoToName(const char* name)
 // dati estratti via BMessage: sia la lettura del documento sia la
 // costruzione del messaggio di risposta girano sul thread di
 // MainWindow (che possiede fDoc), mai su quello di ChartWindow.
-void MainWindow::HandleChartRequest(const char* rangeText)
+void MainWindow::HandleChartRequest(const char* rangeText, ChartType type)
 {
 	if (!fDoc || !fChartWindow)
 		return;
@@ -4234,6 +4234,34 @@ void MainWindow::HandleChartRequest(const char* rangeText)
 				"(etichette, valori) con almeno una riga numerica, es. A1:B5."),
 			B_TRANSLATE("OK"));
 		alert->Go();
+		return;
+	}
+
+	// Dispersione (Fase 35): percorso a parte PRIMA di tutto il resto,
+	// anche se l'intervallo ha esattamente due colonne (la stessa
+	// forma normale di un grafico a barre/linee) -- ENTRAMBE le
+	// colonne sono numeriche qui, non un'etichetta piu' un valore,
+	// vedi BuildScatterSeries/ScatterPoint in Chart.h.
+	if (type == eScatterChart)
+	{
+		std::vector<ScatterPoint> points;
+		if (!BuildScatterSeries(fDoc, r, points))
+		{
+			BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
+				B_TRANSLATE("Intervallo non valido: un grafico a dispersione richiede "
+					"esattamente due colonne NUMERICHE (X, Y) con almeno una riga valida, "
+					"es. A1:B5."), B_TRANSLATE("OK"));
+			alert->Go();
+			return;
+		}
+
+		BMessage data(kMsgChartDataScatter);
+		for (size_t i = 0; i < points.size(); i++)
+		{
+			data.AddDouble("x", points[i].x);
+			data.AddDouble("y", points[i].y);
+		}
+		BMessenger(fChartWindow).SendMessage(&data);
 		return;
 	}
 
@@ -4314,11 +4342,19 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 	// Validazione: il ChartObject memorizza solo l'intervallo (letto
 	// dal vivo a ogni ridisegno da SheetView, vedi il commento sopra),
 	// quindi qui basta verificare che i dati abbiano una forma valida,
-	// non serve tenerli. Due colonne (o meno) usano la validazione a
+	// non serve tenerli. Dispersione (Fase 35) prima di tutto il resto,
+	// stesso motivo di HandleChartRequest sopra: due colonne e' anche
+	// la forma normale di barre/linee, serve il tipo per distinguere.
+	// Due colonne senza dispersione (o meno) usano la validazione a
 	// singola serie di sempre; piu' colonne quella a serie multiple
 	// (Fase 17, vedi MultiChartData in Chart.h).
 	bool validData;
-	if (dataRange.right - dataRange.left > 1)
+	if (type == eScatterChart)
+	{
+		std::vector<ScatterPoint> points;
+		validData = BuildScatterSeries(fDoc, dataRange, points);
+	}
+	else if (dataRange.right - dataRange.left > 1)
 	{
 		MultiChartData multi;
 		validData = BuildMultiChartSeries(fDoc, dataRange, multi);
@@ -5945,8 +5981,10 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgChartRequest:
 		{
 			BString rangeText;
+			int32 type = eBarChart;
+			message->FindInt32("type", &type);
 			if (message->FindString("range", &rangeText) == B_OK)
-				HandleChartRequest(rangeText.String());
+				HandleChartRequest(rangeText.String(), (ChartType)type);
 			break;
 		}
 

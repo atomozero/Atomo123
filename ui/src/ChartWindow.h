@@ -3,7 +3,7 @@
 
 	Finestra "Grafico": un campo di testo per l'intervallo dati (es.
 	"A1:B5", due colonne: etichette e valori), un selettore del tipo
-	(Barre/Linee/Torta), un'anteprima (ChartView, "Disegna") e un
+	(Barre/Linee/Torta/Area/Dispersione), un'anteprima (ChartView, "Disegna") e un
 	secondo campo con la cella di destinazione per incorporare davvero
 	il grafico nel foglio ("Inserisci nel foglio", vedi ChartObject in
 	Chart.h). Stessa regola sui thread di FindWindow (vedi
@@ -33,6 +33,12 @@ const uint32 kMsgChartInsert = 'chin';
 // colonne (serie multiple, Fase 17) -- vedi il commento su
 // MultiChartData in Chart.h e il gestore in ChartWindow.cpp.
 const uint32 kMsgChartDataMulti = 'chdm';
+// Risposta di HandleChartRequest per un grafico a dispersione (Fase
+// 35): il tipo scelto viaggia DENTRO kMsgChartRequest stesso (vedi
+// RequestDraw), cosi' MainWindow sa quale dei tre percorsi (singola
+// serie/multi/dispersione) costruire senza doverlo indovinare dalla
+// sola forma dell'intervallo.
+const uint32 kMsgChartDataScatter = 'chds';
 
 class BBox;
 class BCheckBox;

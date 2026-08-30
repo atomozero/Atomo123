@@ -381,6 +381,83 @@ int main()
 			"lo stesso indice di categoria cade sulla stessa X per tutte le serie (stesso asse a categorie)");
 	}
 
+	// BuildScatterSeries (dispersione/XY): esattamente due colonne
+	// NUMERICHE, X e Y sulla stessa riga, colonne 17-18 per non
+	// toccare i dati usati sopra.
+	doc.NewCell(cell(17, 1), Value(1.0), NULL);
+	doc.NewCell(cell(18, 1), Value(10.0), NULL);
+	doc.NewCell(cell(17, 2), Value(2.0), NULL);
+	doc.NewCell(cell(18, 2), Value(30.0), NULL);
+	doc.NewCell(cell(17, 3), Value(3.0), NULL);
+	doc.NewCell(cell(18, 3), Value(20.0), NULL);
+
+	std::vector<ScatterPoint> scatter;
+	range scatterRange(17, 1, 18, 3);
+	bool scatterOk = BuildScatterSeries(&doc, scatterRange, scatter);
+	Check(scatterOk, "BuildScatterSeries riesce su un intervallo A1:B3 con due colonne numeriche");
+	Check(scatter.size() == 3, "estrae le 3 coppie (x,y)");
+	if (scatter.size() == 3)
+	{
+		Check(scatter[0].x == 1.0 && scatter[0].y == 10.0, "prima coppia: (1,10)");
+		Check(scatter[1].x == 2.0 && scatter[1].y == 30.0, "seconda coppia: (2,30)");
+		Check(scatter[2].x == 3.0 && scatter[2].y == 20.0, "terza coppia: (3,20)");
+	}
+
+	// Una riga con X o Y non numerico viene saltata, non causa un
+	// errore ne' una coppia spazzatura -- stessa convenzione di
+	// BuildChartSeries.
+	doc.NewCell(cell(17, 4), Value("testo"), NULL);
+	doc.NewCell(cell(18, 4), Value(99.0), NULL);
+	std::vector<ScatterPoint> scatterWithGap;
+	range scatterFourRows(17, 1, 18, 4);
+	BuildScatterSeries(&doc, scatterFourRows, scatterWithGap);
+	Check(scatterWithGap.size() == 3,
+		"una riga con X non numerico viene saltata, non genera una quarta coppia");
+
+	// Un intervallo con una sola colonna o con tre colonne non e' il
+	// formato atteso (X, Y) e viene rifiutato esplicitamente.
+	std::vector<ScatterPoint> scatterBadShape;
+	range scatterOneColumn(17, 1, 17, 3);
+	Check(!BuildScatterSeries(&doc, scatterOneColumn, scatterBadShape),
+		"un intervallo di una sola colonna viene rifiutato (serve X e Y)");
+	Check(!BuildScatterSeries(&doc, threeColumns, scatterBadShape),
+		"un intervallo con tre colonne viene rifiutato (dispersione vuole esattamente X, Y)");
+
+	// ComputeScatterLayout: puro calcolo geometrico, i punti mantengono
+	// l'ordine dei dati (non vengono riordinati per X o Y).
+	std::vector<BPoint> scatterPoints;
+	BRect scatterBounds(0, 0, 100, 50);
+	ComputeScatterLayout(scatter, scatterBounds, scatterPoints);
+
+	Check(scatterPoints.size() == 3, "ComputeScatterLayout produce un punto per coppia");
+	if (scatterPoints.size() == 3)
+	{
+		Check(scatterPoints[0].x < scatterPoints[1].x && scatterPoints[1].x < scatterPoints[2].x,
+			"le coordinate X crescono con il valore X dei dati (1 < 2 < 3), l'ordine non e' quello dei dati ma quello dei valori");
+		Check(scatterPoints[1].y < scatterPoints[0].y && scatterPoints[1].y < scatterPoints[2].y,
+			"il punto col valore Y maggiore (30, il secondo) sta piu' in alto (y minore) degli altri due (10 e 20)");
+	}
+
+	std::vector<BPoint> emptyScatterPoints;
+	std::vector<ScatterPoint> noScatterData;
+	ComputeScatterLayout(noScatterData, scatterBounds, emptyScatterPoints);
+	Check(emptyScatterPoints.empty(), "ComputeScatterLayout su dati vuoti non produce punti");
+
+	// Un solo punto (X e Y entrambi degeneri, min == max su entrambi
+	// gli assi): non deve dividere per zero, il punto risultante deve
+	// restare dentro bounds.
+	std::vector<ScatterPoint> singleScatter;
+	ScatterPoint singlePoint; singlePoint.x = 5.0; singlePoint.y = 5.0;
+	singleScatter.push_back(singlePoint);
+	std::vector<BPoint> singleScatterLayout;
+	ComputeScatterLayout(singleScatter, scatterBounds, singleScatterLayout);
+	Check(singleScatterLayout.size() == 1, "ComputeScatterLayout con un solo punto non va in errore");
+	if (singleScatterLayout.size() == 1)
+	{
+		Check(scatterBounds.Contains(singleScatterLayout[0]),
+			"un solo punto (intervallo degenere su entrambi gli assi) resta dentro bounds");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();
