@@ -492,7 +492,63 @@ int main()
 			blocks[b].critCol, blocks[b].valCol, blocks[b].currency, blocks[b].integer);
 	}
 
-	// Tre grafici incorporati (barre, torta, barre): dati letti dal
+	// Dati per il grafico COMBINATO (Fase 35): stesse categorie del
+	// blocco "Per segmento" sopra (colonna 1-2), ma con una SECONDA
+	// colonna serie (Profitto) accanto -- serve una tabella con due
+	// colonne di valori NUMERICHE oltre alle etichette per un grafico
+	// combinato barre+linee, che WriteLiveCategoryTable (una sola
+	// colonna valore) non produce da sola. Colonne 13-15, lontane da
+	// tutte le tabelle sopra apposta per non serve nessuna colonna di
+	// margine extra.
+	int comboLabelRow = 3;
+	WriteLabel(pivot, cell(13, comboLabelRow), "Segmento");
+	WriteLabel(pivot, cell(14, comboLabelRow), "Vendite");
+	WriteLabel(pivot, cell(15, comboLabelRow), "Profitto");
+	for (size_t i = 0; i < segments.size(); i++)
+	{
+		int row = comboLabelRow + 1 + (int)i;
+		WriteLabel(pivot, cell(13, row), segments[i].String());
+
+		char salesFormula[128];
+		snprintf(salesFormula, sizeof(salesFormula), "=SUMIF(Dati!A2:A701;\"%s\";Dati!J2:J701)",
+			segments[i].String());
+		TryToParseString(salesFormula, cell(14, row), pivot, true);
+		Currency(pivot, cell(14, row));
+
+		char profitFormula[128];
+		snprintf(profitFormula, sizeof(profitFormula), "=SUMIF(Dati!A2:A701;\"%s\";Dati!L2:L701)",
+			segments[i].String());
+		TryToParseString(profitFormula, cell(15, row), pivot, true);
+		Currency(pivot, cell(15, row));
+	}
+
+	// Dati per il grafico a DISPERSIONE (Fase 35): un grafico XY vuole
+	// due colonne NUMERICHE senza etichette -- qui X e Y sono entrambe
+	// derivate dal vivo dal dataset reale (Unita' vendute e Profitto,
+	// sommate per prodotto), non valori inventati, per mostrare una
+	// correlazione vera. Colonne 17-18, stesso principio di isolamento
+	// del blocco combinato sopra.
+	int scatterFirstRow = 3;
+	for (size_t i = 0; i < products.size(); i++)
+	{
+		int row = scatterFirstRow + (int)i;
+
+		char unitsFormula[128];
+		snprintf(unitsFormula, sizeof(unitsFormula), "=SUMIF(Dati!C2:C701;\"%s\";Dati!E2:E701)",
+			products[i].String());
+		TryToParseString(unitsFormula, cell(17, row), pivot, true);
+		Integer(pivot, cell(17, row));
+
+		char profitFormula[128];
+		snprintf(profitFormula, sizeof(profitFormula), "=SUMIF(Dati!C2:C701;\"%s\";Dati!L2:L701)",
+			products[i].String());
+		TryToParseString(profitFormula, cell(18, row), pivot, true);
+		Currency(pivot, cell(18, row));
+	}
+
+	// Sei grafici incorporati (barre, torta, barre, linee, combinato,
+	// dispersione -- tutti i tipi disponibili tranne l'Area, che riusa
+	// gli stessi dati mensili della linea appena sotto): dati letti dal
 	// vivo dalle formule appena scritte sopra -- il grafico si
 	// aggiorna da solo ogni volta che il documento viene ricalcolato,
 	// non serve rigenerare il file.
@@ -523,6 +579,39 @@ int main()
 	chartMonth.title = "Andamento vendite per mese";
 	chartMonth.dataRange = range(10, 4, 11, 3 + (int)months.size());
 	chartMonth.frame = BRect(520, 450, 900, 650);
+
+	// Grafico ad AREA (Fase 35): stessi dati mensili del grafico a
+	// linee sopra, riuso deliberato -- il tipo Area e' pensato proprio
+	// per lo stesso caso d'uso (un andamento nel tempo), la differenza
+	// e' solo visiva (area riempita sotto la linea).
+	ChartObject chartMonthArea;
+	chartMonthArea.type = eAreaChart;
+	chartMonthArea.title = "Andamento vendite per mese (area)";
+	chartMonthArea.dataRange = chartMonth.dataRange;
+	chartMonthArea.frame = BRect(920, 230, 1300, 430);
+
+	// Grafico COMBINATO (Fase 35): Vendite come barre, Profitto come
+	// linea, stessa scala e stesso asse categorie (vedi il commento su
+	// DrawComboChart in Chart.cpp) -- un caso reale in cui vedere
+	// entrambe le grandezze insieme, per segmento, ha senso (un
+	// segmento puo' vendere molto ma avere un profitto basso).
+	ChartObject chartSegCombo;
+	chartSegCombo.type = eComboChart;
+	chartSegCombo.title = "Vendite (barre) e profitto (linea) per segmento";
+	chartSegCombo.dataRange = range(13, comboLabelRow, 15, comboLabelRow + (int)segments.size());
+	chartSegCombo.frame = BRect(1320, 230, 1700, 430);
+
+	// Grafico a DISPERSIONE (Fase 35): la stessa correlazione unita'
+	// vendute/profitto per prodotto usata sopra per costruire i dati,
+	// qui visualizzata come punti invece che come due barre separate --
+	// esattamente il caso d'uso di un grafico XY (cercare una relazione
+	// fra due grandezze), non un trend nel tempo ne' un confronto per
+	// categoria.
+	ChartObject chartProductScatter;
+	chartProductScatter.type = eScatterChart;
+	chartProductScatter.title = "Unita' vendute vs profitto per prodotto";
+	chartProductScatter.dataRange = range(17, scatterFirstRow, 18, scatterFirstRow + (int)products.size() - 1);
+	chartProductScatter.frame = BRect(920, 450, 1300, 650);
 
 	// Tabella pivot VERA (Inserisci -> Tabella Pivot, Fase 29 per il
 	// raggruppamento a piu' livelli): a differenza dei quattro blocchi
@@ -1034,6 +1123,9 @@ int main()
 	pivotSheet.charts.push_back(chartCountry);
 	pivotSheet.charts.push_back(chartProduct);
 	pivotSheet.charts.push_back(chartMonth);
+	pivotSheet.charts.push_back(chartMonthArea);
+	pivotSheet.charts.push_back(chartSegCombo);
+	pivotSheet.charts.push_back(chartProductScatter);
 	pivotSheet.colWidths.push_back(std::make_pair(1, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(4, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(7, 130.0f));
