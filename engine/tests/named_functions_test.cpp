@@ -73,7 +73,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 141, "InitFunctions carica tutte le 141 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 142, "InitFunctions carica tutte le 142 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -2317,6 +2317,68 @@ int main()
 		doc.Release();
 	}
 
+	// SORT (Fase 34, stesso gruppo di UNIQUE sopra): terza funzione
+	// "spill". Tabella a due colonne (Nome, Punteggio) ordinata per la
+	// seconda colonna (sort_index=2) in ordine decrescente
+	// (sort_order=-1) -- verifica che ogni RIGA si sposti insieme come
+	// un'unita' (il nome segue il suo punteggio), non solo la colonna
+	// chiave da sola.
+	{
+		CContainer& doc = *new CContainer(NULL, NULL);
+
+		TryToParseString("Anna", cell(1, 1), &doc, true);
+		TryToParseString("30", cell(2, 1), &doc, true);
+		TryToParseString("Bruno", cell(1, 2), &doc, true);
+		TryToParseString("10", cell(2, 2), &doc, true);
+		TryToParseString("Carla", cell(1, 3), &doc, true);
+		TryToParseString("20", cell(2, 3), &doc, true);
+
+		TryToParseString("=SORT(A1:B3;2;-1)", cell(4, 1), &doc, true);
+		doc.CalcCell(cell(4, 1));
+
+		Value v;
+		doc.GetValue(cell(4, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Anna") == 0,
+			"=SORT(A1:B3;2;-1) nella cella owner (D1) mostra la prima riga dopo l'ordinamento "
+			"(Anna, il punteggio piu' alto)");
+		doc.GetValue(cell(5, 1), v);
+		Check(v.fType == eNumData && (double)v == 30,
+			"la seconda colonna della prima riga spillata (E1) resta 30, la riga si e' spostata intera");
+
+		doc.GetValue(cell(4, 2), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Carla") == 0,
+			"la seconda riga spillata (D2) e' Carla (punteggio 20), seconda per ordine decrescente");
+		doc.GetValue(cell(5, 2), v);
+		Check(v.fType == eNumData && (double)v == 20,
+			"la seconda colonna della seconda riga spillata (E2) resta 20, non scambiata con altre righe");
+
+		doc.GetValue(cell(4, 3), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Bruno") == 0,
+			"la terza riga spillata (D3) e' Bruno (punteggio 10, il piu' basso), ultimo in ordine decrescente");
+
+		range spillRange = doc.GetSpillRange(cell(4, 1));
+		Check(spillRange.top == 1 && spillRange.bottom == 3
+				&& spillRange.left == 4 && spillRange.right == 5,
+			"lo spill di SORT copre esattamente D1:E3, tre righe per due colonne (stesse dimensioni "
+			"dell'intervallo sorgente A1:B3)");
+
+		// sort_index/sort_order omessi: crescente sulla prima colonna,
+		// come il vero SORT di Excel senza argomenti opzionali.
+		TryToParseString("=SORT(A1:A3)", cell(7, 1), &doc, true);
+		doc.CalcCell(cell(7, 1));
+		doc.GetValue(cell(7, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Anna") == 0,
+			"=SORT(A1:A3) senza argomenti opzionali ordina crescente sulla prima (unica) colonna");
+		doc.GetValue(cell(7, 2), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Bruno") == 0,
+			"seconda riga di SORT(A1:A3) crescente: Bruno dopo Anna in ordine alfabetico");
+		doc.GetValue(cell(7, 3), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Carla") == 0,
+			"terza riga di SORT(A1:A3) crescente: Carla, ultima in ordine alfabetico");
+
+		doc.Release();
+	}
+
 	// InitFunctions() concorrente da piu' thread (bug reale, crash
 	// report utente 2026-08-30): App::RefsReceived puo' arrivare PRIMA
 	// di App::ReadyToRun (ordine non garantito), quindi il thread di
@@ -2359,8 +2421,8 @@ int main()
 			wait_for_thread(threads[i], &exitVal);
 		}
 
-		Check(gFuncCount == 141,
-			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 141 "
+		Check(gFuncCount == 142,
+			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 142 "
 			"(nessuna doppia inizializzazione)");
 		Check(GetFunctionNr("SUM") == kSUMFuncNr,
 			"GetFunctionNr(\"SUM\") funziona ancora dopo le chiamate concorrenti, "

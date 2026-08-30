@@ -70,6 +70,7 @@
 
 #include <Window.h>
 
+#include <algorithm>
 #include <vector>
 
 void CHOOSEFunction(Value *stack, int argCnt, CContainer *cells)
@@ -1132,6 +1133,94 @@ void UNIQUEFunction(Value *stack, int argCnt, CContainer *cells)
 		cells->ApplySpill(owner, 1, (int)uniqueValues.size(), uniqueValues);
 	else
 		cells->ApplySpill(owner, (int)uniqueValues.size(), 1, uniqueValues);
+}
+
+// SORT(array, [sort_index], [sort_order]) -- Fase 34, "Path to full
+// Excel parity" Tier 2, "Dynamic arrays beyond SEQUENCE", terza
+// funzione "spill" di Atomo123 dopo SEQUENCE/UNIQUE, stesso
+// meccanismo. A differenza di UNIQUE sopra, qui il supporto e'
+// genuinamente bidimensionale: sort_index (1-based, default 1)
+// sceglie la COLONNA di "array" da usare come chiave, ma ogni RIGA
+// intera si sposta insieme come un'unita' -- esattamente come il vero
+// SORT di Excel su una tabella a piu' colonne, non solo un elenco a
+// una colonna sola. sort_order: 1 (default) crescente, -1
+// decrescente, qualunque altro valore trattato come crescente (stesso
+// principio permissivo gia' usato altrove in questo file per un
+// argomento fuori dai valori attesi).
+//
+// Limite dichiarato: "by_col" (il quarto argomento del vero SORT di
+// Excel, per ordinare per RIGA invece che per colonna) non e'
+// implementato -- caso raro nell'uso reale, l'orientamento "ordina le
+// righe di una tabella" copre la stragrande maggioranza delle formule
+// SORT viste in file veri.
+void SORTFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range r;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 1, &r) || !r.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int rows = r.bottom - r.top + 1;
+	int cols = r.right - r.left + 1;
+
+	double sortIndexArg = 1, sortOrderArg = 1;
+	GetDoubleArgument(stack, argCnt, 2, &sortIndexArg);
+	GetDoubleArgument(stack, argCnt, 3, &sortOrderArg);
+	int sortIndex = static_cast<int>(rint(sortIndexArg));
+	bool ascending = (sortOrderArg >= 0);
+
+	if (sortIndex < 1 || sortIndex > cols)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	CContainer *srcCells = GetRangeContainer(stack, 1, cells);
+
+	// Legge l'intera tabella in memoria, riga per riga (row-major, lo
+	// stesso ordine in cui ApplySpill si aspetta "values" piu' sotto) --
+	// serve tutta prima di poter decidere l'ordine delle righe.
+	std::vector<std::vector<Value> > table(rows, std::vector<Value>(cols));
+	for (int row = 0; row < rows; row++)
+		for (int col = 0; col < cols; col++)
+			srcCells->GetValue(cell(r.left + col, r.top + row), table[row][col]);
+
+	std::vector<int> order(rows);
+	for (int i = 0; i < rows; i++)
+		order[i] = i;
+
+	int keyCol = sortIndex - 1;
+	// stable_sort, non sort: righe con lo stesso valore nella colonna
+	// chiave mantengono il loro ordine relativo originale, come il
+	// vero SORT di Excel (e come "Ordina" nel menu Dati di questa
+	// stessa app).
+	std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+		Value va = table[a][keyCol], vb = table[b][keyCol];
+		return ascending ? (va < vb) : (vb < va);
+	});
+
+	std::vector<Value> values;
+	values.reserve(rows * cols);
+	for (int i = 0; i < rows; i++)
+		for (int col = 0; col < cols; col++)
+			values.push_back(table[order[i]][col]);
+
+	stack[0] = values[0]; // angolo in alto a sinistra, vedi il commento su SEQUENCE sopra
+
+	if (rows * cols <= 1 || !cells)
+		return;
+
+	cell owner = cells->CalculatingCell();
+	if (!IsWholeFunctionCall(cells->GetCellFormula(owner), kSORTFuncNr))
+		return; // annidata in un'altra formula: nessuno spill, vedi il commento su SEQUENCE sopra
+
+	cells->ApplySpill(owner, rows, cols, values);
 }
 
 // XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found],

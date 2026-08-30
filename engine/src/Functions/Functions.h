@@ -231,6 +231,9 @@ enum {
 	// arrays beyond SEQUENCE"): seconda funzione "spill" di Atomo123,
 	// stesso meccanismo di SEQUENCE sopra (CContainer::ApplySpill).
 	kUNIQUEFuncNr,
+	// SORT (Fase 34, stesso gruppo di UNIQUE sopra): terza funzione
+	// "spill", ordina le righe di un intervallo per una colonna scelta.
+	kSORTFuncNr,
 	kFunctionCount
 };
 
@@ -374,5 +377,6 @@ void ADDRESSFunction(Value *stack, int argCnt, CContainer *cells);
 void XMATCHFunction(Value *stack, int argCnt, CContainer *cells);
 void SEQUENCEFunction(Value *stack, int argCnt, CContainer *cells);
 void UNIQUEFunction(Value *stack, int argCnt, CContainer *cells);
+void SORTFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

@@ -243,6 +243,9 @@ resource 'Func' (128, "Functions")
 		"RATE", 65535, 139, 3,
 		// UNIQUE (Fase 34, "Path to full Excel parity" Tier 2): seconda
 		// funzione "spill" di Atomo123 dopo SEQUENCE.
-		"UNIQUE", 65535, 140, 1
+		"UNIQUE", 65535, 140, 1,
+		// SORT (Fase 34, stesso gruppo di UNIQUE sopra): terza funzione
+		// "spill".
+		"SORT", 65535, 141, 1
 	}
 };
