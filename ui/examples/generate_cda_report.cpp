@@ -3,22 +3,38 @@
 
 	Genera una cartella di lavoro Atomo123 a QUATTRO fogli a partire da
 	un vero file XLSX (il dataset pubblico "Financial Sample" di
-	Microsoft, 700 righe reali) -- pensata per la prossima release
-	come dimostrazione pratica di gran parte di quello che Atomo123 sa
-	fare, su dati veri, non un elenco astratto di funzionalita':
+	Microsoft, 700 righe reali) -- pensata come dimostrazione pratica
+	di QUASI OGNI feature reale di Atomo123, su dati veri, non un
+	elenco astratto di funzionalita'. Aggiornata a ogni nuova feature
+	rilevante (vedi la memoria di progetto "feedback_showcase_file_
+	update"), non solo alla creazione iniziale:
 
-	- "Riunione CdA": KPI e classifica dal vivo, grafico, area di
-	  stampa/margini/scala impostati per davvero (Fase 29, ora salvati
-	  per foglio) e adattati a una pagina sola.
-	- "Pivot": raggruppamento per categoria (SUMIF su elenchi noti) e
-	  tre tipi di grafico (barre/torta/barre).
-	- "Funzioni": un catalogo di circa 50 funzioni con nome applicate
-	  ai dati reali (testo, data, logica, ricerca, matematica/
-	  statistica), piu' una formula a blocco (SEQUENCE), una tabella
-	  strutturata ("Vendite[Colonna]") e una piccola ricerca
-	  interattiva (Convalida dati + SUMIF).
-	- "Dati": le 700 righe importate integralmente, con una regola di
-	  formattazione condizionale viva (Discount Band = "High").
+	- "Riunione CdA": KPI e classifica dal vivo (con un bordo colorato
+	  sul primo classificato), grafico, area di stampa/margini/scala
+	  per davvero (Fase 29, salvati per foglio) e adattati a una
+	  pagina sola, un collegamento ipertestuale reale (al repository
+	  GitHub del progetto) e un'immagine incorporata (un piccolo logo
+	  generato al volo, vedi MakeLogoPng).
+	- "Pivot": QUATTRO raggruppamenti dal vivo per categoria (SUMIF su
+	  elenchi noti: segmento/paese/prodotto/mese), tutti e tre i tipi
+	  di grafico (barre/torta/linee), PIU' una vera tabella pivot
+	  statica (BuildPivotTable/WritePivotTable, Inserisci -> Tabella
+	  Pivot, raggruppamento a due livelli Prodotto+Fascia sconto) a
+	  fianco di quelle dal vivo, per mostrare la differenza reale fra
+	  i due approcci.
+	- "Funzioni": un catalogo di circa 50 funzioni con nome (RATE
+	  compresa) applicate ai dati reali, una formula a blocco
+	  (SEQUENCE), una tabella strutturata ("Vendite[Colonna]"), una
+	  ricerca interattiva con un INTERVALLO CON NOME al posto di un
+	  indirizzo grezzo (Convalida dati a elenco + SUMIF), una seconda
+	  convalida dati a intervallo numerico, un piccolo esempio di
+	  formattazione condizionale a valori duplicati, e l'intero foglio
+	  PROTETTO tranne le due celle interattive (Fase 32, "Proteggi
+	  foglio").
+	- "Dati": le 700 righe importate integralmente, blocca riquadri
+	  per riga E per colonna, con due regole di formattazione
+	  condizionale dal vivo (Discount Band = "High", scala di colori
+	  a due punti sulla colonna Profit).
 
 	A differenza di una prima versione di questo generatore, QUI TUTTO
 	(tabelle raggruppate comprese, non solo i KPI) e' scritto come
@@ -27,11 +43,13 @@
 	se cambia qualcosa nei 700 record importati. Le tabelle pivot vere
 	dell'app (Inserisci -> Tabella Pivot, vedi Pivot.h) sono invece
 	deliberatamente statiche per design (un'istantanea, non ricalcolata
-	da sola) -- qui si ottiene lo stesso raggruppamento con SUMIF su un
+	da sola) -- il foglio "Pivot" mostra ORA entrambi gli approcci
+	fianco a fianco: i quattro raggruppamenti dal vivo con SUMIF su un
 	elenco FISSO di categorie note (verificate a mano sullo XML sorgente
-	di Financial Sample.xlsx: 5 segmenti, 5 paesi, 6 prodotti), che e'
+	di Financial Sample.xlsx: 5 segmenti, 5 paesi, 6 prodotti, 12 mesi),
 	esattamente come un utente reale costruirebbe un riepilogo del
-	genere in Atomo123 oggi (non c'e' ancora un pivot "vivo").
+	genere in Atomo123 oggi, PIU' una vera tabella pivot statica per
+	mostrare la feature reale dell'app.
 
 	Stesso approccio headless di generate_demo.cpp (nessuna vera
 	MainWindow, solo CContainer + AscdIO), con l'aggiunta
@@ -46,13 +64,17 @@
 #include <vector>
 
 #include <Application.h>
+#include <Bitmap.h>
+#include <BitmapStream.h>
 #include <DataIO.h>
 #include <File.h>
+#include <Font.h>
 #include <Message.h>
 #include <NodeInfo.h>
 #include <Path.h>
 #include <Roster.h>
 #include <TranslatorRoster.h>
+#include <View.h>
 
 #include "AscdIO.h"
 #include "Cell.h"
@@ -61,10 +83,14 @@
 #include "CellParser.h"
 #include "CellStyle.h"
 #include "Chart.h"
+#include "EmbeddedImage.h"
+#include "FontMetrics.h"
 #include "Formatter.h"
 #include "FunctionUtils.h"
 #include "Globals.h"
 #include "MyError.h"
+#include "NameTable.h"
+#include "Pivot.h"
 #include "PrintLayout.h"
 #include "Range.h"
 #include "ResourceManager.h"
@@ -90,6 +116,46 @@ static void Border(CContainer* doc, cell c)
 	});
 }
 
+// Bordo con un colore VERO (non il nero predefinito di Border() sopra,
+// Fase 13): fBorderColor e' condiviso da tutti e quattro i lati, vedi
+// il commento su CellStyle in engine/src/Cell/CellStyle.h.
+static void BorderColor(CContainer* doc, cell c, rgb_color color)
+{
+	Style(doc, c, [&](CellStyle& cs) {
+		cs.fTBorderColor = cs.fLBorderColor = cs.fBBorderColor = cs.fRBorderColor = 2; // medio
+		cs.fBorderColor = color;
+	});
+}
+
+// Font in grassetto (Fase 12): CellStyle::fFont e' un indice nella
+// tabella globale gFontSizeTable, non un flag booleano -- serve
+// registrare (famiglia, stile, dimensione) e riusare l'indice
+// restituito. sReservedRegular riserva PRIMA un font "Regular" (mai ne'
+// grassetto ne' corsivo): se il primo indice mai assegnato da questo
+// processo fosse un font in grassetto, finirebbe per caso proprio
+// all'indice 0, lo stesso valore che CellStyle usa come sentinella
+// "nessun font esplicito" (memset a zero nel costruttore) -- bug reale
+// gia' scoperto una volta scrivendo il test dell'importazione XLSX
+// (vedi il commento gemello in XlsxTranslator.cpp, ResolveCellStyles).
+static bool sReservedRegularFont = false;
+
+static void Bold(CContainer* doc, cell c)
+{
+	font_family family;
+	font_style style;
+	be_plain_font->GetFamilyAndStyle(&family, &style);
+	float size = be_plain_font->Size();
+
+	if (!sReservedRegularFont)
+	{
+		gFontSizeTable.GetFontID(family, style, size);
+		sReservedRegularFont = true;
+	}
+
+	int fontID = (int)gFontSizeTable.GetFontID(family, "Bold", size);
+	Style(doc, c, [&](CellStyle& cs) { cs.fFont = fontID; });
+}
+
 static void Currency(CContainer* doc, cell c)
 {
 	Style(doc, c, [](CellStyle& cs) {
@@ -112,6 +178,45 @@ static void Integer(CContainer* doc, cell c)
 		cs.fFormat = eFixed | (0 << 4) | (1 << 9); // nessun decimale, separatore delle migliaia
 		cs.fAlignment = eAlignRight;
 	});
+}
+
+// Genera un vero PNG (non un blob finto) per l'immagine incorporata
+// dimostrativa piu' sotto -- stessa tecnica di ui/tests/test_image_
+// alpha.cpp: disegna su una BBitmap offscreen ("accetta viste") con una
+// BView vera, poi la codifica con lo stesso Translation Kit che
+// SheetView usa per DECODIFICARE le immagini incorporate. Un piccolo
+// logo a blocchi colorati con le iniziali "A123", non un file esterno:
+// questo generatore non deve dipendere da nessun asset grafico fuori
+// dal proprio codice.
+static bool MakeLogoPng(std::vector<uint8>& out)
+{
+	BRect bounds(0, 0, 63, 63);
+	BBitmap* bitmap = new BBitmap(bounds, B_RGBA32, true); // true = accetta viste
+	BView* view = new BView(bounds, "logo", B_FOLLOW_NONE, B_WILL_DRAW);
+	bitmap->AddChild(view);
+
+	bitmap->Lock();
+	view->SetHighColor(0, 120, 215, 255); // stesso blu del titolo "Riunione CdA"
+	view->FillRoundRect(bounds, 10, 10);
+	view->SetHighColor(255, 255, 255, 255);
+	view->SetFontSize(22);
+	BFont font;
+	view->GetFont(&font);
+	font.SetFace(B_BOLD_FACE);
+	view->SetFont(&font);
+	view->DrawString("123", BPoint(10, 40));
+	view->Sync();
+	bitmap->Unlock();
+
+	BBitmapStream stream(bitmap); // adotta 'bitmap', lo cancella lei
+	BMallocIO dest;
+	status_t err = BTranslatorRoster::Default()->Translate(&stream, NULL, NULL,
+		&dest, B_PNG_FORMAT);
+	if (err != B_OK)
+		return false;
+
+	out.assign((const uint8*)dest.Buffer(), (const uint8*)dest.Buffer() + dest.BufferLength());
+	return true;
 }
 
 // NewCell diretto, MAI TryToParseString, per ogni etichetta di puro
@@ -274,6 +379,16 @@ int main()
 	products.push_back("VTT");
 	products.push_back("Amarilla");
 
+	// Ordine calendario, non alfabetico: serve per il grafico a linee
+	// piu' sotto, dove l'ordine dei punti conta (un andamento nel
+	// tempo), a differenza delle altre tre categorie sopra dove
+	// l'ordine e' solo estetico.
+	std::vector<BString> months;
+	months.push_back("January"); months.push_back("February"); months.push_back("March");
+	months.push_back("April"); months.push_back("May"); months.push_back("June");
+	months.push_back("July"); months.push_back("August"); months.push_back("September");
+	months.push_back("October"); months.push_back("November"); months.push_back("December");
+
 	// Tabella strutturata "Vendite" (Fase 14, "Tabella12[Colonna]"):
 	// registrata sull'intero intervallo importato, cosi' il foglio
 	// "Funzioni" piu' sotto puo' scrivere formule come "Vendite[Sales]"
@@ -343,10 +458,11 @@ int main()
 	CContainer* pivot = new CContainer(NULL, NULL);
 
 	WriteLabel(pivot, cell(1, 1), "Analisi per categoria - Financial Sample (700 record, formule dal vivo)");
-	pivot->AddMergedRange(range(1, 1, 8, 1));
+	pivot->AddMergedRange(range(1, 1, 11, 1));
 	Style(pivot, cell(1, 1), [&](CellStyle& cs) {
 		cs.fLowColor = kBlue; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter;
 	});
+	Bold(pivot, cell(1, 1));
 
 	struct CategoryBlock {
 		const char* label; int destCol; const std::vector<BString>* categories;
@@ -356,9 +472,14 @@ int main()
 		{ "Per segmento (somma vendite)", 1, &segments, 'A', 'J', true, false },
 		{ "Per paese (somma profitto)", 4, &countries, 'B', 'L', true, false },
 		{ "Per prodotto (somma unita' vendute)", 7, &products, 'C', 'E', false, true },
+		// Per mese (colonna O, "Month Name"): in ordine calendario, non
+		// alfabetico (vedi il vettore "months" sopra) -- serve al
+		// grafico a LINEE piu' sotto, l'unico tipo di grafico ancora
+		// mai usato in questo file (barre e torta gia' presenti).
+		{ "Per mese (somma vendite)", 10, &months, 'O', 'J', true, false },
 	};
 
-	for (int b = 0; b < 3; b++)
+	for (int b = 0; b < 4; b++)
 	{
 		cell labelCell(blocks[b].destCol, 2);
 		WriteLabel(pivot, labelCell, blocks[b].label);
@@ -393,6 +514,42 @@ int main()
 	chartProduct.dataRange = range(7, 4, 8, 3 + (int)products.size());
 	chartProduct.frame = BRect(20, 450, 500, 650);
 
+	// Grafico a LINEE (eLineChart, l'unico dei tre tipi di grafico
+	// ancora mai usato in questo file): l'andamento mensile si presta
+	// meglio a una linea che a barre separate, esattamente come si
+	// sceglierebbe in Excel per un trend nel tempo.
+	ChartObject chartMonth;
+	chartMonth.type = eLineChart;
+	chartMonth.title = "Andamento vendite per mese";
+	chartMonth.dataRange = range(10, 4, 11, 3 + (int)months.size());
+	chartMonth.frame = BRect(520, 450, 900, 650);
+
+	// Tabella pivot VERA (Inserisci -> Tabella Pivot, Fase 29 per il
+	// raggruppamento a piu' livelli): a differenza dei quattro blocchi
+	// SUMIF sopra (dal vivo, MAI congelati), questa e' deliberatamente
+	// un'ISTANTANEA statica, per design -- vedi il commento in cima al
+	// file. Prodotto+Fascia sconto sono le uniche due colonne di
+	// categoria ADIACENTI nel dataset reale seguite da una colonna
+	// numerica altrettanto adiacente (Unita' Vendute): C:E, l'unica
+	// combinazione a due livelli che BuildPivotTable puo' leggere da
+	// un intervallo unico senza dover prima riordinare le colonne.
+	int realPivotLabelRow = 36;
+	WriteLabel(pivot, cell(1, realPivotLabelRow),
+		"Tabella pivot VERA (Inserisci -> Tabella Pivot): istantanea statica, non dal vivo "
+		"come le tabelle sopra -- raggruppamento a due livelli, Prodotto poi Fascia sconto");
+	pivot->AddMergedRange(range(1, realPivotLabelRow, 11, realPivotLabelRow));
+	Style(pivot, cell(1, realPivotLabelRow), [&](CellStyle& cs) {
+		cs.fLowColor = kOrange; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter; cs.fWrapText = true;
+	});
+	Bold(pivot, cell(1, realPivotLabelRow));
+
+	int realPivotDataRow = realPivotLabelRow + 1;
+	{
+		std::vector<PivotRow> rows;
+		if (BuildPivotTable(dati, range(3, 2, 5, 701), rows))
+			WritePivotTable(pivot, cell(1, realPivotDataRow), rows, ePivotSum);
+	}
+
 	// ==================== Foglio "Riunione CdA" ====================
 	CContainer* cda = new CContainer(NULL, NULL);
 
@@ -401,6 +558,7 @@ int main()
 	Style(cda, cell(1, 1), [&](CellStyle& cs) {
 		cs.fLowColor = kGreen; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter;
 	});
+	Bold(cda, cell(1, 1));
 
 	WriteLabel(cda, cell(1, 2),
 		"Dati: Financial Sample - 700 record, tutte le formule si aggiornano da sole");
@@ -408,6 +566,17 @@ int main()
 	Style(cda, cell(1, 2), [&](CellStyle& cs) {
 		cs.fHighColor = kDarkGray; cs.fAlignment = eAlignCenter;
 	});
+
+	// Collegamento ipertestuale (Fase 13, 100% XLSX standard
+	// compatibility Tier 2): un vero URL esterno, verificato -- lo
+	// stesso repository che ha ricevuto ogni commit di questa sessione,
+	// non un indirizzo inventato per l'occasione.
+	WriteLabel(cda, cell(1, 3), "Codice sorgente di Atomo123 su GitHub");
+	cda->AddMergedRange(range(1, 3, 4, 3));
+	Style(cda, cell(1, 3), [&](CellStyle& cs) {
+		cs.fHighColor = kBlue; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
+	});
+	cda->SetHyperlink(cell(1, 3), "https://github.com/atomozero/Atomo123");
 
 	// Riga KPI: intestazioni (riga 4) + formule dal vivo sul foglio
 	// "Dati" (riga 5) -- lasciate deliberatamente NON calcolate qui,
@@ -486,7 +655,16 @@ int main()
 		Currency(cda, cell(2, row));
 		Percent(cda, cell(3, row));
 		for (int col = 1; col <= 3; col++)
-			Border(cda, cell(col, row));
+		{
+			// Il primo classificato in classifica prende un bordo
+			// colorato invece del solito nero (BorderColor, non Border):
+			// un tocco di evidenza in piu' rispetto al semplice bordo
+			// gia' usato ovunque altrove in questo file.
+			if (rank == 1)
+				BorderColor(cda, cell(col, row), kOrange);
+			else
+				Border(cda, cell(col, row));
+		}
 	}
 
 	int lastRankRow = 8 + (int)segments.size();
@@ -605,6 +783,8 @@ int main()
 		{ "Matematica", "STDDEV", "=STDDEV(Dati!J2:J701)" },
 		{ "Matematica", "ROUND", "=ROUND(Dati!J2;0)" },
 		{ "Matematica", "COUNTIF", "=COUNTIF(Dati!A2:A701;\"Government\")" },
+		// -- Finanza --
+		{ "Finanza", "RATE", "=RATE(8;-150;1000)" }, // tasso periodico di un prestito di 1000 restituito in 8 rate da 150
 	};
 	const int demoCount = sizeof(demos) / sizeof(demos[0]);
 
@@ -664,17 +844,75 @@ int main()
 		funcs->SetValidation(cell(2, pickerRow), rule);
 	}
 
+	// Intervallo con nome (Fase 7, "Formule -> Definisci nome"): la
+	// stessa cella di sopra, usata SOTTO al posto di un riferimento
+	// grezzo ("B12") -- una formula con un nome al posto di un
+	// indirizzo resta leggibile anche se la riga si sposta piu' avanti
+	// nel file (com'e' gia' successo piu' volte scrivendo questo
+	// generatore). I nomi in questo motore sono per FOGLIO (vedi
+	// CContainer::GetOrCreateNameTable), non per l'intera cartella:
+	// valido solo dentro "funcs", esattamente come qui sotto.
+	(*funcs->GetOrCreateNameTable())["SegmentoScelto"] = range(2, pickerRow, 2, pickerRow);
+
 	int resultRow = pickerRow + 1;
 	WriteLabel(funcs, cell(1, resultRow), "Vendite di quel segmento:");
-	char pickerFormula[80];
-	snprintf(pickerFormula, sizeof(pickerFormula), "=SUMIF(Dati!A2:A701;B%d;Dati!J2:J701)", pickerRow);
-	TryToParseString(pickerFormula, cell(2, resultRow), funcs, true);
+	TryToParseString("=SUMIF(Dati!A2:A701;SegmentoScelto;Dati!J2:J701)", cell(2, resultRow), funcs, true);
 	Currency(funcs, cell(2, resultRow));
 	Border(funcs, cell(2, resultRow));
 	funcs->SetComment(cell(2, pickerRow),
 		"Convalida dati: clic con il tasto destro sulla cella per vedere l'elenco a discesa "
 		"(Small Business/Midmarket/Enterprise/Government/Channel Partners). Cambiando la scelta, "
-		"la formula sotto si ricalcola da sola.");
+		"la formula sotto (che usa il nome \"SegmentoScelto\", non l'indirizzo B12) si ricalcola "
+		"da sola.");
+
+	// Convalida dati a intervallo numerico (Fase 13, il secondo dei due
+	// tipi che questo motore modella, l'altro e' l'elenco sopra): un
+	// valore fuori da [0, 100] viene rifiutato dalla UI al momento
+	// dell'inserimento, non solo segnalato dopo.
+	int rangeValidationRow = resultRow + 2;
+	WriteLabel(funcs, cell(1, rangeValidationRow), "Sconto ipotetico (0-100):");
+	TryToParseString("15", cell(2, rangeValidationRow), funcs, true);
+	Style(funcs, cell(2, rangeValidationRow), [&](CellStyle& cs) { cs.fLowColor = kYellow; });
+	Border(funcs, cell(2, rangeValidationRow));
+	{
+		ValidationRule rule;
+		rule.type = eNumberRangeValidation;
+		rule.min = 0;
+		rule.max = 100;
+		funcs->SetValidation(cell(2, rangeValidationRow), rule);
+	}
+	funcs->SetComment(cell(2, rangeValidationRow),
+		"Convalida dati a intervallo numerico (0-100): un valore fuori da questo intervallo "
+		"viene rifiutato subito, non solo segnalato dopo.");
+
+	// Formattazione condizionale: valori duplicati (Fase 13, il tipo
+	// che manca ancora in questo file -- "Discount Band = High" sul
+	// foglio Dati usa eCondCellIsEqual, la scala di colori sulla
+	// colonna Profit usa eCondColorScale). Un piccolo elenco costruito
+	// apposta (non i 700 record reali, dove quasi ogni valore
+	// categoriale si ripete comunque) rende il confronto leggibile a
+	// colpo d'occhio: due codici identici, quattro diversi.
+	int dupLabelRow = rangeValidationRow + 3;
+	WriteLabel(funcs, cell(1, dupLabelRow), "Formattazione condizionale: valori duplicati (esempio)");
+	funcs->AddMergedRange(range(1, dupLabelRow, 4, dupLabelRow));
+	Style(funcs, cell(1, dupLabelRow), [&](CellStyle& cs) {
+		cs.fLowColor = kLightGray; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
+	});
+	int dupFirstRow = dupLabelRow + 1;
+	const char* dupCodes[] = { "ATC-001", "ATC-002", "ATC-003", "ATC-002", "ATC-004", "ATC-005" };
+	for (size_t i = 0; i < sizeof(dupCodes) / sizeof(dupCodes[0]); i++)
+	{
+		WriteLabel(funcs, cell(1, dupFirstRow + (int)i), dupCodes[i]);
+		Border(funcs, cell(1, dupFirstRow + (int)i));
+	}
+	int dupLastRow = dupFirstRow + (int)(sizeof(dupCodes) / sizeof(dupCodes[0])) - 1;
+	{
+		ConditionalFormatRule rule;
+		rule.type = eCondDuplicateValues;
+		rule.bgColor = (rgb_color){ 255, 235, 156, 255 }; // FFEB9C, stesso giallo di Excel
+		rule.ranges.push_back(range(1, dupFirstRow, 1, dupLastRow));
+		funcs->AddConditionalFormatRule(rule);
+	}
 
 	// ==================== Cartella di lavoro ====================
 	AscdSheet cdaSheet;
@@ -703,15 +941,35 @@ int main()
 	cdaSheet.printSettings.marginRightCm = 1.5;
 	cdaSheet.printSettings.scaleMode = kPrintFitBoth;
 
+	// Immagine incorporata (Fase 12): un piccolo logo generato al volo
+	// (vedi MakeLogoPng sopra), ancorato subito a destra del titolo con
+	// uno scarto in pixel -- segue la cella se righe/colonne cambiano
+	// dimensione, esattamente come un logo importato da un vero file
+	// XLSX (xl/drawings+xl/media).
+	{
+		EmbeddedImage logo;
+		std::vector<uint8> pngBytes;
+		if (MakeLogoPng(pngBytes))
+		{
+			logo.anchor = cell(4, 1);
+			logo.offsetX = 40; logo.offsetY = -5;
+			logo.width = 40; logo.height = 40;
+			logo.pngData = pngBytes;
+			cdaSheet.images.push_back(logo);
+		}
+	}
+
 	AscdSheet pivotSheet;
 	pivotSheet.name = "Pivot";
 	pivotSheet.doc = pivot;
 	pivotSheet.charts.push_back(chartSeg);
 	pivotSheet.charts.push_back(chartCountry);
 	pivotSheet.charts.push_back(chartProduct);
+	pivotSheet.charts.push_back(chartMonth);
 	pivotSheet.colWidths.push_back(std::make_pair(1, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(4, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(7, 130.0f));
+	pivotSheet.colWidths.push_back(std::make_pair(10, 130.0f));
 	pivotSheet.rowHeights.push_back(std::make_pair(1, 30.0f));
 	pivotSheet.hasTabColor = true;
 	pivotSheet.tabColor = kOrange;
@@ -729,6 +987,22 @@ int main()
 	funcsSheet.autoFilterRange = range(1, 4, 4, catalogLastRow);
 	funcsSheet.hasTabColor = true;
 	funcsSheet.tabColor = (rgb_color){ 130, 100, 190, 255 };
+	// Protezione foglio (Fase 32, "Proteggi foglio"): OGNI cella e'
+	// bloccata per default (vedi il costruttore di CellStyle) finche'
+	// non la si sblocca esplicitamente -- le due celle interattive
+	// (l'elenco a discesa e l'input a intervallo numerico) restano
+	// modificabili anche a foglio protetto, esattamente come un utente
+	// vero farebbe per un pannello di controllo che il resto del foglio
+	// non deve permettere di alterare per sbaglio.
+	funcsSheet.isProtected = true;
+	Style(funcs, cell(2, pickerRow), [](CellStyle& cs) { cs.fLocked = false; });
+	Style(funcs, cell(2, rangeValidationRow), [](CellStyle& cs) { cs.fLocked = false; });
+
+	// Blocca riquadri per RIGA (Funzioni, sopra) e per COLONNA (Dati,
+	// qui): la prima colonna (Segment) resta visibile scorrendo verso
+	// destra fra le 16 colonne del dataset reale, non solo l'intestazione
+	// scorrendo verso il basso.
+	imported[0].frozenCols = 1;
 
 	std::vector<AscdSheet> sheets;
 	sheets.push_back(cdaSheet);   // foglio attivo all'apertura
