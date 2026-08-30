@@ -72,10 +72,11 @@ static const translation_format sOutputFormats[] = {
 };
 
 static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
-// Versione 2 (era 1): aggiunge un byte "kind" per cella, vedi il
+// Versione 3 (era 2): aggiunge, per ogni regola di formattazione
+// condizionale, i punti di controllo della scala di colori, vedi il
 // commento su kASCDVersion in ui/src/AscdIO.cpp (stesso identico
 // motivo, duplicato qui per lo stesso motivo di WriteASCD sotto).
-static const int32 kASCDVersion = 2;
+static const int32 kASCDVersion = 3;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // Formato "cartella di lavoro" multi-foglio (Fase 9): duplicato da
 // ui/src/AscdIO.h/.cpp (magic "ASCB", conteggio fogli, poi per
@@ -858,6 +859,27 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
 					return B_IO_ERROR;
 			}
+
+			// Punti di controllo della scala di colori (versione 3, vedi
+			// il commento su kASCDVersion), stesso formato di
+			// ui/src/AscdIO.cpp: vuoto per eCondCellIsEqual/
+			// eCondDuplicateValues, 2-3 punti per eCondColorScale.
+			int32 pointCount = (int32)rule.colorScalePoints.size();
+			if (dest->Write(&pointCount, sizeof(pointCount)) != (ssize_t)sizeof(pointCount))
+				return B_IO_ERROR;
+			for (int32 p = 0; p < pointCount; p++)
+			{
+				const ColorScalePoint& point = rule.colorScalePoints[p];
+				int32 cfvoTypeLen = (int32)point.cfvoType.size();
+				if (dest->Write(&cfvoTypeLen, sizeof(cfvoTypeLen)) != (ssize_t)sizeof(cfvoTypeLen))
+					return B_IO_ERROR;
+				if (cfvoTypeLen > 0 && dest->Write(point.cfvoType.data(), cfvoTypeLen) != cfvoTypeLen)
+					return B_IO_ERROR;
+				if (dest->Write(&point.cfvoValue, sizeof(point.cfvoValue)) != (ssize_t)sizeof(point.cfvoValue))
+					return B_IO_ERROR;
+				if (dest->Write(&point.color, sizeof(point.color)) != (ssize_t)sizeof(point.color))
+					return B_IO_ERROR;
+			}
 		}
 	}
 
@@ -1132,10 +1154,11 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	// versione 1 e versione 2 (con il byte "kind" per cella, vedi
-	// WriteASCD sopra e il commento su kASCDVersion) restano entrambe
-	// leggibili -- stesso motivo di LoadASCD in ui/src/AscdIO.cpp.
-	if (version != 1 && version != kASCDVersion)
+	// versioni 1, 2 (byte "kind" per cella) e 3 (punti di scala di
+	// colori, vedi WriteASCD sopra e il commento su kASCDVersion)
+	// restano tutte leggibili -- stesso motivo di LoadASCD in
+	// ui/src/AscdIO.cpp.
+	if (version != 1 && version != 2 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -1729,6 +1752,36 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 						|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right)
 						|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
 						return B_BAD_DATA;
+				}
+
+				// Punti di controllo della scala di colori (versione 3,
+				// vedi il commento su kASCDVersion): solo saltati, non
+				// ricostruiti in "doc" -- questa ReadASCD non
+				// ricostruisce nessuna ConditionalFormatRule (usata solo
+				// per il percorso ASCD -> XLSX, che non esporta ancora
+				// nessuna regola, vecchia o nuova), ma i byte vanno
+				// comunque consumati per non disallineare le sezioni
+				// successive.
+				if (version >= 3)
+				{
+					int32 pointCount;
+					if (source->Read(&pointCount, sizeof(pointCount)) != (ssize_t)sizeof(pointCount))
+						return B_BAD_DATA;
+					for (int32 p = 0; p < pointCount; p++)
+					{
+						int32 cfvoTypeLen;
+						if (source->Read(&cfvoTypeLen, sizeof(cfvoTypeLen)) != (ssize_t)sizeof(cfvoTypeLen))
+							return B_BAD_DATA;
+						if (cfvoTypeLen < 0 || cfvoTypeLen > 256)
+							return B_BAD_DATA;
+						if (cfvoTypeLen > 0 && source->Seek(cfvoTypeLen, SEEK_CUR) < 0)
+							return B_BAD_DATA;
+						double cfvoValue;
+						uint8 colorBuf[4];
+						if (source->Read(&cfvoValue, sizeof(cfvoValue)) != (ssize_t)sizeof(cfvoValue)
+							|| source->Read(colorBuf, sizeof(colorBuf)) != (ssize_t)sizeof(colorBuf))
+							return B_BAD_DATA;
+					}
 				}
 			}
 		}

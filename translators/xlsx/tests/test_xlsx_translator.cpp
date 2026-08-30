@@ -4264,6 +4264,28 @@ int main()
 						rangeMatchesB1B3 = true;
 				}
 
+				// Punti di controllo della scala di colori (versione 3
+				// del formato ASCD, Fase 33/A punto 5): zero qui (nessuna
+				// delle due regole di questo file di prova e' una scala
+				// di colori), ma il campo c'e' comunque per ogni regola
+				// e va saltato per restare allineati sulla regola
+				// successiva.
+				if (pos + 4 <= ascdLen)
+				{
+					int32 pointCount;
+					memcpy(&pointCount, ascdData + pos, 4); pos += 4;
+					for (int32 p = 0; p < pointCount && pos + 4 <= ascdLen; p++)
+					{
+						int32 cfvoTypeLen;
+						memcpy(&cfvoTypeLen, ascdData + pos, 4); pos += 4;
+						if (pos + (size_t)cfvoTypeLen + 8 + 4 > ascdLen)
+							break;
+						pos += cfvoTypeLen; // cfvoType
+						pos += 8; // cfvoValue (double)
+						pos += 4; // color (rgb_color)
+					}
+				}
+
 				if (type == eCondCellIsEqual && compareValue == "Mancante" && packed == 0xFFC7CE
 					&& rangeMatchesA1A3)
 					foundCellIsRule = true;
