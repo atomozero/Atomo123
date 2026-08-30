@@ -313,6 +313,32 @@ int main()
 		dati->AddConditionalFormatRule(rule);
 	}
 
+	// Scala di colori a due punti (Fase 33/A, appena aggiunta): a
+	// differenza della regola sopra (un confronto per-cella con un
+	// valore fisso), qui il colore di OGNI cella numerica dipende dal
+	// minimo/massimo di TUTTO l'intervallo -- rosso il profitto piu'
+	// basso della colonna, verde il piu' alto, interpolato in mezzo.
+	// Sulla colonna Profit (L, 700 righe) rende visibile a colpo
+	// d'occhio quali vendite sono state le piu'/meno redditizie, senza
+	// bisogno di ordinare o filtrare nulla.
+	{
+		ConditionalFormatRule rule;
+		rule.type = eCondColorScale;
+		rule.ranges.push_back(range(12, 2, 12, 701)); // L2:L701 (Profit)
+
+		ColorScalePoint minPoint;
+		minPoint.cfvoType = "min";
+		minPoint.color = (rgb_color){ 248, 105, 107, 255 }; // F8696B, rosso Excel
+		rule.colorScalePoints.push_back(minPoint);
+
+		ColorScalePoint maxPoint;
+		maxPoint.cfvoType = "max";
+		maxPoint.color = (rgb_color){ 99, 190, 123, 255 }; // 63BE7B, verde Excel
+		rule.colorScalePoints.push_back(maxPoint);
+
+		dati->AddConditionalFormatRule(rule);
+	}
+
 	// ==================== Foglio "Pivot" ====================
 	CContainer* pivot = new CContainer(NULL, NULL);
 
