@@ -16,6 +16,7 @@
 #define APP_H
 
 #include <Application.h>
+#include <Entry.h>
 
 class MainWindow;
 class SplashWindow;
@@ -28,9 +29,15 @@ public:
 
 	virtual void ReadyToRun();
 	virtual void RefsReceived(BMessage* message);
+	virtual void ArgvReceived(int32 argc, char** argv);
 	virtual void MessageReceived(BMessage* message);
 
 private:
+	// Corpo comune a RefsReceived/ArgvReceived, vedi il commento in
+	// App.cpp: inoltra un solo entry_ref alla finestra scelta (nuova o
+	// riusata), azzerando "*reusable" dopo il primo uso.
+	void OpenOneRef(const entry_ref& ref, MainWindow** reusable);
+
 	// Mostrata subito da ReadyToRun, la MainWindow arriva solo dopo
 	// kSplashDelay (vedi ReadyToRun/MessageReceived): un file gia'
 	// pronto all'avvio (RefsReceived, vedi sotto) puo' pero' crearne una

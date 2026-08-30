@@ -264,42 +264,68 @@ void App::RegisterFileTypes()
 	}
 } // App::RegisterFileTypes
 
+// Corpo comune a RefsReceived e ArgvReceived sotto: inoltra UN
+// entry_ref alla finestra scelta (nuova o riusata) esattamente allo
+// stesso modo, qualunque sia la provenienza del file (Tracker, riga di
+// comando). BApplication e BWindow girano su thread (BLooper) distinti:
+// non si puo' toccare direttamente le BView di una finestra da qui
+// senza il suo lock. Si inoltra invece un B_REFS_RECEIVED alla finestra
+// scelta: MainWindow::MessageReceived gestisce gia' quel messaggio
+// chiamando OpenFileAsync sul thread corretto, con il lock preso
+// automaticamente dal message loop.
+//
+// "*reusable" viene azzerato dopo il primo uso: PostMessage e'
+// asincrono, quindi lo stato della finestra (fDocumentName) non si
+// aggiorna subito -- se arrivano piu' file in un colpo solo (piu' ref
+// da Tracker, o piu' argomenti da riga di comando), i successivi devono
+// sempre aprire finestre nuove, non ricontrollare la stessa finestra
+// vergine gia' assegnata al primo file. Una finestra con un documento
+// gia' aperto (anche solo aperto e mai modificato) non va MAI
+// rimpiazzata da un file successivo.
+void App::OpenOneRef(const entry_ref& ref, MainWindow** reusable)
+{
+	BMessage oneRef(B_REFS_RECEIVED);
+	oneRef.AddRef("refs", &ref);
+
+	MainWindow* target = *reusable;
+	if (target)
+		*reusable = NULL;
+	else
+	{
+		target = new MainWindow();
+		target->Show();
+	}
+	target->PostMessage(&oneRef);
+}
+
 void App::RefsReceived(BMessage* message)
 {
-	// BApplication e BWindow girano su thread (BLooper) distinti: non si
-	// puo' toccare direttamente le BView di una finestra da qui senza il
-	// suo lock. Si inoltra invece un B_REFS_RECEIVED per ogni ref alla
-	// finestra scelta (nuova o riusata sotto): MainWindow::MessageReceived
-	// gestisce gia' quel messaggio chiamando OpenFileAsync sul thread
-	// corretto, con il lock preso automaticamente dal message loop.
-	//
-	// Una finestra con un documento gia' aperto (anche solo aperto e mai
-	// modificato) non va MAI rimpiazzata da un file successivo: se
-	// l'utente ha gia' Atomo123 aperto e fa doppio clic su un secondo
-	// file, vuole una finestra nuova, non perdere quella di prima.
 	MainWindow* reusable = FindReusableWindow();
 
 	entry_ref ref;
 	for (int32 i = 0; message->FindRef("refs", i, &ref) == B_OK; i++)
-	{
-		BMessage oneRef(B_REFS_RECEIVED);
-		oneRef.AddRef("refs", &ref);
+		OpenOneRef(ref, &reusable);
+}
 
-		MainWindow* target = reusable;
-		if (target)
-			// Usata: PostMessage e' asincrono, quindi lo stato della
-			// finestra (fDocumentName) non si aggiorna subito -- se
-			// questo messaggio contiene piu' ref (piu' file aperti in
-			// un colpo solo da Tracker), i successivi devono sempre
-			// aprire finestre nuove, non ricontrollare la stessa
-			// finestra vergine gia' assegnata al primo file.
-			reusable = NULL;
-		else
-		{
-			target = new MainWindow();
-			target->Show();
-		}
-		target->PostMessage(&oneRef);
+// "atomo123 file.xlsx" da riga di comando non apriva il file: nessun
+// override di ArgvReceived esisteva affatto, un percorso passato cosi'
+// veniva semplicemente ignorato (si apriva un documento nuovo vuoto).
+// argv[0] e' il percorso dell'eseguibile stesso (come in ogni
+// programma C), MAI un file da aprire -- si parte da argv[1]. Un
+// argomento che non esiste o non e' un percorso valido (es.
+// un'opzione futura tipo "--foo") viene silenziosamente ignorato, non
+// tratta come un errore fatale: stesso principio permissivo gia' usato
+// per un file .xls/.xlsx senza un translator adatto installato.
+void App::ArgvReceived(int32 argc, char** argv)
+{
+	MainWindow* reusable = FindReusableWindow();
+
+	for (int32 i = 1; i < argc; i++)
+	{
+		BEntry entry(argv[i], true); // true = risolve i link simbolici
+		entry_ref ref;
+		if (entry.Exists() && entry.GetRef(&ref) == B_OK)
+			OpenOneRef(ref, &reusable);
 	}
 }
 
