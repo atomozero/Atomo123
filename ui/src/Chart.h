@@ -37,7 +37,12 @@ struct ChartSeries {
 enum ChartType {
 	eBarChart = 0,
 	eLineChart = 1,
-	ePieChart = 2
+	ePieChart = 2,
+	// Fase 35, "Path to full Excel parity" Tier 2, "More chart types":
+	// appesi in coda, mai in mezzo -- lo stesso principio di eBarChart=0
+	// sopra, un file .ascd scritto prima di un nuovo tipo non deve mai
+	// vedere un valore esistente cambiare significato.
+	eAreaChart = 3
 };
 
 // Un grafico incorporato nel foglio (vedi SheetView::Draw): posizione
@@ -139,6 +144,15 @@ void ComputePieLayout(const std::vector<ChartSeries>& data,
 void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
 	const BString& title = BString());
 
+// Grafico ad area (Fase 35): la stessa spezzata di DrawLineChart (vedi
+// ComputeLineLayout, riusata cosi' com'e', nessuna nuova geometria pura
+// da calcolare), ma con la zona fra la linea e l'asse zero riempita di
+// colore -- stesso asse Y/stessa scala di barre e linee. Un valore
+// negativo riempie sotto lo zero fino al punto, mai sopra: coerente con
+// come ComputeLineLayout gia' posiziona un punto negativo.
+void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title = BString());
+
 // Smista verso DrawBarChart/DrawLineChart/DrawPieChart secondo "type"
 // -- unico punto di ingresso condiviso da ChartView e SheetView (vedi
 // i commenti su DrawBarChart sopra), cosi' aggiungere un futuro nuovo
@@ -221,6 +235,15 @@ void ComputeMultiLineLayout(const MultiChartData& data, BRect bounds,
 // Disegna una spezzata per serie (stessi colori/legenda di
 // DrawGroupedBarChart).
 void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data,
+	const BString& title = BString());
+
+// Grafico ad area a piu' serie (Fase 35): stessa spezzata di
+// DrawMultiLineChart per serie (ComputeMultiLineLayout, riusata cosi'
+// com'e'), ognuna riempita verso l'asse zero con lo stesso colore
+// (semitrasparente) della sua linea -- le serie disegnate PRIMA
+// restano visibili sotto quelle disegnate dopo dove si sovrappongono,
+// come il grafico ad area "normale" (non impilato) di Excel.
+void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data,
 	const BString& title = BString());
 
 #endif

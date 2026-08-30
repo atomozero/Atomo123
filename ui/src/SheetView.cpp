@@ -3290,6 +3290,8 @@ void SheetView::Draw(BRect updateRect)
 				{
 					if (obj.type == eLineChart)
 						DrawMultiLineChart(this, obj.frame, multi, obj.title);
+					else if (obj.type == eAreaChart)
+						DrawMultiAreaChart(this, obj.frame, multi, obj.title);
 					else
 						DrawGroupedBarChart(this, obj.frame, multi, obj.title);
 				}

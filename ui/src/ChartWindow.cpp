@@ -67,6 +67,7 @@ ChartWindow::ChartWindow(BMessenger target)
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Barre"), new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Linee"), new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Torta"), new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Area"), new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->ItemAt(0)->SetMarked(true);
 	fTypeField = new BMenuField("type", B_TRANSLATE("Tipo:"), typeMenu);
 	fTypeField->Menu()->SetTargetForItems(this);
@@ -137,13 +138,15 @@ ChartWindow::ChartWindow(BMessenger target)
 ChartType ChartWindow::SelectedType() const
 {
 	// Corrispondenza posizionale con l'ordine di inserimento in
-	// BPopUpMenu sopra (0=Barre, 1=Linee, 2=Torta) e con i valori
-	// dell'enum ChartType in Chart.h -- niente da cercare per nome.
+	// BPopUpMenu sopra (0=Barre, 1=Linee, 2=Torta, 3=Area) e con i
+	// valori dell'enum ChartType in Chart.h -- niente da cercare per
+	// nome.
 	int32 index = fTypeField->Menu()->IndexOf(fTypeField->Menu()->FindMarked());
 	switch (index)
 	{
 		case 1: return eLineChart;
 		case 2: return ePieChart;
+		case 3: return eAreaChart;
 		default: return eBarChart;
 	}
 }

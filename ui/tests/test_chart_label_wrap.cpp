@@ -84,6 +84,50 @@ int main()
 	DrawChart(view, wideFrame, longLabels, ePieChart, "");
 	Check(true, "DrawPieChart (legenda con nomi lunghi + percentuale) non va in crash");
 
+	DrawChart(view, wideFrame, longLabels, eAreaChart, "");
+	Check(true, "DrawAreaChart (Fase 35) con le stesse etichette non va in crash");
+
+	// A differenza dei controlli "non va in crash" sopra (nessun
+	// precedente pixel-per-pixel in questo file per le funzioni Draw*),
+	// qui si verifica per davvero che il riempimento sotto la linea
+	// esista: un solo valore molto alto in un frame quadrato riempie
+	// quasi tutta l'altezza del grafico, cosi' il centro esatto cade
+	// quasi sicuramente dentro al poligono riempito (FillPolygon +
+	// B_OP_ALPHA), mentre l'angolo in alto a sinistra del frame resta
+	// sempre fuori da plotArea (margini/assi) e deve restare bianco
+	// puro, mai toccato dal riempimento.
+	{
+		// Due punti (non uno solo): il riempimento richiede un
+		// poligono di almeno due vertici della spezzata (vedi
+		// DrawAreaChart), un singolo punto non forma un'area da
+		// riempire, solo un pallino -- scoperto scrivendo proprio
+		// questo test, che con un solo punto trovava sempre il centro
+		// del frame bianco.
+		std::vector<ChartSeries> twoTallPoints;
+		ChartSeries tall1; tall1.label = "Uno"; tall1.value = 1000; twoTallPoints.push_back(tall1);
+		ChartSeries tall2; tall2.label = "Due"; tall2.value = 1000; twoTallPoints.push_back(tall2);
+		BRect areaFrame(0, 0, 199, 199);
+		DrawChart(view, areaFrame, twoTallPoints, eAreaChart, "");
+		view->Sync();
+
+		uint8* bits = (uint8*)bitmap.Bits();
+		int32 bpr = bitmap.BytesPerRow();
+		// B_RGB32 in memoria: B, G, R, A. (5,5): dentro il margine di
+		// 10px di DrawAreaChart ma fuori dal bordo nero disegnato
+		// esattamente sul perimetro del frame (StrokeRect(frame), che
+		// passerebbe proprio per (0,0) se campionato li').
+		uint8* margin = bits + 5 * bpr + 5 * 4;
+		Check(margin[0] > 250 && margin[1] > 250 && margin[2] > 250,
+			"il margine del frame (fuori da plotArea, non sul bordo) resta bianco puro, "
+			"il riempimento non sconfina");
+
+		uint8* center = bits + 100 * bpr + 100 * 4; // circa al centro del frame
+		bool centerTinted = !(center[0] > 250 && center[1] > 250 && center[2] > 250);
+		Check(centerTinted,
+			"il centro del frame, sotto due valori molto alti, e' colorato dal riempimento dell'area "
+			"(non e' rimasto bianco come lo sfondo)");
+	}
+
 	// Frame MOLTO piccolo: lo slot per categoria diventa strettissimo
 	// (pochi pixel), il caso peggiore per l'algoritmo di andata a capo
 	// -- deve comunque troncare con l'ellissi, non crashare ne' entrare
@@ -112,6 +156,9 @@ int main()
 
 	DrawMultiLineChart(view, wideFrame, multi, "");
 	Check(true, "DrawMultiLineChart con le stesse categorie/serie non va in crash");
+
+	DrawMultiAreaChart(view, wideFrame, multi, "");
+	Check(true, "DrawMultiAreaChart (Fase 35) con le stesse categorie/serie non va in crash");
 
 	bitmap.Unlock();
 

@@ -94,6 +94,8 @@ void ChartView::Draw(BRect updateRect)
 
 	if (fType == eLineChart)
 		DrawMultiLineChart(this, Bounds(), fMultiData, fTitle);
+	else if (fType == eAreaChart)
+		DrawMultiAreaChart(this, Bounds(), fMultiData, fTitle);
 	else
 		DrawGroupedBarChart(this, Bounds(), fMultiData, fTitle);
 }

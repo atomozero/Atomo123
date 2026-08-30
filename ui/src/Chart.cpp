@@ -553,6 +553,116 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	}
 }
 
+void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title)
+{
+	view->SetHighColor(255, 255, 255);
+	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
+
+	if (data.empty())
+	{
+		view->SetHighColor(120, 120, 120);
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
+		return;
+	}
+
+	BRect plotArea = frame;
+	plotArea.InsetBy(10, 10);
+	plotArea.top += 14;
+	if (!title.IsEmpty())
+		plotArea.top += 18;
+
+	double minValue, maxValue;
+	ChartValueRange(data, &minValue, &maxValue);
+
+	font_height fh;
+	view->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+	plotArea.bottom -= 12 + lineHeight * kCategoryLabelMaxLines + 4;
+	float categoryLabelY = plotArea.bottom + 12;
+	if (minValue < 0)
+		plotArea.bottom -= 14;
+
+	std::vector<AxisTick> ticks;
+	ComputeYAxisTicks(minValue, maxValue, plotArea, ticks);
+	float axisLabelWidth = 0;
+	for (size_t i = 0; i < ticks.size(); i++)
+	{
+		float width = view->StringWidth(ticks[i].label.String());
+		if (width > axisLabelWidth)
+			axisLabelWidth = width;
+	}
+	plotArea.left += axisLabelWidth + 6;
+
+	// Stessa geometria di DrawLineChart (ComputeLineLayout, riusata
+	// senza modifiche): l'unica differenza reale di un grafico ad area
+	// e' che la zona fra la spezzata e la linea dello zero viene
+	// riempita di colore, non solo tracciata.
+	std::vector<LinePoint> points;
+	ComputeLineLayout(data, plotArea, points);
+
+	DrawYAxisGrid(view, plotArea, minValue, maxValue);
+
+	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
+
+	if (points.size() >= 2)
+	{
+		// Poligono chiuso: ogni punto della spezzata, poi lo stesso
+		// percorso all'indietro lungo la linea dello zero -- un
+		// trapezio/poligono irregolare che segue il profilo dei dati
+		// sopra e sotto lo zero a seconda del segno di ogni valore.
+		std::vector<BPoint> polygon;
+		polygon.reserve(points.size() + 2);
+		for (size_t i = 0; i < points.size(); i++)
+			polygon.push_back(points[i].point);
+		polygon.push_back(BPoint(points.back().point.x, zeroY));
+		polygon.push_back(BPoint(points.front().point.x, zeroY));
+
+		// B_OP_ALPHA/B_PIXEL_ALPHA (stesso principio della tinta di
+		// selezione in SheetView::Draw): un riempimento pieno
+		// nasconderebbe del tutto la griglia dell'asse Y appena
+		// disegnata sotto.
+		view->SetDrawingMode(B_OP_ALPHA);
+		view->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+		view->SetHighColor(70, 110, 190, 90);
+		view->FillPolygon(&polygon[0], (int32)polygon.size());
+		view->SetDrawingMode(B_OP_COPY);
+	}
+
+	view->SetHighColor(70, 110, 190);
+	for (size_t i = 1; i < points.size(); i++)
+		view->StrokeLine(points[i - 1].point, points[i].point);
+	for (size_t i = 0; i < points.size(); i++)
+	{
+		BRect dot(points[i].point.x - 3, points[i].point.y - 3,
+			points[i].point.x + 3, points[i].point.y + 3);
+		view->FillEllipse(dot);
+	}
+
+	view->SetHighColor(40, 40, 40);
+	for (size_t i = 0; i < points.size() && i < data.size(); i++)
+	{
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%g", data[i].value);
+		float width = view->StringWidth(buf);
+		float y = (data[i].value >= 0) ? points[i].point.y - 8 : points[i].point.y + 8;
+		view->DrawString(buf, BPoint(points[i].point.x - width / 2, y));
+	}
+
+	view->SetHighColor(0, 0, 0);
+	view->StrokeRect(frame);
+	view->StrokeLine(BPoint(plotArea.left, zeroY), BPoint(plotArea.right, zeroY));
+
+	float slotWidth = plotArea.Width() / data.size();
+	for (size_t i = 0; i < points.size() && i < data.size(); i++)
+	{
+		float centerX = plotArea.left + i * slotWidth + slotWidth / 2;
+		DrawWrappedLabel(view, data[i].label.String(), BPoint(centerX, categoryLabelY),
+			slotWidth - 2, kCategoryLabelMaxLines, true);
+	}
+}
+
 // Tavolozza fissa per gli spicchi della torta: a differenza di barre/
 // linee (una sola serie, un solo colore ha senso), ogni spicchio
 // rappresenta una categoria diversa nello STESSO grafico e deve
@@ -1090,11 +1200,96 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
+void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, const BString& title)
+{
+	view->SetHighColor(255, 255, 255);
+	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
+
+	if (data.categories.empty() || data.seriesNames.empty())
+	{
+		view->SetHighColor(120, 120, 120);
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
+		return;
+	}
+
+	BRect plotArea;
+	double minValue, maxValue;
+	float categoryLabelY;
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY);
+
+	MultiLinePoint layout;
+	ComputeMultiLineLayout(data, plotArea, layout);
+
+	DrawYAxisGrid(view, plotArea, minValue, maxValue);
+
+	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
+
+	// Ogni serie riempita verso lo zero PRIMA di disegnarne la linea/i
+	// pallini (stesso ordine di DrawAreaChart sopra): una serie
+	// disegnata dopo copre visivamente quella precedente dove si
+	// sovrappongono, esattamente come il grafico ad area "normale" (non
+	// impilato) di Excel -- niente somma fra serie, ognuna resta la
+	// propria altezza vera.
+	for (size_t s = 0; s < layout.points.size(); s++)
+	{
+		if (layout.points[s].size() < 2)
+			continue;
+		std::vector<BPoint> polygon;
+		polygon.reserve(layout.points[s].size() + 2);
+		for (size_t c = 0; c < layout.points[s].size(); c++)
+			polygon.push_back(layout.points[s][c]);
+		polygon.push_back(BPoint(layout.points[s].back().x, zeroY));
+		polygon.push_back(BPoint(layout.points[s].front().x, zeroY));
+
+		view->SetDrawingMode(B_OP_ALPHA);
+		view->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+		rgb_color fill = kPieColors[s % kPieColorCount];
+		fill.alpha = 90;
+		view->SetHighColor(fill);
+		view->FillPolygon(&polygon[0], (int32)polygon.size());
+		view->SetDrawingMode(B_OP_COPY);
+	}
+
+	for (size_t s = 0; s < layout.points.size(); s++)
+	{
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		for (size_t c = 1; c < layout.points[s].size(); c++)
+			view->StrokeLine(layout.points[s][c - 1], layout.points[s][c]);
+		for (size_t c = 0; c < layout.points[s].size(); c++)
+		{
+			BPoint p = layout.points[s][c];
+			view->FillEllipse(BRect(p.x - 3, p.y - 3, p.x + 3, p.y + 3));
+		}
+	}
+
+	for (size_t s = 0; s < layout.points.size(); s++)
+	{
+		if (!SeriesShowsValues(data, s))
+			continue;
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		for (size_t c = 0; c < layout.points[s].size(); c++)
+		{
+			char buf[32];
+			snprintf(buf, sizeof(buf), "%g", data.values[s][c]);
+			float width = view->StringWidth(buf);
+			BPoint p = layout.points[s][c];
+			float y = (data.values[s][c] >= 0) ? p.y - 8 : p.y + 8;
+			view->DrawString(buf, BPoint(p.x - width / 2, y));
+		}
+	}
+
+	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
+}
+
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
 	ChartType type, const BString& title)
 {
 	switch (type)
 	{
+		case eAreaChart:
+			DrawAreaChart(view, frame, data, title);
+			return;
 		case eLineChart:
 			DrawLineChart(view, frame, data, title);
 			return;
