@@ -234,6 +234,11 @@ enum {
 	// SORT (Fase 34, stesso gruppo di UNIQUE sopra): terza funzione
 	// "spill", ordina le righe di un intervallo per una colonna scelta.
 	kSORTFuncNr,
+	// SORTBY (Fase 34, stesso gruppo di SORT sopra): quarta funzione
+	// "spill", ordina le righe di un intervallo per un intervallo
+	// SEPARATO di chiavi invece che per una colonna dell'intervallo
+	// stesso.
+	kSORTBYFuncNr,
 	kFunctionCount
 };
 
@@ -378,5 +383,6 @@ void XMATCHFunction(Value *stack, int argCnt, CContainer *cells);
 void SEQUENCEFunction(Value *stack, int argCnt, CContainer *cells);
 void UNIQUEFunction(Value *stack, int argCnt, CContainer *cells);
 void SORTFunction(Value *stack, int argCnt, CContainer *cells);
+void SORTBYFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

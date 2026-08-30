@@ -376,6 +376,7 @@ void SetupDefaultFuncs()
 	gFuncs[kRATEFuncNr] = RATEFunction;
 	gFuncs[kUNIQUEFuncNr] = UNIQUEFunction;
 	gFuncs[kSORTFuncNr] = SORTFunction;
+	gFuncs[kSORTBYFuncNr] = SORTBYFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

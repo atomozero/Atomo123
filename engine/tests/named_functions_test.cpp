@@ -73,7 +73,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 142, "InitFunctions carica tutte le 142 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 143, "InitFunctions carica tutte le 143 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -2379,6 +2379,49 @@ int main()
 		doc.Release();
 	}
 
+	// SORTBY (Fase 34, stesso gruppo di SORT sopra): quarta funzione
+	// "spill". A differenza di SORT, la chiave di ordinamento viene da
+	// un intervallo SEPARATO (qui colonna C, "Anzianita'"), non da una
+	// colonna dell'array da restituire (colonna A, "Nome") -- scenario
+	// reale: ordinare un elenco per un criterio che non fa parte
+	// dell'elenco stesso.
+	{
+		CContainer& doc = *new CContainer(NULL, NULL);
+
+		TryToParseString("Anna", cell(1, 1), &doc, true);
+		TryToParseString("3", cell(3, 1), &doc, true); // anzianita' (anni)
+		TryToParseString("Bruno", cell(1, 2), &doc, true);
+		TryToParseString("1", cell(3, 2), &doc, true);
+		TryToParseString("Carla", cell(1, 3), &doc, true);
+		TryToParseString("2", cell(3, 3), &doc, true);
+
+		TryToParseString("=SORTBY(A1:A3;C1:C3)", cell(5, 1), &doc, true);
+		doc.CalcCell(cell(5, 1));
+
+		Value v;
+		doc.GetValue(cell(5, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Bruno") == 0,
+			"=SORTBY(A1:A3;C1:C3) nella cella owner (E1) mostra Bruno, la minore anzianita' (1)");
+		doc.GetValue(cell(5, 2), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Carla") == 0,
+			"seconda riga spillata (E2) e' Carla, anzianita' intermedia (2)");
+		doc.GetValue(cell(5, 3), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Anna") == 0,
+			"terza riga spillata (E3) e' Anna, la maggiore anzianita' (3) -- crescente per default");
+
+		// sort_order=-1 (decrescente): stesso elenco, ordine capovolto.
+		TryToParseString("=SORTBY(A1:A3;C1:C3;-1)", cell(6, 1), &doc, true);
+		doc.CalcCell(cell(6, 1));
+		doc.GetValue(cell(6, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Anna") == 0,
+			"=SORTBY(A1:A3;C1:C3;-1) decrescente mette prima Anna, la maggiore anzianita'");
+		doc.GetValue(cell(6, 3), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Bruno") == 0,
+			"in ordine decrescente Bruno (la minore anzianita') finisce ultimo, non piu' primo");
+
+		doc.Release();
+	}
+
 	// InitFunctions() concorrente da piu' thread (bug reale, crash
 	// report utente 2026-08-30): App::RefsReceived puo' arrivare PRIMA
 	// di App::ReadyToRun (ordine non garantito), quindi il thread di
@@ -2421,8 +2464,8 @@ int main()
 			wait_for_thread(threads[i], &exitVal);
 		}
 
-		Check(gFuncCount == 142,
-			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 142 "
+		Check(gFuncCount == 143,
+			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 143 "
 			"(nessuna doppia inizializzazione)");
 		Check(GetFunctionNr("SUM") == kSUMFuncNr,
 			"GetFunctionNr(\"SUM\") funziona ancora dopo le chiamate concorrenti, "

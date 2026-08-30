@@ -1223,6 +1223,93 @@ void SORTFunction(Value *stack, int argCnt, CContainer *cells)
 	cells->ApplySpill(owner, rows, cols, values);
 }
 
+// SORTBY(array, by_array, [sort_order]) -- Fase 34, stesso gruppo di
+// SORT sopra, quarta funzione "spill" di Atomo123. Differenza rispetto
+// a SORT: la chiave di ordinamento viene da un intervallo SEPARATO
+// (by_array), non da una colonna di "array" stesso -- utile per
+// ordinare una tabella in base a valori che non fanno parte della
+// tabella da restituire (es. una classifica esterna). by_array deve
+// avere tante voci quante le RIGHE di array (una per riga da spostare
+// insieme, stesso principio "riga intera si sposta insieme" di SORT).
+//
+// Limiti dichiarati, entrambi rari nell'uso reale: il vero SORTBY di
+// Excel supporta piu' coppie array/ordine per un ordinamento multi-
+// livello (qui solo una coppia, un ordinamento a un solo livello);
+// "array" orizzontale (una riga sola invece di una o piu' colonne)
+// non e' supportato, stesso principio "verticale" gia' assunto da
+// SORT sopra.
+void SORTBYFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range arrayRange, byRange;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 1, &arrayRange) || !arrayRange.IsValid() ||
+		!GetRangeArgument(stack, argCnt, 2, &byRange) || !byRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int rows = arrayRange.bottom - arrayRange.top + 1;
+	int cols = arrayRange.right - arrayRange.left + 1;
+	int byRows = byRange.bottom - byRange.top + 1;
+	int byCols = byRange.right - byRange.left + 1;
+	bool byHorizontal = (byRows == 1 && byCols > 1);
+	int byCount = byHorizontal ? byCols : byRows;
+
+	if (byCount != rows || (byRows != 1 && byCols != 1))
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	double sortOrderArg = 1;
+	GetDoubleArgument(stack, argCnt, 3, &sortOrderArg);
+	bool ascending = (sortOrderArg >= 0);
+
+	CContainer *srcCells = GetRangeContainer(stack, 1, cells);
+	CContainer *byCells = GetRangeContainer(stack, 2, cells);
+
+	std::vector<Value> byValues(rows);
+	for (int i = 0; i < rows; i++)
+	{
+		cell c = byHorizontal ? cell(byRange.left + i, byRange.top)
+			: cell(byRange.left, byRange.top + i);
+		byCells->GetValue(c, byValues[i]);
+	}
+
+	std::vector<std::vector<Value> > table(rows, std::vector<Value>(cols));
+	for (int row = 0; row < rows; row++)
+		for (int col = 0; col < cols; col++)
+			srcCells->GetValue(cell(arrayRange.left + col, arrayRange.top + row), table[row][col]);
+
+	std::vector<int> order(rows);
+	for (int i = 0; i < rows; i++)
+		order[i] = i;
+	std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+		return ascending ? (byValues[a] < byValues[b]) : (byValues[b] < byValues[a]);
+	});
+
+	std::vector<Value> values;
+	values.reserve(rows * cols);
+	for (int i = 0; i < rows; i++)
+		for (int col = 0; col < cols; col++)
+			values.push_back(table[order[i]][col]);
+
+	stack[0] = values[0]; // angolo in alto a sinistra, vedi il commento su SEQUENCE sopra
+
+	if (rows * cols <= 1 || !cells)
+		return;
+
+	cell owner = cells->CalculatingCell();
+	if (!IsWholeFunctionCall(cells->GetCellFormula(owner), kSORTBYFuncNr))
+		return; // annidata in un'altra formula: nessuno spill, vedi il commento su SEQUENCE sopra
+
+	cells->ApplySpill(owner, rows, cols, values);
+}
+
 // XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found],
 // [match_mode], [search_mode]) -- Fase 14, nome standard Excel piu'
 // recente del formato dichiarato del file (scritto con "_xlfn."

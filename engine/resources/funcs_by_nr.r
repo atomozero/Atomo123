@@ -246,6 +246,9 @@ resource 'Func' (128, "Functions")
 		"UNIQUE", 65535, 140, 1,
 		// SORT (Fase 34, stesso gruppo di UNIQUE sopra): terza funzione
 		// "spill".
-		"SORT", 65535, 141, 1
+		"SORT", 65535, 141, 1,
+		// SORTBY (Fase 34, stesso gruppo di SORT sopra): quarta
+		// funzione "spill".
+		"SORTBY", 65535, 142, 1
 	}
 };

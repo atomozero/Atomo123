@@ -140,3 +140,4 @@ Generates a sequence of numbers, spilling into a block of cells
 Interest rate per period of an annuity
 Returns the distinct values from an array, in order of first appearance
 Sorts the rows of a range by a given column
+Sorts the rows of a range by the values of a separate array
