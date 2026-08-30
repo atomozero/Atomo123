@@ -377,6 +377,7 @@ void SetupDefaultFuncs()
 	gFuncs[kUNIQUEFuncNr] = UNIQUEFunction;
 	gFuncs[kSORTFuncNr] = SORTFunction;
 	gFuncs[kSORTBYFuncNr] = SORTBYFunction;
+	gFuncs[kFILTERFuncNr] = FILTERFunction;
 } /* InitFunctions */
 
 void LoadPlugIns()

@@ -1310,6 +1310,103 @@ void SORTBYFunction(Value *stack, int argCnt, CContainer *cells)
 	cells->ApplySpill(owner, rows, cols, values);
 }
 
+// FILTER(array, include, [if_empty]) -- Fase 34, "Path to full Excel
+// parity" Tier 2, "Dynamic arrays beyond SEQUENCE": ultima delle
+// quattro, quinta funzione "spill" di Atomo123. Restituisce solo le
+// RIGHE di "array" per cui la voce corrispondente di "include" e' vera
+// (booleano VERO, o un numero diverso da zero -- stesso principio
+// "generoso" gia' usato altrove in questo motore per un valore trattato
+// come condizione, es. IF). "include" deve avere tante voci quante le
+// righe di "array", stesso principio "una per riga" di SORTBY sopra.
+//
+// Se nessuna riga soddisfa la condizione, il vero FILTER di Excel
+// restituisce l'errore #CALC! a meno che "if_empty" non sia stato
+// passato: qui si usa lo stesso sentinella NaN gia' visto per gli
+// "errore" di altre funzioni (es. XMATCH), o il valore grezzo di
+// if_empty se presente.
+//
+// Limite dichiarato, stesso principio "verticale" di SORT/SORTBY
+// sopra: "array" orizzontale (una riga sola) non e' supportato.
+void FILTERFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range arrayRange, includeRange;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 1, &arrayRange) || !arrayRange.IsValid() ||
+		!GetRangeArgument(stack, argCnt, 2, &includeRange) || !includeRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int rows = arrayRange.bottom - arrayRange.top + 1;
+	int cols = arrayRange.right - arrayRange.left + 1;
+	int incRows = includeRange.bottom - includeRange.top + 1;
+	int incCols = includeRange.right - includeRange.left + 1;
+	bool incHorizontal = (incRows == 1 && incCols > 1);
+	int incCount = incHorizontal ? incCols : incRows;
+
+	if (incCount != rows || (incRows != 1 && incCols != 1))
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	CContainer *srcCells = GetRangeContainer(stack, 1, cells);
+	CContainer *incCells = GetRangeContainer(stack, 2, cells);
+
+	std::vector<std::vector<Value> > table;
+	table.reserve(rows);
+	for (int row = 0; row < rows; row++)
+	{
+		cell incCell = incHorizontal ? cell(includeRange.left + row, includeRange.top)
+			: cell(includeRange.left, includeRange.top + row);
+		Value incVal;
+		incCells->GetValue(incCell, incVal);
+
+		bool keep = (incVal.fType == eBoolData && incVal.fBool)
+			|| (incVal.fType == eNumData && incVal.fDouble != 0);
+		if (!keep)
+			continue;
+
+		std::vector<Value> rowValues(cols);
+		for (int col = 0; col < cols; col++)
+			srcCells->GetValue(cell(arrayRange.left + col, arrayRange.top + row), rowValues[col]);
+		table.push_back(rowValues);
+	}
+
+	if (table.empty())
+	{
+		// if_empty (terzo argomento opzionale): qualunque valore grezzo
+		// passato cosi' com'e', stesso schema di XLOOKUP sopra per
+		// if_not_found -- senza, un sentinella d'errore.
+		if (argCnt >= 3)
+			stack[0] = stack[2];
+		else
+			stack[0] = gRefNan;
+		return;
+	}
+
+	std::vector<Value> values;
+	values.reserve(table.size() * cols);
+	for (size_t i = 0; i < table.size(); i++)
+		for (int col = 0; col < cols; col++)
+			values.push_back(table[i][col]);
+
+	stack[0] = values[0]; // angolo in alto a sinistra, vedi il commento su SEQUENCE sopra
+
+	if (values.size() <= 1 || !cells)
+		return;
+
+	cell owner = cells->CalculatingCell();
+	if (!IsWholeFunctionCall(cells->GetCellFormula(owner), kFILTERFuncNr))
+		return; // annidata in un'altra formula: nessuno spill, vedi il commento su SEQUENCE sopra
+
+	cells->ApplySpill(owner, (int)table.size(), cols, values);
+}
+
 // XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found],
 // [match_mode], [search_mode]) -- Fase 14, nome standard Excel piu'
 // recente del formato dichiarato del file (scritto con "_xlfn."

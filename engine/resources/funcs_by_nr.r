@@ -249,6 +249,9 @@ resource 'Func' (128, "Functions")
 		"SORT", 65535, 141, 1,
 		// SORTBY (Fase 34, stesso gruppo di SORT sopra): quarta
 		// funzione "spill".
-		"SORTBY", 65535, 142, 1
+		"SORTBY", 65535, 142, 1,
+		// FILTER (Fase 34, stesso gruppo di SORTBY sopra): quinta e
+		// ultima funzione "spill" di questo gruppo.
+		"FILTER", 65535, 143, 1
 	}
 };

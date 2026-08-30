@@ -141,3 +141,4 @@ Interest rate per period of an annuity
 Returns the distinct values from an array, in order of first appearance
 Sorts the rows of a range by a given column
 Sorts the rows of a range by the values of a separate array
+Returns only the rows of an array that satisfy a condition

@@ -239,6 +239,10 @@ enum {
 	// SEPARATO di chiavi invece che per una colonna dell'intervallo
 	// stesso.
 	kSORTBYFuncNr,
+	// FILTER (Fase 34, stesso gruppo di SORTBY sopra): quinta e ultima
+	// funzione "spill" di questo gruppo, restituisce solo le righe che
+	// soddisfano una condizione.
+	kFILTERFuncNr,
 	kFunctionCount
 };
 
@@ -384,5 +388,6 @@ void SEQUENCEFunction(Value *stack, int argCnt, CContainer *cells);
 void UNIQUEFunction(Value *stack, int argCnt, CContainer *cells);
 void SORTFunction(Value *stack, int argCnt, CContainer *cells);
 void SORTBYFunction(Value *stack, int argCnt, CContainer *cells);
+void FILTERFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

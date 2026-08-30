@@ -73,7 +73,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 143, "InitFunctions carica tutte le 143 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 144, "InitFunctions carica tutte le 144 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -2422,6 +2422,76 @@ int main()
 		doc.Release();
 	}
 
+	// FILTER (Fase 34, stesso gruppo di SORTBY sopra): quinta e ultima
+	// funzione "spill" di questo gruppo. Tabella (Nome, Punteggio) a
+	// due colonne, "include" (colonna C) vero solo per le righe con
+	// punteggio >= 15 -- verifica sia il filtro booleano diretto
+	// (colonna D) sia un "include" calcolato dal vivo con un confronto
+	// (colonna E, il caso reale piu' comune: "=FILTER(...;C1:C3>=15)").
+	{
+		CContainer& doc = *new CContainer(NULL, NULL);
+
+		TryToParseString("Anna", cell(1, 1), &doc, true);
+		TryToParseString("30", cell(2, 1), &doc, true);
+		// TRUE/FALSE nudi (senza parentesi) sono comunque una vera
+		// CHIAMATA A FUNZIONE nel bytecode (vedi parser.cpp), non un
+		// letterale booleano gia' pronto: serve un CalcCell esplicito
+		// prima di leggerne il valore, altrimenti GetValue() restituisce
+		// ancora lo stato non calcolato -- scoperto scrivendo proprio
+		// questo test, che senza questi CalcCell filtrava fuori TUTTE
+		// le righe invece delle sole attese.
+		TryToParseString("TRUE", cell(3, 1), &doc, true);
+		doc.CalcCell(cell(3, 1));
+		TryToParseString("Bruno", cell(1, 2), &doc, true);
+		TryToParseString("10", cell(2, 2), &doc, true);
+		TryToParseString("FALSE", cell(3, 2), &doc, true);
+		doc.CalcCell(cell(3, 2));
+		TryToParseString("Carla", cell(1, 3), &doc, true);
+		TryToParseString("20", cell(2, 3), &doc, true);
+		TryToParseString("TRUE", cell(3, 3), &doc, true);
+		doc.CalcCell(cell(3, 3));
+
+		TryToParseString("=FILTER(A1:B3;C1:C3)", cell(5, 1), &doc, true);
+		doc.CalcCell(cell(5, 1));
+
+		Value v;
+		doc.GetValue(cell(5, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Anna") == 0,
+			"=FILTER(A1:B3;C1:C3) nella cella owner (E1) mostra Anna, la prima riga con include=TRUE");
+		doc.GetValue(cell(6, 1), v);
+		Check(v.fType == eNumData && (double)v == 30,
+			"la seconda colonna della prima riga filtrata (F1) resta 30, la riga intera e' passata");
+
+		doc.GetValue(cell(5, 2), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Carla") == 0,
+			"la seconda riga filtrata (E2) e' Carla (include=TRUE), Bruno (FALSE) e' stato escluso");
+		doc.GetValue(cell(6, 2), v);
+		Check(v.fType == eNumData && (double)v == 20,
+			"la seconda colonna della seconda riga filtrata (F2) resta 20");
+
+		range spillRange = doc.GetSpillRange(cell(5, 1));
+		Check(spillRange.top == 1 && spillRange.bottom == 2
+				&& spillRange.left == 5 && spillRange.right == 6,
+			"lo spill di FILTER copre esattamente E1:F2, due righe (non tre: Bruno e' stato escluso)");
+
+		// if_empty (terzo argomento): nessuna riga soddisfa una
+		// condizione sempre falsa, il risultato e' il valore di
+		// ripiego invece di un errore muto.
+		TryToParseString("=FILTER(A1:B3;D1:D3;\"nessuno\")", cell(1, 5), &doc, true);
+		TryToParseString("FALSE", cell(4, 1), &doc, true);
+		doc.CalcCell(cell(4, 1));
+		TryToParseString("FALSE", cell(4, 2), &doc, true);
+		doc.CalcCell(cell(4, 2));
+		TryToParseString("FALSE", cell(4, 3), &doc, true);
+		doc.CalcCell(cell(4, 3));
+		doc.CalcCell(cell(1, 5));
+		doc.GetValue(cell(1, 5), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "nessuno") == 0,
+			"=FILTER(...;\"nessuno\") con nessuna riga inclusa restituisce if_empty invece di un errore muto");
+
+		doc.Release();
+	}
+
 	// InitFunctions() concorrente da piu' thread (bug reale, crash
 	// report utente 2026-08-30): App::RefsReceived puo' arrivare PRIMA
 	// di App::ReadyToRun (ordine non garantito), quindi il thread di
@@ -2464,8 +2534,8 @@ int main()
 			wait_for_thread(threads[i], &exitVal);
 		}
 
-		Check(gFuncCount == 143,
-			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 143 "
+		Check(gFuncCount == 144,
+			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 144 "
 			"(nessuna doppia inizializzazione)");
 		Check(GetFunctionNr("SUM") == kSUMFuncNr,
 			"GetFunctionNr(\"SUM\") funziona ancora dopo le chiamate concorrenti, "
