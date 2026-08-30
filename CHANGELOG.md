@@ -901,3 +901,25 @@ What shipped since v0.2.8, not yet in a tagged release:
   `Financial_Sample_CdA.ascd` demo generator: `UNIQUE` runs on the
   real 700-row dataset, `SORT`/`SORTBY`/`FILTER` on a small
   purpose-built sample table.
+- Added three new chart types — Area, Scatter/XY, and Combo
+  (bar+line) — one commit each, completing the roadmap's "More chart
+  types" item. Area reuses the existing line-chart geometry
+  unchanged, filling the zone under the line with a semi-transparent
+  color (multi-series overlap rather than stack, matching Excel's
+  plain "Area" rather than "Stacked Area"). Scatter needed a new data
+  shape end to end (`ScatterPoint`, an x/y pair — the existing
+  label/value `ChartSeries` can't represent two numeric axes) and
+  surfaced a real design gap: `MainWindow::HandleChartRequest`
+  decided single-vs-multi series purely by column count, which can't
+  tell a 2-column scatter range (X, Y both numeric) apart from a
+  normal 2-column label/value range — fixed by sending the selected
+  chart type alongside the range in the preview request. Combo draws
+  the first series as bars and every subsequent series as lines on
+  one shared value scale and category grid, reusing the existing
+  multi-series range shape and plot-area/legend code as-is. All three
+  are appended to the end of the `ChartType` enum (never inserted in
+  the middle — the type is a raw byte in `.ascd` files) and reuse the
+  existing embedded-chart infrastructure (drag/resize/undo, native
+  persistence); XLSX import/export for all three remains out of
+  scope, a separate gap from the app's existing bar/line/pie XLSX
+  chart support.

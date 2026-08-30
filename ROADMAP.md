@@ -429,11 +429,25 @@ list deliberately deviates from pure effort-sorting:
   nested expression stays deferred (all four collapse to a scalar —
   the first element — when nested, matching `SEQUENCE`'s own
   documented limit)
-- **More chart types**: scatter/XY, area, combo (bar+line sharing one
-  chart). The embedded-chart infrastructure (import/export/drag/
-  resize/undo) already exists for bar/line/pie; this extends it, not
-  a rebuild. Sparklines are a distinct rendering path (in-cell, no
-  chart object) and would come later even in this tier
+- ~~**More chart types**: scatter/XY, area, combo (bar+line sharing
+  one chart).~~ Shipped, one commit each. Area reuses
+  `ComputeLineLayout`/`ComputeMultiLineLayout` unchanged, filling the
+  zone under the line with a semi-transparent color (multi-series
+  overlap rather than stack, matching Excel's plain "Area", not
+  "Stacked Area"). Scatter needed its own data shape end to end
+  (`ScatterPoint`, an (x, y) pair — `ChartSeries`'s label/value can't
+  represent two numeric axes); plain dots only, no connecting lines,
+  and the value range does not force-include zero like the other
+  types since scatter data is often far from either axis's origin.
+  Combo renders the first series as bars and every subsequent series
+  as lines on one shared value scale and category grid — no secondary
+  Y axis. All three reuse the existing embedded-chart infrastructure
+  (drag/resize/undo, native `.ascd` persistence — chart type is
+  already a raw byte, any new enum value round-trips automatically);
+  XLSX import/export for all three remains out of scope, a separate
+  gap from the existing bar/line/pie XLSX chart support. Sparklines
+  are a distinct rendering path (in-cell, no chart object) and would
+  come later even in this tier
 - **Excel Table Total Row** (per-column aggregation functions on a
   structured table). Structured references and cross-sheet table
   lookups already work; this is one more row type on infrastructure
