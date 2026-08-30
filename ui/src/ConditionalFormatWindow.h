@@ -39,9 +39,11 @@ private:
 			BMenuField*			fTypeField;
 			BTextControl*		fValueField;
 			BColorControl*		fColorControl;
+			BColorControl*		fMaxColorControl;
 			BMessenger			fTarget;
 
 			int					SelectedType() const;
+			void				UpdateFieldsForType();
 };
 
 #endif

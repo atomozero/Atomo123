@@ -4108,6 +4108,32 @@ void MainWindow::ApplyConditionalFormatToSelection(int type, const char* value, 
 	MarkModified();
 }
 
+void MainWindow::ApplyColorScaleToSelection(rgb_color minColor, rgb_color maxColor)
+{
+	if (!fDoc)
+		return;
+
+	fSheetView->SaveCondFormatUndoState();
+	ConditionalFormatRule rule;
+	rule.type = eCondColorScale;
+	rule.ranges.push_back(fSheetView->SelectionRange());
+
+	ColorScalePoint minPoint;
+	minPoint.cfvoType = "min";
+	minPoint.color = minColor;
+	rule.colorScalePoints.push_back(minPoint);
+
+	ColorScalePoint maxPoint;
+	maxPoint.cfvoType = "max";
+	maxPoint.color = maxColor;
+	rule.colorScalePoints.push_back(maxPoint);
+
+	fDoc->AddConditionalFormatRule(rule);
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::RemoveAllConditionalFormatRules()
 {
 	if (!fDoc)
@@ -5638,12 +5664,19 @@ void MainWindow::MessageReceived(BMessage* message)
 			int32 type = 0;
 			BString value;
 			rgb_color* color = NULL;
+			rgb_color* maxColor = NULL;
 			ssize_t size = 0;
 			message->FindInt32("type", &type);
 			message->FindString("value", &value);
 			if (message->FindData("color", B_RGB_COLOR_TYPE,
 					(const void**)&color, &size) == B_OK && color)
-				ApplyConditionalFormatToSelection(type, value.String(), *color);
+			{
+				if (type == 2 && message->FindData("maxColor", B_RGB_COLOR_TYPE,
+						(const void**)&maxColor, &size) == B_OK && maxColor)
+					ApplyColorScaleToSelection(*color, *maxColor);
+				else
+					ApplyConditionalFormatToSelection(type, value.String(), *color);
+			}
 			break;
 		}
 
