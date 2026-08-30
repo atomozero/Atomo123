@@ -240,6 +240,9 @@ resource 'Func' (128, "Functions")
 		// roadmap che mancava davvero -- NPV/IRR/PMT/FV/PV erano gia'
 		// tutte implementate. 65535 (argCnt variabile): fv e type sono
 		// opzionali, come per SEQUENCE/ADDRESS/XMATCH sopra.
-		"RATE", 65535, 139, 3
+		"RATE", 65535, 139, 3,
+		// UNIQUE (Fase 34, "Path to full Excel parity" Tier 2): seconda
+		// funzione "spill" di Atomo123 dopo SEQUENCE.
+		"UNIQUE", 65535, 140, 1
 	}
 };

@@ -138,3 +138,4 @@ Creates a cell reference as text from row/column numbers
 Searches a range for a match and returns its relative position
 Generates a sequence of numbers, spilling into a block of cells
 Interest rate per period of an annuity
+Returns the distinct values from an array, in order of first appearance

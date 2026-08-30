@@ -227,6 +227,10 @@ enum {
 	// implementate da prima (verificato leggendo Functions.finance.cpp
 	// prima di aggiungere altro).
 	kRATEFuncNr,
+	// UNIQUE (Fase 34, "Path to full Excel parity" Tier 2, "Dynamic
+	// arrays beyond SEQUENCE"): seconda funzione "spill" di Atomo123,
+	// stesso meccanismo di SEQUENCE sopra (CContainer::ApplySpill).
+	kUNIQUEFuncNr,
 	kFunctionCount
 };
 
@@ -369,5 +373,6 @@ void INDIRECTFunction(Value *stack, int argCnt, CContainer *cells);
 void ADDRESSFunction(Value *stack, int argCnt, CContainer *cells);
 void XMATCHFunction(Value *stack, int argCnt, CContainer *cells);
 void SEQUENCEFunction(Value *stack, int argCnt, CContainer *cells);
+void UNIQUEFunction(Value *stack, int argCnt, CContainer *cells);
 
 #endif

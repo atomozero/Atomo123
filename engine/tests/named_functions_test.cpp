@@ -73,7 +73,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 140, "InitFunctions carica tutte le 140 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 141, "InitFunctions carica tutte le 141 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -2263,6 +2263,60 @@ int main()
 		doc.Release();
 	}
 
+	// UNIQUE (Fase 34, "Path to full Excel parity" Tier 2, "Dynamic
+	// arrays beyond SEQUENCE"): seconda funzione "spill" di Atomo123.
+	{
+		CContainer& doc = *new CContainer(NULL, NULL);
+
+		TryToParseString("Rosso", cell(1, 1), &doc, true);
+		TryToParseString("Verde", cell(1, 2), &doc, true);
+		TryToParseString("Rosso", cell(1, 3), &doc, true);
+		TryToParseString("Blu", cell(1, 4), &doc, true);
+		TryToParseString("Verde", cell(1, 5), &doc, true);
+
+		TryToParseString("=UNIQUE(A1:A5)", cell(2, 1), &doc, true);
+		doc.CalcCell(cell(2, 1));
+
+		Value v;
+		doc.GetValue(cell(2, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Rosso") == 0,
+			"=UNIQUE(A1:A5) nella cella owner (B1) mostra il primo valore distinto, \"Rosso\"");
+
+		doc.GetValue(cell(2, 2), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Verde") == 0,
+			"UNIQUE spilla il secondo valore distinto (\"Verde\") in B2, sotto la cella owner");
+
+		doc.GetValue(cell(2, 3), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Blu") == 0,
+			"UNIQUE spilla il terzo valore distinto (\"Blu\") in B3, non ripete \"Rosso\"/\"Verde\"");
+
+		doc.GetValue(cell(2, 4), v);
+		Check(v.fType == eNoData,
+			"UNIQUE non spilla una quarta cella (B4): solo tre valori erano davvero distinti");
+
+		range spillRange = doc.GetSpillRange(cell(2, 1));
+		Check(spillRange.top == 1 && spillRange.bottom == 3
+				&& spillRange.left == 2 && spillRange.right == 2,
+			"lo spill di UNIQUE copre esattamente B1:B3, tre righe per una colonna");
+
+		// Annidata dentro un'altra funzione: nessuno spill, si comporta
+		// come uno scalare (solo il primo valore distinto) -- stesso
+		// principio gia' verificato per SEQUENCE sopra (li' con SUM,
+		// qui con UPPER visto che UNIQUE lavora su testo in questo
+		// esempio). "&"/"|" in questo motore sono AND/OR booleani
+		// (eredita' Sum-It), non concatenazione di testo come in Excel
+		// -- CONCAT()/TEXTJOIN() sono le funzioni giuste per quello,
+		// scoperto scrivendo proprio questo test con "&" per errore.
+		TryToParseString("=UPPER(UNIQUE(A1:A5))", cell(3, 1), &doc, true);
+		doc.CalcCell(cell(3, 1));
+		doc.GetValue(cell(3, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "ROSSO") == 0,
+			"=UPPER(UNIQUE(A1:A5)) (annidata dentro un'altra funzione) resta uno scalare, "
+			"nessuno spill nelle celle vicine");
+
+		doc.Release();
+	}
+
 	// InitFunctions() concorrente da piu' thread (bug reale, crash
 	// report utente 2026-08-30): App::RefsReceived puo' arrivare PRIMA
 	// di App::ReadyToRun (ordine non garantito), quindi il thread di
@@ -2305,8 +2359,8 @@ int main()
 			wait_for_thread(threads[i], &exitVal);
 		}
 
-		Check(gFuncCount == 140,
-			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 140 "
+		Check(gFuncCount == 141,
+			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 141 "
 			"(nessuna doppia inizializzazione)");
 		Check(GetFunctionNr("SUM") == kSUMFuncNr,
 			"GetFunctionNr(\"SUM\") funziona ancora dopo le chiamate concorrenti, "

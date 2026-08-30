@@ -1053,6 +1053,87 @@ void SEQUENCEFunction(Value *stack, int argCnt, CContainer *cells)
 	cells->ApplySpill(owner, rows, cols, values);
 }
 
+// UNIQUE(array) -- Fase 34, "Path to full Excel parity" Tier 2, prima
+// delle funzioni ad array dinamico oltre SEQUENCE: restituisce i
+// valori distinti di "array", nell'ordine della prima comparsa (come
+// il vero UNIQUE di Excel di default). Scala insieme a SEQUENCE lo
+// stesso identico meccanismo di spill (CContainer::ApplySpill,
+// Container.spill.cpp) -- questa e' la seconda funzione "spill" di
+// Atomo123, non un nuovo meccanismo.
+//
+// Limite dichiarato: "array" deve essere una singola riga o una
+// singola colonna (come lookup_array di XLOOKUP sopra). Un intervallo
+// davvero bidimensionale (deduplicare intere RIGHE, non singoli
+// valori) e gli argomenti opzionali "by_col"/"exactly_once" del vero
+// UNIQUE di Excel non sono implementati -- caso raro nell'uso reale
+// (la stragrande maggioranza delle formule UNIQUE viste in file veri
+// lavora su un elenco a una colonna sola), stesso principio di scope
+// gia' dichiarato per XLOOKUP (solo corrispondenza esatta) e VLOOKUP/
+// HLOOKUP altrove in questo file.
+void UNIQUEFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	range r;
+
+	if (CheckForNanParameters(stack, argCnt))
+		return;
+
+	if (!GetRangeArgument(stack, argCnt, 1, &r) || !r.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	int rows = r.bottom - r.top + 1;
+	int cols = r.right - r.left + 1;
+	if (rows != 1 && cols != 1)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+	bool horizontal = (rows == 1 && cols > 1);
+	int count = horizontal ? cols : rows;
+
+	CContainer *srcCells = GetRangeContainer(stack, 1, cells);
+
+	// O(n^2) nel numero di celle dell'intervallo: nessun hash su Value
+	// (fType misto numero/testo/data/booleano, vedi Value::operator==
+	// per il confronto cross-tipo gia' esistente) -- corretto anche per
+	// un elenco di qualche migliaio di righe, non pensato per decine di
+	// migliaia.
+	std::vector<Value> uniqueValues;
+	uniqueValues.reserve(count);
+	for (int i = 0; i < count; i++)
+	{
+		cell c = horizontal ? cell(r.left + i, r.top) : cell(r.left, r.top + i);
+		Value v;
+		srcCells->GetValue(c, v);
+
+		bool found = false;
+		for (size_t u = 0; u < uniqueValues.size() && !found; u++)
+			found = (uniqueValues[u] == v);
+		if (!found)
+			uniqueValues.push_back(v);
+	}
+
+	stack[0] = uniqueValues[0]; // angolo in alto a sinistra, vedi il commento su SEQUENCE sopra
+
+	if (uniqueValues.size() <= 1 || !cells)
+		return;
+
+	cell owner = cells->CalculatingCell();
+	if (!IsWholeFunctionCall(cells->GetCellFormula(owner), kUNIQUEFuncNr))
+		return; // annidata in un'altra formula: nessuno spill, vedi il commento su SEQUENCE sopra
+
+	// Spilla nello stesso verso dell'intervallo sorgente (una riga se
+	// orizzontale, una colonna altrimenti) -- uniqueValues e' gia' un
+	// elenco piatto, quindi va bene sia per "1 riga x N colonne" che
+	// per "N righe x 1 colonna" senza bisogno di riorganizzarlo.
+	if (horizontal)
+		cells->ApplySpill(owner, 1, (int)uniqueValues.size(), uniqueValues);
+	else
+		cells->ApplySpill(owner, (int)uniqueValues.size(), 1, uniqueValues);
+}
+
 // XLOOKUP(lookup_value, lookup_array, return_array, [if_not_found],
 // [match_mode], [search_mode]) -- Fase 14, nome standard Excel piu'
 // recente del formato dichiarato del file (scritto con "_xlfn."
