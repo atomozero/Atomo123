@@ -4155,12 +4155,29 @@ static void ParseDxfs(const std::vector<unsigned char>& xml, const XlsxTheme& th
 // importati SOLO dopo che l'intero foglio e' stato letto (vedi
 // ApplyConditionalFormatting sotto) -- non un motore di regole vive,
 // il colore risultante e' congelato all'importazione.
+// Un <cfvo type="min|max|percentile|percent|num" val="..."/> dentro
+// <colorScale> (Fase 33/A punto 6) -- "val" e' assente/ignorato per
+// "min"/"max", vedi ECMA-376 18.3.1.19. La stessa identica
+// vocabolario "type" del motore (ColorScalePoint::cfvoType in
+// Container.h): nessuna traduzione necessaria fra i due.
+struct ColorScaleCfvo {
+	std::string type;
+	double val;
+};
+
 struct CondFormatRule {
 	std::vector<range> ranges; // da sqref, uno o piu' intervalli/celle separati da spazio
-	std::string type;          // "cellIs", "duplicateValues", ... (solo questi due gestiti)
+	std::string type;          // "cellIs", "duplicateValues", "colorScale", ...
 	std::string operatorAttr;  // solo per "cellIs": "equal" e' l'unico gestito
 	std::string formula;       // solo per "cellIs"
 	int dxfId;
+	// Solo per type == "colorScale": <cfvo>/<color> sono scritti IN
+	// LINEA dentro <colorScale>, non tramite dxfId come cellIs/
+	// duplicateValues -- stesso ordine posizionale nel file (il primo
+	// <cfvo> va col primo <color>, ecc.), stesso principio gia' usato
+	// per ColorScalePoint nel motore.
+	std::vector<ColorScaleCfvo> csCfvos;
+	std::vector<rgb_color> csColors;
 };
 
 // Un <hyperlink ref="A1" r:id="rIdX"/> (o, per un collegamento INTERNO
@@ -4280,6 +4297,12 @@ struct SheetContext {
 	CondFormatRule currentRule;
 	bool inCondFormula;
 	std::string condFormula;
+	// Stato per <colorScale>/<cfvo>/<color>, figli di <cfRule
+	// type="colorScale"> (Fase 33/A punto 6) -- <color> qui non ha
+	// nessun altro gestore in questo parser (a differenza di
+	// StylesStart/DxfsStart), quindi non serve altro contesto per
+	// distinguerlo.
+	bool inColorScale;
 };
 
 // Un singolo token di sqref ("B8" o "B6:B8") in un "range" del
@@ -4691,6 +4714,42 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 		ctx->inCondFormula = true;
 		ctx->condFormula.clear();
 	}
+	// <colorScale><cfvo type="min"/><cfvo type="percentile" val="50"/>
+	// <cfvo type="max"/><color rgb="..."/><color rgb="..."/>
+	// <color rgb="..."/></colorScale> (Fase 33/A punto 6, dentro un
+	// <cfRule type="colorScale">): i <cfvo> vengono TUTTI prima, poi
+	// TUTTI i <color>, nello stesso ordine posizionale (ECMA-376
+	// 18.3.1.16) -- niente da abbinare a coppie qui, solo accodare
+	// nell'ordine di arrivo, ApplyConditionalFormatting li abbina per
+	// indice.
+	else if (strcmp(name, "colorScale") == 0 && ctx->inCfRule)
+		ctx->inColorScale = true;
+	else if (strcmp(name, "cfvo") == 0 && ctx->inColorScale)
+	{
+		ColorScaleCfvo cfvo;
+		cfvo.val = 0;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "type") == 0)
+				cfvo.type = atts[i + 1];
+			else if (strcmp(atts[i], "val") == 0)
+				cfvo.val = atof(atts[i + 1]);
+		}
+		ctx->currentRule.csCfvos.push_back(cfvo);
+	}
+	else if (strcmp(name, "color") == 0 && ctx->inColorScale)
+	{
+		rgb_color c = { 0, 0, 0, 255 };
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "rgb") == 0)
+			{
+				HexToColor(atts[i + 1], &c);
+				break;
+			}
+		}
+		ctx->currentRule.csColors.push_back(c);
+	}
 	else if (strcmp(name, "v") == 0)
 		ctx->inValue = true;
 	else if (strcmp(name, "f") == 0)
@@ -4848,6 +4907,8 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		ctx->inCondFormula = false;
 		ctx->currentRule.formula = ctx->condFormula;
 	}
+	else if (strcmp(name, "colorScale") == 0 && ctx->inColorScale)
+		ctx->inColorScale = false;
 	else if (strcmp(name, "cfRule") == 0 && ctx->inCfRule)
 	{
 		ctx->inCfRule = false;
@@ -5115,6 +5176,7 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.inFormula = false;
 	ctx.inCfRule = false;
 	ctx.inCondFormula = false;
+	ctx.inColorScale = false;
 	ctx.inDataValidation = false;
 	ctx.inValidationFormula1 = false;
 	ctx.inValidationFormula2 = false;
@@ -5592,23 +5654,52 @@ static std::string StripQuotes(const std::string& s)
 // (CContainer::AddConditionalFormatRule), rivalutata da SheetView::
 // Draw a ogni ridisegno contro i valori CORRENTI (vedi
 // CContainer::EvaluateConditionalFormatting in Container.styles.cpp).
-// Stessi due tipi di regola gia' gestiti alla Fase 12, gli unici
-// davvero comuni in un file reale: "cellIs"/"equal" (confronto con un
-// letterale, stringa o numero) e "duplicateValues" (celle il cui
-// valore compare piu' di una volta nello stesso intervallo). Gli
-// altri tipi ECMA-376 (containsText, top10, colorScale, dataBar,
-// iconSet, expression con formula arbitraria...) restano ignorati in
-// sicurezza, nessuna regola aggiunta -- richiederebbero un vero
-// motore di valutazione formule contro un valore ipotetico, fuori
-// scope. Solo il colore di SFONDO del dxf (non anche il colore del
-// testo): ConditionalFormatRule dell'engine porta un solo colore,
-// vedi il commento su quello struct in Container.h.
+// Tre tipi di regola gestiti, i piu' comuni in un file reale:
+// "cellIs"/"equal" (confronto con un letterale, stringa o numero),
+// "duplicateValues" (celle il cui valore compare piu' di una volta
+// nello stesso intervallo, Fase 13) e "colorScale" (Fase 33/A punto 6:
+// a differenza degli altri due, non usa dxfId -- i colori/soglie sono
+// scritti in linea in <colorScale>, raccolti da ParseSheet in
+// CondFormatRule::csCfvos/csColors). Gli altri tipi ECMA-376
+// (containsText, top10, dataBar, iconSet, expression con formula
+// arbitraria...) restano ignorati in sicurezza, nessuna regola
+// aggiunta -- richiederebbero un vero motore di valutazione formule
+// contro un valore ipotetico, fuori scope. Per cellIs/duplicateValues,
+// solo il colore di SFONDO del dxf (non anche il colore del testo):
+// ConditionalFormatRule dell'engine porta un solo colore per quei due
+// tipi, vedi il commento su quello struct in Container.h.
 static void ApplyConditionalFormatting(CContainer* doc,
 	const std::vector<CondFormatRule>& rules, const std::vector<DxfInfo>& dxfs)
 {
 	for (size_t i = 0; i < rules.size(); i++)
 	{
 		const CondFormatRule& rule = rules[i];
+
+		if (rule.type == "colorScale")
+		{
+			// Serve almeno un <cfvo> per <color> (2 o 3 in un file
+			// reale, mai un numero diverso) per avere una scala valida
+			// da abbinare per indice -- altrimenti la regola si scarta,
+			// stesso principio "sicuro" delle altre combinazioni non
+			// modellate qui sotto.
+			if (rule.csCfvos.size() < 2 || rule.csCfvos.size() != rule.csColors.size())
+				continue;
+
+			ConditionalFormatRule engineRule;
+			engineRule.type = eCondColorScale;
+			engineRule.ranges = rule.ranges;
+			for (size_t p = 0; p < rule.csCfvos.size(); p++)
+			{
+				ColorScalePoint point;
+				point.cfvoType = rule.csCfvos[p].type;
+				point.cfvoValue = rule.csCfvos[p].val;
+				point.color = rule.csColors[p];
+				engineRule.colorScalePoints.push_back(point);
+			}
+			doc->AddConditionalFormatRule(engineRule);
+			continue;
+		}
+
 		if (rule.dxfId < 0 || (size_t)rule.dxfId >= dxfs.size())
 			continue;
 		const DxfInfo& dxf = dxfs[rule.dxfId];

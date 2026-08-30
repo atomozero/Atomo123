@@ -4216,17 +4216,19 @@ int main()
 				"fino alla formattazione condizionale");
 
 			// Finalmente, la sezione che questo test vuole davvero
-			// verificare: le due regole VIVE importate da
-			// sample_condformat.xlsx (non piu' un colore congelato).
+			// verificare: le tre regole VIVE importate da
+			// sample_condformat.xlsx (non piu' un colore congelato) --
+			// la terza, colorScale su C1:C10 (Fase 33/A punto 6), e'
+			// stata aggiunta al file di prova insieme al resto.
 			int32 ruleCount = 0;
 			if (sectionsOk && pos + 4 <= ascdLen)
 			{
 				memcpy(&ruleCount, ascdData + pos, 4); pos += 4;
 			}
-			Check(ruleCount == 2,
-				"due regole di formattazione condizionale importate da sample_condformat.xlsx");
+			Check(ruleCount == 3,
+				"tre regole di formattazione condizionale importate da sample_condformat.xlsx");
 
-			bool foundCellIsRule = false, foundDuplicatesRule = false;
+			bool foundCellIsRule = false, foundDuplicatesRule = false, foundColorScaleRule = false;
 			for (int32 i = 0; i < ruleCount && pos + 1 + 4 <= ascdLen; i++)
 			{
 				int8 type;
@@ -4249,7 +4251,7 @@ int main()
 				int32 rangeCount;
 				memcpy(&rangeCount, ascdData + pos, 4); pos += 4;
 
-				bool rangeMatchesA1A3 = false, rangeMatchesB1B3 = false;
+				bool rangeMatchesA1A3 = false, rangeMatchesB1B3 = false, rangeMatchesC1C10 = false;
 				for (int32 r = 0; r < rangeCount && pos + 8 <= ascdLen; r++)
 				{
 					int16 left, top, right, bottom;
@@ -4262,14 +4264,19 @@ int main()
 						rangeMatchesA1A3 = true;
 					if (left == 2 && right == 2 && top == 1 && bottom == 3)
 						rangeMatchesB1B3 = true;
+					if (left == 3 && right == 3 && top == 1 && bottom == 10)
+						rangeMatchesC1C10 = true;
 				}
 
 				// Punti di controllo della scala di colori (versione 3
-				// del formato ASCD, Fase 33/A punto 5): zero qui (nessuna
-				// delle due regole di questo file di prova e' una scala
-				// di colori), ma il campo c'e' comunque per ogni regola
-				// e va saltato per restare allineati sulla regola
-				// successiva.
+				// del formato ASCD, Fase 33/A punto 5): zero per le
+				// prime due regole di questo file di prova, tre per la
+				// terza (colorScale su C1:C10, Fase 33/A punto 6) --
+				// letti per davvero, non solo saltati, per verificare
+				// che l'importazione da <colorScale>/<cfvo> sia corretta.
+				std::vector<std::string> cfvoTypes;
+				std::vector<double> cfvoValues;
+				std::vector<int> cfvoColorsPacked;
 				if (pos + 4 <= ascdLen)
 				{
 					int32 pointCount;
@@ -4280,9 +4287,17 @@ int main()
 						memcpy(&cfvoTypeLen, ascdData + pos, 4); pos += 4;
 						if (pos + (size_t)cfvoTypeLen + 8 + 4 > ascdLen)
 							break;
+						cfvoTypes.push_back(std::string((const char*)ascdData + pos, cfvoTypeLen));
 						pos += cfvoTypeLen; // cfvoType
-						pos += 8; // cfvoValue (double)
-						pos += 4; // color (rgb_color)
+
+						double val;
+						memcpy(&val, ascdData + pos, 8); pos += 8;
+						cfvoValues.push_back(val);
+
+						rgb_color pointColor;
+						memcpy(&pointColor, ascdData + pos, 4); pos += 4;
+						cfvoColorsPacked.push_back(
+							(pointColor.red << 16) | (pointColor.green << 8) | pointColor.blue);
 					}
 				}
 
@@ -4291,11 +4306,20 @@ int main()
 					foundCellIsRule = true;
 				if (type == eCondDuplicateValues && packed == 0xFFEB9C && rangeMatchesB1B3)
 					foundDuplicatesRule = true;
+				if (type == eCondColorScale && rangeMatchesC1C10 && cfvoTypes.size() == 3
+					&& cfvoTypes[0] == "min" && cfvoTypes[1] == "percentile" && cfvoTypes[2] == "max"
+					&& cfvoValues[1] == 50
+					&& cfvoColorsPacked[0] == 0xF8696B && cfvoColorsPacked[1] == 0xFFEB84
+					&& cfvoColorsPacked[2] == 0x63BE7B)
+					foundColorScaleRule = true;
 			}
 			Check(foundCellIsRule,
 				"la regola cellIs/equal (\"Mancante\", dxf 0 = FFC7CE) e' importata correttamente");
 			Check(foundDuplicatesRule,
 				"la regola duplicateValues (dxf 1 = FFEB9C) e' importata correttamente");
+			Check(foundColorScaleRule,
+				"la regola colorScale (min/percentile 50/max, C1:C10) e' importata correttamente "
+				"con tutti e tre i punti di controllo e i loro colori veri");
 
 			// La valutazione VIVA vera e propria (il valore di ogni
 			// cella confrontato con la regola, non solo che la regola
