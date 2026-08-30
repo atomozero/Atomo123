@@ -41,9 +41,18 @@ $(ADDON): CsvTranslator.cpp $(ENGINE_DIR)/libengine.a $(EN_CATKEYS)
 		-L$(ENGINE_DIR) -lengine -lbe -ltranslation
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l en $(EN_CATKEYS)
 
+# "cp" seguito da "mv" nella stessa cartella, non "cp" diretto sul
+# file gia' installato: un vero crash reale di Tracker (il suo
+# thumbnail worker chiama BTranslatorRoster::Translate() su ogni file
+# del Desktop in background, in qualunque momento) ha eseguito codice
+# a meta' sovrascritto durante un "cp" diretto -- "mv" sullo stesso
+# filesystem e' una rinomina atomica (rename(2)), un lettore concorrente
+# vede sempre o il file vecchio intero o quello nuovo intero, mai uno
+# stato intermedio.
 install: $(ADDON)
 	mkdir -p ~/config/non-packaged/add-ons/Translators
-	cp $(ADDON) ~/config/non-packaged/add-ons/Translators/
+	cp $(ADDON) ~/config/non-packaged/add-ons/Translators/$(ADDON).new
+	mv ~/config/non-packaged/add-ons/Translators/$(ADDON).new ~/config/non-packaged/add-ons/Translators/$(ADDON)
 
 # Passaggio manuale, non nel giro normale di "make" (stesso principio
 # di "catkeys" in ui/Makefile): rigenera locales/it.catkeys, l'elenco
