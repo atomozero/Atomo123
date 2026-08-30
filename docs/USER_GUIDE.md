@@ -239,8 +239,11 @@ shown.
 
 - **Insert → Cell Comment…**: attaches a note to the selected cell,
   shown with a small red triangle in the cell's corner.
-- **Insert → Hyperlink…**: attaches a clickable link (opened with the
-  system's default handler) to the selected cell.
+- **Insert → Hyperlink…**: attaches a link to the selected cell.
+  **Ctrl+click** the cell to open it with the system's default
+  handler — a plain click just selects the cell as usual, so you can
+  still select or edit a linked cell without launching a browser
+  every time (same convention as LibreOffice Calc).
 - **Data → Data Validation…**: restricts what a cell accepts (a
   dropdown list or a numeric range).
 - **Format → Conditional Formatting…**: applies a style to a range
