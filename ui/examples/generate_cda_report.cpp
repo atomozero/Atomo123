@@ -914,6 +914,74 @@ int main()
 		funcs->AddConditionalFormatRule(rule);
 	}
 
+	// Array dinamici oltre SEQUENCE (Fase 34, "Path to full Excel
+	// parity" Tier 2): UNIQUE sui dati reali (i 5 segmenti distinti
+	// della colonna Segment, 700 righe, formula dal vivo -- si aggiorna
+	// da solo se cambia il dataset importato), SORT/SORTBY/FILTER su
+	// una piccola tabella costruita apposta (una tabella reale a 700
+	// righe spillerebbe altrettante righe nel foglio, inutile da
+	// mostrare qui, stesso principio dell'esempio duplicati sopra).
+	int arrayLabelRow = dupLastRow + 3;
+	WriteLabel(funcs, cell(1, arrayLabelRow), "Array dinamici (UNIQUE, SORT, SORTBY, FILTER)");
+	funcs->AddMergedRange(range(1, arrayLabelRow, 4, arrayLabelRow));
+	Style(funcs, cell(1, arrayLabelRow), [&](CellStyle& cs) {
+		cs.fLowColor = kLightGray; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
+	});
+
+	int uniqueRow = arrayLabelRow + 1;
+	WriteLabel(funcs, cell(1, uniqueRow), "=UNIQUE(Dati!A2:A701)");
+	TryToParseString("=UNIQUE(Dati!A2:A701)", cell(2, uniqueRow), funcs, true);
+	funcs->SetComment(cell(2, uniqueRow),
+		"UNIQUE sui 700 record reali (colonna Segment): spilla i 5 segmenti distinti, "
+		"si aggiorna da solo se il dataset importato cambia.");
+
+	int arrayTableLabelRow = uniqueRow + 7; // sotto ai 5 segmenti spillati, piu' margine
+	WriteLabel(funcs, cell(1, arrayTableLabelRow),
+		"SORT/SORTBY/FILTER su una piccola tabella di esempio (Nome, Regione, Vendite)");
+	funcs->AddMergedRange(range(1, arrayTableLabelRow, 4, arrayTableLabelRow));
+	Style(funcs, cell(1, arrayTableLabelRow), [&](CellStyle& cs) { cs.fHighColor = kDarkGray; });
+
+	int sampleFirstRow = arrayTableLabelRow + 1;
+	struct SampleRow { const char* name; const char* region; double sales; };
+	const SampleRow sampleRows[] = {
+		{ "Anna", "Nord", 300 },
+		{ "Bruno", "Sud", 100 },
+		{ "Carla", "Nord", 200 },
+		{ "Dario", "Centro", 400 },
+		{ "Elena", "Sud", 150 },
+	};
+	for (size_t i = 0; i < sizeof(sampleRows) / sizeof(sampleRows[0]); i++)
+	{
+		int row = sampleFirstRow + (int)i;
+		WriteLabel(funcs, cell(1, row), sampleRows[i].name);
+		WriteLabel(funcs, cell(2, row), sampleRows[i].region);
+		TryToParseString(BString() << sampleRows[i].sales, cell(3, row), funcs, true);
+		Integer(funcs, cell(3, row));
+		for (int col = 1; col <= 3; col++)
+			Border(funcs, cell(col, row));
+	}
+	int sampleLastRow = sampleFirstRow + (int)(sizeof(sampleRows) / sizeof(sampleRows[0])) - 1;
+
+	char sortFormula[64];
+	snprintf(sortFormula, sizeof(sortFormula), "=SORT(A%d:C%d;3;-1)", sampleFirstRow, sampleLastRow);
+	WriteLabel(funcs, cell(5, sampleFirstRow - 1), "SORT (per Vendite, decrescente)");
+	TryToParseString(sortFormula, cell(5, sampleFirstRow), funcs, true);
+
+	char sortByFormula[64];
+	snprintf(sortByFormula, sizeof(sortByFormula), "=SORTBY(A%d:A%d;C%d:C%d;-1)",
+		sampleFirstRow, sampleLastRow, sampleFirstRow, sampleLastRow);
+	WriteLabel(funcs, cell(8, sampleFirstRow - 1), "SORTBY (nomi per Vendite)");
+	TryToParseString(sortByFormula, cell(8, sampleFirstRow), funcs, true);
+
+	char filterFormula[80];
+	snprintf(filterFormula, sizeof(filterFormula), "=FILTER(A%d:C%d;B%d:B%d=\"Nord\";\"nessuno\")",
+		sampleFirstRow, sampleLastRow, sampleFirstRow, sampleLastRow);
+	WriteLabel(funcs, cell(10, sampleFirstRow - 1), "FILTER (solo Regione=\"Nord\")");
+	TryToParseString(filterFormula, cell(10, sampleFirstRow), funcs, true);
+	funcs->SetComment(cell(10, sampleFirstRow),
+		"FILTER con una condizione calcolata dal vivo (B:B=\"Nord\"), il caso reale piu' comune: "
+		"cambiando la Regione di una riga sopra, il risultato filtrato si aggiorna da solo.");
+
 	// ==================== Cartella di lavoro ====================
 	AscdSheet cdaSheet;
 	cdaSheet.name = "Riunione CdA";
