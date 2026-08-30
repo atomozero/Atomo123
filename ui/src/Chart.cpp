@@ -1467,6 +1467,131 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, co
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
+void ComputeComboLayout(const MultiChartData& data, BRect bounds, ComboLayout& out)
+{
+	out.bars.clear();
+	out.lines.clear();
+	size_t seriesCount = data.seriesNames.size();
+	size_t catCount = data.categories.size();
+	if (seriesCount == 0 || catCount == 0)
+		return;
+
+	double minValue, maxValue;
+	MultiChartValueRange(data, &minValue, &maxValue);
+	float zeroY = ChartValueToY(0.0, minValue, maxValue, bounds);
+	float slotWidth = bounds.Width() / catCount;
+	// Barra piu' stretta dello slot (60%), stesso principio di
+	// ComputeBarLayout a singola serie -- qui non c'e' bisogno di
+	// dividere lo slot per serie come ComputeGroupedBarLayout, la barra
+	// e' sempre una sola per categoria (solo la serie 0).
+	float barWidth = slotWidth * 0.6f;
+
+	out.bars.resize(catCount);
+	for (size_t c = 0; c < catCount; c++)
+	{
+		float centerX = bounds.left + c * slotWidth + slotWidth / 2;
+		float valueY = ChartValueToY(data.values[0][c], minValue, maxValue, bounds);
+		out.bars[c].Set(centerX - barWidth / 2, std::min(valueY, zeroY),
+			centerX + barWidth / 2, std::max(valueY, zeroY));
+	}
+
+	if (seriesCount <= 1)
+		return;
+
+	// Le linee condividono la STESSA X di centro-slot delle barre
+	// (identica formula di ComputeMultiLineLayout), cosi' un punto e la
+	// barra della stessa categoria restano allineati verticalmente.
+	out.lines.resize(seriesCount - 1);
+	for (size_t s = 1; s < seriesCount; s++)
+	{
+		out.lines[s - 1].resize(catCount);
+		for (size_t c = 0; c < catCount; c++)
+		{
+			float x = bounds.left + c * slotWidth + slotWidth / 2;
+			float y = ChartValueToY(data.values[s][c], minValue, maxValue, bounds);
+			out.lines[s - 1][c].Set(x, y);
+		}
+	}
+}
+
+void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const BString& title)
+{
+	view->SetHighColor(255, 255, 255);
+	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
+
+	if (data.categories.empty() || data.seriesNames.empty())
+	{
+		view->SetHighColor(120, 120, 120);
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
+		return;
+	}
+
+	BRect plotArea;
+	double minValue, maxValue;
+	float categoryLabelY;
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY);
+
+	ComboLayout layout;
+	ComputeComboLayout(data, plotArea, layout);
+
+	DrawYAxisGrid(view, plotArea, minValue, maxValue);
+
+	// Serie 0: barre. Stesso colore (kPieColors[0]) che DrawMultiSeriesFooter
+	// assegna alla legenda della serie 0, cosi' barra e legenda combaciano.
+	view->SetHighColor(kPieColors[0]);
+	for (size_t c = 0; c < layout.bars.size(); c++)
+		view->FillRect(layout.bars[c]);
+
+	if (SeriesShowsValues(data, 0))
+	{
+		view->SetHighColor(kPieColors[0]);
+		for (size_t c = 0; c < layout.bars.size(); c++)
+		{
+			char buf[32];
+			snprintf(buf, sizeof(buf), "%g", data.values[0][c]);
+			float width = view->StringWidth(buf);
+			BRect bar = layout.bars[c];
+			float x = bar.left + bar.Width() / 2 - width / 2;
+			float y = (data.values[0][c] >= 0) ? bar.top - 4 : bar.bottom + 4;
+			view->DrawString(buf, BPoint(x, y));
+		}
+	}
+
+	// Serie 1..N-1: linee. layout.lines[s] corrisponde alla serie reale
+	// (s + 1), quindi il colore/indice showValues usano sempre "s + 1"
+	// per restare allineati alla stessa numerazione della legenda.
+	for (size_t s = 0; s < layout.lines.size(); s++)
+	{
+		view->SetHighColor(kPieColors[(s + 1) % kPieColorCount]);
+		for (size_t c = 1; c < layout.lines[s].size(); c++)
+			view->StrokeLine(layout.lines[s][c - 1], layout.lines[s][c]);
+		for (size_t c = 0; c < layout.lines[s].size(); c++)
+		{
+			BPoint p = layout.lines[s][c];
+			view->FillEllipse(BRect(p.x - 3, p.y - 3, p.x + 3, p.y + 3));
+		}
+	}
+
+	for (size_t s = 0; s < layout.lines.size(); s++)
+	{
+		if (!SeriesShowsValues(data, s + 1))
+			continue;
+		view->SetHighColor(kPieColors[(s + 1) % kPieColorCount]);
+		for (size_t c = 0; c < layout.lines[s].size(); c++)
+		{
+			char buf[32];
+			snprintf(buf, sizeof(buf), "%g", data.values[s + 1][c]);
+			float width = view->StringWidth(buf);
+			BPoint p = layout.lines[s][c];
+			float y = (data.values[s + 1][c] >= 0) ? p.y - 8 : p.y + 8;
+			view->DrawString(buf, BPoint(p.x - width / 2, y));
+		}
+	}
+
+	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
+}
+
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
 	ChartType type, const BString& title)
 {

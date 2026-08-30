@@ -3314,6 +3314,8 @@ void SheetView::Draw(BRect updateRect)
 						DrawMultiLineChart(this, obj.frame, multi, obj.title);
 					else if (obj.type == eAreaChart)
 						DrawMultiAreaChart(this, obj.frame, multi, obj.title);
+					else if (obj.type == eComboChart)
+						DrawComboChart(this, obj.frame, multi, obj.title);
 					else
 						DrawGroupedBarChart(this, obj.frame, multi, obj.title);
 				}

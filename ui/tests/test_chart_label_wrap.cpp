@@ -182,6 +182,63 @@ int main()
 	DrawScatterChart(view, wideFrame, emptyScatter, "");
 	Check(true, "DrawScatterChart senza dati non va in crash");
 
+	// DrawComboChart (Fase 35, ultimo dei tre "More chart types"): stesso
+	// rischio di sconfinamento di DrawGroupedBarChart/DrawMultiLineChart
+	// (categorie/nomi di serie lunghi, legenda a striscia fissa), piu'
+	// il caso di una sola serie (degenera in sole barre, nessuna linea).
+	DrawComboChart(view, wideFrame, multi, "");
+	Check(true, "DrawComboChart con categorie/nomi di serie lunghi non va in crash");
+
+	MultiChartData singleSeriesCombo;
+	singleSeriesCombo.categories = multi.categories;
+	singleSeriesCombo.seriesNames.push_back(multi.seriesNames[0]);
+	singleSeriesCombo.values.push_back(multi.values[0]);
+	DrawComboChart(view, wideFrame, singleSeriesCombo, "");
+	Check(true, "DrawComboChart con una sola serie (nessuna linea) non va in crash");
+
+	// Verifica pixel-per-pixel: la barra della serie 0 (blu, kPieColors[0]
+	// = 70,110,190) e la linea della serie 1 (rosso, kPieColors[1], vedi
+	// la tavolozza in Chart.cpp) devono comparire entrambe nello stesso
+	// grafico -- prova che il percorso combinato disegna davvero due
+	// forme diverse, non solo una delle due.
+	{
+		MultiChartData comboData;
+		comboData.categories.push_back("A");
+		comboData.categories.push_back("B");
+		comboData.seriesNames.push_back("Barre");
+		comboData.seriesNames.push_back("Linee");
+		comboData.values.push_back(std::vector<double>());
+		comboData.values[0].push_back(100);
+		comboData.values[0].push_back(100);
+		comboData.values.push_back(std::vector<double>());
+		comboData.values[1].push_back(50);
+		comboData.values[1].push_back(50);
+
+		BRect comboFrame(0, 0, 199, 199);
+		DrawComboChart(view, comboFrame, comboData, "");
+		view->Sync();
+
+		uint8* bits = (uint8*)bitmap.Bits();
+		int32 bpr = bitmap.BytesPerRow();
+		bool barFound = false, lineFound = false;
+		for (int32 y = 0; y < (int32)comboFrame.Height() && !(barFound && lineFound); y++)
+		{
+			uint8* row = bits + y * bpr;
+			for (int32 x = 0; x < (int32)comboFrame.Width(); x++)
+			{
+				uint8* px = row + x * 4;
+				// B_RGB32: B, G, R, A. kPieColors[0] = {70,110,190},
+				// kPieColors[1] = {220,120,60} (vedi Chart.cpp).
+				if (px[0] == 190 && px[1] == 110 && px[2] == 70)
+					barFound = true;
+				if (px[0] == 60 && px[1] == 120 && px[2] == 220)
+					lineFound = true;
+			}
+		}
+		Check(barFound, "il colore della serie 0 (barre) e' visibile nel grafico combinato");
+		Check(lineFound, "il colore della serie 1 (linea) e' visibile nello stesso grafico combinato");
+	}
+
 	// Verifica pixel-per-pixel (stesso principio del blocco Area sopra):
 	// un solo pallino disegnato esattamente al centro del plotArea deve
 	// lasciare un pixel non bianco li', mentre l'angolo del frame (fuori

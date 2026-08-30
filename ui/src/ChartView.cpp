@@ -112,6 +112,8 @@ void ChartView::Draw(BRect updateRect)
 		DrawMultiLineChart(this, Bounds(), fMultiData, fTitle);
 	else if (fType == eAreaChart)
 		DrawMultiAreaChart(this, Bounds(), fMultiData, fTitle);
+	else if (fType == eComboChart)
+		DrawComboChart(this, Bounds(), fMultiData, fTitle);
 	else
 		DrawGroupedBarChart(this, Bounds(), fMultiData, fTitle);
 }

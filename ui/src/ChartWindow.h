@@ -3,7 +3,8 @@
 
 	Finestra "Grafico": un campo di testo per l'intervallo dati (es.
 	"A1:B5", due colonne: etichette e valori), un selettore del tipo
-	(Barre/Linee/Torta/Area/Dispersione), un'anteprima (ChartView, "Disegna") e un
+	(Barre/Linee/Torta/Area/Dispersione/Combinato), un'anteprima
+	(ChartView, "Disegna") e un
 	secondo campo con la cella di destinazione per incorporare davvero
 	il grafico nel foglio ("Inserisci nel foglio", vedi ChartObject in
 	Chart.h). Stessa regola sui thread di FindWindow (vedi

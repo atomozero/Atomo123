@@ -43,7 +43,12 @@ enum ChartType {
 	// sopra, un file .ascd scritto prima di un nuovo tipo non deve mai
 	// vedere un valore esistente cambiare significato.
 	eAreaChart = 3,
-	eScatterChart = 4
+	eScatterChart = 4,
+	// Combinato barre+linee (Fase 35, ultimo dei tre "More chart
+	// types"): richiede serie multiple (MultiChartData, vedi sotto) per
+	// avere senso -- con una sola serie degenera in un grafico a barre
+	// normale, vedi il commento su DrawComboChart.
+	eComboChart = 5
 };
 
 // Un grafico incorporato nel foglio (vedi SheetView::Draw): posizione
@@ -285,6 +290,23 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data,
 // restano visibili sotto quelle disegnate dopo dove si sovrappongono,
 // come il grafico ad area "normale" (non impilato) di Excel.
 void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data,
+	const BString& title = BString());
+
+// Grafico combinato barre+linee (Fase 35): la PRIMA serie (indice 0)
+// si disegna come barre, tutte le successive come linee -- stessa
+// scala di valori comune (MultiChartValueRange) e stessa griglia di
+// categorie di ComputeGroupedBarLayout/ComputeMultiLineLayout, cosi'
+// barre e linee restano confrontabili e allineate sullo stesso asse.
+// Nessun secondo asse Y: fuori scopo per questa prima versione (vedi
+// il commento sul roadmap item "More chart types").
+struct ComboLayout {
+	std::vector<BRect> bars;			// una barra per categoria, solo per la serie 0
+	std::vector<std::vector<BPoint> > lines;	// lines[s][categoria], per le serie 1..N-1 (indice 0 qui = serie 1)
+};
+
+void ComputeComboLayout(const MultiChartData& data, BRect bounds, ComboLayout& out);
+
+void DrawComboChart(BView* view, BRect frame, const MultiChartData& data,
 	const BString& title = BString());
 
 #endif

@@ -458,6 +458,47 @@ int main()
 			"un solo punto (intervallo degenere su entrambi gli assi) resta dentro bounds");
 	}
 
+	// ComputeComboLayout (barre+linee): la serie 0 diventa barre, le
+	// successive linee -- riusa il "multi" a due serie/tre categorie
+	// gia' costruito sopra per ComputeGroupedBarLayout/
+	// ComputeMultiLineLayout.
+	ComboLayout combo;
+	ComputeComboLayout(multi, groupedBounds, combo);
+	Check(combo.bars.size() == 3, "ComputeComboLayout produce una barra per categoria (solo serie 0)");
+	Check(combo.lines.size() == 1, "ComputeComboLayout produce una linea per le serie RESTANTI (2 serie totali - 1 a barre = 1 linea)");
+	if (combo.lines.size() == 1)
+		Check(combo.lines[0].size() == 3, "la linea (serie 1) ha un punto per categoria");
+	if (combo.bars.size() == 3 && combo.lines.size() == 1 && combo.lines[0].size() == 3)
+	{
+		Check(combo.bars[0].left < combo.bars[1].left && combo.bars[1].left < combo.bars[2].left,
+			"le barre (serie 0) sono ordinate da sinistra a destra come le categorie");
+		Check(combo.lines[0][0].x < combo.lines[0][1].x && combo.lines[0][1].x < combo.lines[0][2].x,
+			"i punti della linea (serie 1) sono ordinati da sinistra a destra come le categorie");
+		// La serie 0 a Mar vale 30 (il massimo assoluto di tutto il
+		// grafico, stessa scala comune di ComputeGroupedBarLayout sopra):
+		// la barra deve toccare il bordo superiore dell'area.
+		Check(combo.bars[2].top == groupedBounds.top,
+			"la barra col valore massimo di tutto il grafico (serie 0, Mar=30) tocca il bordo superiore dell'area, stessa scala comune della linea");
+		// Stessa X di centro-categoria condivisa tra barre e linee, cosi'
+		// restano allineate verticalmente sullo stesso asse.
+		float barCenterX = (combo.bars[0].left + combo.bars[0].right) / 2;
+		Check(barCenterX == combo.lines[0][0].x,
+			"la barra e il punto della linea alla STESSA categoria condividono la stessa X di centro-slot");
+	}
+
+	// Una sola serie (nessuna colonna aggiuntiva oltre le etichette):
+	// nessuna linea da disegnare, degenera in un grafico a sole barre
+	// -- non deve andare in errore ne' produrre un vettore lines vuoto
+	// ma di dimensione sbagliata.
+	MultiChartData singleSeries;
+	singleSeries.categories = multi.categories;
+	singleSeries.seriesNames.push_back(multi.seriesNames[0]);
+	singleSeries.values.push_back(multi.values[0]);
+	ComboLayout comboSingle;
+	ComputeComboLayout(singleSeries, groupedBounds, comboSingle);
+	Check(comboSingle.bars.size() == 3, "ComputeComboLayout con una sola serie produce comunque le barre");
+	Check(comboSingle.lines.empty(), "ComputeComboLayout con una sola serie non produce nessuna linea");
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();
