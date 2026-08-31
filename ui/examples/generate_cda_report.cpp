@@ -492,51 +492,6 @@ int main()
 			blocks[b].critCol, blocks[b].valCol, blocks[b].currency, blocks[b].integer);
 	}
 
-	// Tabella pivot VERA (Inserisci -> Tabella Pivot, Fase 29 per il
-	// raggruppamento a piu' livelli): a differenza dei quattro blocchi
-	// SUMIF sopra (dal vivo, MAI congelati), questa e' deliberatamente
-	// un'ISTANTANEA statica, per design -- vedi il commento in cima al
-	// file. Prodotto+Fascia sconto sono le uniche due colonne di
-	// categoria ADIACENTI nel dataset reale seguite da una colonna
-	// numerica altrettanto adiacente (Unita' Vendute): C:E, l'unica
-	// combinazione a due livelli che BuildPivotTable puo' leggere da
-	// un intervallo unico senza dover prima riordinare le colonne.
-	// Scritta PRIMA dei grafici sotto (anche se appare piu' in basso
-	// nel foglio) apposta: la sua estensione dipende dai dati reali
-	// (numero di gruppi Prodotto/Fascia sconto), serve conoscerla per
-	// posizionare i grafici SOTTO di lei senza sovrapposizioni.
-	int realPivotLabelRow = 36;
-	WriteLabel(pivot, cell(1, realPivotLabelRow),
-		"Tabella pivot VERA (Inserisci -> Tabella Pivot): istantanea statica, non dal vivo "
-		"come le tabelle sopra -- raggruppamento a due livelli, Prodotto poi Fascia sconto");
-	pivot->AddMergedRange(range(1, realPivotLabelRow, 11, realPivotLabelRow));
-	Style(pivot, cell(1, realPivotLabelRow), [&](CellStyle& cs) {
-		cs.fLowColor = kOrange; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter; cs.fWrapText = true;
-	});
-	Bold(pivot, cell(1, realPivotLabelRow));
-
-	int realPivotDataRow = realPivotLabelRow + 1;
-	int realPivotRowCount = 0;
-	{
-		std::vector<PivotRow> rows;
-		if (BuildPivotTable(dati, range(3, 2, 5, 701), rows))
-		{
-			WritePivotTable(pivot, cell(1, realPivotDataRow), rows, ePivotSum);
-			realPivotRowCount = (int)rows.size();
-		}
-	}
-
-	// I grafici sotto vanno posizionati SOTTO questa tabella (mai
-	// sopra ne' accavallati), quindi la Y di partenza dipende dalla sua
-	// estensione VERA a runtime, non da un numero fisso -- stessa
-	// tecnica di conversione riga->pixel usata per "noteRow" sul
-	// foglio "Riunione CdA" piu' sotto: riga 1 alta 30px invece di 20
-	// (vedi pivotSheet.rowHeights), tutte le altre kRowHeight=20,
-	// quindi la riga N inizia a 10 + (N-1)*20 pixel. Due righe vuote
-	// di margine prima del primo grafico.
-	int chartsFirstRow = realPivotDataRow + realPivotRowCount + 2;
-	float chartsAreaTop = 10 + (chartsFirstRow - 1) * 20;
-
 	// Dati per il grafico COMBINATO (Fase 35): stesse categorie del
 	// blocco "Per segmento" sopra (colonna 1-2), ma con una SECONDA
 	// colonna serie (Profitto) accanto -- serve una tabella con due
@@ -591,41 +546,39 @@ int main()
 		Currency(pivot, cell(18, row));
 	}
 
-	// Sette grafici incorporati (barre, torta, barre, linee, area,
-	// combinato, dispersione -- tutti i tipi disponibili): dati letti
-	// dal vivo dalle formule appena scritte sopra -- il grafico si
+	// Sei grafici incorporati (barre, torta, barre, linee, combinato,
+	// dispersione -- tutti i tipi disponibili tranne l'Area, che riusa
+	// gli stessi dati mensili della linea appena sotto): dati letti dal
+	// vivo dalle formule appena scritte sopra -- il grafico si
 	// aggiorna da solo ogni volta che il documento viene ricalcolato,
-	// non serve rigenerare il file. Posizionati SOTTO la tabella pivot
-	// vera (chartsAreaTop, calcolata sopra dopo aver scritto quella
-	// tabella), non sopra ne' accavallati: due file da fino a quattro
-	// grafici, stessa larghezza/altezza di prima, solo spostate in
-	// basso.
+	// non serve rigenerare il file.
 	ChartObject chartSeg;
 	chartSeg.type = eBarChart;
 	chartSeg.title = "Vendite per segmento";
 	chartSeg.dataRange = range(1, 4, 2, 3 + (int)segments.size());
-	chartSeg.frame = BRect(20, chartsAreaTop, 380, chartsAreaTop + 200);
+	chartSeg.frame = BRect(20, 230, 380, 430);
 
 	ChartObject chartCountry;
 	chartCountry.type = ePieChart;
 	chartCountry.title = "Profitto per paese";
 	chartCountry.dataRange = range(4, 4, 5, 3 + (int)countries.size());
-	chartCountry.frame = BRect(400, chartsAreaTop, 700, chartsAreaTop + 200);
+	chartCountry.frame = BRect(400, 230, 700, 430);
 
 	ChartObject chartProduct;
 	chartProduct.type = eBarChart;
 	chartProduct.title = "Unita' vendute per prodotto";
 	chartProduct.dataRange = range(7, 4, 8, 3 + (int)products.size());
-	chartProduct.frame = BRect(20, chartsAreaTop + 220, 500, chartsAreaTop + 420);
+	chartProduct.frame = BRect(20, 450, 500, 650);
 
-	// Grafico a LINEE (eLineChart): l'andamento mensile si presta
+	// Grafico a LINEE (eLineChart, l'unico dei tre tipi di grafico
+	// ancora mai usato in questo file): l'andamento mensile si presta
 	// meglio a una linea che a barre separate, esattamente come si
 	// sceglierebbe in Excel per un trend nel tempo.
 	ChartObject chartMonth;
 	chartMonth.type = eLineChart;
 	chartMonth.title = "Andamento vendite per mese";
 	chartMonth.dataRange = range(10, 4, 11, 3 + (int)months.size());
-	chartMonth.frame = BRect(520, chartsAreaTop + 220, 900, chartsAreaTop + 420);
+	chartMonth.frame = BRect(520, 450, 900, 650);
 
 	// Grafico ad AREA (Fase 35): stessi dati mensili del grafico a
 	// linee sopra, riuso deliberato -- il tipo Area e' pensato proprio
@@ -635,7 +588,7 @@ int main()
 	chartMonthArea.type = eAreaChart;
 	chartMonthArea.title = "Andamento vendite per mese (area)";
 	chartMonthArea.dataRange = chartMonth.dataRange;
-	chartMonthArea.frame = BRect(920, chartsAreaTop, 1300, chartsAreaTop + 200);
+	chartMonthArea.frame = BRect(920, 230, 1300, 430);
 
 	// Grafico COMBINATO (Fase 35): Vendite come barre, Profitto come
 	// linea, stessa scala e stesso asse categorie (vedi il commento su
@@ -646,7 +599,7 @@ int main()
 	chartSegCombo.type = eComboChart;
 	chartSegCombo.title = "Vendite (barre) e profitto (linea) per segmento";
 	chartSegCombo.dataRange = range(13, comboLabelRow, 15, comboLabelRow + (int)segments.size());
-	chartSegCombo.frame = BRect(1320, chartsAreaTop, 1700, chartsAreaTop + 200);
+	chartSegCombo.frame = BRect(1320, 230, 1700, 430);
 
 	// Grafico a DISPERSIONE (Fase 35): la stessa correlazione unita'
 	// vendute/profitto per prodotto usata sopra per costruire i dati,
@@ -658,7 +611,33 @@ int main()
 	chartProductScatter.type = eScatterChart;
 	chartProductScatter.title = "Unita' vendute vs profitto per prodotto";
 	chartProductScatter.dataRange = range(17, scatterFirstRow, 18, scatterFirstRow + (int)products.size() - 1);
-	chartProductScatter.frame = BRect(920, chartsAreaTop + 220, 1300, chartsAreaTop + 420);
+	chartProductScatter.frame = BRect(920, 450, 1300, 650);
+
+	// Tabella pivot VERA (Inserisci -> Tabella Pivot, Fase 29 per il
+	// raggruppamento a piu' livelli): a differenza dei quattro blocchi
+	// SUMIF sopra (dal vivo, MAI congelati), questa e' deliberatamente
+	// un'ISTANTANEA statica, per design -- vedi il commento in cima al
+	// file. Prodotto+Fascia sconto sono le uniche due colonne di
+	// categoria ADIACENTI nel dataset reale seguite da una colonna
+	// numerica altrettanto adiacente (Unita' Vendute): C:E, l'unica
+	// combinazione a due livelli che BuildPivotTable puo' leggere da
+	// un intervallo unico senza dover prima riordinare le colonne.
+	int realPivotLabelRow = 36;
+	WriteLabel(pivot, cell(1, realPivotLabelRow),
+		"Tabella pivot VERA (Inserisci -> Tabella Pivot): istantanea statica, non dal vivo "
+		"come le tabelle sopra -- raggruppamento a due livelli, Prodotto poi Fascia sconto");
+	pivot->AddMergedRange(range(1, realPivotLabelRow, 11, realPivotLabelRow));
+	Style(pivot, cell(1, realPivotLabelRow), [&](CellStyle& cs) {
+		cs.fLowColor = kOrange; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter; cs.fWrapText = true;
+	});
+	Bold(pivot, cell(1, realPivotLabelRow));
+
+	int realPivotDataRow = realPivotLabelRow + 1;
+	{
+		std::vector<PivotRow> rows;
+		if (BuildPivotTable(dati, range(3, 2, 5, 701), rows))
+			WritePivotTable(pivot, cell(1, realPivotDataRow), rows, ePivotSum);
+	}
 
 	// ==================== Foglio "Riunione CdA" ====================
 	CContainer* cda = new CContainer(NULL, NULL);
