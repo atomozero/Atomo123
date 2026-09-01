@@ -5242,6 +5242,79 @@ int main()
 		}
 	}
 
+	// Formula condivisa con testo NON valido (funzione sconosciuta):
+	// CompileSharedFormulaAt (sopra) chiama CParser::Parse() SENZA
+	// nessun try/catch attorno -- a differenza di ogni altra chiamata
+	// di parsing in questo file -- e CParser::Parse lancia CParseErr
+	// per una funzione sconosciuta (parser.cpp, errUnknownFunction).
+	// Bug reale: due .report veri catturati aprendo un vero file XLSX,
+	// std::terminate/abort() nel thread di caricamento file per
+	// un'eccezione mai presa che risaliva fuori da
+	// CXlsxTranslator::Translate() intero, facendo crashare l'intera
+	// app. La cella ancora (B1, con l'intero <f>) non crasha MAI:
+	// passa dal ramo generico protetto da catch(...) qualche riga
+	// sotto in SheetEnd. Solo B2 (la cella "vuota" <f t="shared"
+	// si="0"/> che dichiara CompileSharedFormulaAt) colpiva il buco.
+	{
+		static const char kBadShContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kBadShRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kBadShWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kBadShWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kBadShSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\"><v>5</v></c>"
+			"<c r=\"B1\"><f t=\"shared\" ref=\"B1:B2\" si=\"0\">NOTAREALFUNC(A1)</f><v>999</v></c></row>"
+			"<row r=\"2\"><c r=\"A2\"><v>10</v></c>"
+			"<c r=\"B2\"><f t=\"shared\" si=\"0\"/><v>999</v></c></row>"
+			"</sheetData>"
+			"</worksheet>\n";
+
+		BMallocIO badShXlsx;
+		CZipWriter badShZip;
+		badShZip.Begin(&badShXlsx);
+		badShZip.AddEntry("[Content_Types].xml", kBadShContentTypes, strlen(kBadShContentTypes));
+		badShZip.AddEntry("_rels/.rels", kBadShRootRels, strlen(kBadShRootRels));
+		badShZip.AddEntry("xl/workbook.xml", kBadShWorkbook, strlen(kBadShWorkbook));
+		badShZip.AddEntry("xl/_rels/workbook.xml.rels", kBadShWorkbookRels, strlen(kBadShWorkbookRels));
+		badShZip.AddEntry("xl/worksheets/sheet1.xml", kBadShSheet, strlen(kBadShSheet));
+		Check(badShZip.Close(), "costruzione del file XLSX di prova per la formula condivisa non valida riuscita");
+
+		badShXlsx.Seek(0, SEEK_SET);
+		translator_info badShInfo;
+		err = translator->Identify(&badShXlsx, NULL, NULL, &badShInfo, 0);
+		Check(err == B_OK && badShInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova per la formula condivisa non valida");
+
+		badShXlsx.Seek(0, SEEK_SET);
+		BMallocIO badShAscdOut;
+		err = translator->Translate(&badShXlsx, &badShInfo, NULL, kAtomoNativeFormat, &badShAscdOut);
+		Check(err == B_OK,
+			"Translate NON crasha su una formula condivisa con funzione sconosciuta: l'intero "
+			"documento si importa comunque, non solo la cella incriminata viene saltata");
+	}
+
 	// Named ranges (<definedNames> in xl/workbook.xml), the last item
 	// of Tier 1 in the "100% XLSX standard compatibility" plan: a
 	// workbook-scoped name (no localSheetId) should resolve on this

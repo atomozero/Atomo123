@@ -4960,8 +4960,28 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 			std::map<int, std::pair<cell, std::string> >::iterator found =
 				ctx->sharedFormulaAnchors.find(atoi(ctx->formulaSi.c_str()));
 			if (found != ctx->sharedFormulaAnchors.end())
-				sharedFormulaHandled = CompileSharedFormulaAt(
-					found->second.second, found->second.first, loc, ctx->doc);
+			{
+				// CParser::Parse (dentro CompileSharedFormulaAt) puo'
+				// lanciare CParseErr su un testo di formula che non
+				// analizza correttamente -- a differenza di ogni altra
+				// chiamata di parsing in questa funzione (vedi il
+				// catch(...) qualche riga sotto), questa NON era protetta:
+				// un vero crash catturato in due .report reali,
+				// std::terminate/abort() dentro il thread di caricamento
+				// file per un'eccezione mai presa che risaliva fuori da
+				// CXlsxTranslator::Translate() intero. Stesso principio
+				// del resto del file: una singola cella/formula non
+				// importabile non deve far fallire l'intero documento.
+				try
+				{
+					sharedFormulaHandled = CompileSharedFormulaAt(
+						found->second.second, found->second.first, loc, ctx->doc);
+				}
+				catch (...)
+				{
+					sharedFormulaHandled = false;
+				}
+			}
 		}
 
 		std::string text;
