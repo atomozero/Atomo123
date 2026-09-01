@@ -4977,8 +4977,20 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 					sharedFormulaHandled = CompileSharedFormulaAt(
 						found->second.second, found->second.first, loc, ctx->doc);
 				}
-				catch (...)
+				catch (CErr& e)
 				{
+					// Stampata sullo stderr dell'app (stesso canale gia'
+					// usato per l'avviso di InitFunctions in App.cpp), non
+					// solo scartata in silenzio: una funzione sconosciuta
+					// (o un altro errore di analisi) nel testo ancora di
+					// una formula condivisa fa perdere quella formula
+					// SENZA nessun avviso visibile all'utente altrimenti --
+					// una BAlert qui sarebbe sbagliata (Translate() gira
+					// anche dentro Tracker per le anteprime, vedi il
+					// commento in cima a CXlsxTranslator::Translate).
+					fprintf(stderr,
+						"Atomo123: importazione XLSX: formula condivisa non importata (%s): \"%s\"\n",
+						(char*)e, found->second.second.c_str());
 					sharedFormulaHandled = false;
 				}
 			}
