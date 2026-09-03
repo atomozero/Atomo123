@@ -16,6 +16,7 @@
 #include "ChartWindow.h"
 #include "PivotWindow.h"
 #include "NameWindow.h"
+#include "WatchWindow.h"
 #include "PasteSpecialWindow.h"
 #include "GoToWindow.h"
 #include "RenameSheetWindow.h"
@@ -179,6 +180,8 @@ static const uint32 kMsgToggleShowFormulas = 'shfm';
 static const uint32 kMsgTracePrecedents = 'trpr';
 static const uint32 kMsgTraceDependents = 'trde';
 static const uint32 kMsgRemoveTraceArrows = 'rmta';
+static const uint32 kMsgShowWatchWindow = 'shww';
+static const uint32 kMsgWatchAddSelection = 'wtas';
 
 // Footer stile Excel (Fase 17): un bit per statistica (MainWindow::
 // FooterStat, nell'header -- serve anche ai test), personalizzabile col
@@ -863,6 +866,13 @@ MainWindow::MainWindow()
 	formulaMenu->AddItem(fTraceDependentsMenuItem);
 	formulaMenu->AddItem(new BMenuItem(B_TRANSLATE("Rimuovi frecce"),
 		new BMessage(kMsgRemoveTraceArrows)));
+	formulaMenu->AddSeparatorItem();
+	// Finestra di controllo: vedi WatchWindow.h e il commento su
+	// fWatchWindow in MainWindow.h.
+	formulaMenu->AddItem(new BMenuItem(B_TRANSLATE("Aggiungi alla finestra di controllo"),
+		new BMessage(kMsgWatchAddSelection)));
+	formulaMenu->AddItem(new BMenuItem(B_TRANSLATE("Finestra di controllo" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgShowWatchWindow)));
 	menuBar->AddItem(formulaMenu);
 
 	// Grafico e tabella pivot leggono un intervallo di due colonne
@@ -1033,6 +1043,7 @@ MainWindow::MainWindow()
 	fChartWindow = NULL;
 	fPivotWindow = NULL;
 	fNameWindow = NULL;
+	fWatchWindow = NULL;
 	fPasteSpecialWindow = NULL;
 	fGoToWindow = NULL;
 	fRenameSheetWindow = NULL;
@@ -1079,6 +1090,11 @@ MainWindow::~MainWindow()
 	{
 		fNameWindow->Lock();
 		fNameWindow->Quit();
+	}
+	if (fWatchWindow)
+	{
+		fWatchWindow->Lock();
+		fWatchWindow->Quit();
 	}
 	if (fPasteSpecialWindow)
 	{
@@ -1172,6 +1188,7 @@ void MainWindow::MarkModified()
 void MainWindow::DocumentChanged()
 {
 	MarkModified();
+	RefreshWatchWindow();
 }
 
 bool MainWindow::ConfirmDiscardChanges()
@@ -3111,6 +3128,107 @@ void MainWindow::ShowNameWindow()
 	if (fNameWindow->IsHidden())
 		fNameWindow->Show();
 	fNameWindow->Activate();
+}
+
+void MainWindow::ShowWatchWindow()
+{
+	if (!fWatchWindow)
+		fWatchWindow = new WatchWindow(BMessenger(this));
+
+	RefreshWatchWindow();
+
+	if (fWatchWindow->IsHidden())
+		fWatchWindow->Show();
+	fWatchWindow->Activate();
+}
+
+void MainWindow::AddSelectionToWatchWindow()
+{
+	if (!fSheetView)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	for (int row = sel.top; row <= sel.bottom; row++)
+	{
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			bool alreadyWatched = false;
+			for (size_t i = 0; i < fWatchedCells.size(); i++)
+			{
+				if (fWatchedCells[i].first == fActiveSheetIndex && fWatchedCells[i].second == c)
+				{
+					alreadyWatched = true;
+					break;
+				}
+			}
+			if (!alreadyWatched)
+				fWatchedCells.push_back(std::make_pair(fActiveSheetIndex, c));
+		}
+	}
+
+	if (!fWatchWindow)
+		fWatchWindow = new WatchWindow(BMessenger(this));
+
+	RefreshWatchWindow();
+
+	if (fWatchWindow->IsHidden())
+		fWatchWindow->Show();
+	fWatchWindow->Activate();
+}
+
+// Ricostruisce il testo di ogni riga dal documento CORRENTE (non un
+//'istantanea presa quando la cella e' stata appuntata) -- richiamata
+// da DocumentChanged() a ogni modifica, cosi' la Finestra di controllo
+// resta viva senza che l'utente debba fare nulla. Un indice di foglio
+// non piu' valido (foglio eliminato dopo essere stato appuntato) viene
+// tolto silenziosamente da fWatchedCells invece di mostrare una riga
+// rotta -- stesso principio permissivo gia' usato altrove in questo
+// file per riferimenti che non risolvono piu'.
+void MainWindow::RefreshWatchWindow()
+{
+	if (!fWatchWindow)
+		return;
+
+	std::vector<std::pair<int, cell> > stillValid;
+	std::vector<BString> lines;
+	for (size_t i = 0; i < fWatchedCells.size(); i++)
+	{
+		int sheetIndex = fWatchedCells[i].first;
+		cell c = fWatchedCells[i].second;
+		if (sheetIndex < 0 || sheetIndex >= (int)fSheets.size())
+			continue;
+
+		CContainer* sheetDoc = fSheets[sheetIndex].doc;
+		char cellName[32];
+		c.GetName(cellName);
+
+		BString line(SheetName(sheetIndex));
+		line << "!" << cellName << "   ";
+
+		if (sheetDoc->GetCellFormula(c) != NULL)
+		{
+			char formulaText[4096];
+			sheetDoc->GetCellFormula(c, formulaText, sizeof(formulaText), false);
+			line << "=" << formulaText << "   ";
+		}
+
+		char valueText[4096];
+		sheetDoc->GetCellResult(c, valueText, sizeof(valueText), true);
+		line << valueText;
+
+		stillValid.push_back(fWatchedCells[i]);
+		lines.push_back(line);
+	}
+	fWatchedCells = stillValid;
+
+	// Stessa disciplina di lock di RefreshNameWindow sopra: fWatchWindow
+	// e' una BWindow a se', con thread/BLooper proprio.
+	if (fWatchWindow->Lock())
+	{
+		fWatchWindow->SetRows(lines);
+		fWatchWindow->Unlock();
+	}
 }
 
 void MainWindow::ShowPasteSpecialWindow()
@@ -5562,6 +5680,26 @@ void MainWindow::MessageReceived(BMessage* message)
 			fTracePrecedentsMenuItem->SetMarked(false);
 			fTraceDependentsMenuItem->SetMarked(false);
 			break;
+
+		case kMsgShowWatchWindow:
+			ShowWatchWindow();
+			break;
+
+		case kMsgWatchAddSelection:
+			AddSelectionToWatchWindow();
+			break;
+
+		case kMsgWatchRemoveRow:
+		{
+			int32 row;
+			if (message->FindInt32("row", &row) == B_OK
+				&& row >= 0 && (size_t)row < fWatchedCells.size())
+			{
+				fWatchedCells.erase(fWatchedCells.begin() + row);
+				RefreshWatchWindow();
+			}
+			break;
+		}
 
 		// Protezione foglio (Fase 32): vedi il commento nel costruttore
 		// (dove i tre comandi vengono aggiunti al menu Dati).

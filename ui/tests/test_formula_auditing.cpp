@@ -22,6 +22,7 @@
 #include "SheetView.h"
 #include "MainWindow.h"
 #include "AscdIO.h"
+#include "WatchWindow.h"
 
 static int gFailures = 0;
 
@@ -143,6 +144,36 @@ int main()
 	Check(!view->ShowPrecedents() && !view->ShowDependents()
 			&& view->PrecedentTargets().empty() && view->DependentTargets().empty(),
 		"RemoveTraceArrows spegne entrambi gli interruttori e ripulisce le frecce");
+
+	// Finestra di controllo: terzo e ultimo pezzo delle Formula auditing
+	// views. Testato tramite i metodi pubblici di MainWindow (stesso
+	// principio di HandleDefineName in test_names.cpp) invece che sulla
+	// BListView interna di WatchWindow, che vive su un altro thread.
+	Check(win->WatchedCellCount() == 0, "la Finestra di controllo parte senza celle appuntate");
+
+	view->SetSelection(cell(3, 1)); // C1
+	win->AddSelectionToWatchWindow();
+	Check(win->WatchedCellCount() == 1 && win->WatchedCellAt(0) == cell(3, 1),
+		"AddSelectionToWatchWindow su C1 aggiunge esattamente una riga per C1");
+
+	win->AddSelectionToWatchWindow();
+	Check(win->WatchedCellCount() == 1,
+		"aggiungere di nuovo la stessa selezione (C1) non crea una riga duplicata");
+
+	view->SetSelection(cell(1, 1)); // A1
+	view->ExtendSelection(cell(2, 1)); // estende ad A1:B1
+	win->AddSelectionToWatchWindow();
+	Check(win->WatchedCellCount() == 3
+			&& win->WatchedCellAt(1) == cell(1, 1) && win->WatchedCellAt(2) == cell(2, 1),
+		"AddSelectionToWatchWindow su un intervallo (A1:B1) aggiunge una riga per ogni cella nuova");
+
+	win->RefreshWatchWindow(); // non deve crashare, si limita a ricalcolare il testo
+
+	BMessage removeFirst(kMsgWatchRemoveRow);
+	removeFirst.AddInt32("row", 0);
+	win->MessageReceived(&removeFirst);
+	Check(win->WatchedCellCount() == 2 && win->WatchedCellAt(0) == cell(1, 1),
+		"kMsgWatchRemoveRow con \"row\"=0 rimuove la prima riga (C1), le altre scalano su");
 
 	win->Unlock();
 

@@ -42,6 +42,7 @@ class FindWindow;
 class ChartWindow;
 class PivotWindow;
 class NameWindow;
+class WatchWindow;
 class PasteSpecialWindow;
 class GoToWindow;
 class RenameSheetWindow;
@@ -481,6 +482,25 @@ public:
 	void HandleDefineName(const char* name, const char* rangeText);
 	void HandleDeleteName(const char* name);
 	void HandleGoToName(const char* name);
+	// Finestra di controllo (Formula auditing views): vedi il commento
+	// su fWatchWindow piu' sotto. ShowWatchWindow crea/mostra la
+	// finestra (senza aggiungere celle); AddSelectionToWatchWindow
+	// aggiunge la selezione corrente all'elenco (evitando duplicati
+	// foglio+cella) e mostra la finestra se non gia' visibile;
+	// RefreshWatchWindow ricalcola il testo di ogni riga dal documento
+	// corrente e lo spinge alla finestra sotto lock -- richiamata da
+	// DocumentChanged() cosi' i valori restano vivi senza che l'utente
+	// debba fare nulla. Pubbliche apposta per essere testabili
+	// direttamente, stesso principio di HandleDefineName sopra.
+	void ShowWatchWindow();
+	void AddSelectionToWatchWindow();
+	void RefreshWatchWindow();
+	// Anche questi pubblici solo per essere testabili senza dover
+	// leggere la BListView interna di WatchWindow (che vive su un altro
+	// thread/BLooper).
+	int WatchedCellCount() const { return (int)fWatchedCells.size(); }
+	int WatchedSheetIndexAt(int i) const { return fWatchedCells[i].first; }
+	cell WatchedCellAt(int i) const { return fWatchedCells[i].second; }
 
 	// Pubblico per lo stesso motivo di CopySelection/PasteSelection
 	// sopra -- vedi tests/test_paste_special.cpp. content/operation/
@@ -570,6 +590,14 @@ private:
 	ChartWindow* fChartWindow;
 	PivotWindow* fPivotWindow;
 	NameWindow* fNameWindow;
+	// Finestra di controllo (Formula auditing views, terzo pezzo): vedi
+	// WatchWindow.h. fWatchedCells e' l'unico elenco vero (indice foglio
+	// + cella per riga, NELLO STESSO ORDINE mostrato in fWatchWindow) --
+	// la finestra stessa non conosce ne' CContainer ne' cell, riceve
+	// solo testo gia' pronto (RefreshWatchWindow costruisce le righe e
+	// chiama SetRows sotto lock, stessa disciplina di RefreshNameWindow).
+	WatchWindow* fWatchWindow;
+	std::vector<std::pair<int, cell> > fWatchedCells;
 	// Apertura file su un thread separato (Fase 31, avanzamento nel
 	// footer -- Fase 33): fOpeningFile impedisce un secondo OpenFile()
 	// mentre il primo e' ancora in corso -- il thread di lavoro scrive
