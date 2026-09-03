@@ -289,6 +289,20 @@ public:
 	void GetCellFormula(const cell&, char *, size_t bufSize, bool rcStyle = false);
 	void* GetCellFormula(const cell&);
 	void SetCellFormula(const cell& inLoc, void *inFormula);
+
+	// Formula auditing views (Path to full Excel parity, Tier 2):
+	// precedenti (celle che la formula di "c" referenzia direttamente,
+	// via CFormulaIterator -- lo stesso meccanismo che CCalcStack usa
+	// gia' internamente per il ricalcolo) e dipendenti (celle la cui
+	// formula referenzia "c", trovate scandendo tutte le celle del
+	// foglio con NextExisting e chiamando GetPrecedents su ognuna --
+	// nessun indice inverso mantenuto, ricalcolato ogni volta che serve,
+	// stesso principio "niente grafo delle dipendenze" gia' documentato
+	// in ROADMAP.md per il ricalcolo). Entrambe solo sullo stesso
+	// foglio: CFormulaIterator salta di proposito i riferimenti tra
+	// fogli (valXRef/valXRange), limite noto, non un bug qui.
+	void GetPrecedents(const cell& c, std::vector<cell>& out);
+	void GetDependents(const cell& c, std::vector<cell>& out);
 	
 	void GetCellStyle(const cell&, CellStyle&);
 	void SetCellStyle(const cell&, CellStyle&);

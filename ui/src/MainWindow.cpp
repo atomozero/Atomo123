@@ -176,6 +176,9 @@ static const uint32 kMsgToggleFooterStat = 'tfst';
 // Formula auditing views (Path to full Excel parity, Tier 2): vedi il
 // nuovo menu "Formule" nel costruttore.
 static const uint32 kMsgToggleShowFormulas = 'shfm';
+static const uint32 kMsgTracePrecedents = 'trpr';
+static const uint32 kMsgTraceDependents = 'trde';
+static const uint32 kMsgRemoveTraceArrows = 'rmta';
 
 // Footer stile Excel (Fase 17): un bit per statistica (MainWindow::
 // FooterStat, nell'header -- serve anche ai test), personalizzabile col
@@ -536,6 +539,8 @@ MainWindow::MainWindow()
 	fFreezeMenuItem = NULL; // stesso motivo di fSheetView/fSheetTabView sopra
 	fProtectMenuItem = NULL;
 	fShowFormulasMenuItem = NULL;
+	fTracePrecedentsMenuItem = NULL;
+	fTraceDependentsMenuItem = NULL;
 	fRecentMenu = NULL; // stesso motivo, azzerato prima di essere creato piu' sotto
 	// Letto da gPrefs PRIMA di RebuildRecentMenu() piu' sotto (usa
 	// fMaxRecentFiles per decidere quante voci mostrare): gPrefs puo'
@@ -845,6 +850,19 @@ MainWindow::MainWindow()
 	fShowFormulasMenuItem = new BMenuItem(B_TRANSLATE("Mostra formule"),
 		new BMessage(kMsgToggleShowFormulas), '`');
 	formulaMenu->AddItem(fShowFormulasMenuItem);
+	formulaMenu->AddSeparatorItem();
+	// Traccia precedenti/dipendenti: frecce dal vivo sulla sola cella
+	// attiva (non un insieme fissato), ricalcolate a ogni cambio di
+	// selezione -- vedi SheetView::RefreshTraceArrows. Entrambe le voci
+	// possono essere spuntate insieme, come in Excel.
+	fTracePrecedentsMenuItem = new BMenuItem(B_TRANSLATE("Traccia precedenti"),
+		new BMessage(kMsgTracePrecedents));
+	formulaMenu->AddItem(fTracePrecedentsMenuItem);
+	fTraceDependentsMenuItem = new BMenuItem(B_TRANSLATE("Traccia dipendenti"),
+		new BMessage(kMsgTraceDependents));
+	formulaMenu->AddItem(fTraceDependentsMenuItem);
+	formulaMenu->AddItem(new BMenuItem(B_TRANSLATE("Rimuovi frecce"),
+		new BMessage(kMsgRemoveTraceArrows)));
 	menuBar->AddItem(formulaMenu);
 
 	// Grafico e tabella pivot leggono un intervallo di due colonne
@@ -5527,6 +5545,22 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgToggleShowFormulas:
 			fSheetView->ToggleShowFormulas();
 			fShowFormulasMenuItem->SetMarked(fSheetView->ShowFormulas());
+			break;
+
+		case kMsgTracePrecedents:
+			fSheetView->ToggleTracePrecedents();
+			fTracePrecedentsMenuItem->SetMarked(fSheetView->ShowPrecedents());
+			break;
+
+		case kMsgTraceDependents:
+			fSheetView->ToggleTraceDependents();
+			fTraceDependentsMenuItem->SetMarked(fSheetView->ShowDependents());
+			break;
+
+		case kMsgRemoveTraceArrows:
+			fSheetView->RemoveTraceArrows();
+			fTracePrecedentsMenuItem->SetMarked(false);
+			fTraceDependentsMenuItem->SetMarked(false);
 			break;
 
 		// Protezione foglio (Fase 32): vedi il commento nel costruttore

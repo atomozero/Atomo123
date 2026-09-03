@@ -348,6 +348,27 @@ public:
 	void ToggleShowFormulas();
 	bool ShowFormulas() const { return fShowFormulas; }
 
+	// Traccia precedenti/dipendenti (Formula auditing views): frecce
+	// tra la cella attiva e le celle che la sua formula referenzia
+	// (precedenti) o le celle la cui formula referenzia quella attiva
+	// (dipendenti). Ricalcolate dal vivo dalla sola cella attiva (non un
+	// insieme di frecce fissato) ogni volta che la selezione cambia
+	// mentre un interruttore e' acceso -- vedi RefreshTraceArrows sotto
+	// e il blocco in Draw(). Entrambi possono essere accesi insieme,
+	// come in Excel.
+	void ToggleTracePrecedents();
+	void ToggleTraceDependents();
+	bool ShowPrecedents() const { return fShowPrecedents; }
+	bool ShowDependents() const { return fShowDependents; }
+	// Pubblici apposta per essere testabili direttamente (stesso
+	// principio di CellRect/ExpandOverflowRect), senza dover disegnare
+	// per verificare quali celle una freccia collegherebbe.
+	const std::vector<cell>& PrecedentTargets() const { return fPrecedentTargets; }
+	const std::vector<cell>& DependentTargets() const { return fDependentTargets; }
+	// Spegne entrambi gli interruttori e ripulisce le frecce disegnate
+	// ("Rimuovi frecce" nel menu Formule).
+	void RemoveTraceArrows();
+
 	// Elenco dei grafici incorporati da disegnare sopra la griglia (di
 	// proprieta' di MainWindow, che lo passa qui). Non piu' const (Fase
 	// 17, richiesta esplicita dell'utente: "possiamo spostare i grafici
@@ -643,6 +664,20 @@ private:
 
 	// "Mostra formule": vedi ToggleShowFormulas/ShowFormulas sopra.
 	bool fShowFormulas;
+
+	// Traccia precedenti/dipendenti: vedi i metodi pubblici sopra.
+	// Due elenchi separati (non uno solo) perche' entrambi gli
+	// interruttori possono essere accesi insieme, come in Excel, e
+	// Draw() deve orientare le frecce in verso opposto per ciascuno:
+	// dalle celle in fPrecedentTargets VERSO la cella attiva, dalla
+	// cella attiva VERSO le celle in fDependentTargets. Ricalcolati da
+	// RefreshTraceArrows a ogni cambio di selezione mentre il relativo
+	// interruttore e' acceso.
+	bool fShowPrecedents;
+	bool fShowDependents;
+	std::vector<cell> fPrecedentTargets;
+	std::vector<cell> fDependentTargets;
+	void RefreshTraceArrows();
 	// Disegna un blocco di celle (sfondo, griglia, testo) con
 	// l'origine indicata: (0,0) per il riquadro scorrevole normale,
 	// (Bounds().left, 0)/(0, Bounds().top) per una banda congelata
@@ -658,6 +693,13 @@ private:
 	// Draw(), che avevano prima la stessa sequenza di quattro "if"
 	// duplicata identica (Fase 13).
 	void DrawBorderSides(const CellStyle& cs, BRect r);
+	// Traccia precedenti/dipendenti: una linea da "from" a "to" con una
+	// piccola punta a freccia (ventaglio di 3 linee) su "to" -- "to" e'
+	// sempre l'estremo verso cui punta la dipendenza (la cella attiva
+	// per una freccia di precedente, la cella referenziata per una
+	// freccia di dipendente). Colore fisso, distinto dal blu della
+	// selezione (vedi il commento nel .cpp).
+	void DrawTraceArrow(BPoint from, BPoint to);
 	// CellRect(c), spostato come farebbe DrawCellBand se "c" ricade in
 	// una banda congelata -- usata per il rettangolo di selezione, che
 	// deve restare incollato allo schermo sopra una cella congelata

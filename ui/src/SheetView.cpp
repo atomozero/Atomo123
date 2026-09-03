@@ -142,6 +142,8 @@ SheetView::SheetView(CContainer* doc)
 	fFrozenRows(0),
 	fFrozenCols(0),
 	fShowFormulas(false),
+	fShowPrecedents(false),
+	fShowDependents(false),
 	fDoc(doc),
 	fSelection(1, 1),
 	fAnchor(1, 1),
@@ -2549,6 +2551,40 @@ void SheetView::DrawBorderSides(const CellStyle& cs, BRect r)
 	SetPenSize(1);
 }
 
+void SheetView::DrawTraceArrow(BPoint from, BPoint to)
+{
+	// Blu distinto da quello della selezione/maniglia di riempimento
+	// (30, 100, 200): questo e' uno strumento di sola lettura sovrapposto
+	// al foglio, non deve sembrare parte della selezione stessa.
+	SetHighColor(40, 90, 190);
+	StrokeLine(from, to);
+
+	// Punta a freccia: due segmenti corti che partono da "to" inclinati
+	// rispetto alla direzione della linea, lunghezza fissa in pixel
+	// (non proporzionale alla distanza, che varierebbe troppo da un
+	// riferimento vicino a uno lontano).
+	BPoint dir = to - from;
+	float len = sqrtf(dir.x * dir.x + dir.y * dir.y);
+	if (len < 0.001f)
+		return;
+	dir.x /= len;
+	dir.y /= len;
+
+	const float kHeadLen = 8;
+	const float kHeadSpread = 0.5f; // seno dell'angolo di apertura
+
+	BPoint back(to.x - dir.x * kHeadLen, to.y - dir.y * kHeadLen);
+	BPoint normal(-dir.y, dir.x);
+
+	BPoint wing1(back.x + normal.x * kHeadLen * kHeadSpread,
+		back.y + normal.y * kHeadLen * kHeadSpread);
+	BPoint wing2(back.x - normal.x * kHeadLen * kHeadSpread,
+		back.y - normal.y * kHeadLen * kHeadSpread);
+
+	StrokeLine(to, wing1);
+	StrokeLine(to, wing2);
+}
+
 // Vedi il commento su fFrozenRows/fFrozenCols in SheetView.h: disegna
 // sfondo, griglia e testo per un blocco di celle [firstCol,lastCol] x
 // [firstRow,lastRow], spostato di (xOrigin, yOrigin) -- (0,0) per il
@@ -3099,6 +3135,31 @@ void SheetView::Draw(BRect updateRect)
 					| PinnedCellRect(spillRange.BotRight());
 				StrokeRect(spillRect);
 			}
+		}
+	}
+
+	// Traccia precedenti/dipendenti (Formula auditing views): frecce fra
+	// la cella attiva e le celle in fPrecedentTargets/fDependentTargets,
+	// ricalcolate da RefreshTraceArrows a ogni cambio di selezione (vedi
+	// il commento li'). Celle fuori dall'area visibile non richiedono
+	// nessun controllo: Haiku ritaglia StrokeLine da solo sulla regione
+	// di clipping corrente della vista.
+	if ((fShowPrecedents || fShowDependents) && fDoc)
+	{
+		BRect activeR = ActiveCellRect(fSelection);
+		BPoint activeCenter((activeR.left + activeR.right) / 2, (activeR.top + activeR.bottom) / 2);
+		SetPenSize(1);
+		for (size_t i = 0; i < fPrecedentTargets.size(); i++)
+		{
+			BRect r = PinnedCellRect(fPrecedentTargets[i]);
+			BPoint from((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+			DrawTraceArrow(from, activeCenter);
+		}
+		for (size_t i = 0; i < fDependentTargets.size(); i++)
+		{
+			BRect r = PinnedCellRect(fDependentTargets[i]);
+			BPoint to((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+			DrawTraceArrow(activeCenter, to);
 		}
 	}
 
@@ -4705,9 +4766,68 @@ void SheetView::CommitEditing(bool cancel, int moveH, int moveV)
 
 void SheetView::NotifySelectionChanged()
 {
+	// Rilancia il calcolo delle frecce Traccia precedenti/dipendenti
+	// (se accese) sulla NUOVA cella attiva -- unico punto di richiamo,
+	// dato che ogni cambio di selezione nel file finisce sempre qui
+	// (frecce, Tab/Invio, ridimensionamento colonna che sposta la
+	// selezione, ecc.), invece di ripetere la stessa chiamata in ogni
+	// singolo chiamante di NotifySelectionChanged.
+	RefreshTraceArrows();
+
 	MainWindow* win = dynamic_cast<MainWindow*>(Window());
 	if (win)
 		win->SelectionChanged(fSelection);
+}
+
+void SheetView::RefreshTraceArrows()
+{
+	if (!fShowPrecedents && !fShowDependents)
+		return;
+
+	if (fShowPrecedents && fDoc)
+		fDoc->GetPrecedents(fSelection, fPrecedentTargets);
+	else
+		fPrecedentTargets.clear();
+
+	if (fShowDependents && fDoc)
+		fDoc->GetDependents(fSelection, fDependentTargets);
+	else
+		fDependentTargets.clear();
+
+	// Ridisegno per intero: le frecce possono toccare qualunque cella
+	// del foglio, non solo l'area appena invalidata dal cambio di
+	// selezione -- costo trascurabile per un comando innescato
+	// dall'utente (non a ogni tasto premuto in edizione), stesso
+	// principio gia' accettato per Traccia precedenti/dipendenti nel
+	// piano (nessun indice mantenuto, si ricalcola quando serve).
+	Invalidate();
+}
+
+void SheetView::ToggleTracePrecedents()
+{
+	fShowPrecedents = !fShowPrecedents;
+	if (!fShowPrecedents)
+		fPrecedentTargets.clear();
+	RefreshTraceArrows();
+	Invalidate();
+}
+
+void SheetView::ToggleTraceDependents()
+{
+	fShowDependents = !fShowDependents;
+	if (!fShowDependents)
+		fDependentTargets.clear();
+	RefreshTraceArrows();
+	Invalidate();
+}
+
+void SheetView::RemoveTraceArrows()
+{
+	fShowPrecedents = false;
+	fShowDependents = false;
+	fPrecedentTargets.clear();
+	fDependentTargets.clear();
+	Invalidate();
 }
 
 void SheetView::NotifyDocumentChanged()

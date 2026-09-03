@@ -529,6 +529,8 @@ private:
 	// "Mostra formule" (Formula auditing views): vedi il commento nel
 	// costruttore, menu "Formule".
 	BMenuItem* fShowFormulasMenuItem;
+	BMenuItem* fTracePrecedentsMenuItem;
+	BMenuItem* fTraceDependentsMenuItem;
 	BMenu* fRecentMenu;
 	BTextControl* fFormulaBar;
 	BStringView* fCellLabel;

@@ -42,6 +42,7 @@
 #include <support/Debug.h>
 
 #include <cstring>
+#include <set>
 #include <vector>
 
 #include "Cell.h"
@@ -550,6 +551,48 @@ void CContainer::SetCellFormula(const cell& inLoc, void *inFormula)
 		(*i).second.mConstant = CFormula(inFormula).IsConstant();
 	}
 } /* CContainer::SetCellFormula */
+
+void CContainer::GetPrecedents(const cell& c, std::vector<cell>& out)
+{	/* CHECKLOCK */
+	out.clear();
+
+	void* formula = GetCellFormula(c);
+	if (!formula)
+		return;
+
+	std::set<cell> seen;
+	CFormulaIterator iter(formula, c);
+	cell ref;
+	while (iter.Next(ref))
+	{
+		if (seen.insert(ref).second)
+			out.push_back(ref);
+	}
+} /* CContainer::GetPrecedents */
+
+void CContainer::GetDependents(const cell& c, std::vector<cell>& out)
+{	/* CHECKLOCK */
+	out.clear();
+
+	CCellIterator iter(this);
+	cell candidate;
+	std::vector<cell> candidatePrecedents;
+	while (iter.NextExisting(candidate))
+	{
+		if (!GetCellFormula(candidate))
+			continue;
+
+		GetPrecedents(candidate, candidatePrecedents);
+		for (size_t i = 0; i < candidatePrecedents.size(); i++)
+		{
+			if (candidatePrecedents[i] == c)
+			{
+				out.push_back(candidate);
+				break;
+			}
+		}
+	}
+} /* CContainer::GetDependents */
 
 bool CContainer::GetCellData(const cell& inLoc, CellData& outData)
 {	/*CHECKLOCK*/
