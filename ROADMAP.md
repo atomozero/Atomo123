@@ -452,12 +452,22 @@ list deliberately deviates from pure effort-sorting:
   structured table). Structured references and cross-sheet table
   lookups already work; this is one more row type on infrastructure
   that already exists
-- **Formula auditing views**: Trace Precedents/Dependents, Show
-  Formulas (Ctrl+\`), Watch Window. All read-only views over data the
-  engine already computes — no new calculation logic, "just" new UI,
-  likely the cheapest-per-feature items on this whole list, but
-  ranked here rather than Tier 1 because they're power-user tools a
-  typical user won't reach for
+- ~~**Formula auditing views**: Trace Precedents/Dependents, Show
+  Formulas (Ctrl+\`), Watch Window.~~ Shipped, one commit each (see
+  CHANGELOG.md). All read-only views over data the engine already
+  computes, as expected — no new calculation logic. Show Formulas is a
+  transient per-window toggle (not persisted to `.ascd`). Trace
+  Precedents/Dependents draws live arrows for the active cell only
+  (single level, not "precedents of precedents"), reusing
+  `CFormulaIterator` — the same mechanism the calc engine already uses
+  for recalculation — for precedents, and a fresh on-demand sheet scan
+  for the reverse relationship (dependents), since the engine has no
+  dependency graph to invert (see the Tier 3 item below). Declared
+  scope limit: both are same-sheet only, since `CFormulaIterator`
+  itself already skips cross-sheet references. The Watch Window follows
+  `NameWindow`'s existing Lock()/setter/Unlock() pattern rather than a
+  BMessage round-trip, refreshed live from `MainWindow::DocumentChanged`
+  so pinned values track edits with no user action needed
 
 ### Tier 3 — needs dedicated planning: large effort, foundational or high-value
 

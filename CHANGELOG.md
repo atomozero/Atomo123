@@ -923,3 +923,31 @@ What shipped since v0.2.8, not yet in a tagged release:
   persistence); XLSX import/export for all three remains out of
   scope, a separate gap from the app's existing bar/line/pie XLSX
   chart support.
+- Added the three "Formula auditing views" from the roadmap's parity
+  backlog — Show Formulas, Trace Precedents/Dependents, Watch Window —
+  one commit each. Show Formulas (new "Formule" menu, Ctrl+`) is a
+  transient per-window toggle: `SheetView::FormattedCellText` returns
+  the raw formula text instead of the computed value, ignoring the
+  cell's number format, matching Excel's own formula view. Trace
+  Precedents/Dependents draws live arrows for the active cell only,
+  recomputed on every selection change rather than pinned: precedents
+  reuse `CFormulaIterator` (`CContainer::GetPrecedents`), the same
+  mechanism the calc engine already uses internally for recalculation;
+  dependents (`CContainer::GetDependents`) scan the sheet on demand and
+  reuse `GetPrecedents` on every formula cell to find the reverse
+  relationship, since the engine has no dependency graph to invert
+  (see the roadmap's own Tier 3 item on that). Both are single-level
+  (no "precedents of precedents") and same-sheet only, since
+  `CFormulaIterator` itself already skips cross-sheet references
+  (`valXRef`/`valXRange`) — a formula like `=Foglio1!A1+A1` only
+  contributes its local `A1` reference, not the cross-sheet-shaped one,
+  even when the sheet name matches the current sheet. The Watch Window
+  is modeled on `NameWindow`'s existing Lock()/setter/Unlock() pattern
+  (not a `BMessage` round-trip like `ChartWindow`, since nothing here
+  needs to drive a redraw from inside the window itself): `MainWindow`
+  owns the actual pinned list (sheet index + cell) and pushes
+  ready-made display text into the window under lock, refreshed from
+  `DocumentChanged()` so pinned values track edits live; a sheet index
+  that stops resolving (its sheet was deleted after being pinned) is
+  dropped silently on the next refresh rather than showing a broken
+  row.
