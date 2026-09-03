@@ -36,6 +36,16 @@
 	  condizionale dal vivo (Discount Band = "High", scala di colori
 	  a due punti sulla colonna Profit).
 
+	Deliberatamente NON rappresentate in questo file: le tre "Formula
+	auditing views" (Mostra formule, Traccia precedenti/dipendenti,
+	Finestra di controllo) sono interruttori di sola visualizzazione
+	dell'APPLICAZIONE (per-finestra o via BMessage), non dati -- non
+	c'e' nessun campo di CContainer/AscdSheet che ne registri lo stato
+	da salvare in un file .ascd, quindi non c'e' nulla che questo
+	generatore possa scrivere per "mostrarle": si verificano aprendo
+	QUALUNQUE file (questo compreso) nell'app vera e usando il nuovo
+	menu "Formule".
+
 	A differenza di una prima versione di questo generatore, QUI TUTTO
 	(tabelle raggruppate comprese, non solo i KPI) e' scritto come
 	FORMULA dal vivo sul foglio "Dati", non come valore gia' calcolato:
@@ -546,10 +556,9 @@ int main()
 		Currency(pivot, cell(18, row));
 	}
 
-	// Sei grafici incorporati (barre, torta, barre, linee, combinato,
-	// dispersione -- tutti i tipi disponibili tranne l'Area, che riusa
-	// gli stessi dati mensili della linea appena sotto): dati letti dal
-	// vivo dalle formule appena scritte sopra -- il grafico si
+	// Sette grafici incorporati (barre, torta, barre, linee, area,
+	// combinato, dispersione -- tutti i tipi disponibili): dati letti
+	// dal vivo dalle formule appena scritte sopra -- il grafico si
 	// aggiorna da solo ogni volta che il documento viene ricalcolato,
 	// non serve rigenerare il file.
 	ChartObject chartSeg;
