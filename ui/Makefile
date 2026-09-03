@@ -1143,6 +1143,23 @@ test-formula-display: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_formula_display
 
+# Formula auditing views (Path to full Excel parity, Tier 2): Mostra
+# formule per ora, Traccia precedenti/dipendenti e Finestra di
+# controllo verranno aggiunti allo stesso file/target man mano che
+# vengono implementati. Stessa ragione di test-formula-display sopra
+# (serve una vera MainWindow).
+test-formula-auditing: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_formula_auditing.cpp -o tests/test_formula_auditing.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_formula_auditing tests/test_formula_auditing.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_formula_auditing
+
 # Test del footer Somma/Media/Massimo/Conteggio della selezione: stessa
 # ragione di test-formula-display sopra (serve una vera MainWindow).
 test-selection-stats: $(OBJECTS) $(ENGINE_DIR)/libengine.a
@@ -1362,6 +1379,7 @@ clean:
 		tests/test_validation tests/test_validation.o tests/roundtrip_validation.ascd \
 		tests/test_condformat tests/test_condformat.o \
 		tests/test_formula_display tests/test_formula_display.o \
+		tests/test_formula_auditing tests/test_formula_auditing.o \
 		tests/test_freeze tests/test_freeze.o \
 		tests/test_format tests/test_format.o \
 		tests/test_preferences tests/test_preferences.o \
@@ -1375,7 +1393,7 @@ clean:
 		examples/atomo123_demo.ascd \
 		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
-.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection clean
+.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection clean
 
 # Include i file di dipendenza generati da -MMD/-MP (vedi CXXFLAGS in
 # cima) -- src/*.d per la build principale, tests/*.d per ogni target

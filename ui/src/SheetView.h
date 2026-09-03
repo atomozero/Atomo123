@@ -341,6 +341,13 @@ public:
 	// Apri/cambio foglio, stesso principio di SetColumnWidths.
 	void SetFreezePanes(int rows, int cols);
 
+	// "Mostra formule" (Ctrl+`, Formula auditing views): interruttore di
+	// sola visualizzazione, mai persistito nel formato nativo (stesso
+	// tipo di stato della cella attualmente selezionata) -- vedi
+	// FormattedCellText per dove entra in gioco.
+	void ToggleShowFormulas();
+	bool ShowFormulas() const { return fShowFormulas; }
+
 	// Elenco dei grafici incorporati da disegnare sopra la griglia (di
 	// proprieta' di MainWindow, che lo passa qui). Non piu' const (Fase
 	// 17, richiesta esplicita dell'utente: "possiamo spostare i grafici
@@ -633,6 +640,9 @@ private:
 	// Blocca riquadri: vedi ToggleFreezePanes/SetFreezePanes sopra.
 	int fFrozenRows;
 	int fFrozenCols;
+
+	// "Mostra formule": vedi ToggleShowFormulas/ShowFormulas sopra.
+	bool fShowFormulas;
 	// Disegna un blocco di celle (sfondo, griglia, testo) con
 	// l'origine indicata: (0,0) per il riquadro scorrevole normale,
 	// (Bounds().left, 0)/(0, Bounds().top) per una banda congelata

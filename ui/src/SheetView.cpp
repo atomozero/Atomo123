@@ -141,6 +141,7 @@ SheetView::SheetView(CContainer* doc)
 	fSheetProtected(false),
 	fFrozenRows(0),
 	fFrozenCols(0),
+	fShowFormulas(false),
 	fDoc(doc),
 	fSelection(1, 1),
 	fAnchor(1, 1),
@@ -384,6 +385,12 @@ void SheetView::ToggleFreezePanes()
 		SetFreezePanes(0, 0);
 	else
 		SetFreezePanes(fSelection.v - 1, fSelection.h - 1);
+}
+
+void SheetView::ToggleShowFormulas()
+{
+	fShowFormulas = !fShowFormulas;
+	Invalidate();
 }
 
 std::vector<std::pair<int, float> > SheetView::CustomColumnWidths() const
@@ -2465,6 +2472,21 @@ BString SheetView::FormattedCellText(cell c)
 		return BString();
 
 	char text[4096];
+
+	// "Mostra formule" (Ctrl+`, Formula auditing views): mostra il
+	// testo grezzo della formula invece del suo valore calcolato,
+	// ignorando la formattazione numerica sotto -- stesso comportamento
+	// di Excel, che nella vista formule ignora il formato della cella.
+	// GetCellFormula non antepone mai "=" (stesso idioma gia' usato in
+	// StartEditing poco sotto in questo file).
+	if (fShowFormulas && fDoc->GetCellFormula(c) != NULL)
+	{
+		fDoc->GetCellFormula(c, text, sizeof(text), false);
+		BString formulaText("=");
+		formulaText << text;
+		return formulaText;
+	}
+
 	fDoc->GetCellResult(c, text, sizeof(text), true);
 	if (text[0] == 0)
 		return BString();

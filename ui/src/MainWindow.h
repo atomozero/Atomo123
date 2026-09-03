@@ -526,6 +526,9 @@ private:
 	BMenuItem* fFreezeMenuItem;
 	// Protezione foglio (Fase 32): vedi il commento nel costruttore.
 	BMenuItem* fProtectMenuItem;
+	// "Mostra formule" (Formula auditing views): vedi il commento nel
+	// costruttore, menu "Formule".
+	BMenuItem* fShowFormulasMenuItem;
 	BMenu* fRecentMenu;
 	BTextControl* fFormulaBar;
 	BStringView* fCellLabel;

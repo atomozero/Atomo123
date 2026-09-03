@@ -173,6 +173,9 @@ static const uint32 kMsgSetBorderThickness = 'sbth';
 static const uint32 kMsgShowBorderWindow = 'shbw';
 static const uint32 kMsgFormulaModified = 'afmd';
 static const uint32 kMsgToggleFooterStat = 'tfst';
+// Formula auditing views (Path to full Excel parity, Tier 2): vedi il
+// nuovo menu "Formule" nel costruttore.
+static const uint32 kMsgToggleShowFormulas = 'shfm';
 
 // Footer stile Excel (Fase 17): un bit per statistica (MainWindow::
 // FooterStat, nell'header -- serve anche ai test), personalizzabile col
@@ -532,6 +535,7 @@ MainWindow::MainWindow()
 	fSheetTabView = NULL;
 	fFreezeMenuItem = NULL; // stesso motivo di fSheetView/fSheetTabView sopra
 	fProtectMenuItem = NULL;
+	fShowFormulasMenuItem = NULL;
 	fRecentMenu = NULL; // stesso motivo, azzerato prima di essere creato piu' sotto
 	// Letto da gPrefs PRIMA di RebuildRecentMenu() piu' sotto (usa
 	// fMaxRecentFiles per decidere quante voci mostrare): gPrefs puo'
@@ -827,6 +831,21 @@ MainWindow::MainWindow()
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Blocca celle selezionate"), new BMessage(kMsgLockSelection)));
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Sblocca celle selezionate"), new BMessage(kMsgUnlockSelection)));
 	menuBar->AddItem(dataMenu);
+
+	// Formula auditing views (Path to full Excel parity, Tier 2):
+	// stesso raggruppamento della scheda "Formule" di Excel, che elenca
+	// insieme questi comandi -- non un'aggiunta al menu Dati gia' folto.
+	// "Mostra formule" e' un interruttore di sola visualizzazione, mai
+	// persistito nel formato nativo (vedi SheetView::ToggleShowFormulas),
+	// quindi con segno di spunta come Blocca riquadri/Proteggi foglio
+	// sopra, ma senza bisogno di sincronizzazione al cambio foglio (resta
+	// impostato finche' l'utente non lo toglie, indipendentemente dal
+	// foglio attivo).
+	BMenu* formulaMenu = new BMenu(B_TRANSLATE("Formule"));
+	fShowFormulasMenuItem = new BMenuItem(B_TRANSLATE("Mostra formule"),
+		new BMessage(kMsgToggleShowFormulas), '`');
+	formulaMenu->AddItem(fShowFormulasMenuItem);
+	menuBar->AddItem(formulaMenu);
 
 	// Grafico e tabella pivot leggono un intervallo di due colonne
 	// scelto dall'utente (non la sola cella selezionata, che oggi e'
@@ -5503,6 +5522,11 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgToggleFreeze:
 			fSheetView->ToggleFreezePanes();
 			fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
+			break;
+
+		case kMsgToggleShowFormulas:
+			fSheetView->ToggleShowFormulas();
+			fShowFormulasMenuItem->SetMarked(fSheetView->ShowFormulas());
 			break;
 
 		// Protezione foglio (Fase 32): vedi il commento nel costruttore
