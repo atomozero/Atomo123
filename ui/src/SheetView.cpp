@@ -2764,6 +2764,27 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				if (isMerged && (mergedRange.top != row || mergedRange.left != col))
 					continue;
 
+				// Ripristina il ritaglio all'intera banda prima di
+				// disegnare le decorazioni di QUESTA cella: il testo
+				// della cella PRECEDENTE (poco sotto, stesso ciclo)
+				// restringe il ritaglio al proprio rettangolo con
+				// ConstrainClippingRegion(&textClip) e non lo allarga
+				// mai indietro -- senza questo ripristino qui,
+				// l'indicatore di commento/la freccia di convalida di
+				// OGNI cella tranne la primissima elaborata restava
+				// tagliato via, invisibile, perche' il rettangolo
+				// ristretto della cella precedente quasi mai si
+				// sovrappone all'angolo della cella corrente. Bug reale
+				// scoperto confrontando un vero file XLSX con la vera
+				// Excel: i tre commenti del file (D3/H3/I3) esistevano
+				// tutti correttamente nel documento importato, ma solo
+				// il primo disegnato aveva ancora il ritaglio intero
+				// -- stessa causa di fondo gia' documentata per la
+				// freccia di AutoFilter piu' sotto (ConstrainClippingRegion(NULL)
+				// dopo l'intero ciclo), ma quel fix copriva solo l'USCITA
+				// dal ciclo, non ogni singola iterazione al suo interno.
+				ConstrainClippingRegion(&clip);
+
 				// Indicatore di commento (Fase 13): piccolo triangolo
 				// rosso nell'angolo in alto a destra, come
 				// Excel/LibreOffice Calc -- disegnato PRIMA di
