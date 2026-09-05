@@ -1039,3 +1039,20 @@ What shipped since v0.2.8, not yet in a tagged release:
   genuine imported comments and comparing against real Excel — the
   header row's comment triangles were completely missing despite the
   comments themselves being correctly imported.
+- Added support for conditional formatting rules comparing against a
+  cell reference (`cellIs`/`equal` with a `$C$29`-style formula instead
+  of a literal) and for `expression`-type rules (an arbitrary boolean
+  formula with relative references, e.g. `(C1=$C$29)`, applied across
+  a range the same way Excel "pastes" the formula down each row). Both
+  were previously ignored outright — confirmed on a real file
+  (`agile-kanban-board.xlsx`) where every one of its 14 rules used one
+  of these two forms, so its Type/Priority/legend color-coding was
+  completely inert before this. The cell-reference case resolves the
+  referenced cell's current text on every redraw (matching this
+  feature's existing "live" behavior). The expression case recompiles
+  the raw formula text fresh per evaluation, anchored at the rule's own
+  range, and reuses `CFormula::Calculate`'s existing relative-reference
+  resolution (the same mechanism that makes copy/paste safe) to get the
+  correct per-row shift with no manual offset math. Native ASCD format
+  bumped to version 4 then 5 for the two additions (1-3 stay readable);
+  all four translators' own version handling updated to match.
