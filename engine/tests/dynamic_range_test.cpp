@@ -8,20 +8,21 @@
 	conteggio delle card di ogni colonna del Kanban) falliva
 	completamente il parsing.
 
-	Due bug distinti, non uno solo -- entrambi coperti qui:
-	1. Il grammatica accettava ":" solo fra due CELL letterali, mai fra
+	Tre bug distinti, non uno solo -- tutti coperti qui:
+	1. La grammatica accettava ":" solo fra due CELL letterali, mai fra
 	   il risultato di una chiamata di funzione.
 	2. OFFSET() era gia' rotta anche DA SOLA, senza ":": il suo primo
 	   argomento (una CELL letterale) veniva analizzato come valCell
 	   (il VALORE della cella, non un riferimento), che GetRangeArgument
 	   in OFFSETFunction non accetta (richiede fType==eRangeData).
-
-	Nota sull'ordine degli argomenti di OFFSET in QUESTO motore:
-	OFFSET(range,hoffset,voffset) -- il secondo argomento sposta le
-	COLONNE, il terzo le RIGHE (l'opposto della vera Excel, che ha
-	OFFSET(riferimento,righe,colonne)). Non e' un bug di questa sessione,
-	e' cosi' da prima (vedi FuncNames.txt) -- i test qui sotto usano
-	l'ordine REALE di questo motore, non quello di Excel.
+	3. OFFSET(range,righe,colonne) aveva il secondo e terzo argomento
+	   invertiti rispetto alla vera Excel (colonne poi righe, non righe
+	   poi colonne) -- scoperto verificando un vero file XLSX reale
+	   (agile-kanban-board.xlsx): l'ordine sbagliato calcolava
+	   silenziosamente la cella sbagliata per QUALUNQUE file scritto da
+	   Excel, non solo per l'intervallo dinamico. Corretto in
+	   Functions.spreadsheet.cpp; i test qui sotto usano gia' l'ordine
+	   giusto (righe poi colonne).
 */
 
 #include <cstdio>
@@ -105,11 +106,11 @@ int main()
 	// (un riferimento, non un numero) non deve nemmeno passare per lo
 	// storage di una cella -- isola il problema dell'argomento di
 	// OFFSET da quello del collasso a livello di cella verificato sotto.
-	ParseXlsxStyle("=SUM(OFFSET(H11,0,1))", cell(10, 1), &doc); // J1
+	ParseXlsxStyle("=SUM(OFFSET(H11,1,0))", cell(10, 1), &doc); // J1
 	doc.CalcCell(cell(10, 1));
 	doc.GetValue(cell(10, 1), v);
 	Check((double)v == 100.0,
-		"SUM(OFFSET(H11,0,1)) = 100 (H12): OFFSET risolve il suo argomento base come riferimento, non come valore");
+		"SUM(OFFSET(H11,1,0)) = 100 (H12): OFFSET risolve il suo argomento base come riferimento, non come valore");
 
 	// La stessa OFFSET() scritta DA SOLA in una cella (nessuna funzione
 	// che ne consumi il risultato come argomento): il risultato finale
@@ -120,24 +121,24 @@ int main()
 	// CContainer::CalcCell (Container.graph.cpp) la cella
 	// resterebbe silenziosamente vuota (eNoData), un dato calcolato
 	// perso senza nessun avviso.
-	ParseXlsxStyle("=OFFSET(H11,0,1)", cell(11, 1), &doc); // K1
+	ParseXlsxStyle("=OFFSET(H11,1,0)", cell(11, 1), &doc); // K1
 	doc.CalcCell(cell(11, 1));
 	doc.GetValue(cell(11, 1), v);
 	Check((double)v == 100.0,
-		"OFFSET(H11,0,1) scritta da sola (non wrappata) collassa al valore della cella in alto a sinistra, 100");
+		"OFFSET(H11,1,0) scritta da sola (non wrappata) collassa al valore della cella in alto a sinistra, 100");
 
 	// Le quattro combinazioni reali di ":" con un operando dinamico.
-	ParseXlsxStyle("=SUM(OFFSET(H11,0,1):OFFSET(H15,0,-1))", cell(10, 2), &doc); // J2
+	ParseXlsxStyle("=SUM(OFFSET(H11,1,0):OFFSET(H15,-1,0))", cell(10, 2), &doc); // J2
 	doc.CalcCell(cell(10, 2));
 	doc.GetValue(cell(10, 2), v);
 	Check((double)v == 600.0, "SUM(OFFSET(...):OFFSET(...)) = 600 (H12+H13+H14): funzione:funzione");
 
-	ParseXlsxStyle("=SUM(H12:OFFSET(H15,0,-1))", cell(10, 3), &doc); // J3
+	ParseXlsxStyle("=SUM(H12:OFFSET(H15,-1,0))", cell(10, 3), &doc); // J3
 	doc.CalcCell(cell(10, 3));
 	doc.GetValue(cell(10, 3), v);
 	Check((double)v == 600.0, "SUM(H12:OFFSET(...)) = 600: letterale:funzione");
 
-	ParseXlsxStyle("=SUM(OFFSET(H11,0,1):H14)", cell(10, 4), &doc); // J4
+	ParseXlsxStyle("=SUM(OFFSET(H11,1,0):H14)", cell(10, 4), &doc); // J4
 	doc.CalcCell(cell(10, 4));
 	doc.GetValue(cell(10, 4), v);
 	Check((double)v == 600.0, "SUM(OFFSET(...):H14) = 600: funzione:letterale");
@@ -145,7 +146,7 @@ int main()
 	// La formula esatta del file reale che ha scoperto il problema
 	// (SUBTOTAL invece di SUM, come nel vero conteggio delle card del
 	// Kanban).
-	ParseXlsxStyle("=SUBTOTAL(9,OFFSET(H11,0,1):OFFSET(H15,0,-1))", cell(10, 5), &doc); // J5
+	ParseXlsxStyle("=SUBTOTAL(9,OFFSET(H11,1,0):OFFSET(H15,-1,0))", cell(10, 5), &doc); // J5
 	doc.CalcCell(cell(10, 5));
 	doc.GetValue(cell(10, 5), v);
 	Check((double)v == 600.0,

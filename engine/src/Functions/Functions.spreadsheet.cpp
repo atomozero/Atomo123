@@ -1613,12 +1613,20 @@ void OFFSETFunction(Value *stack, int argCnt, CContainer *cells)
 	if (CheckForNanParameters(stack, argCnt))
 		return;
 
+	// Second argument = rows, third = columns -- OFFSET(reference,
+	// rows, columns), the same order as real Excel. Before this fix it
+	// was reversed (columns then rows): found while adding support for
+	// "OFFSET(...):OFFSET(...)" as a dynamic range, by testing against
+	// a real XLSX file (agile-kanban-board.xlsx) -- any file written by
+	// Excel uses the real order, so the reversed order was silently
+	// computing the wrong cell for every real file, not just this new
+	// feature.
 	if (GetRangeArgument(stack, argCnt, 1, &cRange) &&
 		cRange.IsValid() &&
-		GetDoubleArgument(stack, argCnt, 2, &dh) &&
-		( h = static_cast<int>(rint(dh)) ) + cRange.left > 0 && h + cRange.right <= kColCount &&
-		GetDoubleArgument(stack, argCnt, 3, &dv) &&
-		( v = static_cast<int>(rint(dv)) ) + cRange.top > 0 && v + cRange.bottom <= kRowCount)
+		GetDoubleArgument(stack, argCnt, 2, &dv) &&
+		( v = static_cast<int>(rint(dv)) ) + cRange.top > 0 && v + cRange.bottom <= kRowCount &&
+		GetDoubleArgument(stack, argCnt, 3, &dh) &&
+		( h = static_cast<int>(rint(dh)) ) + cRange.left > 0 && h + cRange.right <= kColCount)
 	{
 		cRange.OffsetBy(h, v);
 		stack[0] = cRange;

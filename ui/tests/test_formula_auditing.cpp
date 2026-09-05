@@ -211,12 +211,12 @@ int main()
 	TryToParseString("200", cell(8, 13), doc, true); // H13
 	TryToParseString("300", cell(8, 14), doc, true); // H14
 	TryToParseString("10", cell(8, 15), doc, true); // H15
-	TryToParseString("=SUBTOTAL(9;OFFSET(H11;0;1):OFFSET(H15;0;-1))", cell(10, 5), doc, true); // J5
+	TryToParseString("=SUBTOTAL(9;OFFSET(H11;1;0):OFFSET(H15;-1;0))", cell(10, 5), doc, true); // J5
 	doc->CalcCell(cell(10, 5));
 	Value dynRangeVal;
 	doc->GetValue(cell(10, 5), dynRangeVal);
 	Check((double)dynRangeVal == 600.0,
-		"SUBTOTAL(9,OFFSET(H11,0,1):OFFSET(H15,0,-1)) = 600 (H12+H13+H14), la formula esatta di agile-kanban-board.xlsx");
+		"SUBTOTAL(9,OFFSET(H11,1,0):OFFSET(H15,-1,0)) = 600 (H12+H13+H14), la formula esatta di agile-kanban-board.xlsx");
 
 	char dynRangeText[256];
 	doc->GetCellFormula(cell(10, 5), dynRangeText, sizeof(dynRangeText), false);
