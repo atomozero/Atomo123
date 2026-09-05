@@ -347,6 +347,22 @@ MainWindow* App::FindReusableWindow() const
 #ifndef ATOMO123_TEST_BUILD
 int main()
 {
+	// Disattiva la cache su disco degli shader di Mesa (llvmpipe, il
+	// renderer software usato da AtomGLView per l'animazione di stelle
+	// dello splash screen su questo hardware/ambiente Haiku): un crash
+	// reale e riproducibile ("Mesa cache keys mismatch!", asserzione
+	// fallita dentro disk_cache_load_item/lp_disk_cache_find_shader,
+	// due .report identici) capitava proprio disegnando quell'animazione
+	// -- un bug della cache di Mesa stessa (voci corrotte o una corsa fra
+	// piu' processi che scrivono nella stessa cartella cache), non del
+	// codice di Atomo123. Va impostata PRIMA che qualunque contesto GL
+	// venga creato (quindi qui, in cima a main(), prima ancora di
+	// costruire "app"): sia il nome storico (MESA_GLSL_CACHE_DISABLE)
+	// sia quello attuale (MESA_SHADER_CACHE_DISABLE) per coprire
+	// qualunque versione di Mesa sia installata.
+	setenv("MESA_GLSL_CACHE_DISABLE", "true", 1);
+	setenv("MESA_SHADER_CACHE_DISABLE", "true", 1);
+
 	App app;
 	app.Run();
 
