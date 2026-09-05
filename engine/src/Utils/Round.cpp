@@ -42,16 +42,21 @@
 
 #include <cmath>
 
+// Always rounds "away from zero" at the halfway point (2.5->3, not 2
+// as banker's rounding to the nearest even integer would give): this
+// is how real Excel's ROUND() behaves, verified while investigating
+// agile-kanban-board.xlsx (=ROUND(H35*G2,0)) -- found here because
+// Functions.math.cpp::ROUNDFunction never actually called this
+// function at all, it had its own separate, broken duplicate
+// implementation (see there for details), now fixed to call this one.
 double Round(double d)
 {
 	double heel, deel;
 	deel = modf(fabs(d), &heel);
-	
-	if (deel > 0.5)
+
+	if (deel >= 0.5)
 		heel += 1.0;
-	else if (deel == 0.5 && fmod(heel, 2.0) != 0.0)
-		heel += 1.0;
-	
+
 	return d < 0 ? -heel : heel;
 }
 

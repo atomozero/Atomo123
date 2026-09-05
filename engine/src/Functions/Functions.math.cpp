@@ -47,6 +47,7 @@
 #include "FunctionUtils.h"
 #include "Functions.h"
 #include "Globals.h"
+#include "Round.h"
 
 
 void ABSFunction(Value *stack, int argCnt, CContainer *cells)
@@ -505,10 +506,22 @@ void MINFunction(Value *stack, int argCnt, CContainer *cells)
 	stack[0] = theResult;
 }
 
+// Delegates to Round(double,int) (Utils/Round.cpp), which already
+// handles the sign correctly (fabs/modf) and the scale factor (uses
+// log10 instead of multiplying/dividing by pow(10,n) directly, for
+// large numbers where pow(10,n) would lose precision) -- found a real
+// bug here while investigating agile-kanban-board.xlsx (ROUND(H35*G2,0)
+// with H35*G2 exactly 3.5): the old duplicated implementation computed
+// "d = heel / factor" BEFORE deciding whether to round up, then added
+// 1.0 to the already-divided result instead of to "heel" before
+// dividing (wrong for any digits!=0), and the condition "deel > 0.5"
+// (instead of "deel >= 0.5") excluded every exact-halfway value from
+// the rounding check entirely, always rounding down -- ROUND(3.5,0)
+// gave 3 instead of 4.
 void ROUNDFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	double d, n;
-	
+
 	if (GetDoubleArgument(stack, argCnt, 1, &d) &&
 		GetDoubleArgument(stack, argCnt, 2, &n))
 	{
@@ -519,28 +532,18 @@ void ROUNDFunction(Value *stack, int argCnt, CContainer *cells)
 		else if (n > 15 || n < -15)
 			d = gValueNan;
 		else
-		{
-			double deel, heel, factor;
-			
-			factor = pow(10.0, n);
-			
-			d *= factor;
-			deel = modf(d, &heel);
-			d = heel / factor;
-			if (deel > 0.5 && fmod(heel, 2.0) == 1.0)
-				d += 1.0;
-		}
+			d = Round(d, static_cast<int>(n));
 		stack[0] = d;
 	}
 	else
 		stack[0] = gValueNan;
 }
 
-// ROUNDUP/ROUNDDOWN (Fase 14): a differenza di ROUND sopra (arrotonda
-// al piu' vicino, met-a'-pari va all'intero pari, cosiddetto "banker's
-// rounding"), qui non importa la cifra scartata -- ROUNDUP arrotonda
-// SEMPRE lontano dallo zero, ROUNDDOWN SEMPRE verso lo zero (tronca).
-// Stessa validazione di ROUND (num_digits fra -15 e 15, NaN propagato).
+// ROUNDUP/ROUNDDOWN (Phase 14): unlike ROUND above (rounds to the
+// nearest, halfway always goes away from zero), the discarded digit
+// doesn't matter here -- ROUNDUP always rounds away from zero,
+// ROUNDDOWN always toward zero (truncates). Same validation as ROUND
+// (num_digits between -15 and 15, NaN propagated).
 void ROUNDUPFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	double d, n;

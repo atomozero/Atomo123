@@ -279,6 +279,39 @@ int main()
 		gFailures++;
 	}
 
+	// ROUND(3.5,0) = 4: real bug found while analyzing
+	// agile-kanban-board.xlsx (=ROUND(H35*G2,0) with H35*G2 exactly
+	// 3.5) -- the old duplicated implementation here added 1.0 to the
+	// already-scaled-down result instead of to "heel" before dividing,
+	// and the condition "deel > 0.5" (instead of "deel >= 0.5")
+	// excluded every exact-halfway value from the rounding check
+	// entirely, always giving 3 instead of 4.
+	try
+	{
+		TryToParseString("=ROUND(3.5,0)", cell(24, 6), &doc, true, '.', ',');
+		doc.CalcCell(cell(24, 6));
+		doc.GetValue(cell(24, 6), v);
+		Check((double)v == 4.0, "=ROUND(3.5,0) calcola 4, non 3");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUND(3.5,0): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ROUND(3.45,1)", cell(24, 7), &doc, true, '.', ',');
+		doc.CalcCell(cell(24, 7));
+		doc.GetValue(cell(24, 7), v);
+		Check((double)v == 3.5, "=ROUND(3.45,1) calcola 3.5 (arrotondamento con digits!=0, non solo a interi)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUND(3.45,1): %s\n", (char *)e);
+		gFailures++;
+	}
+
 	try
 	{
 		// Stesso formato ("000", zero-riempimento) visto nel file reale
