@@ -81,7 +81,23 @@ enum PFToken {
 	// PFToken grezzo) -- un valore inserito in mezzo sposterebbe gli
 	// ordinali di tutti quelli dopo, corrompendo silenziosamente ogni
 	// formula gia' salvata in un documento .ascd esistente.
-	opPercent
+	opPercent,
+	// Intervalli dinamici (es. "OFFSET(H11,1,0):OFFSET(H15,-1,0)"),
+	// aggiunti qui in fondo per lo stesso motivo del commento sopra.
+	// valRefRange ha lo STESSO payload di valRange (una "range"), ma a
+	// differenza sua non collassa MAI al valore della cella per un
+	// intervallo degenere di una sola cella (vedi CFormula::Calculate,
+	// case valRange, che invece lo fa apposta per "=A1:A1+1") -- serve
+	// un token honestamente "sempre un riferimento, mai un valore" per
+	// i due usi nuovi sotto: (1) operando di opRangeOp, (2) primo
+	// argomento di OFFSET (che ha bisogno di un vero riferimento, non
+	// del valore della cella, per calcolare l'intervallo spostato).
+	// opRangeOp e' l'operatore ":" applicato a due espressioni
+	// qualunque che producono un riferimento (non solo due celle
+	// letterali, quel caso resta il valRange esistente, invariato) --
+	// vedi CParser::Factor per dove viene emesso.
+	valRefRange,
+	opRangeOp
 };
 
 const long

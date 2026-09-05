@@ -130,6 +130,18 @@ bool CFormulaIterator::Next(cell& ioCell)
 				fIndex += sizeof(cell) / kPFWordSize;
 				break;
 			case valRange:
+			// Intervalli dinamici ("OFFSET(H11,1,0):OFFSET(H15,-1,0)"):
+			// stesso trattamento esatto di valRange, che sia il
+			// riferimento base di OFFSET o un operando di opRangeOp --
+			// il bytecode e' postfisso/piatto, quindi questi token
+			// vengono incontrati qui indipendentemente da quale
+			// funzione/operatore li consuma dopo (mai "dentro" a
+			// opFunc, solo prima di esso nello stream), esattamente
+			// come un valRange letterale gia' faceva. E' questo che fa
+			// funzionare GetPrecedents/GetDependents e l'ordinamento di
+			// ricalcolo di CCalcStack anche per un intervallo dinamico,
+			// senza bisogno di nessun'altra modifica a questo iteratore.
+			case valRefRange:
 				fRange = ((range *)(fString + fIndex))->GetFlatRange(fLocation);
 				fIndex += sizeof(range) / kPFWordSize;
 				fIndex = -fIndex;
@@ -159,9 +171,10 @@ bool CFormulaIterator::Next(cell& ioCell)
 				break;
 		}
 	}
-	while (theOpcode != valCell && theOpcode != valRange && theOpcode != opEnd);
+	while (theOpcode != valCell && theOpcode != valRange && theOpcode != valRefRange
+		&& theOpcode != opEnd);
 
-	return (theOpcode == valCell || theOpcode == valRange);
+	return (theOpcode == valCell || theOpcode == valRange || theOpcode == valRefRange);
 } /* CFormulaIterator::Next */
 
 void CFormulaIterator::SetData(const IterData& inData)

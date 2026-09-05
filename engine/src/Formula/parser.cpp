@@ -49,6 +49,7 @@ CParser::CParser(CContainer *inContainer,
 	, mRelop(0)
 	, mOffset(0)
 	, mBracketDepth(0)
+	, mNextFactorWantsRef(false)
 	, mIsFormula(false)
 	, mExpr(NULL)
 	, mExprStart(NULL)
@@ -460,19 +461,75 @@ void CParser::Factor()
 		case CELL:
 		{
 			range r;
-			
+
+			// Consumato SUBITO e rimesso a false: si applica solo al
+			// fattore CORRENTE (il primo argomento di OFFSET), non a un
+			//'eventuale lato destro di ":" analizzato piu' sotto
+			// tramite una chiamata ricorsiva a Factor() -- vedi il
+			// commento su mNextFactorWantsRef in parser.h.
+			bool wantsRef = mNextFactorWantsRef;
+			mNextFactorWantsRef = false;
+
 			r.TopLeft() = mCell;
-			
+
 			Match(CELL);
-			
+
 			mIsFormula = true;
-			
+
 			if (mLookahead == RANGE)
 			{
 				Match(RANGE);
-				r.BotRight() = mCell;
-				Match(CELL);
-				AddToken(valRange, &r);
+
+				if (mLookahead == CELL)
+				{
+					// "H11:H15": il caso letterale comune, invariato --
+					// stesso identico bytecode di sempre (valRange), per
+					// non rischiare nessuna regressione sui file gia'
+					// salvati. wantsRef si applica anche qui (OFFSET con
+					// un intervallo letterale come primo argomento, es.
+					// "OFFSET(H11:H15,1,0)"): un intervallo di piu' celle
+					// produce gia' eRangeData con valRange, ma un
+					// intervallo DEGENERE scritto a mano ("H11:H11")
+					// altrimenti collasserebbe al valore della cella
+					// (vedi CFormula::Calculate) -- valRefRange evita
+					// l'eccezione, si comporta allo stesso modo sia per
+					// "H11" da solo sia per "H11:H11".
+					r.BotRight() = mCell;
+					Match(CELL);
+					AddToken(wantsRef ? valRefRange : valRange, &r);
+				}
+				else
+				{
+					// Intervallo dinamico: il lato destro di ":" non e'
+					// una cella letterale (es.
+					// "H11:OFFSET(H15,-1,0)") -- il lato sinistro
+					// diventa un riferimento a se stante (valRefRange,
+					// mai valCell: qui serve un riferimento, non il
+					// valore della cella), poi si analizza il lato
+					// destro con una normale chiamata ricorsiva a
+					// Factor() (gestisce OFFSET(...) o qualunque altro
+					// fattore sappia gia' produrre un riferimento), e
+					// infine si combinano i due con opRangeOp (il vero
+					// operatore ":" applicato a due riferimenti
+					// qualunque -- vedi il commento in Formula.h).
+					// r.BotRight() = r.TopLeft() rende "r" un intervallo
+					// degenere valido di una sola cella: senza questo
+					// resterebbe (0,0), il valore di default del
+					// costruttore di range, mai impostato altrimenti in
+					// questo ramo (a differenza del ramo "H11:H15" sopra,
+					// che imposta BotRight() da se').
+					r.BotRight() = r.TopLeft();
+					AddToken(valRefRange, &r);
+					Factor();
+					AddToken(opRangeOp);
+				}
+			}
+			else if (wantsRef)
+			{
+				// Stesso motivo del ramo sopra: un intervallo degenere
+				// vero, non (0,0).
+				r.BotRight() = r.TopLeft();
+				AddToken(valRefRange, &r);
 			}
 			else
 				AddToken(valCell, &r.TopLeft());
@@ -481,6 +538,14 @@ void CParser::Factor()
 		
 		case IDENT:
 		{
+			// Consumato subito, come in case CELL sopra: se questo
+			// identificatore non e' davvero OFFSET, un flag ereditato da
+			// un chiamante (il lato destro di un intervallo dinamico, vedi
+			// il ramo dopo AddToken(opFunc,...) piu' sotto) non deve
+			// restare armato per sbaglio sul primo argomento di UN'ALTRA
+			// funzione qualunque.
+			mNextFactorWantsRef = false;
+
 			char name[256];
 			strcpy(name, mToken);
 			int s = mTokenStart - mExprStart;
@@ -500,6 +565,16 @@ void CParser::Factor()
 			if (mLookahead == '(')
 			{
 				Match('(');
+				// Intervalli dinamici (Fase 36): il primo argomento di
+				// OFFSET e' un vero riferimento, non un valore -- vedi
+				// il commento su mNextFactorWantsRef in parser.h.
+				// Controllo per nome (stesso idioma di TRUE/FALSE poco
+				// sotto), non per numero di funzione: piu' semplice, e
+				// se "name" non risultasse davvero una funzione nota
+				// l'analisi fallisce comunque subito dopo (fcd.funcNr
+				// < 0), armare il flag qui non cambia nulla in quel caso.
+				if (strcasecmp(name, "OFFSET") == 0)
+					mNextFactorWantsRef = true;
 				ParamList();
 				Match(')');
 
@@ -519,6 +594,29 @@ void CParser::Factor()
 							expectedArgs, mArgCnt);
 
 				AddToken(opFunc, &fcd);
+
+				// Intervallo dinamico che comincia con una chiamata di
+				// funzione, non una cella letterale (es.
+				// "OFFSET(H11,1,0):OFFSET(H15,-1,0)" oppure
+				// "OFFSET(H11,1,0):H15") -- stesso principio del ramo
+				// generale in case CELL sopra: il lato destro puo' essere
+				// qualunque cosa Factor() sappia gia' analizzare. A
+				// differenza del ramo in case CELL (dove il lato destro
+				// non e' MAI una singola cella letterale, quel caso va
+				// gia' nel percorso veloce case CELL/case CELL), qui SI'
+				// puo' esserlo (es. "OFFSET(H11,1,0):H15") -- serve armare
+				// mNextFactorWantsRef anche per questo lato, altrimenti
+				// case CELL emetterebbe valCell (il VALORE di H15) invece
+				// di valRefRange (un riferimento a H15), e opRangeOp
+				// sotto fallirebbe silenziosamente (i due operandi devono
+				// essere entrambi eRangeData).
+				if (mLookahead == RANGE)
+				{
+					Match(RANGE);
+					mNextFactorWantsRef = true;
+					Factor();
+					AddToken(opRangeOp);
+				}
 			}
 			else if (mLookahead == '!')
 			{
@@ -718,10 +816,21 @@ void CParser::ParamList()
 			RelExpr();
 		else
 			AddToken(valNil);
-		
+
+		// mNextFactorWantsRef (Fase 36, intervalli dinamici) si applica
+		// SOLO al primo argomento (l'unico che il chiamante puo' aver
+		// armato, vedi case IDENT sopra) -- rimesso a false qui
+		// incondizionatamente, anche se il primo argomento non era
+		// affatto una CELL (case CELL lo consuma gia' da solo appena
+		// trova una cella, ma un argomento di forma diversa non lo
+		// tocca affatto): senza questo resterebbe armato e si
+		// applicherebbe per errore a una cella dentro il SECONDO/TERZO
+		// argomento.
+		mNextFactorWantsRef = false;
+
 		if (mLookahead != ')')
 			Match(LIST);
-		
+
 		args++;
 	}
 	

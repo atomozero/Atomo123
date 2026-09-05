@@ -39,6 +39,7 @@
 
 */
 
+#include <algorithm>
 #include <cstdio>
 
 #ifndef   FORMULA_H
@@ -145,6 +146,7 @@ void CFormula::AddToken(PFToken inToken, const void *inData, int& ioOffset)
 			toAdd = sizeof(cell);
 			break;
 		case valRange:
+		case valRefRange:
 			toAdd = sizeof(range);
 			break;
 		// Nome del foglio (NUL-terminato, come valName/valStr sopra)
@@ -388,7 +390,48 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 				}
 				indx += sizeof(range) / kPFWordSize;
 				break;
-			
+
+			// Intervalli dinamici: vedi il commento su valRefRange/
+			// opRangeOp in Formula.h. A differenza di valRange sopra,
+			// NON collassa mai al valore della cella per un intervallo
+			// di una sola cella -- e' l'unico modo di rappresentare
+			// oggi "un riferimento", non "un valore", nel bytecode.
+			case valRefRange:
+				stackIndx++;
+				theRange = *((range *)(fString + indx));
+				stack[stackIndx].fType = eRangeData;
+				stack[stackIndx] = theRange.GetFlatRange(inLocation);
+				indx += sizeof(range) / kPFWordSize;
+				break;
+
+			// Operatore ":" applicato a due espressioni qualunque che
+			// producono un riferimento (non solo due celle letterali,
+			// gia' risolto a tempo di parsing come valRange sopra) --
+			// es. "OFFSET(H11,1,0):OFFSET(H15,-1,0)". Il risultato e' il
+			// rettangolo che contiene ENTRAMBI gli operandi (lo stesso
+			// calcolo del vero operatore ":" di Excel, non una
+			// concatenazione letterale). Se uno dei due operandi non e'
+			// davvero un riferimento (es. "=SUM(1:2)", un errore
+			// dell'utente), il risultato e' l'errore sentinella gia'
+			// usato ovunque in questo file per un input non valido, non
+			// un crash ne' una lettura di memoria a caso.
+			case opRangeOp:
+				if (stack[stackIndx - 1].fType != eRangeData || stack[stackIndx].fType != eRangeData)
+					stack[stackIndx - 1] = gRefNan;
+				else
+				{
+					range left = stack[stackIndx - 1];
+					range right = stack[stackIndx];
+					range result;
+					result.left = std::min(left.left, right.left);
+					result.top = std::min(left.top, right.top);
+					result.right = std::max(left.right, right.right);
+					result.bottom = std::max(left.bottom, right.bottom);
+					stack[stackIndx - 1] = result;
+				}
+				stackIndx--;
+				break;
+
 			case valBool:
 				stackIndx++;
 				stack[stackIndx] = *((bool *)(fString + indx));
@@ -666,7 +709,17 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
-	
+
+				// "OFFSET(H11,1,0):OFFSET(H15,-1,0)": stesso schema di
+				// opPlus sopra, ":" al posto di "+".
+				case opRangeOp:
+					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, ":", kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
+					stackIndx--;
+					break;
+
 				case opMinus:
 					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
 					strlcat(outString, "-", kMaxStringLength);
@@ -750,7 +803,7 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 				case valPerc:
 					d = *((double *)(fString + indx));
 					indx += sizeof(double) / kPFWordSize;
-	
+
 					if (nextOpcode == valPerc)
 						d *= 100;
 
@@ -812,7 +865,13 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					indx += sizeof(cell) / kPFWordSize;
 					break;
 
+				// valRefRange stampa esattamente come valRange (la sola
+				// differenza fra i due token e' a tempo di CALCOLO, vedi
+				// Calculate sopra -- il testo di una formula non
+				// distingue affatto i due casi, "H11" resta "H11" che
+				// sia un riferimento normale o l'argomento di OFFSET).
 				case valRange:
+				case valRefRange:
 					theRange = *((range *)(fString + indx));
 					if (rcStyle)
 						theRange.GetRCName(outString);
@@ -1017,6 +1076,7 @@ bool CFormula::ReferencesOtherSheet() const
 				break;
 
 			case valRange:
+			case valRefRange:
 				indx += sizeof(range) / kPFWordSize;
 				break;
 
@@ -1043,6 +1103,7 @@ bool CFormula::IsConstant() const
 			case opFunc:	return false;
 			case valCell:	return false;
 			case valRange:return false;
+			case valRefRange:return false;
 			case valXRef:	return false;
 			case valXRange:	return false;
 			// Fase 7: un nome, come un riferimento a cella, non e'
@@ -1123,6 +1184,7 @@ long CFormula::StringLength() const
 				indx += sizeof(cell) / kPFWordSize;
 				break;
 			case valRange:
+			case valRefRange:
 				indx += sizeof(range) / kPFWordSize;
 				break;
 			case valXRef:

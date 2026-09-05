@@ -14,6 +14,8 @@
 #include <cstring>
 
 #include <Application.h>
+#include <Path.h>
+#include <Roster.h>
 
 #include "Cell.h"
 #include "Range.h"
@@ -23,6 +25,10 @@
 #include "MainWindow.h"
 #include "AscdIO.h"
 #include "WatchWindow.h"
+#include "FunctionUtils.h"
+#include "Globals.h"
+#include "ResourceManager.h"
+#include "MyError.h"
 
 static int gFailures = 0;
 
@@ -39,7 +45,23 @@ static void Check(bool condition, const char* what)
 
 int main()
 {
+	setbuf(stdout, NULL);
 	BApplication app("application/x-vnd.Atomo-TestFormulaAuditing");
+
+	// Stessa identica sequenza di App::ReadyToRun() nella vera app (vedi
+	// il commento gemello in test_recalc_dirty_cells.cpp): senza questa,
+	// SUBTOTAL/OFFSET (usate sotto per gli intervalli dinamici) non
+	// sarebbero riconosciute come funzioni con nome in questo eseguibile
+	// di test.
+	app_info info;
+	if (app.GetAppInfo(&info) == B_OK)
+	{
+		BPath execPath(&info.ref);
+		gAppName = execPath;
+		gResourceManager.SetTo(&execPath);
+		try { InitFunctions(); }
+		catch (CErr&) { }
+	}
 
 	MainWindow* win = new MainWindow();
 	win->Show();
@@ -174,6 +196,49 @@ int main()
 	win->MessageReceived(&removeFirst);
 	Check(win->WatchedCellCount() == 2 && win->WatchedCellAt(0) == cell(1, 1),
 		"kMsgWatchRemoveRow con \"row\"=0 rimuove la prima riga (C1), le altre scalano su");
+
+	// Intervalli dinamici (Fase 36, "OFFSET(...):OFFSET(...)"): la parte
+	// di calcolo (valRefRange/opRangeOp, il primo argomento di OFFSET
+	// come vero riferimento, GetPrecedents) e' gia' coperta a fondo in
+	// engine/tests/dynamic_range_test.cpp -- qui si verifica SOLO
+	// quello che richiede una vera app (round-trip nella barra della
+	// formula, inserimento riga tramite la vera SheetView::InsertRows),
+	// perche' CFormula::UnMangle/ftoa dipende da gFontSizeTable/
+	// BFont::StringWidth, non affidabile nel binario headless
+	// dell'engine (vedi il commento in cima a dynamic_range_test.cpp).
+	TryToParseString("10", cell(8, 11), doc, true); // H11
+	TryToParseString("100", cell(8, 12), doc, true); // H12
+	TryToParseString("200", cell(8, 13), doc, true); // H13
+	TryToParseString("300", cell(8, 14), doc, true); // H14
+	TryToParseString("10", cell(8, 15), doc, true); // H15
+	TryToParseString("=SUBTOTAL(9;OFFSET(H11;0;1):OFFSET(H15;0;-1))", cell(10, 5), doc, true); // J5
+	doc->CalcCell(cell(10, 5));
+	Value dynRangeVal;
+	doc->GetValue(cell(10, 5), dynRangeVal);
+	Check((double)dynRangeVal == 600.0,
+		"SUBTOTAL(9,OFFSET(H11,0,1):OFFSET(H15,0,-1)) = 600 (H12+H13+H14), la formula esatta di agile-kanban-board.xlsx");
+
+	char dynRangeText[256];
+	doc->GetCellFormula(cell(10, 5), dynRangeText, sizeof(dynRangeText), false);
+	Check(strstr(dynRangeText, "OFFSET") != NULL && strstr(dynRangeText, ":") != NULL,
+		"la formula di J5 si ricostruisce ancora come OFFSET(...):OFFSET(...) nella barra della formula");
+
+	// Inserimento riga (SheetView::InsertRows, la vera scorciatoia
+	// "Inserisci riga" del menu Dati): selezionare la riga 1 e inserire
+	// sposta OGNI riga sotto di 1 -- H11/H15 diventano H12/H16, la
+	// formula J5 stessa si sposta a J6. Il valore resta 600 (le stesse
+	// tre celle, ora una riga piu' in basso), il testo deve seguirle.
+	view->SetSelection(cell(1, 1));
+	view->InsertRows();
+	Value dynRangeValAfterInsert;
+	doc->GetValue(cell(10, 6), dynRangeValAfterInsert);
+	Check((double)dynRangeValAfterInsert == 600.0,
+		"dopo l'inserimento di una riga sopra la riga 1, la formula (ora in J6) vale ancora 600");
+
+	char dynRangeTextAfterInsert[256];
+	doc->GetCellFormula(cell(10, 6), dynRangeTextAfterInsert, sizeof(dynRangeTextAfterInsert), false);
+	Check(strstr(dynRangeTextAfterInsert, "H12") != NULL && strstr(dynRangeTextAfterInsert, "H16") != NULL,
+		"dopo l'inserimento la formula si aggiorna a OFFSET(H12,...):OFFSET(H16,...), era H11/H15");
 
 	win->Unlock();
 

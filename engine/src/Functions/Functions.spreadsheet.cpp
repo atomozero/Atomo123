@@ -1609,10 +1609,10 @@ void OFFSETFunction(Value *stack, int argCnt, CContainer *cells)
 	range cRange;
 	double dh, dv;
 	int h, v;
-	
+
 	if (CheckForNanParameters(stack, argCnt))
 		return;
-	
+
 	if (GetRangeArgument(stack, argCnt, 1, &cRange) &&
 		cRange.IsValid() &&
 		GetDoubleArgument(stack, argCnt, 2, &dh) &&

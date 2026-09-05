@@ -64,6 +64,28 @@ bool CContainer::CalcCell(const cell& c)
 		{
 			val = (*i).second;
 			CFormula((*i).second.mFormula).Calculate(c, newVal, this);
+
+			// Intervalli dinamici (Fase 36): una formula il cui risultato
+			// FINALE e' un riferimento (es. "=OFFSET(H11,1,0)" o "=A1:B5"
+			// scritte da sole, senza SUM/SUBTOTAL intorno) resta di tipo
+			// eRangeData -- ma CellData/Value::operator=(const CellData&)
+			// (CellData.cpp) non sanno rappresentare "un intervallo" come
+			// valore permanente di una cella, solo numero/testo/booleano/
+			// data: il "default" di quello switch la farebbe collassare
+			// silenziosamente a eNoData (cella vuota), un dato REALE
+			// perso senza nessun avviso. Stessa "intersezione implicita"
+			// che Excel applica in questo caso: si prende il valore della
+			// cella in alto a sinistra dell'intervallo, esattamente come
+			// CFormula::Calculate gia' fa da solo per un valRange
+			// LETTERALE degenere (una sola cella) -- qui si generalizza
+			// a qualunque intervallo, letterale o calcolato, degenere o
+			// no, quando e' il risultato ultimo dell'INTERA formula.
+			if (newVal.fType == eRangeData)
+			{
+				range r = newVal;
+				GetValue(r.TopLeft(), newVal);
+			}
+
 			if (newVal.fType == eNoData && fInView && fInView->DoesDisplayZero())
 				newVal = 0.0;
 

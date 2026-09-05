@@ -103,6 +103,17 @@ class CParser
 	// lexer.cpp sullo stato 60 per i dettagli.
 	int				mBracketDepth;
 	
+	// Intervalli dinamici (OFFSET, Fase 36): impostato da Factor() nel
+	// ramo IDENT subito prima di ParamList(), SOLO quando la funzione
+	// chiamata e' OFFSET -- ParamList() lo applica al primo argomento
+	// (l'unico che OFFSET usa come vero riferimento, non come valore) e
+	// lo rimette a false prima di analizzare gli argomenti successivi.
+	// Factor() lo consuma nel ramo CELL: quando e' true emette
+	// valRefRange (mai collassa al valore della cella) al posto di
+	// valCell/valRange, esattamente come richiede GetRangeArgument in
+	// OFFSETFunction. Vedi il commento su valRefRange in Formula.h.
+	bool			mNextFactorWantsRef;
+
 	bool			mIsFormula;
 	const char		*mExpr, *mExprStart, *mTokenStart;
 	char			mToken[256];

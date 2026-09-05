@@ -118,7 +118,20 @@ test-tables: $(LIB)
 	$(CXX) -o tests/table_refs_test $(OBJDIR)/table_refs_test.o -L. -lengine -lbe
 	./tests/table_refs_test
 
+# Test degli intervalli dinamici (Fase 36, "OFFSET(...):OFFSET(...)"):
+# valRefRange/opRangeOp, il primo argomento di OFFSET come vero
+# riferimento, il collasso all'intersezione implicita in CalcCell,
+# GetPrecedents attraverso l'intervallo, l'aggiornamento dei riferimenti
+# su inserimento riga -- vedi il commento in cima a
+# dynamic_range_test.cpp. Riusa la stessa risorsa 'Func' di
+# test-functions (nessuna funzione nuova registrata, solo un nuovo
+# comportamento del parser/motore su OFFSET gia' esistente).
+test-dynamic-range: $(LIB) $(FUNC_TEST_RSRC)
+	$(CXX) -c tests/dynamic_range_test.cpp -o $(OBJDIR)/dynamic_range_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/dynamic_range_test $(OBJDIR)/dynamic_range_test.o -L. -lengine -lbe
+	./tests/dynamic_range_test
+
 clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test
 
 .PHONY: all clean test test-functions test-xsheet test-names test-tables

@@ -139,6 +139,7 @@ bool CFormula::RefersToName(const char *name) const
 				indx += sizeof(cell) / kPFWordSize;
 				break;
 			case valRange:
+			case valRefRange:
 				indx += sizeof(range) / kPFWordSize;
 				break;
 			case valXRef:
@@ -209,6 +210,7 @@ bool CFormula::GetNextName(int& indx, CName& name) const
 				indx += sizeof(cell) / kPFWordSize;
 				break;
 			case valRange:
+			case valRefRange:
 				indx += sizeof(range) / kPFWordSize;
 				break;
 			case valXRef:
@@ -277,6 +279,7 @@ void CFormula::UpdateReferences(cell inLocation, bool horizontal,
 				break;
 			}
 			case valRange:
+			case valRefRange:
 			{
 				range r = *(range *)(fString + indx);
 				r.Offset(inLocation, horizontal, first, count);
@@ -355,6 +358,7 @@ void CFormula::UpdateReferences(cell inLocation, int h, int v, range src)
 				break;
 			}
 			case valRange:
+			case valRefRange:
 			{
 				range r = *(range *)(fString + indx);
 				if (!src.Contains(r.TopLeft().GetFlatCell(inLocation)) &&
@@ -444,13 +448,14 @@ void* CFormula::UpdateReferences(cell inLoc, range src, range dst)
 				break;
 			}
 			case valRange:
+			case valRefRange:
 			{
 				range r = *(range *)(fString + indx);
 				if (src.Contains(r.TopLeft().GetFlatCell(inLoc)))
 				{
 					if (!result) result = CopyString();
 					r.TopLeft().Offset(h, v);
-				}				
+				}
 				else if (dst.Contains(r.TopLeft().GetFlatCell(inLoc)))
 				{
 					if (!result) result = CopyString();

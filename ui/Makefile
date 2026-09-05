@@ -1148,7 +1148,7 @@ test-formula-display: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 # controllo verranno aggiunti allo stesso file/target man mano che
 # vengono implementati. Stessa ragione di test-formula-display sopra
 # (serve una vera MainWindow).
-test-formula-auditing: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+test-formula-auditing: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 	$(CXX) -c tests/test_formula_auditing.cpp -o tests/test_formula_auditing.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -o tests/test_formula_auditing tests/test_formula_auditing.o \
@@ -1158,6 +1158,7 @@ test-formula-auditing: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/NameWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	xres -o tests/test_formula_auditing $(RSRC)
 	./tests/test_formula_auditing
 
 # Test del footer Somma/Media/Massimo/Conteggio della selezione: stessa
