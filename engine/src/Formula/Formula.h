@@ -97,7 +97,23 @@ enum PFToken {
 	// letterali, quel caso resta il valRange esistente, invariato) --
 	// vedi CParser::Factor per dove viene emesso.
 	valRefRange,
-	opRangeOp
+	opRangeOp,
+	// Excel's "&" is text concatenation, never logical AND -- but this
+	// grammar's case '&' (CParser::RelExpr) already meant logical AND
+	// (opAND, above) before this project ever targeted Excel
+	// compatibility. Found while tracing why a real XLSX file's
+	// REPT(...)&REPT(...)&"..." icon-string formula silently computed
+	// NaN instead of text: "&" was compiling to opAND, which coerces
+	// both text operands to bool/NaN, not concatenating them. Since
+	// AND()/OR() functions already exist and are the only Excel-correct
+	// spelling anyway, "&" is repointed to this new token instead of
+	// reusing opAND's bytecode (which stays fully intact, unused by any
+	// NEW formula text from now on, so old .ascd files with a genuine
+	// opAND formula still calculate exactly as before -- see
+	// CFormula::UnMangle, which now reprints old opAND/opOR bytecode as
+	// AND(a,b)/OR(a,b) instead of "a&b"/"a|b", so it can never silently
+	// flip meaning if that formula gets edited and reparsed).
+	opConcat
 };
 
 const long

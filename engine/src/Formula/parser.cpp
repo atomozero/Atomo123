@@ -168,7 +168,10 @@ void CParser::RelExpr()
 	{
 		switch (mLookahead)
 		{
-			case '&': Match('&'); BoolExpr(); AddToken(opAND); break;
+			// Excel text concatenation, not logical AND (see the
+			// comment on opConcat in Formula.h for why this used to be
+			// opAND and no longer is).
+			case '&': Match('&'); BoolExpr(); AddToken(opConcat); break;
 			case '|': Match('|'); BoolExpr(); AddToken(opOR); break;
 			default: return;
 		}

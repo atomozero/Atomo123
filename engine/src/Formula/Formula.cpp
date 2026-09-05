@@ -178,6 +178,30 @@ void CFormula::AddToken(PFToken inToken, const void *inData, int& ioOffset)
 		memset(fString + indx, 0, toAdd);
 } /* CFormula::AddToken */
 
+// Same number formatting as CONCATFunction (Functions.text.cpp) --
+// plain snprintf("%.10g"), not the graphical formatter/ftoa, since
+// Calculate() must stay usable without a real BApplication (headless
+// engine tests, translators): ftoa calls BFont::StringWidth, which
+// needs an app_server connection and hangs forever without one.
+static void ValueToConcatText(const Value &v, char *out, size_t outSize)
+{
+	switch (v.fType)
+	{
+		case eTextData:
+			strlcpy(out, v.fText, outSize);
+			break;
+		case eNumData:
+			snprintf(out, outSize, "%.10g", v.fDouble);
+			break;
+		case eBoolData:
+			strlcpy(out, v.fBool ? "TRUE" : "FALSE", outSize);
+			break;
+		default:
+			out[0] = 0;
+			break;
+	}
+}
+
 void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContainer) const
 {
 	PFToken nextOpcode;
@@ -299,6 +323,32 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 
 			case opOR:
 				stack[stackIndx - 1] |= stack[stackIndx];
+				stackIndx--;
+				break;
+
+			// Excel's "&", text concatenation (see the comment on
+			// opConcat in Formula.h). ValueToConcatText mirrors
+			// CONCATFunction's own number formatting (Functions.text.cpp)
+			// so "1"&"2" and CONCAT(1,2) produce the same text. An error
+			// (modeled in this engine as a NaN eNumData, there's no
+			// separate error type) propagates instead of stringifying
+			// to the literal text "nan" -- matches real Excel, where
+			// concatenating an error value with anything just gives
+			// back that same error. Caught by an existing table-refs
+			// test using the common "X&\"\"" idiom to coerce a NaN/
+			// unresolved reference to an empty string.
+			case opConcat:
+				if (stack[stackIndx - 1].IsNan() || stack[stackIndx].IsNan())
+					stack[stackIndx - 1] = gValueNan;
+				else
+				{
+					char buf1[2048], buf2[2048], result[4096];
+					ValueToConcatText(stack[stackIndx - 1], buf1, sizeof(buf1));
+					ValueToConcatText(stack[stackIndx], buf2, sizeof(buf2));
+					strlcpy(result, buf1, sizeof(result));
+					strlcat(result, buf2, sizeof(result));
+					stack[stackIndx - 1] = result;
+				}
 				stackIndx--;
 				break;
 
@@ -662,17 +712,51 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 					strlcpy(stack[stackIndx], outString, kMaxStringLength);
 					break;
 				
+				// Reprinted as AND(a,b)/OR(a,b), not infix "a&b"/"a|b" as
+				// before: "&"/"|" now mean text concatenation/opConcat
+				// (see Formula.h) for any NEW formula text, so an old
+				// opAND/opOR formula's calculation stays exactly as it
+				// was (this case is unchanged), but its reprinted text
+				// must no longer use the symbol that now means something
+				// else -- otherwise editing and reparsing it would
+				// silently flip it into a concatenation.
 				case opAND:
-					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
-					strlcat(outString, "&", kMaxStringLength);
+				{
+					char s[2];
+					if (listSepOverride) s[0] = listSepOverride;
+					else if (rcStyle) s[0] = ',';
+					else s[0] = gListSeparator;
+					s[1] = 0;
+					strlcpy(outString, "AND(", kMaxStringLength);
+					strlcat(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, s, kMaxStringLength);
 					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcat(outString, ")", kMaxStringLength);
 					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;
 					break;
-	
+				}
+
 				case opOR:
+				{
+					char s[2];
+					if (listSepOverride) s[0] = listSepOverride;
+					else if (rcStyle) s[0] = ',';
+					else s[0] = gListSeparator;
+					s[1] = 0;
+					strlcpy(outString, "OR(", kMaxStringLength);
+					strlcat(outString, stack[stackIndx - 1], kMaxStringLength);
+					strlcat(outString, s, kMaxStringLength);
+					strlcat(outString, stack[stackIndx], kMaxStringLength);
+					strlcat(outString, ")", kMaxStringLength);
+					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
+					stackIndx--;
+					break;
+				}
+
+				case opConcat:
 					strlcpy(outString, stack[stackIndx - 1], kMaxStringLength);
-					strlcat(outString, "|", kMaxStringLength);
+					strlcat(outString, "&", kMaxStringLength);
 					strlcat(outString, stack[stackIndx], kMaxStringLength);
 					strlcpy(stack[stackIndx - 1], outString, kMaxStringLength);
 					stackIndx--;

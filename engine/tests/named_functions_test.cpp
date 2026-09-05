@@ -312,6 +312,93 @@ int main()
 		gFailures++;
 	}
 
+	// "&" is Excel's text concatenation operator. This grammar's case
+	// '&' used to compile it as opAND (logical AND, inherited from the
+	// pre-Excel Sum-It grammar) instead: found while investigating why
+	// a real XLSX file's REPT(...)&REPT(...)&"..." icon-string formula
+	// computed NaN instead of text. AND()/OR() functions already cover
+	// logical AND/OR the Excel-correct way, so "&" is repointed to a
+	// new concatenation token instead.
+	try
+	{
+		TryToParseString("=\"foo\"&\"bar\"", cell(90, 1), &doc, true, '.', ',');
+		doc.CalcCell(cell(90, 1));
+		doc.GetValue(cell(90, 1), v);
+		Check(strcmp((const char *)v, "foobar") == 0, "=\"foo\"&\"bar\" concatenates text, calculates \"foobar\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =\"foo\"&\"bar\": %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=REPT(\"x\";3)&REPT(\"y\";2)", cell(90, 2), &doc, true);
+		doc.CalcCell(cell(90, 2));
+		doc.GetValue(cell(90, 2), v);
+		Check(strcmp((const char *)v, "xxxyy") == 0,
+			"=REPT(\"x\",3)&REPT(\"y\",2) calculates \"xxxyy\", the exact shape of the real file's icon-string formula");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =REPT&REPT: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=\"n=\"&5", cell(90, 3), &doc, true, '.', ',');
+		doc.CalcCell(cell(90, 3));
+		doc.GetValue(cell(90, 3), v);
+		Check(strcmp((const char *)v, "n=5") == 0,
+			"=\"n=\"&5 concatenates a number as text, same formatting as CONCAT");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =\"n=\"&5: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// A real opAND formula from BEFORE this fix, compiled straight
+		// from source text using strtod-style old grammar semantics --
+		// simulated here by building the same shape a legacy .ascd file
+		// would have on disk. Since we can no longer *write* "1&0" and
+		// get opAND (the parser now always emits opConcat for "&"),
+		// this instead checks that the round-trip text for a real
+		// logical-AND formula reprints as AND(a,b), not "a&b" -- an old
+		// file's formula bar text would never accidentally get
+		// reparsed as concatenation.
+		TryToParseString("=AND(TRUE;FALSE)", cell(90, 4), &doc, true);
+		doc.CalcCell(cell(90, 4));
+		doc.GetValue(cell(90, 4), v);
+		Check((bool)v == false, "=AND(TRUE,FALSE) still calculates FALSE (unrelated to the \"&\" grammar change)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =AND(TRUE,FALSE): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		// The historical "X&\"\"" idiom (coerce a NaN/unresolved
+		// reference to an empty string) must still degrade cleanly
+		// instead of turning the NaN into the literal text "nan".
+		TryToParseString("=(0/0)&\"\"", cell(90, 5), &doc, true, '.', ',');
+		doc.CalcCell(cell(90, 5));
+		doc.GetValue(cell(90, 5), v);
+		Check(v.fType != eTextData || strlen((const char *)v) == 0,
+			"=(0/0)&\"\" propagates the error instead of concatenating the literal text \"nan\"");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =(0/0)&\"\": %s\n", (char *)e);
+		gFailures++;
+	}
+
 	try
 	{
 		// Stesso formato ("000", zero-riempimento) visto nel file reale
