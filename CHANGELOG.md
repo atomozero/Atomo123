@@ -1025,3 +1025,17 @@ What shipped since v0.2.8, not yet in a tagged release:
   NaN, no distinct error type in this engine) propagates through `&`
   instead of stringifying to the literal text `"nan"`, keeping the
   common `X&""` idiom working.
+- Fixed comment-indicator triangles (and data-validation dropdown
+  arrows) being invisible on every cell except the very first one
+  drawn in a redraw pass. Each cell's text-drawing step narrows the
+  view's clipping region to just that cell's own rect and never widens
+  it back before the next cell — the indicator, drawn at the start of
+  the next cell's turn in the same loop, inherits the previous cell's
+  leftover narrow clip and gets silently cut away. Same root cause
+  already fixed once for the AutoFilter arrow (drawn once after the
+  whole loop), but that fix didn't cover indicators drawn per-cell
+  inside the loop, which need the clip restored on every iteration.
+  Found by launching the real app against a real XLSX file with
+  genuine imported comments and comparing against real Excel — the
+  header row's comment triangles were completely missing despite the
+  comments themselves being correctly imported.
