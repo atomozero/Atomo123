@@ -235,6 +235,20 @@ std::map<cell, rgb_color> CContainer::EvaluateConditionalFormatting()
 
 		if (rule.type == eCondCellIsEqual)
 		{
+			// Formattazione VIVA anche per il valore di confronto stesso
+			// quando la regola XLSX confrontava contro un riferimento di
+			// cella (es. "$C$29") invece che un letterale -- letto ad
+			// ogni valutazione, mai congelato una tantum, cosi' se
+			// l'utente cambia il testo della cella referenziata (spesso
+			// una "legenda" nascosta altrove nel foglio) il colore
+			// segue, come in Excel.
+			std::string compareAgainst = rule.compareValue;
+			if (rule.compareIsCellRef)
+			{
+				char refText[4096];
+				GetCellResult(rule.compareRefCell, refText, sizeof(refText), true);
+				compareAgainst = refText;
+			}
 			for (size_t r = 0; r < rule.ranges.size(); r++)
 			{
 				const range& rg = rule.ranges[r];
@@ -245,7 +259,7 @@ std::map<cell, rgb_color> CContainer::EvaluateConditionalFormatting()
 						cell c(col, row);
 						char text[4096];
 						GetCellResult(c, text, sizeof(text), true);
-						if (rule.compareValue == text)
+						if (compareAgainst == text)
 							result[c] = rule.bgColor;
 					}
 				}

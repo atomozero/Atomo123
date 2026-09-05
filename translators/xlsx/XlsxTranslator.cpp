@@ -76,7 +76,7 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // condizionale, i punti di controllo della scala di colori, vedi il
 // commento su kASCDVersion in ui/src/AscdIO.cpp (stesso identico
 // motivo, duplicato qui per lo stesso motivo di WriteASCD sotto).
-static const int32 kASCDVersion = 3;
+static const int32 kASCDVersion = 4;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // Formato "cartella di lavoro" multi-foglio (Fase 9): duplicato da
 // ui/src/AscdIO.h/.cpp (magic "ASCB", conteggio fogli, poi per
@@ -880,6 +880,18 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 				if (dest->Write(&point.color, sizeof(point.color)) != (ssize_t)sizeof(point.color))
 					return B_IO_ERROR;
 			}
+
+			// Riferimento di cella per il confronto (versione 4, vedi il
+			// commento su kASCDVersion e su ConditionalFormatRule::
+			// compareIsCellRef in Container.h), stesso formato di
+			// ui/src/AscdIO.cpp.
+			int8 compareIsCellRef = rule.compareIsCellRef ? 1 : 0;
+			int16 compareRefCol = rule.compareRefCell.h;
+			int16 compareRefRow = rule.compareRefCell.v;
+			if (dest->Write(&compareIsCellRef, sizeof(compareIsCellRef)) != (ssize_t)sizeof(compareIsCellRef)
+				|| dest->Write(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
+				|| dest->Write(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1154,11 +1166,11 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	// versioni 1, 2 (byte "kind" per cella) e 3 (punti di scala di
-	// colori, vedi WriteASCD sopra e il commento su kASCDVersion)
-	// restano tutte leggibili -- stesso motivo di LoadASCD in
-	// ui/src/AscdIO.cpp.
-	if (version != 1 && version != 2 && version != kASCDVersion)
+	// versioni 1, 2 (byte "kind" per cella), 3 (punti di scala di
+	// colori) e 4 (riferimento di cella per il confronto, vedi
+	// WriteASCD sopra e il commento su kASCDVersion) restano tutte
+	// leggibili -- stesso motivo di LoadASCD in ui/src/AscdIO.cpp.
+	if (version != 1 && version != 2 && version != 3 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -1782,6 +1794,20 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 							|| source->Read(colorBuf, sizeof(colorBuf)) != (ssize_t)sizeof(colorBuf))
 							return B_BAD_DATA;
 					}
+				}
+
+				// Riferimento di cella per il confronto (versione 4, vedi
+				// il commento su kASCDVersion e su ConditionalFormatRule::
+				// compareIsCellRef in Container.h): solo saltato, stesso
+				// motivo dei punti di scala di colori sopra.
+				if (version >= 4)
+				{
+					int8 compareIsCellRef;
+					int16 compareRefCol, compareRefRow;
+					if (source->Read(&compareIsCellRef, sizeof(compareIsCellRef)) != (ssize_t)sizeof(compareIsCellRef)
+						|| source->Read(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
+						|| source->Read(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
+						return B_BAD_DATA;
 				}
 			}
 		}
@@ -5680,6 +5706,26 @@ static std::string StripQuotes(const std::string& s)
 	return s;
 }
 
+// Un "cellIs"/"equal" il cui <formula> e' un riferimento di cella
+// assoluto ($C$29) invece che un letterale racchiuso fra virgolette --
+// il caso comunissimo dei modelli Excel con una "legenda" nascosta
+// altrove nel foglio (Type/Priority in agile-kanban-board.xlsx,
+// Vertex42, si colorano cosi'). Un vero letterale testuale e' SEMPRE
+// fra virgolette in XLSX (vedi StripQuotes sopra); un numero letterale
+// non e' mai maiuscolo-poi-cifre nello stesso schema di una cella
+// (nessuna ambiguita' pratica: un numero come "29" non ha lettere
+// davanti). Riusa CellRefToColRow (gia' definita sopra per <mergeCell
+// ref="...">/<autoFilter ref="...">), che si aspetta niente "$" --
+// tolti qui prima di passarglielo.
+static bool IsCellReferenceFormula(const std::string& formula, int& outCol, int& outRow)
+{
+	std::string stripped;
+	for (size_t i = 0; i < formula.size(); i++)
+		if (formula[i] != '$')
+			stripped += formula[i];
+	return CellRefToColRow(stripped, outCol, outRow);
+}
+
 // Formattazione condizionale VIVA (Fase 13, prima Fase 12): non piu'
 // valutata una tantum e congelata come colore statico -- la regola
 // stessa viene convertita e aggiunta al documento
@@ -5745,7 +5791,15 @@ static void ApplyConditionalFormatting(CContainer* doc,
 		if (rule.type == "cellIs" && rule.operatorAttr == "equal")
 		{
 			engineRule.type = eCondCellIsEqual;
-			engineRule.compareValue = StripQuotes(rule.formula);
+			int refCol, refRow;
+			bool isQuotedLiteral = rule.formula.size() >= 2 && rule.formula.front() == '"';
+			if (!isQuotedLiteral && IsCellReferenceFormula(rule.formula, refCol, refRow))
+			{
+				engineRule.compareIsCellRef = true;
+				engineRule.compareRefCell = cell(refCol, refRow);
+			}
+			else
+				engineRule.compareValue = StripQuotes(rule.formula);
 		}
 		else if (rule.type == "duplicateValues")
 			engineRule.type = eCondDuplicateValues;

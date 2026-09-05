@@ -4301,6 +4301,17 @@ int main()
 					}
 				}
 
+				// Riferimento di cella per il confronto (versione 4 del
+				// formato ASCD): 1 byte (compareIsCellRef) + due int16
+				// (colonna/riga), scritti per OGNI regola ormai -- vedi
+				// il commento su ConditionalFormatRule::compareIsCellRef
+				// in Container.h. Nessuna delle tre regole di questo
+				// file di prova ne usa uno (tutte contro un letterale o
+				// una scala di colori), ma i byte vanno comunque
+				// consumati per non disallineare la regola successiva.
+				if (pos + 1 + 2 + 2 <= ascdLen)
+					pos += 1 + 2 + 2;
+
 				if (type == eCondCellIsEqual && compareValue == "Mancante" && packed == 0xFFC7CE
 					&& rangeMatchesA1A3)
 					foundCellIsRule = true;

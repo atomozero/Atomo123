@@ -189,7 +189,20 @@ struct ColorScalePoint {
 
 struct ConditionalFormatRule {
 	CondFormatRuleType type;
-	std::string compareValue; // solo per eCondCellIsEqual
+	std::string compareValue; // solo per eCondCellIsEqual, quando compareIsCellRef e' falso
+	// eCondCellIsEqual il cui confronto XLSX era contro un riferimento
+	// di cella ($C$29) invece che un letterale ("High") -- il caso
+	// comunissimo dei modelli Excel con una "tabella di legenda"
+	// nascosta altrove nel foglio (es. agile-kanban-board.xlsx,
+	// Vertex42: Type/Priority si colorano confrontando contro celle
+	// come $C$29/$C$30, non contro un testo fisso). Quando vero,
+	// compareValue e' ignorato: CContainer::EvaluateConditionalFormatting
+	// legge il testo ATTUALE di compareRefCell a ogni valutazione (la
+	// stessa "formattazione condizionale VIVA" del resto di questo
+	// struct), cosi' se l'utente cambia il testo della legenda il
+	// colore segue, esattamente come in Excel.
+	bool compareIsCellRef;
+	cell compareRefCell; // valido solo se compareIsCellRef
 	rgb_color bgColor; // per eCondCellIsEqual/eCondDuplicateValues; ignorato per eCondColorScale
 	std::vector<range> ranges;
 	// Solo per eCondColorScale: 2 punti (scala a due colori) o 3
@@ -197,7 +210,7 @@ struct ConditionalFormatRule {
 	// gli altri due tipi.
 	std::vector<ColorScalePoint> colorScalePoints;
 
-	ConditionalFormatRule() : type(eCondCellIsEqual)
+	ConditionalFormatRule() : type(eCondCellIsEqual), compareIsCellRef(false)
 	{
 		bgColor.red = bgColor.green = bgColor.blue = bgColor.alpha = 255;
 	}

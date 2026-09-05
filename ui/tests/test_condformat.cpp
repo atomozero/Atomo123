@@ -254,6 +254,74 @@ int main()
 		doc3->Release();
 	}
 
+	// --- Confronto contro un RIFERIMENTO DI CELLA (compareIsCellRef),
+	// non un letterale fisso -- il caso reale scoperto analizzando
+	// agile-kanban-board.xlsx (Vertex42): "cellIs"/"equal" contro
+	// $C$29 invece che contro "High"/"Low"/ecc, una "legenda" altrove
+	// nel foglio. Verifica sia il colore vero sui pixel sia che sia
+	// DAVVERO viva: cambiare il testo della cella di riferimento (non
+	// solo il valore della cella regolata) deve cambiare da solo quali
+	// celle si colorano al prossimo Draw(), senza toccare la regola. ---
+	{
+		CContainer* doc4 = new CContainer(NULL, NULL);
+		TryToParseString("High", cell(1, 1), doc4, true);   // A1
+		TryToParseString("Low", cell(1, 2), doc4, true);    // A2
+		TryToParseString("High", cell(2, 1), doc4, true);   // B1, la "legenda" referenziata
+
+		ConditionalFormatRule rule;
+		rule.type = eCondCellIsEqual;
+		rule.compareIsCellRef = true;
+		rule.compareRefCell = cell(2, 1); // B1
+		rule.bgColor = red;
+		rule.ranges.push_back(range(1, 1, 1, 2)); // A1:A2
+		doc4->AddConditionalFormatRule(rule);
+
+		BRect canvasRect(0, 0, 799, 599);
+		BBitmap* canvas = new BBitmap(canvasRect, B_RGB32, true);
+		SheetView* view4 = new SheetView(doc4);
+		view4->ResizeTo(canvasRect.Width(), canvasRect.Height());
+		canvas->AddChild(view4);
+
+		canvas->Lock();
+		view4->Draw(canvasRect);
+		view4->Sync();
+		canvas->Unlock();
+
+		uint8* bits = (uint8*)canvas->Bits();
+		int32 bpr = canvas->BytesPerRow();
+
+		BRect a1 = view4->CellRect(cell(1, 1));
+		uint8* pxA1 = bits + (int32)(a1.top + 3) * bpr + (int32)(a1.left + 3) * 4;
+		Check(pxA1[0] > 190 && pxA1[1] > 180 && pxA1[2] > 240,
+			"A1 (\"High\", uguale al testo ATTUALE di B1) e' colorata, il confronto e' contro B1 non un letterale");
+
+		BRect a2 = view4->CellRect(cell(1, 2));
+		uint8* pxA2 = bits + (int32)(a2.top + 3) * bpr + (int32)(a2.left + 3) * 4;
+		Check(pxA2[0] > 250 && pxA2[1] > 250 && pxA2[2] > 250,
+			"A2 (\"Low\", diverso da B1) resta bianca");
+
+		// Cambia il testo della cella REFERENZIATA (B1), non una delle
+		// celle regolate -- un nuovo Draw() deve seguire il nuovo
+		// valore di B1 da solo, la prova vera che il confronto e' vivo
+		// e non congelato al testo di B1 letto una volta sola.
+		TryToParseString("Low", cell(2, 1), doc4, true); // B1 ora "Low"
+		canvas->Lock();
+		view4->Draw(canvasRect);
+		view4->Sync();
+		canvas->Unlock();
+
+		uint8* pxA1After = bits + (int32)(a1.top + 3) * bpr + (int32)(a1.left + 3) * 4;
+		Check(pxA1After[0] > 250 && pxA1After[1] > 250 && pxA1After[2] > 250,
+			"dopo aver cambiato B1 a \"Low\", A1 (\"High\") non corrisponde piu' e torna bianca da sola");
+
+		uint8* pxA2After = bits + (int32)(a2.top + 3) * bpr + (int32)(a2.left + 3) * 4;
+		Check(pxA2After[0] > 190 && pxA2After[1] > 180 && pxA2After[2] > 240,
+			"A2 (\"Low\") ora corrisponde al nuovo testo di B1 e si colora da sola");
+
+		delete canvas;
+		doc4->Release();
+	}
+
 	win->Lock();
 	win->Quit();
 

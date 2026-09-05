@@ -54,7 +54,7 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // fogli con "ASC2" (vedi il commento su kASCDBook2Magic sotto), qui
 // risolto con un controllo esplicito sulla versione del file invece
 // che su un nuovo formato di lunghezza.
-static const int32 kASCDVersion = 3;
+static const int32 kASCDVersion = 4;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // "ASCB": formato cartella di lavoro LEGACY, congelato per sempre a
 // questo elenco di sezioni per foglio (fino a "Imposta pagina", Fase
@@ -854,6 +854,18 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 				if (dest->Write(&point.color, sizeof(point.color)) != (ssize_t)sizeof(point.color))
 					return B_IO_ERROR;
 			}
+
+			// Riferimento di cella per il confronto (versione 4, vedi il
+			// commento su ConditionalFormatRule::compareIsCellRef in
+			// Container.h): solo per eCondCellIsEqual quando XLSX
+			// confrontava contro un'altra cella invece che un letterale.
+			int8 compareIsCellRef = rule.compareIsCellRef ? 1 : 0;
+			int16 compareRefCol = rule.compareRefCell.h;
+			int16 compareRefRow = rule.compareRefCell.v;
+			if (dest->Write(&compareIsCellRef, sizeof(compareIsCellRef)) != (ssize_t)sizeof(compareIsCellRef)
+				|| dest->Write(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
+				|| dest->Write(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1101,12 +1113,14 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	// versioni 1 (mai il byte "kind" per cella), 2 (Fase 15) e 3 (punti
-	// di scala di colori, vedi il commento su kASCDVersion sopra)
-	// restano TUTTE leggibili -- un file scritto da una versione
-	// precedente di questo formato non deve smettere di aprirsi solo
-	// perche' questo binario e' piu' recente.
-	if (version != 1 && version != 2 && version != kASCDVersion)
+	// versioni 1 (mai il byte "kind" per cella), 2 (Fase 15), 3 (punti
+	// di scala di colori) e 4 (regola di formattazione condizionale
+	// contro un riferimento di cella invece che un letterale, vedi il
+	// commento su ConditionalFormatRule::compareIsCellRef in
+	// Container.h) restano TUTTE leggibili -- un file scritto da una
+	// versione precedente di questo formato non deve smettere di
+	// aprirsi solo perche' questo binario e' piu' recente.
+	if (version != 1 && version != 2 && version != 3 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -1987,6 +2001,22 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 							return B_BAD_DATA;
 						rule.colorScalePoints.push_back(point);
 					}
+				}
+
+				// Riferimento di cella per il confronto: solo un file
+				// versione 4+ ha scritto questi byte (vedi il commento
+				// su kASCDVersion e su ConditionalFormatRule::
+				// compareIsCellRef in Container.h).
+				if (version >= 4)
+				{
+					int8 compareIsCellRef;
+					int16 compareRefCol, compareRefRow;
+					if (source->Read(&compareIsCellRef, sizeof(compareIsCellRef)) != (ssize_t)sizeof(compareIsCellRef)
+						|| source->Read(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
+						|| source->Read(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
+						return B_BAD_DATA;
+					rule.compareIsCellRef = compareIsCellRef != 0;
+					rule.compareRefCell = cell(compareRefCol, compareRefRow);
 				}
 
 				doc->AddConditionalFormatRule(rule);
