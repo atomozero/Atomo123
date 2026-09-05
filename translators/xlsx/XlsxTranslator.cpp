@@ -76,7 +76,7 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // condizionale, i punti di controllo della scala di colori, vedi il
 // commento su kASCDVersion in ui/src/AscdIO.cpp (stesso identico
 // motivo, duplicato qui per lo stesso motivo di WriteASCD sotto).
-static const int32 kASCDVersion = 4;
+static const int32 kASCDVersion = 5;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // Formato "cartella di lavoro" multi-foglio (Fase 9): duplicato da
 // ui/src/AscdIO.h/.cpp (magic "ASCB", conteggio fogli, poi per
@@ -892,6 +892,15 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 				|| dest->Write(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
 				|| dest->Write(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
 				return B_IO_ERROR;
+
+			// Formula "expression" (versione 5, vedi il commento su
+			// ConditionalFormatRule::expressionFormula in Container.h),
+			// stesso formato di ui/src/AscdIO.cpp.
+			int32 exprLen = (int32)rule.expressionFormula.size();
+			if (dest->Write(&exprLen, sizeof(exprLen)) != (ssize_t)sizeof(exprLen))
+				return B_IO_ERROR;
+			if (exprLen > 0 && dest->Write(rule.expressionFormula.data(), exprLen) != exprLen)
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1167,10 +1176,11 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
 	// versioni 1, 2 (byte "kind" per cella), 3 (punti di scala di
-	// colori) e 4 (riferimento di cella per il confronto, vedi
-	// WriteASCD sopra e il commento su kASCDVersion) restano tutte
-	// leggibili -- stesso motivo di LoadASCD in ui/src/AscdIO.cpp.
-	if (version != 1 && version != 2 && version != 3 && version != kASCDVersion)
+	// colori), 4 (riferimento di cella per il confronto) e 5 (formula
+	// "expression", vedi WriteASCD sopra e il commento su kASCDVersion)
+	// restano tutte leggibili -- stesso motivo di LoadASCD in
+	// ui/src/AscdIO.cpp.
+	if (version != 1 && version != 2 && version != 3 && version != 4 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -1807,6 +1817,19 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					if (source->Read(&compareIsCellRef, sizeof(compareIsCellRef)) != (ssize_t)sizeof(compareIsCellRef)
 						|| source->Read(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
 						|| source->Read(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
+						return B_BAD_DATA;
+				}
+
+				// Formula "expression" (versione 5): solo saltata,
+				// stesso motivo del riferimento di cella sopra.
+				if (version >= 5)
+				{
+					int32 exprLen;
+					if (source->Read(&exprLen, sizeof(exprLen)) != (ssize_t)sizeof(exprLen))
+						return B_BAD_DATA;
+					if (exprLen < 0 || exprLen > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+					if (exprLen > 0 && source->Seek(exprLen, SEEK_CUR) < 0)
 						return B_BAD_DATA;
 				}
 			}
@@ -5803,6 +5826,18 @@ static void ApplyConditionalFormatting(CContainer* doc,
 		}
 		else if (rule.type == "duplicateValues")
 			engineRule.type = eCondDuplicateValues;
+		else if (rule.type == "expression" && !rule.formula.empty())
+		{
+			// Formula booleana arbitraria (es. "(C1=$C$29)"): vedi il
+			// commento su eCondExpression in Container.h -- trovato
+			// analizzando agile-kanban-board.xlsx, le bande colorate
+			// della colonna B (Type/Priority in C/G usano invece
+			// cellIs contro un riferimento, gestito sopra). Il testo
+			// resta grezzo (separatori '.'/',' XLSX), ricompilato ad
+			// ogni valutazione da CContainer::EvaluateConditionalFormatting.
+			engineRule.type = eCondExpression;
+			engineRule.expressionFormula = rule.formula;
+		}
 		else
 			continue; // altri tipi: ignorati, vedi il commento sopra la funzione.
 

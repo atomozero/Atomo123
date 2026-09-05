@@ -169,7 +169,7 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 	// introdotto in una versione successiva (3: punti di scala di colori;
 	// 4: riferimento di cella per il confronto) non serve saltarlo qui:
 	// basta accettare la versione, non serve altro.
-	static const int32 kASCDMaxReadableVersion = 4;
+	static const int32 kASCDMaxReadableVersion = 5;
 	if (version < 1 || version > kASCDMaxReadableVersion)
 		return B_MISMATCHED_VALUES;
 

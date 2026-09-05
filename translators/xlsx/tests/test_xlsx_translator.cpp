@@ -4312,6 +4312,22 @@ int main()
 				if (pos + 1 + 2 + 2 <= ascdLen)
 					pos += 1 + 2 + 2;
 
+				// Formula "expression" (versione 5 del formato ASCD):
+				// int32 lunghezza + testo, scritta per OGNI regola ormai
+				// -- vedi il commento su
+				// ConditionalFormatRule::expressionFormula in
+				// Container.h. Nessuna delle tre regole di questo file
+				// di prova la usa (nessuna e' di tipo "expression"), ma
+				// i byte vanno comunque consumati per non disallineare
+				// la regola successiva.
+				if (pos + 4 <= ascdLen)
+				{
+					int32 exprLen;
+					memcpy(&exprLen, ascdData + pos, 4); pos += 4;
+					if (exprLen > 0 && pos + (size_t)exprLen <= ascdLen)
+						pos += exprLen;
+				}
+
 				if (type == eCondCellIsEqual && compareValue == "Mancante" && packed == 0xFFC7CE
 					&& rangeMatchesA1A3)
 					foundCellIsRule = true;

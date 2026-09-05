@@ -322,6 +322,64 @@ int main()
 		doc4->Release();
 	}
 
+	// --- Regola "expression" (eCondExpression): una formula booleana
+	// arbitraria con un riferimento RELATIVO, es. "(C1=$C$29)" applicata
+	// a un intervallo B1:B3 -- il caso reale scoperto analizzando
+	// agile-kanban-board.xlsx (Vertex42): le bande colorate della
+	// colonna B derivano da 5 regole cosi', non da eCondCellIsEqual
+	// (quello sopra e' per Type/Priority in C/G). "C1" e' relativo alla
+	// cella in alto a sinistra del PRIMO intervallo (B1 qui): per B2 si
+	// sposta a C2, per B3 a C3 -- esattamente come se la stessa formula
+	// fosse stata incollata su ogni riga, la stessa identica prova che
+	// CFormula::Calculate risolve da solo l'offset relativo dalla
+	// "inLocation" passata cella per cella. ---
+	{
+		CContainer* doc5 = new CContainer(NULL, NULL);
+		TryToParseString("High", cell(3, 1), doc5, true); // C1
+		TryToParseString("Low", cell(3, 2), doc5, true);  // C2
+		TryToParseString("High", cell(3, 3), doc5, true); // C3
+		TryToParseString("High", cell(5, 1), doc5, true); // E1, la "legenda" (equivalente a $C$29 nel file reale)
+
+		ConditionalFormatRule rule;
+		rule.type = eCondExpression;
+		rule.expressionFormula = "C1=$E$1";
+		rule.bgColor = red;
+		rule.ranges.push_back(range(2, 1, 2, 3)); // B1:B3 (colonna 2)
+		doc5->AddConditionalFormatRule(rule);
+
+		BRect canvasRect(0, 0, 799, 599);
+		BBitmap* canvas = new BBitmap(canvasRect, B_RGB32, true);
+		SheetView* view5 = new SheetView(doc5);
+		view5->ResizeTo(canvasRect.Width(), canvasRect.Height());
+		canvas->AddChild(view5);
+
+		canvas->Lock();
+		view5->Draw(canvasRect);
+		view5->Sync();
+		canvas->Unlock();
+
+		uint8* bits = (uint8*)canvas->Bits();
+		int32 bpr = canvas->BytesPerRow();
+
+		BRect b1 = view5->CellRect(cell(2, 1));
+		uint8* pxB1 = bits + (int32)(b1.top + 3) * bpr + (int32)(b1.left + 3) * 4;
+		Check(pxB1[0] > 190 && pxB1[1] > 180 && pxB1[2] > 240,
+			"B1 e' colorata: la formula relativa si e' spostata a C1, che vale \"High\" come $E$1");
+
+		BRect b2 = view5->CellRect(cell(2, 2));
+		uint8* pxB2 = bits + (int32)(b2.top + 3) * bpr + (int32)(b2.left + 3) * 4;
+		Check(pxB2[0] > 250 && pxB2[1] > 250 && pxB2[2] > 250,
+			"B2 resta bianca: la formula relativa si e' spostata a C2, che vale \"Low\", diverso da $E$1");
+
+		BRect b3 = view5->CellRect(cell(2, 3));
+		uint8* pxB3 = bits + (int32)(b3.top + 3) * bpr + (int32)(b3.left + 3) * 4;
+		Check(pxB3[0] > 190 && pxB3[1] > 180 && pxB3[2] > 240,
+			"B3 e' colorata: la formula relativa si e' spostata a C3, di nuovo \"High\"");
+
+		delete canvas;
+		doc5->Release();
+	}
+
 	win->Lock();
 	win->Quit();
 

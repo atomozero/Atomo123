@@ -56,6 +56,7 @@
 #include "CellIterator.h"
 #include "CellStyle.h"
 #include "FontMetrics.h"
+#include "parser.h"
 
 #if DEBUG
 void WarnForUnlockedContainer(int lineNr);
@@ -356,6 +357,43 @@ std::map<cell, rgb_color> CContainer::EvaluateConditionalFormatting()
 
 						result[c] = InterpolateColor(rule.colorScalePoints[segment].color,
 							rule.colorScalePoints[nextSegment].color, t);
+					}
+				}
+			}
+		}
+		else if (rule.type == eCondExpression && !rule.ranges.empty())
+		{
+			// Ancorata al primo angolo in alto a sinistra del primo
+			// intervallo (la stessa convenzione di Excel): "C1" nella
+			// formula e' un riferimento RELATIVO a questa cella, non a
+			// quella che si sta colorando -- compilata una volta sola
+			// per regola (non per cella, inutile), poi CFormula::
+			// Calculate risolve da solo l'offset relativo in base alla
+			// "inLocation" passata per ciascuna cella, esattamente come
+			// se la stessa formula fosse stata incollata li'.
+			cell anchor = rule.ranges[0].TopLeft();
+			CParser p(this, ',', '.', 0, 0);
+			bool parsed = false;
+			try { parsed = p.Parse(rule.expressionFormula.c_str(), anchor); }
+			catch (CErr &) { parsed = false; }
+
+			if (parsed)
+			{
+				for (size_t r = 0; r < rule.ranges.size(); r++)
+				{
+					const range& rg = rule.ranges[r];
+					for (int row = rg.top; row <= rg.bottom; row++)
+					{
+						for (int col = rg.left; col <= rg.right; col++)
+						{
+							cell c(col, row);
+							Value v;
+							p.Formula().Calculate(c, v, this);
+							bool truthy = (v.fType == eBoolData && (bool)v)
+								|| (v.fType == eNumData && !v.IsNan() && (double)v != 0.0);
+							if (truthy)
+								result[c] = rule.bgColor;
+						}
 					}
 				}
 			}

@@ -165,7 +165,22 @@ enum CondFormatRuleType {
 	// (o percentile) di TUTTE le celle numeriche dell'intervallo --
 	// vedi CContainer::EvaluateConditionalFormatting per il calcolo
 	// vero e ColorScalePoint sotto per come sono descritte le soglie.
-	eCondColorScale
+	eCondColorScale,
+	// Regola XLSX type="expression" (una formula booleana arbitraria,
+	// es. "(C1=$C$29)"): a differenza di eCondCellIsEqual, il
+	// riferimento "C1" qui e' RELATIVO alla cella in alto a sinistra
+	// del primo intervallo della regola (la stessa convenzione di
+	// Excel per ogni formula di formattazione condizionale -- si
+	// comporta come se la formula fosse "incollata" su ogni cella
+	// dell'intervallo, con gli offset relativi che si spostano di
+	// conseguenza). Trovato analizzando agile-kanban-board.xlsx: le
+	// bande colorate della colonna B derivano da 5 regole cosi', non
+	// da eCondCellIsEqual. Vedi ConditionalFormatRule::expressionFormula
+	// sotto e CContainer::EvaluateConditionalFormatting per come lo
+	// sfrutta CFormula::Calculate (che gia' risolve un riferimento
+	// relativo in base alla "inLocation" passata, lo stesso meccanismo
+	// che rende sicuro copiare/incollare una formula).
+	eCondExpression
 };
 
 // Un punto di controllo di una scala di colori: stesso vocabolario di
@@ -209,6 +224,17 @@ struct ConditionalFormatRule {
 	// (scala a tre colori, il caso piu' comune in Excel) -- vuoto per
 	// gli altri due tipi.
 	std::vector<ColorScalePoint> colorScalePoints;
+	// Solo per eCondExpression: il testo grezzo della formula XLSX
+	// (separatori '.'/',' come ogni altro testo di formula preso da un
+	// file XLSX in questo progetto), ricompilato di nuovo a ogni
+	// valutazione anzich e' memorizzato come bytecode gia' compilato --
+	// piu' semplice e piu' sicuro che gestire una copia/distruzione
+	// profonda del buffer di CFormula dentro un struct altrimenti a
+	// semantica di valore (stesso principio del bug di doppio-free gia'
+	// risolto una volta per Value, vedi la memoria di progetto), a
+	// fronte di un costo trascurabile (ricompilare una formula corta a
+	// ogni ridisegno, non migliaia di volte per cella).
+	std::string expressionFormula;
 
 	ConditionalFormatRule() : type(eCondCellIsEqual), compareIsCellRef(false)
 	{

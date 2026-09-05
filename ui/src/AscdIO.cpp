@@ -54,7 +54,7 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // fogli con "ASC2" (vedi il commento su kASCDBook2Magic sotto), qui
 // risolto con un controllo esplicito sulla versione del file invece
 // che su un nuovo formato di lunghezza.
-static const int32 kASCDVersion = 4;
+static const int32 kASCDVersion = 5;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // "ASCB": formato cartella di lavoro LEGACY, congelato per sempre a
 // questo elenco di sezioni per foglio (fino a "Imposta pagina", Fase
@@ -866,6 +866,15 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 				|| dest->Write(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
 				|| dest->Write(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
 				return B_IO_ERROR;
+
+			// Formula "expression" (versione 5, vedi il commento su
+			// ConditionalFormatRule::expressionFormula in Container.h):
+			// vuota per gli altri tre tipi.
+			int32 exprLen = (int32)rule.expressionFormula.size();
+			if (dest->Write(&exprLen, sizeof(exprLen)) != (ssize_t)sizeof(exprLen))
+				return B_IO_ERROR;
+			if (exprLen > 0 && dest->Write(rule.expressionFormula.data(), exprLen) != exprLen)
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1114,13 +1123,15 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
 	// versioni 1 (mai il byte "kind" per cella), 2 (Fase 15), 3 (punti
-	// di scala di colori) e 4 (regola di formattazione condizionale
-	// contro un riferimento di cella invece che un letterale, vedi il
-	// commento su ConditionalFormatRule::compareIsCellRef in
-	// Container.h) restano TUTTE leggibili -- un file scritto da una
-	// versione precedente di questo formato non deve smettere di
-	// aprirsi solo perche' questo binario e' piu' recente.
-	if (version != 1 && version != 2 && version != 3 && version != kASCDVersion)
+	// di scala di colori), 4 (regola di formattazione condizionale
+	// contro un riferimento di cella invece che un letterale) e 5
+	// (regola "expression", una formula booleana arbitraria con
+	// riferimenti relativi -- vedi il commento su
+	// ConditionalFormatRule::expressionFormula in Container.h)
+	// restano TUTTE leggibili -- un file scritto da una versione
+	// precedente di questo formato non deve smettere di aprirsi solo
+	// perche' questo binario e' piu' recente.
+	if (version != 1 && version != 2 && version != 3 && version != 4 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -2017,6 +2028,24 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						return B_BAD_DATA;
 					rule.compareIsCellRef = compareIsCellRef != 0;
 					rule.compareRefCell = cell(compareRefCol, compareRefRow);
+				}
+
+				// Formula "expression": solo un file versione 5+ ha
+				// scritto questi byte (vedi il commento su
+				// ConditionalFormatRule::expressionFormula in Container.h).
+				if (version >= 5)
+				{
+					int32 exprLen;
+					if (source->Read(&exprLen, sizeof(exprLen)) != (ssize_t)sizeof(exprLen))
+						return B_BAD_DATA;
+					if (exprLen < 0 || exprLen > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+					if (exprLen > 0)
+					{
+						rule.expressionFormula.resize(exprLen);
+						if (source->Read(&rule.expressionFormula[0], exprLen) != exprLen)
+							return B_BAD_DATA;
+					}
 				}
 
 				doc->AddConditionalFormatRule(rule);
