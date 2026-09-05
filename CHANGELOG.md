@@ -1007,3 +1007,21 @@ What shipped since v0.2.8, not yet in a tagged release:
   `"Mesa cache keys mismatch!"` assertion failure inside llvmpipe's own
   disk-cache code, aborting the app — a bug in the environment's
   software-renderer shader cache, not in Atomo123's own drawing code.
+- Fixed `"&"` to mean text concatenation instead of logical AND. The
+  grammar's `case '&'` compiled it to `opAND`, a choice inherited from
+  the pre-Excel Sum-It codebase and never revisited once this project
+  targeted Excel compatibility — real Excel has no infix logical
+  AND/OR at all (only the `AND()`/`OR()` functions, which this engine
+  already has); `&` is exclusively concatenation. Found live: a real
+  XLSX file's `REPT(...)&REPT(...)&"..."` icon-string formula (a
+  Kanban board's flag/hourglass progress indicator) silently computed
+  NaN instead of text, leaving that column blank — confirmed by
+  launching the real app against the file before and after the fix.
+  New `opConcat` bytecode token; `opAND`/`opOR` keep calculating
+  exactly as before for old files, but `CFormula::UnMangle` now
+  reprints that old bytecode as `AND(a,b)`/`OR(a,b)` instead of
+  `"a&b"`/`"a|b"`, so editing and reparsing an old logical-AND formula
+  can't silently turn it into a concatenation. An error (modeled as
+  NaN, no distinct error type in this engine) propagates through `&`
+  instead of stringifying to the literal text `"nan"`, keeping the
+  common `X&""` idiom working.
