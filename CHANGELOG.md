@@ -951,3 +951,59 @@ What shipped since v0.2.8, not yet in a tagged release:
   that stops resolving (its sheet was deleted after being pinned) is
   dropped silently on the next refresh rather than showing a broken
   row.
+- Added dynamic range support: `OFFSET(...):OFFSET(...)`. Real-world
+  XLSX files commonly build a range whose bounds are computed at
+  calculation time (e.g. a running count of rows in a growing table);
+  the formula grammar only accepted `:` between two literal cell
+  tokens, so any such formula failed to parse entirely. Two distinct
+  bugs, both fixed: the `:` operator now accepts an arbitrary
+  reference-producing expression on either side (new bytecode token
+  `valRefRange`, a range payload that never collapses to the cell's
+  value, plus `opRangeOp`, which computes the bounding rectangle of
+  two reference-typed operands — Excel's own semantics for `:`); and
+  `OFFSET`'s own first argument was already broken standalone, since a
+  literal cell used as a function argument compiles to a
+  value-producing token but `OFFSET` needs a reference. Also fixed a
+  related gap: a formula whose final result is an unresolved range
+  (e.g. a bare `=OFFSET(...)`) silently collapsed to an empty cell
+  instead of the top-left cell's value (the same implicit-intersection
+  behavior the engine's literal ranges already had). Found while
+  analyzing a real XLSX file (`agile-kanban-board.xlsx`, Vertex42).
+- Fixed `OFFSET`'s argument order: it was `OFFSET(range,columns,rows)`
+  instead of real Excel's `OFFSET(reference,rows,columns)` — a
+  pre-existing, silent bug (not introduced by the dynamic-range work
+  above, just surfaced by it) that made `OFFSET` compute the wrong
+  cell for every file written by Excel, not only files using it inside
+  a dynamic range.
+- Fixed `SUBTOTAL` to exclude cells whose own formula is itself a
+  `SUBTOTAL` call, matching real Excel's documented behavior (avoids
+  double-counting a subtotal that's already included in another total
+  over the same column). Found on the same real file: 5 chained
+  `SUBTOTAL` formulas where the last one summed the whole column,
+  including the 4 earlier `SUBTOTAL` cells on top of the raw data they
+  already total — the grand total was double, silently halving a
+  "Progress" percentage computed from it (12.5% instead of the correct
+  25%, confirmed against real Excel). Implemented by checking, for
+  each candidate cell, whether its own formula calls `SUBTOTAL`
+  anywhere (`CFormula::CollectFunctionNrs`) — which also surfaced and
+  fixed a latent bug in that same walker: it had no case for the new
+  `valRefRange` token, so it would silently walk off into unrelated
+  bytecode for any formula using `OFFSET`.
+- Fixed `ROUND` to round exact-halfway values away from zero
+  (`ROUND(3.5,0)` now gives `4`, not `3`), matching real Excel. Found
+  while tracing the SUBTOTAL fix above through the rest of the same
+  file's formula chain (`ROUND(H35*G2,0)` with the product exactly
+  `3.5`). The existing implementation was a separate, broken
+  reimplementation that added the rounding correction to the
+  already-scaled-down result instead of before dividing by the scale
+  factor, and excluded exact-halfway values from the correction
+  entirely; replaced with a call to the engine's existing (and, until
+  now, entirely unused) `Round(double,int)` utility, itself fixed to
+  round away from zero instead of to the nearest even digit.
+- Disabled Mesa's on-disk shader cache
+  (`MESA_GLSL_CACHE_DISABLE`/`MESA_SHADER_CACHE_DISABLE`, set before
+  constructing `App`) after two identical crash reports: the splash
+  screen's star animation (`AtomGLView::_DrawStars`) triggered a
+  `"Mesa cache keys mismatch!"` assertion failure inside llvmpipe's own
+  disk-cache code, aborting the app — a bug in the environment's
+  software-renderer shader cache, not in Atomo123's own drawing code.
