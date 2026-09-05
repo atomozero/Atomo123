@@ -371,6 +371,11 @@ void CFormula::CollectFunctionNrs(CSet& funcs) const
 				indx += sizeof(cell) / kPFWordSize;
 				break;
 			case valRange:
+			// valRefRange (dynamic ranges, OFFSET(...):OFFSET(...)) has
+			// the exact same payload as valRange -- without this case
+			// the loop never skipped past the payload and kept reading
+			// random bytes as if they were further opcodes.
+			case valRefRange:
 				indx += sizeof(range) / kPFWordSize;
 				break;
 			case valXRef:

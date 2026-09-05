@@ -185,6 +185,32 @@ int main()
 	catch (CErr &) { threw = true; }
 	Check(threw, "SUM(1:2) (un operando non-riferimento) fallisce il parsing in modo pulito, non crasha");
 
+	// SUBTOTAL must exclude cells whose OWN formula is itself a
+	// SUBTOTAL call, exactly like real Excel -- found while analyzing
+	// agile-kanban-board.xlsx: 5 chained SUBTOTAL formulas
+	// (H11/H15/H18/H22/H25) where the last one sums the whole H11:H24,
+	// including the 4 earlier SUBTOTAL cells on top of the raw data
+	// those same cells already total -- without the exclusion the
+	// final total was doubled (16 instead of 8), halving the
+	// percentage computed from it (12.5% instead of the correct 25%
+	// the user confirmed against real Excel). H30/H31 = 3/5 (raw
+	// data), H29 = SUBTOTAL(9,H30:H31) = 8 (a section "subtotal"),
+	// H32 = SUBTOTAL(9,H30:H31) = 8 again (a second SUBTOTAL cell over
+	// the same area, to check that it's excluded too), H33 =
+	// SUBTOTAL(9,H30:H32) must give 8 (the raw data), not 16 (raw data
+	// + H29) nor 24 (raw data + H29 + H32 itself).
+	ParseXlsxStyle("3", cell(8, 30), &doc); // H30
+	ParseXlsxStyle("5", cell(8, 31), &doc); // H31
+	ParseXlsxStyle("=SUBTOTAL(9,H30:H31)", cell(8, 29), &doc); // H29
+	doc.CalcCell(cell(8, 29));
+	ParseXlsxStyle("=SUBTOTAL(9,H30:H31)", cell(8, 32), &doc); // H32 (second SUBTOTAL cell over the same area)
+	doc.CalcCell(cell(8, 32));
+	ParseXlsxStyle("=SUBTOTAL(9,H29:H32)", cell(10, 8), &doc); // J8, the "grand total" that sees both H29 and H32
+	doc.CalcCell(cell(10, 8));
+	doc.GetValue(cell(10, 8), v);
+	Check((double)v == 8.0,
+		"SUBTOTAL(9,H29:H32) = 8: excludes H29 and H32 (themselves SUBTOTAL), sums only H30+H31");
+
 	// GetPrecedents (Formula auditing views, Fase 35) deve vedere
 	// attraverso l'intervallo dinamico: H11 e H15 sono gli argomenti
 	// base di OFFSET, non "nascosti" dentro la sua chiamata di funzione

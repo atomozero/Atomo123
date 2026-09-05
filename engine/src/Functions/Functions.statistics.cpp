@@ -40,9 +40,11 @@
 
 #include "Container.h"
 #include "CellIterator.h"
+#include "Formula.h"
 #include "FunctionUtils.h"
 #include "Functions.h"
 #include "Globals.h"
+#include "Set.h"
 
 #include <algorithm>
 #include <vector>
@@ -571,9 +573,26 @@ void MINIFSFunction(Value *stack, int argCnt, CContainer *cells)
 // CContainer/funzione, solo SheetView lo sa, quindi la variante 100+
 // si comporta esattamente come quella base, non ignora nulla in piu').
 // PRODUCT/STDEV/STDEVP/VAR/VARP (6,7,8,10,11) non sono supportate.
-// Non esclude i risultati di eventuali SUBTOTAL annidati
-// nell'intervallo (comportamento vero di Excel): richiederebbe
-// ispezionare la formula di ogni cella, non solo il suo valore.
+// Excludes cells whose OWN formula is itself a SUBTOTAL call (real
+// Excel behavior, to avoid double-counting a subtotal that's already
+// included in another total over the same column) -- found by
+// analyzing a real XLSX file (agile-kanban-board.xlsx, Vertex42): 5
+// chained SUBTOTAL cells (H11/H15/H18/H22/H25) where the last one sums
+// the whole H11:H24, including the 4 earlier SUBTOTAL cells on top of
+// the raw data those same cells already total -- without this
+// exclusion the final total was doubled (16 instead of 8), halving
+// any percentage computed from it (12.5% instead of the correct 25%).
+static bool IsNestedSubtotal(CContainer *rangeCells, cell c)
+{
+	void *formula = rangeCells->GetCellFormula(c);
+	if (!formula)
+		return false;
+	CFormula form(formula);
+	CSet funcs;
+	form.CollectFunctionNrs(funcs);
+	return funcs[kSUBTOTALFuncNr];
+}
+
 void SUBTOTALFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	double funcNumArg;
@@ -602,6 +621,8 @@ void SUBTOTALFunction(Value *stack, int argCnt, CContainer *cells)
 		cell c;
 		while (iter.NextExisting(c))
 		{
+			if (IsNestedSubtotal(rangeCells, c))
+				continue;
 			Value val;
 			rangeCells->GetValue(c, val);
 			if (val.fType != eNoData)
