@@ -86,7 +86,7 @@ docs/                technical research, architecture, porting notes
 ## Build
 
 Requires Haiku with GCC and standard system libraries (`libbe`,
-`libtranslation`, `libtracker`).
+`libtranslation`, `libtracker`, `glu_devel`).
 
 ```
 cd engine && make && make test                              # isolated engine
