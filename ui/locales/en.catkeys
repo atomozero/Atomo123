@@ -297,3 +297,5 @@ Pronto	MainWindow		Ready
 Pagina	PageSetupWindow		Pagina
 Taglia	MainWindow		Cut
 Aggiungi/Aggiorna	NameWindow		Add/Update
+Colore scheda…	SheetTabView		Sheet color…
+Colore scheda	ColorWindow		Sheet color

@@ -218,8 +218,8 @@ struct AscdSheet {
 	// campo (o creato da capo) mantiene il comportamento di sempre.
 	bool showGrid = true;
 	// Colore della linguetta del foglio (import XLSX da <sheetPr>
-	// <tabColor rgb="..."/></sheetPr>, o scelto a mano in futuro --
-	// ancora nessuna UI per farlo, solo lettura/persistenza per ora).
+	// <tabColor rgb="..."/></sheetPr>, o scelto a mano dal menu
+	// contestuale della scheda -- vedi MainWindow::SetSheetTabColor).
 	// false di default: nessun documento scritto prima di questo campo
 	// aveva mai un colore, la linguetta resta con lo stile predefinito
 	// di SheetTabView.

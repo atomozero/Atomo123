@@ -1056,3 +1056,14 @@ What shipped since v0.2.8, not yet in a tagged release:
   correct per-row shift with no manual offset math. Native ASCD format
   bumped to version 4 then 5 for the two additions (1-3 stay readable);
   all four translators' own version handling updated to match.
+- Sheet tabs can now have their color set manually. `AscdSheet::tabColor`
+  (`ui/src/AscdIO.h`) already round-tripped a `tabColor` imported from a
+  real XLSX file's `<sheetPr>`, but the only way to set it was importing
+  such a file — no UI existed to choose one, as that field's own comment
+  said outright ("scelto a mano in futuro -- ancora nessuna UI per
+  farlo"). The tab's right-click context menu (`SheetTabView::MouseDown`)
+  now also has "Colore scheda…", reusing the existing `ColorWindow` (new
+  `eTabColor` target alongside the cell text/background/border ones)
+  instead of a new dialog class. Also added double-click on a tab as a
+  direct shortcut for "Rinomina foglio…" (same `kMsgRenameSheetRequest`
+  the context-menu item already sends), matching Excel/LibreOffice Calc.

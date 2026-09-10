@@ -25,7 +25,8 @@ const uint32 kMsgColorRequest = 'colr';
 enum ColorTarget {
 	eTextColor,
 	eBackgroundColor,
-	eBorderColor
+	eBorderColor,
+	eTabColor
 };
 
 class BColorControl;

@@ -329,9 +329,13 @@ void SheetTabView::MouseDown(BPoint where)
 	// sceglie una voce, restituendola direttamente, niente passaggio
 	// di messaggi da gestire altrove.
 	int32 buttons = 0;
+	int32 clicks = 1;
 	BMessage* msg = Window() ? Window()->CurrentMessage() : NULL;
 	if (msg)
+	{
 		msg->FindInt32("buttons", &buttons);
+		msg->FindInt32("clicks", &clicks);
+	}
 
 	for (size_t i = 0; i < fVisible.size(); i++)
 	{
@@ -342,6 +346,9 @@ void SheetTabView::MouseDown(BPoint where)
 				BPopUpMenu menu("sheetTabContext");
 				BMenuItem* renameItem = new BMenuItem(B_TRANSLATE("Rinomina foglio" B_UTF8_ELLIPSIS), NULL);
 				menu.AddItem(renameItem);
+				BMenuItem* colorItem = new BMenuItem(B_TRANSLATE("Colore scheda" B_UTF8_ELLIPSIS), NULL);
+				menu.AddItem(colorItem);
+				menu.AddSeparatorItem();
 				BMenuItem* deleteItem = new BMenuItem(B_TRANSLATE("Elimina foglio"), NULL);
 				menu.AddItem(deleteItem);
 
@@ -351,11 +358,26 @@ void SheetTabView::MouseDown(BPoint where)
 
 				if (chosen && fTarget)
 				{
-					BMessage request(chosen == renameItem
-						? kMsgRenameSheetRequest : kMsgDeleteSheetRequest);
+					uint32 what = kMsgDeleteSheetRequest;
+					if (chosen == renameItem)
+						what = kMsgRenameSheetRequest;
+					else if (chosen == colorItem)
+						what = kMsgTabColorRequest;
+					BMessage request(what);
 					request.AddInt32("index", fVisible[i].index);
 					BMessenger(fTarget).SendMessage(&request);
 				}
+			}
+			// Doppio clic sinistro: rinomina diretta, come il doppio clic
+			// su una scheda in Excel/LibreOffice Calc, in aggiunta (non al
+			// posto di) alla voce "Rinomina foglio..." del menu contestuale
+			// sopra -- stesso "clicks" gia' letto da SheetView::MouseDown
+			// per lo stesso scopo sulle celle.
+			else if (clicks >= 2 && fTarget)
+			{
+				BMessage request(kMsgRenameSheetRequest);
+				request.AddInt32("index", fVisible[i].index);
+				BMessenger(fTarget).SendMessage(&request);
 			}
 			else if (fTarget)
 			{

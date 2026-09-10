@@ -109,6 +109,17 @@ int main()
 	Check(win->SheetCount() == 1,
 		"DeleteSheet sull'unico foglio rimasto non fa nulla (un foglio deve sempre restare)");
 
+	// --- Colore scheda (menu contestuale, Fase 13): nessun colore
+	// finche' non impostato esplicitamente, poi round-trip esatto del
+	// valore passato. ---
+	Check(!win->SheetHasTabColor(0), "un foglio nuovo non ha un colore scheda");
+	rgb_color orange = { 255, 128, 0, 255 };
+	win->SetSheetTabColor(0, orange);
+	Check(win->SheetHasTabColor(0), "SetSheetTabColor imposta hasTabColor");
+	rgb_color got = win->SheetTabColor(0);
+	Check(got.red == orange.red && got.green == orange.green
+		&& got.blue == orange.blue, "SetSheetTabColor salva il colore scelto");
+
 	win->Unlock();
 
 	win->Lock();
