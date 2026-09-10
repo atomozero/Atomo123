@@ -265,6 +265,13 @@ public:
 	void SetAlignment(char alignment);
 	void SetTextColor(rgb_color color);
 	void SetBackgroundColor(rgb_color color);
+	// Pubblici per lo stesso motivo di SetCellComment sopra --
+	// SheetView::ShowCellContextMenu (menu contestuale della griglia)
+	// li richiama direttamente per "Colore testo.../Colore sfondo..." e
+	// "Bordo cella...", esattamente le stesse finestre gia' usate dalla
+	// barra dei menu/toolbar.
+	void ShowColorWindow(ColorTarget target);
+	void ShowBorderWindow();
 
 	// Bordi di cella (Fase 11), stesso principio di ToggleBold/
 	// ToggleItalic sopra -- vedi tests/test_borders.cpp. "side": 0 =
@@ -415,6 +422,12 @@ public:
 	void SetCellComment(int row, int col, const char* text);
 	void RemoveCellComment(int row, int col);
 	BString CellComment(int row, int col) const;
+	// Apre/porta in primo piano fCommentWindow sulla cella (row, col) --
+	// estratta da kMsgShowCommentWindow in MessageReceived (che la chiama
+	// con la sola cella attiva) cosi' il menu contestuale della griglia
+	// (SheetView::ShowCellContextMenu) puo' chiamarla anche sulla cella
+	// cliccata col destro, indipendentemente da quale sia la cella attiva.
+	void ShowCommentWindow(int row, int col);
 
 	// Collegamenti ipertestuali (Fase 13): stesso schema esatto dei
 	// commenti sopra. OpenCellHyperlink lancia davvero l'URL con BUrl
@@ -759,10 +772,8 @@ private:
 	void RefreshNameWindow();
 	void ShowPasteSpecialWindow();
 	void ShowGoToWindow();
-	void ShowColorWindow(ColorTarget target);
 	void ShowTabColorWindow(int index);
 	void ShowPreferencesWindow();
-	void ShowBorderWindow();
 	void ShowPageSetupWindow();
 };
 
