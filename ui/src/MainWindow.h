@@ -360,6 +360,8 @@ public:
 	int SheetCount() const { return (int)fSheets.size(); }
 	int ActiveSheetIndex() const { return fActiveSheetIndex; }
 	const char* SheetName(int index) const { return fSheets[index].name.String(); }
+	bool SheetHasTabColor(int index) const { return fSheets[index].hasTabColor; }
+	rgb_color SheetTabColor(int index) const { return fSheets[index].tabColor; }
 	void SwitchToSheet(int index);
 
 	// Nuovo/Elimina/Rinomina foglio (Fase 13): pubblici per lo stesso
@@ -382,6 +384,13 @@ public:
 	void DeleteSheetNoConfirm(int index);
 	void RenameSheet(int index, const char* newName);
 	BString UniqueSheetName(const char* prefix) const;
+
+	// Colore scheda scelto a mano dal menu contestuale (Fase 13, vedi
+	// AscdSheet::tabColor in AscdIO.h -- fino a qui solo import
+	// XLSX/lettura, nessuna UI per impostarlo). Pubblico per lo stesso
+	// motivo di RenameSheet sopra: applica il colore direttamente,
+	// niente BAlert nel percorso normale.
+	void SetSheetTabColor(int index, rgb_color color);
 
 	// Area di stampa (Fase 27): pubblici per lo stesso motivo di
 	// NewSheet/SwitchToSheet sopra -- testabili senza passare dal menu
@@ -637,6 +646,13 @@ private:
 	std::vector<AscdSheet> fSheets;
 	int fActiveSheetIndex;
 	SheetTabView* fSheetTabView;
+	// Indice del foglio a cui applicare il colore scelto in fColorWindow
+	// quando target == eTabColor -- -1 quando fColorWindow e' aperta per
+	// il colore testo/sfondo/bordo della cella (percorso invariato, non
+	// legato a un foglio). Impostato da ShowTabColorWindow subito prima
+	// di mostrare la finestra, azzerato non appena kMsgColorRequest lo
+	// consuma.
+	int fColorTargetSheetIndex;
 
 	// Sostituisce l'intera cartella di lavoro con un solo foglio
 	// vuoto di nome "name" -- usato da NewDocument() e come base
@@ -744,6 +760,7 @@ private:
 	void ShowPasteSpecialWindow();
 	void ShowGoToWindow();
 	void ShowColorWindow(ColorTarget target);
+	void ShowTabColorWindow(int index);
 	void ShowPreferencesWindow();
 	void ShowBorderWindow();
 	void ShowPageSetupWindow();

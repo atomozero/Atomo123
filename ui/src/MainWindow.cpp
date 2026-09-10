@@ -8,6 +8,9 @@
 */
 
 #include "MainWindow.h"
+
+#include <InterfaceDefs.h>
+
 #include "SheetView.h"
 #include "SheetTabView.h"
 #include "ToolbarView.h"
@@ -1052,6 +1055,7 @@ MainWindow::MainWindow()
 	fValidationWindow = NULL;
 	fConditionalFormatWindow = NULL;
 	fColorWindow = NULL;
+	fColorTargetSheetIndex = -1;
 	fPreferencesWindow = NULL;
 	fBorderWindow = NULL;
 	fPageSetupWindow = NULL;
@@ -1510,6 +1514,17 @@ void MainWindow::RenameSheet(int index, const char* newName)
 	}
 
 	fSheets[index].name = newName;
+	RebuildSheetTabs();
+	MarkModified();
+}
+
+void MainWindow::SetSheetTabColor(int index, rgb_color color)
+{
+	if (index < 0 || index >= (int)fSheets.size())
+		return;
+
+	fSheets[index].hasTabColor = true;
+	fSheets[index].tabColor = color;
 	RebuildSheetTabs();
 	MarkModified();
 }
@@ -3256,6 +3271,12 @@ void MainWindow::ShowColorWindow(ColorTarget target)
 	if (!fColorWindow)
 		fColorWindow = new ColorWindow(BMessenger(this));
 
+	// Percorso cella (testo/sfondo/bordo), non foglio: azzera un eventuale
+	// indice lasciato da ShowTabColorWindow, altrimenti kMsgColorRequest
+	// applicherebbe per errore un colore cella a un foglio non piu' in
+	// gioco.
+	fColorTargetSheetIndex = -1;
+
 	CellStyle cs;
 	if (fDoc)
 		fDoc->GetCellStyle(fSheetView->Selection(), cs);
@@ -3279,6 +3300,31 @@ void MainWindow::ShowColorWindow(ColorTarget target)
 	if (fColorWindow->Lock())
 	{
 		fColorWindow->SetMode(target, initial);
+		fColorWindow->Unlock();
+	}
+
+	if (fColorWindow->IsHidden())
+		fColorWindow->Show();
+	fColorWindow->Activate();
+}
+
+void MainWindow::ShowTabColorWindow(int index)
+{
+	if (index < 0 || index >= (int)fSheets.size())
+		return;
+
+	if (!fColorWindow)
+		fColorWindow = new ColorWindow(BMessenger(this));
+
+	fColorTargetSheetIndex = index;
+
+	rgb_color initial = fSheets[index].hasTabColor
+		? fSheets[index].tabColor : ui_color(B_PANEL_BACKGROUND_COLOR);
+
+	// Stesso motivo del Lock() in ShowColorWindow sopra.
+	if (fColorWindow->Lock())
+	{
+		fColorWindow->SetMode(eTabColor, initial);
 		fColorWindow->Unlock();
 	}
 
@@ -5337,6 +5383,14 @@ void MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case kMsgTabColorRequest:
+		{
+			int32 index;
+			if (message->FindInt32("index", &index) == B_OK)
+				ShowTabColorWindow(index);
+			break;
+		}
+
 		case kMsgRenameSheetRequest:
 		{
 			int32 index;
@@ -5986,6 +6040,10 @@ void MainWindow::MessageReceived(BMessage* message)
 				{
 					case eBackgroundColor: SetBackgroundColor(*color); break;
 					case eBorderColor: SetBorderColor(*color); break;
+					case eTabColor:
+						SetSheetTabColor(fColorTargetSheetIndex, *color);
+						fColorTargetSheetIndex = -1;
+						break;
 					default: SetTextColor(*color); break;
 				}
 			}

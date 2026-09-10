@@ -22,13 +22,14 @@
 
 #include <vector>
 
-// Inviati da un clic destro su una scheda (Fase 13), entrambi con un
-// campo int32 "index" -- stesso principio di kMsgSwitchSheet sotto,
-// esportati qui (non definiti dentro MainWindow.cpp) cosi' questa
-// vista resta ignara di AscdSheet/MainWindow pur avendo un "what"
-// stabile da inviare.
+// Inviati da un clic destro (menu contestuale) o doppio clic (rinomina
+// diretta) su una scheda, tutti con un campo int32 "index" -- stesso
+// principio di kMsgSwitchSheet sotto, esportati qui (non definiti
+// dentro MainWindow.cpp) cosi' questa vista resta ignara di
+// AscdSheet/MainWindow pur avendo un "what" stabile da inviare.
 const uint32 kMsgRenameSheetRequest = 'rnsr';
 const uint32 kMsgDeleteSheetRequest = 'dlsr';
+const uint32 kMsgTabColorRequest = 'tcsr';
 
 class SheetTabView : public BView {
 public:

@@ -50,6 +50,7 @@ void ColorWindow::SetMode(ColorTarget target, rgb_color initial)
 	{
 		case eBackgroundColor: SetTitle(B_TRANSLATE("Colore sfondo")); break;
 		case eBorderColor: SetTitle(B_TRANSLATE("Colore bordo")); break;
+		case eTabColor: SetTitle(B_TRANSLATE("Colore scheda")); break;
 		default: SetTitle(B_TRANSLATE("Colore testo")); break;
 	}
 	fColorControl->SetValue(initial);
