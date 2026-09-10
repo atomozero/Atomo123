@@ -354,7 +354,7 @@ void SheetTabView::MouseDown(BPoint where)
 
 				BPoint screenAnchor = where;
 				ConvertToScreen(&screenAnchor);
-				BMenuItem* chosen = menu.Go(screenAnchor, false, false, true);
+				BMenuItem* chosen = menu.Go(screenAnchor, false, false, false);
 
 				if (chosen && fTarget)
 				{
