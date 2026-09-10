@@ -320,3 +320,28 @@ Bordo cella…	SheetView		Cell border…
 Commento cella…	SheetView		Cell comment…
 Modifica commento…	SheetView		Edit comment…
 Rimuovi commento	SheetView		Remove comment
+Aggiungi alla finestra di controllo	MainWindow		Add to watch window
+Apertura del file in corso...	MainWindow		Opening file...
+Area	ChartWindow		Area
+Blocca celle selezionate	MainWindow		Lock selected cells
+Combinato (barre+linee)	ChartWindow		Combo (bars+lines)
+Dispersione (XY)	ChartWindow		Scatter (XY)
+Finestra di controllo	WatchWindow		Watch window
+Finestra di controllo…	MainWindow		Watch window…
+Foglio protetto	SheetView		Protected sheet
+Formule	MainWindow		Formulas
+Impossibile avviare il caricamento del file.	MainWindow		Couldn't start loading the file.
+Intervallo non valido: un grafico a dispersione richiede esattamente due colonne NUMERICHE (X, Y) con almeno una riga valida, es. A1:B5.	MainWindow		Invalid range: a scatter chart needs exactly two NUMERIC columns (X, Y) with at least one valid row, e.g. A1:B5.
+La cella che stai cercando di modificare e' protetta. Per modificarla, sblocca prima la cella (Dati > Sblocca celle selezionate) oppure disattiva la protezione del foglio (Dati > Proteggi foglio).	SheetView		The cell you're trying to edit is protected. To edit it, first unlock the cell (Data > Unlock selected cells) or turn off sheet protection (Data > Protect sheet).
+Lettura del file...	MainWindow		Reading file...
+Mostra formule	MainWindow		Show formulas
+Proteggi foglio	MainWindow		Protect sheet
+Ricalcolo in corso...	MainWindow		Recalculating...
+Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		Recalculating: sheet %d of %d (pass %d) - %s
+Rimuovi	WatchWindow		Remove
+Rimuovi frecce	MainWindow		Remove arrows
+Sblocca celle selezionate	MainWindow		Unlock selected cells
+Scala di colori (minimo -> massimo)	ConditionalFormatWindow		Color scale (minimum -> maximum)
+Traccia dipendenti	MainWindow		Trace dependents
+Traccia precedenti	MainWindow		Trace precedents
+Traduzione del file in corso...	MainWindow		Converting file...
