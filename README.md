@@ -86,7 +86,25 @@ docs/                technical research, architecture, porting notes
 ## Build
 
 Requires Haiku with GCC and standard system libraries (`libbe`,
-`libtranslation`, `libtracker`, `glu_devel`).
+`libtranslation`, `libtracker`).
+
+The `ui` target additionally needs the **`glu_devel`** package. OpenGL
+(Mesa) ships with the base Haiku system, but the GLU utility library
+(`libGLU` + `GL/glu.h`) is a separate, optional package and is *not*
+installed by default. `ui/Makefile` links against `-lGL -lGLU`, and
+`ui/src/AtomGLView.cpp` — the animated 3D view used by the splash
+screen — calls GLU functions directly (`gluNewQuadric`, `gluPerspective`,
+`gluLookAt`, `gluSphere`, ...). Without `glu_devel` installed, `cd ui &&
+make` fails at the link step with `cannot find -lGLU` (or, if only the
+headers are missing, with `GL/glu.h: No such file or directory`).
+
+Install it once with:
+
+```
+pkgman install glu_devel
+```
+
+Then build:
 
 ```
 cd engine && make && make test                              # isolated engine
