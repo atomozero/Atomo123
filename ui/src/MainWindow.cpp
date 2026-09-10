@@ -4131,6 +4131,27 @@ BString MainWindow::CellComment(int row, int col) const
 	return BString(fDoc->GetComment(cell(col, row)).c_str());
 }
 
+void MainWindow::ShowCommentWindow(int row, int col)
+{
+	if (!fDoc)
+		return;
+
+	if (!fCommentWindow)
+		fCommentWindow = new CommentWindow(BMessenger(this));
+	BString current = CellComment(row, col);
+	// Show()/Activate() PRIMA di SetCell(), non dopo: vedi il commento
+	// nel case kMsgShowCommentWindow di MessageReceived (stesso bug
+	// reale di focus tastiera gia' corretto li').
+	if (fCommentWindow->IsHidden())
+		fCommentWindow->Show();
+	fCommentWindow->Activate();
+	if (fCommentWindow->Lock())
+	{
+		fCommentWindow->SetCell(row, col, current.String());
+		fCommentWindow->Unlock();
+	}
+}
+
 void MainWindow::SetCellHyperlink(int row, int col, const char* url)
 {
 	if (!fDoc)
@@ -5818,34 +5839,8 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgShowCommentWindow:
 		{
-			if (!fDoc)
-				break;
 			cell sel = fSheetView->Selection();
-			if (!fCommentWindow)
-				fCommentWindow = new CommentWindow(BMessenger(this));
-			BString current = CellComment(sel.v, sel.h);
-			// Show()/Activate() PRIMA di SetCell(), non dopo: il fuoco
-			// tastiera si stabilisce davvero solo quando la finestra e'
-			// gia' attiva sul serio (bug reale segnalato dall'utente --
-			// il cursore lampeggiava ma i tasti non scrivevano nulla,
-			// perche' MakeFocus() nel costruttore avveniva prima che la
-			// finestra fosse mai mostrata). SetCell() sotto chiama di
-			// nuovo MakeFocus() alla fine, ora che l'ordine e' quello
-			// giusto.
-			if (fCommentWindow->IsHidden())
-				fCommentWindow->Show();
-			fCommentWindow->Activate();
-			// SetCell tocca fTextView, una BView che vive sul thread di
-			// fCommentWindow (una BWindow a se'): senza il lock, un
-			// secondo commento aperto su questo stesso thread va in
-			// crash con "Looper must be locked" -- stesso bug reale gia'
-			// corretto per ColorWindow/PreferencesWindow/NameWindow (vedi
-			// ShowColorWindow/ShowPreferencesWindow/ShowNameWindow).
-			if (fCommentWindow->Lock())
-			{
-				fCommentWindow->SetCell(sel.v, sel.h, current.String());
-				fCommentWindow->Unlock();
-			}
+			ShowCommentWindow(sel.v, sel.h);
 			break;
 		}
 

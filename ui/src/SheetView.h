@@ -542,6 +542,18 @@ public:
 	BRect ValidationArrowRect(cell c) const;
 	void ShowValidationMenu(cell c, BPoint screenAnchor);
 
+	// Menu contestuale (tasto destro) sulla griglia: stesso principio
+	// sincrono di ShowAutoFilterMenu/ShowValidationMenu sopra (stesso
+	// limite di test automatico), ma con voci che richiamano azioni gia'
+	// esistenti nella barra dei menu/toolbar (Taglia/Copia/Incolla,
+	// Ordina, Inserisci/Elimina riga-colonna, Grassetto/Corsivo/
+	// Sottolineato/Allineamento/Colore/Bordo, Commento cella) invece di
+	// duplicarne la logica -- vedi MainWindow::ShowCommentWindow e i
+	// metodi pubblici gia' usati da MessageReceived per ciascuna voce.
+	// "target" e' la cella su cui si e' cliccato col destro (MouseDown
+	// la calcola gia' prima di chiamare questo metodo).
+	void ShowCellContextMenu(cell target, BPoint screenAnchor);
+
 	// Rettangolo in pixel (a partire da 0,0, intestazioni comprese) che
 	// copre le celle con contenuto -- usato da MainWindow per la stampa
 	// (Print Kit), per sapere quanto foglio serve davvero senza

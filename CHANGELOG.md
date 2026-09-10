@@ -1067,3 +1067,23 @@ What shipped since v0.2.8, not yet in a tagged release:
   instead of a new dialog class. Also added double-click on a tab as a
   direct shortcut for "Rinomina foglio…" (same `kMsgRenameSheetRequest`
   the context-menu item already sends), matching Excel/LibreOffice Calc.
+- Added a right-click context menu on the grid itself (`SheetView::
+  ShowCellContextMenu`), same synchronous `BPopUpMenu` pattern already
+  used for the AutoFilter/data-validation dropdowns and the sheet tab's
+  own context menu — previously right-clicking a cell did nothing but
+  move the selection there. Cut/Copy/Paste/Clear, Insert/Delete row or
+  column, Sort ascending/descending, a "Formato celle" submenu (Bold/
+  Italic/Underline, alignment, text/background color, border — this app
+  has no single unified Format Cells dialog, so the submenu just groups
+  the existing individual actions instead of inventing one), and Commento
+  cella/Modifica commento/Rimuovi commento (the last only shown when the
+  clicked cell already has one) all call the exact same public methods
+  already wired to the menu bar/toolbar, so none of that logic is
+  duplicated. Right-clicking inside an existing multi-cell selection
+  keeps it as-is (so Cut/Copy/Sort/etc. apply to the whole range);
+  right-clicking outside it selects just the clicked cell first, matching
+  Excel/LibreOffice Calc. `MainWindow::ShowCommentWindow(row, col)` is a
+  new public method, extracted from the `kMsgShowCommentWindow` case
+  handler, so the context menu can target the actually-clicked cell
+  instead of only ever the active one; `ShowColorWindow`/`ShowBorderWindow`
+  moved from private to public for the same cross-class reuse reason.

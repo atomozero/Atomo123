@@ -299,3 +299,24 @@ Taglia	MainWindow		Cut
 Aggiungi/Aggiorna	NameWindow		Add/Update
 Colore scheda…	SheetTabView		Sheet color…
 Colore scheda	ColorWindow		Sheet color
+Taglia	SheetView		Cut
+Copia	SheetView		Copy
+Incolla	SheetView		Paste
+Cancella	SheetView		Clear
+Elimina riga	SheetView		Delete row
+Elimina colonna	SheetView		Delete column
+Ordina crescente	SheetView		Sort ascending
+Ordina decrescente	SheetView		Sort descending
+Formato celle	SheetView		Cell format
+Grassetto	SheetView		Bold
+Corsivo	SheetView		Italic
+Sottolineato	SheetView		Underline
+Allinea a sinistra	SheetView		Align left
+Allinea al centro	SheetView		Align center
+Allinea a destra	SheetView		Align right
+Colore testo…	SheetView		Text color…
+Colore sfondo…	SheetView		Background color…
+Bordo cella…	SheetView		Cell border…
+Commento cella…	SheetView		Cell comment…
+Modifica commento…	SheetView		Edit comment…
+Rimuovi commento	SheetView		Remove comment

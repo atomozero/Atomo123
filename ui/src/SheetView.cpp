@@ -27,6 +27,7 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <File.h>
+#include <Menu.h>
 #include <MenuItem.h>
 #include <NodeInfo.h>
 #include <MessageFilter.h>
@@ -720,6 +721,143 @@ void SheetView::ShowValidationMenu(cell c, BPoint screenAnchor)
 	RecalculateOwningWorkbook();
 	NotifyDocumentChanged();
 	Invalidate(CellRect(c));
+}
+
+void SheetView::ShowCellContextMenu(cell target, BPoint screenAnchor)
+{
+	MainWindow* win = dynamic_cast<MainWindow*>(Window());
+	if (!win)
+		return;
+
+	// Clic fuori dalla selezione corrente: si sposta su questa sola
+	// cella, come un clic sinistro normale. Clic DENTRO la selezione
+	// corrente (anche multi-cella): la selezione resta invariata, come
+	// in Excel/LibreOffice Calc -- cosi' si puo' tagliare/copiare/
+	// cancellare/ordinare un intero intervallo col tasto destro senza
+	// doverlo riselezionare prima.
+	range sel = SelectionRange();
+	bool inside = target.h >= sel.left && target.h <= sel.right
+		&& target.v >= sel.top && target.v <= sel.bottom;
+	if (!inside)
+		SetSelection(target);
+
+	bool hasComment = !win->CellComment(target.v, target.h).IsEmpty();
+
+	BPopUpMenu menu("cellContext");
+
+	BMenuItem* cutItem = new BMenuItem(B_TRANSLATE("Taglia"), NULL);
+	menu.AddItem(cutItem);
+	BMenuItem* copyItem = new BMenuItem(B_TRANSLATE("Copia"), NULL);
+	menu.AddItem(copyItem);
+	BMenuItem* pasteItem = new BMenuItem(B_TRANSLATE("Incolla"), NULL);
+	menu.AddItem(pasteItem);
+	menu.AddSeparatorItem();
+	BMenuItem* clearItem = new BMenuItem(B_TRANSLATE("Cancella"), NULL);
+	menu.AddItem(clearItem);
+	menu.AddSeparatorItem();
+	BMenuItem* insertRowItem = new BMenuItem(B_TRANSLATE("Inserisci riga"), NULL);
+	menu.AddItem(insertRowItem);
+	BMenuItem* insertColItem = new BMenuItem(B_TRANSLATE("Inserisci colonna"), NULL);
+	menu.AddItem(insertColItem);
+	BMenuItem* deleteRowItem = new BMenuItem(B_TRANSLATE("Elimina riga"), NULL);
+	menu.AddItem(deleteRowItem);
+	BMenuItem* deleteColItem = new BMenuItem(B_TRANSLATE("Elimina colonna"), NULL);
+	menu.AddItem(deleteColItem);
+	menu.AddSeparatorItem();
+	BMenuItem* sortAscItem = new BMenuItem(B_TRANSLATE("Ordina crescente"), NULL);
+	menu.AddItem(sortAscItem);
+	BMenuItem* sortDescItem = new BMenuItem(B_TRANSLATE("Ordina decrescente"), NULL);
+	menu.AddItem(sortDescItem);
+	menu.AddSeparatorItem();
+
+	// "Formato celle" e' un sottomenu che raggruppa voci gia' esistenti
+	// (barra dei menu/toolbar) invece di un vero dialogo unificato "come
+	// Excel" -- questa app non ne ha uno, ogni aspetto (grassetto,
+	// colore, bordo, allineamento...) e' gia' la sua azione a se'
+	// stante, quindi il sottomenu si limita a raccoglierle nello stesso
+	// posto invece di duplicarne la logica.
+	BMenu* formatMenu = new BMenu(B_TRANSLATE("Formato celle"));
+	BMenuItem* boldItem = new BMenuItem(B_TRANSLATE("Grassetto"), NULL);
+	formatMenu->AddItem(boldItem);
+	BMenuItem* italicItem = new BMenuItem(B_TRANSLATE("Corsivo"), NULL);
+	formatMenu->AddItem(italicItem);
+	BMenuItem* underlineItem = new BMenuItem(B_TRANSLATE("Sottolineato"), NULL);
+	formatMenu->AddItem(underlineItem);
+	formatMenu->AddSeparatorItem();
+	BMenuItem* alignLeftItem = new BMenuItem(B_TRANSLATE("Allinea a sinistra"), NULL);
+	formatMenu->AddItem(alignLeftItem);
+	BMenuItem* alignCenterItem = new BMenuItem(B_TRANSLATE("Allinea al centro"), NULL);
+	formatMenu->AddItem(alignCenterItem);
+	BMenuItem* alignRightItem = new BMenuItem(B_TRANSLATE("Allinea a destra"), NULL);
+	formatMenu->AddItem(alignRightItem);
+	formatMenu->AddSeparatorItem();
+	BMenuItem* textColorItem = new BMenuItem(B_TRANSLATE("Colore testo" B_UTF8_ELLIPSIS), NULL);
+	formatMenu->AddItem(textColorItem);
+	BMenuItem* bgColorItem = new BMenuItem(B_TRANSLATE("Colore sfondo" B_UTF8_ELLIPSIS), NULL);
+	formatMenu->AddItem(bgColorItem);
+	BMenuItem* borderItem = new BMenuItem(B_TRANSLATE("Bordo cella" B_UTF8_ELLIPSIS), NULL);
+	formatMenu->AddItem(borderItem);
+	menu.AddItem(formatMenu);
+	menu.AddSeparatorItem();
+
+	BMenuItem* commentItem = new BMenuItem(hasComment
+		? B_TRANSLATE("Modifica commento" B_UTF8_ELLIPSIS)
+		: B_TRANSLATE("Commento cella" B_UTF8_ELLIPSIS), NULL);
+	menu.AddItem(commentItem);
+	BMenuItem* removeCommentItem = NULL;
+	if (hasComment)
+	{
+		removeCommentItem = new BMenuItem(B_TRANSLATE("Rimuovi commento"), NULL);
+		menu.AddItem(removeCommentItem);
+	}
+
+	ConvertToScreen(&screenAnchor);
+	BMenuItem* chosen = menu.Go(screenAnchor, false, false, true);
+	if (!chosen)
+		return;
+
+	if (chosen == cutItem)
+		win->CopySelection(true);
+	else if (chosen == copyItem)
+		win->CopySelection(false);
+	else if (chosen == pasteItem)
+		win->PasteSelection();
+	else if (chosen == clearItem)
+		ClearSelection();
+	else if (chosen == insertRowItem)
+		InsertRows();
+	else if (chosen == insertColItem)
+		InsertColumns();
+	else if (chosen == deleteRowItem)
+		DeleteRows();
+	else if (chosen == deleteColItem)
+		DeleteColumns();
+	else if (chosen == sortAscItem)
+		SortSelection(true);
+	else if (chosen == sortDescItem)
+		SortSelection(false);
+	else if (chosen == boldItem)
+		win->ToggleBold();
+	else if (chosen == italicItem)
+		win->ToggleItalic();
+	else if (chosen == underlineItem)
+		win->ToggleUnderline();
+	else if (chosen == alignLeftItem)
+		win->SetAlignment(eAlignLeft);
+	else if (chosen == alignCenterItem)
+		win->SetAlignment(eAlignCenter);
+	else if (chosen == alignRightItem)
+		win->SetAlignment(eAlignRight);
+	else if (chosen == textColorItem)
+		win->ShowColorWindow(eTextColor);
+	else if (chosen == bgColorItem)
+		win->ShowColorWindow(eBackgroundColor);
+	else if (chosen == borderItem)
+		win->ShowBorderWindow();
+	else if (chosen == commentItem)
+		win->ShowCommentWindow(target.v, target.h);
+	else if (chosen == removeCommentItem)
+		win->RemoveCellComment(target.v, target.h);
 }
 
 void SheetView::RecalculateWrappedRowHeights()
@@ -3889,6 +4027,22 @@ void SheetView::MouseDown(BPoint where)
 		MainWindow* win = dynamic_cast<MainWindow*>(Window());
 		if (win)
 			win->OpenCellHyperlink(c.v, c.h);
+		return;
+	}
+
+	// Tasto destro: menu contestuale della cella invece del solito
+	// aggiornamento di selezione sotto -- stesso principio di
+	// ShowAutoFilterMenu/ShowValidationMenu sopra, ma qui serve anche
+	// "buttons" (non letto altrove in questo punto del metodo).
+	// ShowCellContextMenu decide da sola se spostare la selezione sulla
+	// cella cliccata o lasciarla invariata (clic dentro un intervallo
+	// gia' selezionato, come Excel/LibreOffice Calc).
+	int32 buttons = 0;
+	if (msg)
+		msg->FindInt32("buttons", &buttons);
+	if (buttons & B_SECONDARY_MOUSE_BUTTON)
+	{
+		ShowCellContextMenu(c, where);
 		return;
 	}
 
