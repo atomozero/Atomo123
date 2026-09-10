@@ -639,7 +639,7 @@ void SheetView::ShowAutoFilterMenu(int col, BPoint screenAnchor)
 	// sceglie una voce o chiude il menu, restituendo direttamente la
 	// voce scelta (o NULL) -- niente passaggio di messaggi da gestire
 	// altrove in MessageReceived, tutta la logica resta qui.
-	BMenuItem* chosen = menu.Go(screenAnchor, false, false, true);
+	BMenuItem* chosen = menu.Go(screenAnchor, false, false, false);
 	if (!chosen)
 		return;
 
@@ -702,7 +702,7 @@ void SheetView::ShowValidationMenu(cell c, BPoint screenAnchor)
 		menu.AddItem(new BMenuItem(values[i].String(), NULL));
 
 	ConvertToScreen(&screenAnchor);
-	BMenuItem* chosen = menu.Go(screenAnchor, false, false, true);
+	BMenuItem* chosen = menu.Go(screenAnchor, false, false, false);
 	if (!chosen)
 		return;
 
@@ -812,7 +812,7 @@ void SheetView::ShowCellContextMenu(cell target, BPoint screenAnchor)
 	}
 
 	ConvertToScreen(&screenAnchor);
-	BMenuItem* chosen = menu.Go(screenAnchor, false, false, true);
+	BMenuItem* chosen = menu.Go(screenAnchor, false, false, false);
 	if (!chosen)
 		return;
 
