@@ -3289,6 +3289,15 @@ void MainWindow::ShowColorWindow(ColorTarget target)
 		default: initial = cs.fHighColor; break;
 	}
 
+	// Show()/Activate() PRIMA di Lock()/SetMode(), non dopo: stesso bug
+	// reale gia' corretto per CommentWindow/RenameSheetWindow (vedi
+	// MainWindow::ShowCommentWindow) -- il fuoco tastiera/attivazione
+	// non si stabilisce davvero finche' la finestra non e' gia' attiva
+	// sul serio.
+	if (fColorWindow->IsHidden())
+		fColorWindow->Show();
+	fColorWindow->Activate();
+
 	// fColorWindow e' una BWindow a se' (thread/BLooper proprio, non
 	// quello di MainWindow): SetMode() tocca fColorControl, una sua
 	// BView (BColorControl::SetValue chiama Invalidate()), quindi va
@@ -3302,10 +3311,6 @@ void MainWindow::ShowColorWindow(ColorTarget target)
 		fColorWindow->SetMode(target, initial);
 		fColorWindow->Unlock();
 	}
-
-	if (fColorWindow->IsHidden())
-		fColorWindow->Show();
-	fColorWindow->Activate();
 }
 
 void MainWindow::ShowTabColorWindow(int index)
@@ -3321,16 +3326,18 @@ void MainWindow::ShowTabColorWindow(int index)
 	rgb_color initial = fSheets[index].hasTabColor
 		? fSheets[index].tabColor : ui_color(B_PANEL_BACKGROUND_COLOR);
 
+	// Stesso ordine di ShowColorWindow sopra (Show()/Activate() prima
+	// di Lock()/SetMode()).
+	if (fColorWindow->IsHidden())
+		fColorWindow->Show();
+	fColorWindow->Activate();
+
 	// Stesso motivo del Lock() in ShowColorWindow sopra.
 	if (fColorWindow->Lock())
 	{
 		fColorWindow->SetMode(eTabColor, initial);
 		fColorWindow->Unlock();
 	}
-
-	if (fColorWindow->IsHidden())
-		fColorWindow->Show();
-	fColorWindow->Activate();
 }
 
 void MainWindow::ShowBorderWindow()
@@ -5419,17 +5426,20 @@ void MainWindow::MessageReceived(BMessage* message)
 			{
 				if (!fRenameSheetWindow)
 					fRenameSheetWindow = new RenameSheetWindow(BMessenger(this));
-				// Stesso motivo del lock su fCommentWindow in
-				// kMsgShowCommentWindow piu' sotto in questo stesso
-				// MessageReceived.
+				// Show()/Activate() PRIMA di Lock()/SetSheet(), non dopo:
+				// stesso bug reale gia' corretto per CommentWindow (vedi
+				// MainWindow::ShowCommentWindow) -- MakeFocus() nel
+				// costruttore di RenameSheetWindow non si stabilisce
+				// davvero finche' la finestra non e' gia' attiva sul
+				// serio.
+				if (fRenameSheetWindow->IsHidden())
+					fRenameSheetWindow->Show();
+				fRenameSheetWindow->Activate();
 				if (fRenameSheetWindow->Lock())
 				{
 					fRenameSheetWindow->SetSheet(index, fSheets[index].name.String());
 					fRenameSheetWindow->Unlock();
 				}
-				if (fRenameSheetWindow->IsHidden())
-					fRenameSheetWindow->Show();
-				fRenameSheetWindow->Activate();
 			}
 			break;
 		}
