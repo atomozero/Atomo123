@@ -52,6 +52,14 @@ void RenameSheetWindow::SetSheet(int index, const char* currentName)
 	fIndex = index;
 	fNameField->SetText(currentName);
 	fNameField->TextView()->SelectAll();
+	// Richiamato di nuovo qui (oltre che nel costruttore), ora che
+	// MainWindow chiama SetSheet() DOPO Show()/Activate() invece che
+	// prima -- stesso bug reale gia' corretto per CommentWindow::SetCell
+	// (vedi il commento li' e in MainWindow::MessageReceived,
+	// kMsgRenameSheetRequest): MakeFocus() chiamato mentre la finestra
+	// non era ancora mai stata mostrata non bastava a far arrivare gli
+	// eventi tastiera per davvero.
+	fNameField->MakeFocus(true);
 }
 
 void RenameSheetWindow::MessageReceived(BMessage* message)
