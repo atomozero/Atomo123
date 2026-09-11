@@ -145,12 +145,13 @@ in [Icon-O-Matic](https://www.haiku-os.org/docs/userguide/en/applications/icon-o
 seguendo le [linee guida icone Haiku](https://www.haiku-os.org/development/icon-guidelines/).
 
 - **Modifica**: Sostituisci
-- **Formato**: Bordi cella, Formato numero, Convalida dati, Formattazione condizionale
+- **Formato**: Bordi cella, Formato numero, Convalida dati, Formattazione condizionale,
+  Allinea in alto, Centra verticale, Allinea in basso (funzione nuova, voci di menu esistenti)
 - **Celle e tabella**: Inserisci riga, Inserisci colonna, Unisci celle, Blocca riquadri
 - **Formule**: Somma automatica, Percentuale, Funzione (fx)
 - **Grafici**: Grafico a barre, Grafico a torta, Grafico a linee
 
-Totale: 49 funzioni coperte dal catalogo, 13 da disegnare.
+Totale: 49 funzioni coperte dal catalogo, 16 da disegnare.
 
 Le lacune si concentrano su due aree, entrambe attese: le operazioni **specifiche
 del foglio di calcolo** (righe/colonne, unisci celle, blocca riquadri, formati

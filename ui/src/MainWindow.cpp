@@ -157,6 +157,7 @@ static const uint32 kMsgShowValidationWindow = 'shvw';
 static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 static const uint32 kMsgUnmergeCells = 'umrg';
 static const uint32 kMsgSetAlignment = 'algn';
+static const uint32 kMsgSetVerticalAlignment = 'valg';
 static const uint32 kMsgShowTextColor = 'shtc';
 static const uint32 kMsgShowBgColor = 'shbc';
 static const uint32 kMsgShowPreferences = 'shpr';
@@ -693,6 +694,15 @@ MainWindow::MainWindow()
 	alignCenterMsg->AddInt32("alignment", eAlignCenter);
 	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea al centro"), alignCenterMsg));
 	BMessage* alignRightMsg = new BMessage(kMsgSetAlignment);
+	BMessage* alignTopMsg = new BMessage(kMsgSetVerticalAlignment);
+	alignTopMsg->AddInt32("verticalAlignment", eVAlignTop);
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea in alto"), alignTopMsg));
+	BMessage* alignMiddleMsg = new BMessage(kMsgSetVerticalAlignment);
+	alignMiddleMsg->AddInt32("verticalAlignment", eVAlignMiddle);
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Centra verticalmente"), alignMiddleMsg));
+	BMessage* alignBottomMsg = new BMessage(kMsgSetVerticalAlignment);
+	alignBottomMsg->AddInt32("verticalAlignment", eVAlignBottom);
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea in basso"), alignBottomMsg));
 	alignRightMsg->AddInt32("alignment", eAlignRight);
 	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea a destra"), alignRightMsg));
 	// A capo automatico (Fase 12): CellStyle::fWrapText, stesso
@@ -3773,6 +3783,28 @@ void MainWindow::SetAlignment(char alignment)
 	MarkModified();
 }
 
+void MainWindow::SetVerticalAlignment(char alignment)
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
+	fSheetView->SaveUndoState(sel); // stesso motivo di SetAlignment sopra
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fVerticalAlignment = alignment;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::SetTextColor(rgb_color color)
 {
 	if (!fDoc)
@@ -5994,6 +6026,14 @@ void MainWindow::MessageReceived(BMessage* message)
 			int32 alignment;
 			if (message->FindInt32("alignment", &alignment) == B_OK)
 				SetAlignment((char)alignment);
+			break;
+		}
+
+		case kMsgSetVerticalAlignment:
+		{
+			int32 alignment;
+			if (message->FindInt32("verticalAlignment", &alignment) == B_OK)
+				SetVerticalAlignment((char)alignment);
 			break;
 		}
 

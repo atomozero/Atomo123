@@ -790,6 +790,12 @@ void SheetView::ShowCellContextMenu(cell target, BPoint screenAnchor)
 	formatMenu->AddItem(alignCenterItem);
 	BMenuItem* alignRightItem = new BMenuItem(B_TRANSLATE("Allinea a destra"), NULL);
 	formatMenu->AddItem(alignRightItem);
+	BMenuItem* alignTopItem = new BMenuItem(B_TRANSLATE("Allinea in alto"), NULL);
+	formatMenu->AddItem(alignTopItem);
+	BMenuItem* alignMiddleItem = new BMenuItem(B_TRANSLATE("Centra verticalmente"), NULL);
+	formatMenu->AddItem(alignMiddleItem);
+	BMenuItem* alignBottomItem = new BMenuItem(B_TRANSLATE("Allinea in basso"), NULL);
+	formatMenu->AddItem(alignBottomItem);
 	formatMenu->AddSeparatorItem();
 	BMenuItem* textColorItem = new BMenuItem(B_TRANSLATE("Colore testo" B_UTF8_ELLIPSIS), NULL);
 	formatMenu->AddItem(textColorItem);
@@ -848,6 +854,12 @@ void SheetView::ShowCellContextMenu(cell target, BPoint screenAnchor)
 		win->SetAlignment(eAlignCenter);
 	else if (chosen == alignRightItem)
 		win->SetAlignment(eAlignRight);
+	else if (chosen == alignTopItem)
+		win->SetVerticalAlignment(eVAlignTop);
+	else if (chosen == alignMiddleItem)
+		win->SetVerticalAlignment(eVAlignMiddle);
+	else if (chosen == alignBottomItem)
+		win->SetVerticalAlignment(eVAlignBottom);
 	else if (chosen == textColorItem)
 		win->ShowColorWindow(eTextColor);
 	else if (chosen == bgColorItem)
@@ -3041,6 +3053,22 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				{
 					const char* lineText = lines[li].String();
 					float textX = r.left + 3;
+					// Allineamento verticale: il blocco di testo (una o piu' righe
+					// da a-capo automatico) parte dall'alto per difetto (eVAlignTop,
+					// il comportamento di sempre), dal centro del rettangolo per
+					// eVAlignMiddle o dal basso per eVAlignBottom -- visibile solo
+					// quando la riga e piu' alta del blocco (righe alte, celle unite
+					// alte, testo corto). Mai negativo: se il blocco deborda, si
+					// disegna dall'alto come prima.
+					float blockHeight = (float)lines.size() * kRowHeight;
+					float yOffset = 0;
+					if (cs.fVerticalAlignment == eVAlignMiddle)
+						yOffset = (r.Height() - blockHeight) / 2.0f;
+					else if (cs.fVerticalAlignment == eVAlignBottom)
+						yOffset = r.Height() - blockHeight;
+					if (yOffset < 0)
+						yOffset = 0;
+
 					if (cs.fAlignment == eAlignCenter || cs.fAlignment == eAlignRight)
 					{
 						float textWidth = StringWidth(lineText);
@@ -3050,7 +3078,7 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 							textX = r.right - textWidth - 3;
 					}
 
-					BPoint pos(textX, r.top + kRowHeight * (li + 1) - 5);
+					BPoint pos(textX, r.top + yOffset + kRowHeight * (li + 1) - 5);
 					DrawString(lineText, pos);
 
 					// Sottolineato (Fase 12): BFont non ha un

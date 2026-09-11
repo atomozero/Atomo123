@@ -59,12 +59,22 @@ enum EAlignment {
 	eAlignJustify
 };
 
+enum EVerticalAlignment {
+	eVAlignTop,
+	eVAlignMiddle,
+	eVAlignBottom
+};
+
 struct CellStyle {
 	int fFormat;
 	int fFont;
 	bool fLocked;
 	bool fHidden;
 	char fAlignment;
+	// Allineamento verticale: 0 = in alto, il comportamento di sempre
+	// (SheetView disegnava gia dal bordo superiore), quindi i file
+	// esistenti non cambiano aspetto.
+	char fVerticalAlignment;
 	rgb_color fLowColor;  // colore di sfondo della cella
 	rgb_color fHighColor; // colore del testo della cella
 	// Spessore del bordo per lato (Fase 11/13): il nome "colore" e'

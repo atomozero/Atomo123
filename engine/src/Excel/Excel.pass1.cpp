@@ -666,6 +666,15 @@ void CExcel5Filter::Xf()
 	// fWrapText).
 	style.fWrapText = (x & 0x08) != 0;
 
+	// Bit 4-6 dello stesso byte di allineamento: verticale (BIFF8: 0 = in
+	// alto, 1 = centrato, 2 = in basso, 3+ = giustificato/ripartito, reso
+	// come in basso come nell'import XLSX). 0 resta il predefinito in alto.
+	unsigned char vert = (x >> 4) & 0x07;
+	if (vert == 1)
+		style.fVerticalAlignment = eVAlignMiddle;
+	else if (vert >= 2 && vert <= 4)
+		style.fVerticalAlignment = eVAlignBottom;
+
 	// Bordi e sfondo: i restanti 12 byte del record XF (20 byte in
 	// tutto, 8 gia' letti sopra), mai letti prima d'ora -- vedi il
 	// commento sul confronto con Excel vero nell'intestazione del

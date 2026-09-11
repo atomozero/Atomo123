@@ -1087,3 +1087,16 @@ What shipped since v0.2.8, not yet in a tagged release:
   handler, so the context menu can target the actually-clicked cell
   instead of only ever the active one; `ShowColorWindow`/`ShowBorderWindow`
   moved from private to public for the same cross-class reuse reason.
+- Added vertical cell alignment (top/middle/bottom). Only horizontal
+  alignment existed: text was always drawn from the top of the cell, so
+  a tall row (wrapped text, custom row height, tall merged cell) could
+  never center or bottom-align its content. New CellStyle vertical
+  alignment field (default top, so existing files render exactly as
+  before), new Format-menu and cell-context-menu items (no toolbar
+  buttons yet -- the HVIF icon catalog has no vertical-alignment
+  candidates, see Atomo123_icons/ATOMO123.md), persisted as a new
+  optional trailing section of the native ascd format (old files stay
+  readable), and imported from real files (XLSX alignment vertical
+  attribute, legacy XLS XF vertical bits). Fixed alongside: XLSX import
+  dropped an explicit font size unless the font was also bold or italic,
+  so a plain Calibri 11 title rendered at the system default size instead.
