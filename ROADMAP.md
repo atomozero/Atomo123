@@ -76,9 +76,9 @@ print area, both directions). See `CHANGELOG.md` for the full detail
 on each, including the real bugs found while building them.
 
 **Next up is Tier 3** (conditional formatting rule types beyond
-`cellIs`/`duplicateValues`, the legacy indexed color palette, real
-Excel pivot table round-trip) — see "Path to 100% XLSX standard
-compatibility" below for the full detail.
+`cellIs`/`duplicateValues`, real Excel pivot table round-trip; the
+legacy indexed color palette is now done, see below) — see "Path to
+100% XLSX standard compatibility" below for the full detail.
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
@@ -283,10 +283,14 @@ through `.xlsx`, in either direction, before this work.
   happen together with their app-side rule type (Fase B/C of the same
   plan) — implementing the app-side rule type and its XLSX import in
   the same pass avoids building the evaluator twice
-- **Legacy indexed color palette** (`indexed="N"`, the fixed 56-color
-  Excel 97-2003 table) resolves to the engine's default color instead
-  of the real one. Rare in files saved by modern Excel/LibreOffice,
-  more likely in old files re-saved without a full re-color pass
+- ~~**Legacy indexed color palette** (`indexed="N"`, the fixed 64-entry
+  Excel 97-2003 table)~~ Fixed — see `CHANGELOG.md`. Added as a third
+  fallback in `ResolveColorAttrs` (after `rgb`/`theme`), so it applies
+  everywhere that function is already called: fill/font/border colors
+  and conditional-formatting (`dxf`) colors. Indices 64/65 ("System
+  Foreground"/"System Background", i.e. automatic) are deliberately
+  left unresolved; a custom `<colors><indexedColors>` override (rare)
+  is not read, only the fixed default table
 - **Real Excel pivot tables** (`<pivotTable>`/
   `xl/pivotCache/pivotCacheDefinition*.xml`) have no XLSX round-trip
   at all — a pivot table in an imported file is invisible today (only
