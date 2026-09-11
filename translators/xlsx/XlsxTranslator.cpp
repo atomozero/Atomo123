@@ -6299,6 +6299,111 @@ static bool ParseComments(const std::vector<unsigned char>& xml, std::vector<Com
 	return true;
 }
 
+// Commenti "threaded" (xl/threadedComments/threadedCommentN.xml, il
+// formato "Comments" reale di Excel dal 2019 in poi -- Tier 4 "100%
+// XLSX standard compatibility"): a differenza di xl/comments{N}.xml
+// (le "Notes" legacy, gia' gestite sopra), ogni riga qui e' un
+// MESSAGGIO di una conversazione ("threadedComment", con "ref" la
+// cella e "parentId" che lo lega al messaggio padre se e' una
+// risposta), non l'intero contenuto della cella. Excel scrive SEMPRE
+// anche una voce nel <comments> legacy per compatibilita' con versioni
+// piu' vecchie, ma solo un testo segnaposto boilerplate ("Questa
+// conversazione proviene da una versione precedente di Excel...")
+// invece del vero contenuto -- prima di questa funzione, un file con
+// commenti moderni (il caso comune oggi, non quello raro) importava
+// solo quel segnaposto. Questo motore non ha alcun concetto di
+// conversazione/risposta/autore (ne' i "Note" legacy sopra ce l'hanno):
+// tutti i messaggi con lo stesso "ref" vengono concatenati nell'ordine
+// in cui compaiono nel file (sempre cronologico, root poi risposte),
+// separati da una riga vuota, e SOSTITUISCONO il segnaposto legacy per
+// quella cella (vedi il punto di chiamata, applicato DOPO xl/comments{N}
+// nello stesso ciclo sui _rels del foglio).
+struct ThreadedCommentsContext {
+	std::map<std::string, std::string> byRef;
+	std::string currentRef;
+	std::string currentText;
+	bool inComment;
+	bool captureText;
+};
+
+static void XMLCALL ThreadedCommentsStart(void* userData, const char* name, const char** atts)
+{
+	ThreadedCommentsContext* ctx = (ThreadedCommentsContext*)userData;
+
+	if (strcmp(name, "threadedComment") == 0)
+	{
+		ctx->inComment = true;
+		ctx->currentRef.clear();
+		ctx->currentText.clear();
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "ref") == 0)
+				ctx->currentRef = atts[i + 1];
+		}
+	}
+	else if (ctx->inComment && strcmp(name, "text") == 0)
+		ctx->captureText = true;
+}
+
+static void XMLCALL ThreadedCommentsEnd(void* userData, const char* name)
+{
+	ThreadedCommentsContext* ctx = (ThreadedCommentsContext*)userData;
+
+	if (strcmp(name, "threadedComment") == 0)
+	{
+		ctx->inComment = false;
+		if (!ctx->currentRef.empty())
+		{
+			std::string& acc = ctx->byRef[ctx->currentRef];
+			if (!acc.empty())
+				acc += "\n\n";
+			acc += ctx->currentText;
+		}
+	}
+	else if (strcmp(name, "text") == 0)
+		ctx->captureText = false;
+}
+
+static void XMLCALL ThreadedCommentsChars(void* userData, const char* s, int len)
+{
+	ThreadedCommentsContext* ctx = (ThreadedCommentsContext*)userData;
+	if (ctx->captureText)
+		ctx->currentText.append(s, len);
+}
+
+static bool ParseThreadedComments(const std::vector<unsigned char>& xml,
+	std::vector<CommentEntry>* out)
+{
+	if (xml.empty())
+		return false;
+
+	ThreadedCommentsContext ctx;
+	ctx.inComment = false;
+	ctx.captureText = false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, ThreadedCommentsStart, ThreadedCommentsEnd);
+	XML_SetCharacterDataHandler(parser, ThreadedCommentsChars);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), (int)xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK)
+		return false;
+
+	out->clear();
+	for (std::map<std::string, std::string>::const_iterator it = ctx.byRef.begin();
+		it != ctx.byRef.end(); ++it)
+	{
+		CommentEntry entry;
+		entry.ref = it->first;
+		entry.text = it->second;
+		out->push_back(entry);
+	}
+	return true;
+}
+
 // Legge larghezza/altezza in pixel dall'header IHDR di un PNG, senza
 // serve un decodificatore completo (il Translation Kit non e'
 // disponibile qui, questo translator resta senza dipendenze
@@ -7064,6 +7169,17 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 						parsed.doc->SetHyperlink(c, rit->second);
 				}
 
+				// Percorso di xl/threadedComments/threadedCommentN.xml, se
+				// presente (raccolto durante il ciclo sotto, applicato SOLO
+				// dopo -- vedi il commento su ParseThreadedComments): un
+				// std::map<rId, target> itera in ordine di rId, non di tipo
+				// di relazione, quindi la voce "threadedComments" potrebbe
+				// capitare PRIMA o DOPO quella "comments" a seconda dei
+				// numeri di rId nel file -- applicarla solo a ciclo finito
+				// garantisce che sovrascriva sempre il segnaposto legacy,
+				// mai il contrario.
+				std::string threadedCommentsPath;
+
 				for (std::map<std::string, std::string>::iterator it = sheetRelTargets.begin();
 					it != sheetRelTargets.end(); ++it)
 				{
@@ -7115,6 +7231,16 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 									parsed.doc->SetComment(c, entries[ci].text);
 							}
 						}
+					}
+					else if (target.compare(0, 17, "threadedComments/") == 0)
+					{
+						// Solo memorizzato qui: applicato DOPO la fine di
+						// questo ciclo (vedi il commento su
+						// threadedCommentsPath sopra e su
+						// ParseThreadedComments), cosi' sovrascrive sempre
+						// il segnaposto legacy di xl/comments{N}.xml, mai
+						// il contrario.
+						threadedCommentsPath = "xl/" + target;
 					}
 					else if (target.compare(0, 9, "drawings/") == 0)
 					{
@@ -7299,6 +7425,28 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							info.type = chartResult.type;
 							info.title = chartResult.title;
 							parsed.charts.push_back(info);
+						}
+					}
+				}
+
+				// Applicati SOLO ora, a ciclo sui _rels del foglio finito
+				// (vedi il commento su threadedCommentsPath sopra): il
+				// vero testo di un commento moderno sostituisce il
+				// segnaposto legacy scritto da Excel in xl/comments{N}.xml
+				// per la stessa cella, mai il contrario.
+				if (!threadedCommentsPath.empty())
+				{
+					std::vector<unsigned char> threadedXml;
+					std::vector<CommentEntry> threadedEntries;
+					if (zip.ReadEntry(threadedCommentsPath.c_str(), threadedXml)
+						&& ParseThreadedComments(threadedXml, &threadedEntries))
+					{
+						for (size_t ti = 0; ti < threadedEntries.size(); ti++)
+						{
+							cell c;
+							c.Set(threadedEntries[ti].ref.c_str());
+							if (c.IsValid())
+								parsed.doc->SetComment(c, threadedEntries[ti].text);
 						}
 					}
 				}

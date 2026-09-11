@@ -303,12 +303,17 @@ through `.xlsx`, in either direction, before this work.
   `customXml/*` — safe to keep ignoring; Excel regenerates
   `calcChain.xml` itself and doesn't require any of these to open a
   file
-- **Threaded comments** (`xl/threadedComments/*.xml` + `xl/persons.xml`,
-  the modern "Notes vs. Comments" format Excel has used since 2019) —
-  once Tier 2's legacy `<comments>` support lands, decide whether
-  threaded comments need separate handling or can degrade to a plain
-  comment (likely acceptable: this app has no concept of comment
-  threads/replies either)
+- ~~**Threaded comments**~~ Fixed — see `CHANGELOG.md`. Degrades to a
+  plain comment, as anticipated here: every `<threadedComment>`
+  message for a cell (`xl/threadedComments/threadedCommentN.xml`) is
+  concatenated in file order and replaces the legacy `<comments>`
+  placeholder Excel always writes alongside for backward compatibility
+  (a real file's own boilerplate text, not this app's own fallback —
+  without this fix, that boilerplate was literally all that imported,
+  since a real file's comment content lives only in the threaded part
+  once any Excel version since 2019 wrote it). `xl/persons.xml`
+  (author display names) is not read — no author concept anywhere in
+  this app's own comments either
 - **Sparklines, embedded OLE objects/form controls, digital
   signatures** — no support and no plan; each would need real design
   work disproportionate to how often a typical file uses them

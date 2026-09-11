@@ -5645,6 +5645,118 @@ int main()
 		}
 	}
 
+	// Commenti "threaded" (xl/threadedComments/threadedCommentN.xml, il
+	// formato "Comments" reale di Excel dal 2019 in poi): un file reale
+	// ha SEMPRE anche una voce nel <comments> legacy, ma con un testo
+	// segnaposto boilerplate invece del contenuto vero -- il testo
+	// reale deve vincere, non il segnaposto. Stessa struttura minima di
+	// documento del blocco <comments> sopra (una sola cella A1 con
+	// valore, nessun'altra formattazione), cosi' ReadFirstCommentFromAscdForTest
+	// resta valido cosi' com'e'.
+	{
+		static const char kThreadedContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"<Override PartName=\"/xl/comments1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml\"/>\n"
+			"</Types>\n";
+		static const char kThreadedRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kThreadedWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kThreadedWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kThreadedSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\"><v>5</v></c></row></sheetData>"
+			"</worksheet>\n";
+		static const char kThreadedSheetRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments\" "
+			"Target=\"../comments1.xml\"/>\n"
+			"<Relationship Id=\"rId2\" Type=\"http://schemas.microsoft.com/office/2017/10/relationships/threadedComment\" "
+			"Target=\"../threadedComments/threadedComment1.xml\"/>\n</Relationships>\n";
+		static const char kThreadedLegacyComment[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<comments xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+			"<authors><author>Microsoft Office User</author></authors>"
+			"<commentList><comment ref=\"B2\" authorId=\"0\">"
+			"<text><r><t>[Threaded comment]\n\nYour version of Excel allows you to read this "
+			"threaded comment; however, any edits to it will get removed if the file is opened "
+			"in a newer version of Excel.\n\nComment:\n    Segnaposto, non il testo vero"
+			"</t></r></text></comment></commentList></comments>\n";
+		static const char kThreadedComment1[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<ThreadedComments xmlns=\"http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments\">"
+			"<threadedComment ref=\"B2\" dT=\"2026-01-01T10:00:00.00Z\" "
+			"personId=\"{00000000-0001-0000-0000-000000000000}\" "
+			"id=\"{11111111-1111-1111-1111-111111111111}\"><text>Testo reale</text></threadedComment>"
+			"<threadedComment ref=\"B2\" dT=\"2026-01-01T10:05:00.00Z\" "
+			"personId=\"{00000000-0001-0000-0000-000000000000}\" "
+			"id=\"{22222222-2222-2222-2222-222222222222}\" "
+			"parentId=\"{11111111-1111-1111-1111-111111111111}\"><text>Risposta</text></threadedComment>"
+			"</ThreadedComments>\n";
+
+		BMallocIO threadedXlsx;
+		CZipWriter threadedZip;
+		threadedZip.Begin(&threadedXlsx);
+		threadedZip.AddEntry("[Content_Types].xml", kThreadedContentTypes, strlen(kThreadedContentTypes));
+		threadedZip.AddEntry("_rels/.rels", kThreadedRootRels, strlen(kThreadedRootRels));
+		threadedZip.AddEntry("xl/workbook.xml", kThreadedWorkbook, strlen(kThreadedWorkbook));
+		threadedZip.AddEntry("xl/_rels/workbook.xml.rels", kThreadedWorkbookRels, strlen(kThreadedWorkbookRels));
+		threadedZip.AddEntry("xl/worksheets/sheet1.xml", kThreadedSheet, strlen(kThreadedSheet));
+		threadedZip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kThreadedSheetRels, strlen(kThreadedSheetRels));
+		threadedZip.AddEntry("xl/comments1.xml", kThreadedLegacyComment, strlen(kThreadedLegacyComment));
+		threadedZip.AddEntry("xl/threadedComments/threadedComment1.xml", kThreadedComment1, strlen(kThreadedComment1));
+		Check(threadedZip.Close(), "costruzione del file XLSX di prova con un commento threaded riuscita");
+
+		threadedXlsx.Seek(0, SEEK_SET);
+		translator_info threadedInfo;
+		err = translator->Identify(&threadedXlsx, NULL, NULL, &threadedInfo, 0);
+		Check(err == B_OK && threadedInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con un commento threaded");
+
+		threadedXlsx.Seek(0, SEEK_SET);
+		BMallocIO threadedAscdOut;
+		err = translator->Translate(&threadedXlsx, &threadedInfo, NULL, kAtomoNativeFormat, &threadedAscdOut);
+		Check(err == B_OK, "Translate del file di prova con un commento threaded riesce");
+
+		const unsigned char* threadedAscdData = NULL;
+		size_t threadedAscdLen = 0;
+		bool threadedUnwrapped = UnwrapFirstSheet((const unsigned char*)threadedAscdOut.Buffer(),
+			threadedAscdOut.BufferLength(), &threadedAscdData, &threadedAscdLen);
+		Check(threadedUnwrapped, "l'output di Translate del file di prova con un commento threaded e' un ASCD valido");
+
+		if (threadedUnwrapped)
+		{
+			cell importedThreadedCell;
+			std::string importedThreadedText;
+			bool threadedRead = ReadFirstCommentFromAscdForTest(threadedAscdData, threadedAscdLen,
+				&importedThreadedCell, &importedThreadedText);
+			Check(threadedRead, "la sezione commenti dell'ASCD prodotto (caso threaded) si legge correttamente");
+			Check(threadedRead && importedThreadedCell == cell(2, 2),
+				"il commento threaded importato e' ancorato a B2, come <threadedComment ref=\"B2\">");
+			Check(threadedRead && importedThreadedText == "Testo reale\n\nRisposta",
+				"il testo importato e' quello vero del thread (root + risposta), "
+				"NON il segnaposto boilerplate del <comments> legacy che Excel scrive accanto");
+		}
+	}
+
 	// Stesso scenario, direzione opposta (ASCD -> XLSX): un documento
 	// con un commento su una cella esporta un vero xl/comments1.xml,
 	// collegato al foglio tramite i suoi _rels, e quel file si rilegge
