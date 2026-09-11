@@ -1,4 +1,4 @@
-1	English	application/x-vnd.Atomo-Atomo123	1326592992
+1	English	application/x-vnd.Atomo-Atomo123	3775194293
 Dividi	PasteSpecialWindow		Divide
 Nuovo documento	MainWindow		New document
 Sostituisci con:	FindWindow		Replace with:
@@ -345,3 +345,9 @@ Scala di colori (minimo -> massimo)	ConditionalFormatWindow		Color scale (minimu
 Traccia dipendenti	MainWindow		Trace dependents
 Traccia precedenti	MainWindow		Trace precedents
 Traduzione del file in corso...	MainWindow		Converting file...
+Allinea in alto	MainWindow		Align top
+Centra verticalmente	MainWindow		Align middle
+Allinea in basso	MainWindow		Align bottom
+Allinea in alto	SheetView		Align top
+Centra verticalmente	SheetView		Align middle
+Allinea in basso	SheetView		Align bottom

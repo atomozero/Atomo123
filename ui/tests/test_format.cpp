@@ -151,6 +151,22 @@ int main()
 	Check(cs.fAlignment != eAlignRight,
 		"Annulla dopo SetAlignment(eAlignRight) ripristina l'allineamento precedente su C2");
 
+	// Allineamento verticale (in alto/al centro/in basso): stesso principio
+	// di SetAlignment sopra -- applicato a tutta la selezione, con annulla.
+	view->SetSelection(cell(1, 1));
+	view->ExtendSelection(cell(2, 2));
+	win->SetVerticalAlignment(eVAlignMiddle);
+	doc->GetCellStyle(cell(1, 1), cs);
+	Check(cs.fVerticalAlignment == eVAlignMiddle, "SetVerticalAlignment(eVAlignMiddle) si applica ad A1");
+	doc->GetCellStyle(cell(2, 2), cs);
+	Check(cs.fVerticalAlignment == eVAlignMiddle, "SetVerticalAlignment(eVAlignMiddle) si applica anche a B2");
+	view->Undo();
+	doc->GetCellStyle(cell(2, 2), cs);
+	Check(cs.fVerticalAlignment != eVAlignMiddle,
+		"Annulla dopo SetVerticalAlignment(eVAlignMiddle) ripristina quello precedente su B2");
+	doc->GetCellStyle(cell(3, 3), cs);
+	Check(cs.fVerticalAlignment == eVAlignTop, "una cella mai toccata resta con allineamento verticale in alto");
+
 	// SetCellFormat (Formato > Numero/Valuta/Percentuale/Generale):
 	// stesso bug, trovato durante l'audit successivo al fix di
 	// grassetto/corsivo/ecc. sopra -- mancava SaveUndoState() anche qui.

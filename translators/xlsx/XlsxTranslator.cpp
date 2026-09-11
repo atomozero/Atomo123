@@ -1089,7 +1089,8 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	// Sezione intervalli con nome, in coda, ULTIMA sezione del formato:
+	// Sezione intervalli con nome, in coda (non piu la ULTIMA: dopo di lei viene
+	// la sezione di allineamento verticale sotto):
 	// stesso schema di ui/src/AscdIO.cpp (SaveASCD), duplicato qui per
 	// lo stesso motivo di ogni altra sezione di questo file -- "doc" ha
 	// gia' i nomi applicati da ApplyDefinedNames (vedi sopra) quando
@@ -1119,6 +1120,38 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
 					return B_IO_ERROR;
 			}
+		}
+	}
+
+	// Sezione allineamento verticale non predefinito, in coda, NUOVA ultima
+	// sezione del formato: stesso formato di ui/src/AscdIO.cpp (SaveASCD) --
+	// senza di lei, un XLSX con celle centrate/in basso verticalmente
+	// perderebbe quell informazione nel giro XLSX -> ASCD.
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, char> > toWrite;
+		CCellIterator valignIter(doc, NULL);
+		cell vc;
+		while (valignIter.NextExisting(vc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(vc, cs);
+			if (cs.fVerticalAlignment != defaultStyle.fVerticalAlignment)
+				toWrite.push_back(std::make_pair(vc, cs.fVerticalAlignment));
+		}
+
+		int32 valignCount = (int32)toWrite.size();
+		if (dest->Write(&valignCount, sizeof(valignCount)) != (ssize_t)sizeof(valignCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < valignCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			int8 valign = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&valign, sizeof(valign)) != (ssize_t)sizeof(valign))
+				return B_IO_ERROR;
 		}
 	}
 
@@ -2042,7 +2075,8 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 			*outIsProtected = protectedByte != 0;
 	}
 
-	// Sezione intervalli con nome, in coda, ULTIMA sezione del formato:
+	// Sezione intervalli con nome, in coda (non piu la ULTIMA: dopo di lei viene
+	// la sezione di allineamento verticale sotto):
 	// stesso schema EOF-tollerante delle sezioni sopra -- vedi il
 	// commento gemello in ui/src/AscdIO.cpp (LoadASCD). A differenza
 	// delle sezioni colori/allineamento/bordi piu' sopra (ancora
@@ -2085,6 +2119,27 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				range r(left, top, right, bottom);
 				if (!nameStr.empty() && r.IsValid())
 					(*doc->GetOrCreateNameTable())[CName(nameStr.c_str())] = r;
+			}
+		}
+	}
+
+	// Sezione allineamento verticale: solo scartata (stesso principio delle
+	// sezioni colori/allineamento/bordi piu sopra) -- la direzione ASCD -> XLSX
+	// scrive stili minimi senza allineamento per-cella, quindi non c e nulla
+	// da applicare a doc qui, basta non perdere la posizione nel flusso.
+	{
+		int32 count = 0;
+		ssize_t got = source->Read(&count, sizeof(count));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(count)) return B_BAD_DATA;
+			for (int32 i = 0; i < count; i++)
+			{
+				int16 row, col; int8 valign;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&valign, sizeof(valign)) != (ssize_t)sizeof(valign))
+					return B_BAD_DATA;
 			}
 		}
 	}
@@ -3520,6 +3575,8 @@ struct ResolvedStyle {
 	int fontID = 0; // indice gia' risolto in gFontSizeTable, pronto per CellStyle::fFont
 	bool hasAlignment = false; // true solo se diverso da eAlignGeneral (il predefinito non serve applicarlo)
 	char alignment = 0; // EAlignment, pronto per CellStyle::fAlignment
+	bool hasVAlignment = false; // true solo se diverso da eVAlignTop
+	char valignment = 0; // EVerticalAlignment, pronto per CellStyle::fVerticalAlignment
 	bool hasBorders = false; // true solo se almeno un lato e' impostato
 	uchar borderT = 0, borderL = 0, borderB = 0, borderR = 0; // 0/1, pronti per CellStyle::fTBorderColor ecc (Fase 11: booleano per lato, non un vero colore)
 	bool hasBorderColor = false; // 100% XLSX standard compatibility, Tier 2
@@ -3538,6 +3595,7 @@ struct XfInfo {
 	int numFmtId;
 	int borderId;
 	char alignment; // EAlignment, eAlignGeneral se <alignment> assente
+	char valignment; // EVerticalAlignment, eVAlignTop se attributo vertical assente
 	bool wrapText;
 	// Blocco cella (Fase 32, <protection locked="0|1"/>, figlio di
 	// <xf> come <alignment>): true di default -- ECMA-376 dice che
@@ -3575,6 +3633,20 @@ static char ResolveHorizontalAlignment(const char* value)
 	if (strcmp(value, "fill") == 0) return eAlignFill;
 	if (strcmp(value, "justify") == 0) return eAlignJustify;
 	return eAlignGeneral;
+}
+
+// Attributo vertical di <alignment> (ECMA-376): top/center/bottom piu
+// justify/distributed (ripartito: nessuna resa statica equivalente, cade
+// su in basso come il valore esplicito piu vicino al comportamento Excel).
+// Assente = eVAlignTop (il predefinito di CellStyle, vedi CellStyle.h).
+static char ResolveVerticalAlignment(const char* value)
+{
+	if (strcmp(value, "top") == 0) return eVAlignTop;
+	if (strcmp(value, "center") == 0) return eVAlignMiddle;
+	if (strcmp(value, "bottom") == 0) return eVAlignBottom;
+	if (strcmp(value, "justify") == 0) return eVAlignBottom;
+	if (strcmp(value, "distributed") == 0) return eVAlignBottom;
+	return eVAlignTop;
 }
 
 struct StylesContext {
@@ -3916,6 +3988,7 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			xf.numFmtId = 0;
 			xf.borderId = 0;
 			xf.alignment = eAlignGeneral;
+			xf.valignment = eVAlignTop;
 			xf.wrapText = false;
 			xf.locked = true;
 			for (int i = 0; atts[i]; i += 2)
@@ -3942,6 +4015,8 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			{
 				if (strcmp(atts[i], "horizontal") == 0)
 					ctx->cellXfs.back().alignment = ResolveHorizontalAlignment(atts[i + 1]);
+				else if (strcmp(atts[i], "vertical") == 0)
+					ctx->cellXfs.back().valignment = ResolveVerticalAlignment(atts[i + 1]);
 				// wrapText: BUG REALE trovato su un file utente vero
 				// esportato da LibreOffice Calc, escludendo solo "0" (non
 				// anche "false") wrapText="false" veniva letto come vero,
@@ -4045,19 +4120,31 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 
 		bool bold = fontId >= 0 && (size_t)fontId < ctx.fontBold.size() && ctx.fontBold[fontId];
 		bool italic = fontId >= 0 && (size_t)fontId < ctx.fontItalic.size() && ctx.fontItalic[fontId];
-		rs.hasFontStyle = bold || italic;
+		// La dimensione esplicita (<sz>) va importata anche senza grassetto/corsivo:
+		// prima un Calibri 11 normale restava alla dimensione predefinita di sistema.
+		bool sizeDiffers = fontId >= 0 && (size_t)fontId < ctx.fontSize.size()
+			&& ctx.fontSize[fontId] > 0 && ctx.fontSize[fontId] != defaultSize;
+		rs.hasFontStyle = bold || italic || sizeDiffers;
 		if (rs.hasFontStyle)
 		{
+			// bold/italic entrambi falsi e' un caso nuovo (prima
+			// hasFontStyle era garantito vero solo se almeno uno dei due
+			// lo era): solo sizeDiffers ha acceso hasFontStyle, quindi lo
+			// stile resta quello del sistema (defaultStyle sopra), non
+			// "Italic" -- bug reale, un Calibri 11 semplice diventava
+			// corsivo per errore appena la dimensione differiva.
 			const char* styleStr = (bold && italic) ? "Bold Italic"
-				: bold ? "Bold" : "Italic";
+				: bold ? "Bold" : italic ? "Italic" : defaultStyle;
 			float size = defaultSize;
-			if (fontId >= 0 && (size_t)fontId < ctx.fontSize.size() && ctx.fontSize[fontId] > 0)
+			if (sizeDiffers)
 				size = ctx.fontSize[fontId];
 			rs.fontID = (int)gFontSizeTable.GetFontID(defaultFamily, styleStr, size);
 		}
 
 		rs.alignment = ctx.cellXfs[i].alignment;
 		rs.hasAlignment = rs.alignment != eAlignGeneral;
+		rs.valignment = ctx.cellXfs[i].valignment;
+		rs.hasVAlignment = rs.valignment != eVAlignTop;
 
 		int borderId = ctx.cellXfs[i].borderId;
 		if (borderId >= 0 && (size_t)borderId < ctx.borders.size())
@@ -4877,7 +4964,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				&& (size_t)styleIndex < ctx->styles->size())
 			{
 				const ResolvedStyle& rs = (*ctx->styles)[styleIndex];
-				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
+				if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment || rs.hasVAlignment
 					|| rs.hasBorders || rs.hasBorderColor || rs.underline || rs.wrapText || !rs.locked)
 				{
 					for (int col = min; col <= clampedMax; col++)
@@ -4889,6 +4976,7 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 						if (rs.hasFormat) cs.fFormat = rs.format;
 						if (rs.hasFontStyle) cs.fFont = rs.fontID;
 						if (rs.hasAlignment) cs.fAlignment = rs.alignment;
+						if (rs.hasVAlignment) cs.fVerticalAlignment = rs.valignment;
 						if (rs.hasBorders)
 						{
 							cs.fTBorderColor = rs.borderT;
@@ -5163,7 +5251,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 			&& (size_t)ctx->cellStyleIndex < ctx->styles->size())
 		{
 			const ResolvedStyle& rs = (*ctx->styles)[ctx->cellStyleIndex];
-			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment
+			if (rs.hasBg || rs.hasFg || rs.hasFormat || rs.hasFontStyle || rs.hasAlignment || rs.hasVAlignment
 				|| rs.hasBorders || rs.hasBorderColor || rs.underline || rs.wrapText || !rs.locked)
 			{
 				CellStyle cs;
@@ -5173,6 +5261,7 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 				if (rs.hasFormat) cs.fFormat = rs.format;
 				if (rs.hasFontStyle) cs.fFont = rs.fontID;
 				if (rs.hasAlignment) cs.fAlignment = rs.alignment;
+				if (rs.hasVAlignment) cs.fVerticalAlignment = rs.valignment;
 				if (rs.hasBorders)
 				{
 					cs.fTBorderColor = rs.borderT;

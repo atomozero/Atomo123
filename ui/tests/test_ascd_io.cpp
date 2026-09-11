@@ -60,6 +60,14 @@ int main()
 	TryToParseString("=A1+B1", c1, &doc, true);
 	TryToParseString("Ciao Atomo123", d1, &doc, true);
 
+	// Allineamento verticale su B1 (in basso): deve sopravvivere al giro
+	// salva/ricarica sotto, come ogni altra sezione di stile.
+	{
+		CellStyle cs;
+		doc.GetCellStyle(b1, cs);
+		cs.fVerticalAlignment = eVAlignBottom;
+		doc.SetCellStyle(b1, cs);
+	}
 	doc.CalcCell(c1);
 	Value beforeSave;
 	doc.GetValue(c1, beforeSave);
@@ -92,6 +100,14 @@ int main()
 
 	reloaded.GetCellFormula(d1, text, sizeof(text), false);
 	Check(strcmp(text, "Ciao Atomo123") == 0, "D1 mantiene il testo dopo il giro completo");
+
+	CellStyle rcs;
+	reloaded.GetCellStyle(b1, rcs);
+	Check(rcs.fVerticalAlignment == eVAlignBottom,
+		"B1 mantiene allineamento verticale in basso dopo il giro completo");
+	reloaded.GetCellStyle(a1, rcs);
+	Check(rcs.fVerticalAlignment == eVAlignTop,
+		"A1 (mai toccata) resta con allineamento verticale in alto dopo il giro completo");
 
 	// LoadASCD deve aver gia' ricalcolato da solo (RecalculateAll): a
 	// differenza di TryToParseString, che imposta solo la formula

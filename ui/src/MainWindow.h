@@ -263,6 +263,12 @@ public:
 	void MergeCells();
 	void UnmergeCells();
 	void SetAlignment(char alignment);
+	// Allineamento verticale (in alto/al centro/in basso): stesso principio
+	// di SetAlignment sopra -- si applica a tutto SelectionRange(). La
+	// toolbar non ha ancora questi tre pulsanti (manca un'icona HVIF
+	// dedicata nel catalogo, vedi Atomo123_icons/ATOMO123.md): per ora
+	// solo voci del menu Formato e del menu contestuale della griglia.
+	void SetVerticalAlignment(char alignment);
 	void SetTextColor(rgb_color color);
 	void SetBackgroundColor(rgb_color color);
 	// Pubblici per lo stesso motivo di SetCellComment sopra --

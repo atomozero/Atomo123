@@ -98,10 +98,16 @@ screen — calls GLU functions directly (`gluNewQuadric`, `gluPerspective`,
 make` fails at the link step with `cannot find -lGLU` (or, if only the
 headers are missing, with `GL/glu.h: No such file or directory`).
 
-Install it once with:
+The `translators/xlsx` and `translators/ods` targets additionally need the
+**`expat_devel`** package. Both link against `-lexpat` and include `expat.h`
+for XML parsing (MiniZip on top of zlib ships with the base system, expat
+headers do not). Without `expat_devel` installed, `cd translators/xlsx &&
+make` (or `translators/ods`) fails with `expat.h: No such file or directory`.
+
+Install them once with:
 
 ```
-pkgman install glu_devel
+pkgman install glu_devel expat_devel
 ```
 
 Then build:

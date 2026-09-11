@@ -1054,7 +1054,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
-	// Sezione intervalli con nome, in coda, ULTIMA sezione del formato
+	// Sezione intervalli con nome, in coda (non piu la ULTIMA: dopo di lei viene
+	// la sezione di allineamento verticale sotto)
 	// (percorso di compatibilita' XLSX al 100%, Tier 1): CContainer::
 	// GetNameTable() non era mai stata persistita in NESSUN formato
 	// prima d'ora, nemmeno quello nativo -- vedi ROADMAP.md. Un nome e'
@@ -1090,6 +1091,38 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
 					return B_IO_ERROR;
 			}
+		}
+	}
+
+	// Sezione allineamento verticale non predefinito, in coda, NUOVA ultima
+	// sezione del formato: un solo byte per cella, stesso schema della sezione
+	// di allineamento orizzontale -- i file scritti prima restano validi
+	// (la lettura salta la sezione se assente, vedi LoadASCD sotto).
+	{
+		CellStyle defaultStyle;
+		std::vector<std::pair<cell, char> > toWrite;
+		CCellIterator valignIter(doc, NULL);
+		cell vc;
+		while (valignIter.NextExisting(vc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(vc, cs);
+			if (cs.fVerticalAlignment != defaultStyle.fVerticalAlignment)
+				toWrite.push_back(std::make_pair(vc, cs.fVerticalAlignment));
+		}
+
+		int32 valignCount = (int32)toWrite.size();
+		if (dest->Write(&valignCount, sizeof(valignCount)) != (ssize_t)sizeof(valignCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < valignCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			int8 valign = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&valign, sizeof(valign)) != (ssize_t)sizeof(valign))
+				return B_IO_ERROR;
 		}
 	}
 
@@ -2304,7 +2337,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 			*isProtected = protectedByte != 0;
 	}
 
-	// Sezione intervalli con nome, in coda, ULTIMA sezione del formato:
+	// Sezione intervalli con nome, in coda (non piu la ULTIMA: dopo di lei viene
+	// la sezione di allineamento verticale sotto):
 	// stesso schema EOF-tollerante delle sezioni sopra -- vedi il
 	// commento gemello nel writer (SaveASCD) sul perche' ogni foglio ha
 	// la propria tabella indipendente e sul limite dei 31 caratteri di
@@ -2346,6 +2380,37 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				range r(left, top, right, bottom);
 				if (!nameStr.empty() && r.IsValid())
 					(*doc->GetOrCreateNameTable())[CName(nameStr.c_str())] = r;
+			}
+		}
+	}
+
+	// Sezione allineamento verticale non predefinito, in coda, NUOVA ultima
+	// sezione del formato: stesso schema EOF-tollerante delle sezioni sopra --
+	// i file scritti prima di questa sezione finiscono qui senza errori.
+	{
+		int32 valignCount = 0;
+		ssize_t got = source->Read(&valignCount, sizeof(valignCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(valignCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < valignCount; i++)
+			{
+				int16 row, col;
+				int8 valign;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&valign, sizeof(valign)) != (ssize_t)sizeof(valign))
+					return B_BAD_DATA;
+
+				CellStyle cs;
+				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA;
+				doc->GetCellStyle(loc, cs);
+				cs.fVerticalAlignment = (char)valign;
+				doc->SetCellStyle(loc, cs);
 			}
 		}
 	}
