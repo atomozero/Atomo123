@@ -266,10 +266,17 @@ struct ValidationRule {
 // SOLO dall'importazione XLSX (vedi Excel.cpp), mai dalla UI (nessuna
 // finestra per creare/modificare tabelle esiste ancora). dataRange
 // esclude sempre la riga di intestazione (dove Excel scrive i nomi di
-// colonna) -- un riferimento a colonna come "Tabella12[Codice]" indica
-// solo i dati, mai l'intestazione stessa. columnNames e' nello stesso
-// ordine delle colonne di dataRange da sinistra a destra (indice 0 =
-// dataRange.left).
+// colonna) ED eventuali righe totali finali ("Total Row", attributo
+// XLSX totalsRowCount -- vedi RegisterTable in XlsxTranslator.cpp):
+// un riferimento a colonna come "Tabella12[Codice]" indica solo i
+// dati, mai l'intestazione ne' il totale. Nessun campo qui descrive
+// la riga totali stessa (funzione di aggregazione per colonna,
+// etichetta): questo motore non ha una UI di tabella "viva" che li
+// userebbe, la riga totali importa comunque correttamente perche' la
+// sua formula (tipicamente SUBTOTAL) e' una cella come le altre,
+// valutata dalla normale pipeline di calcolo. columnNames e' nello
+// stesso ordine delle colonne di dataRange da sinistra a destra
+// (indice 0 = dataRange.left).
 struct CTableDef {
 	range dataRange;
 	std::vector<std::string> columnNames;

@@ -5786,6 +5786,13 @@ struct TableInfo {
 	// "name" e' garantito dallo standard ECMA-376).
 	std::string name;
 	std::vector<std::string> columnNames;
+	// Numero di righe totali in fondo a tableRange (attributo
+	// totalsRowCount su <table>, in pratica sempre 0 o 1 -- Excel non
+	// offre modo di crearne piu' di una). "totalsRowShown" (un booleano
+	// legacy, ridondante quando totalsRowCount e' presente) non viene
+	// letto: nei file reali generati da Excel la riga totali e' sempre
+	// segnalata da totalsRowCount, mai da totalsRowShown da solo.
+	int totalsRowCount;
 };
 
 static void XMLCALL TableStart(void* userData, const char* name, const char** atts)
@@ -5799,6 +5806,8 @@ static void XMLCALL TableStart(void* userData, const char* name, const char** at
 				info->hasRange = ParseMergeCellRef(atts[i + 1], &info->tableRange);
 			else if (strcmp(atts[i], "name") == 0)
 				info->name = atts[i + 1];
+			else if (strcmp(atts[i], "totalsRowCount") == 0)
+				info->totalsRowCount = atoi(atts[i + 1]);
 		}
 	}
 	else if (strcmp(name, "tableColumn") == 0)
@@ -5821,6 +5830,7 @@ static bool ParseTableInfo(const std::vector<unsigned char>& xml, TableInfo* out
 	out->showStripes = false;
 	out->name.clear();
 	out->columnNames.clear();
+	out->totalsRowCount = 0;
 	if (xml.empty())
 		return false;
 
@@ -5835,16 +5845,19 @@ static bool ParseTableInfo(const std::vector<unsigned char>& xml, TableInfo* out
 }
 
 // Applica la banda grigio chiaro alle righe dati dispari (la prima
-// riga del range e' l'intestazione, esclusa dalla banda) -- solo
-// alle celle che non hanno gia' un colore di sfondo esplicito
+// riga del range e' l'intestazione, esclusa dalla banda, e le
+// eventuali "totalsRowCount" righe finali sono anch'esse escluse --
+// Excel non le banda mai, essendo visivamente distinte dai dati) --
+// solo alle celle che non hanno gia' un colore di sfondo esplicito
 // dall'importazione dei colori sopra (ParseSheet/SheetEnd), per non
 // coprire uno sfondo scelto apposta dall'utente nel file originale.
-static void ApplyTableBanding(CContainer* doc, const range& tableRange)
+static void ApplyTableBanding(CContainer* doc, const range& tableRange, int totalsRowCount)
 {
 	const rgb_color kBandColor = { 242, 242, 242, 255 };
 	CellStyle defaultStyle;
 
-	for (int row = tableRange.top + 1; row <= tableRange.bottom; row++)
+	int lastDataRow = tableRange.bottom - (totalsRowCount > 0 ? totalsRowCount : 0);
+	for (int row = tableRange.top + 1; row <= lastDataRow; row++)
 	{
 		// "row - (tableRange.top + 1)" e' l'indice 0-based della riga
 		// dati (0 = la prima subito sotto l'intestazione): banda le
@@ -5872,11 +5885,15 @@ static void ApplyTableBanding(CContainer* doc, const range& tableRange)
 // Registra una tabella strutturata per i riferimenti nelle formule
 // (Fase 14, "Tabella12[Codice]") -- vedi CContainer::AddTable/
 // ResolveName. tableRange (da TableInfo::ref) include la riga di
-// intestazione, CTableDef::dataRange no: un riferimento a colonna
-// indica solo i dati, mai il nome della colonna stesso. Se il numero
-// di colonne non torna con l'intervallo (file corrotto/non standard),
-// la tabella semplicemente non si registra -- un riferimento a un nome
-// mai registrato resta comunque una formula viva (gNameNan), stesso
+// intestazione ED eventuali righe totali finali, CTableDef::dataRange
+// no: un riferimento a colonna indica solo i dati, mai l'intestazione
+// ne' il totale ("Tabella12[Colonna]" dentro la formula della riga
+// totali stessa, tipicamente "=SUBTOTAL(109,Tabella12[Colonna])",
+// diventerebbe altrimenti un riferimento circolare -- si
+// autoincluderebbe nel proprio argomento). Se il numero di colonne
+// non torna con l'intervallo (file corrotto/non standard), la tabella
+// semplicemente non si registra -- un riferimento a un nome mai
+// registrato resta comunque una formula viva (gNameNan), stesso
 // principio di un nome di intervallo indefinito, non un errore fatale
 // per l'intera importazione.
 static void RegisterTable(CContainer* doc, const TableInfo& info)
@@ -5885,12 +5902,16 @@ static void RegisterTable(CContainer* doc, const TableInfo& info)
 		return;
 	if ((int)info.columnNames.size() != info.tableRange.right - info.tableRange.left + 1)
 		return;
-	if (info.tableRange.top >= info.tableRange.bottom)
-		return; // nessuna riga dati sotto l'intestazione, solo l'intestazione stessa
+
+	int totalsRows = info.totalsRowCount > 0 ? info.totalsRowCount : 0;
+	int dataBottom = info.tableRange.bottom - totalsRows;
+	if (info.tableRange.top >= dataBottom)
+		return; // nessuna riga dati fra intestazione e (eventuale) riga totali
 
 	CTableDef def;
 	def.dataRange = info.tableRange;
 	def.dataRange.top += 1; // esclude la riga di intestazione
+	def.dataRange.bottom = dataBottom; // esclude la riga totali, se presente
 	def.columnNames = info.columnNames;
 	doc->AddTable(info.name, def);
 }
@@ -7167,7 +7188,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							&& ParseTableInfo(tableXml, &info))
 						{
 							if (info.showStripes)
-								ApplyTableBanding(parsed.doc, info.tableRange);
+								ApplyTableBanding(parsed.doc, info.tableRange, info.totalsRowCount);
 							RegisterTable(parsed.doc, info);
 						}
 					}
