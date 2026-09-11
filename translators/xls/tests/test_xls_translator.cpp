@@ -1377,6 +1377,226 @@ int main()
 		}
 	}
 
+	// Nomi definiti (record NAME, BIFF8): tests/sample_namedrange.xls
+	// ha un nome globale "MioIntervallo" -> A2:A4, un vero record NAME
+	// con formula ptgArea3d costruito byte per byte (xlwt non espone i
+	// nomi definiti nella sua API pubblica -- vedi il commento nello
+	// script Python di generazione della fixture). Prima di questo
+	// ("100% XLSX standard compatibility", lo stesso gap gia' chiuso
+	// per XLSX -- vedi ROADMAP.md), ogni nome definito in un file .xls
+	// veniva SEMPRE scartato: CExcel5Filter::Name() (Excel.pass1.cpp)
+	// lo registrava solo tramite un vero CCellView, mai passato da
+	// questo translator headless. Correggendolo sono emersi altri due
+	// bug reali nella stessa funzione, mai scoperti prima perche' non
+	// era mai stata esercitata: le colonne del riferimento ad area
+	// venivano lette a 1 byte invece di 2 (formato BIFF5, non BIFF8 --
+	// lo stesso bug gia' trovato e corretto per le formule di cella in
+	// Excel.formula.cpp) e il byte "grbit" davanti al testo del nome
+	// non veniva saltato (lo stesso bug gia' trovato e corretto per il
+	// nome del font in Font()), disallineando anche la lettura del
+	// riferimento subito dopo.
+	{
+		BFile nameFile("tests/sample_namedrange.xls", B_READ_ONLY);
+		Check(nameFile.InitCheck() == B_OK, "apertura di tests/sample_namedrange.xls riuscita");
+
+		translator_info nameInfo;
+		status_t nameErr = translator->Identify(&nameFile, NULL, NULL, &nameInfo, 0);
+		Check(nameErr == B_OK, "Identify riconosce sample_namedrange.xls");
+
+		nameFile.Seek(0, SEEK_SET);
+		BMallocIO nameOut;
+		nameErr = translator->Translate(&nameFile, &nameInfo, NULL, kAtomoNativeFormat, &nameOut);
+		Check(nameErr == B_OK, "Translate di sample_namedrange.xls riesce");
+
+		if (nameErr == B_OK)
+		{
+			const unsigned char *data = (const unsigned char *)nameOut.Buffer();
+			size_t len = nameOut.BufferLength();
+			Check(len > 12 && memcmp(data, "ASCD", 4) == 0,
+				"l'output di Translate di sample_namedrange.xls e' un ASCD valido");
+
+			int32 cellCount = 0;
+			if (len > 12)
+				memcpy(&cellCount, data + 8, 4);
+
+			size_t pos = 12;
+			for (int32 i = 0; i < cellCount && pos + 8 <= len; i++)
+			{
+				short row, col; int32 l;
+				memcpy(&row, data + pos, 2); pos += 2;
+				memcpy(&col, data + pos, 2); pos += 2;
+				memcpy(&l, data + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella
+				if (pos + (size_t)l > len) break;
+				pos += l;
+			}
+
+			// Stessa identica sequenza gia' verificata sopra (chart..
+			// merge, immagini), qui solo attraversata: sample_namedrange.xls
+			// non ha nessuno di questi, il nome definito e' l'unica cosa
+			// sotto test in questa fixture.
+			int32 n;
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4+4*4); } // chart
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // colWidth
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+8); } // cellColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+8); } // columnColor
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+4); } // rowHeight
+			pos += 8; // frozen
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+64+64+4); } // font
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+1); } // align
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // border
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // format
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2); } // underline
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2); } // wrap
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2*4); } // merge
+			if (pos + 4 <= len)
+			{
+				memcpy(&n, data + pos, 4); pos += 4;
+				for (int32 i = 0; i < n && pos + 2+2+16+4 <= len; i++)
+				{
+					pos += 2+2+16;
+					int32 pngLen;
+					memcpy(&pngLen, data + pos, 4); pos += 4;
+					if (pos + (size_t)pngLen > len) break;
+					pos += pngLen;
+				}
+			} // image
+
+			pos += 1; // visibilita' griglia
+			pos += 1 + 3; // colore linguetta (presente si'/no + RGB)
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * 2; } // righe nascoste
+			pos += 1 + 2*4; // AutoFilter (presente si'/no + 4 interi a 16 bit)
+
+			if (pos + 4 <= len)
+			{
+				memcpy(&n, data + pos, 4); pos += 4;
+				for (int32 i = 0; i < n && pos + 2+2+4 <= len; i++)
+				{
+					pos += 2+2;
+					int32 l;
+					memcpy(&l, data + pos, 4); pos += 4;
+					if (pos + (size_t)l > len) break;
+					pos += l;
+				}
+			} // commenti
+			if (pos + 4 <= len)
+			{
+				memcpy(&n, data + pos, 4); pos += 4;
+				for (int32 i = 0; i < n && pos + 2+2+4 <= len; i++)
+				{
+					pos += 2+2;
+					int32 l;
+					memcpy(&l, data + pos, 4); pos += 4;
+					if (pos + (size_t)l > len) break;
+					pos += l;
+				}
+			} // collegamenti ipertestuali
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * 1; } // tipo di grafico
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2+4); } // colore bordo
+			if (pos + 4 <= len)
+			{
+				memcpy(&n, data + pos, 4); pos += 4;
+				for (int32 i = 0; i < n && pos + 2+2+1+4 <= len; i++)
+				{
+					pos += 2+2+1;
+					int32 l;
+					memcpy(&l, data + pos, 4); pos += 4;
+					if (pos + (size_t)l > len) break;
+					pos += l;
+					pos += 8+8; // min, max
+				}
+			} // convalida dati
+
+			// Formattazione condizionale/tabelle strutturate: sempre
+			// vuote per un file XLS (nessuna delle due letta da questo
+			// importatore) -- un semplice controllo del contatore basta,
+			// non serve un attraversamento generico della struttura
+			// (complessa per la prima) per una sezione che sara' sempre
+			// zero qui.
+			if (pos + 4 <= len)
+			{
+				int32 condCount;
+				memcpy(&condCount, data + pos, 4); pos += 4;
+				Check(condCount == 0, "nessuna regola di formattazione condizionale in sample_namedrange.xls");
+			}
+			if (pos + 4 <= len)
+			{
+				int32 tableCount;
+				memcpy(&tableCount, data + pos, 4); pos += 4;
+				Check(tableCount == 0, "nessuna tabella strutturata in sample_namedrange.xls");
+			}
+
+			if (pos + 4 <= len)
+			{
+				memcpy(&n, data + pos, 4); pos += 4;
+				for (int32 i = 0; i < n && pos + 4 <= len; i++)
+				{
+					int32 l;
+					memcpy(&l, data + pos, 4); pos += 4;
+					if (pos + (size_t)l > len) break;
+					pos += l;
+				}
+			} // titolo di grafico
+
+			pos += 1 + 2*4; // area di stampa (presente si'/no + 4 interi a 16 bit)
+			pos += 1 + 4*8 + 4 + 8; // margini/scala (presente si'/no + 4 margini double + modalita' + percentuale)
+
+			if (pos + 1 <= len)
+			{
+				uint8 hasVba = data[pos]; pos += 1;
+				if (hasVba && pos + 4 <= len)
+				{
+					int32 vbaLen;
+					memcpy(&vbaLen, data + pos, 4); pos += 4;
+					if (pos + (size_t)vbaLen <= len)
+						pos += vbaLen;
+				}
+			} // progetto VBA
+
+			if (pos + 4 <= len) { memcpy(&n, data + pos, 4); pos += 4; pos += n * (2+2); } // celle sbloccate
+			pos += 1; // protezione foglio
+
+			bool haveNameCount = false;
+			int32 nameCount = 0;
+			if (pos + 4 <= len)
+			{
+				memcpy(&nameCount, data + pos, 4); pos += 4;
+				haveNameCount = true;
+			}
+			Check(haveNameCount && nameCount == 1,
+				"un nome definito (\"MioIntervallo\") registrato da sample_namedrange.xls");
+
+			if (haveNameCount && nameCount == 1)
+			{
+				int32 declaredNameLen = 0;
+				if (pos + 4 <= len) { memcpy(&declaredNameLen, data + pos, 4); pos += 4; }
+				std::string nameStr;
+				if (declaredNameLen > 0 && pos + (size_t)declaredNameLen <= len)
+				{
+					nameStr.assign((const char *)(data + pos), declaredNameLen);
+					pos += declaredNameLen;
+				}
+				Check(nameStr == "MioIntervallo", "il nome (\"MioIntervallo\") e' quello corretto");
+
+				short top = 0, left = 0, bottom = 0, right = 0;
+				if (pos + 8 <= len)
+				{
+					memcpy(&top, data + pos, 2); pos += 2;
+					memcpy(&left, data + pos, 2); pos += 2;
+					memcpy(&bottom, data + pos, 2); pos += 2;
+					memcpy(&right, data + pos, 2); pos += 2;
+				}
+				// A2:A4 nel file originale (righe 1-based 2-4, colonna
+				// A = 1): la prova che il fix di ptgArea3d (colonna a 2
+				// byte, non 1) e il fix del byte grbit del nome
+				// funzionano insieme su un vero record NAME BIFF8, non
+				// solo sulla logica isolata.
+				Check(top == 2 && left == 1 && bottom == 4 && right == 1,
+					"l'intervallo (A2:A4) e' quello corretto");
+			}
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

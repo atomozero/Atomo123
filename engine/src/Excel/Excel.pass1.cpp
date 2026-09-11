@@ -304,11 +304,51 @@ void CExcel5Filter::Name()
 
 	es >> grbit >> c >> nameLen >> deflen;
 
+	// Il nome vero e proprio (offset 14 del record NAME) e' una
+	// "Unicode string senza campo di lunghezza propria" (3.4): grbit(1,
+	// bit0 = wide) + nameLen caratteri, compressi (1 byte, Windows-1252)
+	// o wide (2 byte, UTF-16) secondo grbit -- stesso identico formato,
+	// e stesso bug, gia' trovato e corretto per il nome del font in
+	// Font() qui sotto ("il vecchio codice... senza saltare grbit ne'
+	// convertire i caratteri"): mai corretto QUI perche' questa
+	// funzione non aveva ancora un documento vivo a cui applicare il
+	// risultato (vedi GetNamedRanges in Excel.h). Senza saltare il
+	// grbit, il primo byte del nome letto era in realta' quel flag
+	// (quasi sempre 0x00 per un nome compresso, quindi un nome che
+	// iniziava con un carattere NUL) e la lettura del token RPN subito
+	// dopo (vedi il ramo "else" sotto) partiva un byte troppo presto,
+	// disallineando anche quella.
+	auto readNameString = [&](char* buf, size_t bufSize)
+	{
+		unsigned char nameGrbit;
+		es >> nameGrbit;
+		bool wide = (nameGrbit & 0x01) != 0;
+		std::string utf8;
+		for (unsigned char k = 0; k < nameLen; k++)
+		{
+			if (wide)
+			{
+				unsigned char c2[2];
+				es.Read(c2, 2);
+				unsigned short u = c2[0] | (c2[1] << 8);
+				AppendUnicodeAsUTF8(utf8, u);
+			}
+			else
+			{
+				unsigned char c1;
+				es >> c1;
+				AppendCP1252Byte(utf8, c1);
+			}
+		}
+		size_t n = utf8.size() < bufSize - 1 ? utf8.size() : bufSize - 1;
+		memcpy(buf, utf8.data(), n);
+		buf[n] = 0;
+	};
+
 	if (deflen == 0)	// dan zal het wel een functie zijn, hoop ik
 	{
 		fBook.Seek(fBook.Position() + 8, SEEK_SET);
-		es.Read(name, nameLen);
-		name[nameLen] = 0;
+		readNameString(name, sizeof(name));
 
 		int funcNr = GetFunctionNr(name);
 
@@ -333,34 +373,66 @@ void CExcel5Filter::Name()
 	else
 	{
 		fBook.Seek(fBook.Position() + 8, SEEK_SET);
-		es.Read(name, nameLen);
-		name[nameLen] = 0;
+		readNameString(name, sizeof(name));
 
 		range r;
 		es >> c;
 
-		switch (c)
+		// Riferimento ad area (BIFF8): ptgArea (0x25, stesso foglio),
+		// ptgAreaN (0x2D, "area relativa alla formula", usata solo
+		// dentro nomi/formule condivise) o ptgArea3d (0x3B, con foglio
+		// esplicito -- il caso comune per un nome definito reale: Excel
+		// scrive sempre un riferimento di foglio esplicito nella
+		// formula di un nome, anche per uno scope "locale"). STESSO
+		// formato Ref8U/Area8U di ptgArea/ptgAreaN in Excel.formula.cpp
+		// (gia' corretto la' su un file reale, vedi il commento la'
+		// sopra): riga a 2 byte (14 bit + due flag di relativita' nei
+		// bit alti), e ANCHE colonna a 2 byte (non 1: il limite di 256
+		// colonne resta lo stesso, il campo si e' solo allargato per
+		// fare posto ai due flag di relativita' della colonna, uguale
+		// alla riga) -- bug reale, mai scoperto prima d'ora perche'
+		// questa funzione non aveva ancora un documento vivo a cui
+		// applicare il risultato (vedi GetNamedRanges in Excel.h):
+		// leggeva un solo byte di colonna (formato BIFF5), disallineando
+		// silenziosamente ogni lettura successiva. I flag di
+		// relativita' sono ignorati qui (un nome definito reale e'
+		// sempre assoluto in pratica, e non esiste una "cella della
+		// formula" a cui ancorare un eventuale riferimento relativo per
+		// un nome, a differenza di un riferimento dentro una formula di
+		// cella vera). L'opcode era anche sbagliato per il terzo caso
+		// (0x07 = ptgPower, un operatore aritmetico, non un riferimento
+		// ad area): il vero ptgArea e' 0x25.
+		if (c == 0x3B)
+			fBook.Seek(fBook.Position() + 2, SEEK_SET); // ixti (indice EXTERNSHEET)
+
+		if (c == 0x25 || c == 0x2D || c == 0x3B)
 		{
-			case 0x3B:
-				fBook.Seek(fBook.Position() + 14, SEEK_SET);
-			case 0x07:
-			case 0x2D:
-				es >> r.top;			r.top = (r.top & 0x3FFF) + 1;
-				es >> r.bottom;	r.bottom = (r.bottom & 0x3FFF) + 1;
-				es >> c;				r.left = c + 1;
-				es >> c;				r.right = c + 1;
-				break;
-			default:
-//				throw CErr("Named reference %s too complex: %d", name, c);
-				return;
+			short rowTop, rowBottom, colLeftWord, colRightWord;
+			es >> rowTop;
+			es >> rowBottom;
+			es >> colLeftWord;
+			es >> colRightWord;
+			r.top = (rowTop & 0x3FFF) + 1;
+			r.bottom = (rowBottom & 0x3FFF) + 1;
+			r.left = (colLeftWord & 0x00FF) + 1;
+			r.right = (colRightWord & 0x00FF) + 1;
 		}
-		
+		else
+//			throw CErr("Named reference %s too complex: %d", name, c);
+			return;
+
 		// fCellView e' NULL nei translator headless: il nome resta
 		// comunque utilizzabile per risolvere i riferimenti nelle
-		// formule (fNames sotto), solo la visualizzazione nella UI
-		// viene scartata.
+		// formule (fNames sotto). fNamedRanges invece e' popolata
+		// SEMPRE (vedi il commento su GetNamedRanges in Excel.h): un
+		// translator headless la usa per registrare il nome nella vera
+		// tabella nomi del documento dopo Translate(), invece di
+		// scartarlo come succedeva quando l'unica via era
+		// "fCellView->AddNamedRange" (mai chiamata in pratica, nessun
+		// chiamante passa un CCellView non nullo).
 		if (fCellView)
 			fCellView->AddNamedRange(name, r);
+		fNamedRanges.push_back(std::make_pair(std::string(name), r));
 		fNames.push_back(name);
 	}
 }
