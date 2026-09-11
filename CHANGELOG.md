@@ -1099,4 +1099,17 @@ What shipped since v0.2.8, not yet in a tagged release:
   readable), and imported from real files (XLSX alignment vertical
   attribute, legacy XLS XF vertical bits). Fixed alongside: XLSX import
   dropped an explicit font size unless the font was also bold or italic,
+- XLSX import now resolves the legacy indexed color palette
+  (`indexed="N"` on `<color>`/`<fgColor>`/`<bgColor>`, Excel 97-2003's
+  fixed 64-entry table) instead of leaving cells at the engine's default
+  color. `ResolveColorAttrs` (`translators/xlsx/XlsxTranslator.cpp`)
+  already resolved `rgb` and `theme`, added as the third fallback,
+  same order Excel itself uses. Applies everywhere that function is
+  already called: fill/font colors, border color, and conditional
+  formatting (`dxf`) colors. Indices 64/65 ("System Foreground"/
+  "System Background", i.e. automatic — not part of the fixed palette)
+  are deliberately left unresolved, same as an absent `rgb`/`theme`. A
+  custom `<colors><indexedColors>` override (rare) is not read; the
+  fixed default table is used unconditionally, matching every other
+  common OOXML importer.
   so a plain Calibri 11 title rendered at the system default size instead.
