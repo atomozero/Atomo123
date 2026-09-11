@@ -1142,3 +1142,22 @@ What shipped since v0.2.8, not yet in a tagged release:
   UI); the totals row's own cell value/formula already
   imports and calculates correctly through the normal per-cell
   pipeline regardless.
+- XLSX import now reads real "threaded comments"
+  (`xl/threadedComments/threadedCommentN.xml`), the actual "Comments"
+  format Excel has used since 2019 — before this fix, a cell's comment
+  imported as Excel's own boilerplate placeholder text ("Your version
+  of Excel allows you to read this threaded comment; however...")
+  instead of what the user actually wrote, since Excel always mirrors
+  a threaded comment into the legacy `<comments>` part (already
+  imported, Tier 2) as that placeholder for backward compatibility —
+  this was the common case for any file with comments added by a
+  non-ancient Excel, not a rare one. `ThreadedCommentsStart`/
+  `ThreadedCommentsEnd`/`ParseThreadedComments`
+  (`translators/xlsx/XlsxTranslator.cpp`) concatenate every
+  `<threadedComment>` message for a cell (root plus any replies, in
+  file order — this engine has no thread/reply concept, same as its
+  own comments) and apply it after the legacy `<comments>` pass in the
+  same sheet-rels loop, so the real text always wins regardless of
+  which relationship id sorts first. `xl/persons.xml` (author display
+  names) is not read — no author concept exists for comments in this
+  app at all.
