@@ -448,10 +448,22 @@ list deliberately deviates from pure effort-sorting:
   gap from the existing bar/line/pie XLSX chart support. Sparklines
   are a distinct rendering path (in-cell, no chart object) and would
   come later even in this tier
-- **Excel Table Total Row** (per-column aggregation functions on a
-  structured table). Structured references and cross-sheet table
-  lookups already work; this is one more row type on infrastructure
-  that already exists
+- ~~**Excel Table Total Row: import correctness**~~ Fixed — see
+  `CHANGELOG.md`. `RegisterTable`/`ApplyTableBanding`
+  (`translators/xlsx/XlsxTranslator.cpp`) now read `totalsRowCount`
+  and exclude that many rows from the bottom of the table's data
+  range and from banding. Before this fix, a real Excel totals row
+  was silently treated as an ordinary data row: any structured
+  reference to that column (including the totals row's own formula,
+  typically `=SUBTOTAL(109,Table1[Column])`) would self-include the
+  total in its own aggregate — a real correctness bug, not just a
+  cosmetic gap. **Not attempted**: per-column `totalsRowFunction`/
+  `totalsRowLabel` are not read at all — `CTableDef` has no field for
+  them and there is no live "Total Row" UI/feature in this app that
+  would consume them, so storing them would be dead data; the totals
+  row's own cell value/formula already imports and calculates
+  correctly through the normal per-cell pipeline
+  regardless
 - ~~**Formula auditing views**: Trace Precedents/Dependents, Show
   Formulas (Ctrl+\`), Watch Window.~~ Shipped, one commit each (see
   CHANGELOG.md). All read-only views over data the engine already

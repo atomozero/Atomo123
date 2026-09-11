@@ -1100,3 +1100,23 @@ What shipped since v0.2.8, not yet in a tagged release:
   attribute, legacy XLS XF vertical bits). Fixed alongside: XLSX import
   dropped an explicit font size unless the font was also bold or italic,
   so a plain Calibri 11 title rendered at the system default size instead.
+- XLSX import now excludes an Excel Table's Total Row from the
+  table's structured-reference data range and from banding, instead
+  of silently treating it as an ordinary data row. `TableStart`/
+  `RegisterTable`/`ApplyTableBanding`
+  (`translators/xlsx/XlsxTranslator.cpp`) now read the `<table>`
+  element's `totalsRowCount` attribute and shrink both the registered
+  `CTableDef::dataRange` and the banded range by that many rows at the
+  bottom. Real correctness bug, not just cosmetic: a real Excel totals
+  row's own formula (typically `=SUBTOTAL(109,Table1[Column])`) uses a
+  structured reference to the very column it sits in — with the old,
+  unbounded range this formula's own cell was part of its own
+  aggregate. `tests/sample_table.xlsx` gained a real totals row
+  (`totalsRowCount="1"`, a `totalsRowFunction` attribute on one
+  column, present in real files but not otherwise meaningful here) to
+  cover this on import. Per-column `totalsRowFunction`/
+  `totalsRowLabel` are not read at all — `CTableDef` has no field for
+  them and nothing in this app would consume them (no live Total Row
+  UI); the totals row's own cell value/formula already
+  imports and calculates correctly through the normal per-cell
+  pipeline regardless.
