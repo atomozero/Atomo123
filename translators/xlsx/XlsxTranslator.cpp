@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <map>
 #include <string>
 #include <utility>
@@ -2744,10 +2745,17 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	// estensione ".xlsm" apposta per questo.
 	bool hasMacros = !vbaProject.empty();
 
+	// rId2/rId3 (docProps/core.xml e docProps/app.xml, Tier 4 "100%
+	// XLSX standard compatibility", cosmetico): questo export non ha
+	// mai scritto queste due parti opzionali del pacchetto OOXML.
+	// Excel apre il file comunque senza -- vedi il commento su
+	// coreXml/kAppXml poco piu' sotto per cosa viene scritto e perche'.
 	static const char kRootRels[] =
 		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 		"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
 		"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+		"<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>\n"
+		"<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>\n"
 		"</Relationships>\n";
 	static const char kWorkbookHeader[] =
 		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
@@ -3041,11 +3049,51 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		"</cellXfs>\n"
 		"</styleSheet>\n";
 
+	// docProps/core.xml e docProps/app.xml (Tier 4 "100% XLSX standard
+	// compatibility", cosmetico -- vedi ROADMAP.md): questo export non
+	// ha alcun concetto di autore/titolo/azienda nel documento (nessun
+	// campo del genere esiste nel modello), quindi non se ne inventa
+	// uno. Scrive solo cio' che e' realmente vero: il momento
+	// dell'export stesso (creato = modificato, dato che questo
+	// traduttore non distingue le due cose) in UTC, formato W3CDTF
+	// richiesto da <dcterms:created>/<dcterms:modified>, e il nome
+	// dell'applicazione. Autore/titolo/azienda restano assenti finche'
+	// il modello del documento non avra' campi per rappresentarli
+	// davvero.
+	char timestamp[32];
+	{
+		time_t now = time(NULL);
+		struct tm* utc = gmtime(&now);
+		strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", utc);
+	}
+
+	std::string coreXml;
+	coreXml += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+		"<cp:coreProperties "
+		"xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" "
+		"xmlns:dc=\"http://purl.org/dc/elements/1.1/\" "
+		"xmlns:dcterms=\"http://purl.org/dc/terms/\" "
+		"xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">\n"
+		"<dcterms:created xsi:type=\"dcterms:W3CDTF\">";
+	coreXml += timestamp;
+	coreXml += "</dcterms:created>\n<dcterms:modified xsi:type=\"dcterms:W3CDTF\">";
+	coreXml += timestamp;
+	coreXml += "</dcterms:modified>\n</cp:coreProperties>\n";
+
+	static const char kAppXml[] =
+		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+		"<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" "
+		"xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">\n"
+		"<Application>Atomo123</Application>\n"
+		"</Properties>\n";
+
 	std::string contentTypes;
 	contentTypes += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 		"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
 		"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
-		"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n";
+		"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+		"<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>\n"
+		"<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>\n";
 	if (hasMacros)
 		contentTypes += "<Default Extension=\"bin\" ContentType=\"application/vnd.ms-office.vbaProject\"/>\n"
 			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.ms-excel.sheet.macroEnabled.main+xml\"/>\n";
@@ -3078,6 +3126,10 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	if (!zip.AddEntry("[Content_Types].xml", contentTypes.data(), contentTypes.size()))
 		return B_IO_ERROR;
 	if (!zip.AddEntry("_rels/.rels", kRootRels, strlen(kRootRels)))
+		return B_IO_ERROR;
+	if (!zip.AddEntry("docProps/core.xml", coreXml.data(), coreXml.size()))
+		return B_IO_ERROR;
+	if (!zip.AddEntry("docProps/app.xml", kAppXml, strlen(kAppXml)))
 		return B_IO_ERROR;
 	if (!zip.AddEntry("xl/workbook.xml", workbookXmlOut.data(), workbookXmlOut.size()))
 		return B_IO_ERROR;

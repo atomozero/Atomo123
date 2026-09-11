@@ -1112,4 +1112,13 @@ What shipped since v0.2.8, not yet in a tagged release:
   custom `<colors><indexedColors>` override (rare) is not read; the
   fixed default table is used unconditionally, matching every other
   common OOXML importer.
+- XLSX export now writes `docProps/core.xml` and `docProps/app.xml`
+  (with the matching `[Content_Types].xml` overrides and `_rels/.rels`
+  relationships) — previously this export produced a package with
+  neither part at all. The document model has no author/title/company
+  field to round-trip, so none is invented: only what's actually true
+  is written, the export's own timestamp (UTC, W3CDTF) as both
+  `dcterms:created`/`dcterms:modified`, and `Atomo123` as
+  `<Application>`. Cosmetic — Excel already opened these files fine
+  without the two parts.
   so a plain Calibri 11 title rendered at the system default size instead.

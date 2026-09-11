@@ -327,9 +327,10 @@ through `.xlsx`, in either direction, before this work.
   open-password encryption (the file itself is AES-encrypted, can't be
   opened at all without the password) — that's a separate, larger gap,
   already called out in "Path to full Excel parity" Tier 4 below
-- **`docProps/core.xml`/`app.xml`** (author, title, company, revision
-  metadata) are never written on export — cosmetic, Excel opens the
-  file fine without them
+- ~~**`docProps/core.xml`/`app.xml`**~~ Fixed — see `CHANGELOG.md`.
+  Writes the export's own timestamp (`dcterms:created`/`modified`) and
+  `Application`; author/title/company/revision have no equivalent
+  field in the document model, so none is written (not invented)
 - **Row/column outline/grouping** (Excel's +/- expand-collapse groups)
   doesn't exist as an app feature at all yet, native or otherwise —
   this would need real engine/UI work first, not just a translator
