@@ -119,6 +119,21 @@ class CExcel5Filter
 	const std::vector<std::pair<int, float> >& GetRowHeights() const
 		{ return fRowHeights; }
 
+	// Nomi definiti con un vero intervallo (record NAME, BIFF8) letti da
+	// Name() in Excel.pass1.cpp -- popolata SEMPRE, non solo quando
+	// "cellView" e' vivo, stesso principio di GetRowHeights() sopra: un
+	// translator headless (l'unico caso reale oggi, vedi il commento li'
+	// sopra) li recupera dopo Translate() per registrarli nella vera
+	// tabella nomi del documento (CContainer::GetOrCreateNameTable),
+	// esattamente come gia' avviene per XLSX (vedi ApplyDefinedNames in
+	// translators/xlsx/XlsxTranslator.cpp). Prima di questo, un nome
+	// definito in un file .xls veniva SEMPRE scartato: Name() chiamava
+	// solo "fCellView->AddNamedRange(name, r)", ma nessun chiamante di
+	// questo costruttore passa mai un CCellView non nullo (e anche se lo
+	// facesse, EngineViewStub::AddNamedRange e' comunque un no-op).
+	const std::vector<std::pair<std::string, range> >& GetNamedRanges() const
+		{ return fNamedRanges; }
+
   private:
 	
 	/* Niente "throw()": il corpo chiama CExcelStream::Read, che
@@ -343,6 +358,7 @@ class CExcel5Filter
 	std::vector<std::string> fSST;
 	std::vector<EmbeddedImage> fImages;
 	std::vector<range> fMergedRanges;
+	std::vector<std::pair<std::string, range> > fNamedRanges;
 
 	CCellView *fCellView;
 	CContainer *fContainer;

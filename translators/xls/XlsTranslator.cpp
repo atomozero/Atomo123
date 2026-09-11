@@ -34,6 +34,7 @@
 #include "EngineViewStub.h"
 #include "FontMetrics.h"
 #include "EmbeddedImage.h"
+#include "NameTable.h"
 
 static const translation_format sInputFormats[] = {
 	{
@@ -484,6 +485,370 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Da qui in poi, tutte le sezioni restanti dell'ordine fisso di
+	// ui/src/AscdIO.cpp (SaveASCD) fino agli intervalli con nome, MAI
+	// scritte prima da questo translator (si fermava dopo le immagini
+	// sopra): nessuna aggiunge dati veri (questo importatore BIFF8 non
+	// legge griglia/linguetta/righe nascoste/AutoFilter/commenti/
+	// collegamenti/grafici/colore bordo/convalida/formattazione
+	// condizionale/tabelle/area di stampa/margini/VBA/protezione dal
+	// file XLS originale), ma servono comunque per RAGGIUNGERE la
+	// sezione intervalli con nome in fondo senza disallinearne la
+	// lettura -- LoadASCD legge ogni sezione in un ordine fisso, e
+	// saltarne una a meta' (a differenza di fermarsi in coda, che resta
+	// sicuro grazie allo schema EOF-tollerante) farebbe leggere i byte
+	// sbagliati per ogni sezione successiva. Le sezioni che leggono da
+	// "doc" (commenti/collegamenti/colore bordo/convalida/
+	// formattazione condizionale/tabelle/celle sbloccate) sono comunque
+	// corrette, non solo segnaposto: restano vuote oggi perche' "doc"
+	// non le contiene mai per un'importazione XLS, esattamente come
+	// dovrebbero.
+	{
+		uint8 sg = 1; // visibilita' griglia: sempre "visibile" per XLS
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+	{
+		uint8 has = 0; // colore linguetta: mai presente per XLS
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+	{
+		int32 hiddenCount = 0; // righe nascoste: mai lette da XLS
+		if (dest->Write(&hiddenCount, sizeof(hiddenCount)) != (ssize_t)sizeof(hiddenCount))
+			return B_IO_ERROR;
+	}
+	{
+		uint8 has = 0; // AutoFilter: mai letto da XLS
+		int16 zero4[4] = { 0, 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(zero4, sizeof(zero4)) != (ssize_t)sizeof(zero4))
+			return B_IO_ERROR;
+	}
+	{
+		// Commenti/note per cella: CContainer::GetComments(), stesso
+		// schema di AscdIO.cpp -- vuota oggi, questo importatore non ne
+		// legge nessuno dal file XLS.
+		const std::map<cell, std::string>& comments = doc->GetComments();
+		int32 commentCount = (int32)comments.size();
+		if (dest->Write(&commentCount, sizeof(commentCount)) != (ssize_t)sizeof(commentCount))
+			return B_IO_ERROR;
+		for (std::map<cell, std::string>::const_iterator it = comments.begin();
+			it != comments.end(); ++it)
+		{
+			int16 row = it->first.v, col = it->first.h;
+			int32 len = (int32)it->second.size();
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(it->second.data(), len) != len)
+				return B_IO_ERROR;
+		}
+	}
+	{
+		// Collegamenti ipertestuali: CContainer::GetHyperlinks(), stesso
+		// schema dei commenti sopra -- vuota oggi.
+		const std::map<cell, std::string>& links = doc->GetHyperlinks();
+		int32 linkCount = (int32)links.size();
+		if (dest->Write(&linkCount, sizeof(linkCount)) != (ssize_t)sizeof(linkCount))
+			return B_IO_ERROR;
+		for (std::map<cell, std::string>::const_iterator it = links.begin();
+			it != links.end(); ++it)
+		{
+			int16 row = it->first.v, col = it->first.h;
+			int32 len = (int32)it->second.size();
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(it->second.data(), len) != len)
+				return B_IO_ERROR;
+		}
+	}
+	{
+		// Tipo di grafico incorporato: parallela all'array grafici
+		// scritto in testa a questa funzione (sempre 0 per XLS, nessun
+		// grafico incorporato letto da questo importatore).
+		int32 chartTypeCount = 0;
+		if (dest->Write(&chartTypeCount, sizeof(chartTypeCount)) != (ssize_t)sizeof(chartTypeCount))
+			return B_IO_ERROR;
+	}
+	{
+		// Colore del bordo di cella non predefinito: CellStyle::
+		// fBorderColor, stesso schema di AscdIO.cpp -- vuota oggi,
+		// questo importatore non risolve un colore di bordo dal file
+		// XLS (solo lo spessore, vedi la sezione bordi sopra).
+		CellStyle defaultBorderStyle;
+		std::vector<std::pair<cell, rgb_color> > toWrite;
+		CCellIterator borderColorIter(doc, NULL);
+		cell bcc;
+		while (borderColorIter.NextExisting(bcc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(bcc, cs);
+			if (memcmp(&cs.fBorderColor, &defaultBorderStyle.fBorderColor, sizeof(rgb_color)) != 0)
+				toWrite.push_back(std::make_pair(bcc, cs.fBorderColor));
+		}
+
+		int32 borderColorCount = (int32)toWrite.size();
+		if (dest->Write(&borderColorCount, sizeof(borderColorCount)) != (ssize_t)sizeof(borderColorCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < borderColorCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			rgb_color color = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&color, sizeof(color)) != (ssize_t)sizeof(color))
+				return B_IO_ERROR;
+		}
+	}
+	{
+		// Convalida dati: CContainer::GetValidations() -- vuota oggi,
+		// nessuna convalida letta da questo importatore XLS.
+		const std::map<cell, ValidationRule>& validations = doc->GetValidations();
+		int32 validationCount = (int32)validations.size();
+		if (dest->Write(&validationCount, sizeof(validationCount)) != (ssize_t)sizeof(validationCount))
+			return B_IO_ERROR;
+		for (std::map<cell, ValidationRule>::const_iterator it = validations.begin();
+			it != validations.end(); ++it)
+		{
+			int16 row = it->first.v, col = it->first.h;
+			int8 type = (int8)it->second.type;
+			int32 len = (int32)it->second.list.size();
+			double min = it->second.min, max = it->second.max;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(it->second.list.data(), len) != len)
+				return B_IO_ERROR;
+			if (dest->Write(&min, sizeof(min)) != (ssize_t)sizeof(min)
+				|| dest->Write(&max, sizeof(max)) != (ssize_t)sizeof(max))
+				return B_IO_ERROR;
+		}
+	}
+	{
+		// Formattazione condizionale VIVA: CContainer::
+		// GetConditionalFormatRules() -- vuota oggi, nessuna regola
+		// letta da questo importatore XLS.
+		const std::vector<ConditionalFormatRule>& rules = doc->GetConditionalFormatRules();
+		int32 ruleCount = (int32)rules.size();
+		if (dest->Write(&ruleCount, sizeof(ruleCount)) != (ssize_t)sizeof(ruleCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < ruleCount; i++)
+		{
+			const ConditionalFormatRule& rule = rules[i];
+			int8 type = (int8)rule.type;
+			int32 valueLen = (int32)rule.compareValue.size();
+			if (dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type)
+				|| dest->Write(&valueLen, sizeof(valueLen)) != (ssize_t)sizeof(valueLen))
+				return B_IO_ERROR;
+			if (valueLen > 0 && dest->Write(rule.compareValue.data(), valueLen) != valueLen)
+				return B_IO_ERROR;
+			if (dest->Write(&rule.bgColor, sizeof(rule.bgColor)) != (ssize_t)sizeof(rule.bgColor))
+				return B_IO_ERROR;
+
+			int32 rangeCount = (int32)rule.ranges.size();
+			if (dest->Write(&rangeCount, sizeof(rangeCount)) != (ssize_t)sizeof(rangeCount))
+				return B_IO_ERROR;
+			for (int32 r = 0; r < rangeCount; r++)
+			{
+				const range& rg = rule.ranges[r];
+				int16 left = rg.left, top = rg.top, right = rg.right, bottom = rg.bottom;
+				if (dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right)
+					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+					return B_IO_ERROR;
+			}
+
+			int32 pointCount = (int32)rule.colorScalePoints.size();
+			if (dest->Write(&pointCount, sizeof(pointCount)) != (ssize_t)sizeof(pointCount))
+				return B_IO_ERROR;
+			for (int32 p = 0; p < pointCount; p++)
+			{
+				const ColorScalePoint& point = rule.colorScalePoints[p];
+				int32 cfvoTypeLen = (int32)point.cfvoType.size();
+				if (dest->Write(&cfvoTypeLen, sizeof(cfvoTypeLen)) != (ssize_t)sizeof(cfvoTypeLen))
+					return B_IO_ERROR;
+				if (cfvoTypeLen > 0 && dest->Write(point.cfvoType.data(), cfvoTypeLen) != cfvoTypeLen)
+					return B_IO_ERROR;
+				if (dest->Write(&point.cfvoValue, sizeof(point.cfvoValue)) != (ssize_t)sizeof(point.cfvoValue))
+					return B_IO_ERROR;
+				if (dest->Write(&point.color, sizeof(point.color)) != (ssize_t)sizeof(point.color))
+					return B_IO_ERROR;
+			}
+
+			int8 compareIsCellRef = rule.compareIsCellRef ? 1 : 0;
+			int16 compareRefCol = rule.compareRefCell.h;
+			int16 compareRefRow = rule.compareRefCell.v;
+			if (dest->Write(&compareIsCellRef, sizeof(compareIsCellRef)) != (ssize_t)sizeof(compareIsCellRef)
+				|| dest->Write(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
+				|| dest->Write(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
+				return B_IO_ERROR;
+
+			int32 exprLen = (int32)rule.expressionFormula.size();
+			if (dest->Write(&exprLen, sizeof(exprLen)) != (ssize_t)sizeof(exprLen))
+				return B_IO_ERROR;
+			if (exprLen > 0 && dest->Write(rule.expressionFormula.data(), exprLen) != exprLen)
+				return B_IO_ERROR;
+		}
+	}
+	{
+		// Tabelle strutturate di Excel: CContainer::GetTables() -- vuota
+		// oggi, il formato legacy BIFF8 non ha un concetto di
+		// ListObject/tabella strutturata da leggere.
+		const std::map<std::string, CTableDef>& tables = doc->GetTables();
+		int32 tableCount = (int32)tables.size();
+		if (dest->Write(&tableCount, sizeof(tableCount)) != (ssize_t)sizeof(tableCount))
+			return B_IO_ERROR;
+		for (std::map<std::string, CTableDef>::const_iterator it = tables.begin();
+			it != tables.end(); ++it)
+		{
+			int32 nameLen = (int32)it->first.size();
+			if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+				return B_IO_ERROR;
+			if (nameLen > 0 && dest->Write(it->first.data(), nameLen) != nameLen)
+				return B_IO_ERROR;
+
+			const CTableDef& def = it->second;
+			int16 left = def.dataRange.left, top = def.dataRange.top,
+				right = def.dataRange.right, bottom = def.dataRange.bottom;
+			if (dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+				|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+				|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right)
+				|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+				return B_IO_ERROR;
+
+			int32 columnCount = (int32)def.columnNames.size();
+			if (dest->Write(&columnCount, sizeof(columnCount)) != (ssize_t)sizeof(columnCount))
+				return B_IO_ERROR;
+			for (int32 c = 0; c < columnCount; c++)
+			{
+				int32 colLen = (int32)def.columnNames[c].size();
+				if (dest->Write(&colLen, sizeof(colLen)) != (ssize_t)sizeof(colLen))
+					return B_IO_ERROR;
+				if (colLen > 0 && dest->Write(def.columnNames[c].data(), colLen) != colLen)
+					return B_IO_ERROR;
+			}
+		}
+	}
+	{
+		// Titolo di grafico incorporato: parallela all'array grafici,
+		// sempre 0 per XLS come la sezione tipo sopra.
+		int32 chartTitleCount = 0;
+		if (dest->Write(&chartTitleCount, sizeof(chartTitleCount)) != (ssize_t)sizeof(chartTitleCount))
+			return B_IO_ERROR;
+	}
+	{
+		uint8 has = 0; // area di stampa: mai letta da XLS
+		int16 zero4[4] = { 0, 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(zero4, sizeof(zero4)) != (ssize_t)sizeof(zero4))
+			return B_IO_ERROR;
+	}
+	{
+		// Margini/scala di "Imposta pagina": mai letti da XLS -- gli
+		// stessi valori predefiniti di AscdPrintSettings
+		// (ui/src/AscdIO.h, non incluso qui: un translator non collega
+		// mai la UI) scritti letteralmente, per restare bit-per-bit
+		// identici a un file senza impostazioni proprie.
+		uint8 has = 0;
+		double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
+		int32 scaleMode = 0;
+		double scalePercent = 100.0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
+			|| dest->Write(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
+			|| dest->Write(&marginLeft, sizeof(marginLeft)) != (ssize_t)sizeof(marginLeft)
+			|| dest->Write(&marginRight, sizeof(marginRight)) != (ssize_t)sizeof(marginRight)
+			|| dest->Write(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
+			|| dest->Write(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
+			return B_IO_ERROR;
+	}
+	{
+		uint8 has = 0; // progetto VBA: XLS legacy non ne ha uno letto da questo importatore
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has))
+			return B_IO_ERROR;
+	}
+	{
+		// Celle SBLOCCATE (protezione foglio): CellStyle::fLocked,
+		// stesso schema di AscdIO.cpp -- vuota oggi, questo importatore
+		// non legge alcun flag di blocco dal file XLS.
+		CellStyle defaultLockStyle;
+		std::vector<cell> unlocked;
+		CCellIterator lockIter(doc, NULL);
+		cell lc;
+		while (lockIter.NextExisting(lc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(lc, cs);
+			if (cs.fLocked != defaultLockStyle.fLocked)
+				unlocked.push_back(lc);
+		}
+
+		int32 unlockedCount = (int32)unlocked.size();
+		if (dest->Write(&unlockedCount, sizeof(unlockedCount)) != (ssize_t)sizeof(unlockedCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < unlockedCount; i++)
+		{
+			int16 row = unlocked[i].v, col = unlocked[i].h;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+				return B_IO_ERROR;
+		}
+	}
+	{
+		uint8 protectedByte = 0; // protezione foglio: mai letta da XLS
+		if (dest->Write(&protectedByte, sizeof(protectedByte)) != (ssize_t)sizeof(protectedByte))
+			return B_IO_ERROR;
+	}
+
+	// Intervalli con nome, in coda (100% XLSX standard compatibility,
+	// lo stesso gap gia' chiuso per XLSX -- vedi ROADMAP.md): la vera
+	// ragione di tutte le sezioni-segnaposto qui sopra. CExcel5Filter::
+	// GetNamedRanges() (Excel.h/Excel.pass1.cpp) ha gia' registrato ogni
+	// nome vero nel name table di "doc" (vedi la chiamata a
+	// GetOrCreateNameTable() sopra, subito dopo filter.Translate()) --
+	// qui si scrive semplicemente quel name table, stesso schema esatto
+	// di ui/src/AscdIO.cpp (SaveASCD). Prima di questo, un nome definito
+	// in un file .xls veniva SEMPRE scartato: non bastava registrarlo
+	// nel CNameTable in memoria se questa sezione non esisteva per
+	// scriverlo nel blob ASCD che l'app vera legge davvero
+	// (MainWindow::OpenFile passa sempre dai byte ASCD, mai dal
+	// CContainer di importazione in memoria).
+	{
+		CNameTable* names = doc->GetNameTable();
+		int32 nameCount = names ? (int32)names->size() : 0;
+		if (dest->Write(&nameCount, sizeof(nameCount)) != (ssize_t)sizeof(nameCount))
+			return B_IO_ERROR;
+
+		if (names)
+		{
+			for (CNameTable::const_iterator it = names->begin(); it != names->end(); ++it)
+			{
+				const char* nameStr = (const char*)it->first;
+				int32 nameLen = (int32)strlen(nameStr);
+				const range& r = it->second;
+				int16 top = r.top, left = r.left, bottom = r.bottom, right = r.right;
+				if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_IO_ERROR;
+				if (nameLen > 0 && dest->Write(nameStr, nameLen) != nameLen)
+					return B_IO_ERROR;
+				if (dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom)
+					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right))
+					return B_IO_ERROR;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -677,21 +1042,29 @@ status_t CXlsTranslator::Translate(BPositionIO* source,
 
 	try
 	{
-		// cellView=NULL: nessuna UI collegata (translator headless).
-		// Il costruttore legge subito il flusso e popola doc; i nomi
-		// di intervallo vengono scartati in questa modalita' -- vedi
-		// la nota nello stub in engine/src/Stubs/EngineViewStub.h. Le
-		// larghezze di colonna, le altezze di riga, le immagini
-		// incorporate e le celle unite invece si recuperano comunque
-		// da GetColumnWidths()/GetRowHeights()/GetImages()/
-		// GetMergedRanges(), che CExcel5Filter popola indipendentemente
-		// da "cellView" (vedi il commento in Excel.h).
+		// cellView=NULL: nessuna UI collegata (translator headless). Il
+		// costruttore legge subito il flusso e popola doc. Le larghezze
+		// di colonna, le altezze di riga, le immagini incorporate, le
+		// celle unite E i nomi definiti (100% XLSX standard
+		// compatibility -- lo stesso gap gia' chiuso per XLSX, vedi
+		// ApplyDefinedNames in XlsxTranslator.cpp) si recuperano tutti
+		// dopo Translate() da GetColumnWidths()/GetRowHeights()/
+		// GetImages()/GetMergedRanges()/GetNamedRanges(), che
+		// CExcel5Filter popola indipendentemente da "cellView" (vedi il
+		// commento in Excel.h) -- prima di GetNamedRanges(), un nome
+		// definito in un file .xls veniva sempre scartato.
 		CExcel5Filter filter(*source, NULL, doc);
 		filter.Translate();
 		colWidths = filter.GetColumnWidths();
 		images = filter.GetImages();
 		mergedRanges = filter.GetMergedRanges();
 		rowHeights = filter.GetRowHeights();
+
+		const std::vector<std::pair<std::string, range> >& namedRanges =
+			filter.GetNamedRanges();
+		for (size_t i = 0; i < namedRanges.size(); i++)
+			(*doc->GetOrCreateNameTable())[CName(namedRanges[i].first.c_str())]
+				= namedRanges[i].second;
 	}
 	catch (...)
 	{
