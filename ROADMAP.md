@@ -163,17 +163,28 @@ file — these are two separate lists.)
   from any sheet" without a cross-sheet name-resolution redesign), a
   `localSheetId`-scoped one only to that sheet, and Excel's reserved
   `_xlnm.*` bookkeeping names (Print Area, Print Titles, ...) are
-  recognized and skipped rather than polluting the table. **Two
-  explicit pieces still open**, not attempted in this pass: legacy
-  `.xls` import still discards every named range it parses (runs
-  against a no-op stub with no live document to attach to — dead code,
-  already documented as such in the code); and Excel's
-  `_xlnm.Print_Area`/`_xlnm.Print_Titles` are only *skipped* today, not
-  wired to this app's own print-area/print-settings persistence
-  (`AscdPrintSettings`, unrelated to the name table) — so a real
-  Excel file's print area still doesn't survive an XLSX round-trip,
-  the one piece of this item that was always XLSX-specific rather than
-  blocked on the name-table prerequisite
+  recognized and skipped rather than polluting the table.
+  ~~**Legacy `.xls` import still discarded every named range it
+  parsed**~~ Fixed — see `CHANGELOG.md`. `CExcel5Filter::Name()`
+  (`engine/src/Excel/Excel.pass1.cpp`) already parsed real `NAME`
+  records, but only registered them through a live `CCellView`, never
+  passed by this headless translator (dead code, already documented as
+  such in the code) — now also collected into `GetNamedRanges()`
+  (`Excel.h`, same pattern as `GetColumnWidths()`/`GetRowHeights()`)
+  and registered into the real document's name table, then persisted
+  through a new trailing ASCD section (`translators/xls/
+  XlsTranslator.cpp` had never written one). Fixing this exposed two
+  further real bugs in `Name()` itself, never caught because this code
+  path had never been exercised end to end: an area reference's column
+  was read as 1 byte (BIFF5 layout) instead of BIFF8's real 2 bytes —
+  the exact bug already found and fixed for cell-formula references in
+  `Excel.formula.cpp`, never back-ported here — and the name string's
+  leading `grbit` byte was never skipped, the same bug already found
+  and fixed for font names in `Font()`. `_xlnm.Print_Area` import/
+  export (see Tier 2 below) already closed the print-area half of the
+  second originally-open piece here; `_xlnm.Print_Titles` remains
+  unwired, see the print-settings "explicitly out of scope" note in
+  Tier 2
 
 ### Tier 2 — real native features with zero XLSX round-trip
 

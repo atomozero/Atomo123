@@ -1100,3 +1100,51 @@ What shipped since v0.2.8, not yet in a tagged release:
   attribute, legacy XLS XF vertical bits). Fixed alongside: XLSX import
   dropped an explicit font size unless the font was also bold or italic,
   so a plain Calibri 11 title rendered at the system default size instead.
+- Legacy `.xls` import now registers named ranges into the real
+  document instead of discarding every one of them, the equivalent gap
+  already closed for XLSX. `CExcel5Filter::Name()`
+  (`engine/src/Excel/Excel.pass1.cpp`) already parsed real BIFF8 `NAME`
+  records, but only ever applied the result through
+  `fCellView->AddNamedRange(...)` — a live `CCellView`, which this
+  headless translator (like every other caller of this filter) never
+  passes, making that call dead code. `Name()` now also collects each
+  parsed range into a new `GetNamedRanges()` accessor
+  (`engine/src/Excel/Excel.h`, populated unconditionally, same pattern
+  as the existing `GetColumnWidths()`/`GetRowHeights()`), and
+  `translators/xls/XlsTranslator.cpp` registers them into the
+  document's real name table after `Translate()` and persists them
+  through a brand new trailing ASCD section — this translator had
+  never written one before, so every section between embedded images
+  and named ranges in the fixed on-disk layout (grid visibility, tab
+  color, hidden rows, AutoFilter, comments, hyperlinks, chart type/
+  title, border color, data validation, conditional formatting,
+  structured tables, print area, print margins/scale, VBA project,
+  unlocked cells, sheet protection) needed a real trailing section
+  added too, even though this importer produces none of them today —
+  skipping straight to named ranges would have misaligned every one of
+  those sections for `ui/src/AscdIO.cpp`'s `LoadASCD`, which reads
+  them in a fixed order.
+
+  Wiring up `Name()`'s result exposed two further real, independent
+  bugs in the same function, never caught before because this code
+  path had never actually run end to end: an area reference's column
+  was decoded as 1 byte per BIFF5's older layout instead of BIFF8's
+  real 2 bytes (with the two relative-reference flag bits in the high
+  bits) — the identical bug already found and fixed for cell-formula
+  references in `Excel.formula.cpp`, never back-ported to this
+  function — and the name string's own leading `grbit` byte (Unicode
+  string without length field, i.e. compressed/wide flag) was never
+  skipped, the same bug already found and fixed for font names in
+  `Font()`. Both together would have silently registered a wrong
+  range under a corrupted name for the common case (a real Excel/
+  LibreOffice-written name always uses a sheet-qualified `ptgArea3d`
+  reference) rather than just discarding it, arguably worse than the
+  original gap. Verified against a real, byte-accurate BIFF8 `NAME`
+  record built by hand (`tests/sample_namedrange.xls` — a plain xlwt
+  workbook, whose public API has no named-range support, patched with
+  a raw record matching the corrected layout) and an independent
+  Python re-implementation of the fixed decoding logic run against
+  those exact bytes, since this session's environment has no Haiku
+  toolchain to compile and run the real engine — testing on real
+  hardware before release is still warranted given how much of this
+  code had literally never executed before.
