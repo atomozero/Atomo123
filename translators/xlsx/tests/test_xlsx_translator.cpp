@@ -3834,11 +3834,16 @@ int main()
 		}
 	}
 
-	// Tabelle strutturate (Fase 12): tests/sample_table.xlsx ha una
-	// tabella A1:B4 (TableStyleMedium2, showRowStripes="1") -- A1 e'
-	// l'intestazione (mai bandata), A2/B2 e A4/B4 sono la prima e
-	// terza riga dati (bandate), A3/B3 la seconda (non bandata,
-	// alternanza corretta).
+	// Tabelle strutturate (Fase 12, riga totali aggiunta piu' tardi):
+	// tests/sample_table.xlsx ha una tabella A1:B5 (TableStyleMedium2,
+	// showRowStripes="1", totalsRowCount="1") -- A1 e' l'intestazione
+	// (mai bandata), A2/B2 e A4/B4 sono la prima e terza riga dati
+	// (bandate), A3/B3 la seconda (non bandata, alternanza corretta),
+	// A5/B5 e' la riga totali finale (mai bandata ne' inclusa nei dati:
+	// vedi RegisterTable/ApplyTableBanding in XlsxTranslator.cpp -- se
+	// la riga totali finisse in CTableDef::dataRange, un "SUBTOTAL"
+	// scritto davvero da Excel in quella riga per aggregare
+	// "Tabella1[Colonna]" si autoincluderebbe nel proprio argomento).
 	{
 		BFile tableFile("tests/sample_table.xlsx", B_READ_ONLY);
 		Check(tableFile.InitCheck() == B_OK, "apertura di tests/sample_table.xlsx riuscita");
@@ -3863,7 +3868,7 @@ int main()
 			int32 count = 0;
 			if (ascdLen > 12)
 				memcpy(&count, ascdData + 8, 4);
-			Check(count == 8, "l'ASCD contiene le 8 celle di sample_table.xlsx");
+			Check(count == 10, "l'ASCD contiene le 10 celle di sample_table.xlsx (incluse A5/B5, la riga totali)");
 
 			size_t pos = 12;
 			for (int32 i = 0; i < count && pos + 8 <= ascdLen; i++)
@@ -3919,8 +3924,8 @@ int main()
 				if (row == 2 && col == 2) { foundB2 = true; colorsCorrect &= isBand; }
 				if (row == 4 && col == 1) { foundA4 = true; colorsCorrect &= isBand; }
 				if (row == 4 && col == 2) { foundB4 = true; colorsCorrect &= isBand; }
-				if (row == 1 || row == 3)
-					Check(false, "nessuna cella dell'intestazione o della riga dati pari ha un colore");
+				if (row == 1 || row == 3 || row == 5)
+					Check(false, "nessuna cella dell'intestazione, della riga dati pari o della riga totali ha un colore");
 			}
 
 			Check(foundA2 && foundB2 && foundA4 && foundB4 && colorsCorrect,
@@ -4047,10 +4052,13 @@ int main()
 					memcpy(&tRight, ascdData + pos, 2); pos += 2;
 					memcpy(&tBottom, ascdData + pos, 2); pos += 2;
 				}
-				// A1:B4 nel file originale, intestazione (riga 1) esclusa
-				// da CTableDef::dataRange: A2:B4.
+				// A1:B5 nel file originale (totalsRowCount="1"),
+				// intestazione (riga 1) E riga totali (riga 5) escluse
+				// da CTableDef::dataRange: A2:B4. Se RegisterTable
+				// smettesse di sottrarre la riga totali (regressione),
+				// tBottom tornerebbe a 5.
 				Check(tLeft == 1 && tTop == 2 && tRight == 2 && tBottom == 4,
-					"l'intervallo dati (A2:B4, intestazione esclusa) e' quello corretto");
+					"l'intervallo dati (A2:B4, intestazione e riga totali escluse) e' quello corretto");
 
 				int32 columnCount = 0;
 				if (pos + 4 <= ascdLen)
