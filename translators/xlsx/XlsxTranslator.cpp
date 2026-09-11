@@ -3361,9 +3361,9 @@ static bool ParseSharedStrings(const std::vector<unsigned char>& xml,
 // <fgColor>/<color>): "rgb" (esadecimale diretto, es. "FFFFC9C9" --
 // alpha+RRGGBB), "theme" (indice 0-11 nella tavolozza del documento,
 // spesso con "tint" per schiarire/scurire), o "indexed" (la vecchia
-// tavolozza fissa a 56 colori di Excel 97-2003, non gestita qui: rara
-// nei file moderni, non documentata nello standard OOXML stesso --
-// le celle che la usano restano al colore predefinito del motore).
+// tavolozza fissa di Excel 97-2003, gestita da IndexedLegacyColor sotto:
+// rara nei file moderni, salvati solo da versioni molto vecchie di Excel
+// o da un giro completo di re-salvataggio senza ricolorazione).
 //
 // L'indice della tavolozza del tema (attributo theme="N") NON segue
 // l'ordine degli elementi in <a:clrScheme> di theme1.xml (dk1/lt1/dk2/
@@ -3516,13 +3516,45 @@ static void ParseTheme(const std::vector<unsigned char>& xml, XlsxTheme* out)
 	}
 }
 
+// La vecchia tavolozza fissa a 64 voci di Excel 97-2003 (attributo
+// indexed="N"), indici 0-63. Non fa parte dello standard OOXML stesso
+// (ECMA-376 non la elenca), ma e' la tavolozza di default che BIFF8
+// scriveva da sempre e che ogni implementazione (Excel incluso, per
+// retrocompatibilita') tratta come implicita quando "indexed" compare
+// senza una <colors><indexedColors> custom nel file (caso raro, non
+// gestito qui). Valori verificati contro le tabelle equivalenti usate
+// da altri importatori/esportatori OOXML diffusi (stessa tavolozza
+// ovunque, essendo quella storica di Excel). Gli indici 64 e 65 sono
+// riservati ai colori di sistema "System Foreground"/"System
+// Background" (in pratica "automatico" -- nessun colore esplicito), non
+// tavolozza fissa: intenzionalmente assenti da questa tabella, cosi'
+// restano irrisolti come rgb/theme mancanti.
+static const char* const kIndexedLegacyColors[64] = {
+	"000000", "FFFFFF", "FF0000", "00FF00", "0000FF", "FFFF00", "FF00FF", "00FFFF",
+	"000000", "FFFFFF", "FF0000", "00FF00", "0000FF", "FFFF00", "FF00FF", "00FFFF",
+	"800000", "008000", "000080", "808000", "800080", "008080", "C0C0C0", "808080",
+	"9999FF", "993366", "FFFFCC", "CCFFFF", "660066", "FF8080", "0066CC", "CCCCFF",
+	"000080", "FF00FF", "FFFF00", "00FFFF", "800080", "800000", "008080", "0000FF",
+	"00CCFF", "CCFFFF", "CCFFCC", "FFFF99", "99CCFF", "FF99CC", "CC99FF", "FFCC99",
+	"3366FF", "33CCCC", "99CC00", "FFCC00", "FF9900", "FF6600", "666699", "969696",
+	"003366", "339966", "003300", "333300", "993300", "993366", "333399", "333333",
+};
+
+static bool IndexedLegacyColor(int index, rgb_color* out)
+{
+	if (index < 0 || index >= 64)
+		return false;
+	return HexToColor(kIndexedLegacyColors[index], out);
+}
+
 // Risolve gli attributi di un elemento <fgColor>/<bgColor>/<color> in
-// un rgb_color, in ordine di preferenza rgb > theme (indexed non
-// gestito, vedi sopra). Restituisce false se l'elemento non specifica
-// nessun colore risolvibile.
+// un rgb_color, in ordine di preferenza rgb > theme > indexed.
+// Restituisce false se l'elemento non specifica nessun colore
+// risolvibile.
 static bool ResolveColorAttrs(const char** atts, const XlsxTheme& theme, rgb_color* out)
 {
 	int themeIdx = -1;
+	int indexedIdx = -1;
 	double tint = 0;
 	std::string rgbHex;
 	bool hasRgb = false;
@@ -3536,6 +3568,8 @@ static bool ResolveColorAttrs(const char** atts, const XlsxTheme& theme, rgb_col
 		}
 		else if (strcmp(atts[i], "theme") == 0)
 			themeIdx = atoi(atts[i + 1]);
+		else if (strcmp(atts[i], "indexed") == 0)
+			indexedIdx = atoi(atts[i + 1]);
 		else if (strcmp(atts[i], "tint") == 0)
 			tint = atof(atts[i + 1]);
 	}
@@ -3548,6 +3582,9 @@ static bool ResolveColorAttrs(const char** atts, const XlsxTheme& theme, rgb_col
 		*out = ApplyTint(theme.colors[themeIdx], tint);
 		return true;
 	}
+
+	if (indexedIdx >= 0)
+		return IndexedLegacyColor(indexedIdx, out);
 
 	return false;
 }
@@ -3958,12 +3995,10 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			else if (name[0] == 't') sides.top = hasStyle;
 			else sides.bottom = hasStyle;
 		}
-		// <color rgb="FFxxxxxx"/> (o theme="N"), figlio di <left>/
-		// <right>/<top>/<bottom> (100% XLSX standard compatibility,
-		// Tier 2): il PRIMO risolvibile fra i quattro lati vince, vedi
-		// il commento su BorderSides sopra -- indexed non gestito (vedi
-		// ResolveColorAttrs), stesso limite gia' noto per gli altri
-		// colori di questo file.
+		// <color rgb="FFxxxxxx"/> (o theme="N"/indexed="N"), figlio di
+		// <left>/<right>/<top>/<bottom> (100% XLSX standard
+		// compatibility, Tier 2): il PRIMO risolvibile fra i quattro
+		// lati vince, vedi il commento su BorderSides sopra.
 		else if (strcmp(name, "color") == 0 && !ctx->borders.empty())
 		{
 			BorderSides& sides = ctx->borders.back();
