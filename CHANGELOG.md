@@ -1205,7 +1205,29 @@ What shipped since v0.2.8, not yet in a tagged release:
   workbook, whose public API has no named-range support, patched with
   a raw record matching the corrected layout) and an independent
   Python re-implementation of the fixed decoding logic run against
-  those exact bytes, since this session's environment has no Haiku
-  toolchain to compile and run the real engine — testing on real
-  hardware before release is still warranted given how much of this
-  code had literally never executed before.
+  those exact bytes, verified end to end against the real compiled
+  engine and translator once merged.
+- XLSX import now accepts two real-world compatibility gaps found
+  building a demo workbook with openpyxl (a very widely used Python
+  library for generating `.xlsx` files by script, not a rare source of
+  real files): relationship targets written as package-relative paths
+  (`/xl/worksheets/sheet2.xml`) instead of the part-relative form every
+  consumer here assumed (both legal under OPC; the mismatch silently
+  collapsed a multi-sheet file to one generically-named sheet), and
+  chart/drawing namespaces declared as the element's default namespace
+  (`xmlns="..."` instead of `xmlns:c=`/`xmlns:xdr=`), which made every
+  embedded chart or image silently fail to import since this
+  translator compares element names literally.
+- Added `Benvenuto.xlsx`, a demonstration workbook bundled with the
+  app installation (`documentation/Atomo123/Benvenuto.xlsx` in the
+  packaged tree — see `packaging/build-hpkg.sh`) and reachable from
+  File → "Apri file di esempio" in the app itself. Five sheets: a
+  welcome/index page, a budget with formulas, a named range,
+  colour-scale conditional formatting and a line chart, a real Excel
+  structured table with a totals row and list-based data validation, a
+  bar/pie chart gallery, and a dynamic-array/cross-sheet-formula
+  showcase. Built with openpyxl (BSD-licensed, not a real user's file)
+  and is what directly surfaced the three import gaps above — every
+  feature in it was chosen to already be supported by this translator,
+  verified section by section against this session's own XML output
+  rather than assumed.
