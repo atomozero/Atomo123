@@ -7118,6 +7118,73 @@ int main()
 		}
 	}
 
+	// docProps/core.xml e docProps/app.xml sull'export (ASCD -> XLSX):
+	// il pacchetto prodotto non ha mai avuto queste due parti opzionali
+	// -- niente le richiede per aprire il file, ma la loro assenza e'
+	// facilmente visibile aprendo "Proprieta'" in un vero Excel/
+	// LibreOffice. Nessun campo autore/titolo esiste nel modello del
+	// documento, quindi il test verifica solo cio' che l'export
+	// realmente scrive: la data di creazione/modifica in formato
+	// W3CDTF e il nome applicazione.
+	{
+		CContainer& docPropsDoc = *new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), &docPropsDoc, true); // A1
+
+		BMallocIO docPropsAscdIn;
+		status_t docPropsSaveErr = WriteASCDForTest(&docPropsDoc, &docPropsAscdIn);
+		Check(docPropsSaveErr == B_OK, "preparazione dell'ASCD di prova per docProps riesce");
+		docPropsDoc.Release();
+
+		docPropsAscdIn.Seek(0, SEEK_SET);
+		translator_info docPropsInfo;
+		err = translator->Identify(&docPropsAscdIn, NULL, NULL, &docPropsInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD di prova per docProps come sorgente per l'export");
+
+		docPropsAscdIn.Seek(0, SEEK_SET);
+		BMallocIO docPropsXlsxOut;
+		err = translator->Translate(&docPropsAscdIn, &docPropsInfo, NULL, kAtomoXlsxFormat, &docPropsXlsxOut);
+		Check(err == B_OK, "Translate ASCD -> XLSX per docProps riesce");
+
+		if (err == B_OK)
+		{
+			docPropsXlsxOut.Seek(0, SEEK_SET);
+			CZipReader docPropsZip;
+			Check(docPropsZip.Open(&docPropsXlsxOut),
+				"il file XLSX esportato per docProps e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> coreXmlBytes, appXmlBytes;
+			bool readCore = docPropsZip.ReadEntry("docProps/core.xml", coreXmlBytes);
+			bool readApp = docPropsZip.ReadEntry("docProps/app.xml", appXmlBytes);
+			Check(readCore, "il file XLSX esportato contiene docProps/core.xml");
+			Check(readApp, "il file XLSX esportato contiene docProps/app.xml");
+
+			if (readCore)
+			{
+				std::string coreText(coreXmlBytes.begin(), coreXmlBytes.end());
+				Check(coreText.find("<dcterms:created") != std::string::npos
+						&& coreText.find("<dcterms:modified") != std::string::npos,
+					"docProps/core.xml contiene dcterms:created/modified in formato W3CDTF");
+			}
+			if (readApp)
+			{
+				std::string appText(appXmlBytes.begin(), appXmlBytes.end());
+				Check(appText.find("<Application>Atomo123</Application>") != std::string::npos,
+					"docProps/app.xml identifica Atomo123 come applicazione generatrice");
+			}
+
+			std::vector<unsigned char> contentTypesBytes;
+			bool readContentTypes = docPropsZip.ReadEntry("[Content_Types].xml", contentTypesBytes);
+			Check(readContentTypes, "il file XLSX esportato contiene [Content_Types].xml");
+			if (readContentTypes)
+			{
+				std::string ctText(contentTypesBytes.begin(), contentTypesBytes.end());
+				Check(ctText.find("/docProps/core.xml") != std::string::npos
+						&& ctText.find("/docProps/app.xml") != std::string::npos,
+					"[Content_Types].xml dichiara le Override per docProps/core.xml e docProps/app.xml");
+			}
+		}
+	}
+
 	translator->Release();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
