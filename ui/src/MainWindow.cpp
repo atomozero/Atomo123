@@ -62,6 +62,7 @@
 #include <Entry.h>
 #include <File.h>
 #include <FilePanel.h>
+#include <FindDirectory.h>
 #include <Font.h>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
@@ -98,6 +99,11 @@
 static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
 static const uint32 kMsgOpenRecent = 'aorc';
+// File dimostrativo installato con il pacchetto (packaging/
+// build-hpkg.sh / atomo123-0.2.8.recipe copiano Benvenuto.xlsx in
+// documentation/Atomo123/ dell'albero del pacchetto) -- vedi il
+// gestore sotto per dove viene cercato a runtime.
+static const uint32 kMsgOpenSample = 'aosm';
 static const uint32 kMsgSave = 'asve';
 static const uint32 kMsgSaveAs = 'asva';
 // Voci del sottomenu "Salva con nome" (Fase 21, richiesta esplicita
@@ -581,6 +587,8 @@ MainWindow::MainWindow()
 	fRecentMenu = new BMenu(B_TRANSLATE("Apri recenti"));
 	fileMenu->AddItem(new BMenuItem(fRecentMenu));
 	RebuildRecentMenu(); // popolato subito, non solo alla prima apertura del menu
+	fileMenu->AddItem(new BMenuItem(B_TRANSLATE("Apri file di esempio"),
+		new BMessage(kMsgOpenSample)));
 	// "Salva" (Fase 22, richiesta esplicita dell'utente: "abbiamo solo
 	// Salva con nome") scrive direttamente sul file gia' aperto/salvato
 	// in precedenza (fFileDirRef/fDocumentName), senza mostrare nessun
@@ -5516,6 +5524,40 @@ void MainWindow::MessageReceived(BMessage* message)
 
 				BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
 					B_TRANSLATE("Il file non e' piu' disponibile nella posizione registrata."), B_TRANSLATE("OK"));
+				alert->Go();
+				break;
+			}
+			OpenFileAsync(ref);
+			break;
+		}
+
+		case kMsgOpenSample:
+		{
+			// documentation/ e' la cartella standard di packagefs per
+			// contenuti non eseguibili di un pacchetto (vedi il
+			// commento in packaging/build-hpkg.sh), montata da ogni
+			// pacchetto installato in
+			// B_SYSTEM_DOCUMENTATION_DIRECTORY/NomePacchetto/ -- stesso
+			// principio di B_USER_SETTINGS_DIRECTORY gia' usato altrove
+			// in questo progetto (engine/src/Misc-Classes/
+			// Preferences.cpp), qui per la prima volta per un percorso
+			// di sistema invece che utente. In una build di sviluppo
+			// (mai installata come pacchetto vero) il file non esiste:
+			// stesso avviso "non disponibile" di una voce Recenti
+			// spostata/cancellata, non un errore o un crash.
+			BPath path;
+			status_t err = find_directory(B_SYSTEM_DOCUMENTATION_DIRECTORY, &path);
+			if (err == B_OK)
+				err = path.Append("Atomo123/Benvenuto.xlsx");
+
+			BEntry entry;
+			entry_ref ref;
+			if (err != B_OK || (entry.SetTo(path.Path()) != B_OK)
+				|| !entry.Exists() || entry.GetRef(&ref) != B_OK)
+			{
+				BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+					B_TRANSLATE("Il file di esempio non e' installato su questo sistema."),
+					B_TRANSLATE("OK"));
 				alert->Go();
 				break;
 			}
