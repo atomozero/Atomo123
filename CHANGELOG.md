@@ -1209,3 +1209,64 @@ What shipped since v0.2.8, not yet in a tagged release:
   toolchain to compile and run the real engine — testing on real
   hardware before release is still warranted given how much of this
   code had literally never executed before.
+- XLSX import now accepts two real, independent conventions that
+  openpyxl (a very widely used Python library for generating .xlsx
+  files by script — reports, exports, automated pipelines, not a rare
+  source of real-world files) uses and this translator previously
+  didn't, found while building the `Benvenuto.xlsx` demo workbook now
+  bundled with the app (see below):
+  - **Package-relative relationship targets** (a target starting with
+    `/`, e.g. `/xl/worksheets/sheet2.xml`, resolved from the package
+    root) instead of the part-relative form
+    (`worksheets/sheet2.xml`/`../tables/table1.xml`) every part of
+    this translator assumed. Both forms are equally legal under the
+    OPC spec (ECMA-376 part 2), but openpyxl always writes the
+    absolute form for sheets, tables, comments, drawings and charts.
+    Without this fix, `xl/_rels/workbook.xml.rels` never resolved any
+    sheet's `r:id` (the map built elsewhere compares `"xl/" + target`,
+    never an absolute path), so a multi-sheet file written this way
+    silently collapsed to a single sheet — and even that one surviving
+    sheet did so only by the single-sheet fallback coincidentally
+    matching `xl/worksheets/sheet1.xml`, losing its real name from
+    `workbook.xml` in favor of the generic fallback name "Foglio1".
+    Fixed once in `RelationshipsStart`, the one function every other
+    relationship-resolving call site in this translator already shares
+    — no caller needed to change.
+  - **Default-namespace chart/drawing XML** — `xmlns="..."` on the
+    root element (`<wsDr>`/`<chartSpace>`) instead of the conventional
+    `xmlns:xdr="..."`/`xmlns:c="..."` every real Excel/LibreOffice file
+    uses. This translator parses XML without namespace processing
+    (plain `XML_ParserCreate(NULL)`, matching every other parser in
+    this file) and compares element names literally (`"xdr:oneCellAnchor"`,
+    `"c:barChart"`, ...), so an unprefixed `<oneCellAnchor>`/
+    `<barChart>` simply never matched anything: every embedded chart
+    or image in a file written this way silently failed to import
+    (wrong/zero anchor size, or reported as an unrecognized chart
+    type). New `QualifyElementName` helper (added once, at the top of
+    `DrawingStart`/`DrawingEnd`/`ChartXmlStart`/`ChartXmlEnd`) adds the
+    expected prefix back when an element name has none. Safe because
+    `a:` (drawingml) elements are always written with an explicit
+    prefix even by openpyxl — an unprefixed name inside a drawing is
+    always `xdr:`, inside a chart always `c:`, never ambiguous.
+  A third openpyxl quirk (differential-format conditional-formatting
+  fills written with `patternType="solid"` + `fgColor`, instead of the
+  no-`patternType` + `bgColor` form real Excel always writes for a
+  `dxf`, per the existing comment on `DxfsStart`) was worked around in
+  the demo file's own generation script instead of the translator: real
+  Excel/LibreOffice files were never observed to write it the openpyxl
+  way, unlike the two gaps above which are structural (OPC target
+  resolution, namespace prefixing) and plausible from any compliant
+  writer.
+- Added `Benvenuto.xlsx`, a demonstration workbook bundled with the
+  app installation (`documentation/Atomo123/Benvenuto.xlsx` in the
+  packaged tree — see `packaging/build-hpkg.sh`) and reachable from
+  File → "Apri file di esempio" in the app itself. Five sheets: a
+  welcome/index page, a budget with formulas, a named range,
+  colour-scale conditional formatting and a line chart, a real Excel
+  structured table with a totals row and list-based data validation, a
+  bar/pie chart gallery, and a dynamic-array/cross-sheet-formula
+  showcase. Built with openpyxl (BSD-licensed, not a real user's file)
+  and is what directly surfaced the three import gaps above — every
+  feature in it was chosen to already be supported by this translator,
+  verified section by section against this session's own XML output
+  rather than assumed.
