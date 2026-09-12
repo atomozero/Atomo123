@@ -4993,6 +4993,150 @@ int main()
 			"il nome del grafico non implementato menziona \"areaChart\", non generico");
 	}
 
+	// Stesso grafico a barre di sopra, ma con gli spazi dei nomi di
+	// disegno/grafico dichiarati PREDEFINITI (xmlns="...", niente
+	// prefisso "xdr:"/"c:") invece che con il prefisso convenzionale
+	// che Excel/LibreOffice scrivono sempre -- esattamente come li
+	// scrive openpyxl (libreria Python molto diffusa per generare file
+	// XLSX via script, non un caso raro), scoperto costruendo un file
+	// dimostrativo con quella libreria. "a:" resta comunque esplicito
+	// (openpyxl non lo lascia mai predefinito), stesso principio del
+	// commento su QualifyElementName in XlsxTranslator.cpp. Prima del
+	// fix, questo grafico non sarebbe arrivato affatto in ASCD: ne'
+	// l'ancoraggio (<oneCellAnchor> non riconosciuto, mai letto come
+	// <xdr:oneCellAnchor>) ne' il tipo (<barChart> non riconosciuto).
+	{
+		static const char kNsContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kNsRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kNsWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kNsWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kNsSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Gen</t></is></c><c r=\"B1\"><v>10</v></c></row>"
+			"<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>Feb</t></is></c><c r=\"B2\"><v>20</v></c></row>"
+			"<row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>Mar</t></is></c><c r=\"B3\"><v>30</v></c></row>"
+			"</sheetData>"
+			"<drawing r:id=\"rId1\"/>"
+			"</worksheet>\n";
+		static const char kNsSheetRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" Target=\"../drawings/drawing1.xml\"/>\n"
+			"</Relationships>\n";
+		// Nessun prefisso "xdr:": xmlns predefinito sull'elemento radice,
+		// "a:"/"c:" invece restano espliciti (esattamente come li scrive
+		// openpyxl).
+		static const char kNsDrawing[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<wsDr xmlns=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<oneCellAnchor>"
+			"<from><col>3</col><colOff>0</colOff><row>0</row><rowOff>0</rowOff></from>"
+			"<ext cx=\"3000000\" cy=\"2000000\"/>"
+			"<graphicFrame>"
+			"<nvGraphicFramePr><cNvPr id=\"1\" name=\"Chart 1\"/><cNvGraphicFramePr/></nvGraphicFramePr>"
+			"<xfrm/>"
+			"<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+			"<c:chart r:id=\"rId1\"/></a:graphicData></a:graphic>"
+			"</graphicFrame>"
+			"<clientData/>"
+			"</oneCellAnchor>"
+			"</wsDr>\n";
+		static const char kNsDrawingRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"../charts/chart1.xml\"/>\n"
+			"</Relationships>\n";
+		// Nessun prefisso "c:" qui: xmlns predefinito sull'elemento
+		// radice, "a:" resta esplicito (nessun titolo in questa prova
+		// minima, quindi non serve nemmeno usarlo).
+		static const char kNsChart[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<chartSpace xmlns=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<chart><plotArea><barChart><barDir val=\"col\"/>"
+			"<ser><idx val=\"0\"/><order val=\"0\"/>"
+			"<cat><strRef><f>Foglio1!$A$1:$A$3</f></strRef></cat>"
+			"<val><numRef><f>Foglio1!$B$1:$B$3</f></numRef></val>"
+			"</ser></barChart></plotArea></chart>"
+			"</chartSpace>\n";
+
+		BMallocIO nsXlsx;
+		CZipWriter nsZip;
+		nsZip.Begin(&nsXlsx);
+		nsZip.AddEntry("[Content_Types].xml", kNsContentTypes, strlen(kNsContentTypes));
+		nsZip.AddEntry("_rels/.rels", kNsRootRels, strlen(kNsRootRels));
+		nsZip.AddEntry("xl/workbook.xml", kNsWorkbook, strlen(kNsWorkbook));
+		nsZip.AddEntry("xl/_rels/workbook.xml.rels", kNsWorkbookRels, strlen(kNsWorkbookRels));
+		nsZip.AddEntry("xl/worksheets/sheet1.xml", kNsSheet, strlen(kNsSheet));
+		nsZip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kNsSheetRels, strlen(kNsSheetRels));
+		nsZip.AddEntry("xl/drawings/drawing1.xml", kNsDrawing, strlen(kNsDrawing));
+		nsZip.AddEntry("xl/drawings/_rels/drawing1.xml.rels", kNsDrawingRels, strlen(kNsDrawingRels));
+		nsZip.AddEntry("xl/charts/chart1.xml", kNsChart, strlen(kNsChart));
+		Check(nsZip.Close(),
+			"costruzione del file XLSX di prova con grafico a spazio dei nomi predefinito riuscita");
+
+		nsXlsx.Seek(0, SEEK_SET);
+		translator_info nsInfo;
+		err = translator->Identify(&nsXlsx, NULL, NULL, &nsInfo, 0);
+		Check(err == B_OK && nsInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con grafico a spazio dei nomi predefinito");
+
+		nsXlsx.Seek(0, SEEK_SET);
+		BMallocIO nsOut;
+		err = translator->Translate(&nsXlsx, &nsInfo, NULL, kAtomoNativeFormat, &nsOut);
+		Check(err == B_OK, "Translate del file di prova con grafico a spazio dei nomi predefinito riesce");
+
+		if (err == B_OK)
+		{
+			const unsigned char* nsAscdData = NULL;
+			size_t nsAscdLen = 0;
+			bool nsUnwrapped = UnwrapFirstSheet((const unsigned char*)nsOut.Buffer(),
+				nsOut.BufferLength(), &nsAscdData, &nsAscdLen);
+			Check(nsUnwrapped, "l'output di Translate del file con grafico a spazio dei nomi predefinito e' un ASCD valido");
+
+			int16 nsLeft = 0, nsTop = 0, nsRight = 0, nsBottom = 0;
+			int8 nsType = -1;
+			std::string nsTitle;
+			bool nsChartRead = nsUnwrapped && ReadFirstChartForTest(nsAscdData, nsAscdLen,
+				&nsLeft, &nsTop, &nsRight, &nsBottom, &nsType, &nsTitle);
+			Check(nsChartRead,
+				"il grafico con ancoraggio/tipo a spazio dei nomi predefinito (niente \"xdr:\"/\"c:\") "
+				"arriva comunque fino all'ASCD");
+			Check(nsChartRead && nsLeft == 1 && nsTop == 1 && nsRight == 2 && nsBottom == 3,
+				"punta ad A1:B3, ricostruito dai riferimenti veri di chart1.xml");
+			Check(nsChartRead && nsType == 0,
+				"il tipo e' riconosciuto come \"barre\" (0) anche con <barChart>/<barDir val=\"col\"/> "
+				"senza il prefisso \"c:\"");
+		}
+	}
+
 	// Formula array legacy (CSE, Ctrl+Maiusc+Invio): in un file XLSX
 	// vero, <f t="array" ref="B1:B2">FORMULA</f> compare SOLO sulla
 	// cella in alto a sinistra dell'intervallo (B1) -- B2 non ha
@@ -5642,6 +5786,131 @@ int main()
 			Check(commentRead && importedCommentText == "Da ricontrollare",
 				"il testo del commento importato e' quello vero (\"Da ricontrollare\"), "
 				"non piu' scartato in silenzio");
+		}
+	}
+
+	// Target di relationship "package-relative" (radice "/", es.
+	// "/xl/worksheets/sheet2.xml") invece di "part-relative" (es.
+	// "worksheets/sheet2.xml" in xl/_rels/workbook.xml.rels, o
+	// "../tables/table1.xml" nei _rels di un foglio): entrambe le
+	// forme sono legali per lo standard OPC (ECMA-376 parte 2), ma
+	// openpyxl (libreria Python molto diffusa per generare file XLSX
+	// via script) scrive SEMPRE la forma assoluta per fogli/tabelle/
+	// commenti/disegni/grafici. Prima del fix in RelationshipsStart,
+	// nessuna voce di workbook.xml.rels risolveva mai il proprio r:id
+	// (la mappa costruita altrove confronta "xl/" + target, mai un
+	// percorso assoluto), quindi ogni file XLSX multi-foglio scritto
+	// da uno script del genere collassava silenziosamente su un solo
+	// foglio -- il ripiego "nessun foglio risolto, prova
+	// xl/worksheets/sheet1.xml" (vedi Translate) trovava comunque
+	// quel primo file per coincidenza di nome, ma con un nome
+	// generico "Foglio1" al posto di quello VERO dichiarato in
+	// workbook.xml, perdendo ogni foglio successivo. Qui due fogli
+	// veri ("Uno"/"Due"), entrambi risolti tramite target assoluti.
+	{
+		static const char kAbsContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet2.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kAbsRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kAbsWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Uno\" sheetId=\"1\" r:id=\"rId1\"/>"
+			"<sheet name=\"Due\" sheetId=\"2\" r:id=\"rId2\"/></sheets>\n"
+			"</workbook>\n";
+		// Target assoluti ("/xl/...") per ENTRAMBI i fogli, esattamente
+		// come li scrive openpyxl -- la forma che RelationshipsStart
+		// deve normalizzare.
+		static const char kAbsWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"/xl/worksheets/sheet1.xml\"/>\n"
+			"<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"/xl/worksheets/sheet2.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kAbsSheet1[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Uno</t></is></c></row></sheetData>"
+			"</worksheet>\n";
+		static const char kAbsSheet2[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Due</t></is></c></row></sheetData>"
+			"</worksheet>\n";
+
+		BMallocIO absXlsx;
+		CZipWriter absZip;
+		absZip.Begin(&absXlsx);
+		absZip.AddEntry("[Content_Types].xml", kAbsContentTypes, strlen(kAbsContentTypes));
+		absZip.AddEntry("_rels/.rels", kAbsRootRels, strlen(kAbsRootRels));
+		absZip.AddEntry("xl/workbook.xml", kAbsWorkbook, strlen(kAbsWorkbook));
+		absZip.AddEntry("xl/_rels/workbook.xml.rels", kAbsWorkbookRels, strlen(kAbsWorkbookRels));
+		absZip.AddEntry("xl/worksheets/sheet1.xml", kAbsSheet1, strlen(kAbsSheet1));
+		absZip.AddEntry("xl/worksheets/sheet2.xml", kAbsSheet2, strlen(kAbsSheet2));
+		Check(absZip.Close(), "costruzione del file XLSX di prova con target di relationship assoluti riuscita");
+
+		absXlsx.Seek(0, SEEK_SET);
+		translator_info absInfo;
+		err = translator->Identify(&absXlsx, NULL, NULL, &absInfo, 0);
+		Check(err == B_OK && absInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con target assoluti");
+
+		absXlsx.Seek(0, SEEK_SET);
+		BMallocIO absAscdOut;
+		err = translator->Translate(&absXlsx, &absInfo, NULL, kAtomoNativeFormat, &absAscdOut);
+		Check(err == B_OK, "Translate del file di prova con target assoluti riesce");
+
+		if (err == B_OK)
+		{
+			const unsigned char* absData = (const unsigned char*)absAscdOut.Buffer();
+			size_t absLen = absAscdOut.BufferLength();
+
+			bool isBook = absLen >= 8
+				&& (memcmp(absData, "ASC2", 4) == 0 || memcmp(absData, "ASCB", 4) == 0);
+			Check(isBook,
+				"l'output e' una cartella di lavoro multi-foglio, non un singolo ASCD nudo");
+
+			int32 sheetCount = 0;
+			if (isBook)
+				memcpy(&sheetCount, absData + 4, 4);
+			Check(isBook && sheetCount == 2,
+				"entrambi i fogli (\"Uno\" e \"Due\") sono presenti, nessuno perso per il "
+				"target assoluto nei _rels della cartella di lavoro");
+
+			std::string firstSheetName;
+			if (isBook && absLen >= 12)
+			{
+				int32 nameLen;
+				memcpy(&nameLen, absData + 8, 4);
+				if (nameLen > 0 && (size_t)(12 + nameLen) <= absLen)
+					firstSheetName.assign((const char*)(absData + 12), nameLen);
+			}
+			Check(firstSheetName == "Uno",
+				"il primo foglio si chiama davvero \"Uno\" (il nome vero da workbook.xml), "
+				"non il \"Foglio1\" generico del ripiego a un solo foglio");
+
+			const unsigned char* firstAscd = NULL;
+			size_t firstLen = 0;
+			bool firstUnwrapped = UnwrapFirstSheet(absData, absLen, &firstAscd, &firstLen);
+			Check(firstUnwrapped, "il primo foglio si sblocca correttamente");
+			if (firstUnwrapped)
+			{
+				int32 count = 0;
+				if (firstLen > 12)
+					memcpy(&count, firstAscd + 8, 4);
+				Check(count == 1, "il primo foglio (\"Uno\") ha davvero la sua unica cella");
+			}
 		}
 	}
 
