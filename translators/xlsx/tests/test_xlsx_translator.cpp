@@ -1565,6 +1565,59 @@ static bool ReadFirstHyperlinkFromAscdForTest(const unsigned char* ascdData, siz
 // see ParseStyles), so the "bordi di cella" (thickness) section --
 // distinct from "colore del bordo" here -- has exactly ONE real entry
 // too, not zero like every other section walked past.
+// Legge la PRIMA voce della sezione "cellColors" (sfondo/testo per
+// cella, la stessa gia' verificata per A1/B1 di sample.xlsx piu' sopra
+// nel test grande) -- usata per verificare l'importazione del colore
+// indicizzato legacy (indexed="N"), che finisce proprio in questa
+// sezione come qualunque altro colore di sfondo risolto.
+static bool ReadFirstCellColorFromAscdForTest(const unsigned char* ascdData, size_t ascdLen,
+	cell* outCell, rgb_color* outBg)
+{
+	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
+		return false;
+
+	int32 cellCount;
+	memcpy(&cellCount, ascdData + 8, 4);
+
+	size_t pos = 12;
+	for (int32 i = 0; i < cellCount; i++)
+	{
+		if (pos + 9 > ascdLen)
+			return false;
+		int32 len;
+		memcpy(&len, ascdData + pos + 4, 4);
+		pos += 9 + len;
+	}
+
+	// Grafici incorporati, colWidths: due contatori (0 in questo
+	// documento di prova).
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+
+	if (pos + 4 > ascdLen) return false;
+	int32 cellColorCount;
+	memcpy(&cellColorCount, ascdData + pos, 4); pos += 4;
+	if (cellColorCount < 1 || pos + 12 > ascdLen)
+		return false;
+
+	int16 row, col;
+	uint8 bg[4], fg[4];
+	memcpy(&row, ascdData + pos, 2); pos += 2;
+	memcpy(&col, ascdData + pos, 2); pos += 2;
+	memcpy(bg, ascdData + pos, 4); pos += 4;
+	memcpy(fg, ascdData + pos, 4); pos += 4;
+	(void)fg;
+
+	outCell->Set(col, row);
+	outBg->red = bg[0]; outBg->green = bg[1]; outBg->blue = bg[2]; outBg->alpha = bg[3];
+	return true;
+}
+
 static bool ReadFirstBorderColorFromAscdForTest(const unsigned char* ascdData, size_t ascdLen,
 	cell* outCell, rgb_color* outColor)
 {
@@ -6463,6 +6516,98 @@ int main()
 				&& rtBorderColor.red == 255 && rtBorderColor.green == 0 && rtBorderColor.blue == 0,
 				"dopo il giro ASCD -> ASCD attraverso questo translator, il colore del bordo "
 				"si ritrova ancora rosso su B2 (non piu' scartato da ReadASCD ne' azzerato da WriteASCD)");
+		}
+	}
+
+	// Legacy indexed color palette (indexed="N" on a fill/font/border
+	// color): the fixed Excel 97-2003 palette, resolved as a fallback
+	// when neither rgb= nor theme= is present. index 2 in that palette
+	// is pure red ("FF0000") -- verified end to end (real XLSX -> ASCD
+	// import), not just the palette table in isolation.
+	{
+		static const char kIndexedContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>\n"
+			"</Types>\n";
+		static const char kIndexedRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kIndexedWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kIndexedWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kIndexedSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<sheetData><row r=\"1\"><c r=\"A1\" s=\"1\"><v>9</v></c></row></sheetData>\n"
+			"</worksheet>\n";
+		static const char kIndexedStyles[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
+			"<fonts count=\"1\"><font><name val=\"Calibri\"/></font></fonts>\n"
+			"<fills count=\"3\"><fill><patternFill patternType=\"none\"/></fill>"
+			"<fill><patternFill patternType=\"gray125\"/></fill>"
+			"<fill><patternFill patternType=\"solid\"><fgColor indexed=\"2\"/><bgColor indexed=\"64\"/></patternFill></fill></fills>\n"
+			"<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>\n"
+			"<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>\n"
+			"<cellXfs count=\"2\">"
+			"<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>"
+			"<xf numFmtId=\"0\" fontId=\"0\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFill=\"1\"/>"
+			"</cellXfs>\n"
+			"</styleSheet>\n";
+
+		BMallocIO indexedXlsx;
+		CZipWriter indexedZip;
+		indexedZip.Begin(&indexedXlsx);
+		indexedZip.AddEntry("[Content_Types].xml", kIndexedContentTypes, strlen(kIndexedContentTypes));
+		indexedZip.AddEntry("_rels/.rels", kIndexedRootRels, strlen(kIndexedRootRels));
+		indexedZip.AddEntry("xl/workbook.xml", kIndexedWorkbook, strlen(kIndexedWorkbook));
+		indexedZip.AddEntry("xl/_rels/workbook.xml.rels", kIndexedWorkbookRels, strlen(kIndexedWorkbookRels));
+		indexedZip.AddEntry("xl/worksheets/sheet1.xml", kIndexedSheet, strlen(kIndexedSheet));
+		indexedZip.AddEntry("xl/styles.xml", kIndexedStyles, strlen(kIndexedStyles));
+		Check(indexedZip.Close(), "costruzione del file XLSX di prova con fgColor indexed=\"2\" riuscita");
+
+		indexedXlsx.Seek(0, SEEK_SET);
+		translator_info indexedInfo;
+		err = translator->Identify(&indexedXlsx, NULL, NULL, &indexedInfo, 0);
+		Check(err == B_OK && indexedInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con colore indicizzato");
+
+		indexedXlsx.Seek(0, SEEK_SET);
+		BMallocIO indexedAscdOut;
+		err = translator->Translate(&indexedXlsx, &indexedInfo, NULL, kAtomoNativeFormat, &indexedAscdOut);
+		Check(err == B_OK, "Translate del file di prova con colore indicizzato riesce");
+
+		const unsigned char* indexedAscdData = NULL;
+		size_t indexedAscdLen = 0;
+		bool indexedUnwrapped = UnwrapFirstSheet((const unsigned char*)indexedAscdOut.Buffer(),
+			indexedAscdOut.BufferLength(), &indexedAscdData, &indexedAscdLen);
+		Check(indexedUnwrapped, "l'output di Translate con colore indicizzato e' un ASCD valido");
+
+		if (indexedUnwrapped)
+		{
+			cell importedCell;
+			rgb_color importedBg = { 0, 0, 0, 0 };
+			bool colorRead = ReadFirstCellColorFromAscdForTest(indexedAscdData, indexedAscdLen,
+				&importedCell, &importedBg);
+			Check(colorRead && importedCell == cell(1, 1),
+				"il colore indicizzato importato e' ancorato ad A1");
+			Check(colorRead && importedBg.red == 255 && importedBg.green == 0 && importedBg.blue == 0,
+				"indexed=\"2\" risolve al rosso puro (FF0000) della tavolozza Excel 97-2003, "
+				"non piu' al colore predefinito del motore");
 		}
 	}
 
