@@ -1100,3 +1100,16 @@ What shipped since v0.2.8, not yet in a tagged release:
   attribute, legacy XLS XF vertical bits). Fixed alongside: XLSX import
   dropped an explicit font size unless the font was also bold or italic,
   so a plain Calibri 11 title rendered at the system default size instead.
+- Added `Benvenuto.xlsx`, a demonstration workbook bundled with the
+  app installation (`documentation/Atomo123/Benvenuto.xlsx` in the
+  packaged tree — see `packaging/build-hpkg.sh`) and reachable from
+  File → "Apri file di esempio" in the app itself. Five sheets: a
+  welcome/index page, a budget with formulas, a named range,
+  colour-scale conditional formatting and a line chart, a real Excel
+  structured table with a totals row and list-based data validation, a
+  bar/pie chart gallery, and a dynamic-array/cross-sheet-formula
+  showcase. Built with openpyxl (BSD-licensed, not a real user's file)
+  and is what directly surfaced the three import gaps above — every
+  feature in it was chosen to already be supported by this translator,
+  verified section by section against this session's own XML output
+  rather than assumed.

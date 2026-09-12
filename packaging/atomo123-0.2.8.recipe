@@ -93,4 +93,12 @@ INSTALL()
 	cp translators/xls/XlsTranslator $addOnsDir/Translators/
 	cp translators/xlsx/XlsxTranslator $addOnsDir/Translators/
 	cp translators/ods/OdsTranslator $addOnsDir/Translators/
+
+	# File dimostrativo (vedi CHANGELOG.md): stesso percorso di
+	# packaging/build-hpkg.sh (usato per un test locale prima di questa
+	# vera recipe), cercato a runtime da MainWindow::kMsgOpenSample
+	# (File -> "Apri file di esempio") in
+	# find_directory(B_SYSTEM_DOCUMENTATION_DIRECTORY) + "Atomo123/".
+	mkdir -p $documentationDir/Atomo123
+	cp packaging/Benvenuto.xlsx $documentationDir/Atomo123/Benvenuto.xlsx
 }

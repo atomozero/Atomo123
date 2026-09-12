@@ -43,18 +43,26 @@ echo "== Preparazione dell'albero del pacchetto =="
 rm -rf "$WORKDIR"
 mkdir -p "$WORKDIR/apps/Atomo123"
 mkdir -p "$WORKDIR/add-ons/Translators"
+mkdir -p "$WORKDIR/documentation/Atomo123"
 cp ui/Atomo123 "$WORKDIR/apps/Atomo123/Atomo123"
 cp translators/csv/CsvTranslator "$WORKDIR/add-ons/Translators/"
 cp translators/xls/XlsTranslator "$WORKDIR/add-ons/Translators/"
 cp translators/xlsx/XlsxTranslator "$WORKDIR/add-ons/Translators/"
 cp translators/ods/OdsTranslator "$WORKDIR/add-ons/Translators/"
+# File dimostrativo (vedi CHANGELOG.md): "documentation/" e' la
+# cartella standard di packagefs per contenuti non eseguibili come
+# questo, montata da ogni pacchetto in /boot/system/documentation/.
+# MainWindow::kMsgOpenSample (File -> "Apri file di esempio") lo cerca
+# in $vendorDataDir (find_directory(B_SYSTEM_DOCUMENTATION_DIRECTORY))
+# + "Atomo123/Benvenuto.xlsx", esattamente questo percorso.
+cp packaging/Benvenuto.xlsx "$WORKDIR/documentation/Atomo123/Benvenuto.xlsx"
 
 cat > "$WORKDIR/.PackageInfo" <<EOF
 name			atomo123
 version			$VERSION
 architecture		x86_64
 summary			"Foglio di calcolo nativo per Haiku OS"
-description		"Atomo123 e' un'applicazione foglio di calcolo (stile Excel) nativa per Haiku OS, scritta con le API native (Interface/Layout Kit, Locale Kit, Print Kit, Translation Kit). E' compatibile con i file generati da Microsoft Excel (XLS/XLSX) e OpenOffice/LibreOffice (ODS/CSV) tramite add-on di conversione basati sul Translation Kit di sistema. Il motore di calcolo e l'importer Excel legacy riusano e modernizzano il codice storico BeOS del progetto Sum-It, portato a compilare su Haiku moderno a 64 bit; la UI e' scritta da zero in Interface/Layout Kit."
+description		"Atomo123 e' un'applicazione foglio di calcolo (stile Excel) nativa per Haiku OS, scritta con le API native (Interface/Layout Kit, Locale Kit, Print Kit, Translation Kit). E' compatibile con i file generati da Microsoft Excel (XLS/XLSX) e OpenOffice/LibreOffice (ODS/CSV) tramite add-on di conversione basati sul Translation Kit di sistema. Il motore di calcolo e l'importer Excel legacy riusano e modernizzano il codice storico BeOS del progetto Sum-It, portato a compilare su Haiku moderno a 64 bit; la UI e' scritta da zero in Interface/Layout Kit. Include un file dimostrativo (Benvenuto.xlsx, apribile da File -> \"Apri file di esempio\") con un giro fra le funzionalita' principali."
 packager		"Andrea Bernardi <atomozero@proton.me>"
 vendor			"Andrea Bernardi"
 licenses {
@@ -73,6 +81,9 @@ requires {
 	haiku
 }
 urls {
+	"https://github.com/atomozero/Atomo123"
+}
+source-urls {
 	"https://github.com/atomozero/Atomo123"
 }
 EOF
