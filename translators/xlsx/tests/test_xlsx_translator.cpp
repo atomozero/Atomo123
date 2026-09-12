@@ -2685,14 +2685,26 @@ int main()
 
 						// Intervalli con nome ("100% XLSX standard
 						// compatibility" plan): un conteggio (qui zero,
-						// sample.xlsx non ha <definedNames>), ORA
-						// l'ULTIMA sezione del formato.
+						// sample.xlsx non ha <definedNames>).
 						if (pos + 4 <= ascdLen)
 						{
 							int32 nameCount;
 							memcpy(&nameCount, ascdData + pos, 4); pos += 4;
 							Check(nameCount == 0,
 								"nessun intervallo con nome in sample.xlsx, il conteggio e' zero");
+						}
+
+						// Allineamento verticale non predefinito (Fase
+						// "Add vertical cell alignment"): un conteggio
+						// (qui zero, sample.xlsx non ha celle con
+						// allineamento verticale esplicito), ORA
+						// l'ULTIMA sezione del formato.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 valignCount;
+							memcpy(&valignCount, ascdData + pos, 4); pos += 4;
+							Check(valignCount == 0,
+								"nessun allineamento verticale esplicito in sample.xlsx, il conteggio e' zero");
 						}
 
 						// sample.xlsx e' un solo foglio: dopo tutte le
@@ -6352,7 +6364,7 @@ int main()
 		static const char kBorderColorStyles[] =
 			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 			"<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
-			"<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>\n"
+			"<fonts count=\"1\"><font><name val=\"Calibri\"/></font></fonts>\n"
 			"<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill>"
 			"<fill><patternFill patternType=\"gray125\"/></fill></fills>\n"
 			"<borders count=\"2\">"
