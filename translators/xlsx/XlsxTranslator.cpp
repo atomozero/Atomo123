@@ -5738,6 +5738,32 @@ static void XMLCALL RelationshipsStart(void* userData, const char* name, const c
 		else if (strcmp(atts[i], "Target") == 0)
 			target = atts[i + 1];
 	}
+
+	// Un target "package-relative" (radice "/", es. "/xl/worksheets/
+	// sheet1.xml") e' legale quanto uno "part-relative" per lo standard
+	// OPC (ECMA-376 parte 2) -- ma ogni chiamante di ParseRelationships
+	// (workbook.xml.rels per l'elenco fogli, i _rels di un foglio per
+	// tabelle/commenti/collegamenti, i _rels di un disegno per media/
+	// grafici) si aspetta un target relativo alla CARTELLA "xl/" (con
+	// un eventuale prefisso "../" da un livello piu' in profondita',
+	// gia' gestito da ciascun chiamante), mai un percorso assoluto:
+	// bug reale, non solo teorico -- openpyxl (libreria Python molto
+	// diffusa per generare file XLSX via script, non un caso raro)
+	// scrive SEMPRE questa forma per fogli/tabelle/commenti/disegni/
+	// grafici. Senza questa normalizzazione un file XLSX scritto da
+	// openpyxl importava come se avesse un solo foglio (nessuna voce
+	// di workbook.xml.rels risolveva mai il proprio r:id, dato che
+	// "/xl/worksheets/sheet1.xml" non e' mai un valore presente nella
+	// mappa costruita altrove sommando "xl/" + target), perdendo ogni
+	// altro foglio in silenzio -- oltre a scartare tabelle/commenti/
+	// disegni per lo stesso motivo. Tolto qui, una volta sola, invece
+	// che in ciascuno dei chiamanti: "/xl/" e' sempre 4 caratteri
+	// fissi (mai "/xl" da solo, mai un prefisso diverso in questo
+	// pacchetto), quindi il confronto resta uno stesso identico
+	// prefisso letterale ovunque compaia.
+	if (target.compare(0, 4, "/xl/") == 0)
+		target = target.substr(4);
+
 	if (!id.empty() && !target.empty())
 		(*map)[id] = target;
 }
@@ -6168,9 +6194,44 @@ struct DrawingContext {
 	std::string numText;
 };
 
+// openpyxl (libreria Python molto diffusa per generare file XLSX via
+// script, non un caso raro) dichiara lo spazio dei nomi di disegno
+// (drawingml/spreadsheetDrawing, "xdr") o di grafico (drawingml/chart,
+// "c") come PREDEFINITO sull'elemento radice (xmlns="...") invece che
+// con il prefisso convenzionale che Excel/LibreOffice usano sempre e
+// che ogni confronto qui sotto (DrawingStart/End, ChartXmlStart/End)
+// si aspetta letteralmente -- questo file analizza l'XML senza
+// elaborazione degli spazi dei nomi (XML_ParserCreate(NULL), come il
+// resto del translator), quindi "oneCellAnchor" e "c:oneCellAnchor"
+// sono per expat due nomi diversi, non lo stesso elemento in due
+// notazioni equivalenti. "a:" invece resta SEMPRE esplicito anche in
+// openpyxl (mai un elemento drawingml/main senza prefisso in pratica),
+// quindi un nome senza ":" visto in uno di questi contesti appartiene
+// sempre al namespace "di base" di quel contesto (xdr per i disegni, c
+// per i grafici), mai a "a:". Senza questa normalizzazione, un file
+// XLSX scritto da uno script del genere avrebbe ogni immagine/grafico
+// incorporato con ancoraggio non riconosciuto (dimensione/posizione a
+// zero) o un grafico "di tipo non riconosciuto" per un <c:barChart>/
+// <c:lineChart>/<c:pieChart> mai raggiunto -- bug reale, non solo
+// teorico, scoperto costruendo un file dimostrativo con openpyxl.
+// "scratch" deve restare vivo per tutto il resto della funzione
+// chiamante: e' li' che punta il valore restituito quando il prefisso
+// viene aggiunto.
+static const char* QualifyElementName(const char* name, const char* defaultPrefix,
+	std::string& scratch)
+{
+	if (strchr(name, ':'))
+		return name;
+	scratch = defaultPrefix;
+	scratch += name;
+	return scratch.c_str();
+}
+
 static void XMLCALL DrawingStart(void* userData, const char* name, const char** atts)
 {
 	DrawingContext* ctx = (DrawingContext*)userData;
+	std::string qualifiedName;
+	name = QualifyElementName(name, "xdr:", qualifiedName);
 
 	if (strcmp(name, "xdr:twoCellAnchor") == 0 || strcmp(name, "xdr:oneCellAnchor") == 0
 		|| strcmp(name, "xdr:absoluteAnchor") == 0)
@@ -6247,6 +6308,8 @@ static void XMLCALL DrawingStart(void* userData, const char* name, const char** 
 static void XMLCALL DrawingEnd(void* userData, const char* name)
 {
 	DrawingContext* ctx = (DrawingContext*)userData;
+	std::string qualifiedName;
+	name = QualifyElementName(name, "xdr:", qualifiedName);
 
 	if (strcmp(name, "xdr:twoCellAnchor") == 0 || strcmp(name, "xdr:oneCellAnchor") == 0
 		|| strcmp(name, "xdr:absoluteAnchor") == 0)
@@ -6572,6 +6635,8 @@ struct ChartXmlContext {
 static void XMLCALL ChartXmlStart(void* userData, const char* name, const char** atts)
 {
 	ChartXmlContext* ctx = (ChartXmlContext*)userData;
+	std::string qualifiedName;
+	name = QualifyElementName(name, "c:", qualifiedName);
 
 	if (strcmp(name, "c:barChart") == 0)
 	{
@@ -6633,6 +6698,8 @@ static void XMLCALL ChartXmlStart(void* userData, const char* name, const char**
 static void XMLCALL ChartXmlEnd(void* userData, const char* name)
 {
 	ChartXmlContext* ctx = (ChartXmlContext*)userData;
+	std::string qualifiedName;
+	name = QualifyElementName(name, "c:", qualifiedName);
 
 	if (strcmp(name, "c:cat") == 0 || strcmp(name, "c:val") == 0)
 		ctx->kind = ChartXmlContext::eNone;
