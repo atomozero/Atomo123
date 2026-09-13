@@ -82,14 +82,18 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		B_TRANSLATE("Una sola pagina"), new BMessage(kMsgScaleModeChanged));
 	fScalePercentRadio->SetValue(B_CONTROL_ON);
 
-	// Intestazioni di riga/colonna nella stampa (numeri/lettere): come
-	// in Excel ("Stampa titoli"/"Intestazioni"), di default attive per
-	// conservare l'aspetto di sempre -- ogni cambio rigenera solo
-	// l'anteprima (kMsgFieldChanged), come i campi di testo.
+	// Intestazioni di riga/colonna e griglia nella stampa: come in Excel
+	// ("Stampa titoli"/griglia), di default attive per conservare
+	// l'aspetto di sempre -- ogni cambio rigenera solo l'anteprima
+	// (kMsgFieldChanged), come i campi di testo.
 	fPrintHeadersBox = new BCheckBox("printHeaders",
 		B_TRANSLATE("Stampa intestazioni righe/colonne"),
 		new BMessage(kMsgFieldChanged));
 	fPrintHeadersBox->SetValue(B_CONTROL_ON);
+	fPrintGridBox = new BCheckBox("printGrid",
+		B_TRANSLATE("Stampa griglia"),
+		new BMessage(kMsgFieldChanged));
+	fPrintGridBox->SetValue(B_CONTROL_ON);
 
 	BBox* scaleBox = new BBox("scaleBox");
 	scaleBox->SetLabel(B_TRANSLATE("Scala"));
@@ -104,11 +108,12 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.Add(fScaleFitHeightRadio)
 		.Add(fScaleFitBothRadio);
 
-	BBox* headersBox = new BBox("headersBox");
-	headersBox->SetLabel(B_TRANSLATE("Intestazioni"));
-	BLayoutBuilder::Group<>(headersBox, B_VERTICAL, 6)
-		.SetInsets(8, headersBox->TopBorderOffset() + 8, 8, 8)
-		.Add(fPrintHeadersBox);
+	BBox* printBox = new BBox("printBox");
+	printBox->SetLabel(B_TRANSLATE("Stampa"));
+	BLayoutBuilder::Group<>(printBox, B_VERTICAL, 6)
+		.SetInsets(8, printBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fPrintHeadersBox)
+		.Add(fPrintGridBox);
 
 	fPreviewView = new PrintPreviewView();
 
@@ -139,7 +144,7 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 			.AddGroup(B_VERTICAL, 8)
 				.Add(marginsBox)
 				.Add(scaleBox)
-				.Add(headersBox)
+				.Add(printBox)
 				.AddGlue()
 			.End()
 		.End()
@@ -159,39 +164,40 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	fScaleFitHeightRadio->SetTarget(this);
 	fScaleFitBothRadio->SetTarget(this);
 	fPrintHeadersBox->SetTarget(this);
+	fPrintGridBox->SetTarget(this);
 	fPrevPageButton->SetTarget(this);
 	fNextPageButton->SetTarget(this);
 	printButton->SetTarget(this);
 	applyButton->SetTarget(this);
 }
 
-void PageSetupWindow::SetValues(double marginTop, double marginBottom, double marginLeft,
-	double marginRight, int scaleMode, double scalePercent, bool printHeaders)
+void PageSetupWindow::SetValues(const AscdPrintSettings& settings)
 {
 	BString s;
-	s << marginTop;
+	s << settings.marginTopCm;
 	fMarginTopField->SetText(s.String());
 	s = "";
-	s << marginBottom;
+	s << settings.marginBottomCm;
 	fMarginBottomField->SetText(s.String());
 	s = "";
-	s << marginLeft;
+	s << settings.marginLeftCm;
 	fMarginLeftField->SetText(s.String());
 	s = "";
-	s << marginRight;
+	s << settings.marginRightCm;
 	fMarginRightField->SetText(s.String());
 
 	s = "";
-	s << scalePercent;
+	s << settings.scalePercent;
 	fScalePercentField->SetText(s.String());
 
-	fScalePercentRadio->SetValue(scaleMode == 0 ? B_CONTROL_ON : B_CONTROL_OFF);
-	fScaleFitWidthRadio->SetValue(scaleMode == 1 ? B_CONTROL_ON : B_CONTROL_OFF);
-	fScaleFitHeightRadio->SetValue(scaleMode == 2 ? B_CONTROL_ON : B_CONTROL_OFF);
-	fScaleFitBothRadio->SetValue(scaleMode == 3 ? B_CONTROL_ON : B_CONTROL_OFF);
-	fScalePercentField->SetEnabled(scaleMode == 0);
+	fScalePercentRadio->SetValue(settings.scaleMode == 0 ? B_CONTROL_ON : B_CONTROL_OFF);
+	fScaleFitWidthRadio->SetValue(settings.scaleMode == 1 ? B_CONTROL_ON : B_CONTROL_OFF);
+	fScaleFitHeightRadio->SetValue(settings.scaleMode == 2 ? B_CONTROL_ON : B_CONTROL_OFF);
+	fScaleFitBothRadio->SetValue(settings.scaleMode == 3 ? B_CONTROL_ON : B_CONTROL_OFF);
+	fScalePercentField->SetEnabled(settings.scaleMode == 0);
 
-	fPrintHeadersBox->SetValue(printHeaders ? B_CONTROL_ON : B_CONTROL_OFF);
+	fPrintHeadersBox->SetValue(settings.printHeaders ? B_CONTROL_ON : B_CONTROL_OFF);
+	fPrintGridBox->SetValue(settings.printGrid ? B_CONTROL_ON : B_CONTROL_OFF);
 }
 
 void PageSetupWindow::SetPreviewPages(std::vector<BBitmap*> pages)
@@ -251,6 +257,7 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 		scalePercent = 100;
 
 	bool printHeaders = fPrintHeadersBox->Value() == B_CONTROL_ON;
+	bool printGrid = fPrintGridBox->Value() == B_CONTROL_ON;
 
 	BMessage request(what);
 	request.AddDouble("marginTop", marginTop);
@@ -260,6 +267,7 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 	request.AddInt32("scaleMode", scaleMode);
 	request.AddDouble("scalePercent", scalePercent);
 	request.AddBool("printHeaders", printHeaders);
+	request.AddBool("printGrid", printGrid);
 	return request;
 }
 

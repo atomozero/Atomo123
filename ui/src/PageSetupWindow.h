@@ -43,6 +43,8 @@
 
 #include <vector>
 
+#include "AscdIO.h"
+
 const uint32 kMsgPageSetupRequest = 'psrq';
 // Anteprima (Fase 28): stessi sette campi di kMsgPageSetupRequest, ma i
 // valori ANCORA IN MODIFICA nel dialogo (mai persistiti in gPrefs) --
@@ -65,11 +67,11 @@ class PageSetupWindow : public BWindow {
 public:
 	PageSetupWindow(BMessenger target);
 
-	// Precompila i controlli con lo stato corrente (letto da gPrefs da
-	// MainWindow prima di mostrare la finestra) -- stesso motivo di
-	// PreferencesWindow::SetValues.
-	void SetValues(double marginTop, double marginBottom, double marginLeft,
-		double marginRight, int scaleMode, double scalePercent, bool printHeaders);
+	// Precompila i controlli con lo stato corrente (letto da MainWindow
+	// prima di mostrare la finestra) -- stesso motivo di
+	// PreferencesWindow::SetValues. Viaggia come struct intera per
+	// restare estendibile a ogni nuova opzione senza cambiare firma.
+	void SetValues(const AscdPrintSettings& settings);
 
 	// Prende possesso delle bitmap passate (vedi PrintPreviewView::
 	// SetPages) e torna a mostrare la prima pagina -- chiamata da
@@ -92,13 +94,14 @@ private:
 	BRadioButton* fScaleFitBothRadio;
 	BTextControl* fScalePercentField;
 	BCheckBox* fPrintHeadersBox;
+	BCheckBox* fPrintGridBox;
 	PrintPreviewView* fPreviewView;
 	BStringView* fPageLabel;
 	BButton* fPrevPageButton;
 	BButton* fNextPageButton;
 	BMessenger fTarget;
 
-	// Legge e convalida i sette campi (stessi limiti gia' applicati da
+	// Legge e convalida tutti i campi (stessi limiti gia' applicati da
 	// kMsgApplyLocal: margini mai negativi, percentuale in [10,400]) in
 	// un unico posto -- usata da "Applica"/"Stampa..." (persistono, "what"
 	// = kMsgPageSetupRequest/kMsgPageSetupPrintRequest) e da ogni

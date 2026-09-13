@@ -968,15 +968,22 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	// Sezione margini/scala di "Imposta pagina", in coda (Fase 29,
 	// vedi AscdPrintSettings in AscdIO.h): un byte "presente si'/no"
 	// seguito da quattro margini (cm), la modalita' di scala, la
-	// percentuale e -- aggiunta dopo -- la coppia magic+flag "stampa
-	// intestazioni" ('H' + 0/1), sempre scritti. Il magic serve a
-	// distinguere un file nuovo da uno scritto prima di quel flag (che
-	// dopo scalePercent ha subito il primo byte della sezione
-	// successiva, sempre 0/1): senza magic, i due formati sarebbero
-	// indistinguibili in lettura. Stesso principio "singolo valore"
-	// delle altre sezioni sopra. "has"=0 (nessuna impostazione propria
-	// per questo foglio, il caso comune) scrive comunque i valori
-	// predefiniti di AscdPrintSettings, mai byte a caso.
+	// percentuale e -- aggiunta dopo -- una coda versionata con lunghezza
+	// esplicita ('G' + int32 + payload), sempre scritti. Il magic 'G' (e
+	// prima 'H', vedi il lettore sotto) serve a distinguere un file nuovo
+	// da uno scritto prima della coda (che dopo scalePercent ha subito il
+	// primo byte della sezione successiva, sempre 0/1): senza magic, i
+	// formati sarebbero indistinguibili in lettura. La lunghezza esplicita
+	// permette invece al lettore di SALTARE campi futuri che non conosce,
+	// restando allineato per le sezioni successive. Stesso principio
+	// "singolo valore" delle altre sezioni sopra. "has"=0 (nessuna
+	// impostazione propria per questo foglio, il caso comune) scrive
+	// comunque i valori predefiniti di AscdPrintSettings, mai byte a caso.
+	//
+	// Payload v1: uint8 versione (=1) + uint8 flag (bit0 intestazioni,
+	// bit1 griglia). Le versioni successive aggiungono campi IN CODA al
+	// payload (v2: fitWide/fitTall, ...) e avanzano la versione -- vedi
+	// AscdIO.h sui campi e il lettore sotto sullo skip.
 	{
 		AscdPrintSettings ps = (printSettings) ? *printSettings : AscdPrintSettings();
 		uint8 has = ps.hasSettings ? 1 : 0;
@@ -984,8 +991,10 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			marginLeft = ps.marginLeftCm, marginRight = ps.marginRightCm;
 		int32 scaleMode = ps.scaleMode;
 		double scalePercent = ps.scalePercent;
-		uint8 magic = 'H';
-		uint8 headers = ps.printHeaders ? 1 : 0;
+		uint8 magic = 'G';
+		int32 tailLen = 2;
+		uint8 version = 1;
+		uint8 flags = (ps.printHeaders ? 0x01 : 0x00) | (ps.printGrid ? 0x02 : 0x00);
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
 			|| dest->Write(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
 			|| dest->Write(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
@@ -994,7 +1003,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			|| dest->Write(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
 			|| dest->Write(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent)
 			|| dest->Write(&magic, sizeof(magic)) != (ssize_t)sizeof(magic)
-			|| dest->Write(&headers, sizeof(headers)) != (ssize_t)sizeof(headers))
+			|| dest->Write(&tailLen, sizeof(tailLen)) != (ssize_t)sizeof(tailLen)
+			|| dest->Write(&version, sizeof(version)) != (ssize_t)sizeof(version)
+			|| dest->Write(&flags, sizeof(flags)) != (ssize_t)sizeof(flags))
 			return B_IO_ERROR;
 	}
 
@@ -2228,17 +2239,15 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// stesso schema EOF-tollerante delle sezioni sopra. Un file scritto
 	// prima di questa sezione lascia AscdPrintSettings::hasSettings a
 	// false: MainWindow ricade sulla preferenza globale (gPrefs), lo
-	// stesso comportamento di prima di questa fase. La coppia
-	// magic+flag "stampa intestazioni" ('H' + 0/1) e' stata aggiunta
-	// dopo: un file scritto fra la Fase 29 e quel flag ha dopo
-	// scalePercent subito il primo byte della sezione successiva (un
-	// "presente si'/no", quindi sempre 0/1, mai 'H') -- in quel caso il
-	// byte va RESTITUITO allo stream (Seek indietro, vedi sotto) e
-	// printHeaders resta al default true, cioe' il comportamento di
-	// sempre (intestazioni stampate). EOF subito dopo scalePercent:
-	// vecchio formato troncato proprio qui oppure stream finito -- in
-	// entrambi i casi default true e le sezioni successive restano ai
-	// loro default via i loro stessi controlli EOF sotto.
+	// stesso comportamento di prima di questa fase. Dopo scalePercent
+	// segue una coda opzionale con magic: niente (file Fase 29 -- il byte
+	// letto appartiene alla sezione successiva e va RESTITUITO con Seek,
+	// vedi sotto), 'H' + un flag (formato breve delle intestazioni,
+	// superato), oppure 'G' + int32 di lunghezza + payload versionato
+	// (formato corrente, vedi il writer sopra e AscdIO.h). La lunghezza
+	// esplicita permette di SALTARE i campi di versioni future senza
+	// perdere l'allineamento. In tutti i casi di formato vecchio i flag
+	// assenti restano ai default true (comportamento di sempre).
 	{
 		uint8 has = 0;
 		ssize_t got = source->Read(&has, sizeof(has));
@@ -2258,6 +2267,7 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				return B_BAD_DATA;
 
 			bool printHeaders = true;
+			bool printGrid = true;
 			uint8 marker = 0;
 			ssize_t mgot = source->Read(&marker, sizeof(marker));
 			if (mgot != 0)
@@ -2272,10 +2282,45 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						return B_BAD_DATA;
 					printHeaders = headers != 0;
 				}
+				else if (marker == 'G')
+				{
+					int32 tailLen = 0;
+					if (source->Read(&tailLen, sizeof(tailLen)) != (ssize_t)sizeof(tailLen)
+						|| tailLen < 0 || tailLen > 1024)
+						return B_BAD_DATA;
+					off_t tailStart = source->Position();
+					if (tailStart < 0)
+						return B_BAD_DATA;
+					uint8 version = 0;
+					if (tailLen >= 1)
+					{
+						if (source->Read(&version, sizeof(version))
+							!= (ssize_t)sizeof(version))
+							return B_BAD_DATA;
+					}
+					if (version >= 1 && tailLen >= 2)
+					{
+						uint8 flags = 0;
+						if (source->Read(&flags, sizeof(flags)) != (ssize_t)sizeof(flags))
+							return B_BAD_DATA;
+						printHeaders = (flags & 0x01) != 0;
+						printGrid = (flags & 0x02) != 0;
+						// I bit futuri (centratura, ordine pagine, ...)
+						// si leggono con la loro versione, qui vengono
+						// semplicemente ignorati -- i default true sopra
+						// valgono solo per i flag ASSENTI, mai per quelli
+						// presenti a zero.
+					}
+					// Salta eventuali campi di versioni future: la coda
+					// resta allineata per le sezioni successive qualunque
+					// cosa contenga.
+					if (source->Seek(tailStart + tailLen, SEEK_SET) < 0)
+						return B_BAD_DATA;
+				}
 				else
 				{
-					// Vecchio formato: il byte appartiene alla sezione
-					// successiva, va rimesso al suo posto -- Seek
+					// Vecchio formato Fase 29: il byte appartiene alla
+					// sezione successiva, va rimesso al suo posto -- Seek
 					// indietro di un byte (stesso schema gia' usato in
 					// IsASCDFile/LoadASCDBook in questo file).
 					if (source->Seek(-(off_t)sizeof(marker), SEEK_CUR) < 0)
@@ -2293,8 +2338,9 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				printSettings->scaleMode = scaleMode;
 				printSettings->scalePercent = scalePercent;
 				printSettings->printHeaders = printHeaders;
+				printSettings->printGrid = printGrid;
 			}
-			// Nota: gli eventuali byte magic+flag vengono consumati dallo
+			// Nota: gli eventuali byte di coda vengono consumati dallo
 			// stream anche quando printSettings e' NULL (se presenti nel
 			// file), cosi' la posizione resta allineata per le sezioni
 			// successive -- stesso principio "consuma comunque" delle

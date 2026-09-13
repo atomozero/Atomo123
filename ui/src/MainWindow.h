@@ -316,32 +316,30 @@ public:
 		bool showSplash, char thousandSep, const char* currencySymbol,
 		bool autoSaveEnabled, int autoSaveIntervalMinutes);
 
-	// Margini/scala di stampa (Fase 27, resi per-foglio in Fase 29):
-	// persistiti in fSheets[fActiveSheetIndex].printSettings (vedi
+	// Impostazioni di "Imposta pagina" (Fase 27, rese per-foglio in Fase
+	// 29): persistite in fSheets[fActiveSheetIndex].printSettings (vedi
 	// AscdPrintSettings in AscdIO.h) E ANCHE in gPrefs -- gPrefs resta
 	// il valore di ripiego per qualunque foglio che non abbia ancora
 	// una propria impostazione (un file scritto prima di questa fase,
 	// o un foglio nuovo mai passato da "Imposta pagina"), vedi
-	// GetActivePrintSettings sotto. printHeaders ("Stampa intestazioni
-	// righe/colonne") segue lo stesso identico schema per-foglio.
-	void HandlePageSetupRequest(double marginTop, double marginBottom, double marginLeft,
-		double marginRight, int scaleMode, double scalePercent, bool printHeaders);
-	// Anteprima (Fase 28): stessi sette parametri, ma NON persistiti --
+	// GetActivePrintSettings sotto. Viaggiano come struct intera (non
+	// piu' come parametri sciolti) per restare estendibili a ogni nuova
+	// opzione del dialogo senza cambiare firma a ogni fase.
+	void HandlePageSetupRequest(const AscdPrintSettings& settings);
+	// Anteprima (Fase 28): stesse impostazioni, ma NON persistite --
 	// rigenera solo le bitmap di anteprima e le manda a
 	// fPageSetupWindow, vedi GeneratePrintPreviewPages.
-	void HandlePageSetupPreviewRequest(double marginTop, double marginBottom, double marginLeft,
-		double marginRight, int scaleMode, double scalePercent, bool printHeaders);
-	// Margini/scala/intestazioni EFFETTIVI del foglio attivo (Fase 29):
-	// quelli propri del foglio se mai impostati
-	// (fSheets[fActiveSheetIndex].printSettings.hasSettings), altrimenti
-	// la preferenza globale (gPrefs) -- stesso identico fallback per
-	// ShowPageSetupWindow (valori iniziali del dialogo) e
-	// ComputePrintJobLayoutForActiveSheet (stampa/anteprima vera),
-	// centralizzato qui per non duplicare la logica di fallback in due
-	// punti diversi.
-	void GetActivePrintSettings(double* marginTop, double* marginBottom, double* marginLeft,
-		double* marginRight, int* scaleMode, double* scalePercent,
-		bool* printHeaders) const;
+	void HandlePageSetupPreviewRequest(const AscdPrintSettings& settings);
+	// Impostazioni EFFETTIVE del foglio attivo (Fase 29): quelle proprie
+	// del foglio se mai impostate (fSheets[fActiveSheetIndex].
+	// printSettings.hasSettings), altrimenti la preferenza globale
+	// (gPrefs) -- stesso identico fallback per ShowPageSetupWindow
+	// (valori iniziali del dialogo) e ComputePrintJobLayoutForActiveSheet
+	// (stampa/anteprima vera), centralizzato qui per non duplicare la
+	// logica di fallback in due punti diversi. Riempie sempre TUTTI i
+	// campi di "out" (mai parziale), con hasSettings copiato dal foglio
+	// o false nel ramo globale.
+	void GetActivePrintSettings(AscdPrintSettings* out) const;
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che
@@ -772,9 +770,7 @@ private:
 	// -- MAI ConfigJob(), l'anteprima non deve mai aprire un dialogo.
 	// Se non c'e' nessuna stampante predefinita (rettangolo non valido),
 	// si ripiega su un A4 a 72dpi invece di mostrare "Nessuna anteprima".
-	std::vector<BBitmap*> GeneratePrintPreviewPages(double marginTop, double marginBottom,
-		double marginLeft, double marginRight, int scaleMode, double scalePercent,
-		bool printHeaders);
+	std::vector<BBitmap*> GeneratePrintPreviewPages(const AscdPrintSettings& settings);
 	void ShowFindWindow();
 	void ShowChartWindow();
 	void ShowPivotWindow();

@@ -3481,34 +3481,28 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 	}
 }
 
-void MainWindow::GetActivePrintSettings(double* marginTop, double* marginBottom,
-	double* marginLeft, double* marginRight, int* scaleMode, double* scalePercent,
-	bool* printHeaders) const
+void MainWindow::GetActivePrintSettings(AscdPrintSettings* out) const
 {
 	if (fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size()
 		&& fSheets[fActiveSheetIndex].printSettings.hasSettings)
 	{
-		const AscdPrintSettings& ps = fSheets[fActiveSheetIndex].printSettings;
-		*marginTop = ps.marginTopCm;
-		*marginBottom = ps.marginBottomCm;
-		*marginLeft = ps.marginLeftCm;
-		*marginRight = ps.marginRightCm;
-		*scaleMode = ps.scaleMode;
-		*scalePercent = ps.scalePercent;
-		*printHeaders = ps.printHeaders;
+		*out = fSheets[fActiveSheetIndex].printSettings;
 		return;
 	}
 
 	// Nessuna impostazione propria per questo foglio: ripiego sulla
 	// preferenza globale, esattamente il comportamento di prima della
-	// Fase 29.
-	*marginTop = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
-	*marginBottom = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
-	*marginLeft = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
-	*marginRight = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
-	*scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
-	*scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
-	*printHeaders = gPrefs ? (gPrefs->GetPrefInt("printHeaders", 1) != 0) : true;
+	// Fase 29. hasSettings resta false: il chiamante distingue cosi' un
+	// foglio "mai impostato" da uno con valori propri.
+	out->hasSettings = false;
+	out->marginTopCm = gPrefs ? gPrefs->GetPrefDouble("printMarginTop", 2.0) : 2.0;
+	out->marginBottomCm = gPrefs ? gPrefs->GetPrefDouble("printMarginBottom", 2.0) : 2.0;
+	out->marginLeftCm = gPrefs ? gPrefs->GetPrefDouble("printMarginLeft", 2.0) : 2.0;
+	out->marginRightCm = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
+	out->scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
+	out->scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+	out->printHeaders = gPrefs ? (gPrefs->GetPrefInt("printHeaders", 1) != 0) : true;
+	out->printGrid = gPrefs ? (gPrefs->GetPrefInt("printGrid", 1) != 0) : true;
 }
 
 void MainWindow::ShowPageSetupWindow()
@@ -3516,26 +3510,21 @@ void MainWindow::ShowPageSetupWindow()
 	if (!fPageSetupWindow)
 		fPageSetupWindow = new PageSetupWindow(BMessenger(this));
 
-	double marginTop, marginBottom, marginLeft, marginRight, scalePercent;
-	int scaleMode;
-	bool printHeaders;
-	GetActivePrintSettings(&marginTop, &marginBottom, &marginLeft, &marginRight,
-		&scaleMode, &scalePercent, &printHeaders);
+	AscdPrintSettings settings;
+	GetActivePrintSettings(&settings);
 
 	// Generata QUI, PRIMA di Lock() su fPageSetupWindow (Fase 28):
 	// GeneratePrintPreviewPages tocca fSheetView, che vive sul thread
 	// di QUESTA finestra, non su quello di PageSetupWindow -- va
 	// chiamata dal thread giusto, poi solo il risultato gia' pronto (le
 	// bitmap) attraversa il confine verso l'altra finestra.
-	std::vector<BBitmap*> pages = GeneratePrintPreviewPages(marginTop, marginBottom, marginLeft,
-		marginRight, scaleMode, scalePercent, printHeaders);
+	std::vector<BBitmap*> pages = GeneratePrintPreviewPages(settings);
 
 	// Stesso motivo di fPreferencesWindow sopra: SetValues tocca le
 	// BView interne di PageSetupWindow, che vive sul proprio thread.
 	if (fPageSetupWindow->Lock())
 	{
-		fPageSetupWindow->SetValues(marginTop, marginBottom, marginLeft, marginRight,
-			scaleMode, scalePercent, printHeaders);
+		fPageSetupWindow->SetValues(settings);
 		fPageSetupWindow->SetPreviewPages(pages);
 		fPageSetupWindow->Unlock();
 	}
@@ -3550,11 +3539,9 @@ void MainWindow::ShowPageSetupWindow()
 	fPageSetupWindow->Activate();
 }
 
-void MainWindow::HandlePageSetupRequest(double marginTop, double marginBottom,
-	double marginLeft, double marginRight, int scaleMode, double scalePercent,
-	bool printHeaders)
+void MainWindow::HandlePageSetupRequest(const AscdPrintSettings& settings)
 {
-	// Persistiti PER FOGLIO (Fase 29) in fSheets[fActiveSheetIndex],
+	// Persistite PER FOGLIO (Fase 29) in fSheets[fActiveSheetIndex],
 	// cosi' sopravvivono al salvataggio -- vedi AscdPrintSettings in
 	// AscdIO.h. gPrefs resta comunque scritto anche qui, come ripiego
 	// per qualunque ALTRO foglio/documento che non abbia ancora una
@@ -3563,40 +3550,32 @@ void MainWindow::HandlePageSetupRequest(double marginTop, double marginBottom,
 	if (fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size())
 	{
 		AscdPrintSettings& ps = fSheets[fActiveSheetIndex].printSettings;
+		ps = settings;
 		ps.hasSettings = true;
-		ps.marginTopCm = marginTop;
-		ps.marginBottomCm = marginBottom;
-		ps.marginLeftCm = marginLeft;
-		ps.marginRightCm = marginRight;
-		ps.scaleMode = scaleMode;
-		ps.scalePercent = scalePercent;
-		ps.printHeaders = printHeaders;
 		MarkModified();
 	}
 
 	if (!gPrefs)
 		return;
 
-	gPrefs->SetPrefDouble("printMarginTop", marginTop);
-	gPrefs->SetPrefDouble("printMarginBottom", marginBottom);
-	gPrefs->SetPrefDouble("printMarginLeft", marginLeft);
-	gPrefs->SetPrefDouble("printMarginRight", marginRight);
-	gPrefs->SetPrefInt("printScaleMode", scaleMode);
-	gPrefs->SetPrefDouble("printScalePercent", scalePercent);
-	gPrefs->SetPrefInt("printHeaders", printHeaders ? 1 : 0);
+	gPrefs->SetPrefDouble("printMarginTop", settings.marginTopCm);
+	gPrefs->SetPrefDouble("printMarginBottom", settings.marginBottomCm);
+	gPrefs->SetPrefDouble("printMarginLeft", settings.marginLeftCm);
+	gPrefs->SetPrefDouble("printMarginRight", settings.marginRightCm);
+	gPrefs->SetPrefInt("printScaleMode", settings.scaleMode);
+	gPrefs->SetPrefDouble("printScalePercent", settings.scalePercent);
+	gPrefs->SetPrefInt("printHeaders", settings.printHeaders ? 1 : 0);
+	gPrefs->SetPrefInt("printGrid", settings.printGrid ? 1 : 0);
 	try { gPrefs->WritePrefFile(); }
 	catch (CErr&) { }
 }
 
-void MainWindow::HandlePageSetupPreviewRequest(double marginTop, double marginBottom,
-	double marginLeft, double marginRight, int scaleMode, double scalePercent,
-	bool printHeaders)
+void MainWindow::HandlePageSetupPreviewRequest(const AscdPrintSettings& settings)
 {
 	// I valori qui sono quelli ANCORA IN MODIFICA nel dialogo (mai
 	// scritti in gPrefs) -- a differenza di HandlePageSetupRequest
 	// sopra, che persiste e viene chiamato solo da "Applica"/"Stampa".
-	std::vector<BBitmap*> pages = GeneratePrintPreviewPages(marginTop, marginBottom, marginLeft,
-		marginRight, scaleMode, scalePercent, printHeaders);
+	std::vector<BBitmap*> pages = GeneratePrintPreviewPages(settings);
 
 	if (fPageSetupWindow && fPageSetupWindow->Lock())
 	{
@@ -4962,35 +4941,30 @@ BRect MainWindow::ActivePrintContentRect()
 PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWidth,
 	float printableHeight, int32 xDPI, int32 yDPI)
 {
-	// Margini/scala (Fase 27, "Imposta pagina", per-foglio dalla Fase
-	// 29): quelli propri del foglio attivo se mai impostati, altrimenti
+	// Impostazioni (Fase 27, "Imposta pagina", per-foglio dalla Fase
+	// 29): quelle proprie del foglio attivo se mai impostate, altrimenti
 	// la preferenza globale di ripiego -- vedi GetActivePrintSettings.
 	// GeneratePrintPreviewPages sotto usa invece i valori ANCORA IN
-	// MODIFICA nel dialogo, passati come parametri: sono due chiamanti
+	// MODIFICA nel dialogo, passati come struct: sono due chiamanti
 	// diversi con esigenze diverse, entrambi delegano pero' allo stesso
 	// ComputePrintJobLayout.
-	double marginTopCm, marginBottomCm, marginLeftCm, marginRightCm, scalePercent;
-	int scaleMode;
-	bool printHeaders;
-	GetActivePrintSettings(&marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
-		&scaleMode, &scalePercent, &printHeaders);
+	AscdPrintSettings settings;
+	GetActivePrintSettings(&settings);
 
 	// Senza intestazioni non si riserva spazio per la banda
 	// headerW/headerH su ogni pagina: le pagine contengono solo dati e
 	// ce ne stanno di piu' -- stesso headerW/H nullo passato anche a
 	// GeneratePrintPreviewPages, altrimenti anteprima e stampa vera non
 	// impaginerebbero allo stesso modo.
-	float headerW = printHeaders ? fSheetView->HeaderWidth() : 0;
-	float headerH = printHeaders ? fSheetView->HeaderHeight() : 0;
+	float headerW = settings.printHeaders ? fSheetView->HeaderWidth() : 0;
+	float headerH = settings.printHeaders ? fSheetView->HeaderHeight() : 0;
 
 	return ComputePrintJobLayout(ActivePrintContentRect(), printableWidth, printableHeight,
-		xDPI, yDPI, marginTopCm, marginBottomCm, marginLeftCm, marginRightCm, scaleMode,
-		scalePercent, headerW, headerH);
+		xDPI, yDPI, settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
+		settings.marginRightCm, settings.scaleMode, settings.scalePercent, headerW, headerH);
 }
 
-std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(double marginTop,
-	double marginBottom, double marginLeft, double marginRight, int scaleMode,
-	double scalePercent, bool printHeaders)
+std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSettings& settings)
 {
 	std::vector<BBitmap*> pages;
 	if (!fDoc)
@@ -5025,12 +4999,13 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(double marginTop,
 		yDPI = 72;
 	}
 
-	float headerW = printHeaders ? fSheetView->HeaderWidth() : 0;
-	float headerH = printHeaders ? fSheetView->HeaderHeight() : 0;
+	float headerW = settings.printHeaders ? fSheetView->HeaderWidth() : 0;
+	float headerH = settings.printHeaders ? fSheetView->HeaderHeight() : 0;
 
 	PrintJobLayout layout = ComputePrintJobLayout(ActivePrintContentRect(),
 		printableRect.Width(), printableRect.Height(), xDPI, yDPI,
-		marginTop, marginBottom, marginLeft, marginRight, scaleMode, scalePercent,
+		settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
+		settings.marginRightCm, settings.scaleMode, settings.scalePercent,
 		headerW, headerH);
 	if (layout.pageOrigins.empty())
 		return pages;
@@ -5107,7 +5082,7 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(double marginTop,
 		// sopra sono gia' 0 in quel caso, ma senza questo controllo
 		// resterebbe comunque una striscia grigia alta/larga zero cicli
 		// di disegno -- il controllo esplicito rende l'intenzione ovvia.
-		if (printHeaders)
+		if (settings.printHeaders)
 		{
 			offscreen->SetHighColor(230, 230, 230);
 			offscreen->FillRect(BRect(marginLeftPreview, marginTopPreview,
@@ -5160,8 +5135,15 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(double marginTop,
 					offscreen->ConstrainClippingRegion(NULL);
 				}
 
-				offscreen->SetHighColor(220, 220, 220);
-				offscreen->StrokeRect(previewR);
+				// Griglia sottile dell'anteprima: solo se "Stampa griglia"
+				// e' attiva -- come la stampa vera (vedi
+				// SheetView::PrintGridEffective), l'anteprima non segue
+				// la griglia a video.
+				if (settings.printGrid)
+				{
+					offscreen->SetHighColor(220, 220, 220);
+					offscreen->StrokeRect(previewR);
+				}
 			}
 		}
 
@@ -5181,15 +5163,12 @@ void MainWindow::PrintDocument()
 	if (!fDoc)
 		return;
 
-	// Letta PRIMA del dialogo di sistema (nessun effetto collaterale,
-	// solo i valori correnti): serve sia al layout sotto (via
-	// ComputePrintJobLayoutForActiveSheet) sia per decidere se
-	// sopprimere le intestazioni durante DrawView.
-	double marginTopCm, marginBottomCm, marginLeftCm, marginRightCm, scalePercent;
-	int scaleMode;
-	bool printHeaders;
-	GetActivePrintSettings(&marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
-		&scaleMode, &scalePercent, &printHeaders);
+	// Lette PRIMA del dialogo di sistema (nessun effetto collaterale,
+	// solo i valori correnti): servono sia al layout sotto (via
+	// ComputePrintJobLayoutForActiveSheet) sia per impostare gli override
+	// di disegno durante DrawView (intestazioni/griglia).
+	AscdPrintSettings printSettings;
+	GetActivePrintSettings(&printSettings);
 
 	BPrintJob printJob("Atomo123");
 
@@ -5232,12 +5211,14 @@ void MainWindow::PrintDocument()
 	float originalScale = fSheetView->Scale();
 	bool originalSuppressHeaders = fSheetView->SuppressPrintHeaders();
 
-	// "Stampa intestazioni" disattivata: SheetView::Draw salta i blocchi
-	// di intestazione per la durata della stampa -- la vista a schermo
-	// non cambia mai (il flag viene ripristinato sotto), solo le pagine
-	// inviate alla stampante. Il layout sopra usa gia' headerW/H nulli
-	// in questo caso, quindi paginazione e disegno restano coerenti.
-	fSheetView->SetSuppressPrintHeaders(!printHeaders);
+	// "Stampa intestazioni" disattivata e/o "Stampa griglia" impostata:
+	// SheetView::Draw segue gli override per la durata della stampa --
+	// la vista a schermo non cambia mai (tutto ripristinato sotto), solo
+	// le pagine inviate alla stampante. Il layout sopra usa gia'
+	// headerW/H nulli senza intestazioni, quindi paginazione e disegno
+	// restano coerenti.
+	fSheetView->SetSuppressPrintHeaders(!printSettings.printHeaders);
+	fSheetView->SetPrintGridOverride(true, printSettings.printGrid);
 
 	// Si stampa solo l'area del foglio che contiene dati (o l'area di
 	// stampa scelta), suddivisa in tante pagine quante ne servono in
@@ -5268,6 +5249,7 @@ void MainWindow::PrintDocument()
 	}
 	fSheetView->SetScale(originalScale);
 	fSheetView->SetSuppressPrintHeaders(originalSuppressHeaders);
+	fSheetView->SetPrintGridOverride(false, true);
 
 	fSheetView->ScrollTo(originalScroll);
 
@@ -6272,55 +6254,61 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgPageSetupRequest:
 		{
-			double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
+			AscdPrintSettings settings;
+			message->FindDouble("marginTop", &settings.marginTopCm);
+			message->FindDouble("marginBottom", &settings.marginBottomCm);
+			message->FindDouble("marginLeft", &settings.marginLeftCm);
+			message->FindDouble("marginRight", &settings.marginRightCm);
 			int32 scaleMode = 0;
-			double scalePercent = 100.0;
-			bool printHeaders = true;
-			message->FindDouble("marginTop", &marginTop);
-			message->FindDouble("marginBottom", &marginBottom);
-			message->FindDouble("marginLeft", &marginLeft);
-			message->FindDouble("marginRight", &marginRight);
 			message->FindInt32("scaleMode", &scaleMode);
-			message->FindDouble("scalePercent", &scalePercent);
+			settings.scaleMode = (int)scaleMode;
+			message->FindDouble("scalePercent", &settings.scalePercent);
+			bool printHeaders = true, printGrid = true;
 			message->FindBool("printHeaders", &printHeaders);
-			HandlePageSetupRequest(marginTop, marginBottom, marginLeft, marginRight,
-				(int)scaleMode, scalePercent, printHeaders);
+			message->FindBool("printGrid", &printGrid);
+			settings.printHeaders = printHeaders;
+			settings.printGrid = printGrid;
+			HandlePageSetupRequest(settings);
 			break;
 		}
 
 		case kMsgPageSetupPreviewRequest:
 		{
-			double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
+			AscdPrintSettings settings;
+			message->FindDouble("marginTop", &settings.marginTopCm);
+			message->FindDouble("marginBottom", &settings.marginBottomCm);
+			message->FindDouble("marginLeft", &settings.marginLeftCm);
+			message->FindDouble("marginRight", &settings.marginRightCm);
 			int32 scaleMode = 0;
-			double scalePercent = 100.0;
-			bool printHeaders = true;
-			message->FindDouble("marginTop", &marginTop);
-			message->FindDouble("marginBottom", &marginBottom);
-			message->FindDouble("marginLeft", &marginLeft);
-			message->FindDouble("marginRight", &marginRight);
 			message->FindInt32("scaleMode", &scaleMode);
-			message->FindDouble("scalePercent", &scalePercent);
+			settings.scaleMode = (int)scaleMode;
+			message->FindDouble("scalePercent", &settings.scalePercent);
+			bool printHeaders = true, printGrid = true;
 			message->FindBool("printHeaders", &printHeaders);
-			HandlePageSetupPreviewRequest(marginTop, marginBottom, marginLeft, marginRight,
-				(int)scaleMode, scalePercent, printHeaders);
+			message->FindBool("printGrid", &printGrid);
+			settings.printHeaders = printHeaders;
+			settings.printGrid = printGrid;
+			HandlePageSetupPreviewRequest(settings);
 			break;
 		}
 
 		case kMsgPageSetupPrintRequest:
 		{
-			double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
+			AscdPrintSettings settings;
+			message->FindDouble("marginTop", &settings.marginTopCm);
+			message->FindDouble("marginBottom", &settings.marginBottomCm);
+			message->FindDouble("marginLeft", &settings.marginLeftCm);
+			message->FindDouble("marginRight", &settings.marginRightCm);
 			int32 scaleMode = 0;
-			double scalePercent = 100.0;
-			bool printHeaders = true;
-			message->FindDouble("marginTop", &marginTop);
-			message->FindDouble("marginBottom", &marginBottom);
-			message->FindDouble("marginLeft", &marginLeft);
-			message->FindDouble("marginRight", &marginRight);
 			message->FindInt32("scaleMode", &scaleMode);
-			message->FindDouble("scalePercent", &scalePercent);
+			settings.scaleMode = (int)scaleMode;
+			message->FindDouble("scalePercent", &settings.scalePercent);
+			bool printHeaders = true, printGrid = true;
 			message->FindBool("printHeaders", &printHeaders);
-			HandlePageSetupRequest(marginTop, marginBottom, marginLeft, marginRight,
-				(int)scaleMode, scalePercent, printHeaders);
+			message->FindBool("printGrid", &printGrid);
+			settings.printHeaders = printHeaders;
+			settings.printGrid = printGrid;
+			HandlePageSetupRequest(settings);
 			PrintDocument();
 			break;
 		}

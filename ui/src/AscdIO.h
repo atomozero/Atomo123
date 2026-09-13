@@ -56,6 +56,15 @@ struct AscdPrintSettings {
 	// di sempre (le intestazioni venivano stampate su ogni pagina).
 	// Scelta dell'utente in "Imposta pagina", come margini/scala.
 	bool printHeaders = true;
+	// Stampa griglia sottile (vedi SheetView::PrintGridEffective):
+	// indipendente dalla griglia a video (fShowGrid/AscdSheet::showGrid)
+	// come in Excel -- true di default per conservare il comportamento
+	// di sempre (un foglio con griglia visibile la stampava).
+	bool printGrid = true;
+	// Flag futuri (centratura, ordine pagine, ...) viaggiano nella
+	// stessa coda versionata della sezione "Imposta pagina", vedi
+	// AscdIO.cpp -- i campi tipizzati (int/stringhe) si aggiungono qui
+	// con la versione corrispondente.
 };
 
 // "charts"/"colWidths" sono opzionali (NULL = non legge/scrive nulla
