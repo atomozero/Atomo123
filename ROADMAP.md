@@ -450,6 +450,42 @@ list deliberately deviates from pure effort-sorting:
   nested expression stays deferred (all four collapse to a scalar —
   the first element — when nested, matching `SEQUENCE`'s own
   documented limit)
+- ~~**`FILTER` unrecognized as `_xlfn._xlws.FILTER`.**~~ Fixed —
+  real bug found on this app's own `Welcome.xlsx` demo workbook.
+  Excel writes `FILTER` specifically with a *second* compatibility
+  prefix after `_xlfn.` (`_xlfn._xlws.FILTER`, a leftover of it
+  originally shipping under a different internal namespace) — every
+  other dynamic-array function above only ever gets the single
+  `_xlfn.` prefix. Two bugs, both needed: the lexer's dotted-identifier
+  continuation state only accepted a letter after a `.`, not the
+  underscore `_xlws` starts with, splitting the token at `_xlfn` alone
+  before it ever reached function-name resolution; and
+  `GetFunctionNr` stripped only one `_XLFN.` prefix, never a second
+  `_XLWS.` one
+- **A range compared to a scalar inside a function argument (e.g.
+  `FILTER(A2:A8,B2:B8>=20)`, the natural way to write `FILTER`'s
+  condition and the form real Excel/openpyxl produce by default) does
+  not evaluate to a per-cell boolean array.** Found fixing the bug
+  above: the comparison operators (`Value::operator>=` etc.) only
+  handle two scalars of the same type; when the left side is a
+  multi-cell range, it falls through to a generic type-order fallback,
+  silently producing one wrong boolean instead of one boolean per
+  cell, and the range argument beyond that is unrecoverable
+  (`GetRangeArgument` fails, `FILTER` returns its empty-result
+  sentinel). Excel's real "array formula" implicit-intersection
+  semantics — a range op scalar (or range op range) producing a
+  parallel array of results — aren't implemented anywhere in this
+  engine, and this is very likely the same underlying gap referenced
+  in "Not currently planned" for `INDEX`/`INDIRECT` as `:` operands.
+  Workaround that already works today, and what `Welcome.xlsx` now
+  uses: a helper column with one comparison formula per row
+  (`=B2>=20`), then `FILTER` against that plain boolean range — this
+  is also literally how Excel stores it once a user builds it that
+  way, no different from the fixed case above. Fixing this for real
+  would mean teaching the comparison operators (and potentially every
+  other operator) to produce a range/array result when either operand
+  is a range, a change with much broader reach than `FILTER` alone —
+  deserves its own design pass, not a narrow patch
 - ~~**More chart types**: scatter/XY, area, combo (bar+line sharing
   one chart).~~ Shipped, one commit each. Area reuses
   `ComputeLineLayout`/`ComputeMultiLineLayout` unchanged, filling the
