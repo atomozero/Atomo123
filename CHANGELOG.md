@@ -1268,3 +1268,28 @@ What shipped since v0.2.8, not yet in a tagged release:
   shared row boundary in Excel, but with a large visible gap in
   Atomo123, since the label sat at the top of its own row instead of
   the bottom.
+- Translated the bundled demo workbook (`packaging/Benvenuto.xlsx`,
+  renamed `Welcome.xlsx`) to English, matching the rest of the app's
+  English localization: every sheet name, header, label, product/
+  category name, the defined name (`Entrate2026` → `Income2026`), the
+  structured table and its columns (`Prodotti` → `Products`), and the
+  "Open Sample File" menu entry itself, which had never actually been
+  added to `locales/en.catkeys` (a real, separate localization gap —
+  the English build was silently showing the Italian menu string).
+- Fixed a real bug found translating that file: `FILTER` is the one
+  dynamic-array function Excel writes with a *second* compatibility
+  prefix, `_xlfn._xlws.FILTER`, never plain `_xlfn.FILTER` like
+  `UNIQUE`/`SORT`/`SEQUENCE` — this app's own demo formula
+  (`=FILTER(A2:A8,B2:B8>=20)` translated verbatim from a real Excel/
+  openpyxl file) silently failed to parse and just displayed as raw
+  text. Two bugs, both needed: the lexer's dotted-identifier
+  continuation only accepted a letter after a `.`, not the underscore
+  `_xlws` starts with, splitting the token at `_xlfn` before it ever
+  reached function-name lookup; and `GetFunctionNr` only stripped one
+  `_XLFN.` prefix, never a second `_XLWS.` one. Along the way, found
+  and documented (not fixed — see `ROADMAP.md`) a separate, larger gap
+  the same formula exposed: a range compared to a scalar inside a
+  function argument doesn't evaluate to a per-cell boolean array in
+  this engine at all, so `Welcome.xlsx`'s `FILTER` example now uses a
+  helper boolean column instead of the inline comparison, exactly like
+  Excel itself stores it once built that way.
