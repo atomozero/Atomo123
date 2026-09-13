@@ -2653,12 +2653,31 @@ BString SheetView::FormattedCellText(cell c)
 		int formatKind = cs.fFormat & 0x000F;
 		BString formatted;
 		status_t fmtErr;
+		// A fresh, local BNumberFormat per call (instead of the old shared
+		// fNumberFormat member) so a precision override set for one cell can
+		// never leak into the next cell's formatting -- SetPrecision has no
+		// "reset to default" counterpart, so a shared instance would keep
+		// whatever precision the last-formatted currency/percent cell asked
+		// for. CFormatter(int) unpacks the decimal-place count the
+		// engine/XLSX translator already computed for this cell (see
+		// CFormatter::FormatID packing fDigits into cs.fFormat above bit 4).
+		// BNumberFormat's own default precision for percent is 0, so without
+		// this call a real "0.0%" format silently lost its forced decimal,
+		// showing "25%" instead of "25.0%" -- found comparing against real
+		// Excel. Only override when a decimal count was actually packed in:
+		// a "clean" eCurrency/ePercent applied straight from the enum (no
+		// digits packed, e.g. from the Format menu) keeps BNumberFormat's own
+		// locale default instead of being forced to zero decimals.
+		BNumberFormat numberFormat;
+		CFormatter cf(cs.fFormat);
+		if (cf.Digits() > 0)
+			numberFormat.SetPrecision(cf.Digits());
 		if (formatKind == eCurrency)
-			fmtErr = fNumberFormat.FormatMonetary(formatted, (double)val);
+			fmtErr = numberFormat.FormatMonetary(formatted, (double)val);
 		else if (formatKind == ePercent)
-			fmtErr = fNumberFormat.FormatPercent(formatted, (double)val);
+			fmtErr = numberFormat.FormatPercent(formatted, (double)val);
 		else
-			fmtErr = fNumberFormat.Format(formatted, (double)val);
+			fmtErr = numberFormat.Format(formatted, (double)val);
 
 		if (fmtErr == B_OK && formatted.Length() > 0)
 			return formatted;
