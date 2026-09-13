@@ -98,6 +98,8 @@ int main()
 	printSettings.scaleMode = 4; // kPrintFitPages, con conteggi non-default
 	printSettings.fitWide = 2;
 	printSettings.fitTall = 3;
+	printSettings.centerH = true; // non-default apposta
+	printSettings.centerV = true; // idem
 
 	// Font non predefinito su A2 (grassetto), sulla famiglia REALE del
 	// font di sistema (vedi il commento in cima al file sul perche').
@@ -273,8 +275,9 @@ int main()
 			&& loadedPrintSettings.scaleMode == 4 && loadedPrintSettings.scalePercent == 85.0
 			&& loadedPrintSettings.printHeaders == false
 			&& loadedPrintSettings.printGrid == false
-			&& loadedPrintSettings.fitWide == 2 && loadedPrintSettings.fitTall == 3,
-		"i margini/la scala/le intestazioni/la griglia/le pagine di \"Imposta pagina\" sopravvivono al giro di salvataggio/ricarica");
+			&& loadedPrintSettings.fitWide == 2 && loadedPrintSettings.fitTall == 3
+			&& loadedPrintSettings.centerH == true && loadedPrintSettings.centerV == true,
+		"i margini/la scala/le intestazioni/la griglia/le pagine/la centratura di \"Imposta pagina\" sopravvivono al giro di salvataggio/ricarica");
 
 	Check(loadedFrozenRows == 2 && loadedFrozenCols == 1,
 		"Blocca riquadri (2 righe, 1 colonna) sopravvive al giro di salvataggio/ricarica");
@@ -470,6 +473,8 @@ int main()
 	oldPrintSettings.hasSettings = true; // opposto del default (false): stesso motivo
 	oldPrintSettings.printHeaders = false; // opposto del default (true): stesso motivo
 	oldPrintSettings.printGrid = false; // idem
+	oldPrintSettings.centerH = true; // opposto del default (false): stesso motivo
+	oldPrintSettings.centerV = true; // idem
 	{
 		BFile file(oldPath, B_READ_ONLY);
 		status_t err = LoadASCD(&file, oldStyleReloaded, NULL, NULL,
@@ -490,6 +495,8 @@ int main()
 		"il flag intestazioni (default true) viaggia anche in un file minimo");
 	Check(oldPrintSettings.printGrid,
 		"il flag griglia (default true) viaggia anche in un file minimo");
+	Check(oldPrintSettings.centerH == false && oldPrintSettings.centerV == false,
+		"i flag centratura (default spenti) viaggiano anche in un file minimo");
 
 	doc = NULL; // gia' rilasciato sopra
 	reloaded->Release();

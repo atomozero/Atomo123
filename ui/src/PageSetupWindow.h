@@ -98,6 +98,8 @@ private:
 	BTextControl* fScaleFitTallField;
 	BCheckBox* fPrintHeadersBox;
 	BCheckBox* fPrintGridBox;
+	BCheckBox* fCenterHBox;
+	BCheckBox* fCenterVBox;
 	PrintPreviewView* fPreviewView;
 	BStringView* fPageLabel;
 	BButton* fPrevPageButton;

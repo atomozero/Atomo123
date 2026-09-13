@@ -105,6 +105,18 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		new BMessage(kMsgFieldChanged));
 	fPrintGridBox->SetValue(B_CONTROL_ON);
 
+	// Centratura del contenuto nella pagina (come Excel "Center on page"):
+	// spente di default -- ogni cambio rigenera solo l'anteprima, come
+	// le altre checkbox di stampa.
+	fCenterHBox = new BCheckBox("centerH",
+		B_TRANSLATE("Orizzontale"),
+		new BMessage(kMsgFieldChanged));
+	fCenterHBox->SetValue(B_CONTROL_OFF);
+	fCenterVBox = new BCheckBox("centerV",
+		B_TRANSLATE("Verticale"),
+		new BMessage(kMsgFieldChanged));
+	fCenterVBox->SetValue(B_CONTROL_OFF);
+
 	BBox* scaleBox = new BBox("scaleBox");
 	scaleBox->SetLabel(B_TRANSLATE("Scala"));
 	BLayoutBuilder::Group<>(scaleBox, B_VERTICAL, 6)
@@ -130,6 +142,13 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.SetInsets(8, printBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fPrintHeadersBox)
 		.Add(fPrintGridBox);
+
+	BBox* centerBox = new BBox("centerBox");
+	centerBox->SetLabel(B_TRANSLATE("Centratura"));
+	BLayoutBuilder::Group<>(centerBox, B_VERTICAL, 6)
+		.SetInsets(8, centerBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fCenterHBox)
+		.Add(fCenterVBox);
 
 	fPreviewView = new PrintPreviewView();
 
@@ -161,6 +180,7 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 				.Add(marginsBox)
 				.Add(scaleBox)
 				.Add(printBox)
+				.Add(centerBox)
 				.AddGlue()
 			.End()
 		.End()
@@ -184,6 +204,8 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	fScaleFitTallField->SetTarget(this);
 	fPrintHeadersBox->SetTarget(this);
 	fPrintGridBox->SetTarget(this);
+	fCenterHBox->SetTarget(this);
+	fCenterVBox->SetTarget(this);
 	fPrevPageButton->SetTarget(this);
 	fNextPageButton->SetTarget(this);
 	printButton->SetTarget(this);
@@ -227,6 +249,8 @@ void PageSetupWindow::SetValues(const AscdPrintSettings& settings)
 
 	fPrintHeadersBox->SetValue(settings.printHeaders ? B_CONTROL_ON : B_CONTROL_OFF);
 	fPrintGridBox->SetValue(settings.printGrid ? B_CONTROL_ON : B_CONTROL_OFF);
+	fCenterHBox->SetValue(settings.centerH ? B_CONTROL_ON : B_CONTROL_OFF);
+	fCenterVBox->SetValue(settings.centerV ? B_CONTROL_ON : B_CONTROL_OFF);
 }
 
 void PageSetupWindow::SetPreviewPages(std::vector<BBitmap*> pages)
@@ -298,6 +322,8 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 
 	bool printHeaders = fPrintHeadersBox->Value() == B_CONTROL_ON;
 	bool printGrid = fPrintGridBox->Value() == B_CONTROL_ON;
+	bool centerH = fCenterHBox->Value() == B_CONTROL_ON;
+	bool centerV = fCenterVBox->Value() == B_CONTROL_ON;
 
 	BMessage request(what);
 	request.AddDouble("marginTop", marginTop);
@@ -310,6 +336,8 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 	request.AddBool("printGrid", printGrid);
 	request.AddInt32("fitWide", fitWide);
 	request.AddInt32("fitTall", fitTall);
+	request.AddBool("centerH", centerH);
+	request.AddBool("centerV", centerV);
 	return request;
 }
 

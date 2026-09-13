@@ -983,8 +983,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	// Payload v1: uint8 versione (=1) + uint8 flag (bit0 intestazioni,
 	// bit1 griglia). Le versioni successive aggiungono campi IN CODA al
 	// payload e avanzano la versione: v2 aggiunge fitWide/fitTall (due
-	// int32, adatta a N x M pagine) -- vedi AscdIO.h sui campi e il
-	// lettore sotto sullo skip delle versioni future.
+	// int32, adatta a N x M pagine). I flag booleani successivi
+	// (centratura bit2/bit3, ...) riusano invece i bit liberi SENZA
+	// cambiare versione ne' lunghezza -- vedi AscdIO.h sui campi.
 	{
 		AscdPrintSettings ps = (printSettings) ? *printSettings : AscdPrintSettings();
 		uint8 has = ps.hasSettings ? 1 : 0;
@@ -995,7 +996,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		uint8 magic = 'G';
 		int32 tailLen = 2 + 2 * (int32)sizeof(int32);
 		uint8 version = 2;
-		uint8 flags = (ps.printHeaders ? 0x01 : 0x00) | (ps.printGrid ? 0x02 : 0x00);
+		uint8 flags = (ps.printHeaders ? 0x01 : 0x00) | (ps.printGrid ? 0x02 : 0x00)
+			| (ps.centerH ? 0x04 : 0x00) | (ps.centerV ? 0x08 : 0x00);
 		int32 fitWide = ps.fitWide >= 1 ? ps.fitWide : 1;
 		int32 fitTall = ps.fitTall >= 1 ? ps.fitTall : 1;
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
@@ -2273,6 +2275,7 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 			bool printHeaders = true;
 			bool printGrid = true;
+			bool centerH = false, centerV = false;
 			int32 fitWide = 1, fitTall = 1;
 			uint8 marker = 0;
 			ssize_t mgot = source->Read(&marker, sizeof(marker));
@@ -2311,6 +2314,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 							return B_BAD_DATA;
 						printHeaders = (flags & 0x01) != 0;
 						printGrid = (flags & 0x02) != 0;
+						centerH = (flags & 0x04) != 0;
+						centerV = (flags & 0x08) != 0;
 						// I bit futuri (centratura, ordine pagine, ...)
 						// si leggono con la loro versione, qui vengono
 						// semplicemente ignorati -- i default true sopra
@@ -2355,6 +2360,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				printSettings->scalePercent = scalePercent;
 				printSettings->printHeaders = printHeaders;
 				printSettings->printGrid = printGrid;
+				printSettings->centerH = centerH;
+				printSettings->centerV = centerV;
 				printSettings->fitWide = fitWide;
 				printSettings->fitTall = fitTall;
 			}

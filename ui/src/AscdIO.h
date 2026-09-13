@@ -58,6 +58,13 @@ struct AscdPrintSettings {
 	// lettura e nel dialogo, mai fidarsi dei byte).
 	int fitWide = 1;
 	int fitTall = 1;
+	// Centra il contenuto nella pagina (come Excel "Center on page"):
+	// orizzontale/verticale, per pagina -- una pagina piena resta
+	// invariata (offset nullo), solo le pagine parziali (di solito
+	// l'ultima) spostano il contenuto al centro dell'area utile. False
+	// di default (comportamento di sempre: contenuto dall'angolo).
+	bool centerH = false;
+	bool centerV = false;
 	// Stampa intestazioni di riga/colonna (numeri/lettere, vedi
 	// SheetView::Draw): true di default per conservare il comportamento
 	// di sempre (le intestazioni venivano stampate su ogni pagina).

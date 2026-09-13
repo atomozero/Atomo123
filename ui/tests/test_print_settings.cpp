@@ -118,6 +118,23 @@ int main()
 			"GetActivePrintSettings riporta modo 4 con 2 pagine di larghezza e 3 di altezza");
 	}
 
+	// Centratura: due flag come gli altri, default spenti.
+	{
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.centerH == false && active.centerV == false,
+			"senza richiesta esplicita la centratura resta spenta (default)");
+	}
+	settings.centerH = true;
+	settings.centerV = true;
+	win->HandlePageSetupRequest(settings);
+	{
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.centerH == true && active.centerV == true,
+			"GetActivePrintSettings riporta la centratura orizzontale+verticale");
+	}
+
 	win->Unlock();
 
 	win->Lock();
