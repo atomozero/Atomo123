@@ -105,6 +105,19 @@ int main()
 			"(margini 0, scala 3/10%, niente intestazioni ne' griglia)");
 	}
 
+	// Adatta a N x M pagine: la struct viaggia intera, compresi i due
+	// conteggi (stesso schema dei flag sopra, nessun parametro in piu').
+	settings.scaleMode = 4; // kPrintFitPages
+	settings.fitWide = 2;
+	settings.fitTall = 3;
+	win->HandlePageSetupRequest(settings);
+	{
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.scaleMode == 4 && active.fitWide == 2 && active.fitTall == 3,
+			"GetActivePrintSettings riporta modo 4 con 2 pagine di larghezza e 3 di altezza");
+	}
+
 	win->Unlock();
 
 	win->Lock();

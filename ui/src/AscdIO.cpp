@@ -982,8 +982,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	//
 	// Payload v1: uint8 versione (=1) + uint8 flag (bit0 intestazioni,
 	// bit1 griglia). Le versioni successive aggiungono campi IN CODA al
-	// payload (v2: fitWide/fitTall, ...) e avanzano la versione -- vedi
-	// AscdIO.h sui campi e il lettore sotto sullo skip.
+	// payload e avanzano la versione: v2 aggiunge fitWide/fitTall (due
+	// int32, adatta a N x M pagine) -- vedi AscdIO.h sui campi e il
+	// lettore sotto sullo skip delle versioni future.
 	{
 		AscdPrintSettings ps = (printSettings) ? *printSettings : AscdPrintSettings();
 		uint8 has = ps.hasSettings ? 1 : 0;
@@ -992,9 +993,11 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		int32 scaleMode = ps.scaleMode;
 		double scalePercent = ps.scalePercent;
 		uint8 magic = 'G';
-		int32 tailLen = 2;
-		uint8 version = 1;
+		int32 tailLen = 2 + 2 * (int32)sizeof(int32);
+		uint8 version = 2;
 		uint8 flags = (ps.printHeaders ? 0x01 : 0x00) | (ps.printGrid ? 0x02 : 0x00);
+		int32 fitWide = ps.fitWide >= 1 ? ps.fitWide : 1;
+		int32 fitTall = ps.fitTall >= 1 ? ps.fitTall : 1;
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
 			|| dest->Write(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
 			|| dest->Write(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
@@ -1005,7 +1008,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			|| dest->Write(&magic, sizeof(magic)) != (ssize_t)sizeof(magic)
 			|| dest->Write(&tailLen, sizeof(tailLen)) != (ssize_t)sizeof(tailLen)
 			|| dest->Write(&version, sizeof(version)) != (ssize_t)sizeof(version)
-			|| dest->Write(&flags, sizeof(flags)) != (ssize_t)sizeof(flags))
+			|| dest->Write(&flags, sizeof(flags)) != (ssize_t)sizeof(flags)
+			|| dest->Write(&fitWide, sizeof(fitWide)) != (ssize_t)sizeof(fitWide)
+			|| dest->Write(&fitTall, sizeof(fitTall)) != (ssize_t)sizeof(fitTall))
 			return B_IO_ERROR;
 	}
 
@@ -2268,6 +2273,7 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 
 			bool printHeaders = true;
 			bool printGrid = true;
+			int32 fitWide = 1, fitTall = 1;
 			uint8 marker = 0;
 			ssize_t mgot = source->Read(&marker, sizeof(marker));
 			if (mgot != 0)
@@ -2311,6 +2317,16 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						// valgono solo per i flag ASSENTI, mai per quelli
 						// presenti a zero.
 					}
+					if (version >= 2 && tailLen >= 10)
+					{
+						int32 wide = 1, tall = 1;
+						if (source->Read(&wide, sizeof(wide)) != (ssize_t)sizeof(wide)
+							|| source->Read(&tall, sizeof(tall)) != (ssize_t)sizeof(tall))
+							return B_BAD_DATA;
+						// Mai fidarsi dei byte: fuori intervallo = default.
+						fitWide = (wide >= 1 && wide <= 100) ? wide : 1;
+						fitTall = (tall >= 1 && tall <= 100) ? tall : 1;
+					}
 					// Salta eventuali campi di versioni future: la coda
 					// resta allineata per le sezioni successive qualunque
 					// cosa contenga.
@@ -2339,6 +2355,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				printSettings->scalePercent = scalePercent;
 				printSettings->printHeaders = printHeaders;
 				printSettings->printGrid = printGrid;
+				printSettings->fitWide = fitWide;
+				printSettings->fitTall = fitTall;
 			}
 			// Nota: gli eventuali byte di coda vengono consumati dallo
 			// stream anche quando printSettings e' NULL (se presenti nel

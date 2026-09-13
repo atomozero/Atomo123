@@ -30,11 +30,14 @@ std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
 	float pageWidth, float pageHeight, float headerW, float headerH);
 
 // Modalita' di "adatta" per ComputePrintFitScale sotto -- stessi tre
-// scelte di Excel (Pagina Larghezza/Altezza/entrambe).
+// scelte di Excel (Pagina Larghezza/Altezza/entrambe), piu' "N x M
+// pagine" (kPrintFitPages, con wide/tall da AscdPrintSettings::fitWide/
+// fitTall) invece della sola pagina singola.
 enum {
 	kPrintFitWidth = 1,
 	kPrintFitHeight = 2,
-	kPrintFitBoth = 3
+	kPrintFitBoth = 3,
+	kPrintFitPages = 4
 };
 
 // Scala (mai oltre 1.0: "adatta" restringe soltanto, non ingrandisce
@@ -48,6 +51,14 @@ enum {
 // in realta' non ci sta.
 float ComputePrintFitScale(BRect contentRect, float usableWidth, float usableHeight,
 	float headerW, float headerH, int fitMode);
+
+// Come ComputePrintFitScale in modalita' kPrintFitBoth, ma su wide x tall
+// pagine invece di una sola: la scala (mai oltre 1.0, stesso principio)
+// che fa stare contentRect in wide pagine di larghezza e tall di altezza.
+// wide/tall < 1 vengono trattati come 1 (mai divisione per zero o scala
+// infinita da valori corrotti). kPrintFitBoth e' il caso 1x1 di questa.
+float ComputePrintFitScaleToPages(BRect contentRect, float usableWidth, float usableHeight,
+	float headerW, float headerH, int wide, int tall);
 
 // Risultato completo del calcolo di un lavoro di stampa (Fase 28,
 // anteprima in "Imposta pagina"): unica fonte di verita' condivisa fra
@@ -74,9 +85,12 @@ struct PrintJobLayout {
 // utile della sola banda di intestazione (stessa condizione di
 // sicurezza gia' in ComputePrintPageOrigins) -- il chiamante deve
 // trattarlo come "niente da stampare/mostrare", non come un errore.
+// fitWide/fitTall servono solo con scaleMode kPrintFitPages (quante
+// pagine di larghezza/altezza), ignorati negli altri modi.
 PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
 	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
-	int scaleMode, double scalePercent, float headerW, float headerH);
+	int scaleMode, double scalePercent, float headerW, float headerH,
+	int fitWide = 1, int fitTall = 1);
 
 #endif
