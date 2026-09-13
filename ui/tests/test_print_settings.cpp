@@ -135,6 +135,25 @@ int main()
 			"GetActivePrintSettings riporta la centratura orizzontale+verticale");
 	}
 
+	// Testi di intestazione/pie': stringhe come gli altri campi, vuote
+	// di default (= bande assenti).
+	{
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.printHeaderText == "" && active.printFooterText == "",
+			"senza testi impostati le bande sono assenti (stringhe vuote)");
+	}
+	settings.printHeaderText = "Report &P/&N";
+	settings.printFooterText = "Stampato il &D";
+	win->HandlePageSetupRequest(settings);
+	{
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.printHeaderText == "Report &P/&N"
+				&& active.printFooterText == "Stampato il &D",
+			"GetActivePrintSettings riporta i testi di intestazione e pie'");
+	}
+
 	win->Unlock();
 
 	win->Lock();

@@ -100,6 +100,8 @@ int main()
 	printSettings.fitTall = 3;
 	printSettings.centerH = true; // non-default apposta
 	printSettings.centerV = true; // idem
+	printSettings.printHeaderText = "Report &P/&N";
+	printSettings.printFooterText = "Stampato il &D";
 
 	// Font non predefinito su A2 (grassetto), sulla famiglia REALE del
 	// font di sistema (vedi il commento in cima al file sul perche').
@@ -276,8 +278,10 @@ int main()
 			&& loadedPrintSettings.printHeaders == false
 			&& loadedPrintSettings.printGrid == false
 			&& loadedPrintSettings.fitWide == 2 && loadedPrintSettings.fitTall == 3
-			&& loadedPrintSettings.centerH == true && loadedPrintSettings.centerV == true,
-		"i margini/la scala/le intestazioni/la griglia/le pagine/la centratura di \"Imposta pagina\" sopravvivono al giro di salvataggio/ricarica");
+			&& loadedPrintSettings.centerH == true && loadedPrintSettings.centerV == true
+			&& loadedPrintSettings.printHeaderText == "Report &P/&N"
+			&& loadedPrintSettings.printFooterText == "Stampato il &D",
+		"i margini/la scala/le intestazioni/la griglia/le pagine/la centratura/i testi di \"Imposta pagina\" sopravvivono al giro di salvataggio/ricarica");
 
 	Check(loadedFrozenRows == 2 && loadedFrozenCols == 1,
 		"Blocca riquadri (2 righe, 1 colonna) sopravvive al giro di salvataggio/ricarica");
@@ -497,6 +501,8 @@ int main()
 		"il flag griglia (default true) viaggia anche in un file minimo");
 	Check(oldPrintSettings.centerH == false && oldPrintSettings.centerV == false,
 		"i flag centratura (default spenti) viaggiano anche in un file minimo");
+	Check(oldPrintSettings.printHeaderText == "" && oldPrintSettings.printFooterText == "",
+		"i testi di intestazione/pie' (default vuoti) viaggiano anche in un file minimo");
 
 	doc = NULL; // gia' rilasciato sopra
 	reloaded->Release();

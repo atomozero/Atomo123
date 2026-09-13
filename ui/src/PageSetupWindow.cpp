@@ -40,7 +40,7 @@ static const uint32 kMsgNextPage = 'nxtp';
 
 PageSetupWindow::PageSetupWindow(BMessenger target)
 	:
-	BWindow(BRect(150, 150, 780, 620), B_TRANSLATE("Imposta pagina"),
+	BWindow(BRect(150, 150, 780, 750), B_TRANSLATE("Imposta pagina"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
@@ -117,6 +117,18 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		new BMessage(kMsgFieldChanged));
 	fCenterVBox->SetValue(B_CONTROL_OFF);
 
+	// Testi di intestazione e pie' di pagina (una riga ciascuno, su OGNI
+	// pagina): vuoti di default (= bande assenti). I codici &P/&N/&D si
+	// espandono in stampa/anteprima (vedi ExpandPrintHeaderCodes) -- il
+	// promemoria sotto elenca i codici senza rubare altro spazio.
+	fHeaderTextField = new BTextControl("headerText", B_TRANSLATE("Intestazione:"),
+		"", new BMessage(kMsgFieldChanged));
+	fFooterTextField = new BTextControl("footerText", B_TRANSLATE("Piè di pagina:"),
+		"", new BMessage(kMsgFieldChanged));
+	BStringView* codesHint = new BStringView("codesHint",
+		B_TRANSLATE("&P pagina, &N totale pagine, &D data"));
+	codesHint->SetFont(be_plain_font);
+
 	BBox* scaleBox = new BBox("scaleBox");
 	scaleBox->SetLabel(B_TRANSLATE("Scala"));
 	BLayoutBuilder::Group<>(scaleBox, B_VERTICAL, 6)
@@ -150,6 +162,14 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.Add(fCenterHBox)
 		.Add(fCenterVBox);
 
+	BBox* headerFooterBox = new BBox("headerFooterBox");
+	headerFooterBox->SetLabel(B_TRANSLATE("Intestazione/piè di pagina"));
+	BLayoutBuilder::Group<>(headerFooterBox, B_VERTICAL, 6)
+		.SetInsets(8, headerFooterBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fHeaderTextField)
+		.Add(fFooterTextField)
+		.Add(codesHint);
+
 	fPreviewView = new PrintPreviewView();
 
 	fPageLabel = new BStringView("pageLabel", B_TRANSLATE("Nessuna anteprima"));
@@ -181,6 +201,7 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 				.Add(scaleBox)
 				.Add(printBox)
 				.Add(centerBox)
+				.Add(headerFooterBox)
 				.AddGlue()
 			.End()
 		.End()
@@ -206,6 +227,8 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	fPrintGridBox->SetTarget(this);
 	fCenterHBox->SetTarget(this);
 	fCenterVBox->SetTarget(this);
+	fHeaderTextField->SetTarget(this);
+	fFooterTextField->SetTarget(this);
 	fPrevPageButton->SetTarget(this);
 	fNextPageButton->SetTarget(this);
 	printButton->SetTarget(this);
@@ -251,6 +274,8 @@ void PageSetupWindow::SetValues(const AscdPrintSettings& settings)
 	fPrintGridBox->SetValue(settings.printGrid ? B_CONTROL_ON : B_CONTROL_OFF);
 	fCenterHBox->SetValue(settings.centerH ? B_CONTROL_ON : B_CONTROL_OFF);
 	fCenterVBox->SetValue(settings.centerV ? B_CONTROL_ON : B_CONTROL_OFF);
+	fHeaderTextField->SetText(settings.printHeaderText.String());
+	fFooterTextField->SetText(settings.printFooterText.String());
 }
 
 void PageSetupWindow::SetPreviewPages(std::vector<BBitmap*> pages)
@@ -338,6 +363,8 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 	request.AddInt32("fitTall", fitTall);
 	request.AddBool("centerH", centerH);
 	request.AddBool("centerV", centerV);
+	request.AddString("headerText", fHeaderTextField->Text());
+	request.AddString("footerText", fFooterTextField->Text());
 	return request;
 }
 

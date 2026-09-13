@@ -304,6 +304,69 @@ int main()
 			Check(false, "il contenuto 390x295 sta in un'unica pagina da 400x300");
 	}
 
+	// Piè di pagina (footerH): passo verticale ridotto della banda,
+	// riservata in fondo a OGNI pagina come l'intestazione in cima.
+	// Stesso contenuto 250x120 del test da 9 pagine sopra, con footer 10:
+	// passo verticale 55-5-10=40, origini y a 0/40/80, sempre 9 pagine.
+	{
+		BRect content(0, 0, 250, 120);
+		std::vector<BPoint> origins = ComputePrintPageOrigins(content, 110, 55, 10, 5, 10);
+		Check(origins.size() == 9,
+			"con pie' di pagina 10 il passo verticale diventa 40 ma restano 9 pagine");
+		bool orderOk = origins.size() == 9
+			&& origins[0] == BPoint(0, 0) && origins[3] == BPoint(0, 40)
+			&& origins[6] == BPoint(0, 80);
+		Check(orderOk,
+			"le origini delle tre righe di pagine sono a y=0/40/80 (passo 40, non 50)");
+	}
+	{
+		// Pagina piu' bassa di intestazione+pie' messi insieme: nessuna
+		// pagina puo' contenere dati, elenco vuoto (stessa garanzia degli
+		// altri casi limite, non un ciclo infinito).
+		BRect content(0, 0, 500, 500);
+		std::vector<BPoint> origins = ComputePrintPageOrigins(content, 110, 14, 10, 5, 10);
+		Check(origins.empty(),
+			"una pagina piu' bassa di intestazione+pie' (14 < 5+10) produce un elenco vuoto");
+	}
+	{
+		// Adatta a una pagina con pie' 20: l'altezza totale da adattare
+		// include il pie' (320, non 300) -- scala 150/320=0.46875 invece
+		// di 150/300=0.5.
+		BRect content(0, 0, 600, 300);
+		float scale = ComputePrintFitScale(content, 300, 150, 30, 20, kPrintFitBoth, 20);
+		Check(scale > 0.468f && scale < 0.470f,
+			"adatta a una pagina con pie' di pagina conta anche il pie' "
+			"(scala 0.46875, non 0.5)");
+	}
+
+	// ExpandPrintHeaderCodes: &P/&N/&D/&& e codici sconosciuti.
+	{
+		BString expanded = ExpandPrintHeaderCodes("Pag. &P di &N", 2, 7);
+		Check(expanded == "Pag. 2 di 7",
+			"\"Pag. &P di &N\" (pagina 2 di 7) espande in \"Pag. 2 di 7\"");
+	}
+	{
+		BString expanded = ExpandPrintHeaderCodes("A&&B&", 1, 1);
+		Check(expanded == "A&B&",
+		 "\"A&&B&\" espande && in & e lascia la & finale isolata com'e'");
+	}
+	{
+		BString expanded = ExpandPrintHeaderCodes("Report &X", 1, 1);
+		Check(expanded == "Report &X",
+			"un codice sconosciuto (&X) resta com'e', mai perso in silenzio");
+	}
+	{
+		BString expanded = ExpandPrintHeaderCodes("", 3, 5);
+		Check(expanded == "",
+			"un modello vuoto espande in stringa vuota (nessuna banda)");
+	}
+	{
+		BString expanded = ExpandPrintHeaderCodes("&D", 1, 1);
+		Check(expanded != "&D" && expanded.CountChars() == 10
+				&& expanded.ByteAt(2) == '.' && expanded.ByteAt(5) == '.',
+			"&D espande nella data corrente in formato GG.MM.AAAA");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

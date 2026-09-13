@@ -323,6 +323,37 @@ public:
 	bool PrintGridEffective() const
 		{ return fPrintGridOverride ? fPrintGridValue : fShowGrid; }
 
+	// Testi di intestazione/pie' di pagina ("Imposta pagina", con codici
+	// &P/&N/&D): bande di una riga ripetute in cima/in fondo a OGNI pagina
+	// stampata -- SEMPLIFICAZIONE dichiarata rispetto a Excel (che li
+	// mette nei margini): qui occupano spazio contenuto (l'impaginazione
+	// li riserva, vedi ComputePrintJobLayout) e vengono disegnati dalla
+	// vista SOLO durante la stampa, come le intestazioni di riga/colonna.
+	// Testo vuoto = banda assente. Usati SOLO da MainWindow::PrintDocument
+	// attorno a BPrintJob::DrawView (stesso schema degli override sopra):
+	// topInset e' l'altezza riservata in cima (0 senza intestazione),
+	// footerH quella in fondo; page/pages servono all'espansione di &P/&N
+	// (MainWindow li aggiorna a ogni pagina, vedi SetPrintPage sotto).
+	void SetPrintHeaderFooter(const char* header, const char* footer,
+		float topInset, float footerH)
+	{
+		fPrintHeaderText = header ? header : "";
+		fPrintFooterText = footer ? footer : "";
+		fPrintTopInset = topInset;
+		fPrintFooterH = footerH;
+	}
+	void SetPrintPage(int page, int pages)
+		{ fPrintPageNum = page; fPrintPageCount = pages; }
+	void ClearPrintHeaderFooter()
+	{
+		fPrintHeaderText = "";
+		fPrintFooterText = "";
+		fPrintTopInset = 0;
+		fPrintFooterH = 0;
+		fPrintPageNum = 1;
+		fPrintPageCount = 1;
+	}
+
 	// Protezione foglio (Fase 32, "Proteggi foglio"): quando true, ogni
 	// tentativo di modificare contenuto/formattazione di una cella con
 	// CellStyle::fLocked=true (il default) su QUESTO foglio va rifiutato
@@ -597,6 +628,11 @@ public:
 	// PrintDocument), che deve riservare la stessa banda su ogni pagina.
 	float HeaderWidth() const { return kHeaderWidth; }
 	float HeaderHeight() const { return kHeaderHeight; }
+	// Altezza in pixel canvas di una banda di testo di stampa
+	// (intestazione/pie' di pagina, vedi sotto): una riga predefinita.
+	// MainWindow la usa per riservare lo spazio in fase di impaginazione
+	// (stessa misura che Draw usa per disegnarla, mai duplicata).
+	static int PrintTextBandHeight() { return kRowHeight; }
 
 	// Indici di colonna/riga (1-based, gia' bloccati in [1, kColCount]/
 	// [1, kRowCount] da ColumnAtX/RowAtY) che coprono "rect" -- pubblico
@@ -706,6 +742,16 @@ private:
 	// fShowGrid, il comportamento di sempre).
 	bool fPrintGridOverride;
 	bool fPrintGridValue;
+
+	// Testi/bande di intestazione e pie' di pagina in stampa: vedi
+	// SetPrintHeaderFooter sopra -- tutto vuoto/spento di default (mai
+	// disegnati a video ne' nelle stampe vecchie).
+	BString fPrintHeaderText;
+	BString fPrintFooterText;
+	float fPrintTopInset;
+	float fPrintFooterH;
+	int fPrintPageNum;
+	int fPrintPageCount;
 
 	// Protezione foglio: vedi SetProtected/IsProtected sopra.
 	bool fSheetProtected;

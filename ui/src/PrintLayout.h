@@ -17,6 +17,7 @@
 
 #include <Point.h>
 #include <Rect.h>
+#include <String.h>
 #include <SupportDefs.h>
 
 #include <vector>
@@ -27,7 +28,8 @@
 // contenuto dati vero della pagina, cosi' l'intestazione ripetuta ha
 // spazio senza sovrapporsi ai dati, vedi ComputePrintPageOrigins).
 std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
-	float pageWidth, float pageHeight, float headerW, float headerH);
+	float pageWidth, float pageHeight, float headerW, float headerH,
+	float footerH = 0);
 
 // Porzione di contentRect davvero presente sulla pagina che comincia a
 // pageOrigin (una delle origini di ComputePrintPageOrigins sopra):
@@ -60,7 +62,7 @@ enum {
 // un'incongruenza fra le due produrrebbe un "adatta a una pagina" che
 // in realta' non ci sta.
 float ComputePrintFitScale(BRect contentRect, float usableWidth, float usableHeight,
-	float headerW, float headerH, int fitMode);
+	float headerW, float headerH, int fitMode, float footerH = 0);
 
 // Come ComputePrintFitScale in modalita' kPrintFitBoth, ma su wide x tall
 // pagine invece di una sola: la scala (mai oltre 1.0, stesso principio)
@@ -68,7 +70,7 @@ float ComputePrintFitScale(BRect contentRect, float usableWidth, float usableHei
 // wide/tall < 1 vengono trattati come 1 (mai divisione per zero o scala
 // infinita da valori corrotti). kPrintFitBoth e' il caso 1x1 di questa.
 float ComputePrintFitScaleToPages(BRect contentRect, float usableWidth, float usableHeight,
-	float headerW, float headerH, int wide, int tall);
+	float headerW, float headerH, int wide, int tall, float footerH = 0);
 
 // Risultato completo del calcolo di un lavoro di stampa (Fase 28,
 // anteprima in "Imposta pagina"): unica fonte di verita' condivisa fra
@@ -108,6 +110,15 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
 	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
 	int scaleMode, double scalePercent, float headerW, float headerH,
-	int fitWide = 1, int fitTall = 1, bool centerH = false, bool centerV = false);
+	int fitWide = 1, int fitTall = 1, bool centerH = false, bool centerV = false,
+	float footerH = 0);
+
+// Espande i codici di intestazione/pie' di pagina nel testo del modello:
+// &P numero di pagina, &N pagine totali, &D data corrente (GG.MM.AAAA),
+// && una e-commerciale letterale. Un codice sconosciuto (&X) resta com'e'
+// ("&X"), mai perso in silenzio -- il modello resta leggibile anche se
+// un codice non e' supportato. Funzione pura (stesso testo in anteprima
+// e stampa vera), testabile senza stampante.
+BString ExpandPrintHeaderCodes(const char* templ, int page, int pages);
 
 #endif
