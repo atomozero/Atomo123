@@ -44,11 +44,11 @@
 #include <vector>
 
 const uint32 kMsgPageSetupRequest = 'psrq';
-// Anteprima (Fase 28): stessi sei campi di kMsgPageSetupRequest, ma i
+// Anteprima (Fase 28): stessi sette campi di kMsgPageSetupRequest, ma i
 // valori ANCORA IN MODIFICA nel dialogo (mai persistiti in gPrefs) --
 // vedi MainWindow::HandlePageSetupPreviewRequest.
 const uint32 kMsgPageSetupPreviewRequest = 'apsv';
-// "Stampa..." dentro "Imposta pagina": applica i sei campi (come
+// "Stampa..." dentro "Imposta pagina": applica i sette campi (come
 // kMsgPageSetupRequest) POI stampa davvero, un solo clic invece di
 // Applica + Archivio > Stampa separati.
 const uint32 kMsgPageSetupPrintRequest = 'apsp';
@@ -56,6 +56,7 @@ const uint32 kMsgPageSetupPrintRequest = 'apsp';
 class BBitmap;
 class BButton;
 class BRadioButton;
+class BCheckBox;
 class BStringView;
 class BTextControl;
 class PrintPreviewView;
@@ -68,7 +69,7 @@ public:
 	// MainWindow prima di mostrare la finestra) -- stesso motivo di
 	// PreferencesWindow::SetValues.
 	void SetValues(double marginTop, double marginBottom, double marginLeft,
-		double marginRight, int scaleMode, double scalePercent);
+		double marginRight, int scaleMode, double scalePercent, bool printHeaders);
 
 	// Prende possesso delle bitmap passate (vedi PrintPreviewView::
 	// SetPages) e torna a mostrare la prima pagina -- chiamata da
@@ -90,13 +91,14 @@ private:
 	BRadioButton* fScaleFitHeightRadio;
 	BRadioButton* fScaleFitBothRadio;
 	BTextControl* fScalePercentField;
+	BCheckBox* fPrintHeadersBox;
 	PrintPreviewView* fPreviewView;
 	BStringView* fPageLabel;
 	BButton* fPrevPageButton;
 	BButton* fNextPageButton;
 	BMessenger fTarget;
 
-	// Legge e convalida i sei campi (stessi limiti gia' applicati da
+	// Legge e convalida i sette campi (stessi limiti gia' applicati da
 	// kMsgApplyLocal: margini mai negativi, percentuale in [10,400]) in
 	// un unico posto -- usata da "Applica"/"Stampa..." (persistono, "what"
 	// = kMsgPageSetupRequest/kMsgPageSetupPrintRequest) e da ogni

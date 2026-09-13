@@ -322,23 +322,26 @@ public:
 	// il valore di ripiego per qualunque foglio che non abbia ancora
 	// una propria impostazione (un file scritto prima di questa fase,
 	// o un foglio nuovo mai passato da "Imposta pagina"), vedi
-	// GetActivePrintSettings sotto.
+	// GetActivePrintSettings sotto. printHeaders ("Stampa intestazioni
+	// righe/colonne") segue lo stesso identico schema per-foglio.
 	void HandlePageSetupRequest(double marginTop, double marginBottom, double marginLeft,
-		double marginRight, int scaleMode, double scalePercent);
-	// Anteprima (Fase 28): stessi sei parametri, ma NON persistiti --
+		double marginRight, int scaleMode, double scalePercent, bool printHeaders);
+	// Anteprima (Fase 28): stessi sette parametri, ma NON persistiti --
 	// rigenera solo le bitmap di anteprima e le manda a
 	// fPageSetupWindow, vedi GeneratePrintPreviewPages.
 	void HandlePageSetupPreviewRequest(double marginTop, double marginBottom, double marginLeft,
-		double marginRight, int scaleMode, double scalePercent);
-	// Margini/scala EFFETTIVI del foglio attivo (Fase 29): quelli propri
-	// del foglio se mai impostati (fSheets[fActiveSheetIndex].
-	// printSettings.hasSettings), altrimenti la preferenza globale
-	// (gPrefs) -- stesso identico fallback per ShowPageSetupWindow
-	// (valori iniziali del dialogo) e ComputePrintJobLayoutForActiveSheet
-	// (stampa/anteprima vera), centralizzato qui per non duplicare la
-	// logica di fallback in due punti diversi.
+		double marginRight, int scaleMode, double scalePercent, bool printHeaders);
+	// Margini/scala/intestazioni EFFETTIVI del foglio attivo (Fase 29):
+	// quelli propri del foglio se mai impostati
+	// (fSheets[fActiveSheetIndex].printSettings.hasSettings), altrimenti
+	// la preferenza globale (gPrefs) -- stesso identico fallback per
+	// ShowPageSetupWindow (valori iniziali del dialogo) e
+	// ComputePrintJobLayoutForActiveSheet (stampa/anteprima vera),
+	// centralizzato qui per non duplicare la logica di fallback in due
+	// punti diversi.
 	void GetActivePrintSettings(double* marginTop, double* marginBottom, double* marginLeft,
-		double* marginRight, int* scaleMode, double* scalePercent) const;
+		double* marginRight, int* scaleMode, double* scalePercent,
+		bool* printHeaders) const;
 
 	// Chiamato da SheetView (che possiede fDoc solo indirettamente,
 	// tramite il puntatore che MainWindow gli passa) ogni volta che
@@ -767,8 +770,11 @@ private:
 	// stampante predefinita (PrintableRect/GetResolution funzionano
 	// senza mostrare il dialogo di sistema, vedi il commento nel .cpp)
 	// -- MAI ConfigJob(), l'anteprima non deve mai aprire un dialogo.
+	// Se non c'e' nessuna stampante predefinita (rettangolo non valido),
+	// si ripiega su un A4 a 72dpi invece di mostrare "Nessuna anteprima".
 	std::vector<BBitmap*> GeneratePrintPreviewPages(double marginTop, double marginBottom,
-		double marginLeft, double marginRight, int scaleMode, double scalePercent);
+		double marginLeft, double marginRight, int scaleMode, double scalePercent,
+		bool printHeaders);
 	void ShowFindWindow();
 	void ShowChartWindow();
 	void ShowPivotWindow();

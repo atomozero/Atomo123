@@ -74,17 +74,27 @@ int main()
 	win->PrintAreaText(text, sizeof(text));
 	Check(text[0] == '\0', "PrintAreaText torna vuoto dopo ClearPrintArea");
 
-	// HandlePageSetupRequest (margini/scala): nessuno stato "vivo" da
-	// verificare in memoria (a differenza di HandlePreferencesRequest,
-	// vedi il commento su MainWindow::HandlePageSetupRequest) -- con
-	// gPrefs NULL in questo harness (nessuna App::App() reale, vedi
-	// test_preferences.cpp) l'unica cosa da verificare e' che non
-	// causi un crash con valori normali e ai limiti.
-	win->HandlePageSetupRequest(2.0, 2.0, 2.0, 2.0, 0, 100.0);
+	// HandlePageSetupRequest (margini/scala/intestazioni): con gPrefs
+	// NULL in questo harness (nessuna App::App() reale, vedi
+	// test_preferences.cpp) la richiesta viene comunque registrata
+	// PER FOGLIO in fSheets -- verificabile via GetActivePrintSettings
+	// (stesso schema di fallback per-foglio/globale del codice vero).
+	win->HandlePageSetupRequest(2.0, 2.0, 2.0, 2.0, 0, 100.0, true);
 	Check(true, "HandlePageSetupRequest accetta margini/scala normali senza crash");
 
-	win->HandlePageSetupRequest(0.0, 0.0, 0.0, 0.0, 3, 10.0);
+	win->HandlePageSetupRequest(0.0, 0.0, 0.0, 0.0, 3, 10.0, false);
 	Check(true, "HandlePageSetupRequest accetta margini nulli e scala 'adatta a una pagina' senza crash");
+
+	{
+		double marginTop, marginBottom, marginLeft, marginRight, scalePercent;
+		int scaleMode;
+		bool printHeaders = true;
+		win->GetActivePrintSettings(&marginTop, &marginBottom, &marginLeft, &marginRight,
+			&scaleMode, &scalePercent, &printHeaders);
+		Check(marginTop == 0.0 && marginBottom == 0.0 && marginLeft == 0.0 && marginRight == 0.0
+				&& scaleMode == 3 && scalePercent == 10.0 && printHeaders == false,
+			"GetActivePrintSettings riporta l'ultima impostazione per-foglio (margini 0, scala 3/10%, niente intestazioni)");
+	}
 
 	win->Unlock();
 

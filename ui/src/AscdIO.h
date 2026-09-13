@@ -51,6 +51,11 @@ struct AscdPrintSettings {
 	double marginRightCm = 2.0;
 	int scaleMode = 0; // 0=percentuale fissa, vedi kPrintFitWidth/Height/Both in PrintLayout.h
 	double scalePercent = 100.0;
+	// Stampa intestazioni di riga/colonna (numeri/lettere, vedi
+	// SheetView::Draw): true di default per conservare il comportamento
+	// di sempre (le intestazioni venivano stampate su ogni pagina).
+	// Scelta dell'utente in "Imposta pagina", come margini/scala.
+	bool printHeaders = true;
 };
 
 // "charts"/"colWidths" sono opzionali (NULL = non legge/scrive nulla

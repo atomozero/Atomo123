@@ -94,6 +94,7 @@ int main()
 	printSettings.marginRightCm = 2.5;
 	printSettings.scaleMode = 1; // kPrintFitWidth
 	printSettings.scalePercent = 85.0;
+	printSettings.printHeaders = false; // non-default apposta, per provare che viaggia davvero
 
 	// Font non predefinito su A2 (grassetto), sulla famiglia REALE del
 	// font di sistema (vedi il commento in cima al file sul perche').
@@ -247,6 +248,7 @@ int main()
 	bool loadedHasPrintArea = false;
 	range loadedPrintArea;
 	AscdPrintSettings loadedPrintSettings;
+	loadedPrintSettings.printHeaders = true; // opposto del valore scritto, per essere sicuri che sia DAVVERO riletto
 
 	{
 		BFile file(path, B_READ_ONLY);
@@ -264,8 +266,9 @@ int main()
 	Check(loadedPrintSettings.hasSettings
 			&& loadedPrintSettings.marginTopCm == 1.5 && loadedPrintSettings.marginBottomCm == 1.5
 			&& loadedPrintSettings.marginLeftCm == 2.5 && loadedPrintSettings.marginRightCm == 2.5
-			&& loadedPrintSettings.scaleMode == 1 && loadedPrintSettings.scalePercent == 85.0,
-		"i margini/la scala di \"Imposta pagina\" sopravvivono al giro di salvataggio/ricarica");
+			&& loadedPrintSettings.scaleMode == 1 && loadedPrintSettings.scalePercent == 85.0
+			&& loadedPrintSettings.printHeaders == false,
+		"i margini/la scala/le intestazioni di \"Imposta pagina\" sopravvivono al giro di salvataggio/ricarica");
 
 	Check(loadedFrozenRows == 2 && loadedFrozenCols == 1,
 		"Blocca riquadri (2 righe, 1 colonna) sopravvive al giro di salvataggio/ricarica");
@@ -459,6 +462,7 @@ int main()
 	bool oldHasPrintArea = true; // opposto del default (false): stesso motivo
 	AscdPrintSettings oldPrintSettings;
 	oldPrintSettings.hasSettings = true; // opposto del default (false): stesso motivo
+	oldPrintSettings.printHeaders = false; // opposto del default (true): stesso motivo
 	{
 		BFile file(oldPath, B_READ_ONLY);
 		status_t err = LoadASCD(&file, oldStyleReloaded, NULL, NULL,
@@ -475,6 +479,8 @@ int main()
 	Check(!oldHasPrintArea, "un file senza la sezione area di stampa riceve il default (nessuna)");
 	Check(!oldPrintSettings.hasSettings,
 		"un file senza la sezione margini/scala riceve il default (nessuna impostazione propria)");
+	Check(oldPrintSettings.printHeaders,
+		"il flag intestazioni (default true) viaggia anche in un file minimo");
 
 	doc = NULL; // gia' rilasciato sopra
 	reloaded->Release();
