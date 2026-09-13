@@ -971,13 +971,6 @@ private:
 	BTextControl* fEditor;
 	cell fEditingCell;
 
-	// Formattazione locale-aware dei numeri (separatore delle migliaia,
-	// punto/virgola decimale secondo le preferenze di sistema) tramite
-	// il Locale Kit -- il motore stesso formatta i numeri in modo
-	// generico (CFormatter/eGeneral, non locale-aware), quindi questo
-	// e' un livello di presentazione applicato solo per la griglia.
-	BNumberFormat fNumberFormat;
-
 	static const int kColWidth = 80;
 	static const int kRowHeight = 20;
 	static const int kHeaderWidth = 30;
