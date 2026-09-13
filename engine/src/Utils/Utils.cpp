@@ -161,6 +161,29 @@ int GetFunctionNr(const char *name)
 	if (hasXlfnPrefix)
 		name += kXlfnPrefixLen;
 
+	// FILTER specifically (a leftover of it originally shipping in Excel's
+	// preview build under a different namespace) gets a SECOND prefix after
+	// "_xlfn.": real Excel writes it as "_xlfn._xlws.FILTER", never plain
+	// "_xlfn.FILTER" -- confirmed with a real file (this app's own
+	// Welcome.xlsx demo workbook, built with openpyxl, which reproduces
+	// Excel's exact on-disk spelling). UNIQUE/SORT/SEQUENCE, the other
+	// dynamic-array functions, only ever get the single "_xlfn." prefix.
+	// Without this, "_xlfn._xlws.FILTER" reduced (above) to "_xlws.FILTER",
+	// which matches no function name or alias at all.
+	static const char kXlwsPrefix[] = "_XLWS.";
+	const int kXlwsPrefixLen = sizeof(kXlwsPrefix) - 1;
+	bool hasXlwsPrefix = true;
+	for (i = 0; i < kXlwsPrefixLen; i++)
+	{
+		if (name[i] == 0 || toupper(name[i]) != kXlwsPrefix[i])
+		{
+			hasXlwsPrefix = false;
+			break;
+		}
+	}
+	if (hasXlwsPrefix)
+		name += kXlwsPrefixLen;
+
 	sLen = strlen(name);
 
 	// myFunc[10] ospita fino a 9 caratteri piu' il terminatore: il

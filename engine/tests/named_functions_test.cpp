@@ -234,6 +234,51 @@ int main()
 		gFailures++;
 	}
 
+	// FILTER: bug reale trovato sul file dimostrativo Welcome.xlsx
+	// dell'app stessa (foglio "Advanced Functions"), scritto da Excel
+	// (via openpyxl, che riproduce fedelmente la sintassi reale di
+	// Excel) con un SECONDO prefisso dopo "_xlfn.": "_xlfn._xlws.
+	// FILTER", mai "_xlfn.FILTER" come UNIQUE/SORT/SEQUENCE (le altre
+	// funzioni ad array dinamico, che hanno un solo prefisso). Due bug
+	// distinti, entrambi necessari per arrivare fino a qui:
+	// 1) lexer.cpp stato 42 (continuazione di un nome punteggiato dopo
+	//    un ".") controllava solo isalpha() per il carattere seguente,
+	//    ma "_xlws" comincia per underscore -- il token si spezzava in
+	//    "_xlfn" isolato, mai riconosciuto come funzione, con "." e
+	//    "_xlws..." poi ri-tokenizzati come roba estranea, fallendo
+	//    l'analisi dell'intera formula (che restava testo grezzo
+	//    invece di calcolare).
+	// 2) GetFunctionNr in Utils.cpp toglieva un solo prefisso "_XLFN."
+	//    e mai un secondo "_XLWS." -- anche a lexer corretto (token
+	//    intero "_xlfn._xlws.FILTER"), il nome dopo aver tolto solo
+	//    "_XLFN." restava "_xlws.FILTER", non riconosciuto.
+	// Nota a parte, non un bug: un intervallo confrontato con uno
+	// scalare dentro l'argomento di una funzione (es. "B1:B2>=20")
+	// NON produce un array di booleani per cella in questo motore --
+	// resta un limite noto e documentato (vedi ROADMAP.md), quindi
+	// questo test passa gia' un intervallo di booleani veri come
+	// secondo argomento, esattamente come il file dimostrativo e' stato
+	// corretto per fare.
+	try
+	{
+		TryToParseString("10", cell(30, 1), &doc, true);
+		TryToParseString("30", cell(30, 2), &doc, true);
+		TryToParseString("FALSE", cell(31, 1), &doc, true);
+		doc.CalcCell(cell(31, 1));
+		TryToParseString("TRUE", cell(31, 2), &doc, true);
+		doc.CalcCell(cell(31, 2));
+		TryToParseString("=_xlfn._xlws.FILTER(AD1:AD2;AE1:AE2)", cell(32, 1), &doc, true, '.', ';');
+		doc.CalcCell(cell(32, 1));
+		doc.GetValue(cell(32, 1), v);
+		Check((double)v == 30.0,
+			"=_xlfn._xlws.FILTER(AD1:AD2;AE1:AE2) (doppio prefisso reale di Excel per FILTER) calcola 30, la sola riga con AE=TRUE");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =_xlfn._xlws.FILTER: %s\n", (char *)e);
+		gFailures++;
+	}
+
 	// CONCATENATE/ROUNDUP/ROUNDDOWN/TEXT (Fase 14): scoperti mancanti
 	// analizzando altri file XLSX reali dell'utente (non lo stesso file
 	// di XLOOKUP/COUNTIFS sopra). CONCATENATE e' un alias diretto di

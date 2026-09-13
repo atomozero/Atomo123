@@ -321,11 +321,22 @@ int CParser::GetNextToken(bool acceptTime)
 
 			case 42:
 				GETNEXTCHAR;
-				if (isalpha(ch))
+				if (isalpha(ch) || ch == '_')
 					// Si', il "." fa parte del nome: resta gia' nel
 					// buffer cosi' com'e' (accodato da GETNEXTCHAR come
 					// ogni altro carattere), si torna solo a continuare
-					// la scansione normale dell'identificatore.
+					// la scansione normale dell'identificatore. "_"
+					// oltre a una lettera vera (bug reale trovato su un
+					// file reale: FILTER e' l'unica funzione dinamica
+					// che Excel scrive con un SECONDO prefisso dopo
+					// "_xlfn.", "_xlfn._xlws.FILTER" -- il "." prima di
+					// "_xlws" veniva scartato insieme al carattere "_"
+					// appena letto (RETRACT doppio sotto), spezzando il
+					// nome in "_xlfn" seguito da un "." isolato invece
+					// di un unico identificatore, funzione mai
+					// riconosciuta) -- stessa classe di caratteri gia'
+					// ammessa per INIZIARE un identificatore (stato 9),
+					// solo simmetrica per quando ricomincia dopo un ".".
 					state = 10;
 				else
 				{
