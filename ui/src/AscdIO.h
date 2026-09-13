@@ -73,6 +73,11 @@ struct AscdPrintSettings {
 	// include gia' <String.h>.
 	BString printHeaderText;
 	BString printFooterText;
+	// Ordine delle pagine (come Excel "Page order"): false = prima giu',
+	// poi a destra (il default di sempre, e di Excel), true = prima a
+	// destra, poi giu'. Cambia solo l'ordine delle origini di pagina,
+	// mai il loro insieme.
+	bool pageOrderAcrossFirst = false;
 	// Stampa intestazioni di riga/colonna (numeri/lettere, vedi
 	// SheetView::Draw): true di default per conservare il comportamento
 	// di sempre (le intestazioni venivano stampate su ogni pagina).

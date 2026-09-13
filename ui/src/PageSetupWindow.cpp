@@ -16,8 +16,10 @@
 #include <Button.h>
 #include <Catalog.h>
 #include <CheckBox.h>
+#include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <RadioButton.h>
+#include <ScrollView.h>
 #include <StringView.h>
 #include <TextControl.h>
 
@@ -129,6 +131,16 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		B_TRANSLATE("&P pagina, &N totale pagine, &D data"));
 	codesHint->SetFont(be_plain_font);
 
+	// Ordine delle pagine (come Excel "Page order"): prima giu' poi a
+	// destra (default, come Excel) oppure prima a destra poi giu'. Due
+	// radio fratelli (stesso genitore) per la mutua esclusione standard
+	// di BRadioButton -- ogni cambio rigenera solo l'anteprima.
+	fOrderDownRadio = new BRadioButton("orderDownRadio",
+		B_TRANSLATE("Prima giù, poi a destra"), new BMessage(kMsgScaleModeChanged));
+	fOrderAcrossRadio = new BRadioButton("orderAcrossRadio",
+		B_TRANSLATE("Prima a destra, poi giù"), new BMessage(kMsgScaleModeChanged));
+	fOrderDownRadio->SetValue(B_CONTROL_ON);
+
 	BBox* scaleBox = new BBox("scaleBox");
 	scaleBox->SetLabel(B_TRANSLATE("Scala"));
 	BLayoutBuilder::Group<>(scaleBox, B_VERTICAL, 6)
@@ -170,6 +182,29 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.Add(fFooterTextField)
 		.Add(codesHint);
 
+	BBox* orderBox = new BBox("orderBox");
+	orderBox->SetLabel(B_TRANSLATE("Ordine pagine"));
+	BLayoutBuilder::Group<>(orderBox, B_VERTICAL, 6)
+		.SetInsets(8, orderBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fOrderDownRadio)
+		.Add(fOrderAcrossRadio);
+
+	// Colonna destra scrollabile: le opzioni crescono a ogni fase e la
+	// finestra resta a dimensione fissa (non ridimensionabile) -- senza
+	// scroll, i box in coda finirebbero fuori schermo su display bassi.
+	BGroupView* optionsCol = new BGroupView();
+	BLayoutBuilder::Group<>(optionsCol, B_VERTICAL, 8)
+		.Add(marginsBox)
+		.Add(scaleBox)
+		.Add(printBox)
+		.Add(centerBox)
+		.Add(headerFooterBox)
+		.Add(orderBox)
+		.AddGlue()
+		.End();
+	BScrollView* optionsScroll = new BScrollView("optionsScroll", optionsCol,
+		0, false, true, B_NO_BORDER);
+
 	fPreviewView = new PrintPreviewView();
 
 	fPageLabel = new BStringView("pageLabel", B_TRANSLATE("Nessuna anteprima"));
@@ -196,14 +231,7 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 					.AddGlue()
 				.End()
 			.End()
-			.AddGroup(B_VERTICAL, 8)
-				.Add(marginsBox)
-				.Add(scaleBox)
-				.Add(printBox)
-				.Add(centerBox)
-				.Add(headerFooterBox)
-				.AddGlue()
-			.End()
+			.Add(optionsScroll)
 		.End()
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
@@ -229,6 +257,8 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	fCenterVBox->SetTarget(this);
 	fHeaderTextField->SetTarget(this);
 	fFooterTextField->SetTarget(this);
+	fOrderDownRadio->SetTarget(this);
+	fOrderAcrossRadio->SetTarget(this);
 	fPrevPageButton->SetTarget(this);
 	fNextPageButton->SetTarget(this);
 	printButton->SetTarget(this);
@@ -276,6 +306,8 @@ void PageSetupWindow::SetValues(const AscdPrintSettings& settings)
 	fCenterVBox->SetValue(settings.centerV ? B_CONTROL_ON : B_CONTROL_OFF);
 	fHeaderTextField->SetText(settings.printHeaderText.String());
 	fFooterTextField->SetText(settings.printFooterText.String());
+	fOrderDownRadio->SetValue(!settings.pageOrderAcrossFirst ? B_CONTROL_ON : B_CONTROL_OFF);
+	fOrderAcrossRadio->SetValue(settings.pageOrderAcrossFirst ? B_CONTROL_ON : B_CONTROL_OFF);
 }
 
 void PageSetupWindow::SetPreviewPages(std::vector<BBitmap*> pages)
@@ -365,6 +397,8 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 	request.AddBool("centerV", centerV);
 	request.AddString("headerText", fHeaderTextField->Text());
 	request.AddString("footerText", fFooterTextField->Text());
+	request.AddBool("pageOrderAcrossFirst",
+		fOrderAcrossRadio->Value() == B_CONTROL_ON);
 	return request;
 }
 

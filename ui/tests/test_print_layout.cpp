@@ -367,6 +367,34 @@ int main()
 			"&D espande nella data corrente in formato GG.MM.AAAA");
 	}
 
+	// Ordine pagine "prima a destra, poi giu'" (acrossFirst): stesso
+	// identico insieme di 9 origini del test da 9 pagine sopra, emesse
+	// a colonne invece che a righe.
+	{
+		BRect content(0, 0, 250, 120);
+		std::vector<BPoint> origins = ComputePrintPageOrigins(content, 110, 55, 10, 5,
+			0, true);
+		Check(origins.size() == 9,
+			"con ordine prima-a-destra restano 9 pagine (stesso insieme, altro ordine)");
+		BPoint expected[9] = {
+			BPoint(0, 0), BPoint(0, 50), BPoint(0, 100),
+			BPoint(100, 0), BPoint(100, 50), BPoint(100, 100),
+			BPoint(200, 0), BPoint(200, 50), BPoint(200, 100),
+		};
+		bool allMatch = origins.size() == 9;
+		for (size_t i = 0; allMatch && i < 9; i++)
+			allMatch = (origins[i] == expected[i]);
+		Check(allMatch, "le 9 origini escono a colonne (giu' lungo la prima, poi la seconda...)");
+	}
+	{
+		// Senza il flag (default) l'ordine resta righe prima -- lo stesso
+		// test di prima, rieseguito qui per fissare il default.
+		BRect content(0, 0, 250, 120);
+		std::vector<BPoint> origins = ComputePrintPageOrigins(content, 110, 55, 10, 5);
+		Check(origins.size() == 9 && origins[1] == BPoint(100, 0),
+			"di default (acrossFirst assente) la seconda pagina e' a destra della prima, non sotto");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

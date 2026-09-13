@@ -29,7 +29,7 @@
 // spazio senza sovrapporsi ai dati, vedi ComputePrintPageOrigins).
 std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
 	float pageWidth, float pageHeight, float headerW, float headerH,
-	float footerH = 0);
+	float footerH = 0, bool acrossFirst = false);
 
 // Porzione di contentRect davvero presente sulla pagina che comincia a
 // pageOrigin (una delle origini di ComputePrintPageOrigins sopra):
@@ -111,7 +111,7 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
 	int scaleMode, double scalePercent, float headerW, float headerH,
 	int fitWide = 1, int fitTall = 1, bool centerH = false, bool centerV = false,
-	float footerH = 0);
+	float footerH = 0, bool acrossFirst = false);
 
 // Espande i codici di intestazione/pie' di pagina nel testo del modello:
 // &P numero di pagina, &N pagine totali, &D data corrente (GG.MM.AAAA),

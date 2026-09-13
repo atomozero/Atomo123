@@ -3511,6 +3511,7 @@ void MainWindow::GetActivePrintSettings(AscdPrintSettings* out) const
 	out->centerV = gPrefs ? (gPrefs->GetPrefInt("printCenterV", 0) != 0) : false;
 	out->printHeaderText = gPrefs ? gPrefs->GetPrefString("printHeaderText", "") : "";
 	out->printFooterText = gPrefs ? gPrefs->GetPrefString("printFooterText", "") : "";
+	out->pageOrderAcrossFirst = gPrefs ? (gPrefs->GetPrefInt("printPageOrder", 0) != 0) : false;
 }
 
 void MainWindow::ShowPageSetupWindow()
@@ -3580,6 +3581,7 @@ void MainWindow::HandlePageSetupRequest(const AscdPrintSettings& settings)
 	gPrefs->SetPrefInt("printCenterV", settings.centerV ? 1 : 0);
 	gPrefs->SetPrefString("printHeaderText", settings.printHeaderText.String());
 	gPrefs->SetPrefString("printFooterText", settings.printFooterText.String());
+	gPrefs->SetPrefInt("printPageOrder", settings.pageOrderAcrossFirst ? 1 : 0);
 	try { gPrefs->WritePrefFile(); }
 	catch (CErr&) { }
 }
@@ -4994,7 +4996,8 @@ PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWi
 	return ComputePrintJobLayout(ActivePrintContentRect(), printableWidth, printableHeight,
 		xDPI, yDPI, settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
 		settings.marginRightCm, settings.scaleMode, settings.scalePercent, headerW, headerH,
-		settings.fitWide, settings.fitTall, settings.centerH, settings.centerV, footerH);
+		settings.fitWide, settings.fitTall, settings.centerH, settings.centerV, footerH,
+		settings.pageOrderAcrossFirst);
 }
 
 std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSettings& settings)
@@ -5040,7 +5043,7 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 		settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
 		settings.marginRightCm, settings.scaleMode, settings.scalePercent,
 		headerW, headerH, settings.fitWide, settings.fitTall,
-		settings.centerH, settings.centerV, footerH);
+		settings.centerH, settings.centerV, footerH, settings.pageOrderAcrossFirst);
 	if (layout.pageOrigins.empty())
 		return pages;
 
@@ -6380,6 +6383,9 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindString("footerText", &footerText);
 			settings.printHeaderText = headerText ? headerText : "";
 			settings.printFooterText = footerText ? footerText : "";
+			bool acrossFirst = false;
+			message->FindBool("pageOrderAcrossFirst", &acrossFirst);
+			settings.pageOrderAcrossFirst = acrossFirst;
 			HandlePageSetupRequest(settings);
 			break;
 		}
@@ -6416,6 +6422,9 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindString("footerText", &footerText);
 			settings.printHeaderText = headerText ? headerText : "";
 			settings.printFooterText = footerText ? footerText : "";
+			bool acrossFirst = false;
+			message->FindBool("pageOrderAcrossFirst", &acrossFirst);
+			settings.pageOrderAcrossFirst = acrossFirst;
 			HandlePageSetupPreviewRequest(settings);
 			break;
 		}
@@ -6452,6 +6461,9 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindString("footerText", &footerText);
 			settings.printHeaderText = headerText ? headerText : "";
 			settings.printFooterText = footerText ? footerText : "";
+			bool acrossFirst = false;
+			message->FindBool("pageOrderAcrossFirst", &acrossFirst);
+			settings.pageOrderAcrossFirst = acrossFirst;
 			HandlePageSetupRequest(settings);
 			PrintDocument();
 			break;
