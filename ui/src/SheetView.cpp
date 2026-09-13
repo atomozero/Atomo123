@@ -3049,6 +3049,26 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 				else
 					lines.push_back(BString(text));
 
+				// Real line height for this cell's font. The vertical
+				// alignment code already needed this, but kept
+				// advancing each line by the FIXED kRowHeight -- correct
+				// for the default font (~kRowHeight itself), wrong for
+				// any cell with a larger explicit font: a 28pt title
+				// (real case, agile-kanban-board.xlsx, Vertex42) had its
+				// baseline placed only kRowHeight-5=15px from the top of
+				// the cell, clipping the top of its ascenders (which at
+				// 28pt take up roughly 25-28px) against the cell's clip
+				// region -- visually it looked smaller than it really
+				// was, not just mispositioned. Never smaller than
+				// kRowHeight, so spacing for the vast majority of cells
+				// (already within the default font size) stays exactly
+				// as every existing test already verifies.
+				font_height fh;
+				GetFontHeight(&fh);
+				float lineHeight = fh.ascent + fh.descent + fh.leading;
+				if (lineHeight < kRowHeight)
+					lineHeight = kRowHeight;
+
 				for (size_t li = 0; li < lines.size(); li++)
 				{
 					const char* lineText = lines[li].String();
@@ -3060,7 +3080,7 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 					// quando la riga e piu' alta del blocco (righe alte, celle unite
 					// alte, testo corto). Mai negativo: se il blocco deborda, si
 					// disegna dall'alto come prima.
-					float blockHeight = (float)lines.size() * kRowHeight;
+					float blockHeight = (float)lines.size() * lineHeight;
 					float yOffset = 0;
 					if (cs.fVerticalAlignment == eVAlignMiddle)
 						yOffset = (r.Height() - blockHeight) / 2.0f;
@@ -3078,7 +3098,7 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 							textX = r.right - textWidth - 3;
 					}
 
-					BPoint pos(textX, r.top + yOffset + kRowHeight * (li + 1) - 5);
+					BPoint pos(textX, r.top + yOffset + lineHeight * (li + 1) - 5);
 					DrawString(lineText, pos);
 
 					// Sottolineato (Fase 12): BFont non ha un
