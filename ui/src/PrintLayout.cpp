@@ -28,7 +28,8 @@ static float PrintContentStartY(BRect contentRect, float headerH)
 }
 
 std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
-	float pageWidth, float pageHeight, float headerW, float headerH, float footerH)
+	float pageWidth, float pageHeight, float headerW, float headerH, float footerH,
+	bool acrossFirst)
 {
 	std::vector<BPoint> origins;
 
@@ -79,6 +80,33 @@ std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
 	{
 		for (float dataX = startX; dataX < contentRect.right; dataX += (pageWidth - headerW))
 			origins.push_back(BPoint(dataX - headerW, dataY - headerH));
+	}
+
+	// Ordine "prima a destra, poi giu'" (Excel "Over, then down"): stesso
+	// identico insieme di origini, emesse a colonne invece che a righe --
+	// si riordina qui (non nel chiamante) cosi' anteprima e stampa vera,
+	// che usano entrambe questa funzione, non possono divergere.
+	if (acrossFirst)
+	{
+		std::vector<BPoint> reordered;
+		reordered.reserve(origins.size());
+		// Conta le colonne: origini con la stessa Y della prima.
+		size_t cols = 0;
+		for (size_t i = 0; i < origins.size() && origins[i].y == origins[0].y; i++)
+			cols++;
+		if (cols == 0)
+			cols = origins.size();
+		size_t rows = (origins.size() + cols - 1) / cols;
+		for (size_t c = 0; c < cols; c++)
+		{
+			for (size_t r = 0; r < rows; r++)
+			{
+				size_t index = r * cols + c;
+				if (index < origins.size())
+					reordered.push_back(origins[index]);
+			}
+		}
+		origins.swap(reordered);
 	}
 
 	return origins;
@@ -157,9 +185,9 @@ float ComputePrintFitScaleToPages(BRect contentRect, float usableWidth, float us
 
 PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
-	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
+ double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
 	int scaleMode, double scalePercent, float headerW, float headerH,
-	int fitWide, int fitTall, bool centerH, bool centerV, float footerH)
+	int fitWide, int fitTall, bool centerH, bool centerV, float footerH, bool acrossFirst)
 {
 	PrintJobLayout layout;
 
@@ -214,7 +242,7 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	layout.pageHeight = (float)(usableHeight / layout.scale);
 
 	layout.pageOrigins = ComputePrintPageOrigins(contentRect, layout.pageWidth, layout.pageHeight,
-		headerW, headerH, footerH);
+		headerW, headerH, footerH, acrossFirst);
 
 	// Centratura per pagina: un offset per pageOrigins (stesso indice),	// in pixel del dispositivo come marginLeftPx/marginTopPx -- il
 	// chiamante lo somma alla destinazione. Solo le pagine parziali si

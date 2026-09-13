@@ -154,6 +154,22 @@ int main()
 			"GetActivePrintSettings riporta i testi di intestazione e pie'");
 	}
 
+	// Ordine pagine: default giu'-poi-destra, su richiesta destra-poi-giu'.
+	{
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.pageOrderAcrossFirst == false,
+			"senza richiesta esplicita l'ordine resta giu'-poi-destra (default)");
+	}
+	settings.pageOrderAcrossFirst = true;
+	win->HandlePageSetupRequest(settings);
+	{
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.pageOrderAcrossFirst == true,
+			"GetActivePrintSettings riporta l'ordine destra-poi-giu'");
+	}
+
 	win->Unlock();
 
 	win->Lock();

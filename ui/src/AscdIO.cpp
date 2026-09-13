@@ -985,8 +985,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	// payload e avanzano la versione: v2 aggiunge fitWide/fitTall (due
 	// int32), v3 aggiunge i testi di intestazione/pie' di pagina (due
 	// stringhe con lunghezza int32, max 4096 byte ciascuna). I flag
-	// booleani (centratura bit2/bit3, ...) riusano invece i bit liberi
-	// SENZA cambiare versione ne' lunghezza -- vedi AscdIO.h sui campi.
+	// booleani (centratura bit2/bit3, ordine pagine bit4, ...) riusano
+	// invece i bit liberi SENZA cambiare versione ne' lunghezza -- vedi
+	// AscdIO.h sui campi.
 	{
 		AscdPrintSettings ps = (printSettings) ? *printSettings : AscdPrintSettings();
 		uint8 has = ps.hasSettings ? 1 : 0;
@@ -997,7 +998,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		uint8 magic = 'G';
 		uint8 version = 3;
 		uint8 flags = (ps.printHeaders ? 0x01 : 0x00) | (ps.printGrid ? 0x02 : 0x00)
-			| (ps.centerH ? 0x04 : 0x00) | (ps.centerV ? 0x08 : 0x00);
+			| (ps.centerH ? 0x04 : 0x00) | (ps.centerV ? 0x08 : 0x00)
+			| (ps.pageOrderAcrossFirst ? 0x10 : 0x00);
 		int32 fitWide = ps.fitWide >= 1 ? ps.fitWide : 1;
 		int32 fitTall = ps.fitTall >= 1 ? ps.fitTall : 1;
 		// Testi limitati a 4096 byte: un'intestazione piu' lunga non ha
@@ -2292,6 +2294,7 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 			bool printHeaders = true;
 			bool printGrid = true;
 			bool centerH = false, centerV = false;
+			bool acrossFirst = false;
 			int32 fitWide = 1, fitTall = 1;
 			BString headerText, footerText;
 			uint8 marker = 0;
@@ -2336,6 +2339,7 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						printGrid = (flags & 0x02) != 0;
 						centerH = (flags & 0x04) != 0;
 						centerV = (flags & 0x08) != 0;
+						acrossFirst = (flags & 0x10) != 0;
 						// I bit futuri (centratura, ordine pagine, ...)
 						// si leggono con la loro versione, qui vengono
 						// semplicemente ignorati -- i default true sopra
@@ -2425,6 +2429,7 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				printSettings->printGrid = printGrid;
 				printSettings->centerH = centerH;
 				printSettings->centerV = centerV;
+				printSettings->pageOrderAcrossFirst = acrossFirst;
 				printSettings->fitWide = fitWide;
 				printSettings->fitTall = fitTall;
 				printSettings->printHeaderText = headerText;
