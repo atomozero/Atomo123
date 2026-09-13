@@ -290,6 +290,16 @@ void PageSetupWindow::MessageReceived(BMessage* message)
 		{
 			BMessage request = _BuildSettingsMessage(kMsgPageSetupRequest);
 			fTarget.SendMessage(&request);
+			// L'anteprima mostrava ancora i valori PRECEDENTI se un campo
+			// era stato modificato senza Invio (il testo digitato non ha
+			// mai generato kMsgFieldChanged): la si rigenera con gli stessi
+			// valori appena persistiti, cosi' "quello che si vede e' quello
+			// che verra' stampato" resta vero anche in questo percorso.
+			// Vale per tutti i campi (margini compresi), non solo per la
+			// percentuale -- il messaggio e' identico a quello di un cambio
+			// campo, solo costruito qui invece che dal controllo.
+			BMessage preview = _BuildSettingsMessage(kMsgPageSetupPreviewRequest);
+			fTarget.SendMessage(&preview);
 			break;
 		}
 
@@ -297,6 +307,11 @@ void PageSetupWindow::MessageReceived(BMessage* message)
 		{
 			BMessage request = _BuildSettingsMessage(kMsgPageSetupPrintRequest);
 			fTarget.SendMessage(&request);
+			// Stesso motivo di kMsgApplyLocal sopra: il dialogo resta
+			// aperto dopo la stampa, l'anteprima deve riflettere quanto
+			// appena stampato.
+			BMessage preview = _BuildSettingsMessage(kMsgPageSetupPreviewRequest);
+			fTarget.SendMessage(&preview);
 			break;
 		}
 
