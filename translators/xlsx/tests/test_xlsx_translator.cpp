@@ -2748,16 +2748,28 @@ int main()
 						}
 
 						// Allineamento verticale non predefinito (Fase
-						// "Add vertical cell alignment"): un conteggio
-						// (qui zero, sample.xlsx non ha celle con
-						// allineamento verticale esplicito), ORA
-						// l'ULTIMA sezione del formato.
+						// "Add vertical cell alignment"): un conteggio,
+						// ORA l'ULTIMA sezione del formato, seguito da
+						// altrettanti record (riga int16, colonna int16,
+						// valore int8). Da quando l'importazione XLSX
+						// applica il vero default di Excel (Bottom, non
+						// Top -- bug reale scoperto confrontando
+						// agile-kanban-board.xlsx con Excel vero, celle
+						// "Days"/"14" senza allineamento verticale
+						// esplicito nel file ma rese in basso da Excel)
+						// OGNI cella con un s="..." risolto in
+						// sample.xlsx riceve un allineamento verticale
+						// esplicito, quindi il conteggio non e' piu'
+						// zero: si legge e si scarta solo per avanzare
+						// "pos" correttamente fino alla fine del buffer.
 						if (pos + 4 <= ascdLen)
 						{
 							int32 valignCount;
 							memcpy(&valignCount, ascdData + pos, 4); pos += 4;
-							Check(valignCount == 0,
-								"nessun allineamento verticale esplicito in sample.xlsx, il conteggio e' zero");
+							Check(valignCount > 0,
+								"sample.xlsx ha celle stilizzate, quindi almeno un allineamento "
+								"verticale esplicito (il vero default Bottom di Excel) e' persistito");
+							pos += valignCount * (2 + 2 + 1);
 						}
 
 						// sample.xlsx e' un solo foglio: dopo tutte le

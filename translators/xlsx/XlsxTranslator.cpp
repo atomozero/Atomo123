@@ -3664,7 +3664,7 @@ struct ResolvedStyle {
 	int fontID = 0; // indice gia' risolto in gFontSizeTable, pronto per CellStyle::fFont
 	bool hasAlignment = false; // true solo se diverso da eAlignGeneral (il predefinito non serve applicarlo)
 	char alignment = 0; // EAlignment, pronto per CellStyle::fAlignment
-	bool hasVAlignment = false; // true solo se diverso da eVAlignTop
+	bool hasVAlignment = false; // sempre vero una volta risolto -- vedi il commento dove viene assegnato, piu' sotto
 	char valignment = 0; // EVerticalAlignment, pronto per CellStyle::fVerticalAlignment
 	bool hasBorders = false; // true solo se almeno un lato e' impostato
 	uchar borderT = 0, borderL = 0, borderB = 0, borderR = 0; // 0/1, pronti per CellStyle::fTBorderColor ecc (Fase 11: booleano per lato, non un vero colore)
@@ -3684,7 +3684,7 @@ struct XfInfo {
 	int numFmtId;
 	int borderId;
 	char alignment; // EAlignment, eAlignGeneral se <alignment> assente
-	char valignment; // EVerticalAlignment, eVAlignTop se attributo vertical assente
+	char valignment; // EVerticalAlignment, eVAlignBottom (il vero default di Excel) se attributo vertical assente
 	bool wrapText;
 	// Blocco cella (Fase 32, <protection locked="0|1"/>, figlio di
 	// <xf> come <alignment>): true di default -- ECMA-376 dice che
@@ -4075,7 +4075,15 @@ static void XMLCALL StylesStart(void* userData, const char* name, const char** a
 			xf.numFmtId = 0;
 			xf.borderId = 0;
 			xf.alignment = eAlignGeneral;
-			xf.valignment = eVAlignTop;
+			// Excel's real default when <alignment> has no "vertical"
+			// attribute at all (or is absent) is Bottom, not Top -- found
+			// comparing a real file against real Excel: a tall custom-height
+			// row (agile-kanban-board.xlsx's "Days"/"14" banner cells, both
+			// with no explicit vertical attribute) renders text hugging the
+			// row's bottom edge in Excel, but Atomo123 was placing it at the
+			// row's top, leaving a large visible gap in a row taller than
+			// one line of text.
+			xf.valignment = eVAlignBottom;
 			xf.wrapText = false;
 			xf.locked = true;
 			for (int i = 0; atts[i]; i += 2)
@@ -4231,7 +4239,13 @@ static void ParseStyles(const std::vector<unsigned char>& xml, const XlsxTheme& 
 		rs.alignment = ctx.cellXfs[i].alignment;
 		rs.hasAlignment = rs.alignment != eAlignGeneral;
 		rs.valignment = ctx.cellXfs[i].valignment;
-		rs.hasVAlignment = rs.valignment != eVAlignTop;
+		// Unlike horizontal alignment, this is unconditional: Excel's own
+		// default (Bottom, already baked into ctx.cellXfs[i].valignment when
+		// no "vertical" attribute was present -- see the xf.valignment
+		// initializer above) does not match CellStyle's own blank default
+		// (Top), so it must always be written explicitly rather than only
+		// when it differs from something.
+		rs.hasVAlignment = true;
 
 		int borderId = ctx.cellXfs[i].borderId;
 		if (borderId >= 0 && (size_t)borderId < ctx.borders.size())
