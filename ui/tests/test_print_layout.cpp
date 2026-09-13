@@ -253,6 +253,57 @@ int main()
 			"...e con scala 0.5 il contenuto 600x300 sta in un'unica pagina");
 	}
 
+	// PrintPageContentExtent: porzione di contenuto davvero presente su
+	// una pagina (area dati = pagina meno bande di intestazione).
+	{
+		BRect extent = PrintPageContentExtent(BPoint(0, 0), 110, 55,
+			BRect(0, 0, 250, 120), 10, 5);
+		Check(extent.IsValid() && extent == BRect(10, 5, 110, 55),
+			"l'estensione della prima pagina e' l'area dati (10,5)-(110,55), "
+			"bande di intestazione escluse");
+	}
+
+	// Centratura (centerH/centerV): contenuto piccolo su pagina grande.
+	// Contenuto (0,0,50,30), intestazioni 10x5, usable 400x300 a scala 1:
+	// blocco centrato = (10+40) x (5+25), residui (350, 270) dimezzati.
+	{
+		BRect content(0, 0, 50, 30);
+		PrintJobLayout layout = ComputePrintJobLayout(content, 400, 300, 100, 100,
+			0, 0, 0, 0, 0, 100.0, 10, 5, 1, 1, true, true);
+		Check(layout.pageOffsets.size() == 1,
+			"con centratura attiva c'e' un offset per ogni pagina (qui una sola)");
+		if (layout.pageOffsets.size() == 1)
+		{
+			Check(layout.pageOffsets[0].x > 174.9f && layout.pageOffsets[0].x < 175.1f
+					&& layout.pageOffsets[0].y > 134.9f && layout.pageOffsets[0].y < 135.1f,
+				"il contenuto 40x25 (+bande 10x5) e' centrato in 400x300: offset (175, 135)");
+		}
+	}
+	{
+		// Senza centratura gli offset restano nulli, anche a pagina
+		// parziale (stesso caso sopra, flag spenti).
+		BRect content(0, 0, 50, 30);
+		PrintJobLayout layout = ComputePrintJobLayout(content, 400, 300, 100, 100,
+			0, 0, 0, 0, 0, 100.0, 10, 5);
+		Check(layout.pageOffsets.size() == 1 && layout.pageOffsets[0] == BPoint(0, 0),
+			"senza centratura l'offset resta (0,0)");
+	}
+	{
+		// Pagina quasi piena: contenuto (0,0,390,295), bande 10x5, usable
+		// 400x300 -- blocco (390 x 295), residui (10, 5) dimezzati.
+		BRect content(0, 0, 390, 295);
+		PrintJobLayout layout = ComputePrintJobLayout(content, 400, 300, 100, 100,
+			0, 0, 0, 0, 0, 100.0, 10, 5, 1, 1, true, true);
+		if (layout.pageOffsets.size() == 1)
+		{
+			Check(layout.pageOffsets[0].x > 4.9f && layout.pageOffsets[0].x < 5.1f
+					&& layout.pageOffsets[0].y > 2.4f && layout.pageOffsets[0].y < 2.6f,
+				"a pagina quasi piena l'offset e' piccolo ma corretto (5, 2.5), non nullo");
+		}
+		else
+			Check(false, "il contenuto 390x295 sta in un'unica pagina da 400x300");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

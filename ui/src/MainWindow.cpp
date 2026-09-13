@@ -3507,6 +3507,8 @@ void MainWindow::GetActivePrintSettings(AscdPrintSettings* out) const
 	out->fitTall = gPrefs ? gPrefs->GetPrefInt("printFitTall", 1) : 1;
 	if (out->fitWide < 1 || out->fitWide > 100) out->fitWide = 1;
 	if (out->fitTall < 1 || out->fitTall > 100) out->fitTall = 1;
+	out->centerH = gPrefs ? (gPrefs->GetPrefInt("printCenterH", 0) != 0) : false;
+	out->centerV = gPrefs ? (gPrefs->GetPrefInt("printCenterV", 0) != 0) : false;
 }
 
 void MainWindow::ShowPageSetupWindow()
@@ -3572,6 +3574,8 @@ void MainWindow::HandlePageSetupRequest(const AscdPrintSettings& settings)
 	gPrefs->SetPrefInt("printGrid", settings.printGrid ? 1 : 0);
 	gPrefs->SetPrefInt("printFitWide", settings.fitWide);
 	gPrefs->SetPrefInt("printFitTall", settings.fitTall);
+	gPrefs->SetPrefInt("printCenterH", settings.centerH ? 1 : 0);
+	gPrefs->SetPrefInt("printCenterV", settings.centerV ? 1 : 0);
 	try { gPrefs->WritePrefFile(); }
 	catch (CErr&) { }
 }
@@ -4968,7 +4972,7 @@ PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWi
 	return ComputePrintJobLayout(ActivePrintContentRect(), printableWidth, printableHeight,
 		xDPI, yDPI, settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
 		settings.marginRightCm, settings.scaleMode, settings.scalePercent, headerW, headerH,
-		settings.fitWide, settings.fitTall);
+		settings.fitWide, settings.fitTall, settings.centerH, settings.centerV);
 }
 
 std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSettings& settings)
@@ -5013,7 +5017,8 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 		printableRect.Width(), printableRect.Height(), xDPI, yDPI,
 		settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
 		settings.marginRightCm, settings.scaleMode, settings.scalePercent,
-		headerW, headerH, settings.fitWide, settings.fitTall);
+		headerW, headerH, settings.fitWide, settings.fitTall,
+		settings.centerH, settings.centerV);
 	if (layout.pageOrigins.empty())
 		return pages;
 
@@ -5074,8 +5079,14 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 
 		BPoint pageOrigin = layout.pageOrigins[i];
 		float combinedScale = (float)(layout.scale * previewDeviceScale);
-		float marginLeftPreview = layout.marginLeftPx * previewDeviceScale;
-		float marginTopPreview = layout.marginTopPx * previewDeviceScale;
+		// Stesso offset di centratura della stampa vera (pageOffsets e'
+		// in pixel del dispositivo): qui va riportato in pixel di
+		// anteprima, come i margini -- anteprima e stampa restano la
+		// stessa pagina, solo a scala diversa.
+		float marginLeftPreview = (layout.marginLeftPx + layout.pageOffsets[i].x)
+			* previewDeviceScale;
+		float marginTopPreview = (layout.marginTopPx + layout.pageOffsets[i].y)
+			* previewDeviceScale;
 		float pageWidthPreview = layout.pageWidth * combinedScale;
 		float pageHeightPreview = layout.pageHeight * combinedScale;
 		float headerWPreview = headerW * combinedScale;
@@ -5251,7 +5262,9 @@ void MainWindow::PrintDocument()
 
 		BRect pageSlice(layout.pageOrigins[i].x, layout.pageOrigins[i].y,
 			layout.pageOrigins[i].x + layout.pageWidth, layout.pageOrigins[i].y + layout.pageHeight);
-		printJob.DrawView(fSheetView, pageSlice, BPoint(layout.marginLeftPx, layout.marginTopPx));
+		printJob.DrawView(fSheetView, pageSlice, BPoint(
+			layout.marginLeftPx + layout.pageOffsets[i].x,
+			layout.marginTopPx + layout.pageOffsets[i].y));
 		printJob.SpoolPage();
 	}
 	fSheetView->SetScale(originalScale);
@@ -6280,6 +6293,11 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindInt32("fitTall", &fitTall);
 			settings.fitWide = (fitWide >= 1 && fitWide <= 100) ? (int)fitWide : 1;
 			settings.fitTall = (fitTall >= 1 && fitTall <= 100) ? (int)fitTall : 1;
+			bool centerH = false, centerV = false;
+			message->FindBool("centerH", &centerH);
+			message->FindBool("centerV", &centerV);
+			settings.centerH = centerH;
+			settings.centerV = centerV;
 			HandlePageSetupRequest(settings);
 			break;
 		}
@@ -6305,6 +6323,11 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindInt32("fitTall", &fitTall);
 			settings.fitWide = (fitWide >= 1 && fitWide <= 100) ? (int)fitWide : 1;
 			settings.fitTall = (fitTall >= 1 && fitTall <= 100) ? (int)fitTall : 1;
+			bool centerH = false, centerV = false;
+			message->FindBool("centerH", &centerH);
+			message->FindBool("centerV", &centerV);
+			settings.centerH = centerH;
+			settings.centerV = centerV;
 			HandlePageSetupPreviewRequest(settings);
 			break;
 		}
@@ -6330,6 +6353,11 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindInt32("fitTall", &fitTall);
 			settings.fitWide = (fitWide >= 1 && fitWide <= 100) ? (int)fitWide : 1;
 			settings.fitTall = (fitTall >= 1 && fitTall <= 100) ? (int)fitTall : 1;
+			bool centerH = false, centerV = false;
+			message->FindBool("centerH", &centerH);
+			message->FindBool("centerV", &centerV);
+			settings.centerH = centerH;
+			settings.centerV = centerV;
 			HandlePageSetupRequest(settings);
 			PrintDocument();
 			break;

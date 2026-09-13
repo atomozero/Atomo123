@@ -29,6 +29,16 @@
 std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
 	float pageWidth, float pageHeight, float headerW, float headerH);
 
+// Porzione di contentRect davvero presente sulla pagina che comincia a
+// pageOrigin (una delle origini di ComputePrintPageOrigins sopra):
+// intersezione fra l'area DATI della pagina (headerW/headerH iniziali
+// esclusi, riservati all'intestazione ripetuta) e contentRect. Rettangolo
+// non valido se la pagina non contiene dati -- non succede con origini
+// calcolate da ComputePrintPageOrigins, ma il chiamante non deve fidarsi
+// (una pagina vuota centra "niente", offset nullo, mai un valore a caso).
+BRect PrintPageContentExtent(BPoint pageOrigin, float pageWidth, float pageHeight,
+	BRect contentRect, float headerW, float headerH);
+
 // Modalita' di "adatta" per ComputePrintFitScale sotto -- stessi tre
 // scelte di Excel (Pagina Larghezza/Altezza/entrambe), piu' "N x M
 // pagine" (kPrintFitPages, con wide/tall da AscdPrintSettings::fitWide/
@@ -68,6 +78,11 @@ float ComputePrintFitScaleToPages(BRect contentRect, float usableWidth, float us
 // viene davvero stampato.
 struct PrintJobLayout {
 	std::vector<BPoint> pageOrigins;
+	// Spostamento DEST (in pixel del dispositivo, stessa unita' di
+	// marginLeftPx/marginTopPx) di ogni pagina per la centratura:
+	// (0,0) senza centratura o a pagina piena, altrimenti lo spazio
+	// residuo dimezzato -- un elemento per pageOrigins, stesso indice.
+	std::vector<BPoint> pageOffsets;
 	float pageWidth;
 	float pageHeight;
 	float marginLeftPx;
@@ -86,11 +101,13 @@ struct PrintJobLayout {
 // sicurezza gia' in ComputePrintPageOrigins) -- il chiamante deve
 // trattarlo come "niente da stampare/mostrare", non come un errore.
 // fitWide/fitTall servono solo con scaleMode kPrintFitPages (quante
-// pagine di larghezza/altezza), ignorati negli altri modi.
+// pagine di larghezza/altezza), ignorati negli altri modi. centerH/
+// centerV spostano il contenuto al centro dell'area utile di OGNI pagina
+// (solo le pagine parziali si muovono davvero, vedi pageOffsets sopra).
 PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
 	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
 	int scaleMode, double scalePercent, float headerW, float headerH,
-	int fitWide = 1, int fitTall = 1);
+	int fitWide = 1, int fitTall = 1, bool centerH = false, bool centerV = false);
 
 #endif

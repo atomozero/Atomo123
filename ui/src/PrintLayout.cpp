@@ -78,6 +78,16 @@ std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
 	return origins;
 }
 
+BRect PrintPageContentExtent(BPoint pageOrigin, float pageW, float pageH,
+	BRect contentRect, float headerW, float headerH)
+{
+	BRect dataArea(pageOrigin.x + headerW, pageOrigin.y + headerH,
+		pageOrigin.x + pageW, pageOrigin.y + pageH);
+	if (!dataArea.IsValid())
+		return dataArea;
+	return dataArea & contentRect;
+}
+
 float ComputePrintFitScale(BRect contentRect, float usableWidth, float usableHeight,
 	float headerW, float headerH, int fitMode)
 {
@@ -139,7 +149,7 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
  double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
 	int scaleMode, double scalePercent, float headerW, float headerH,
-	int fitWide, int fitTall)
+	int fitWide, int fitTall, bool centerH, bool centerV)
 {
 	PrintJobLayout layout;
 
@@ -195,6 +205,43 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 
 	layout.pageOrigins = ComputePrintPageOrigins(contentRect, layout.pageWidth, layout.pageHeight,
 		headerW, headerH);
+
+	// Centratura per pagina: un offset per pageOrigins (stesso indice),
+	// in pixel del dispositivo come marginLeftPx/marginTopPx -- il
+	// chiamante lo somma alla destinazione. Solo le pagine parziali si
+	// muovono davvero: a pagina piena l'estensione coincide con l'area
+	// dati e lo spazio residuo e' nullo.
+	layout.pageOffsets.assign(layout.pageOrigins.size(), BPoint(0, 0));
+	if (centerH || centerV)
+	{
+		for (size_t i = 0; i < layout.pageOrigins.size(); i++)
+		{
+			BRect extent = PrintPageContentExtent(layout.pageOrigins[i],
+				layout.pageWidth, layout.pageHeight, contentRect, headerW, headerH);
+			float offX = 0, offY = 0;
+			if (extent.IsValid())
+			{
+				// Il blocco centrato e' bande di intestazione + dati
+				// (headerW/H sono gia' 0 senza intestazioni): centrare i
+				// soli dati sposterebbe anche le intestazioni fuori asse.
+				if (centerH)
+				{
+					float slack = usableWidth
+						- (headerW + extent.Width()) * (float)layout.scale;
+					if (slack > 0)
+						offX = slack / 2;
+				}
+				if (centerV)
+				{
+					float slack = usableHeight
+						- (headerH + extent.Height()) * (float)layout.scale;
+					if (slack > 0)
+						offY = slack / 2;
+				}
+			}
+			layout.pageOffsets[i] = BPoint(offX, offY);
+		}
+	}
 
 	return layout;
 }
