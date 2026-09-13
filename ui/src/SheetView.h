@@ -293,6 +293,19 @@ public:
 	void SetShowGrid(bool show);
 	bool ShowGrid() const { return fShowGrid; }
 
+	// Stampa SENZA intestazioni di riga/colonna ("Imposta pagina",
+	// opzione "Stampa intestazioni"): quando true, Draw() salta i due
+	// blocchi di intestazione (numeri di riga a sinistra, lettere di
+	// colonna in alto) ma disegna tutto il resto normalmente -- usato
+	// SOLO da MainWindow::PrintDocument attorno a BPrintJob::DrawView,
+	// mai per la vista a schermo (che resta sempre intestata). Reso un
+	// semplice interruttore di disegno, non un secondo fShowGrid, perche'
+	// la griglia a schermo e le intestazioni stampate sono due scelte
+	// indipendenti: nascondere le intestazioni per stampare non deve
+	// toccare come appare il foglio a video.
+	void SetSuppressPrintHeaders(bool suppress) { fSuppressPrintHeaders = suppress; }
+	bool SuppressPrintHeaders() const { return fSuppressPrintHeaders; }
+
 	// Protezione foglio (Fase 32, "Proteggi foglio"): quando true, ogni
 	// tentativo di modificare contenuto/formattazione di una cella con
 	// CellStyle::fLocked=true (il default) su QUESTO foglio va rifiutato
@@ -666,6 +679,10 @@ private:
 
 	// Mostra/nascondi griglia: vedi SetShowGrid/ShowGrid sopra.
 	bool fShowGrid;
+
+	// Salta le intestazioni in Draw(): vedi SetSuppressPrintHeaders
+	// sopra -- false di default (schermo e stampe vecchie intestate).
+	bool fSuppressPrintHeaders;
 
 	// Protezione foglio: vedi SetProtected/IsProtected sopra.
 	bool fSheetProtected;

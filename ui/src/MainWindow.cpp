@@ -3482,7 +3482,8 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 }
 
 void MainWindow::GetActivePrintSettings(double* marginTop, double* marginBottom,
-	double* marginLeft, double* marginRight, int* scaleMode, double* scalePercent) const
+	double* marginLeft, double* marginRight, int* scaleMode, double* scalePercent,
+	bool* printHeaders) const
 {
 	if (fActiveSheetIndex >= 0 && fActiveSheetIndex < (int)fSheets.size()
 		&& fSheets[fActiveSheetIndex].printSettings.hasSettings)
@@ -3494,6 +3495,7 @@ void MainWindow::GetActivePrintSettings(double* marginTop, double* marginBottom,
 		*marginRight = ps.marginRightCm;
 		*scaleMode = ps.scaleMode;
 		*scalePercent = ps.scalePercent;
+		*printHeaders = ps.printHeaders;
 		return;
 	}
 
@@ -3506,6 +3508,7 @@ void MainWindow::GetActivePrintSettings(double* marginTop, double* marginBottom,
 	*marginRight = gPrefs ? gPrefs->GetPrefDouble("printMarginRight", 2.0) : 2.0;
 	*scaleMode = gPrefs ? gPrefs->GetPrefInt("printScaleMode", 0) : 0;
 	*scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
+	*printHeaders = gPrefs ? (gPrefs->GetPrefInt("printHeaders", 1) != 0) : true;
 }
 
 void MainWindow::ShowPageSetupWindow()
@@ -3515,8 +3518,9 @@ void MainWindow::ShowPageSetupWindow()
 
 	double marginTop, marginBottom, marginLeft, marginRight, scalePercent;
 	int scaleMode;
+	bool printHeaders;
 	GetActivePrintSettings(&marginTop, &marginBottom, &marginLeft, &marginRight,
-		&scaleMode, &scalePercent);
+		&scaleMode, &scalePercent, &printHeaders);
 
 	// Generata QUI, PRIMA di Lock() su fPageSetupWindow (Fase 28):
 	// GeneratePrintPreviewPages tocca fSheetView, che vive sul thread
@@ -3524,14 +3528,14 @@ void MainWindow::ShowPageSetupWindow()
 	// chiamata dal thread giusto, poi solo il risultato gia' pronto (le
 	// bitmap) attraversa il confine verso l'altra finestra.
 	std::vector<BBitmap*> pages = GeneratePrintPreviewPages(marginTop, marginBottom, marginLeft,
-		marginRight, scaleMode, scalePercent);
+		marginRight, scaleMode, scalePercent, printHeaders);
 
 	// Stesso motivo di fPreferencesWindow sopra: SetValues tocca le
 	// BView interne di PageSetupWindow, che vive sul proprio thread.
 	if (fPageSetupWindow->Lock())
 	{
 		fPageSetupWindow->SetValues(marginTop, marginBottom, marginLeft, marginRight,
-			scaleMode, scalePercent);
+			scaleMode, scalePercent, printHeaders);
 		fPageSetupWindow->SetPreviewPages(pages);
 		fPageSetupWindow->Unlock();
 	}
@@ -3547,7 +3551,8 @@ void MainWindow::ShowPageSetupWindow()
 }
 
 void MainWindow::HandlePageSetupRequest(double marginTop, double marginBottom,
-	double marginLeft, double marginRight, int scaleMode, double scalePercent)
+	double marginLeft, double marginRight, int scaleMode, double scalePercent,
+	bool printHeaders)
 {
 	// Persistiti PER FOGLIO (Fase 29) in fSheets[fActiveSheetIndex],
 	// cosi' sopravvivono al salvataggio -- vedi AscdPrintSettings in
@@ -3565,6 +3570,7 @@ void MainWindow::HandlePageSetupRequest(double marginTop, double marginBottom,
 		ps.marginRightCm = marginRight;
 		ps.scaleMode = scaleMode;
 		ps.scalePercent = scalePercent;
+		ps.printHeaders = printHeaders;
 		MarkModified();
 	}
 
@@ -3577,18 +3583,20 @@ void MainWindow::HandlePageSetupRequest(double marginTop, double marginBottom,
 	gPrefs->SetPrefDouble("printMarginRight", marginRight);
 	gPrefs->SetPrefInt("printScaleMode", scaleMode);
 	gPrefs->SetPrefDouble("printScalePercent", scalePercent);
+	gPrefs->SetPrefInt("printHeaders", printHeaders ? 1 : 0);
 	try { gPrefs->WritePrefFile(); }
 	catch (CErr&) { }
 }
 
 void MainWindow::HandlePageSetupPreviewRequest(double marginTop, double marginBottom,
-	double marginLeft, double marginRight, int scaleMode, double scalePercent)
+	double marginLeft, double marginRight, int scaleMode, double scalePercent,
+	bool printHeaders)
 {
 	// I valori qui sono quelli ANCORA IN MODIFICA nel dialogo (mai
 	// scritti in gPrefs) -- a differenza di HandlePageSetupRequest
 	// sopra, che persiste e viene chiamato solo da "Applica"/"Stampa".
 	std::vector<BBitmap*> pages = GeneratePrintPreviewPages(marginTop, marginBottom, marginLeft,
-		marginRight, scaleMode, scalePercent);
+		marginRight, scaleMode, scalePercent, printHeaders);
 
 	if (fPageSetupWindow && fPageSetupWindow->Lock())
 	{
@@ -4963,11 +4971,17 @@ PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWi
 	// ComputePrintJobLayout.
 	double marginTopCm, marginBottomCm, marginLeftCm, marginRightCm, scalePercent;
 	int scaleMode;
+	bool printHeaders;
 	GetActivePrintSettings(&marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
-		&scaleMode, &scalePercent);
+		&scaleMode, &scalePercent, &printHeaders);
 
-	float headerW = fSheetView->HeaderWidth();
-	float headerH = fSheetView->HeaderHeight();
+	// Senza intestazioni non si riserva spazio per la banda
+	// headerW/headerH su ogni pagina: le pagine contengono solo dati e
+	// ce ne stanno di piu' -- stesso headerW/H nullo passato anche a
+	// GeneratePrintPreviewPages, altrimenti anteprima e stampa vera non
+	// impaginerebbero allo stesso modo.
+	float headerW = printHeaders ? fSheetView->HeaderWidth() : 0;
+	float headerH = printHeaders ? fSheetView->HeaderHeight() : 0;
 
 	return ComputePrintJobLayout(ActivePrintContentRect(), printableWidth, printableHeight,
 		xDPI, yDPI, marginTopCm, marginBottomCm, marginLeftCm, marginRightCm, scaleMode,
@@ -4976,7 +4990,7 @@ PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWi
 
 std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(double marginTop,
 	double marginBottom, double marginLeft, double marginRight, int scaleMode,
-	double scalePercent)
+	double scalePercent, bool printHeaders)
 {
 	std::vector<BBitmap*> pages;
 	if (!fDoc)
@@ -4995,11 +5009,24 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(double marginTop,
 	BRect printableRect = previewJob.PrintableRect();
 	int32 xDPI = 72, yDPI = 72;
 	previewJob.GetResolution(&xDPI, &yDPI);
-	if (printableRect.Width() <= 0 || printableRect.Height() <= 0)
-		return pages;
+	if (printableRect.Width() <= 0 || printableRect.Height() <= 0
+		|| xDPI <= 0 || yDPI <= 0)
+	{
+		// Nessuna stampante predefinita (print_server senza default:
+		// PrintableRect non valido e risoluzione spazzatura, verificato
+		// dal vivo su una macchina senza stampanti) -- invece di restare
+		// su "Nessuna anteprima", si ripiega su un A4 a 72dpi, come
+		// Excel/LibreOffice che l'anteprima la mostrano sempre anche
+		// senza stampanti. Vale SOLO per l'anteprima: la stampa vera passa
+		// comunque dal dialogo di sistema (BPrintJob::ConfigJob in
+		// PrintDocument) e usa la stampante scelta li'.
+		printableRect.Set(0, 0, 595, 842); // A4 a 72dpi (210x297mm)
+		xDPI = 72;
+		yDPI = 72;
+	}
 
-	float headerW = fSheetView->HeaderWidth();
-	float headerH = fSheetView->HeaderHeight();
+	float headerW = printHeaders ? fSheetView->HeaderWidth() : 0;
+	float headerH = printHeaders ? fSheetView->HeaderHeight() : 0;
 
 	PrintJobLayout layout = ComputePrintJobLayout(ActivePrintContentRect(),
 		printableRect.Width(), printableRect.Height(), xDPI, yDPI,
@@ -5075,12 +5102,19 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(double marginTop,
 		// Banda di intestazione: solo la forma (grigio chiaro), senza
 		// lettere/numeri -- il contenuto delle celle e' il punto
 		// centrale di questa anteprima semplificata, non la replica
-		// esatta delle etichette di riga/colonna.
-		offscreen->SetHighColor(230, 230, 230);
-		offscreen->FillRect(BRect(marginLeftPreview, marginTopPreview,
-			marginLeftPreview + pageWidthPreview, marginTopPreview + headerHPreview));
-		offscreen->FillRect(BRect(marginLeftPreview, marginTopPreview,
-			marginLeftPreview + headerWPreview, marginTopPreview + pageHeightPreview));
+		// esatta delle etichette di riga/colonna. Saltata del tutto
+		// quando le intestazioni di stampa sono disattivate: headerW/H
+		// sopra sono gia' 0 in quel caso, ma senza questo controllo
+		// resterebbe comunque una striscia grigia alta/larga zero cicli
+		// di disegno -- il controllo esplicito rende l'intenzione ovvia.
+		if (printHeaders)
+		{
+			offscreen->SetHighColor(230, 230, 230);
+			offscreen->FillRect(BRect(marginLeftPreview, marginTopPreview,
+				marginLeftPreview + pageWidthPreview, marginTopPreview + headerHPreview));
+			offscreen->FillRect(BRect(marginLeftPreview, marginTopPreview,
+				marginLeftPreview + headerWPreview, marginTopPreview + pageHeightPreview));
+		}
 
 		BRect dataRect(pageOrigin.x + headerW, pageOrigin.y + headerH,
 			pageOrigin.x + layout.pageWidth, pageOrigin.y + layout.pageHeight);
@@ -5147,6 +5181,16 @@ void MainWindow::PrintDocument()
 	if (!fDoc)
 		return;
 
+	// Letta PRIMA del dialogo di sistema (nessun effetto collaterale,
+	// solo i valori correnti): serve sia al layout sotto (via
+	// ComputePrintJobLayoutForActiveSheet) sia per decidere se
+	// sopprimere le intestazioni durante DrawView.
+	double marginTopCm, marginBottomCm, marginLeftCm, marginRightCm, scalePercent;
+	int scaleMode;
+	bool printHeaders;
+	GetActivePrintSettings(&marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
+		&scaleMode, &scalePercent, &printHeaders);
+
 	BPrintJob printJob("Atomo123");
 
 	// ConfigJob mostra il dialogo di stampa di sistema (scelta
@@ -5186,6 +5230,14 @@ void MainWindow::PrintDocument()
 	// cambio foglio.
 	BPoint originalScroll = fSheetView->Bounds().LeftTop();
 	float originalScale = fSheetView->Scale();
+	bool originalSuppressHeaders = fSheetView->SuppressPrintHeaders();
+
+	// "Stampa intestazioni" disattivata: SheetView::Draw salta i blocchi
+	// di intestazione per la durata della stampa -- la vista a schermo
+	// non cambia mai (il flag viene ripristinato sotto), solo le pagine
+	// inviate alla stampante. Il layout sopra usa gia' headerW/H nulli
+	// in questo caso, quindi paginazione e disegno restano coerenti.
+	fSheetView->SetSuppressPrintHeaders(!printHeaders);
 
 	// Si stampa solo l'area del foglio che contiene dati (o l'area di
 	// stampa scelta), suddivisa in tante pagine quante ne servono in
@@ -5215,6 +5267,7 @@ void MainWindow::PrintDocument()
 		printJob.SpoolPage();
 	}
 	fSheetView->SetScale(originalScale);
+	fSheetView->SetSuppressPrintHeaders(originalSuppressHeaders);
 
 	fSheetView->ScrollTo(originalScroll);
 
@@ -6222,14 +6275,16 @@ void MainWindow::MessageReceived(BMessage* message)
 			double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
 			int32 scaleMode = 0;
 			double scalePercent = 100.0;
+			bool printHeaders = true;
 			message->FindDouble("marginTop", &marginTop);
 			message->FindDouble("marginBottom", &marginBottom);
 			message->FindDouble("marginLeft", &marginLeft);
 			message->FindDouble("marginRight", &marginRight);
 			message->FindInt32("scaleMode", &scaleMode);
 			message->FindDouble("scalePercent", &scalePercent);
+			message->FindBool("printHeaders", &printHeaders);
 			HandlePageSetupRequest(marginTop, marginBottom, marginLeft, marginRight,
-				(int)scaleMode, scalePercent);
+				(int)scaleMode, scalePercent, printHeaders);
 			break;
 		}
 
@@ -6238,14 +6293,16 @@ void MainWindow::MessageReceived(BMessage* message)
 			double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
 			int32 scaleMode = 0;
 			double scalePercent = 100.0;
+			bool printHeaders = true;
 			message->FindDouble("marginTop", &marginTop);
 			message->FindDouble("marginBottom", &marginBottom);
 			message->FindDouble("marginLeft", &marginLeft);
 			message->FindDouble("marginRight", &marginRight);
 			message->FindInt32("scaleMode", &scaleMode);
 			message->FindDouble("scalePercent", &scalePercent);
+			message->FindBool("printHeaders", &printHeaders);
 			HandlePageSetupPreviewRequest(marginTop, marginBottom, marginLeft, marginRight,
-				(int)scaleMode, scalePercent);
+				(int)scaleMode, scalePercent, printHeaders);
 			break;
 		}
 
@@ -6254,14 +6311,16 @@ void MainWindow::MessageReceived(BMessage* message)
 			double marginTop = 2.0, marginBottom = 2.0, marginLeft = 2.0, marginRight = 2.0;
 			int32 scaleMode = 0;
 			double scalePercent = 100.0;
+			bool printHeaders = true;
 			message->FindDouble("marginTop", &marginTop);
 			message->FindDouble("marginBottom", &marginBottom);
 			message->FindDouble("marginLeft", &marginLeft);
 			message->FindDouble("marginRight", &marginRight);
 			message->FindInt32("scaleMode", &scaleMode);
 			message->FindDouble("scalePercent", &scalePercent);
+			message->FindBool("printHeaders", &printHeaders);
 			HandlePageSetupRequest(marginTop, marginBottom, marginLeft, marginRight,
-				(int)scaleMode, scalePercent);
+				(int)scaleMode, scalePercent, printHeaders);
 			PrintDocument();
 			break;
 		}

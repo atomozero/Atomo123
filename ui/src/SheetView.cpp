@@ -139,6 +139,7 @@ SheetView::SheetView(CContainer* doc)
 	fResizeStartSize(0),
 	fHoverCursor(0),
 	fShowGrid(gPrefs ? gPrefs->GetPrefInt("showGrid", 1) != 0 : true),
+	fSuppressPrintHeaders(false),
 	fSheetProtected(false),
 	fFrozenRows(0),
 	fFrozenCols(0),
@@ -3495,6 +3496,13 @@ void SheetView::Draw(BRect updateRect)
 		StrokeRect(previewRect, B_MIXED_COLORS);
 	}
 
+	// "Imposta pagina" senza intestazioni (vedi
+	// SetSuppressPrintHeaders in SheetView.h): i due blocchi sotto
+	// (righe qui, colonne in fondo a Draw()) vengono saltati del tutto
+	// -- niente banda grigia, niente numeri/lettere, niente puntini di
+	// ridimensionamento. Il resto del disegno non cambia.
+	if (!fSuppressPrintHeaders)
+	{
 	// Intestazione di riga (numeri): "congelata" durante lo scroll
 	// orizzontale -- stessa tecnica e stessa richiesta dell'utente
 	// dell'intestazione di colonna sotto, ma sull'altro asse
@@ -3569,6 +3577,7 @@ void SheetView::Draw(BRect updateRect)
 		FillEllipse(BPoint(midX, y), 1, 1);
 		FillEllipse(BPoint(midX + 4, y), 1, 1);
 	}
+	} // if (!fSuppressPrintHeaders) -- intestazione di riga
 
 	// Grafici incorporati: prima dell'intestazione di colonna (sotto),
 	// cosi' quest'ultima -- "congelata", quindi sempre sopra qualunque
@@ -3726,7 +3735,11 @@ void SheetView::Draw(BRect updateRect)
 	// allineate alle colonne vere): solo la coordinata verticale e'
 	// "agganciata" alla cima della viewport, non quella orizzontale.
 	// Disegnata per ultima cosi' resta sopra a tutto il resto
-	// (contenuto delle celle, grafici) che le scorre sotto.
+	// (contenuto delle celle, grafici) che le scorre sotto. Saltata
+	// insieme a quella di riga sopra quando le intestazioni di stampa
+	// sono disattivate (vedi il commento su fSuppressPrintHeaders).
+	if (!fSuppressPrintHeaders)
+	{
 	float headerTop = Bounds().top;
 	SetHighColor(230, 230, 230);
 	FillRect(BRect(updateRect.left, headerTop, updateRect.right, headerTop + kHeaderHeight - 1));
@@ -3772,6 +3785,7 @@ void SheetView::Draw(BRect updateRect)
 		FillEllipse(BPoint(x, midY), 1, 1);
 		FillEllipse(BPoint(x, midY + 4), 1, 1);
 	}
+	} // if (!fSuppressPrintHeaders) -- intestazione di colonna
 }
 
 void SheetView::MouseDown(BPoint where)

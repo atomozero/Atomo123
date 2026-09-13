@@ -967,8 +967,13 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 
 	// Sezione margini/scala di "Imposta pagina", in coda (Fase 29,
 	// vedi AscdPrintSettings in AscdIO.h): un byte "presente si'/no"
-	// seguito da quattro margini (cm), la modalita' di scala e la
-	// percentuale, sempre scritti -- stesso principio "singolo valore"
+	// seguito da quattro margini (cm), la modalita' di scala, la
+	// percentuale e -- aggiunta dopo -- la coppia magic+flag "stampa
+	// intestazioni" ('H' + 0/1), sempre scritti. Il magic serve a
+	// distinguere un file nuovo da uno scritto prima di quel flag (che
+	// dopo scalePercent ha subito il primo byte della sezione
+	// successiva, sempre 0/1): senza magic, i due formati sarebbero
+	// indistinguibili in lettura. Stesso principio "singolo valore"
 	// delle altre sezioni sopra. "has"=0 (nessuna impostazione propria
 	// per questo foglio, il caso comune) scrive comunque i valori
 	// predefiniti di AscdPrintSettings, mai byte a caso.
@@ -979,13 +984,17 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			marginLeft = ps.marginLeftCm, marginRight = ps.marginRightCm;
 		int32 scaleMode = ps.scaleMode;
 		double scalePercent = ps.scalePercent;
+		uint8 magic = 'H';
+		uint8 headers = ps.printHeaders ? 1 : 0;
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
 			|| dest->Write(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
 			|| dest->Write(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
 			|| dest->Write(&marginLeft, sizeof(marginLeft)) != (ssize_t)sizeof(marginLeft)
 			|| dest->Write(&marginRight, sizeof(marginRight)) != (ssize_t)sizeof(marginRight)
 			|| dest->Write(&scaleMode, sizeof(scaleMode)) != (ssize_t)sizeof(scaleMode)
-			|| dest->Write(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
+			|| dest->Write(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent)
+			|| dest->Write(&magic, sizeof(magic)) != (ssize_t)sizeof(magic)
+			|| dest->Write(&headers, sizeof(headers)) != (ssize_t)sizeof(headers))
 			return B_IO_ERROR;
 	}
 
@@ -2219,7 +2228,17 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// stesso schema EOF-tollerante delle sezioni sopra. Un file scritto
 	// prima di questa sezione lascia AscdPrintSettings::hasSettings a
 	// false: MainWindow ricade sulla preferenza globale (gPrefs), lo
-	// stesso comportamento di prima di questa fase.
+	// stesso comportamento di prima di questa fase. La coppia
+	// magic+flag "stampa intestazioni" ('H' + 0/1) e' stata aggiunta
+	// dopo: un file scritto fra la Fase 29 e quel flag ha dopo
+	// scalePercent subito il primo byte della sezione successiva (un
+	// "presente si'/no", quindi sempre 0/1, mai 'H') -- in quel caso il
+	// byte va RESTITUITO allo stream (Seek indietro, vedi sotto) e
+	// printHeaders resta al default true, cioe' il comportamento di
+	// sempre (intestazioni stampate). EOF subito dopo scalePercent:
+	// vecchio formato troncato proprio qui oppure stream finito -- in
+	// entrambi i casi default true e le sezioni successive restano ai
+	// loro default via i loro stessi controlli EOF sotto.
 	{
 		uint8 has = 0;
 		ssize_t got = source->Read(&has, sizeof(has));
@@ -2238,6 +2257,32 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				|| source->Read(&scalePercent, sizeof(scalePercent)) != (ssize_t)sizeof(scalePercent))
 				return B_BAD_DATA;
 
+			bool printHeaders = true;
+			uint8 marker = 0;
+			ssize_t mgot = source->Read(&marker, sizeof(marker));
+			if (mgot != 0)
+			{
+				if (mgot != (ssize_t)sizeof(marker))
+					return B_BAD_DATA;
+				if (marker == 'H')
+				{
+					uint8 headers = 1;
+					if (source->Read(&headers, sizeof(headers))
+						!= (ssize_t)sizeof(headers))
+						return B_BAD_DATA;
+					printHeaders = headers != 0;
+				}
+				else
+				{
+					// Vecchio formato: il byte appartiene alla sezione
+					// successiva, va rimesso al suo posto -- Seek
+					// indietro di un byte (stesso schema gia' usato in
+					// IsASCDFile/LoadASCDBook in questo file).
+					if (source->Seek(-(off_t)sizeof(marker), SEEK_CUR) < 0)
+						return B_BAD_DATA;
+				}
+			}
+
 			if (printSettings)
 			{
 				printSettings->hasSettings = has != 0;
@@ -2247,7 +2292,13 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				printSettings->marginRightCm = marginRight;
 				printSettings->scaleMode = scaleMode;
 				printSettings->scalePercent = scalePercent;
+				printSettings->printHeaders = printHeaders;
 			}
+			// Nota: gli eventuali byte magic+flag vengono consumati dallo
+			// stream anche quando printSettings e' NULL (se presenti nel
+			// file), cosi' la posizione resta allineata per le sezioni
+			// successive -- stesso principio "consuma comunque" delle
+			// altre sezioni opzionali in questo file.
 		}
 	}
 
