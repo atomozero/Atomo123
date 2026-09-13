@@ -5,10 +5,14 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.2.8 released** (Tiers 1 and 2 of the XLSX standard
-compatibility plan: array/shared formulas, named ranges, comments,
-hyperlinks, data validation, freeze panes, border color, print
-settings). All planned phases through "closing the
+**Status: v0.2.9 released** (six individually-tested feature/fix
+branches merged — legacy indexed color palette, docProps export,
+Excel Table Total Row exclusion, real threaded comments, XLS named
+ranges, openpyxl compatibility gaps — plus the bundled `Welcome.xlsx`
+demo workbook translated to English, a real `FILTER` parsing bug
+found while translating it, and a text-positioning/number-formatting
+sweep found comparing a real file against real Excel). All planned
+phases through "closing the
 gap with Excel" are done or in good shape; a handful of large,
 optional features remain unplanned backlog items (see "Not currently
 planned" below, and "Path to full Excel parity" for what's next).
@@ -41,6 +45,7 @@ along the way lives in `CHANGELOG.md`.
 | Release prep (v0.2.6) | Done | Tagged on GitHub: critical multi-sheet XLSX corruption fix, background file loading with a footer progress bar, ~7x faster large-file opening (see CHANGELOG.md) |
 | Release prep (v0.2.7) | Done | Tagged on GitHub: XLSM macro preservation, sheet/cell protection, critical `.ascd` multi-sheet open fix, XLSX Tier 1 compatibility (array/shared formulas, named ranges) (see CHANGELOG.md) |
 | Release prep (v0.2.8) | Done | Tagged on GitHub: XLSX Tier 2 compatibility complete — comments, hyperlinks, data validation, freeze panes, border color, print settings (see CHANGELOG.md) |
+| Release prep (v0.2.9) | Done | Tagged on GitHub: six merged feature/fix branches, `Welcome.xlsx` demo translated to English, real `FILTER` parsing bug, cell text/number-format fixes found against real Excel (see CHANGELOG.md) |
 
 ### Phase 13 detail
 
@@ -67,13 +72,21 @@ existing code to build on):
 
 ## Current focus
 
-**v0.2.8 tagged and released on GitHub** (2026-08-29), on top of
-v0.2.7: Tier 1 (array/shared formulas, named ranges) and the entire
-Tier 2 of the "Path to 100% XLSX standard compatibility" plan below —
-comments, hyperlinks, data validation, freeze panes, border color
-(import), and the full four-step print settings plan (margins/scale +
-print area, both directions). See `CHANGELOG.md` for the full detail
-on each, including the real bugs found while building them.
+**v0.2.9 tagged and released on GitHub** (2026-09-13), on top of
+v0.2.8: six individually-tested feature/fix branches merged into
+master after the earlier v0.2.8 GitHub push had diverged (legacy
+indexed color palette, docProps export, Excel Table Total Row
+exclusion, real threaded comments, XLS named ranges, openpyxl
+compatibility gaps), the bundled `Welcome.xlsx` demo workbook
+translated to English (previously Italian-only, `Benvenuto.xlsx`),
+and a real `FILTER` formula-parsing bug found translating it
+(`_xlfn._xlws.FILTER`, Excel's own double-prefixed spelling for that
+one function). Also a small round of real bugs found comparing a
+live file against real Excel screenshots: cell text vertical
+position/size for large custom fonts, forced decimal places on
+percent/currency formats, and XLSX import's default vertical
+alignment. See `CHANGELOG.md` for the full detail on each, including
+the real bugs found while building them.
 
 **Next up is Tier 3** (conditional formatting rule types beyond
 `cellIs`/`duplicateValues`, real Excel pivot table round-trip; the

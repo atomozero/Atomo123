@@ -810,7 +810,7 @@ What shipped in v0.2.8, on top of v0.2.7:
     own File menu work) — tracked as a small, separate item in "Path
     to full Excel parity"
 
-What shipped since v0.2.8, not yet in a tagged release:
+What shipped in v0.2.9, on top of v0.2.8:
 - Added the `RATE` function. The roadmap's "more financial functions"
   item listed `NPV`/`IRR`/`PMT`/`FV`/`PV`/`RATE` as all missing, but
   checking `Functions.finance.cpp` before writing anything (this
