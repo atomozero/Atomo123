@@ -100,6 +100,8 @@ private:
 	BCheckBox* fPrintGridBox;
 	BCheckBox* fCenterHBox;
 	BCheckBox* fCenterVBox;
+	BTextControl* fHeaderTextField;
+	BTextControl* fFooterTextField;
 	PrintPreviewView* fPreviewView;
 	BStringView* fPageLabel;
 	BButton* fPrevPageButton;

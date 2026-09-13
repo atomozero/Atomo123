@@ -983,9 +983,10 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	// Payload v1: uint8 versione (=1) + uint8 flag (bit0 intestazioni,
 	// bit1 griglia). Le versioni successive aggiungono campi IN CODA al
 	// payload e avanzano la versione: v2 aggiunge fitWide/fitTall (due
-	// int32, adatta a N x M pagine). I flag booleani successivi
-	// (centratura bit2/bit3, ...) riusano invece i bit liberi SENZA
-	// cambiare versione ne' lunghezza -- vedi AscdIO.h sui campi.
+	// int32), v3 aggiunge i testi di intestazione/pie' di pagina (due
+	// stringhe con lunghezza int32, max 4096 byte ciascuna). I flag
+	// booleani (centratura bit2/bit3, ...) riusano invece i bit liberi
+	// SENZA cambiare versione ne' lunghezza -- vedi AscdIO.h sui campi.
 	{
 		AscdPrintSettings ps = (printSettings) ? *printSettings : AscdPrintSettings();
 		uint8 has = ps.hasSettings ? 1 : 0;
@@ -994,12 +995,23 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		int32 scaleMode = ps.scaleMode;
 		double scalePercent = ps.scalePercent;
 		uint8 magic = 'G';
-		int32 tailLen = 2 + 2 * (int32)sizeof(int32);
-		uint8 version = 2;
+		uint8 version = 3;
 		uint8 flags = (ps.printHeaders ? 0x01 : 0x00) | (ps.printGrid ? 0x02 : 0x00)
 			| (ps.centerH ? 0x04 : 0x00) | (ps.centerV ? 0x08 : 0x00);
 		int32 fitWide = ps.fitWide >= 1 ? ps.fitWide : 1;
 		int32 fitTall = ps.fitTall >= 1 ? ps.fitTall : 1;
+		// Testi limitati a 4096 byte: un'intestazione piu' lunga non ha
+		// senso su una riga sola e gonfierebbe il file senza motivo.
+		BString headerText = ps.printHeaderText;
+		BString footerText = ps.printFooterText;
+		if (headerText.Length() > 4096)
+			headerText.Truncate(4096);
+		if (footerText.Length() > 4096)
+			footerText.Truncate(4096);
+		int32 headerLen = headerText.Length();
+		int32 footerLen = footerText.Length();
+		int32 tailLen = 2 + 2 * (int32)sizeof(int32)
+			+ (int32)sizeof(int32) + headerLen + (int32)sizeof(int32) + footerLen;
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
 			|| dest->Write(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
 			|| dest->Write(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
@@ -1012,7 +1024,11 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			|| dest->Write(&version, sizeof(version)) != (ssize_t)sizeof(version)
 			|| dest->Write(&flags, sizeof(flags)) != (ssize_t)sizeof(flags)
 			|| dest->Write(&fitWide, sizeof(fitWide)) != (ssize_t)sizeof(fitWide)
-			|| dest->Write(&fitTall, sizeof(fitTall)) != (ssize_t)sizeof(fitTall))
+			|| dest->Write(&fitTall, sizeof(fitTall)) != (ssize_t)sizeof(fitTall)
+			|| dest->Write(&headerLen, sizeof(headerLen)) != (ssize_t)sizeof(headerLen)
+			|| (headerLen > 0 && dest->Write(headerText.String(), headerLen) != headerLen)
+			|| dest->Write(&footerLen, sizeof(footerLen)) != (ssize_t)sizeof(footerLen)
+			|| (footerLen > 0 && dest->Write(footerText.String(), footerLen) != footerLen))
 			return B_IO_ERROR;
 	}
 
@@ -2277,6 +2293,7 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 			bool printGrid = true;
 			bool centerH = false, centerV = false;
 			int32 fitWide = 1, fitTall = 1;
+			BString headerText, footerText;
 			uint8 marker = 0;
 			ssize_t mgot = source->Read(&marker, sizeof(marker));
 			if (mgot != 0)
@@ -2294,8 +2311,11 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				else if (marker == 'G')
 				{
 					int32 tailLen = 0;
+					// Tetto: versione+flag+fit (10) + due stringhe da max
+					// 4096 + lunghezze (8) = 8210 -- oltre e' corruzione,
+					// non una coda futura.
 					if (source->Read(&tailLen, sizeof(tailLen)) != (ssize_t)sizeof(tailLen)
-						|| tailLen < 0 || tailLen > 1024)
+						|| tailLen < 0 || tailLen > 16384)
 						return B_BAD_DATA;
 					off_t tailStart = source->Position();
 					if (tailStart < 0)
@@ -2332,6 +2352,49 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						fitWide = (wide >= 1 && wide <= 100) ? wide : 1;
 						fitTall = (tall >= 1 && tall <= 100) ? tall : 1;
 					}
+					if (version >= 3)
+					{
+						// Due stringhe con lunghezza: si leggono SOLO se la
+						// coda le contiene davvero (controllo contro
+						// tailStart+tailLen, non solo contro la versione --
+						// una versione futura potrebbe... no: le versioni
+						// aggiungono IN CODA, quindi v3+ contiene sempre
+						// questi campi se tailLen basta. Se non basta, file
+						// corrotto).
+						int32 headerLen = 0;
+						if (source->Read(&headerLen, sizeof(headerLen))
+								!= (ssize_t)sizeof(headerLen)
+							|| headerLen < 0 || headerLen > 4096)
+							return B_BAD_DATA;
+						if (headerLen > 0)
+						{
+							// Stesso schema del progetto VBA sotto
+							// (vettore + lettura singola).
+							std::vector<char> buf(headerLen + 1, 0);
+							if (source->Read(buf.data(), headerLen) != headerLen)
+								return B_BAD_DATA;
+							headerText.SetTo(buf.data(), headerLen);
+						}
+						int32 footerLen = 0;
+						if (source->Read(&footerLen, sizeof(footerLen))
+								!= (ssize_t)sizeof(footerLen)
+							|| footerLen < 0 || footerLen > 4096)
+							return B_BAD_DATA;
+						if (footerLen > 0)
+						{
+							std::vector<char> buf(footerLen + 1, 0);
+							if (source->Read(buf.data(), footerLen) != footerLen)
+								return B_BAD_DATA;
+							footerText.SetTo(buf.data(), footerLen);
+						}
+						// Mai oltre la fine dichiarata della coda: se le
+						// letture hanno sforato, il file e' corrotto (il
+						// Seek finale qui sotto riavvolgerebbe
+						// silenziosamente, nascondendo l'errore).
+						off_t afterStrings = source->Position();
+						if (afterStrings < 0 || afterStrings > tailStart + tailLen)
+							return B_BAD_DATA;
+					}
 					// Salta eventuali campi di versioni future: la coda
 					// resta allineata per le sezioni successive qualunque
 					// cosa contenga.
@@ -2364,6 +2427,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				printSettings->centerV = centerV;
 				printSettings->fitWide = fitWide;
 				printSettings->fitTall = fitTall;
+				printSettings->printHeaderText = headerText;
+				printSettings->printFooterText = footerText;
 			}
 			// Nota: gli eventuali byte di coda vengono consumati dallo
 			// stream anche quando printSettings e' NULL (se presenti nel

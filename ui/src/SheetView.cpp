@@ -51,6 +51,7 @@
 #include "Preferences.h"
 
 #include "AscdIO.h"
+#include "PrintLayout.h"
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "SheetView"
@@ -142,6 +143,10 @@ SheetView::SheetView(CContainer* doc)
 	fSuppressPrintHeaders(false),
 	fPrintGridOverride(false),
 	fPrintGridValue(true),
+	fPrintTopInset(0),
+	fPrintFooterH(0),
+	fPrintPageNum(1),
+	fPrintPageCount(1),
 	fSheetProtected(false),
 	fFrozenRows(0),
 	fFrozenCols(0),
@@ -3727,6 +3732,28 @@ void SheetView::Draw(BRect updateRect)
 		}
 	}
 
+	// Testo di intestazione pagina ("Imposta pagina", con codici &P/&N/
+	// &D): banda congelata in cima alla pagina, SOPRA le lettere di
+	// colonna -- copre di bianco la coda della pagina precedente che
+	// DrawCellBand ha disegnato fin qui (stesso meccanismo
+	// dell'intestazione ripetuta, vedi il commento in PrintLayout.cpp),
+	// poi centra il testo sull'area dati. Solo durante la stampa
+	// (fPrintTopInset > 0 e testo non vuoto), mai a video.
+	if (fPrintTopInset > 0 && fPrintHeaderText.Length() > 0)
+	{
+		SetHighColor(255, 255, 255);
+		FillRect(BRect(updateRect.left, Bounds().top,
+			updateRect.right, Bounds().top + fPrintTopInset - 1));
+		SetHighColor(0, 0, 0);
+		BString expanded = ExpandPrintHeaderCodes(fPrintHeaderText.String(),
+			fPrintPageNum, fPrintPageCount);
+		float dataLeft = Bounds().left + kHeaderWidth;
+		float textX = dataLeft + (updateRect.right - dataLeft - StringWidth(expanded.String())) / 2;
+		if (textX < dataLeft)
+			textX = dataLeft;
+		DrawString(expanded.String(), BPoint(textX, Bounds().top + fPrintTopInset - 6));
+	}
+
 	// Intestazione di colonna (lettere): "congelata" durante lo scroll
 	// verticale -- disegnata sempre all'inizio dell'area visibile
 	// (Bounds().top, che segue la posizione corrente di scroll), non a
@@ -3740,9 +3767,11 @@ void SheetView::Draw(BRect updateRect)
 	// (contenuto delle celle, grafici) che le scorre sotto. Saltata
 	// insieme a quella di riga sopra quando le intestazioni di stampa
 	// sono disattivate (vedi il commento su fSuppressPrintHeaders).
+	// Con testo di intestazione pagina, scende di fPrintTopInset (0 a
+	// video e senza intestazione: identica a prima).
 	if (!fSuppressPrintHeaders)
 	{
-	float headerTop = Bounds().top;
+	float headerTop = Bounds().top + fPrintTopInset;
 	SetHighColor(230, 230, 230);
 	FillRect(BRect(updateRect.left, headerTop, updateRect.right, headerTop + kHeaderHeight - 1));
 
@@ -3788,6 +3817,28 @@ void SheetView::Draw(BRect updateRect)
 		FillEllipse(BPoint(x, midY + 4), 1, 1);
 	}
 	} // if (!fSuppressPrintHeaders) -- intestazione di colonna
+
+	// Testo di pie' di pagina ("Imposta pagina", stessi codici
+	// dell'intestazione): banda congelata in fondo alla pagina --
+	// l'impaginazione la esclude gia' dai dati (vedi ComputePrintJobLayout),
+	// qui si copre di bianco l'eventuale coda disegnata e si centra il
+	// testo sull'area dati. Dopo TUTTO il resto (anche dopo le
+	// intestazioni di riga/colonna, la cui banda verticale arriva fin qui
+	// e va coperta nell'angolo). Solo durante la stampa, mai a video.
+	if (fPrintFooterH > 0 && fPrintFooterText.Length() > 0)
+	{
+		SetHighColor(255, 255, 255);
+		FillRect(BRect(updateRect.left, updateRect.bottom - fPrintFooterH + 1,
+			updateRect.right, updateRect.bottom));
+		SetHighColor(0, 0, 0);
+		BString expanded = ExpandPrintHeaderCodes(fPrintFooterText.String(),
+			fPrintPageNum, fPrintPageCount);
+		float dataLeft = Bounds().left + kHeaderWidth;
+		float textX = dataLeft + (updateRect.right - dataLeft - StringWidth(expanded.String())) / 2;
+		if (textX < dataLeft)
+			textX = dataLeft;
+		DrawString(expanded.String(), BPoint(textX, updateRect.bottom - 6));
+	}
 }
 
 void SheetView::MouseDown(BPoint where)

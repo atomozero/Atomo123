@@ -9,6 +9,8 @@
 
 #include "PrintLayout.h"
 
+#include <ctime>
+
 // Posizione canvas (assoluta) da cui comincia davvero il contenuto da
 // stampare -- condivisa fra ComputePrintPageOrigins e
 // ComputePrintFitScale sotto, MAI duplicata a mano: un'incongruenza
@@ -26,15 +28,16 @@ static float PrintContentStartY(BRect contentRect, float headerH)
 }
 
 std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
-	float pageWidth, float pageHeight, float headerW, float headerH)
+	float pageWidth, float pageHeight, float headerW, float headerH, float footerH)
 {
 	std::vector<BPoint> origins;
 
 	// Una pagina piu' stretta/bassa della sola banda di intestazione
-	// non puo' contenere nessun dato reale (il passo del ciclo sotto
-	// sarebbe <= 0, loop infinito) -- il chiamante deve gia' averlo
-	// escluso, ma un elenco vuoto e' comunque una risposta sicura.
-	if (pageWidth <= headerW || pageHeight <= headerH)
+	// (piu' eventuale pie' di pagina) non puo' contenere nessun dato
+	// reale (il passo del ciclo sotto sarebbe <= 0, loop infinito) --
+	// il chiamante deve gia' averlo escluso, ma un elenco vuoto e'
+	// comunque una risposta sicura.
+	if (pageWidth <= headerW || pageHeight <= headerH + footerH)
 		return origins;
 
 	// dataX/dataY sono la posizione canvas (assoluta, stesso spazio di
@@ -55,7 +58,10 @@ std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
 	// Ogni pagina successiva avanza di (pageWidth-headerW), non
 	// dell'intera pagina: la sua STESSA intestazione ripetuta occupa i
 	// primi headerW pixel di quella pagina, quindi la dose di dati
-	// NUOVI che ci sta e' ridotta della stessa banda.
+	// NUOVI che ci sta e' ridotta della stessa banda. In verticale lo
+	// stesso, con in piu' footerH (pie' di pagina ripetuto in fondo a
+	// OGNI pagina, come l'intestazione in cima): il passo verticale e'
+	// (pageHeight-headerH-footerH).
 	//
 	// L'origine della pagina (quella restituita, e quella passata a
 	// SheetView::ScrollTo/BPrintJob::DrawView) e' dataX-headerW, non
@@ -69,7 +75,7 @@ std::vector<BPoint> ComputePrintPageOrigins(BRect contentRect,
 	float startX = PrintContentStartX(contentRect, headerW);
 	float startY = PrintContentStartY(contentRect, headerH);
 
-	for (float dataY = startY; dataY < contentRect.bottom; dataY += (pageHeight - headerH))
+	for (float dataY = startY; dataY < contentRect.bottom; dataY += (pageHeight - headerH - footerH))
 	{
 		for (float dataX = startX; dataX < contentRect.right; dataX += (pageWidth - headerW))
 			origins.push_back(BPoint(dataX - headerW, dataY - headerH));
@@ -89,16 +95,19 @@ BRect PrintPageContentExtent(BPoint pageOrigin, float pageW, float pageH,
 }
 
 float ComputePrintFitScale(BRect contentRect, float usableWidth, float usableHeight,
-	float headerW, float headerH, int fitMode)
+	float headerW, float headerH, int fitMode, float footerH)
 {
-	// Larghezza/altezza VERE (intestazione compresa) che il contenuto
-	// occupa a partire da dove comincia davvero (PrintContentStartX/Y
-	// sopra, la STESSA posizione usata da ComputePrintPageOrigins per
-	// la prima pagina) -- non contentRect.right/bottom da soli, che per
-	// un'area di stampa che non parte dalla riga/colonna 1 (Fase 27)
-	// includerebbero anche lo spazio PRIMA dell'area, mai stampato.
+	// Larghezza/altezza VERE (intestazione compresa, piu' eventuale pie'
+	// di pagina che occupa spazio su OGNI pagina come l'intestazione)
+	// che il contenuto occupa a partire da dove comincia davvero
+	// (PrintContentStartX/Y sopra, la STESSA posizione usata da
+	// ComputePrintPageOrigins per la prima pagina) -- non
+	// contentRect.right/bottom da soli, che per un'area di stampa che non
+	// parte dalla riga/colonna 1 (Fase 27) includerebbero anche lo spazio
+	// PRIMA dell'area, mai stampato.
 	float totalWidth = contentRect.right - PrintContentStartX(contentRect, headerW) + headerW;
-	float totalHeight = contentRect.bottom - PrintContentStartY(contentRect, headerH) + headerH;
+	float totalHeight = contentRect.bottom - PrintContentStartY(contentRect, headerH)
+		+ headerH + footerH;
 
 	if (totalWidth <= 0 || totalHeight <= 0 || usableWidth <= 0 || usableHeight <= 0)
 		return 1.0f;
@@ -121,7 +130,7 @@ float ComputePrintFitScale(BRect contentRect, float usableWidth, float usableHei
 }
 
 float ComputePrintFitScaleToPages(BRect contentRect, float usableWidth, float usableHeight,
-	float headerW, float headerH, int wide, int tall)
+	float headerW, float headerH, int wide, int tall, float footerH)
 {
 	if (wide < 1) wide = 1;
 	if (tall < 1) tall = 1;
@@ -130,7 +139,8 @@ float ComputePrintFitScaleToPages(BRect contentRect, float usableWidth, float us
 	// qui dentro oltre le due righe di misura): il contenuto occupa
 	// totalWidth x totalHeight a partire da dove comincia davvero.
 	float totalWidth = contentRect.right - PrintContentStartX(contentRect, headerW) + headerW;
-	float totalHeight = contentRect.bottom - PrintContentStartY(contentRect, headerH) + headerH;
+	float totalHeight = contentRect.bottom - PrintContentStartY(contentRect, headerH)
+		+ headerH + footerH;
 
 	if (totalWidth <= 0 || totalHeight <= 0 || usableWidth <= 0 || usableHeight <= 0)
 		return 1.0f;
@@ -147,9 +157,9 @@ float ComputePrintFitScaleToPages(BRect contentRect, float usableWidth, float us
 
 PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
- double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
+	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
 	int scaleMode, double scalePercent, float headerW, float headerH,
-	int fitWide, int fitTall, bool centerH, bool centerV)
+	int fitWide, int fitTall, bool centerH, bool centerV, float footerH)
 {
 	PrintJobLayout layout;
 
@@ -165,7 +175,7 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float usableWidth = printableWidth - layout.marginLeftPx - marginRightPx;
 	float usableHeight = printableHeight - layout.marginTopPx - marginBottomPx;
 
-	if (usableWidth <= headerW || usableHeight <= headerH)
+	if (usableWidth <= headerW || usableHeight <= headerH + footerH)
 	{
 		layout.pageWidth = layout.pageHeight = 0;
 		layout.scale = 1.0;
@@ -180,10 +190,10 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	// kPrintFitWidth/kPrintFitHeight/kPrintFitBoth/kPrintFitPages.
 	if (scaleMode == kPrintFitWidth || scaleMode == kPrintFitHeight || scaleMode == kPrintFitBoth)
 		layout.scale = ComputePrintFitScale(contentRect, usableWidth, usableHeight,
-			headerW, headerH, scaleMode);
+			headerW, headerH, scaleMode, footerH);
 	else if (scaleMode == kPrintFitPages)
 		layout.scale = ComputePrintFitScaleToPages(contentRect, usableWidth, usableHeight,
-			headerW, headerH, fitWide, fitTall);
+			headerW, headerH, fitWide, fitTall, footerH);
 	else
 		layout.scale = scalePercent / 100.0;
 
@@ -204,10 +214,9 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	layout.pageHeight = (float)(usableHeight / layout.scale);
 
 	layout.pageOrigins = ComputePrintPageOrigins(contentRect, layout.pageWidth, layout.pageHeight,
-		headerW, headerH);
+		headerW, headerH, footerH);
 
-	// Centratura per pagina: un offset per pageOrigins (stesso indice),
-	// in pixel del dispositivo come marginLeftPx/marginTopPx -- il
+	// Centratura per pagina: un offset per pageOrigins (stesso indice),	// in pixel del dispositivo come marginLeftPx/marginTopPx -- il
 	// chiamante lo somma alla destinazione. Solo le pagine parziali si
 	// muovono davvero: a pagina piena l'estensione coincide con l'area
 	// dati e lo spazio residuo e' nullo.
@@ -244,4 +253,47 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	}
 
 	return layout;
+}
+
+BString ExpandPrintHeaderCodes(const char* templ, int page, int pages)
+{
+	BString out;
+	if (templ == NULL)
+		return out;
+
+	// Data corrente una sola volta (non a ogni &D): tutte le pagine
+	// dello stesso lavoro riportano la stessa data.
+	char date[16] = "";
+	{
+		std::time_t now = std::time(NULL);
+		struct std::tm* local = std::localtime(&now);
+		if (local != NULL)
+			std::strftime(date, sizeof(date), "%d.%m.%Y", local);
+	}
+
+	for (const char* p = templ; *p != '\0'; p++)
+	{
+		if (*p != '&' || *(p + 1) == '\0')
+		{
+			out << *p;
+			continue;
+		}
+		char code = *(p + 1);
+		if (code == 'P')
+			out << page;
+		else if (code == 'N')
+			out << pages;
+		else if (code == 'D')
+			out << date;
+		else if (code == '&')
+			out << '&';
+		else
+		{
+			// Codice sconosciuto: resta com'e' ("&X"), mai perso.
+			out << '&';
+			out << code;
+		}
+		p++; // consuma anche il codice
+	}
+	return out;
 }

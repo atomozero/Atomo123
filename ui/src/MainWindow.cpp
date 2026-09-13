@@ -3509,6 +3509,8 @@ void MainWindow::GetActivePrintSettings(AscdPrintSettings* out) const
 	if (out->fitTall < 1 || out->fitTall > 100) out->fitTall = 1;
 	out->centerH = gPrefs ? (gPrefs->GetPrefInt("printCenterH", 0) != 0) : false;
 	out->centerV = gPrefs ? (gPrefs->GetPrefInt("printCenterV", 0) != 0) : false;
+	out->printHeaderText = gPrefs ? gPrefs->GetPrefString("printHeaderText", "") : "";
+	out->printFooterText = gPrefs ? gPrefs->GetPrefString("printFooterText", "") : "";
 }
 
 void MainWindow::ShowPageSetupWindow()
@@ -3576,6 +3578,8 @@ void MainWindow::HandlePageSetupRequest(const AscdPrintSettings& settings)
 	gPrefs->SetPrefInt("printFitTall", settings.fitTall);
 	gPrefs->SetPrefInt("printCenterH", settings.centerH ? 1 : 0);
 	gPrefs->SetPrefInt("printCenterV", settings.centerV ? 1 : 0);
+	gPrefs->SetPrefString("printHeaderText", settings.printHeaderText.String());
+	gPrefs->SetPrefString("printFooterText", settings.printFooterText.String());
 	try { gPrefs->WritePrefFile(); }
 	catch (CErr&) { }
 }
@@ -4948,10 +4952,27 @@ BRect MainWindow::ActivePrintContentRect()
 	return fSheetView->ContentRect();
 }
 
+// Bande riservate su ogni pagina stampata (intestazioni di riga/colonna
+// + eventuale testo di intestazione in cima, eventuale pie' in fondo):
+// UNICO punto che le calcola, usato sia dalla stampa vera
+// (ComputePrintJobLayoutForActiveSheet sotto) sia dall'anteprima
+// (GeneratePrintPreviewPages) -- due calcoli separati produrrebbero
+// un'anteprima impaginata diversamente dalla stampa (vedi il commento su
+// PrintJobLayout in PrintLayout.h). La banda di intestazione-testo si
+// somma a headerH, il pie' esce in footerH a parte.
+static void PrintBandHeights(const AscdPrintSettings& settings, SheetView* view,
+	float* headerW, float* headerH, float* footerH)
+{
+	float textBandH = (float)SheetView::PrintTextBandHeight();
+	*headerW = settings.printHeaders ? view->HeaderWidth() : 0;
+	*headerH = (settings.printHeaders ? view->HeaderHeight() : 0)
+		+ (settings.printHeaderText.Length() > 0 ? textBandH : 0);
+	*footerH = settings.printFooterText.Length() > 0 ? textBandH : 0;
+}
+
 PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWidth,
 	float printableHeight, int32 xDPI, int32 yDPI)
-{
-	// Impostazioni (Fase 27, "Imposta pagina", per-foglio dalla Fase
+{	// Impostazioni (Fase 27, "Imposta pagina", per-foglio dalla Fase
 	// 29): quelle proprie del foglio attivo se mai impostate, altrimenti
 	// la preferenza globale di ripiego -- vedi GetActivePrintSettings.
 	// GeneratePrintPreviewPages sotto usa invece i valori ANCORA IN
@@ -4961,18 +4982,19 @@ PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWi
 	AscdPrintSettings settings;
 	GetActivePrintSettings(&settings);
 
-	// Senza intestazioni non si riserva spazio per la banda
-	// headerW/headerH su ogni pagina: le pagine contengono solo dati e
-	// ce ne stanno di piu' -- stesso headerW/H nullo passato anche a
-	// GeneratePrintPreviewPages, altrimenti anteprima e stampa vera non
-	// impaginerebbero allo stesso modo.
-	float headerW = settings.printHeaders ? fSheetView->HeaderWidth() : 0;
-	float headerH = settings.printHeaders ? fSheetView->HeaderHeight() : 0;
+	// Bande di testo di intestazione/pie' (una riga predefinita ciascuna,
+	// vedi SheetView::PrintTextBandHeight): riservate in impaginazione
+	// SOLO se il testo non e' vuoto -- testo vuoto = banda assente, come
+	// se l'opzione non esistesse. La banda di intestazione si somma a
+	// headerH (spazio in cima a ogni pagina), il pie' viaggia nel
+	// parametro footerH a parte (spazio in fondo, vedi PrintLayout.h).
+	float headerW, headerH, footerH;
+	PrintBandHeights(settings, fSheetView, &headerW, &headerH, &footerH);
 
 	return ComputePrintJobLayout(ActivePrintContentRect(), printableWidth, printableHeight,
 		xDPI, yDPI, settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
 		settings.marginRightCm, settings.scaleMode, settings.scalePercent, headerW, headerH,
-		settings.fitWide, settings.fitTall, settings.centerH, settings.centerV);
+		settings.fitWide, settings.fitTall, settings.centerH, settings.centerV, footerH);
 }
 
 std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSettings& settings)
@@ -5010,15 +5032,15 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 		yDPI = 72;
 	}
 
-	float headerW = settings.printHeaders ? fSheetView->HeaderWidth() : 0;
-	float headerH = settings.printHeaders ? fSheetView->HeaderHeight() : 0;
+	float headerW, headerH, footerH;
+	PrintBandHeights(settings, fSheetView, &headerW, &headerH, &footerH);
 
 	PrintJobLayout layout = ComputePrintJobLayout(ActivePrintContentRect(),
 		printableRect.Width(), printableRect.Height(), xDPI, yDPI,
 		settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
 		settings.marginRightCm, settings.scaleMode, settings.scalePercent,
 		headerW, headerH, settings.fitWide, settings.fitTall,
-		settings.centerH, settings.centerV);
+		settings.centerH, settings.centerV, footerH);
 	if (layout.pageOrigins.empty())
 		return pages;
 
@@ -5165,6 +5187,45 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 			}
 		}
 
+		// Testi di intestazione/pie' di pagina: bande bianche sopra le
+		// celle (stesse zone riservate in impaginazione, vedi headerH/
+		// footerH sopra) con testo centrato e codici espansi -- come la
+		// stampa vera (SheetView::Draw), solo a scala di anteprima.
+		float textBandH = (float)SheetView::PrintTextBandHeight();
+		if (settings.printHeaderText.Length() > 0)
+		{
+			float bandPreview = textBandH * combinedScale;
+			offscreen->SetHighColor(255, 255, 255);
+			offscreen->FillRect(BRect(marginLeftPreview, marginTopPreview,
+				marginLeftPreview + pageWidthPreview, marginTopPreview + bandPreview));
+			BString expanded = ExpandPrintHeaderCodes(settings.printHeaderText.String(),
+				(int)i + 1, (int)pageCount);
+			offscreen->SetHighColor(0, 0, 0);
+			float textX = marginLeftPreview
+				+ (pageWidthPreview - offscreen->StringWidth(expanded.String())) / 2;
+			if (textX < marginLeftPreview)
+				textX = marginLeftPreview;
+			offscreen->DrawString(expanded.String(),
+				BPoint(textX, marginTopPreview + bandPreview - 1));
+		}
+		if (settings.printFooterText.Length() > 0)
+		{
+			float bandPreview = textBandH * combinedScale;
+			float bandTop = marginTopPreview + pageHeightPreview - bandPreview;
+			offscreen->SetHighColor(255, 255, 255);
+			offscreen->FillRect(BRect(marginLeftPreview, bandTop,
+				marginLeftPreview + pageWidthPreview, marginTopPreview + pageHeightPreview));
+			BString expanded = ExpandPrintHeaderCodes(settings.printFooterText.String(),
+				(int)i + 1, (int)pageCount);
+			offscreen->SetHighColor(0, 0, 0);
+			float textX = marginLeftPreview
+				+ (pageWidthPreview - offscreen->StringWidth(expanded.String())) / 2;
+			if (textX < marginLeftPreview)
+				textX = marginLeftPreview;
+			offscreen->DrawString(expanded.String(),
+				BPoint(textX, marginTopPreview + pageHeightPreview - 1));
+		}
+
 		offscreen->Sync();
 		pageBitmap->RemoveChild(offscreen);
 		delete offscreen;
@@ -5238,6 +5299,19 @@ void MainWindow::PrintDocument()
 	fSheetView->SetSuppressPrintHeaders(!printSettings.printHeaders);
 	fSheetView->SetPrintGridOverride(true, printSettings.printGrid);
 
+	// Testi di intestazione/pie': gli stessi riservati in impaginazione
+	// (vedi PrintBandHeights sopra) -- topInset e' la sola banda-testo
+	// (headerH meno le intestazioni di riga/colonna), footerH il pie'.
+	// La pagina corrente serve all'espansione di &P/&N (aggiornata nel
+	// ciclo sotto), il totale e' noto gia' qui.
+	float baseHeaderH = printSettings.printHeaders ? fSheetView->HeaderHeight() : 0;
+	float headerHForBands, footerHForBands, headerWForBands;
+	PrintBandHeights(printSettings, fSheetView,
+		&headerWForBands, &headerHForBands, &footerHForBands);
+	fSheetView->SetPrintHeaderFooter(printSettings.printHeaderText.String(),
+		printSettings.printFooterText.String(),
+		headerHForBands - baseHeaderH, footerHForBands);
+
 	// Si stampa solo l'area del foglio che contiene dati (o l'area di
 	// stampa scelta), suddivisa in tante pagine quante ne servono in
 	// base all'area stampabile (al netto dei margini) della stampante
@@ -5259,6 +5333,7 @@ void MainWindow::PrintDocument()
 	for (size_t i = 0; i < layout.pageOrigins.size() && printJob.CanContinue(); i++)
 	{
 		fSheetView->ScrollTo(layout.pageOrigins[i]);
+		fSheetView->SetPrintPage((int)i + 1, (int)layout.pageOrigins.size());
 
 		BRect pageSlice(layout.pageOrigins[i].x, layout.pageOrigins[i].y,
 			layout.pageOrigins[i].x + layout.pageWidth, layout.pageOrigins[i].y + layout.pageHeight);
@@ -5270,6 +5345,7 @@ void MainWindow::PrintDocument()
 	fSheetView->SetScale(originalScale);
 	fSheetView->SetSuppressPrintHeaders(originalSuppressHeaders);
 	fSheetView->SetPrintGridOverride(false, true);
+	fSheetView->ClearPrintHeaderFooter();
 
 	fSheetView->ScrollTo(originalScroll);
 
@@ -6298,6 +6374,12 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindBool("centerV", &centerV);
 			settings.centerH = centerH;
 			settings.centerV = centerV;
+			const char* headerText = "";
+			const char* footerText = "";
+			message->FindString("headerText", &headerText);
+			message->FindString("footerText", &footerText);
+			settings.printHeaderText = headerText ? headerText : "";
+			settings.printFooterText = footerText ? footerText : "";
 			HandlePageSetupRequest(settings);
 			break;
 		}
@@ -6328,6 +6410,12 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindBool("centerV", &centerV);
 			settings.centerH = centerH;
 			settings.centerV = centerV;
+			const char* headerText = "";
+			const char* footerText = "";
+			message->FindString("headerText", &headerText);
+			message->FindString("footerText", &footerText);
+			settings.printHeaderText = headerText ? headerText : "";
+			settings.printFooterText = footerText ? footerText : "";
 			HandlePageSetupPreviewRequest(settings);
 			break;
 		}
@@ -6358,6 +6446,12 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindBool("centerV", &centerV);
 			settings.centerH = centerH;
 			settings.centerV = centerV;
+			const char* headerText = "";
+			const char* footerText = "";
+			message->FindString("headerText", &headerText);
+			message->FindString("footerText", &footerText);
+			settings.printHeaderText = headerText ? headerText : "";
+			settings.printFooterText = footerText ? footerText : "";
 			HandlePageSetupRequest(settings);
 			PrintDocument();
 			break;

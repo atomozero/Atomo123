@@ -65,6 +65,14 @@ struct AscdPrintSettings {
 	// di default (comportamento di sempre: contenuto dall'angolo).
 	bool centerH = false;
 	bool centerV = false;
+	// Testi di intestazione e pie' di pagina (con codici &P/&N/&D, vedi
+	// ExpandPrintHeaderCodes in PrintLayout.h): bande di una riga ripetute
+	// su OGNI pagina -- SEMPLIFICAZIONE dichiarata rispetto a Excel (che
+	// li mette nei margini): qui occupano spazio contenuto. Testo vuoto =
+	// banda assente (nessun flag separato). BString qui dentro: AscdIO.h
+	// include gia' <String.h>.
+	BString printHeaderText;
+	BString printFooterText;
 	// Stampa intestazioni di riga/colonna (numeri/lettere, vedi
 	// SheetView::Draw): true di default per conservare il comportamento
 	// di sempre (le intestazioni venivano stampate su ogni pagina).
