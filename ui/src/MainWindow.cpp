@@ -100,7 +100,7 @@ static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
 static const uint32 kMsgOpenRecent = 'aorc';
 // File dimostrativo installato con il pacchetto (packaging/
-// build-hpkg.sh / atomo123-0.2.8.recipe copiano Benvenuto.xlsx in
+// build-hpkg.sh / atomo123-0.2.8.recipe copiano Welcome.xlsx in
 // documentation/Atomo123/ dell'albero del pacchetto) -- vedi il
 // gestore sotto per dove viene cercato a runtime.
 static const uint32 kMsgOpenSample = 'aosm';
@@ -5548,7 +5548,7 @@ void MainWindow::MessageReceived(BMessage* message)
 			BPath path;
 			status_t err = find_directory(B_SYSTEM_DOCUMENTATION_DIRECTORY, &path);
 			if (err == B_OK)
-				err = path.Append("Atomo123/Benvenuto.xlsx");
+				err = path.Append("Atomo123/Welcome.xlsx");
 
 			BEntry entry;
 			entry_ref ref;
