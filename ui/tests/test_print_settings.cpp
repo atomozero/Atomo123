@@ -74,26 +74,35 @@ int main()
 	win->PrintAreaText(text, sizeof(text));
 	Check(text[0] == '\0', "PrintAreaText torna vuoto dopo ClearPrintArea");
 
-	// HandlePageSetupRequest (margini/scala/intestazioni): con gPrefs
+	// HandlePageSetupRequest (tutte le impostazioni): con gPrefs
 	// NULL in questo harness (nessuna App::App() reale, vedi
 	// test_preferences.cpp) la richiesta viene comunque registrata
 	// PER FOGLIO in fSheets -- verificabile via GetActivePrintSettings
 	// (stesso schema di fallback per-foglio/globale del codice vero).
-	win->HandlePageSetupRequest(2.0, 2.0, 2.0, 2.0, 0, 100.0, true);
-	Check(true, "HandlePageSetupRequest accetta margini/scala normali senza crash");
+	AscdPrintSettings settings;
+	win->HandlePageSetupRequest(settings);
+	Check(true, "HandlePageSetupRequest accetta le impostazioni predefinite senza crash");
 
-	win->HandlePageSetupRequest(0.0, 0.0, 0.0, 0.0, 3, 10.0, false);
+	settings.marginTopCm = 0.0;
+	settings.marginBottomCm = 0.0;
+	settings.marginLeftCm = 0.0;
+	settings.marginRightCm = 0.0;
+	settings.scaleMode = 3;
+	settings.scalePercent = 10.0;
+	settings.printHeaders = false;
+	settings.printGrid = false;
+	win->HandlePageSetupRequest(settings);
 	Check(true, "HandlePageSetupRequest accetta margini nulli e scala 'adatta a una pagina' senza crash");
 
 	{
-		double marginTop, marginBottom, marginLeft, marginRight, scalePercent;
-		int scaleMode;
-		bool printHeaders = true;
-		win->GetActivePrintSettings(&marginTop, &marginBottom, &marginLeft, &marginRight,
-			&scaleMode, &scalePercent, &printHeaders);
-		Check(marginTop == 0.0 && marginBottom == 0.0 && marginLeft == 0.0 && marginRight == 0.0
-				&& scaleMode == 3 && scalePercent == 10.0 && printHeaders == false,
-			"GetActivePrintSettings riporta l'ultima impostazione per-foglio (margini 0, scala 3/10%, niente intestazioni)");
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.marginTopCm == 0.0 && active.marginBottomCm == 0.0
+				&& active.marginLeftCm == 0.0 && active.marginRightCm == 0.0
+				&& active.scaleMode == 3 && active.scalePercent == 10.0
+				&& active.printHeaders == false && active.printGrid == false,
+			"GetActivePrintSettings riporta l'ultima impostazione per-foglio "
+			"(margini 0, scala 3/10%, niente intestazioni ne' griglia)");
 	}
 
 	win->Unlock();

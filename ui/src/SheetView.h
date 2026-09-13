@@ -306,6 +306,23 @@ public:
 	void SetSuppressPrintHeaders(bool suppress) { fSuppressPrintHeaders = suppress; }
 	bool SuppressPrintHeaders() const { return fSuppressPrintHeaders; }
 
+	// Stampa CON o SENZA griglia ("Imposta pagina", opzione "Stampa
+	// griglia"): quando l'override e' attivo, Draw() disegna la griglia
+	// sottile secondo il valore imposto invece che secondo fShowGrid --
+	// usato SOLO da MainWindow::PrintDocument attorno a
+	// BPrintJob::DrawView (stesso schema di SetSuppressPrintHeaders
+	// sopra), mai per la vista a schermo. Serve perche' a video e su
+	// carta sono due scelte indipendenti (come in Excel): nascondere la
+	// griglia a video non deve decidere da solo se stamparla.
+	void SetPrintGridOverride(bool useOverride, bool printGrid)
+		{ fPrintGridOverride = useOverride; fPrintGridValue = printGrid; }
+	// Griglia EFFETTIVA da disegnare in questo momento: il valore
+	// imposto durante la stampa, altrimenti la preferenza di
+	// visualizzazione -- unico punto usato dai tre blocchi di disegno
+	// della griglia in Draw()/DrawCellBand, mai fShowGrid diretto.
+	bool PrintGridEffective() const
+		{ return fPrintGridOverride ? fPrintGridValue : fShowGrid; }
+
 	// Protezione foglio (Fase 32, "Proteggi foglio"): quando true, ogni
 	// tentativo di modificare contenuto/formattazione di una cella con
 	// CellStyle::fLocked=true (il default) su QUESTO foglio va rifiutato
@@ -683,6 +700,12 @@ private:
 	// Salta le intestazioni in Draw(): vedi SetSuppressPrintHeaders
 	// sopra -- false di default (schermo e stampe vecchie intestate).
 	bool fSuppressPrintHeaders;
+
+	// Griglia imposta per la stampa: vedi SetPrintGridOverride/
+	// PrintGridEffective sopra -- override spento di default (vale
+	// fShowGrid, il comportamento di sempre).
+	bool fPrintGridOverride;
+	bool fPrintGridValue;
 
 	// Protezione foglio: vedi SetProtected/IsProtected sopra.
 	bool fSheetProtected;

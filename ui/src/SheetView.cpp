@@ -140,6 +140,8 @@ SheetView::SheetView(CContainer* doc)
 	fHoverCursor(0),
 	fShowGrid(gPrefs ? gPrefs->GetPrefInt("showGrid", 1) != 0 : true),
 	fSuppressPrintHeaders(false),
+	fPrintGridOverride(false),
+	fPrintGridValue(true),
 	fSheetProtected(false),
 	fFrozenRows(0),
 	fFrozenCols(0),
@@ -2810,7 +2812,7 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 		}
 	}
 
-	if (fShowGrid)
+	if (PrintGridEffective())
 	{
 		SetHighColor(220, 220, 220);
 		for (int col = firstCol; col <= lastCol; col++)
@@ -2895,7 +2897,7 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 			SetHighColor(cf != fCondFormatColors.end() ? cf->second : cs.fLowColor);
 			FillRect(full);
 
-			if (fShowGrid)
+			if (PrintGridEffective())
 			{
 				SetHighColor(220, 220, 220);
 				StrokeRect(full);
