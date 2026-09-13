@@ -32,7 +32,7 @@ Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		Il file co
 Massimo	Pivot		Maximum
 Incolla	PasteSpecialWindow		Paste
 Formato	MainWindow		Format
-Margini	PageSetupWindow		Margini
+Margini	PageSetupWindow		Margins
 Informazioni su Atomo123	AboutWindow		About Atomo123
 Spesso	MainWindow		Thick
 Sottrai	PasteSpecialWindow		Subtract
@@ -56,9 +56,9 @@ Separatore di elenco:	PreferencesWindow		List separator:
 Tabella pivot	PivotWindow		Pivot table
 Serie	Chart		Series
 Mostra griglia	PreferencesWindow		Show grid
-Applica	PageSetupWindow		Applica
+Applica	PageSetupWindow		Apply
 Trova e sostituisci	FindWindow		Find and replace
-Inferiore:	PageSetupWindow		Inferiore:
+Inferiore:	PageSetupWindow		Bottom:
 Informazioni su Atomo123…	MainWindow		About Atomo123…
 Impossibile aprire il file selezionato.	MainWindow		Couldn't open the selected file.
 Seleziona tutto	MainWindow		Select all
@@ -74,12 +74,12 @@ Imposta pagina…	MainWindow		Imposta pagina…
 Riempi a destra	MainWindow		Fill right
 Elimina foglio	SheetTabView		Delete sheet
 Cella di destinazione nel foglio:	ChartWindow		Destination cell in the sheet:
-Stampa…	PageSetupWindow		Stampa…
+Stampa…	PageSetupWindow		Print…
 Commento cella…	MainWindow		Cell comment…
 Cancella area di stampa	MainWindow		Cancella area di stampa
 Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	Editing
 Esci	MainWindow		Quit
-Imposta pagina	PageSetupWindow		Imposta pagina
+Imposta pagina	PageSetupWindow		Page setup
 Applica	PreferencesWindow		Apply
 Esiste già un foglio con questo nome.	MainWindow		A sheet with this name already exists.
 Rimuovi convalida	ValidationWindow		Remove validation
@@ -92,13 +92,13 @@ Ordina Z-A	MainWindow		Sort Z-A
 Applica	BorderWindow		Apply
 Spessore:	BorderWindow		Thickness:
 Mostra valori per serie	ChartWindow		Show values per series
-Destro:	PageSetupWindow		Destro:
+Destro:	PageSetupWindow		Right:
 Inserisci riga	MainWindow		Insert row
 Percentuale	MainWindow		Percentage
 Conteggio	Pivot		Count
 di Andrea Bernardi	AboutWindow		by Andrea Bernardi
 Conteggio numerico	MainWindow		Numeric count
-Larghezza di una pagina	PageSetupWindow		Larghezza di una pagina
+Larghezza di una pagina	PageSetupWindow		Fit to page width
 Cella di destinazione:	PivotWindow		Destination cell:
 Cancella	MainWindow		Clear
 Sviluppato da StudioBernardi.eu	AtomGLView		Developed by StudioBernardi.eu
@@ -122,7 +122,7 @@ Rinomina foglio	MainWindow		Rename sheet
 Media	Pivot		Average
 Rimuovi commento	CommentWindow		Remove comment
 Elimina	NameWindow		Delete
-Nessuna anteprima	PageSetupWindow		Nessuna anteprima
+Nessuna anteprima	PageSetupWindow		No preview
 Se il valore e' uguale a	ConditionalFormatWindow		If the value is equal to
 A capo automatico	MainWindow		Wrap text
 Il file non e' piu' disponibile nella posizione registrata.	MainWindow		The file is no longer available at its recorded location.
@@ -151,10 +151,10 @@ Grassetto	MainWindow		Bold
 Nessun translator installato sa esportare in questo formato.	MainWindow		No installed translator can export to this format.
 Somma	PivotWindow		Sum
 Grafico a barre…	MainWindow		Bar chart…
-Superiore:	PageSetupWindow		Superiore:
+Superiore:	PageSetupWindow		Top:
 Ordina crescente	MainWindow		Sort ascending
-Una sola pagina	PageSetupWindow		Una sola pagina
-Scala	PageSetupWindow		Scala
+Una sola pagina	PageSetupWindow		Fit to one page
+Scala	PageSetupWindow		Scale
 Cella o intervallo:	GoToWindow		Cell or range:
 Tabella pivot…	MainWindow		Pivot table…
 Rimuovi tutte le regole	ConditionalFormatWindow		Remove all rules
@@ -167,7 +167,7 @@ Colore sfondo	ColorWindow		Background color
 Punto e virgola (;)	PreferencesWindow		Semicolon (;)
 Impossibile creare il file.	MainWindow		Couldn't create the file.
 Allinea al centro	MainWindow		Align center
-Percentuale:	PageSetupWindow		Percentuale:
+Percentuale:	PageSetupWindow		Percent:
 Stampa	MainWindow		Print
 Bordo cella…	MainWindow		Cell border…
 Intervalli con nome…	MainWindow		Named ranges…
@@ -211,7 +211,7 @@ Non si puo' ordinare: la selezione contiene una cella unita. Dividi le celle pri
 Massimo	MainWindow		Maximum
 Il file e' stato tradotto ma i dati risultanti non sono validi.	MainWindow		The file was translated but the resulting data is not valid.
 Somma	PasteSpecialWindow		Sum
-Adatta al:	PageSetupWindow		Adatta al:
+Adatta al:	PageSetupWindow		Adjust to:
 Sottile	BorderWindow		Thin
 Formattazione condizionale	ConditionalFormatWindow		Conditional formatting
 Colore sfondo…	MainWindow		Background color…
@@ -226,7 +226,7 @@ Convalida dati	SheetView		Data validation
 Sottile	MainWindow		Thin
 Media	MainWindow		Average
 Simbolo valuta:	PreferencesWindow		Currency symbol:
-di	PageSetupWindow		di
+di	PageSetupWindow		of
 Applica alla selezione	ConditionalFormatWindow		Apply to selection
 Nuovo foglio	MainWindow		New sheet
 Separatore decimale:	PreferencesWindow		Decimal separator:
@@ -289,12 +289,12 @@ Copia	MainWindow		Copy
 Cerca:	FindWindow		Search:
 Tutto (come Incolla)	PasteSpecialWindow		All (like Paste)
 Nome:	NameWindow		Name:
-Sinistro:	PageSetupWindow		Sinistro:
+Sinistro:	PageSetupWindow		Left:
 Colore	ColorWindow		Color
-Valori in centimetri	PageSetupWindow		Valori in centimetri
-Altezza di una pagina	PageSetupWindow		Altezza di una pagina
+Valori in centimetri	PageSetupWindow		Values in centimeters
+Altezza di una pagina	PageSetupWindow		Fit to page height
 Pronto	MainWindow		Ready
-Pagina	PageSetupWindow		Pagina
+Pagina	PageSetupWindow		Page
 Taglia	MainWindow		Cut
 Aggiungi/Aggiorna	NameWindow		Add/Update
 Colore scheda…	SheetTabView		Sheet color…

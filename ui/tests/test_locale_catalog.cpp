@@ -106,6 +106,21 @@ int main()
 			"\"%s\" is not a number between %g and %g.") == 0,
 		"il messaggio di errore della convalida numerica conserva %s/%g nella traduzione");
 
+	// Finestra "Imposta pagina": verificata voce per voce dopo
+	// la traduzione completa del dialogo (prima quasi tutto restava in
+	// italiano anche con locale inglese) -- campione fra titoli,
+	// etichette e pulsanti.
+	Check(strcmp(catalog.GetString("Imposta pagina", "PageSetupWindow"), "Page setup") == 0,
+		"\"Imposta pagina\" traduce in \"Page setup\"");
+	Check(strcmp(catalog.GetString("Nessuna anteprima", "PageSetupWindow"), "No preview") == 0,
+		"\"Nessuna anteprima\" traduce in \"No preview\"");
+	Check(strcmp(catalog.GetString("Stampa…", "PageSetupWindow"), "Print…") == 0,
+		"\"Stampa…\" (Imposta pagina) traduce in \"Print…\"");
+	Check(strcmp(catalog.GetString("Superiore:", "PageSetupWindow"), "Top:") == 0,
+		"\"Superiore:\" traduce in \"Top:\"");
+	Check(strcmp(catalog.GetString("Una sola pagina", "PageSetupWindow"), "Fit to one page") == 0,
+		"\"Una sola pagina\" traduce in \"Fit to one page\"");
+
 	if (gFailures == 0)
 		printf("\nTUTTI I TEST SONO PASSATI\n");
 	else
