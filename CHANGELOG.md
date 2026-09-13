@@ -1231,3 +1231,16 @@ What shipped since v0.2.8, not yet in a tagged release:
   feature in it was chosen to already be supported by this translator,
   verified section by section against this session's own XML output
   rather than assumed.
+- Fixed a real text rendering bug: a cell's line height was computed
+  from a fixed constant (`kRowHeight`, matching the default 15pt row)
+  regardless of the cell's actual font size, so any cell using a
+  meaningfully larger explicit font had its text baseline placed too
+  close to the top of the cell — the glyphs' ascenders were clipped by
+  the cell's own clip region, making the text look smaller than its
+  real size rather than just mispositioned. Found comparing an Excel
+  rendering of `agile-kanban-board.xlsx` against Atomo123's rendering
+  of the same file: a 28pt title ("Kanban Board") rendered visibly
+  undersized. `SheetView::DrawCellBand` now measures the current
+  font's real line height via `GetFontHeight`, falling back to
+  `kRowHeight` as a floor so cells using the default font size are
+  unaffected.
