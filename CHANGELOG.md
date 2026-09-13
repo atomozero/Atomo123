@@ -1258,3 +1258,13 @@ What shipped since v0.2.8, not yet in a tagged release:
   default" counterpart, so the shared instance let one cell's explicit
   precision leak into the next cell that had none, caught by the
   existing currency-format regression test.
+- Fixed a third real bug from the same comparison: XLSX import now
+  defaults a cell's vertical alignment to Excel's actual default,
+  Bottom, instead of Top. Invisible for an ordinary single-line row,
+  but a real, visible gap for any custom-height row taller than one
+  line of text — the same Kanban file's "Days"/"14" and
+  "Progress"/"25,0%" banner cells (each its own 30pt-tall row, neither
+  with an explicit `vertical` attribute) render tightly hugging the
+  shared row boundary in Excel, but with a large visible gap in
+  Atomo123, since the label sat at the top of its own row instead of
+  the bottom.
