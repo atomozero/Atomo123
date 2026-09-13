@@ -1244,3 +1244,17 @@ What shipped since v0.2.8, not yet in a tagged release:
   font's real line height via `GetFontHeight`, falling back to
   `kRowHeight` as a floor so cells using the default font size are
   unaffected.
+- Fixed a real number-formatting bug found in the same comparison: a
+  percentage cell with a custom format specifying a forced decimal
+  count (XLSX `"0.0%"`, the Kanban file's own "Progress" cell) showed
+  `"25%"` in Atomo123 against Excel's `"25,0%"`, silently dropping the
+  decimal place. The engine and XLSX translator already computed the
+  right decimal count end to end (packed into `CellStyle::fFormat`),
+  but `SheetView::FormattedCellText`'s locale-aware re-render pass
+  never read it back out into `BNumberFormat::SetPrecision`, so
+  `BNumberFormat`'s own default precision (0 for percent) won. Along
+  the way, replaced the view's single shared `BNumberFormat` member
+  with a fresh local instance per cell: `SetPrecision` has no "restore
+  default" counterpart, so the shared instance let one cell's explicit
+  precision leak into the next cell that had none, caught by the
+  existing currency-format regression test.
