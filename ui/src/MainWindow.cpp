@@ -3503,6 +3503,10 @@ void MainWindow::GetActivePrintSettings(AscdPrintSettings* out) const
 	out->scalePercent = gPrefs ? gPrefs->GetPrefDouble("printScalePercent", 100.0) : 100.0;
 	out->printHeaders = gPrefs ? (gPrefs->GetPrefInt("printHeaders", 1) != 0) : true;
 	out->printGrid = gPrefs ? (gPrefs->GetPrefInt("printGrid", 1) != 0) : true;
+	out->fitWide = gPrefs ? gPrefs->GetPrefInt("printFitWide", 1) : 1;
+	out->fitTall = gPrefs ? gPrefs->GetPrefInt("printFitTall", 1) : 1;
+	if (out->fitWide < 1 || out->fitWide > 100) out->fitWide = 1;
+	if (out->fitTall < 1 || out->fitTall > 100) out->fitTall = 1;
 }
 
 void MainWindow::ShowPageSetupWindow()
@@ -3566,6 +3570,8 @@ void MainWindow::HandlePageSetupRequest(const AscdPrintSettings& settings)
 	gPrefs->SetPrefDouble("printScalePercent", settings.scalePercent);
 	gPrefs->SetPrefInt("printHeaders", settings.printHeaders ? 1 : 0);
 	gPrefs->SetPrefInt("printGrid", settings.printGrid ? 1 : 0);
+	gPrefs->SetPrefInt("printFitWide", settings.fitWide);
+	gPrefs->SetPrefInt("printFitTall", settings.fitTall);
 	try { gPrefs->WritePrefFile(); }
 	catch (CErr&) { }
 }
@@ -4961,7 +4967,8 @@ PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWi
 
 	return ComputePrintJobLayout(ActivePrintContentRect(), printableWidth, printableHeight,
 		xDPI, yDPI, settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
-		settings.marginRightCm, settings.scaleMode, settings.scalePercent, headerW, headerH);
+		settings.marginRightCm, settings.scaleMode, settings.scalePercent, headerW, headerH,
+		settings.fitWide, settings.fitTall);
 }
 
 std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSettings& settings)
@@ -5006,7 +5013,7 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 		printableRect.Width(), printableRect.Height(), xDPI, yDPI,
 		settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
 		settings.marginRightCm, settings.scaleMode, settings.scalePercent,
-		headerW, headerH);
+		headerW, headerH, settings.fitWide, settings.fitTall);
 	if (layout.pageOrigins.empty())
 		return pages;
 
@@ -6268,6 +6275,11 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindBool("printGrid", &printGrid);
 			settings.printHeaders = printHeaders;
 			settings.printGrid = printGrid;
+			int32 fitWide = 1, fitTall = 1;
+			message->FindInt32("fitWide", &fitWide);
+			message->FindInt32("fitTall", &fitTall);
+			settings.fitWide = (fitWide >= 1 && fitWide <= 100) ? (int)fitWide : 1;
+			settings.fitTall = (fitTall >= 1 && fitTall <= 100) ? (int)fitTall : 1;
 			HandlePageSetupRequest(settings);
 			break;
 		}
@@ -6288,6 +6300,11 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindBool("printGrid", &printGrid);
 			settings.printHeaders = printHeaders;
 			settings.printGrid = printGrid;
+			int32 fitWide = 1, fitTall = 1;
+			message->FindInt32("fitWide", &fitWide);
+			message->FindInt32("fitTall", &fitTall);
+			settings.fitWide = (fitWide >= 1 && fitWide <= 100) ? (int)fitWide : 1;
+			settings.fitTall = (fitTall >= 1 && fitTall <= 100) ? (int)fitTall : 1;
 			HandlePageSetupPreviewRequest(settings);
 			break;
 		}
@@ -6308,6 +6325,11 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindBool("printGrid", &printGrid);
 			settings.printHeaders = printHeaders;
 			settings.printGrid = printGrid;
+			int32 fitWide = 1, fitTall = 1;
+			message->FindInt32("fitWide", &fitWide);
+			message->FindInt32("fitTall", &fitTall);
+			settings.fitWide = (fitWide >= 1 && fitWide <= 100) ? (int)fitWide : 1;
+			settings.fitTall = (fitTall >= 1 && fitTall <= 100) ? (int)fitTall : 1;
 			HandlePageSetupRequest(settings);
 			PrintDocument();
 			break;

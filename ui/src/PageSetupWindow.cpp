@@ -82,6 +82,16 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		B_TRANSLATE("Una sola pagina"), new BMessage(kMsgScaleModeChanged));
 	fScalePercentRadio->SetValue(B_CONTROL_ON);
 
+	// Adatta a N x M pagine (come Excel "Fit to N page(s) wide by M
+	// tall"): i due campi hanno senso solo con il loro radio, come il
+	// campo percentuale col suo -- vedi kMsgScaleModeChanged sotto.
+	fScaleFitPagesRadio = new BRadioButton("scaleFitPagesRadio",
+		B_TRANSLATE("Pagine:"), new BMessage(kMsgScaleModeChanged));
+	fScaleFitWideField = new BTextControl("fitWide", B_TRANSLATE("Larghe:"),
+		"1", new BMessage(kMsgFieldChanged));
+	fScaleFitTallField = new BTextControl("fitTall", B_TRANSLATE("Alte:"),
+		"1", new BMessage(kMsgFieldChanged));
+
 	// Intestazioni di riga/colonna e griglia nella stampa: come in Excel
 	// ("Stampa titoli"/griglia), di default attive per conservare
 	// l'aspetto di sempre -- ogni cambio rigenera solo l'anteprima
@@ -106,7 +116,13 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.End()
 		.Add(fScaleFitWidthRadio)
 		.Add(fScaleFitHeightRadio)
-		.Add(fScaleFitBothRadio);
+		.Add(fScaleFitBothRadio)
+		.AddGroup(B_HORIZONTAL)
+			.Add(fScaleFitPagesRadio)
+			.Add(fScaleFitWideField)
+			.Add(fScaleFitTallField)
+			.AddGlue()
+		.End();
 
 	BBox* printBox = new BBox("printBox");
 	printBox->SetLabel(B_TRANSLATE("Stampa"));
@@ -163,6 +179,9 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	fScaleFitWidthRadio->SetTarget(this);
 	fScaleFitHeightRadio->SetTarget(this);
 	fScaleFitBothRadio->SetTarget(this);
+	fScaleFitPagesRadio->SetTarget(this);
+	fScaleFitWideField->SetTarget(this);
+	fScaleFitTallField->SetTarget(this);
 	fPrintHeadersBox->SetTarget(this);
 	fPrintGridBox->SetTarget(this);
 	fPrevPageButton->SetTarget(this);
@@ -194,7 +213,17 @@ void PageSetupWindow::SetValues(const AscdPrintSettings& settings)
 	fScaleFitWidthRadio->SetValue(settings.scaleMode == 1 ? B_CONTROL_ON : B_CONTROL_OFF);
 	fScaleFitHeightRadio->SetValue(settings.scaleMode == 2 ? B_CONTROL_ON : B_CONTROL_OFF);
 	fScaleFitBothRadio->SetValue(settings.scaleMode == 3 ? B_CONTROL_ON : B_CONTROL_OFF);
+	fScaleFitPagesRadio->SetValue(settings.scaleMode == 4 ? B_CONTROL_ON : B_CONTROL_OFF);
 	fScalePercentField->SetEnabled(settings.scaleMode == 0);
+
+	s = "";
+	s << settings.fitWide;
+	fScaleFitWideField->SetText(s.String());
+	s = "";
+	s << settings.fitTall;
+	fScaleFitTallField->SetText(s.String());
+	fScaleFitWideField->SetEnabled(settings.scaleMode == 4);
+	fScaleFitTallField->SetEnabled(settings.scaleMode == 4);
 
 	fPrintHeadersBox->SetValue(settings.printHeaders ? B_CONTROL_ON : B_CONTROL_OFF);
 	fPrintGridBox->SetValue(settings.printGrid ? B_CONTROL_ON : B_CONTROL_OFF);
@@ -247,6 +276,8 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 		scaleMode = 2;
 	else if (fScaleFitBothRadio->Value() == B_CONTROL_ON)
 		scaleMode = 3;
+	else if (fScaleFitPagesRadio->Value() == B_CONTROL_ON)
+		scaleMode = 4;
 
 	double scalePercent = atof(fScalePercentField->Text());
 	// Una percentuale fuori da un intervallo sensato (Excel stesso
@@ -255,6 +286,15 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 	// PreferencesWindow.
 	if (scalePercent < 10 || scalePercent > 400)
 		scalePercent = 100;
+
+	// Pagine di larghezza/altezza (solo per scaleMode 4): interi >= 1,
+	// mai oltre 100 (un "adatta a 1000 pagine" e' indistinguibile dal
+	// 100% ma costerebbe un'impaginazione inutile) -- fuori intervallo
+	// ricadono su 1x1, stesso principio della percentuale sopra.
+	int fitWide = atoi(fScaleFitWideField->Text());
+	int fitTall = atoi(fScaleFitTallField->Text());
+	if (fitWide < 1 || fitWide > 100) fitWide = 1;
+	if (fitTall < 1 || fitTall > 100) fitTall = 1;
 
 	bool printHeaders = fPrintHeadersBox->Value() == B_CONTROL_ON;
 	bool printGrid = fPrintGridBox->Value() == B_CONTROL_ON;
@@ -268,6 +308,8 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 	request.AddDouble("scalePercent", scalePercent);
 	request.AddBool("printHeaders", printHeaders);
 	request.AddBool("printGrid", printGrid);
+	request.AddInt32("fitWide", fitWide);
+	request.AddInt32("fitTall", fitTall);
 	return request;
 }
 
@@ -277,11 +319,15 @@ void PageSetupWindow::MessageReceived(BMessage* message)
 	{
 		case kMsgScaleModeChanged:
 		{
-			// Il campo percentuale ha senso solo in modalita' "Adatta
-			// al: NN%" -- disabilitato (non nascosto, la finestra non
-			// e' ridimensionabile) nelle altre tre, che calcolano la
-			// scala da sole al momento della stampa/anteprima.
+			// Il campo percentuale ha senso solo in modalita' percentuale
+			// fissa, i campi Larghe/Alte solo in modalita' "Pagine:" --
+			// disabilitati (non nascosti, la finestra non e'
+			// ridimensionabile) negli altri modi, che calcolano la scala
+			// da soli al momento della stampa/anteprima.
 			fScalePercentField->SetEnabled(fScalePercentRadio->Value() == B_CONTROL_ON);
+			bool fitPages = fScaleFitPagesRadio->Value() == B_CONTROL_ON;
+			fScaleFitWideField->SetEnabled(fitPages);
+			fScaleFitTallField->SetEnabled(fitPages);
 			BMessage preview = _BuildSettingsMessage(kMsgPageSetupPreviewRequest);
 			fTarget.SendMessage(&preview);
 			break;

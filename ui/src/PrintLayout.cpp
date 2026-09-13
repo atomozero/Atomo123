@@ -110,10 +110,36 @@ float ComputePrintFitScale(BRect contentRect, float usableWidth, float usableHei
 	return (scale > 1.0f) ? 1.0f : scale;
 }
 
+float ComputePrintFitScaleToPages(BRect contentRect, float usableWidth, float usableHeight,
+	float headerW, float headerH, int wide, int tall)
+{
+	if (wide < 1) wide = 1;
+	if (tall < 1) tall = 1;
+
+	// Stessa base di ComputePrintFitScale sopra (mai duplicata a mano
+	// qui dentro oltre le due righe di misura): il contenuto occupa
+	// totalWidth x totalHeight a partire da dove comincia davvero.
+	float totalWidth = contentRect.right - PrintContentStartX(contentRect, headerW) + headerW;
+	float totalHeight = contentRect.bottom - PrintContentStartY(contentRect, headerH) + headerH;
+
+	if (totalWidth <= 0 || totalHeight <= 0 || usableWidth <= 0 || usableHeight <= 0)
+		return 1.0f;
+
+	// wide pagine di larghezza usableWidth ciascuna (e tall di altezza):
+	// la scala che ci sta e' il minimo fra le due dimensioni, mai oltre
+	// 1.0 come sopra.
+	float scale = usableWidth * wide / totalWidth;
+	float heightScale = usableHeight * tall / totalHeight;
+	if (heightScale < scale)
+		scale = heightScale;
+	return (scale > 1.0f) ? 1.0f : scale;
+}
+
 PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
-	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
-	int scaleMode, double scalePercent, float headerW, float headerH)
+ double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
+	int scaleMode, double scalePercent, float headerW, float headerH,
+	int fitWide, int fitTall)
 {
 	PrintJobLayout layout;
 
@@ -138,12 +164,16 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 
 	// Scala: o una percentuale fissa scelta dall'utente (scaleMode 0),
 	// o calcolata per adattare il contenuto alla larghezza/altezza/
-	// entrambe di una sola pagina (ComputePrintFitScale sopra) -- i
-	// valori di scaleMode 1/2/3 coincidono apposta con
-	// kPrintFitWidth/kPrintFitHeight/kPrintFitBoth.
+	// entrambe di una sola pagina (ComputePrintFitScale sopra) o a
+	// fitWide x fitTall pagine (ComputePrintFitScaleToPages) -- i valori
+	// di scaleMode 1/2/3/4 coincidono apposta con
+	// kPrintFitWidth/kPrintFitHeight/kPrintFitBoth/kPrintFitPages.
 	if (scaleMode == kPrintFitWidth || scaleMode == kPrintFitHeight || scaleMode == kPrintFitBoth)
 		layout.scale = ComputePrintFitScale(contentRect, usableWidth, usableHeight,
 			headerW, headerH, scaleMode);
+	else if (scaleMode == kPrintFitPages)
+		layout.scale = ComputePrintFitScaleToPages(contentRect, usableWidth, usableHeight,
+			headerW, headerH, fitWide, fitTall);
 	else
 		layout.scale = scalePercent / 100.0;
 

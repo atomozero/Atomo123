@@ -92,7 +92,10 @@ private:
 	BRadioButton* fScaleFitWidthRadio;
 	BRadioButton* fScaleFitHeightRadio;
 	BRadioButton* fScaleFitBothRadio;
+	BRadioButton* fScaleFitPagesRadio;
 	BTextControl* fScalePercentField;
+	BTextControl* fScaleFitWideField;
+	BTextControl* fScaleFitTallField;
 	BCheckBox* fPrintHeadersBox;
 	BCheckBox* fPrintGridBox;
 	PrintPreviewView* fPreviewView;

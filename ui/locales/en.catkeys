@@ -1,4 +1,4 @@
-1	English	application/x-vnd.Atomo-Atomo123	402500616
+1	English	application/x-vnd.Atomo-Atomo123	1453639274
 Dividi	PasteSpecialWindow		Divide
 Nuovo documento	MainWindow		New document
 Sostituisci con:	FindWindow		Replace with:
@@ -356,3 +356,6 @@ Il file di esempio non e' installato su questo sistema.	MainWindow		The sample f
 Stampa intestazioni righe/colonne	PageSetupWindow		Print row/column headings
 Stampa griglia	PageSetupWindow		Print gridlines
 Stampa	PageSetupWindow		Print
+Pagine:	PageSetupWindow		Pages:
+Larghe:	PageSetupWindow		Wide:
+Alte:	PageSetupWindow		Tall:

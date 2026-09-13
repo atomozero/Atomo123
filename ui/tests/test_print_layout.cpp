@@ -210,6 +210,49 @@ int main()
 			"...e pageWidth/pageHeight restano a 0, non un valore negativo o indefinito");
 	}
 
+	// ComputePrintFitScaleToPages (adatta a N x M pagine): contenuto
+	// 600x300 (totali con intestazione 30x20) in 300x150 utilizzabili.
+	{
+		BRect content(0, 0, 600, 300);
+		float scale = ComputePrintFitScaleToPages(content, 300, 150, 30, 20, 2, 1);
+		Check(scale > 0.499f && scale < 0.501f,
+			"adatta a 2x1 pagine: 600 di larghezza in 2x300 e 300 di altezza in 1x150 "
+			"da' scala 0.5 (larghezza 600/600=1.0, altezza 150/300=0.5, vince la minore)");
+	}
+	{
+		BRect content(0, 0, 600, 300);
+		float scale = ComputePrintFitScaleToPages(content, 300, 150, 30, 20, 2, 2);
+		Check(scale > 0.999f && scale < 1.001f,
+			"adatta a 2x2 pagine: il contenuto ci sta intero (600/600 e 300/300), scala 1.0");
+	}
+	{
+		BRect content(0, 0, 600, 300);
+		float scale = ComputePrintFitScaleToPages(content, 300, 150, 30, 20, 0, -5);
+		Check(scale > 0.499f && scale < 0.501f,
+			"larghezza/altezza pagine non valide (0/-5) vengono trattate come 1x1, "
+			"mai divisione per zero (scala 0.5 come kPrintFitBoth)");
+	}
+	{
+		BRect content(0, 0, 600, 300);
+		float pages = ComputePrintFitScaleToPages(content, 300, 150, 30, 20, 1, 1);
+		float both = ComputePrintFitScale(content, 300, 150, 30, 20, kPrintFitBoth);
+		Check(pages == both,
+			"adatta a 1x1 pagine coincide esattamente con kPrintFitBoth");
+	}
+	{
+		// Stesso caso 2x1 sopra, ma attraverso ComputePrintJobLayout
+		// (scaleMode kPrintFitPages): la scala 0.5 deve propagarsi a
+		// pageWidth/pageHeight e produrre una sola pagina.
+		BRect content(0, 0, 600, 300);
+		PrintJobLayout layout = ComputePrintJobLayout(content, 300, 150, 100, 100,
+			0, 0, 0, 0, kPrintFitPages, 999.0, 30, 20, 2, 1);
+		Check(layout.scale > 0.499 && layout.scale < 0.501,
+			"ComputePrintJobLayout in modalita' kPrintFitPages usa ComputePrintFitScaleToPages "
+			"(0.5), scalePercent (999) viene ignorato");
+		Check(layout.pageOrigins.size() == 1,
+			"...e con scala 0.5 il contenuto 600x300 sta in un'unica pagina");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }
