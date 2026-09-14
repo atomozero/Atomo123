@@ -31,6 +31,17 @@ PrintPreviewView::PrintPreviewView()
 	// scala gia' la pagina a qualunque dimensione mantenendo le
 	// proporzioni, quindi restringere questo minimo non rompe nulla.
 	SetExplicitMinSize(BSize(200, 240));
+	// Larghezza massima esplicita: senza, questa colonna e la colonna
+	// delle opzioni si dividono a meta' ogni pixel in piu' quando la
+	// finestra si allarga (stesso peso di layout, nessuno dei due ha un
+	// limite) -- ma la pagina bianca ha gia' le sue proporzioni reali
+	// (vedi Draw() sopra, che la scala mantenendole) e oltre una certa
+	// larghezza quello spazio extra diventa solo grigio vuoto ai lati,
+	// mentre le tab (che invece hanno campi/etichette reali da mostrare)
+	// restavano strette al punto di tagliarsi -- bug reale segnalato
+	// dall'utente. Nessun massimo sull'altezza: quella la usa davvero,
+	// scalando la pagina piu' grande.
+	SetExplicitMaxSize(BSize(340, B_SIZE_UNLIMITED));
 }
 
 PrintPreviewView::~PrintPreviewView()

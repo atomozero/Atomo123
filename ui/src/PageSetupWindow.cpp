@@ -291,13 +291,29 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.AddGlue()
 		.End();
 
-	BTabView* optionsTabs = new BTabView("optionsTabs");
+	// B_WIDTH_AS_USUAL (ogni tab largo quanto la propria etichetta), non
+	// il default B_WIDTH_FROM_WIDEST (tutti larghi quanto l'etichetta
+	// PIU' lunga, moltiplicando lo spreco per tre): con "Intestazioni"
+	// tradotto "Header/Footer" in inglese, il fascio di tab superava la
+	// larghezza disponibile e l'ultima etichetta si tagliava contro il
+	// bordo della finestra -- bug reale segnalato dall'utente, BTabView
+	// non la comprime/tronca da sola, la disegna e basta oltre i suoi
+	// stessi confini.
+	BTabView* optionsTabs = new BTabView("optionsTabs", B_WIDTH_AS_USUAL);
 	optionsTabs->AddTab(MakeTabScroll(pageCol));
 	optionsTabs->TabAt(0)->SetLabel(B_TRANSLATE("Pagina"));
 	optionsTabs->AddTab(MakeTabScroll(printCol));
 	optionsTabs->TabAt(1)->SetLabel(B_TRANSLATE("Stampa"));
 	optionsTabs->AddTab(MakeTabScroll(headerCol));
 	optionsTabs->TabAt(2)->SetLabel(B_TRANSLATE("Intestazioni"));
+	// Minimo esplicito: verificato dal vivo, B_WIDTH_AS_USUAL da solo non
+	// bastava ancora -- l'ultima etichetta restava tagliata contro il
+	// bordo della finestra quando il layout dava a optionsTabs meno
+	// larghezza del fascio di tab reale. Un pavimento qui costringe
+	// B_AUTO_UPDATE_SIZE_LIMITS a riservargliela sempre, sulla finestra
+	// intera fin dall'apertura, non solo dopo un ridimensionamento
+	// manuale.
+	optionsTabs->SetExplicitMinSize(BSize(340, 160));
 
 	fPreviewView = new PrintPreviewView();
 

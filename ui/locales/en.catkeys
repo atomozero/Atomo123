@@ -373,4 +373,4 @@ Titoli da ripetere	PageSetupWindow		Repeating titles
 Righe:	PageSetupWindow		Rows:
 Colonne:	PageSetupWindow		Columns:
 Righe come 1:3, colonne come A:C (vuoto = nessuno)	PageSetupWindow		Rows like 1:3, columns like A:C (empty = none)
-Intestazioni	PageSetupWindow		Header/Footer
+Intestazioni	PageSetupWindow		Headers
