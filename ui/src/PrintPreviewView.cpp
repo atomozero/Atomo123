@@ -24,8 +24,13 @@ PrintPreviewView::PrintPreviewView()
 	// Senza una dimensione minima esplicita, BLayoutBuilder puo'
 	// schiacciare l'anteprima a quasi nulla se la finestra che la
 	// contiene e' troppo piccola per il resto dei controlli (stesso
-	// motivo gia' documentato in ChartView).
-	SetExplicitMinSize(BSize(320, 400));
+	// motivo gia' documentato in ChartView). Tenuta bassa apposta (era
+	// 320x400): "Imposta pagina" e' ora ridimensionabile proprio per
+	// stare su schermi piccoli, e un pavimento troppo alto qui vanificava
+	// lo scopo imponendo comunque una finestra grande -- Draw() sopra
+	// scala gia' la pagina a qualunque dimensione mantenendo le
+	// proporzioni, quindi restringere questo minimo non rompe nulla.
+	SetExplicitMinSize(BSize(200, 240));
 }
 
 PrintPreviewView::~PrintPreviewView()
