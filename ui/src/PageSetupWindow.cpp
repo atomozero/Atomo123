@@ -58,9 +58,13 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	// all'anteprima sia alla colonna opzioni scorrevole (vedi
 	// optionsScroll sotto): senza, il minimo calcolato era il contenuto
 	// INTERO non scorso, riaprendo la finestra grande uguale (verificato
-	// dal vivo: si apriva a 880px di altezza). La dimensione di apertura
-	// resta comoda su schermi normali ma non piu' quella minima possibile.
-	BWindow(BRect(150, 150, 730, 570), B_TRANSLATE("Imposta pagina"),
+	// dal vivo: si apriva a 880px di altezza). Dimensione di apertura
+	// 750x420 (era 580x420 al primo passaggio di questo fix, poi
+	// allargata su richiesta esplicita -- l'altezza ridotta e la
+	// ridimensionabilita' restano il punto per gli schermi bassi, la
+	// larghezza qui e' solo comodita' su schermi normali): mai piu'
+	// piccola del minimo vero (vedi sopra), sempre restringibile a mano.
+	BWindow(BRect(150, 150, 900, 570), B_TRANSLATE("Imposta pagina"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
