@@ -581,16 +581,13 @@ void PageSetupWindow::MessageReceived(BMessage* message)
 		{
 			BMessage request = _BuildSettingsMessage(kMsgPageSetupRequest);
 			fTarget.SendMessage(&request);
-			// L'anteprima mostrava ancora i valori PRECEDENTI se un campo
-			// era stato modificato senza Invio (il testo digitato non ha
-			// mai generato kMsgFieldChanged): la si rigenera con gli stessi
-			// valori appena persistiti, cosi' "quello che si vede e' quello
-			// che verra' stampato" resta vero anche in questo percorso.
-			// Vale per tutti i campi (margini compresi), non solo per la
-			// percentuale -- il messaggio e' identico a quello di un cambio
-			// campo, solo costruito qui invece che dal controllo.
-			BMessage preview = _BuildSettingsMessage(kMsgPageSetupPreviewRequest);
-			fTarget.SendMessage(&preview);
+			// Chiude il dialogo dopo aver applicato (comportamento
+			// richiesto: "Applica" si comporta come l'OK di Excel/
+			// LibreOffice, non resta aperto ad aspettare un secondo
+			// pulsante) -- Hide(), non Quit(), stessa regola di
+			// QuitRequested() sotto: la finestra resta viva e riusabile
+			// alla riapertura successiva.
+			Hide();
 			break;
 		}
 
