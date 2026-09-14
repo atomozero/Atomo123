@@ -147,6 +147,10 @@ SheetView::SheetView(CContainer* doc)
 	fPrintFooterH(0),
 	fPrintPageNum(1),
 	fPrintPageCount(1),
+	fTitleRowFirst(0),
+	fTitleRowLast(0),
+	fTitleColFirst(0),
+	fTitleColLast(0),
 	fSheetProtected(false),
 	fFrozenRows(0),
 	fFrozenCols(0),
@@ -372,6 +376,33 @@ void SheetView::SetShowGrid(bool show)
 {
 	fShowGrid = show;
 	Invalidate();
+}
+
+float SheetView::TitleRowsHeight(int first, int last) const
+{
+	if (first < 1 || last < first || first > kRowCount)
+		return 0;
+	if (last > kRowCount)
+		last = kRowCount;
+	float total = 0;
+	for (int row = first; row <= last; row++)
+	{
+		if (!fRowHidden[row - 1])
+			total += fRowHeights[row - 1];
+	}
+	return total;
+}
+
+float SheetView::TitleColsWidth(int first, int last) const
+{
+	if (first < 1 || last < first || first > kColCount)
+		return 0;
+	if (last > kColCount)
+		last = kColCount;
+	float total = 0;
+	for (int col = first; col <= last; col++)
+		total += fColWidths[col - 1];
+	return total;
 }
 
 void SheetView::SetFreezePanes(int rows, int cols)
@@ -3432,6 +3463,54 @@ void SheetView::Draw(BRect updateRect)
 		BRect band(bounds.left + kHeaderWidth, bounds.top + kHeaderHeight,
 			bounds.left + kHeaderWidth + frozenW - 1, bounds.top + kHeaderHeight + frozenH - 1);
 		DrawCellBand(band, 1, fFrozenCols, 1, fFrozenRows, bounds.left, bounds.top);
+	}
+
+	// Titoli di stampa (righe/colonne da ripetere su OGNI pagina, vedi
+	// SetPrintTitles): tre bande congelate come quelle di Blocca riquadri
+	// sopra, ma con righe/colonne SCELTE (non 1..fFrozen) e solo durante
+	// la stampa (fTitle* a zero = spente, mai a video). Stesso DrawCellBand
+	// delle bande congelate: sfondo, griglia, bordi, unite e testo
+	// riescono identici senza duplicare una riga di disegno. Disegnate
+	// DOPO le bande congelate (stessa posizione in caso di sovrapposizione:
+	// i titoli vincono). y0/x0 tengono conto di intestazione-testo e
+	// intestazioni di riga/colonna quando stampate, come l'impaginazione
+	// (vedi MainWindow::PrintBandHeights/PrintTitleSizes).
+	if (fDoc)
+	{
+		float titleY0 = bounds.top + fPrintTopInset
+			+ (fSuppressPrintHeaders ? 0 : kHeaderHeight);
+		float titleX0 = bounds.left + (fSuppressPrintHeaders ? 0 : kHeaderWidth);
+		bool validRows = fTitleRowFirst >= 1 && fTitleRowLast >= fTitleRowFirst
+			&& fTitleRowFirst <= kRowCount;
+		bool validCols = fTitleColFirst >= 1 && fTitleColLast >= fTitleColFirst
+			&& fTitleColFirst <= kColCount;
+		float titleRH = validRows ? TitleRowsHeight(fTitleRowFirst, fTitleRowLast) : 0;
+		float titleCW = validCols ? TitleColsWidth(fTitleColFirst, fTitleColLast) : 0;
+		if (validRows && titleRH > 0)
+		{
+			// Righe titolo sulle colonne dati (+ angolo sotto se ci sono
+			// anche colonne titolo): yOrigin sposta la riga R1 a titleY0.
+			BRect band(titleX0 + titleCW, titleY0, bounds.right, titleY0 + titleRH - 1);
+			DrawCellBand(band, firstCol, lastCol, fTitleRowFirst, fTitleRowLast,
+				0, titleY0 - kHeaderHeight - fRowOffsets[fTitleRowFirst - 1]);
+		}
+		if (validCols && titleCW > 0)
+		{
+			// Colonne titolo sulle righe dati: xOrigin sposta la colonna
+			// C1 a titleX0.
+			BRect band(titleX0, titleY0 + titleRH, titleX0 + titleCW - 1, bounds.bottom);
+			DrawCellBand(band, fTitleColFirst, fTitleColLast, firstRow, lastRow,
+				titleX0 - kHeaderWidth - fColOffsets[fTitleColFirst - 1], 0);
+		}
+		if (validRows && validCols && titleRH > 0 && titleCW > 0)
+		{
+			// Angolo titoli x titoli.
+			BRect band(titleX0, titleY0, titleX0 + titleCW - 1, titleY0 + titleRH - 1);
+			DrawCellBand(band, fTitleColFirst, fTitleColLast,
+				fTitleRowFirst, fTitleRowLast,
+				titleX0 - kHeaderWidth - fColOffsets[fTitleColFirst - 1],
+				titleY0 - kHeaderHeight - fRowOffsets[fTitleRowFirst - 1]);
+		}
 	}
 
 	// Selezione corrente: un rettangolo di piu' celle (trascinamento

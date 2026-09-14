@@ -106,12 +106,17 @@ struct PrintJobLayout {
 // pagine di larghezza/altezza), ignorati negli altri modi. centerH/
 // centerV spostano il contenuto al centro dell'area utile di OGNI pagina
 // (solo le pagine parziali si muovono davvero, vedi pageOffsets sopra).
+// titleRowsH/titleColsW sono le bande dei titoli di stampa (righe/colonne
+// da ripetere): riservate su ogni pagina in impaginazione (origini) ma
+// NON nei totali di scala -- sono celle di contenuto, gia' dentro
+// contentRect, sommarle li' le conterebbe due volte.
 PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
 	double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
 	int scaleMode, double scalePercent, float headerW, float headerH,
 	int fitWide = 1, int fitTall = 1, bool centerH = false, bool centerV = false,
-	float footerH = 0, bool acrossFirst = false);
+	float footerH = 0, bool acrossFirst = false,
+	float titleRowsH = 0, float titleColsW = 0);
 
 // Espande i codici di intestazione/pie' di pagina nel testo del modello:
 // &P numero di pagina, &N pagine totali, &D data corrente (GG.MM.AAAA),
@@ -120,5 +125,20 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 // un codice non e' supportato. Funzione pura (stesso testo in anteprima
 // e stampa vera), testabile senza stampante.
 BString ExpandPrintHeaderCodes(const char* templ, int page, int pages);
+
+// Nomi di colonna 1-based ("A".."ZZ", come SheetView::ColumnName ma qui
+// come funzione pura riusabile anche dal dialogo): "out" deve contenere
+// almeno 8 byte. Nessun controllo sui limiti (il chiamante valida).
+void PrintColumnName(int col, char* out, size_t outSize);
+
+// Intervalli di titoli di stampa ("Imposta pagina", righe/colonne da
+// ripetere su OGNI pagina): "1:3" o "2" per le righe, "A:C" o "B" per le
+// colonne (maiuscole/minuscole indifferenti, spazi tollerati). Riempiono
+// first/last (1-based, first<=last) e tornano true; testo vuoto = nessun
+// titolo (first=last=0, true); formato errato o fuori [1, maxRow/maxCol]
+// = false (il dialogo azzera, mai valori a meta'). Funzioni pure,
+// testabili senza stampante ne' vista.
+bool ParsePrintTitleRows(const char* text, int maxRow, int* first, int* last);
+bool ParsePrintTitleCols(const char* text, int maxCol, int* first, int* last);
 
 #endif

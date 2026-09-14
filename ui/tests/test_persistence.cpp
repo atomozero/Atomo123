@@ -103,6 +103,10 @@ int main()
 	printSettings.printHeaderText = "Report &P/&N";
 	printSettings.printFooterText = "Stampato il &D";
 	printSettings.pageOrderAcrossFirst = true; // non-default apposta
+	printSettings.titleRowFirst = 1;
+	printSettings.titleRowLast = 3;
+	printSettings.titleColFirst = 1;
+	printSettings.titleColLast = 2;
 
 	// Font non predefinito su A2 (grassetto), sulla famiglia REALE del
 	// font di sistema (vedi il commento in cima al file sul perche').
@@ -282,8 +286,10 @@ int main()
 			&& loadedPrintSettings.centerH == true && loadedPrintSettings.centerV == true
 			&& loadedPrintSettings.printHeaderText == "Report &P/&N"
 			&& loadedPrintSettings.printFooterText == "Stampato il &D"
-			&& loadedPrintSettings.pageOrderAcrossFirst == true,
-		"i margini/la scala/le intestazioni/la griglia/le pagine/la centratura/i testi/l'ordine di \"Imposta pagina\" sopravvivono al giro di salvataggio/ricarica");
+			&& loadedPrintSettings.pageOrderAcrossFirst == true
+			&& loadedPrintSettings.titleRowFirst == 1 && loadedPrintSettings.titleRowLast == 3
+			&& loadedPrintSettings.titleColFirst == 1 && loadedPrintSettings.titleColLast == 2,
+		"i margini/la scala/le intestazioni/la griglia/le pagine/la centratura/i testi/l'ordine/i titoli di \"Imposta pagina\" sopravvivono al giro di salvataggio/ricarica");
 
 	Check(loadedFrozenRows == 2 && loadedFrozenCols == 1,
 		"Blocca riquadri (2 righe, 1 colonna) sopravvive al giro di salvataggio/ricarica");
@@ -508,6 +514,9 @@ int main()
 		"i testi di intestazione/pie' (default vuoti) viaggiano anche in un file minimo");
 	Check(oldPrintSettings.pageOrderAcrossFirst == false,
 		"l'ordine pagine (default giu'-poi-destra) viaggia anche in un file minimo");
+	Check(oldPrintSettings.titleRowFirst == 0 && oldPrintSettings.titleRowLast == 0
+			&& oldPrintSettings.titleColFirst == 0 && oldPrintSettings.titleColLast == 0,
+		"i titoli (default nessun titolo) viaggiano anche in un file minimo");
 
 	doc = NULL; // gia' rilasciato sopra
 	reloaded->Release();

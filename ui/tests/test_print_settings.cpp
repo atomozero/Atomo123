@@ -170,6 +170,27 @@ int main()
 			"GetActivePrintSettings riporta l'ordine destra-poi-giu'");
 	}
 
+	// Titoli di stampa: nessun titolo di default, intervalli dopo richiesta.
+	{
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.titleRowFirst == 0 && active.titleRowLast == 0
+				&& active.titleColFirst == 0 && active.titleColLast == 0,
+			"senza richiesta esplicita non c'e' nessun titolo (0,0)");
+	}
+	settings.titleRowFirst = 1;
+	settings.titleRowLast = 3;
+	settings.titleColFirst = 1;
+	settings.titleColLast = 2;
+	win->HandlePageSetupRequest(settings);
+	{
+		AscdPrintSettings active;
+		win->GetActivePrintSettings(&active);
+		Check(active.titleRowFirst == 1 && active.titleRowLast == 3
+				&& active.titleColFirst == 1 && active.titleColLast == 2,
+			"GetActivePrintSettings riporta i titoli (righe 1-3, colonne 1-2)");
+	}
+
 	win->Unlock();
 
 	win->Lock();

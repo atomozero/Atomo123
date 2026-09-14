@@ -73,6 +73,13 @@ struct AscdPrintSettings {
 	// include gia' <String.h>.
 	BString printHeaderText;
 	BString printFooterText;
+	// Righe/colonne da ripetere su OGNI pagina (titoli di stampa):
+	// intervalli 1-based inclusivi, (0,0) = nessun titolo. Validati in
+	// lettura e nel dialogo (mai fidarsi dei byte/testo).
+	int titleRowFirst = 0;
+	int titleRowLast = 0;
+	int titleColFirst = 0;
+	int titleColLast = 0;
 	// Ordine delle pagine (come Excel "Page order"): false = prima giu',
 	// poi a destra (il default di sempre, e di Excel), true = prima a
 	// destra, poi giu'. Cambia solo l'ordine delle origini di pagina,

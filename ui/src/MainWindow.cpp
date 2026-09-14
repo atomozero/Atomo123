@@ -3512,6 +3512,22 @@ void MainWindow::GetActivePrintSettings(AscdPrintSettings* out) const
 	out->printHeaderText = gPrefs ? gPrefs->GetPrefString("printHeaderText", "") : "";
 	out->printFooterText = gPrefs ? gPrefs->GetPrefString("printFooterText", "") : "";
 	out->pageOrderAcrossFirst = gPrefs ? (gPrefs->GetPrefInt("printPageOrder", 0) != 0) : false;
+	out->titleRowFirst = gPrefs ? gPrefs->GetPrefInt("printTitleRowFirst", 0) : 0;
+	out->titleRowLast = gPrefs ? gPrefs->GetPrefInt("printTitleRowLast", 0) : 0;
+	out->titleColFirst = gPrefs ? gPrefs->GetPrefInt("printTitleColFirst", 0) : 0;
+	out->titleColLast = gPrefs ? gPrefs->GetPrefInt("printTitleColLast", 0) : 0;
+	// Mai fidarsi delle preferenze salvate: intervallo non valido =
+	// nessun titolo.
+	if (out->titleRowFirst < 1 || out->titleRowLast < out->titleRowFirst
+		|| out->titleRowFirst > kRowCount)
+		out->titleRowFirst = out->titleRowLast = 0;
+	else if (out->titleRowLast > kRowCount)
+		out->titleRowLast = kRowCount;
+	if (out->titleColFirst < 1 || out->titleColLast < out->titleColFirst
+		|| out->titleColFirst > kColCount)
+		out->titleColFirst = out->titleColLast = 0;
+	else if (out->titleColLast > kColCount)
+		out->titleColLast = kColCount;
 }
 
 void MainWindow::ShowPageSetupWindow()
@@ -3582,6 +3598,10 @@ void MainWindow::HandlePageSetupRequest(const AscdPrintSettings& settings)
 	gPrefs->SetPrefString("printHeaderText", settings.printHeaderText.String());
 	gPrefs->SetPrefString("printFooterText", settings.printFooterText.String());
 	gPrefs->SetPrefInt("printPageOrder", settings.pageOrderAcrossFirst ? 1 : 0);
+	gPrefs->SetPrefInt("printTitleRowFirst", settings.titleRowFirst);
+	gPrefs->SetPrefInt("printTitleRowLast", settings.titleRowLast);
+	gPrefs->SetPrefInt("printTitleColFirst", settings.titleColFirst);
+	gPrefs->SetPrefInt("printTitleColLast", settings.titleColLast);
 	try { gPrefs->WritePrefFile(); }
 	catch (CErr&) { }
 }
@@ -4972,9 +4992,61 @@ static void PrintBandHeights(const AscdPrintSettings& settings, SheetView* view,
 	*footerH = settings.printFooterText.Length() > 0 ? textBandH : 0;
 }
 
+// Spazio dei titoli di stampa su ogni pagina (righe in cima, colonne a
+// sinistra): UNICO punto che lo calcola, usato sia dalla stampa vera sia
+// dall'anteprima (stesso motivo di PrintBandHeights sopra). Sommato a
+// headerW/headerH in impaginazione: le bande dei titoli occupano spazio
+// come le intestazioni. Usa gli STESSI helper di SheetView::Draw (mai
+// ricalcolato a mano), cosi' impaginazione e disegno non divergono.
+static void PrintTitleSizes(const AscdPrintSettings& settings, SheetView* view,
+	float* titleRowsH, float* titleColsW)
+{
+	*titleRowsH = view->TitleRowsHeight(settings.titleRowFirst, settings.titleRowLast);
+	*titleColsW = view->TitleColsWidth(settings.titleColFirst, settings.titleColLast);
+}
+
+// Una cella nell'anteprima (sfondo/testo ed eventuale griglia): UNICO
+// punto usato dal ciclo dati e dalle bande dei titoli sotto -- stessa
+// cella, stesso aspetto in entrambi (vedi il commento sul disegno
+// diretto in GeneratePrintPreviewPages).
+static void DrawPreviewCell(BView* offscreen, CContainer* doc, SheetView* view,
+	cell c, BRect previewR, bool printGrid)
+{
+	CellStyle cs;
+	doc->GetCellStyle(c, cs);
+	if (cs.fLowColor.red != 255 || cs.fLowColor.green != 255
+		|| cs.fLowColor.blue != 255)
+	{
+		offscreen->SetHighColor(cs.fLowColor);
+		offscreen->FillRect(previewR);
+	}
+
+	BString text = view->FormattedCellText(c);
+	if (text.Length() > 0)
+	{
+		offscreen->SetHighColor(cs.fHighColor);
+		offscreen->SetLowColor(cs.fLowColor);
+		BRegion clip(previewR);
+		offscreen->ConstrainClippingRegion(&clip);
+		offscreen->DrawString(text.String(),
+			BPoint(previewR.left + 1, previewR.bottom - 1));
+		offscreen->ConstrainClippingRegion(NULL);
+	}
+
+	// Griglia sottile dell'anteprima: solo se "Stampa griglia" e' attiva
+	// -- come la stampa vera (vedi SheetView::PrintGridEffective),
+	// l'anteprima non segue la griglia a video.
+	if (printGrid)
+	{
+		offscreen->SetHighColor(220, 220, 220);
+		offscreen->StrokeRect(previewR);
+	}
+}
+
 PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWidth,
 	float printableHeight, int32 xDPI, int32 yDPI)
-{	// Impostazioni (Fase 27, "Imposta pagina", per-foglio dalla Fase
+{
+	// Impostazioni (Fase 27, "Imposta pagina", per-foglio dalla Fase
 	// 29): quelle proprie del foglio attivo se mai impostate, altrimenti
 	// la preferenza globale di ripiego -- vedi GetActivePrintSettings.
 	// GeneratePrintPreviewPages sotto usa invece i valori ANCORA IN
@@ -4992,12 +5064,20 @@ PrintJobLayout MainWindow::ComputePrintJobLayoutForActiveSheet(float printableWi
 	// parametro footerH a parte (spazio in fondo, vedi PrintLayout.h).
 	float headerW, headerH, footerH;
 	PrintBandHeights(settings, fSheetView, &headerW, &headerH, &footerH);
+	float titleRowsH, titleColsW;
+	PrintTitleSizes(settings, fSheetView, &titleRowsH, &titleColsW);
 
+	// NB: i titoli NON si sommano a headerW/headerH qui: sono celle di
+	// contenuto (gia' dentro ActivePrintContentRect), sommarli ai totali
+	// di scala li conterebbe due volte e rimpicciolirebbe troppo.
+	// Viaggiano a parte (titleRowsH/titleColsW): la sola impaginazione
+	// (origini) li riserva su ogni pagina, la scala di "adatta" li vede
+	// come contenuto normale.
 	return ComputePrintJobLayout(ActivePrintContentRect(), printableWidth, printableHeight,
 		xDPI, yDPI, settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
 		settings.marginRightCm, settings.scaleMode, settings.scalePercent, headerW, headerH,
 		settings.fitWide, settings.fitTall, settings.centerH, settings.centerV, footerH,
-		settings.pageOrderAcrossFirst);
+		settings.pageOrderAcrossFirst, titleRowsH, titleColsW);
 }
 
 std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSettings& settings)
@@ -5037,13 +5117,18 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 
 	float headerW, headerH, footerH;
 	PrintBandHeights(settings, fSheetView, &headerW, &headerH, &footerH);
+	float titleRowsH, titleColsW;
+	PrintTitleSizes(settings, fSheetView, &titleRowsH, &titleColsW);
+	float effHeaderW = headerW + titleColsW;
+	float effHeaderH = headerH + titleRowsH;
 
 	PrintJobLayout layout = ComputePrintJobLayout(ActivePrintContentRect(),
 		printableRect.Width(), printableRect.Height(), xDPI, yDPI,
 		settings.marginTopCm, settings.marginBottomCm, settings.marginLeftCm,
 		settings.marginRightCm, settings.scaleMode, settings.scalePercent,
 		headerW, headerH, settings.fitWide, settings.fitTall,
-		settings.centerH, settings.centerV, footerH, settings.pageOrderAcrossFirst);
+		settings.centerH, settings.centerV, footerH, settings.pageOrderAcrossFirst,
+		titleRowsH, titleColsW);
 	if (layout.pageOrigins.empty())
 		return pages;
 
@@ -5134,7 +5219,7 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 				marginLeftPreview + headerWPreview, marginTopPreview + pageHeightPreview));
 		}
 
-		BRect dataRect(pageOrigin.x + headerW, pageOrigin.y + headerH,
+		BRect dataRect(pageOrigin.x + effHeaderW, pageOrigin.y + effHeaderH,
 			pageOrigin.x + layout.pageWidth, pageOrigin.y + layout.pageHeight);
 		int firstCol, lastCol, firstRow, lastRow;
 		fSheetView->ColumnRowRangeForRect(dataRect, firstCol, lastCol, firstRow, lastRow);
@@ -5157,35 +5242,106 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 				if (!previewR.IsValid())
 					continue;
 
-				CellStyle cs;
-				doc->GetCellStyle(c, cs);
-				if (cs.fLowColor.red != 255 || cs.fLowColor.green != 255
-					|| cs.fLowColor.blue != 255)
-				{
-					offscreen->SetHighColor(cs.fLowColor);
-					offscreen->FillRect(previewR);
-				}
+				DrawPreviewCell(offscreen, doc, fSheetView, c, previewR, settings.printGrid);
+			}
+		}
 
-				BString text = fSheetView->FormattedCellText(c);
-				if (text.Length() > 0)
+		// Bande dei titoli di stampa (righe in cima, colonne a sinistra):
+		// stesse celle dei titoli su OGNI pagina, nelle posizioni riservate
+		// in impaginazione (vedi effHeaderW/H sopra) -- come la stampa vera
+		// (SheetView::Draw con SetPrintTitles), solo a scala di anteprima.
+		// Gli scarti dentro le bande si ricavano dalle posizioni canvas
+		// vere (CellRect): stessa misura dell'impaginazione, mai duplicata.
+		if (titleRowsH > 0 && settings.titleRowFirst >= 1
+			&& settings.titleRowLast >= settings.titleRowFirst)
+		{
+			float bandTopCanvas = pageOrigin.y + headerH;
+			float blockTopCanvas = fSheetView->CellRect(
+				cell(1, settings.titleRowFirst)).top;
+			for (int tr = settings.titleRowFirst; tr <= settings.titleRowLast; tr++)
+			{
+				float slotCanvasY = bandTopCanvas
+					+ (fSheetView->CellRect(cell(1, tr)).top - blockTopCanvas);
+				for (int col = firstCol; col <= lastCol; col++)
 				{
-					offscreen->SetHighColor(cs.fHighColor);
-					offscreen->SetLowColor(cs.fLowColor);
-					BRegion clip(previewR);
-					offscreen->ConstrainClippingRegion(&clip);
-					offscreen->DrawString(text.String(),
-						BPoint(previewR.left + 1, previewR.bottom - 1));
-					offscreen->ConstrainClippingRegion(NULL);
+					cell c(col, tr);
+					BRect cellR = fSheetView->CellRect(c);
+					float slotH = cellR.bottom - cellR.top;
+					if (slotH <= 0)
+						continue;
+					BRect previewR(
+						marginLeftPreview + (cellR.left - pageOrigin.x) * combinedScale,
+						marginTopPreview + (slotCanvasY - pageOrigin.y) * combinedScale,
+						marginLeftPreview + (cellR.right - pageOrigin.x) * combinedScale,
+						marginTopPreview + (slotCanvasY + slotH - pageOrigin.y) * combinedScale);
+					if (!previewR.IsValid())
+						continue;
+					DrawPreviewCell(offscreen, doc, fSheetView, c, previewR,
+						settings.printGrid);
 				}
-
-				// Griglia sottile dell'anteprima: solo se "Stampa griglia"
-				// e' attiva -- come la stampa vera (vedi
-				// SheetView::PrintGridEffective), l'anteprima non segue
-				// la griglia a video.
-				if (settings.printGrid)
+			}
+			if (titleColsW > 0 && settings.titleColFirst >= 1
+				&& settings.titleColLast >= settings.titleColFirst)
+			{
+				float bandLeftCanvas = pageOrigin.x + headerW;
+				float blockLeftCanvas = fSheetView->CellRect(
+					cell(settings.titleColFirst, 1)).left;
+				for (int tr = settings.titleRowFirst; tr <= settings.titleRowLast; tr++)
 				{
-					offscreen->SetHighColor(220, 220, 220);
-					offscreen->StrokeRect(previewR);
+					float slotCanvasY = bandTopCanvas
+						+ (fSheetView->CellRect(cell(1, tr)).top - blockTopCanvas);
+					float slotH = fSheetView->CellRect(cell(1, tr)).bottom
+						- fSheetView->CellRect(cell(1, tr)).top;
+					if (slotH <= 0)
+						continue;
+					for (int tc = settings.titleColFirst; tc <= settings.titleColLast; tc++)
+					{
+						cell c(tc, tr);
+						BRect cellR = fSheetView->CellRect(c);
+						float slotW = cellR.right - cellR.left;
+						if (slotW <= 0)
+							continue;
+						float slotCanvasX = bandLeftCanvas
+							+ (cellR.left - blockLeftCanvas);
+						BRect previewR(
+							marginLeftPreview + (slotCanvasX - pageOrigin.x) * combinedScale,
+							marginTopPreview + (slotCanvasY - pageOrigin.y) * combinedScale,
+							marginLeftPreview + (slotCanvasX + slotW - pageOrigin.x) * combinedScale,
+							marginTopPreview + (slotCanvasY + slotH - pageOrigin.y) * combinedScale);
+						if (!previewR.IsValid())
+							continue;
+						DrawPreviewCell(offscreen, doc, fSheetView, c, previewR,
+							settings.printGrid);
+					}
+				}
+			}
+		}
+		if (titleColsW > 0 && settings.titleColFirst >= 1
+			&& settings.titleColLast >= settings.titleColFirst)
+		{
+			float bandLeftCanvas = pageOrigin.x + headerW;
+			float blockLeftCanvas = fSheetView->CellRect(
+				cell(settings.titleColFirst, 1)).left;
+			for (int row = firstRow; row <= lastRow; row++)
+			{
+				BRect rowR = fSheetView->CellRect(cell(1, row));
+				for (int tc = settings.titleColFirst; tc <= settings.titleColLast; tc++)
+				{
+					cell c(tc, row);
+					BRect cellR = fSheetView->CellRect(c);
+					float slotW = cellR.right - cellR.left;
+					if (slotW <= 0)
+						continue;
+					float slotCanvasX = bandLeftCanvas + (cellR.left - blockLeftCanvas);
+					BRect previewR(
+						marginLeftPreview + (slotCanvasX - pageOrigin.x) * combinedScale,
+						marginTopPreview + (rowR.top - pageOrigin.y) * combinedScale,
+						marginLeftPreview + (slotCanvasX + slotW - pageOrigin.x) * combinedScale,
+						marginTopPreview + (rowR.bottom - pageOrigin.y) * combinedScale);
+					if (!previewR.IsValid())
+						continue;
+					DrawPreviewCell(offscreen, doc, fSheetView, c, previewR,
+						settings.printGrid);
 				}
 			}
 		}
@@ -5314,6 +5470,12 @@ void MainWindow::PrintDocument()
 	fSheetView->SetPrintHeaderFooter(printSettings.printHeaderText.String(),
 		printSettings.printFooterText.String(),
 		headerHForBands - baseHeaderH, footerHForBands);
+	// Titoli di stampa (righe/colonne ripetute su ogni pagina): la vista
+	// li disegna congelati in cima/a sinistra di ogni pagina disegnata
+	// (vedi SheetView::Draw) -- gli stessi riservati in impaginazione
+	// sopra, quindi posizioni coincidono per costruzione.
+	fSheetView->SetPrintTitles(printSettings.titleRowFirst, printSettings.titleRowLast,
+		printSettings.titleColFirst, printSettings.titleColLast);
 
 	// Si stampa solo l'area del foglio che contiene dati (o l'area di
 	// stampa scelta), suddivisa in tante pagine quante ne servono in
@@ -5349,6 +5511,7 @@ void MainWindow::PrintDocument()
 	fSheetView->SetSuppressPrintHeaders(originalSuppressHeaders);
 	fSheetView->SetPrintGridOverride(false, true);
 	fSheetView->ClearPrintHeaderFooter();
+	fSheetView->ClearPrintTitles();
 
 	fSheetView->ScrollTo(originalScroll);
 
@@ -6386,6 +6549,28 @@ void MainWindow::MessageReceived(BMessage* message)
 			bool acrossFirst = false;
 			message->FindBool("pageOrderAcrossFirst", &acrossFirst);
 			settings.pageOrderAcrossFirst = acrossFirst;
+			// Titoli validati come in lettura: intervallo non valido =
+			// nessun titolo (i campi del dialogo passano gia' per i
+			// parser, questa e' la seconda rete di sicurezza).
+			int32 titleRowFirst = 0, titleRowLast = 0, titleColFirst = 0, titleColLast = 0;
+			message->FindInt32("titleRowFirst", &titleRowFirst);
+			message->FindInt32("titleRowLast", &titleRowLast);
+			message->FindInt32("titleColFirst", &titleColFirst);
+			message->FindInt32("titleColLast", &titleColLast);
+			if (titleRowFirst >= 1 && titleRowLast >= titleRowFirst
+				&& titleRowFirst <= kRowCount)
+			{
+				settings.titleRowFirst = (int)titleRowFirst;
+				settings.titleRowLast = titleRowLast > kRowCount
+					? (int)kRowCount : (int)titleRowLast;
+			}
+			if (titleColFirst >= 1 && titleColLast >= titleColFirst
+				&& titleColFirst <= kColCount)
+			{
+				settings.titleColFirst = (int)titleColFirst;
+				settings.titleColLast = titleColLast > kColCount
+					? (int)kColCount : (int)titleColLast;
+			}
 			HandlePageSetupRequest(settings);
 			break;
 		}
@@ -6425,6 +6610,28 @@ void MainWindow::MessageReceived(BMessage* message)
 			bool acrossFirst = false;
 			message->FindBool("pageOrderAcrossFirst", &acrossFirst);
 			settings.pageOrderAcrossFirst = acrossFirst;
+			// Titoli validati come in lettura: intervallo non valido =
+			// nessun titolo (i campi del dialogo passano gia' per i
+			// parser, questa e' la seconda rete di sicurezza).
+			int32 titleRowFirst = 0, titleRowLast = 0, titleColFirst = 0, titleColLast = 0;
+			message->FindInt32("titleRowFirst", &titleRowFirst);
+			message->FindInt32("titleRowLast", &titleRowLast);
+			message->FindInt32("titleColFirst", &titleColFirst);
+			message->FindInt32("titleColLast", &titleColLast);
+			if (titleRowFirst >= 1 && titleRowLast >= titleRowFirst
+				&& titleRowFirst <= kRowCount)
+			{
+				settings.titleRowFirst = (int)titleRowFirst;
+				settings.titleRowLast = titleRowLast > kRowCount
+					? (int)kRowCount : (int)titleRowLast;
+			}
+			if (titleColFirst >= 1 && titleColLast >= titleColFirst
+				&& titleColFirst <= kColCount)
+			{
+				settings.titleColFirst = (int)titleColFirst;
+				settings.titleColLast = titleColLast > kColCount
+					? (int)kColCount : (int)titleColLast;
+			}
 			HandlePageSetupPreviewRequest(settings);
 			break;
 		}
@@ -6464,6 +6671,28 @@ void MainWindow::MessageReceived(BMessage* message)
 			bool acrossFirst = false;
 			message->FindBool("pageOrderAcrossFirst", &acrossFirst);
 			settings.pageOrderAcrossFirst = acrossFirst;
+			// Titoli validati come in lettura: intervallo non valido =
+			// nessun titolo (i campi del dialogo passano gia' per i
+			// parser, questa e' la seconda rete di sicurezza).
+			int32 titleRowFirst = 0, titleRowLast = 0, titleColFirst = 0, titleColLast = 0;
+			message->FindInt32("titleRowFirst", &titleRowFirst);
+			message->FindInt32("titleRowLast", &titleRowLast);
+			message->FindInt32("titleColFirst", &titleColFirst);
+			message->FindInt32("titleColLast", &titleColLast);
+			if (titleRowFirst >= 1 && titleRowLast >= titleRowFirst
+				&& titleRowFirst <= kRowCount)
+			{
+				settings.titleRowFirst = (int)titleRowFirst;
+				settings.titleRowLast = titleRowLast > kRowCount
+					? (int)kRowCount : (int)titleRowLast;
+			}
+			if (titleColFirst >= 1 && titleColLast >= titleColFirst
+				&& titleColFirst <= kColCount)
+			{
+				settings.titleColFirst = (int)titleColFirst;
+				settings.titleColLast = titleColLast > kColCount
+					? (int)kColCount : (int)titleColLast;
+			}
 			HandlePageSetupRequest(settings);
 			PrintDocument();
 			break;

@@ -984,10 +984,11 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	// bit1 griglia). Le versioni successive aggiungono campi IN CODA al
 	// payload e avanzano la versione: v2 aggiunge fitWide/fitTall (due
 	// int32), v3 aggiunge i testi di intestazione/pie' di pagina (due
-	// stringhe con lunghezza int32, max 4096 byte ciascuna). I flag
-	// booleani (centratura bit2/bit3, ordine pagine bit4, ...) riusano
-	// invece i bit liberi SENZA cambiare versione ne' lunghezza -- vedi
-	// AscdIO.h sui campi.
+	// stringhe con lunghezza int32, max 4096 byte ciascuna), v4 aggiunge
+	// i titoli di stampa (quattro int32: righe/colonne da ripetere). I
+	// flag booleani (centratura bit2/bit3, ordine pagine bit4, ...)
+	// riusano invece i bit liberi SENZA cambiare versione ne' lunghezza
+	// -- vedi AscdIO.h sui campi.
 	{
 		AscdPrintSettings ps = (printSettings) ? *printSettings : AscdPrintSettings();
 		uint8 has = ps.hasSettings ? 1 : 0;
@@ -996,7 +997,7 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		int32 scaleMode = ps.scaleMode;
 		double scalePercent = ps.scalePercent;
 		uint8 magic = 'G';
-		uint8 version = 3;
+		uint8 version = 4;
 		uint8 flags = (ps.printHeaders ? 0x01 : 0x00) | (ps.printGrid ? 0x02 : 0x00)
 			| (ps.centerH ? 0x04 : 0x00) | (ps.centerV ? 0x08 : 0x00)
 			| (ps.pageOrderAcrossFirst ? 0x10 : 0x00);
@@ -1012,8 +1013,24 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			footerText.Truncate(4096);
 		int32 headerLen = headerText.Length();
 		int32 footerLen = footerText.Length();
+		// Titoli validati come in lettura (mai fidarsi dello stato in
+		// memoria: potrebbe arrivare da un messaggio malformato).
+		int32 titleRowFirst = 0, titleRowLast = 0, titleColFirst = 0, titleColLast = 0;
+		if (ps.titleRowFirst >= 1 && ps.titleRowLast >= ps.titleRowFirst
+			&& ps.titleRowFirst <= kRowCount)
+		{
+			titleRowFirst = ps.titleRowFirst;
+			titleRowLast = ps.titleRowLast > kRowCount ? (int32)kRowCount : ps.titleRowLast;
+		}
+		if (ps.titleColFirst >= 1 && ps.titleColLast >= ps.titleColFirst
+			&& ps.titleColFirst <= kColCount)
+		{
+			titleColFirst = ps.titleColFirst;
+			titleColLast = ps.titleColLast > kColCount ? (int32)kColCount : ps.titleColLast;
+		}
 		int32 tailLen = 2 + 2 * (int32)sizeof(int32)
-			+ (int32)sizeof(int32) + headerLen + (int32)sizeof(int32) + footerLen;
+			+ (int32)sizeof(int32) + headerLen + (int32)sizeof(int32) + footerLen
+			+ 4 * (int32)sizeof(int32);
 		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
 			|| dest->Write(&marginTop, sizeof(marginTop)) != (ssize_t)sizeof(marginTop)
 			|| dest->Write(&marginBottom, sizeof(marginBottom)) != (ssize_t)sizeof(marginBottom)
@@ -1030,7 +1047,11 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			|| dest->Write(&headerLen, sizeof(headerLen)) != (ssize_t)sizeof(headerLen)
 			|| (headerLen > 0 && dest->Write(headerText.String(), headerLen) != headerLen)
 			|| dest->Write(&footerLen, sizeof(footerLen)) != (ssize_t)sizeof(footerLen)
-			|| (footerLen > 0 && dest->Write(footerText.String(), footerLen) != footerLen))
+			|| (footerLen > 0 && dest->Write(footerText.String(), footerLen) != footerLen)
+			|| dest->Write(&titleRowFirst, sizeof(titleRowFirst)) != (ssize_t)sizeof(titleRowFirst)
+			|| dest->Write(&titleRowLast, sizeof(titleRowLast)) != (ssize_t)sizeof(titleRowLast)
+			|| dest->Write(&titleColFirst, sizeof(titleColFirst)) != (ssize_t)sizeof(titleColFirst)
+			|| dest->Write(&titleColLast, sizeof(titleColLast)) != (ssize_t)sizeof(titleColLast))
 			return B_IO_ERROR;
 	}
 
@@ -2297,6 +2318,7 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 			bool acrossFirst = false;
 			int32 fitWide = 1, fitTall = 1;
 			BString headerText, footerText;
+			int32 titleRowFirst = 0, titleRowLast = 0, titleColFirst = 0, titleColLast = 0;
 			uint8 marker = 0;
 			ssize_t mgot = source->Read(&marker, sizeof(marker));
 			if (mgot != 0)
@@ -2315,8 +2337,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				{
 					int32 tailLen = 0;
 					// Tetto: versione+flag+fit (10) + due stringhe da max
-					// 4096 + lunghezze (8) = 8210 -- oltre e' corruzione,
-					// non una coda futura.
+					// 4096 + lunghezze (8) + quattro int32 titoli (16) =
+					// 8226 -- oltre e' corruzione, non una coda futura.
 					if (source->Read(&tailLen, sizeof(tailLen)) != (ssize_t)sizeof(tailLen)
 						|| tailLen < 0 || tailLen > 16384)
 						return B_BAD_DATA;
@@ -2399,6 +2421,34 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						if (afterStrings < 0 || afterStrings > tailStart + tailLen)
 							return B_BAD_DATA;
 					}
+					if (version >= 4)
+					{
+						// Titoli di stampa (sempre in coda dalla v4 in poi):
+						// si leggono SOLO se la coda li contiene davvero,
+						// altrimenti file corrotto (stesso principio delle
+						// stringhe sopra).
+						off_t remain = tailStart + tailLen - source->Position();
+						if (remain < 4 * (off_t)sizeof(int32))
+							return B_BAD_DATA;
+						int32 rowFirst = 0, rowLast = 0, colFirst = 0, colLast = 0;
+						if (source->Read(&rowFirst, sizeof(rowFirst)) != (ssize_t)sizeof(rowFirst)
+							|| source->Read(&rowLast, sizeof(rowLast)) != (ssize_t)sizeof(rowLast)
+							|| source->Read(&colFirst, sizeof(colFirst)) != (ssize_t)sizeof(colFirst)
+							|| source->Read(&colLast, sizeof(colLast)) != (ssize_t)sizeof(colLast))
+							return B_BAD_DATA;
+						// Mai fidarsi dei byte: intervallo non valido =
+						// nessun titolo (0,0), non valori a meta'.
+						if (rowFirst >= 1 && rowLast >= rowFirst && rowFirst <= kRowCount)
+						{
+							titleRowFirst = rowFirst;
+							titleRowLast = rowLast > kRowCount ? (int32)kRowCount : rowLast;
+						}
+						if (colFirst >= 1 && colLast >= colFirst && colFirst <= kColCount)
+						{
+							titleColFirst = colFirst;
+							titleColLast = colLast > kColCount ? (int32)kColCount : colLast;
+						}
+					}
 					// Salta eventuali campi di versioni future: la coda
 					// resta allineata per le sezioni successive qualunque
 					// cosa contenga.
@@ -2434,6 +2484,10 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				printSettings->fitTall = fitTall;
 				printSettings->printHeaderText = headerText;
 				printSettings->printFooterText = footerText;
+				printSettings->titleRowFirst = titleRowFirst;
+				printSettings->titleRowLast = titleRowLast;
+				printSettings->titleColFirst = titleColFirst;
+				printSettings->titleColLast = titleColLast;
 			}
 			// Nota: gli eventuali byte di coda vengono consumati dallo
 			// stream anche quando printSettings e' NULL (se presenti nel

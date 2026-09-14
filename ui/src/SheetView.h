@@ -354,6 +354,35 @@ public:
 		fPrintPageCount = 1;
 	}
 
+	// Righe/colonne da ripetere su OGNI pagina stampata ("Imposta
+	// pagina", titoli di stampa): intervalli 1-based inclusivi, (0,0) =
+	// nessun titolo. Usati SOLO da MainWindow::PrintDocument attorno a
+	// BPrintJob::DrawView (stesso schema degli override sopra): Draw
+	// disegna le celle dei titoli congelate in cima/a sinistra di ogni
+	// pagina, come fa gia' per le intestazioni di riga/colonna. A video
+	// non cambia mai niente. Con Blocca riquadri attivo le bande dei
+	// titoli coprono quelle congelate (stessa posizione): i titoli
+	// vincono, i riquadri restano una funzione da video.
+	void SetPrintTitles(int rowFirst, int rowLast, int colFirst, int colLast)
+	{
+		fTitleRowFirst = rowFirst;
+		fTitleRowLast = rowLast;
+		fTitleColFirst = colFirst;
+		fTitleColLast = colLast;
+	}
+	void ClearPrintTitles()
+	{
+		fTitleRowFirst = fTitleRowLast = 0;
+		fTitleColFirst = fTitleColLast = 0;
+	}
+	// Altezza/larghezza totale in pixel canvas dei titoli indicati (0 se
+	// intervallo non valido o vuoto): MainWindow le usa per riservare lo
+	// spazio in impaginazione, Draw per posizionare le bande -- STESSO
+	// calcolo in entrambi, mai duplicato. Le righe/colonne nascoste
+	// contribuiscono 0 (non occupano spazio, come a video).
+	float TitleRowsHeight(int first, int last) const;
+	float TitleColsWidth(int first, int last) const;
+
 	// Protezione foglio (Fase 32, "Proteggi foglio"): quando true, ogni
 	// tentativo di modificare contenuto/formattazione di una cella con
 	// CellStyle::fLocked=true (il default) su QUESTO foglio va rifiutato
@@ -752,6 +781,13 @@ private:
 	float fPrintFooterH;
 	int fPrintPageNum;
 	int fPrintPageCount;
+
+	// Titoli di stampa: vedi SetPrintTitles sopra -- (0,0) di default
+	// (mai disegnati a video ne' nelle stampe vecchie).
+	int fTitleRowFirst;
+	int fTitleRowLast;
+	int fTitleColFirst;
+	int fTitleColLast;
 
 	// Protezione foglio: vedi SetProtected/IsProtected sopra.
 	bool fSheetProtected;
