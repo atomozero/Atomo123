@@ -5005,12 +5005,17 @@ static void PrintTitleSizes(const AscdPrintSettings& settings, SheetView* view,
 	*titleColsW = view->TitleColsWidth(settings.titleColFirst, settings.titleColLast);
 }
 
-// Una cella nell'anteprima (sfondo/testo ed eventuale griglia): UNICO
-// punto usato dal ciclo dati e dalle bande dei titoli sotto -- stessa
-// cella, stesso aspetto in entrambi (vedi il commento sul disegno
-// diretto in GeneratePrintPreviewPages).
+// Una cella nell'anteprima (sfondo/testo/bordi ed eventuale griglia):
+// UNICO punto usato dal ciclo dati e dalle bande dei titoli sotto --
+// stessa cella, stesso aspetto in entrambi (vedi il commento sul
+// disegno diretto in GeneratePrintPreviewPages). combinedScale e' lo
+// stesso fattore usato per posizionare previewR: serve qui per
+// scalare la dimensione del FONT REALE della cella (prima l'anteprima
+// usava sempre un unico font fisso a 9pt per l'intera pagina,
+// ignorando grassetto/corsivo/dimensione personalizzata di ogni
+// cella).
 static void DrawPreviewCell(BView* offscreen, CContainer* doc, SheetView* view,
-	cell c, BRect previewR, bool printGrid)
+	cell c, BRect previewR, bool printGrid, float combinedScale)
 {
 	CellStyle cs;
 	doc->GetCellStyle(c, cs);
@@ -5026,10 +5031,45 @@ static void DrawPreviewCell(BView* offscreen, CContainer* doc, SheetView* view,
 	{
 		offscreen->SetHighColor(cs.fHighColor);
 		offscreen->SetLowColor(cs.fLowColor);
+
+		// Font reale della cella (Fase 7: famiglia/stile/dimensione,
+		// CellStyle::fFont e' un indice in gFontSizeTable), scalato alla
+		// stessa scala usata per posizionare previewR -- prima
+		// l'anteprima disegnava ogni cella con lo stesso font fisso,
+		// facendo sembrare tutte le celle uguali anche quando il file
+		// reale aveva titoli piu' grandi/in grassetto.
+		const CFontMetrics& fm = gFontSizeTable[cs.fFont];
+		BFont font;
+		font.SetFamilyAndStyle(fm.Family(), fm.Style());
+		font.SetSize(std::max(4.0f, fm.Size() * combinedScale));
+		offscreen->SetFont(&font);
+
+		font_height fh;
+		offscreen->GetFontHeight(&fh);
+		float lineHeight = fh.ascent + fh.descent + fh.leading;
+
+		// Allineamento orizzontale/verticale (Fase 7): stessa logica di
+		// SheetView::DrawCellBand, semplificata a una sola riga di testo
+		// (l'anteprima non gestisce ancora testo a capo automatico).
+		float textWidth = offscreen->StringWidth(text.String());
+		float textX = previewR.left + 1;
+		if (cs.fAlignment == eAlignCenter)
+			textX = previewR.left + (previewR.Width() - textWidth) / 2.0f;
+		else if (cs.fAlignment == eAlignRight)
+			textX = previewR.right - textWidth - 1;
+
+		float yOffset = 0;
+		if (cs.fVerticalAlignment == eVAlignMiddle)
+			yOffset = (previewR.Height() - lineHeight) / 2.0f;
+		else if (cs.fVerticalAlignment == eVAlignBottom)
+			yOffset = previewR.Height() - lineHeight;
+		if (yOffset < 0)
+			yOffset = 0;
+
 		BRegion clip(previewR);
 		offscreen->ConstrainClippingRegion(&clip);
 		offscreen->DrawString(text.String(),
-			BPoint(previewR.left + 1, previewR.bottom - 1));
+			BPoint(textX, previewR.top + yOffset + fh.ascent));
 		offscreen->ConstrainClippingRegion(NULL);
 	}
 
@@ -5040,6 +5080,23 @@ static void DrawPreviewCell(BView* offscreen, CContainer* doc, SheetView* view,
 	{
 		offscreen->SetHighColor(220, 220, 220);
 		offscreen->StrokeRect(previewR);
+	}
+
+	// Bordi di cella (Fase 11): stessa logica per lato di
+	// SheetView::DrawBorderSides, adattata perche' quella e' un metodo
+	// di SheetView che disegna su "this" (la vista a video), non su una
+	// BView offscreen arbitraria come questa.
+	if (cs.fTBorderColor || cs.fLBorderColor || cs.fBBorderColor || cs.fRBorderColor)
+	{
+		offscreen->SetHighColor(cs.fBorderColor);
+		if (cs.fTBorderColor)
+			offscreen->StrokeLine(previewR.LeftTop(), previewR.RightTop());
+		if (cs.fBBorderColor)
+			offscreen->StrokeLine(previewR.LeftBottom(), previewR.RightBottom());
+		if (cs.fLBorderColor)
+			offscreen->StrokeLine(previewR.LeftTop(), previewR.LeftBottom());
+		if (cs.fRBorderColor)
+			offscreen->StrokeLine(previewR.RightTop(), previewR.RightBottom());
 	}
 }
 
@@ -5233,7 +5290,24 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 			for (int col = firstCol; col <= lastCol; col++)
 			{
 				cell c(col, row);
+
+				// Celle unite (Fase 12): solo la cella in alto a
+				// sinistra disegna, con un rettangolo esteso a tutto
+				// l'intervallo unito -- stessa regola di
+				// SheetView::DrawCellBand, altrimenti l'anteprima
+				// mostrava il titolo unito di un file reale (es.
+				// l'intestazione colorata di Financial_Sample_CdA)
+				// schiacciato in una sola cella stretta invece che
+				// steso sull'intera larghezza del banner.
+				range mergedRange;
+				bool isMerged = doc->GetMergedRange(c, &mergedRange);
+				if (isMerged && (mergedRange.top != row || mergedRange.left != col))
+					continue;
+
 				BRect cellR = fSheetView->CellRect(c);
+				if (isMerged)
+					cellR = cellR | fSheetView->CellRect(
+						cell(mergedRange.right, mergedRange.bottom));
 				BRect previewR(
 					marginLeftPreview + (cellR.left - pageOrigin.x) * combinedScale,
 					marginTopPreview + (cellR.top - pageOrigin.y) * combinedScale,
@@ -5242,7 +5316,8 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 				if (!previewR.IsValid())
 					continue;
 
-				DrawPreviewCell(offscreen, doc, fSheetView, c, previewR, settings.printGrid);
+				DrawPreviewCell(offscreen, doc, fSheetView, c, previewR, settings.printGrid,
+					combinedScale);
 			}
 		}
 
@@ -5277,7 +5352,7 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 					if (!previewR.IsValid())
 						continue;
 					DrawPreviewCell(offscreen, doc, fSheetView, c, previewR,
-						settings.printGrid);
+						settings.printGrid, combinedScale);
 				}
 			}
 			if (titleColsW > 0 && settings.titleColFirst >= 1
@@ -5311,7 +5386,7 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 						if (!previewR.IsValid())
 							continue;
 						DrawPreviewCell(offscreen, doc, fSheetView, c, previewR,
-							settings.printGrid);
+							settings.printGrid, combinedScale);
 					}
 				}
 			}
@@ -5341,7 +5416,7 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 					if (!previewR.IsValid())
 						continue;
 					DrawPreviewCell(offscreen, doc, fSheetView, c, previewR,
-						settings.printGrid);
+						settings.printGrid, combinedScale);
 				}
 			}
 		}
