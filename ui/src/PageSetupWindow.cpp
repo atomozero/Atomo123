@@ -23,6 +23,9 @@
 #include <StringView.h>
 #include <TextControl.h>
 
+#include "PrintLayout.h"
+
+#include "Constants.h"
 #include "PrintPreviewView.h"
 
 #undef B_TRANSLATION_CONTEXT
@@ -42,9 +45,24 @@ static const uint32 kMsgNextPage = 'nxtp';
 
 PageSetupWindow::PageSetupWindow(BMessenger target)
 	:
-	BWindow(BRect(150, 150, 780, 750), B_TRANSLATE("Imposta pagina"),
+	// Ridimensionabile (era B_NOT_RESIZABLE, dimensione fissa 630x600):
+	// su un display basso quella finestra fissa non ci stava proprio,
+	// e non ridimensionabile significava nessun modo per l'utente di
+	// rimediare -- bug reale segnalato dall'utente. La colonna opzioni
+	// era gia' pensata per scorrere (vedi optionsScroll sotto) proprio
+	// perche' le opzioni crescono a ogni fase; il pezzo mancante era
+	// lasciare che l'INTERA finestra si restringesse quando anche
+	// l'anteprima (l'altro elemento che occupava spazio fisso) puo'
+	// farlo. B_AUTO_UPDATE_SIZE_LIMITS ricalcola da solo il minimo dal
+	// layout -- ma solo dopo aver dato un minimo esplicito piccolo sia
+	// all'anteprima sia alla colonna opzioni scorrevole (vedi
+	// optionsScroll sotto): senza, il minimo calcolato era il contenuto
+	// INTERO non scorso, riaprendo la finestra grande uguale (verificato
+	// dal vivo: si apriva a 880px di altezza). La dimensione di apertura
+	// resta comoda su schermi normali ma non piu' quella minima possibile.
+	BWindow(BRect(150, 150, 730, 570), B_TRANSLATE("Imposta pagina"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
-		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
+		B_NOT_ZOOMABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target)
 {
@@ -61,14 +79,22 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		B_TRANSLATE("Valori in centimetri"));
 	marginUnitHint->SetFont(be_plain_font);
 
+	// Due righe da due campi (Superiore/Inferiore, poi Sinistro/Destro)
+	// invece di quattro righe da uno: stesso spazio informativo in meta'
+	// altezza, contributo diretto allo spazio verticale risparmiato per
+	// stare su schermi bassi (vedi il commento sul costruttore sopra).
 	BBox* marginsBox = new BBox("marginsBox");
 	marginsBox->SetLabel(B_TRANSLATE("Margini"));
 	BLayoutBuilder::Group<>(marginsBox, B_VERTICAL, 6)
 		.SetInsets(8, marginsBox->TopBorderOffset() + 8, 8, 8)
-		.Add(fMarginTopField)
-		.Add(fMarginBottomField)
-		.Add(fMarginLeftField)
-		.Add(fMarginRightField)
+		.AddGroup(B_HORIZONTAL, 8)
+			.Add(fMarginTopField)
+			.Add(fMarginBottomField)
+		.End()
+		.AddGroup(B_HORIZONTAL, 8)
+			.Add(fMarginLeftField)
+			.Add(fMarginRightField)
+		.End()
 		.Add(marginUnitHint);
 
 	fScalePercentField = new BTextControl("scalePercent", B_TRANSLATE("Percentuale:"), "100",
@@ -131,6 +157,20 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		B_TRANSLATE("&P pagina, &N totale pagine, &D data"));
 	codesHint->SetFont(be_plain_font);
 
+	// Righe/colonne da ripetere su OGNI pagina (titoli di stampa, come
+	// Excel "Print titles"): "1:3" o "2" per le righe, "A:C" o "B" per le
+	// colonne, vuoto = nessun titolo. Il formato si convalida qui con gli
+	// stessi parser puri dell'impaginazione (vedi ParsePrintTitleRows/
+	// Cols in PrintLayout.h): testo non valido = nessun titolo, mai valori
+	// a meta'. Ogni cambio rigenera solo l'anteprima, come gli altri campi.
+	fTitleRowsField = new BTextControl("titleRows", B_TRANSLATE("Righe:"),
+		"", new BMessage(kMsgFieldChanged));
+	fTitleColsField = new BTextControl("titleCols", B_TRANSLATE("Colonne:"),
+		"", new BMessage(kMsgFieldChanged));
+	BStringView* titlesHint = new BStringView("titlesHint",
+		B_TRANSLATE("Righe come 1:3, colonne come A:C (vuoto = nessuno)"));
+	titlesHint->SetFont(be_plain_font);
+
 	// Ordine delle pagine (come Excel "Page order"): prima giu' poi a
 	// destra (default, come Excel) oppure prima a destra poi giu'. Due
 	// radio fratelli (stesso genitore) per la mutua esclusione standard
@@ -182,6 +222,14 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.Add(fFooterTextField)
 		.Add(codesHint);
 
+	BBox* titlesBox = new BBox("titlesBox");
+	titlesBox->SetLabel(B_TRANSLATE("Titoli da ripetere"));
+	BLayoutBuilder::Group<>(titlesBox, B_VERTICAL, 6)
+		.SetInsets(8, titlesBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fTitleRowsField)
+		.Add(fTitleColsField)
+		.Add(titlesHint);
+
 	BBox* orderBox = new BBox("orderBox");
 	orderBox->SetLabel(B_TRANSLATE("Ordine pagine"));
 	BLayoutBuilder::Group<>(orderBox, B_VERTICAL, 6)
@@ -199,11 +247,20 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.Add(printBox)
 		.Add(centerBox)
 		.Add(headerFooterBox)
+		.Add(titlesBox)
 		.Add(orderBox)
 		.AddGlue()
 		.End();
 	BScrollView* optionsScroll = new BScrollView("optionsScroll", optionsCol,
 		0, false, true, B_NO_BORDER);
+	// Senza un minimo esplicito qui, B_AUTO_UPDATE_SIZE_LIMITS calcola il
+	// minimo della finestra dal contenuto NON scorso di optionsCol (tutti
+	// i box distesi), vanificando lo scroll: verificato dal vivo, la
+	// finestra si apriva a ~880px di altezza invece dei ~570 richiesti.
+	// Un minimo piccolo qui dice al layout "puoi disegnarla anche cosi'
+	// stretta, il resto scorre" -- stesso principio di
+	// PrintPreviewView::SetExplicitMinSize, stesso bug gia' visto li'.
+	optionsScroll->SetExplicitMinSize(BSize(260, 160));
 
 	fPreviewView = new PrintPreviewView();
 
@@ -257,6 +314,8 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	fCenterVBox->SetTarget(this);
 	fHeaderTextField->SetTarget(this);
 	fFooterTextField->SetTarget(this);
+	fTitleRowsField->SetTarget(this);
+	fTitleColsField->SetTarget(this);
 	fOrderDownRadio->SetTarget(this);
 	fOrderAcrossRadio->SetTarget(this);
 	fPrevPageButton->SetTarget(this);
@@ -306,6 +365,28 @@ void PageSetupWindow::SetValues(const AscdPrintSettings& settings)
 	fCenterVBox->SetValue(settings.centerV ? B_CONTROL_ON : B_CONTROL_OFF);
 	fHeaderTextField->SetText(settings.printHeaderText.String());
 	fFooterTextField->SetText(settings.printFooterText.String());
+
+	// Titoli formattati come li accetta il parser (vedi sopra): "1:3" e
+	// "A:C", riga/colonna singola senza due punti, vuoto se nessuno.
+	BString titles;
+	if (settings.titleRowFirst >= 1 && settings.titleRowLast >= settings.titleRowFirst)
+	{
+		titles << settings.titleRowFirst;
+		if (settings.titleRowLast != settings.titleRowFirst)
+			titles << ":" << settings.titleRowLast;
+	}
+	fTitleRowsField->SetText(titles.String());
+	titles = "";
+	if (settings.titleColFirst >= 1 && settings.titleColLast >= settings.titleColFirst)
+	{
+		char firstName[8], lastName[8];
+		PrintColumnName(settings.titleColFirst, firstName, sizeof(firstName));
+		PrintColumnName(settings.titleColLast, lastName, sizeof(lastName));
+		titles << firstName;
+		if (settings.titleColLast != settings.titleColFirst)
+			titles << ":" << lastName;
+	}
+	fTitleColsField->SetText(titles.String());
 	fOrderDownRadio->SetValue(!settings.pageOrderAcrossFirst ? B_CONTROL_ON : B_CONTROL_OFF);
 	fOrderAcrossRadio->SetValue(settings.pageOrderAcrossFirst ? B_CONTROL_ON : B_CONTROL_OFF);
 }
@@ -399,6 +480,18 @@ BMessage PageSetupWindow::_BuildSettingsMessage(uint32 what) const
 	request.AddString("footerText", fFooterTextField->Text());
 	request.AddBool("pageOrderAcrossFirst",
 		fOrderAcrossRadio->Value() == B_CONTROL_ON);
+
+	// Titoli di stampa: testo non valido = nessun titolo (0,0), mai valori
+	// a meta' -- gli stessi parser puri dell'impaginazione (vedi sopra).
+	int titleRowFirst = 0, titleRowLast = 0, titleColFirst = 0, titleColLast = 0;
+	ParsePrintTitleRows(fTitleRowsField->Text(), kRowCount,
+		&titleRowFirst, &titleRowLast);
+	ParsePrintTitleCols(fTitleColsField->Text(), kColCount,
+		&titleColFirst, &titleColLast);
+	request.AddInt32("titleRowFirst", titleRowFirst);
+	request.AddInt32("titleRowLast", titleRowLast);
+	request.AddInt32("titleColFirst", titleColFirst);
+	request.AddInt32("titleColLast", titleColLast);
 	return request;
 }
 
