@@ -10,6 +10,7 @@
 #include "PrintLayout.h"
 
 #include <ctime>
+#include <cstring>
 
 // Posizione canvas (assoluta) da cui comincia davvero il contenuto da
 // stampare -- condivisa fra ComputePrintPageOrigins e
@@ -187,7 +188,8 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	float printableWidth, float printableHeight, int32 xDPI, int32 yDPI,
  double marginTopCm, double marginBottomCm, double marginLeftCm, double marginRightCm,
 	int scaleMode, double scalePercent, float headerW, float headerH,
-	int fitWide, int fitTall, bool centerH, bool centerV, float footerH, bool acrossFirst)
+	int fitWide, int fitTall, bool centerH, bool centerV, float footerH, bool acrossFirst,
+	float titleRowsH, float titleColsW)
 {
 	PrintJobLayout layout;
 
@@ -242,36 +244,42 @@ PrintJobLayout ComputePrintJobLayout(BRect contentRect,
 	layout.pageHeight = (float)(usableHeight / layout.scale);
 
 	layout.pageOrigins = ComputePrintPageOrigins(contentRect, layout.pageWidth, layout.pageHeight,
-		headerW, headerH, footerH, acrossFirst);
+		headerW + titleColsW, headerH + titleRowsH, footerH, acrossFirst);
 
-	// Centratura per pagina: un offset per pageOrigins (stesso indice),	// in pixel del dispositivo come marginLeftPx/marginTopPx -- il
+	// Centratura per pagina: un offset per pageOrigins (stesso indice),
+	// in pixel del dispositivo come marginLeftPx/marginTopPx -- il
 	// chiamante lo somma alla destinazione. Solo le pagine parziali si
 	// muovono davvero: a pagina piena l'estensione coincide con l'area
 	// dati e lo spazio residuo e' nullo.
 	layout.pageOffsets.assign(layout.pageOrigins.size(), BPoint(0, 0));
 	if (centerH || centerV)
 	{
+		// Le bande dei titoli fanno parte del blocco stampato su ogni
+		// pagina: estensione e blocco centrato usano le stesse riserve
+		// dell'impaginazione sopra (titoli inclusi).
+		float extentHeaderW = headerW + titleColsW;
+		float extentHeaderH = headerH + titleRowsH;
 		for (size_t i = 0; i < layout.pageOrigins.size(); i++)
 		{
 			BRect extent = PrintPageContentExtent(layout.pageOrigins[i],
-				layout.pageWidth, layout.pageHeight, contentRect, headerW, headerH);
+				layout.pageWidth, layout.pageHeight, contentRect, extentHeaderW, extentHeaderH);
 			float offX = 0, offY = 0;
 			if (extent.IsValid())
 			{
-				// Il blocco centrato e' bande di intestazione + dati
-				// (headerW/H sono gia' 0 senza intestazioni): centrare i
-				// soli dati sposterebbe anche le intestazioni fuori asse.
+				// Il blocco centrato e' bande di intestazione (titoli
+				// compresi) + dati: centrare i soli dati sposterebbe
+				// anche le intestazioni fuori asse.
 				if (centerH)
 				{
 					float slack = usableWidth
-						- (headerW + extent.Width()) * (float)layout.scale;
+						- (extentHeaderW + extent.Width()) * (float)layout.scale;
 					if (slack > 0)
 						offX = slack / 2;
 				}
 				if (centerV)
 				{
 					float slack = usableHeight
-						- (headerH + extent.Height()) * (float)layout.scale;
+						- (extentHeaderH + extent.Height()) * (float)layout.scale;
 					if (slack > 0)
 						offY = slack / 2;
 				}
@@ -324,4 +332,149 @@ BString ExpandPrintHeaderCodes(const char* templ, int page, int pages)
 		p++; // consuma anche il codice
 	}
 	return out;
+}
+
+void PrintColumnName(int col, char* out, size_t outSize)
+{
+	if (out == NULL || outSize == 0)
+		return;
+	// Stessa conversione di SheetView::ColumnName (base-26 senza zero):
+	// duplicata qui invece che condivisa perche' quella e' statica al
+	// suo .cpp e questa serve anche al dialogo (SetValues).
+	char buf[8];
+	int n = 0;
+	while (col > 0 && n < 7)
+	{
+		int rem = (col - 1) % 26;
+		buf[n++] = (char)('A' + rem);
+		col = (col - 1) / 26;
+	}
+	size_t i = 0;
+	while (n > 0 && i + 1 < outSize)
+	{
+		out[i++] = buf[--n];
+	}
+	out[i] = 0;
+}
+
+static bool ParseTitleNumber(const char* text, int maxValue, int* value)
+{
+	while (*text == ' ' || *text == '\t')
+		text++;
+	if (*text < '0' || *text > '9')
+		return false;
+	long number = 0;
+	while (*text >= '0' && *text <= '9')
+	{
+		number = number * 10 + (*text - '0');
+		if (number > maxValue)
+			return false;
+		text++;
+	}
+	while (*text == ' ' || *text == '\t')
+		text++;
+	if (*text != '\0')
+		return false;
+	if (number < 1)
+		return false;
+	*value = (int)number;
+	return true;
+}
+
+bool ParsePrintTitleRows(const char* text, int maxRow, int* first, int* last)
+{
+	if (first == NULL || last == NULL)
+		return false;
+	*first = *last = 0;
+	if (text == NULL)
+		return false;
+	while (*text == ' ' || *text == '\t')
+		text++;
+	if (*text == '\0')
+		return true; // vuoto = nessun titolo, non un errore
+
+	// "N" oppure "N:M" (spazi tollerati intorno ai due punti).
+	const char* colon = strchr(text, ':');
+	if (colon == NULL)
+	{
+		int single = 0;
+		if (!ParseTitleNumber(text, maxRow, &single))
+			return false;
+		*first = *last = single;
+		return true;
+	}
+	char left[32];
+	size_t leftLen = (size_t)(colon - text);
+	if (leftLen >= sizeof(left))
+		return false;
+	memcpy(left, text, leftLen);
+	left[leftLen] = '\0';
+	int from = 0, to = 0;
+	if (!ParseTitleNumber(left, maxRow, &from)
+		|| !ParseTitleNumber(colon + 1, maxRow, &to)
+		|| from > to)
+		return false;
+	*first = from;
+	*last = to;
+	return true;
+}
+
+static bool ParseColumnLetters(const char* text, int maxCol, int* value)
+{
+	while (*text == ' ' || *text == '\t')
+		text++;
+	if ((*text < 'A' || *text > 'Z') && (*text < 'a' || *text > 'z'))
+		return false;
+	long number = 0;
+	while ((*text >= 'A' && *text <= 'Z') || (*text >= 'a' && *text <= 'z'))
+	{
+		char upper = (*text >= 'a') ? (char)(*text - 'a' + 'A') : *text;
+		number = number * 26 + (upper - 'A' + 1);
+		if (number > maxCol)
+			return false;
+		text++;
+	}
+	while (*text == ' ' || *text == '\t')
+		text++;
+	if (*text != '\0')
+		return false;
+	*value = (int)number;
+	return true;
+}
+
+bool ParsePrintTitleCols(const char* text, int maxCol, int* first, int* last)
+{
+	if (first == NULL || last == NULL)
+		return false;
+	*first = *last = 0;
+	if (text == NULL)
+		return false;
+	while (*text == ' ' || *text == '\t')
+		text++;
+	if (*text == '\0')
+		return true; // vuoto = nessun titolo, non un errore
+
+	const char* colon = strchr(text, ':');
+	if (colon == NULL)
+	{
+		int single = 0;
+		if (!ParseColumnLetters(text, maxCol, &single))
+			return false;
+		*first = *last = single;
+		return true;
+	}
+	char left[32];
+	size_t leftLen = (size_t)(colon - text);
+	if (leftLen >= sizeof(left))
+		return false;
+	memcpy(left, text, leftLen);
+	left[leftLen] = '\0';
+	int from = 0, to = 0;
+	if (!ParseColumnLetters(left, maxCol, &from)
+		|| !ParseColumnLetters(colon + 1, maxCol, &to)
+		|| from > to)
+		return false;
+	*first = from;
+	*last = to;
+	return true;
 }

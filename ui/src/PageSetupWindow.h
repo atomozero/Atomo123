@@ -102,6 +102,8 @@ private:
 	BCheckBox* fCenterVBox;
 	BTextControl* fHeaderTextField;
 	BTextControl* fFooterTextField;
+	BTextControl* fTitleRowsField;
+	BTextControl* fTitleColsField;
 	BRadioButton* fOrderDownRadio;
 	BRadioButton* fOrderAcrossRadio;
 	PrintPreviewView* fPreviewView;

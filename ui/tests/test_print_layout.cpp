@@ -10,6 +10,7 @@
 */
 
 #include <cstdio>
+#include <cstring>
 
 #include "PrintLayout.h"
 
@@ -365,6 +366,79 @@ int main()
 		Check(expanded != "&D" && expanded.CountChars() == 10
 				&& expanded.ByteAt(2) == '.' && expanded.ByteAt(5) == '.',
 			"&D espande nella data corrente in formato GG.MM.AAAA");
+	}
+
+	// Nomi di colonna e parser dei titoli (righe "1:3"/"2", colonne
+	// "A:C"/"B", vuoto = nessuno).
+	{
+		char name[8];
+		PrintColumnName(1, name, sizeof(name));
+		Check(strcmp(name, "A") == 0, "la colonna 1 si chiama A");
+		PrintColumnName(28, name, sizeof(name));
+		Check(strcmp(name, "AB") == 0, "la colonna 28 si chiama AB");
+		PrintColumnName(702, name, sizeof(name));
+		Check(strcmp(name, "ZZ") == 0, "la colonna 702 si chiama ZZ");
+	}
+	{
+		int first = -1, last = -1;
+		Check(ParsePrintTitleRows("1:3", 16384, &first, &last) && first == 1 && last == 3,
+			"\"1:3\" definisce le righe 1-3");
+		Check(ParsePrintTitleRows("2", 16384, &first, &last) && first == 2 && last == 2,
+			"\"2\" da sola definisce la sola riga 2");
+		Check(ParsePrintTitleRows("", 16384, &first, &last) && first == 0 && last == 0,
+			"testo vuoto = nessun titolo (0,0), non un errore");
+		Check(!ParsePrintTitleRows("3:1", 16384, &first, &last),
+			"\"3:1\" (inizio dopo la fine) non e' valido");
+		Check(!ParsePrintTitleRows("0", 16384, &first, &last),
+			"\"0\" non e' una riga valida");
+		Check(!ParsePrintTitleRows("1:99999", 16384, &first, &last),
+			"riga oltre il limite non e' valida");
+		Check(!ParsePrintTitleRows("x", 16384, &first, &last),
+			"testo non numerico non e' valido");
+	}
+	{
+		int first = -1, last = -1;
+		Check(ParsePrintTitleCols("A:C", 702, &first, &last) && first == 1 && last == 3,
+			"\"A:C\" definisce le colonne 1-3");
+		Check(ParsePrintTitleCols("b", 702, &first, &last) && first == 2 && last == 2,
+			"\"b\" minuscola da sola definisce la sola colonna 2");
+		Check(ParsePrintTitleCols("", 702, &first, &last) && first == 0 && last == 0,
+			"testo vuoto = nessun titolo (0,0), non un errore");
+		Check(!ParsePrintTitleCols("C:A", 702, &first, &last),
+			"\"C:A\" (inizio dopo la fine) non e' valido");
+		Check(!ParsePrintTitleCols("ZZZ", 702, &first, &last),
+			"colonna oltre il limite non e' valida");
+	}
+
+	// Impaginazione con titoli: bande riservate su ogni pagina (origini
+	// spostate indietro e passo ridotto), come le intestazioni.
+	// Contenuto 250x120, pagine 110x55, intestazioni 10x5, titoli 20x30:
+	// passo orizzontale 110-10-30=70, verticale 55-5-20=30.
+	{
+		BRect content(0, 0, 250, 120);
+		PrintJobLayout layout = ComputePrintJobLayout(content, 110, 55, 100, 100,
+			0, 0, 0, 0, 0, 100.0, 10, 5, 1, 1, false, false, 0, false, 20, 30);
+		Check(!layout.pageOrigins.empty(),
+			"con titoli 20x30 l'impaginazione produce pagine");
+		bool firstOk = !layout.pageOrigins.empty()
+			&& layout.pageOrigins[0] == BPoint(0, 0);
+		Check(firstOk,
+			"la prima pagina parte da (0,0) anche con i titoli");
+		bool stepOk = true;
+		for (size_t i = 1; i < layout.pageOrigins.size(); i++)
+		{
+			float dx = layout.pageOrigins[i].x - layout.pageOrigins[i - 1].x;
+			float dy = layout.pageOrigins[i].y - layout.pageOrigins[i - 1].y;
+			// Stessa riga: passo 70 in x, y invariata; nuova riga: passo
+			// 30 in y (x torna indietro della larghezza totale).
+			if (dy == 0)
+				stepOk = stepOk && (dx == 70);
+			else
+				stepOk = stepOk && (dy == 30);
+		}
+		Check(stepOk,
+			"i passi fra pagine consecutive sono 70 in orizzontale e 30 in verticale "
+			"(pagine meno bande titoli)");
 	}
 
 	// Ordine pagine "prima a destra, poi giu'" (acrossFirst): stesso
