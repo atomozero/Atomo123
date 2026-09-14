@@ -186,9 +186,14 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		B_TRANSLATE("Prima a destra, poi giù"), new BMessage(kMsgScaleModeChanged));
 	fOrderDownRadio->SetValue(B_CONTROL_ON);
 
+	// Spaziatura verticale ridotta apposta (era 6, come gli altri
+	// gruppi): cinque righe di soli radio -- niente campi di testo a
+	// piena altezza come i margini sopra -- restavano piu' distanziate
+	// del necessario, richiesta esplicita dell'utente dopo averle viste
+	// dal vivo.
 	BBox* scaleBox = new BBox("scaleBox");
 	scaleBox->SetLabel(B_TRANSLATE("Scala"));
-	BLayoutBuilder::Group<>(scaleBox, B_VERTICAL, 6)
+	BLayoutBuilder::Group<>(scaleBox, B_VERTICAL, 5)
 		.SetInsets(8, scaleBox->TopBorderOffset() + 8, 8, 8)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fScalePercentRadio)
