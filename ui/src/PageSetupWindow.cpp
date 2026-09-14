@@ -19,7 +19,6 @@
 #include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <RadioButton.h>
-#include <ScrollView.h>
 #include <StringView.h>
 #include <TabView.h>
 #include <TextControl.h>
@@ -90,8 +89,8 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	// stare su schermi bassi (vedi il commento sul costruttore sopra).
 	BBox* marginsBox = new BBox("marginsBox");
 	marginsBox->SetLabel(B_TRANSLATE("Margini"));
-	BLayoutBuilder::Group<>(marginsBox, B_VERTICAL, 6)
-		.SetInsets(8, marginsBox->TopBorderOffset() + 8, 8, 8)
+	BLayoutBuilder::Group<>(marginsBox, B_VERTICAL, 5)
+		.SetInsets(6, marginsBox->TopBorderOffset() + 6, 6, 6)
 		.AddGroup(B_HORIZONTAL, 8)
 			.Add(fMarginTopField)
 			.Add(fMarginBottomField)
@@ -194,7 +193,7 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	BBox* scaleBox = new BBox("scaleBox");
 	scaleBox->SetLabel(B_TRANSLATE("Scala"));
 	BLayoutBuilder::Group<>(scaleBox, B_VERTICAL, 5)
-		.SetInsets(8, scaleBox->TopBorderOffset() + 8, 8, 8)
+		.SetInsets(6, scaleBox->TopBorderOffset() + 6, 6, 6)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fScalePercentRadio)
 			.Add(fScalePercentField)
@@ -212,30 +211,30 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 
 	BBox* printBox = new BBox("printBox");
 	printBox->SetLabel(B_TRANSLATE("Stampa"));
-	BLayoutBuilder::Group<>(printBox, B_VERTICAL, 6)
-		.SetInsets(8, printBox->TopBorderOffset() + 8, 8, 8)
+	BLayoutBuilder::Group<>(printBox, B_VERTICAL, 5)
+		.SetInsets(6, printBox->TopBorderOffset() + 6, 6, 6)
 		.Add(fPrintHeadersBox)
 		.Add(fPrintGridBox);
 
 	BBox* centerBox = new BBox("centerBox");
 	centerBox->SetLabel(B_TRANSLATE("Centratura"));
-	BLayoutBuilder::Group<>(centerBox, B_VERTICAL, 6)
-		.SetInsets(8, centerBox->TopBorderOffset() + 8, 8, 8)
+	BLayoutBuilder::Group<>(centerBox, B_VERTICAL, 5)
+		.SetInsets(6, centerBox->TopBorderOffset() + 6, 6, 6)
 		.Add(fCenterHBox)
 		.Add(fCenterVBox);
 
 	BBox* headerFooterBox = new BBox("headerFooterBox");
 	headerFooterBox->SetLabel(B_TRANSLATE("Intestazione/piè di pagina"));
-	BLayoutBuilder::Group<>(headerFooterBox, B_VERTICAL, 6)
-		.SetInsets(8, headerFooterBox->TopBorderOffset() + 8, 8, 8)
+	BLayoutBuilder::Group<>(headerFooterBox, B_VERTICAL, 5)
+		.SetInsets(6, headerFooterBox->TopBorderOffset() + 6, 6, 6)
 		.Add(fHeaderTextField)
 		.Add(fFooterTextField)
 		.Add(codesHint);
 
 	BBox* titlesBox = new BBox("titlesBox");
 	titlesBox->SetLabel(B_TRANSLATE("Titoli da ripetere"));
-	BLayoutBuilder::Group<>(titlesBox, B_VERTICAL, 6)
-		.SetInsets(8, titlesBox->TopBorderOffset() + 8, 8, 8)
+	BLayoutBuilder::Group<>(titlesBox, B_VERTICAL, 5)
+		.SetInsets(6, titlesBox->TopBorderOffset() + 6, 6, 6)
 		.Add(fTitleRowsField)
 		.Add(fTitleColsField)
 		.Add(titlesHint);
@@ -246,43 +245,37 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	// dal vivo.
 	BBox* orderBox = new BBox("orderBox");
 	orderBox->SetLabel(B_TRANSLATE("Ordine pagine"));
-	BLayoutBuilder::Group<>(orderBox, B_VERTICAL, 6)
-		.SetInsets(8, orderBox->TopBorderOffset() + 8, 8, 8)
+	BLayoutBuilder::Group<>(orderBox, B_VERTICAL, 5)
+		.SetInsets(6, orderBox->TopBorderOffset() + 6, 6, 6)
 		.AddGroup(B_HORIZONTAL, 8)
 			.Add(fOrderDownRadio)
 			.Add(fOrderAcrossRadio)
 			.AddGlue()
 		.End();
 
-	// Tre tab invece di un'unica colonna (che era gia' scrollabile: le
-	// opzioni crescono a ogni fase, vedi il commento sul costruttore piu'
-	// sopra) -- richiesta esplicita dell'utente, con le sezioni erano
-	// gia' troppe da tenere tutte a vista insieme, alcune ancora non
-	// definitive. Raggruppate per "quando le usi", non per ordine di
-	// introduzione: Pagina (dimensioni/scala/ordine, le prime cose che
-	// si impostano), Stampa (cosa finisce sul foglio: intestazioni di
-	// riga/colonna, griglia, centratura, titoli ripetuti), Intestazioni
-	// (testo di intestazione/piè di pagina, la sezione piu' a se' delle
-	// tre). Ogni tab ha ancora il proprio scroll con lo stesso minimo
-	// esplicito piccolo (vedi il commento sotto): con meno box per tab
-	// serve raramente, ma resta la stessa rete di sicurezza per uno
-	// schermo davvero minimo.
-	auto MakeTabScroll = [](BView* content) -> BScrollView*
-	{
-		BScrollView* scroll = new BScrollView("tabScroll", content,
-			0, false, true, B_NO_BORDER);
-		// Senza un minimo esplicito qui, B_AUTO_UPDATE_SIZE_LIMITS calcola
-		// il minimo della finestra dal contenuto NON scorso (tutti i box
-		// distesi), vanificando lo scroll: verificato dal vivo prima di
-		// dividere in tab, la finestra si apriva a ~880px di altezza
-		// invece dei ~570 richiesti. Stesso principio di
-		// PrintPreviewView::SetExplicitMinSize, stesso bug gia' visto li'.
-		scroll->SetExplicitMinSize(BSize(260, 160));
-		return scroll;
-	};
-
+	// Tre tab invece di un'unica colonna -- richiesta esplicita
+	// dell'utente, con le sezioni erano gia' troppe da tenere tutte a
+	// vista insieme, alcune ancora non definitive. Raggruppate per
+	// "quando le usi", non per ordine di introduzione: Pagina
+	// (dimensioni/scala/ordine, le prime cose che si impostano), Stampa
+	// (cosa finisce sul foglio: intestazioni di riga/colonna, griglia,
+	// centratura, titoli ripetuti), Intestazioni (testo di intestazione/
+	// piè di pagina, la sezione piu' a se' delle tre).
+	//
+	// NESSUNO scroll qui dentro (un tentativo precedente ne aveva uno per
+	// tab, con un minimo esplicito piccolo per non far esplodere il
+	// minimo della finestra): richiesta esplicita dell'utente, che non
+	// vuole la barra di scorrimento nemmeno quando resta inattiva --
+	// BScrollView disegna comunque la propria scanalatura, non solo il
+	// pollice, quindi "inattiva" non e' "invisibile". Tolto lo scroll,
+	// B_AUTO_UPDATE_SIZE_LIMITS calcola il minimo della finestra dal
+	// vero contenuto (spaziatura ridotta ovunque sopra, appena tre
+	// sezioni per tab invece delle sette originarie): non serve piu'
+	// forzarlo basso ad arte, la finestra semplicemente non si restringe
+	// oltre cio' che serve per mostrare tutto, come qualunque altro
+	// dialogo Haiku senza scroll interno.
 	BGroupView* pageCol = new BGroupView();
-	BLayoutBuilder::Group<>(pageCol, B_VERTICAL, 8)
+	BLayoutBuilder::Group<>(pageCol, B_VERTICAL, 5)
 		.Add(marginsBox)
 		.Add(scaleBox)
 		.Add(orderBox)
@@ -290,7 +283,7 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.End();
 
 	BGroupView* printCol = new BGroupView();
-	BLayoutBuilder::Group<>(printCol, B_VERTICAL, 8)
+	BLayoutBuilder::Group<>(printCol, B_VERTICAL, 5)
 		.Add(printBox)
 		.Add(centerBox)
 		.Add(titlesBox)
@@ -298,7 +291,7 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.End();
 
 	BGroupView* headerCol = new BGroupView();
-	BLayoutBuilder::Group<>(headerCol, B_VERTICAL, 8)
+	BLayoutBuilder::Group<>(headerCol, B_VERTICAL, 5)
 		.Add(headerFooterBox)
 		.AddGlue()
 		.End();
@@ -312,20 +305,17 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 	// non la comprime/tronca da sola, la disegna e basta oltre i suoi
 	// stessi confini.
 	BTabView* optionsTabs = new BTabView("optionsTabs", B_WIDTH_AS_USUAL);
-	optionsTabs->AddTab(MakeTabScroll(pageCol));
+	optionsTabs->AddTab(pageCol);
 	optionsTabs->TabAt(0)->SetLabel(B_TRANSLATE("Pagina"));
-	optionsTabs->AddTab(MakeTabScroll(printCol));
+	optionsTabs->AddTab(printCol);
 	optionsTabs->TabAt(1)->SetLabel(B_TRANSLATE("Stampa"));
-	optionsTabs->AddTab(MakeTabScroll(headerCol));
+	optionsTabs->AddTab(headerCol);
 	optionsTabs->TabAt(2)->SetLabel(B_TRANSLATE("Intestazioni"));
-	// Minimo esplicito: verificato dal vivo, B_WIDTH_AS_USUAL da solo non
-	// bastava ancora -- l'ultima etichetta restava tagliata contro il
-	// bordo della finestra quando il layout dava a optionsTabs meno
-	// larghezza del fascio di tab reale. Un pavimento qui costringe
-	// B_AUTO_UPDATE_SIZE_LIMITS a riservargliela sempre, sulla finestra
-	// intera fin dall'apertura, non solo dopo un ridimensionamento
-	// manuale.
-	optionsTabs->SetExplicitMinSize(BSize(340, 160));
+	// Minimo esplicito sulla SOLA larghezza (vedi sopra sul perche':
+	// B_WIDTH_AS_USUAL da solo non bastava contro il fascio di tab
+	// reale). Nessun minimo sull'altezza: quello lo decide ora il vero
+	// contenuto, senza scroll a nasconderlo.
+	optionsTabs->SetExplicitMinSize(BSize(340, B_SIZE_UNSET));
 
 	fPreviewView = new PrintPreviewView();
 
