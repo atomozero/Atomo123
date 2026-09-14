@@ -235,12 +235,19 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.Add(fTitleColsField)
 		.Add(titlesHint);
 
+	// Sulla stessa riga (come i margini sopra): due opzioni mutuamente
+	// esclusive, ci stanno comode fianco a fianco invece di impilate,
+	// richiesta esplicita dell'utente dopo aver visto la tab "Pagina"
+	// dal vivo.
 	BBox* orderBox = new BBox("orderBox");
 	orderBox->SetLabel(B_TRANSLATE("Ordine pagine"));
 	BLayoutBuilder::Group<>(orderBox, B_VERTICAL, 6)
 		.SetInsets(8, orderBox->TopBorderOffset() + 8, 8, 8)
-		.Add(fOrderDownRadio)
-		.Add(fOrderAcrossRadio);
+		.AddGroup(B_HORIZONTAL, 8)
+			.Add(fOrderDownRadio)
+			.Add(fOrderAcrossRadio)
+			.AddGlue()
+		.End();
 
 	// Tre tab invece di un'unica colonna (che era gia' scrollabile: le
 	// opzioni crescono a ogni fase, vedi il commento sul costruttore piu'
