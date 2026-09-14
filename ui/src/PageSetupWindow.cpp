@@ -21,6 +21,7 @@
 #include <RadioButton.h>
 #include <ScrollView.h>
 #include <StringView.h>
+#include <TabView.h>
 #include <TextControl.h>
 
 #include "PrintLayout.h"
@@ -241,30 +242,62 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 		.Add(fOrderDownRadio)
 		.Add(fOrderAcrossRadio);
 
-	// Colonna destra scrollabile: le opzioni crescono a ogni fase e la
-	// finestra resta a dimensione fissa (non ridimensionabile) -- senza
-	// scroll, i box in coda finirebbero fuori schermo su display bassi.
-	BGroupView* optionsCol = new BGroupView();
-	BLayoutBuilder::Group<>(optionsCol, B_VERTICAL, 8)
+	// Tre tab invece di un'unica colonna (che era gia' scrollabile: le
+	// opzioni crescono a ogni fase, vedi il commento sul costruttore piu'
+	// sopra) -- richiesta esplicita dell'utente, con le sezioni erano
+	// gia' troppe da tenere tutte a vista insieme, alcune ancora non
+	// definitive. Raggruppate per "quando le usi", non per ordine di
+	// introduzione: Pagina (dimensioni/scala/ordine, le prime cose che
+	// si impostano), Stampa (cosa finisce sul foglio: intestazioni di
+	// riga/colonna, griglia, centratura, titoli ripetuti), Intestazioni
+	// (testo di intestazione/piè di pagina, la sezione piu' a se' delle
+	// tre). Ogni tab ha ancora il proprio scroll con lo stesso minimo
+	// esplicito piccolo (vedi il commento sotto): con meno box per tab
+	// serve raramente, ma resta la stessa rete di sicurezza per uno
+	// schermo davvero minimo.
+	auto MakeTabScroll = [](BView* content) -> BScrollView*
+	{
+		BScrollView* scroll = new BScrollView("tabScroll", content,
+			0, false, true, B_NO_BORDER);
+		// Senza un minimo esplicito qui, B_AUTO_UPDATE_SIZE_LIMITS calcola
+		// il minimo della finestra dal contenuto NON scorso (tutti i box
+		// distesi), vanificando lo scroll: verificato dal vivo prima di
+		// dividere in tab, la finestra si apriva a ~880px di altezza
+		// invece dei ~570 richiesti. Stesso principio di
+		// PrintPreviewView::SetExplicitMinSize, stesso bug gia' visto li'.
+		scroll->SetExplicitMinSize(BSize(260, 160));
+		return scroll;
+	};
+
+	BGroupView* pageCol = new BGroupView();
+	BLayoutBuilder::Group<>(pageCol, B_VERTICAL, 8)
 		.Add(marginsBox)
 		.Add(scaleBox)
-		.Add(printBox)
-		.Add(centerBox)
-		.Add(headerFooterBox)
-		.Add(titlesBox)
 		.Add(orderBox)
 		.AddGlue()
 		.End();
-	BScrollView* optionsScroll = new BScrollView("optionsScroll", optionsCol,
-		0, false, true, B_NO_BORDER);
-	// Senza un minimo esplicito qui, B_AUTO_UPDATE_SIZE_LIMITS calcola il
-	// minimo della finestra dal contenuto NON scorso di optionsCol (tutti
-	// i box distesi), vanificando lo scroll: verificato dal vivo, la
-	// finestra si apriva a ~880px di altezza invece dei ~570 richiesti.
-	// Un minimo piccolo qui dice al layout "puoi disegnarla anche cosi'
-	// stretta, il resto scorre" -- stesso principio di
-	// PrintPreviewView::SetExplicitMinSize, stesso bug gia' visto li'.
-	optionsScroll->SetExplicitMinSize(BSize(260, 160));
+
+	BGroupView* printCol = new BGroupView();
+	BLayoutBuilder::Group<>(printCol, B_VERTICAL, 8)
+		.Add(printBox)
+		.Add(centerBox)
+		.Add(titlesBox)
+		.AddGlue()
+		.End();
+
+	BGroupView* headerCol = new BGroupView();
+	BLayoutBuilder::Group<>(headerCol, B_VERTICAL, 8)
+		.Add(headerFooterBox)
+		.AddGlue()
+		.End();
+
+	BTabView* optionsTabs = new BTabView("optionsTabs");
+	optionsTabs->AddTab(MakeTabScroll(pageCol));
+	optionsTabs->TabAt(0)->SetLabel(B_TRANSLATE("Pagina"));
+	optionsTabs->AddTab(MakeTabScroll(printCol));
+	optionsTabs->TabAt(1)->SetLabel(B_TRANSLATE("Stampa"));
+	optionsTabs->AddTab(MakeTabScroll(headerCol));
+	optionsTabs->TabAt(2)->SetLabel(B_TRANSLATE("Intestazioni"));
 
 	fPreviewView = new PrintPreviewView();
 
@@ -292,7 +325,7 @@ PageSetupWindow::PageSetupWindow(BMessenger target)
 					.AddGlue()
 				.End()
 			.End()
-			.Add(optionsScroll)
+			.Add(optionsTabs)
 		.End()
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
