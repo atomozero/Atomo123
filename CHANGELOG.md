@@ -5,6 +5,12 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped in v0.3.0, on top of v0.2.9:
+- Known pre-existing failures, reproduced on the pristine tree before
+  this release (not regressions): `test_selection` dies silently after
+  3 OKs around the direct `Draw()` call, `test_xlsm_macro_preservation`
+  loses `xl/vbaProject.bin` on re-save (save path and translator
+  sources untouched by this release); everything else green, see
+  `ROADMAP.md`
 - New toolbar groups reusing the closest MIT catalog icons as
   placeholders until hand-drawn HVIFs land (see
   `Atomo123_icons/ATOMO123.md`): Cells (Insert row/column, Merge,
