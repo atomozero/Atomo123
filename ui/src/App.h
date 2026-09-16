@@ -45,6 +45,12 @@ private:
 	// lo stesso controllo "esiste gia' una MainWindow?" invece di creare
 	// alla cieca.
 	void ShowMainWindowIfNeeded();
+	// Ripristino sessione (preferenza restoreSession): riapre i file
+	// recenti ancora esistenti su disco, uno per finestra. Ritorna
+	// quanti ne ha aperti (0 = finestra vuota come prima). Chiama solo
+	// da ShowMainWindowIfNeeded a lancio pulito: i file veri da
+	// Tracker/riga di comando arrivano per altra via (RefsReceived).
+	int RestoreSession();
 
 
 	// Registra Atomo123 come applicazione preferita per i tipi MIME

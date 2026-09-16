@@ -157,6 +157,7 @@ static const uint32 kMsgToggleItalic = 'tita';
 static const uint32 kMsgToggleUnderline = 'tund';
 static const uint32 kMsgToggleWrapText = 'twrp';
 static const uint32 kMsgMergeCells = 'mrgc';
+static const uint32 kMsgAutoSum = 'asum';
 static const uint32 kMsgShowCommentWindow = 'shcw';
 static const uint32 kMsgShowHyperlinkWindow = 'shlw';
 static const uint32 kMsgShowValidationWindow = 'shvw';
@@ -342,6 +343,16 @@ struct ToolbarButtonDef {
 	// inizializzazione automatica degli aggregati.
 	const char* paramName;
 	int32 paramValue;
+	// Testo breve mostrato sul pulsante al posto dell'icona (NULL =
+	// pulsante a icona come tutti gli altri). Serve per le funzioni che
+	// esistono ma non hanno ancora un'HVIF nel catalogo (vedi
+	// Atomo123_icons/ATOMO123.md, "Lacune"): in attesa del disegno a
+	// mano in Icon-O-Matic, una lettera/simbolo fa da segnaposto --
+	// tooltip e messaggio restano quelli veri. Simboli non traducibili
+	// (letterali puri, mai B_TRANSLATE_MARK): niente nuove chiavi nei
+	// cataloghi. Ultimo campo apposta: le voci esistenti lo lasciano
+	// a NULL per inizializzazione automatica degli aggregati.
+	const char* text;
 };
 
 struct ToolbarGroupDef {
@@ -372,6 +383,9 @@ static const ToolbarButtonDef kEditToolbarButtons[] = {
 	{ "toolPaste", B_TRANSLATE_MARK("Incolla"), kMsgPaste, &kIconPaste },
 	{ "toolDelete", B_TRANSLATE_MARK("Elimina"), kMsgClear, &kIconDelete },
 	{ "toolFind", B_TRANSLATE_MARK("Trova"), kMsgFind, &kIconFind },
+	// Sostituisci apre la stessa finestra di Trova (che ha gia' i campi
+	// di sostituzione): stessa icona lente, tooltip diverso.
+	{ "toolReplace", B_TRANSLATE_MARK("Sostituisci"), kMsgFind, &kIconFind },
 };
 
 static const ToolbarButtonDef kDataToolbarButtons[] = {
@@ -403,6 +417,34 @@ static const ToolbarButtonDef kAnnotateToolbarButtons[] = {
 	{ "toolComment", B_TRANSLATE_MARK("Commento cella"), kMsgShowCommentWindow, &kIconComment },
 };
 
+// Celle: Inserisci riga/colonna, Unisci, Blocca riquadri -- gli stessi
+// messaggi dei menu Dati/Formato. Icone dal catalogo MIT (vedi
+// IconData.cpp): divisori per riga/colonna, tabella per unisci, puntina
+// per blocca. In attesa delle HVIF disegnate a mano per le lacune vere
+// (Bordi, Formato numero, fx...), queste sono le piu' vicine esistenti.
+static const ToolbarButtonDef kCellsToolbarButtons[] = {
+	{ "toolInsertRow", B_TRANSLATE_MARK("Inserisci riga"), kMsgInsertRows, &kIconInsertRow },
+	{ "toolInsertCol", B_TRANSLATE_MARK("Inserisci colonna"), kMsgInsertColumns, &kIconInsertCol },
+	{ "toolMerge", B_TRANSLATE_MARK("Unisci celle"), kMsgMergeCells, &kIconMerge },
+	{ "toolFreeze", B_TRANSLATE_MARK("Blocca riquadri"), kMsgToggleFreeze, &kIconFreeze },
+};
+
+// Regole: Convalida dati e Formattazione condizionale -- stessi messaggi
+// dei menu. Scudo per convalida (regole/vincoli), filtro per condizionale.
+static const ToolbarButtonDef kRulesToolbarButtons[] = {
+	{ "toolValidate", B_TRANSLATE_MARK("Convalida dati"), kMsgShowValidationWindow, &kIconValidate },
+	{ "toolCondFormat", B_TRANSLATE_MARK("Formattazione condizionale"), kMsgShowConditionalFormatWindow, &kIconCondFormat },
+};
+
+// Numeri: Somma automatica (nuovo kMsgAutoSum, vedi menu Formule) e Valuta
+// (stesso messaggio del menu Formato). Calcolatrice per somma, finanza
+// per valuta. Percentuale resta solo a menu: nessun candidato nel
+// catalogo senza disegno a mano.
+static const ToolbarButtonDef kNumberToolbarButtons[] = {
+	{ "toolAutoSum", B_TRANSLATE_MARK("Somma automatica"), kMsgAutoSum, &kIconAutoSum },
+	{ "toolCurrency", B_TRANSLATE_MARK("Valuta"), kMsgSetFormat, &kIconCurrency, "format", eCurrency },
+};
+
 // Stessi comandi dei BMenuItem del menu Formato piu' sotto in questo
 // costruttore (kMsgToggleBold/kMsgToggleItalic/kMsgToggleUnderline/
 // kMsgSetAlignment/kMsgToggleWrapText/kMsgShowTextColor/kMsgShowBgColor):
@@ -428,6 +470,23 @@ static const ToolbarButtonDef kFormatToolbarButtons[] = {
 	{ "toolBorderColor", B_TRANSLATE_MARK("Bordo cella"), kMsgShowBorderWindow, &kIconBorderColor },
 };
 
+// Provvisori testuali: stessi messaggi dei menu, ma senza HVIF nel
+// catalogo (lacune vere, vedi Atomo123_icons/ATOMO123.md) -- in attesa
+// del disegno a mano mostrano una lettera/simbolo invece dell'icona.
+// Gruppo separato in coda apposta: quando arrivano le HVIF vere basta
+// spostare le voci nei gruppi tematici e cancellare questo.
+static const ToolbarButtonDef kProvisionalToolbarButtons[] = {
+	{ "toolPercent", B_TRANSLATE_MARK("Percentuale"), kMsgSetFormat, NULL, "format", ePercent, "%" },
+	{ "toolAlignTop", B_TRANSLATE_MARK("Allinea in alto"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignTop, "A↑" },
+	{ "toolAlignMiddle", B_TRANSLATE_MARK("Centra verticalmente"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignMiddle, "A↕" },
+	{ "toolAlignBottom", B_TRANSLATE_MARK("Allinea in basso"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignBottom, "A↓" },
+};
+// (Niente voce "Bordi": apre gia' la finestra completa dal pulsante a
+// icona qui sopra. "Formato numero" non ha un'azione singola a menu --
+// sono quattro voci separate, di cui Valuta/Percentuale gia' coperte.
+// "fx" e i tipi di grafico richiedono dialoghi nuovi, non solo
+// un'icona.)
+
 #define TOOLBAR_GROUP(buttons) { buttons, sizeof(buttons) / sizeof((buttons)[0]) }
 
 // Un unico ToolbarView con tutti i gruppi affiancati in ordine: e' lui
@@ -443,15 +502,72 @@ static const ToolbarGroupDef kToolbarGroups[] = {
 	TOOLBAR_GROUP(kNavigateToolbarButtons),
 	TOOLBAR_GROUP(kInsertToolbarButtons),
 	TOOLBAR_GROUP(kAnnotateToolbarButtons),
+	TOOLBAR_GROUP(kCellsToolbarButtons),
+	TOOLBAR_GROUP(kRulesToolbarButtons),
+	TOOLBAR_GROUP(kNumberToolbarButtons),
 	TOOLBAR_GROUP(kFormatToolbarButtons),
+	TOOLBAR_GROUP(kProvisionalToolbarButtons),
 };
 
 #undef TOOLBAR_GROUP
 
+// Disegna il glifo provvisorio (def.text: "%", "A↑"...) su una bitmap
+// 16x16 con sfondo trasparente, cosi' il pulsante e' strutturalmente
+// identico a quelli HVIF (stessa dimensione, stesso stile piatto, solo
+// tooltip) invece di un BButton testuale piu' alto/largo. Colore del
+// testo di sistema (segue chiaro/scuro), font piccolo centrato.
+// Ritorna NULL se qualcosa fallisce -- il chiamante ripiega allora sul
+// pulsante testuale, mai su un pulsante vuoto.
+static BBitmap* RenderTextIcon(const char* text)
+{
+	if (!text || !text[0])
+		return NULL;
+	BBitmap* bitmap = new BBitmap(BRect(0, 0, 15, 15), B_RGBA32, true);
+	if (!bitmap || bitmap->InitCheck() != B_OK) {
+		delete bitmap;
+		return NULL;
+	}
+	// Azzera ad alpha 0 (trasparente): il costruttore non garantisce il
+	// contenuto, e SetHighColor disegnerebbe sopra spazzatura residua.
+	uint8* bits = (uint8*)bitmap->Bits();
+	if (!bits) {
+		delete bitmap;
+		return NULL;
+	}
+	memset(bits, 0, bitmap->BitsLength());
+
+	BView* painter = new BView(bitmap->Bounds(), "textIcon",
+		B_FOLLOW_NONE, 0);
+	if (!painter) {
+		delete bitmap;
+		return NULL;
+	}
+	bitmap->AddChild(painter);
+	if (bitmap->Lock()) {
+		BFont font(be_plain_font);
+		font.SetSize(9);
+		painter->SetFont(&font);
+		painter->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+		font_height height;
+		font.GetHeight(&height);
+		float textH = height.ascent + height.descent;
+		float w = font.StringWidth(text);
+		painter->DrawString(text,
+			BPoint((16 - w) / 2, (16 - textH) / 2 + height.ascent));
+		painter->Sync();
+		bitmap->Unlock();
+	}
+	bitmap->RemoveChild(painter);
+	delete painter;
+	return bitmap;
+}
+
 // Costruisce l'intera toolbar dalla tabella sopra: un BButton per voce,
 // con la sua icona HVIF (IconCatalog::Render -- SetIcon ne copia i bit
 // al suo interno, quindi il BBitmap temporaneo va eliminato subito
-// dopo, altrimenti perde solo memoria senza benefici), e un gruppo
+// dopo, altrimenti perde solo memoria senza benefici) oppure, per le
+// voci provvisorie senza icona, con il glifo disegnato da
+// RenderTextIcon (stessa dimensione 16x16, stesso pulsante); e un gruppo
 // nuovo (AddSeparator) per ogni voce di kToolbarGroups. "target" riceve
 // i messaggi di tutti i pulsanti (sempre "this" per MainWindow, passato
 // esplicitamente solo per non legare questa funzione libera a una
@@ -482,6 +598,14 @@ static BView* BuildToolbar(BHandler* target)
 				message->AddInt32(def.paramName, def.paramValue);
 
 			const char* label = B_TRANSLATE(def.label);
+			// Pulsante sempre a icona (etichetta NULL): il testo compare
+			// solo come tooltip, come per tutti gli altri -- chiesto
+			// dall'utente dopo aver visto la toolbar quasi al limite
+			// della larghezza predefinita della finestra. Le voci
+			// provvisorie senza HVIF usano il glifo disegnato (stessa
+			// dimensione), con ripiego sul pulsante testuale se il
+			// disegno fallisce; il testo breve e' un letterale
+			// intraducibile, niente chiavi di catalogo in piu'.
 			BButton* button = new BButton(def.name, NULL, message);
 			button->SetToolTip(label);
 			button->SetTarget(target);
@@ -494,11 +618,25 @@ static BView* BuildToolbar(BHandler* target)
 			// ottenere lo stesso stile visivo senza la classe intera.
 			button->SetFlat(true);
 
-			BBitmap* icon = IconCatalog::Render(*def.icon);
-			if (icon)
+			if (def.icon != NULL)
 			{
-				button->SetIcon(icon);
-				delete icon;
+				BBitmap* icon = IconCatalog::Render(*def.icon);
+				if (icon)
+				{
+					button->SetIcon(icon);
+					delete icon;
+				}
+			}
+			else if (def.text != NULL)
+			{
+				BBitmap* glyph = RenderTextIcon(def.text);
+				if (glyph)
+				{
+					button->SetIcon(glyph);
+					delete glyph;
+				}
+				else
+					button->SetLabel(def.text); // ultima spiaggia: mai vuoto
 			}
 
 			toolbar->AddButton(button, label);
@@ -574,6 +712,7 @@ MainWindow::MainWindow()
 		fAutoSaveIntervalMinutes = 1;
 	if (fAutoSaveIntervalMinutes > 120)
 		fAutoSaveIntervalMinutes = 120;
+	fAutoSaveDir = gPrefs ? gPrefs->GetPrefString("autoSaveDir", "") : "";
 	fAutoSaveRunner = NULL;
 	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
 	ResetWorkbook("Foglio1");
@@ -871,6 +1010,9 @@ MainWindow::MainWindow()
 	// impostato finche' l'utente non lo toglie, indipendentemente dal
 	// foglio attivo).
 	BMenu* formulaMenu = new BMenu(B_TRANSLATE("Formule"));
+	formulaMenu->AddItem(new BMenuItem(B_TRANSLATE("Somma automatica"),
+		new BMessage(kMsgAutoSum), 'T'));
+	formulaMenu->AddSeparatorItem();
 	fShowFormulasMenuItem = new BMenuItem(B_TRANSLATE("Mostra formule"),
 		new BMessage(kMsgToggleShowFormulas), '`');
 	formulaMenu->AddItem(fShowFormulasMenuItem);
@@ -1273,6 +1415,14 @@ void MainWindow::ResetWorkbook(const char* name)
 		else
 			fSheetView->ClearAutoFilter();
 		fSheetView->SetProtected(fSheets[0].isProtected);
+		// Un foglio nuovo parte dal default "mostra formule" scelto in
+		// Preferenze (stesso principio di showGrid qui sopra) -- i file
+		// aperti mantengono invece il proprio stato in vista.
+		if (fSheetView->ShowFormulas()
+			!= (gPrefs && gPrefs->GetPrefInt("showFormulasDefault", 0) != 0))
+			fSheetView->ToggleShowFormulas();
+		if (fShowFormulasMenuItem)
+			fShowFormulasMenuItem->SetMarked(fSheetView->ShowFormulas());
 		if (fFreezeMenuItem)
 			fFreezeMenuItem->SetMarked(false);
 		if (fProtectMenuItem)
@@ -2598,7 +2748,17 @@ void MainWindow::AutoSaveBackup()
 	BString backupName(fDocumentName);
 	backupName << ".bak";
 
+	// Cartella backup personalizzata (preferenza autoSaveDir): se
+	// impostata ed esistente, il .bak va li' invece che accanto al
+	// file originale. Qualunque problema (cartella sparita, non
+	// scrivibile) ricade in silenzio sulla cartella originale: un
+	// salvataggio automatico non deve mai interrompere con un BAlert.
 	BDirectory directory(&fFileDirRef);
+	if (fAutoSaveDir.Length() > 0) {
+		BDirectory customDir;
+		if (customDir.SetTo(fAutoSaveDir.String()) == B_OK)
+			directory.SetTo(fAutoSaveDir.String());
+	}
 	BFile file(&directory, backupName.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 	if (file.InitCheck() != B_OK)
 		return; // silenzioso: un salvataggio automatico non deve mai interrompere l'utente con un BAlert
@@ -3400,9 +3560,20 @@ void MainWindow::ShowPreferencesWindow()
 	if (fPreferencesWindow->Lock())
 	{
 		bool showSplash = gPrefs ? (gPrefs->GetPrefInt("showSplash", 1) != 0) : true;
+		bool showFormulasDefault = gPrefs
+			? (gPrefs->GetPrefInt("showFormulasDefault", 0) != 0) : false;
+		int mask = fFooterStatsMask;
+		const char* autoSaveDir = fAutoSaveDir.String();
+		bool restoreSession = gPrefs
+			? (gPrefs->GetPrefInt("restoreSession", 0) != 0) : false;
+		int language = gPrefs ? (int)gPrefs->GetPrefInt("language", 0) : 0;
 		fPreferencesWindow->SetValues(fSheetView->ShowGrid(), gDecimalPoint, gListSeparator,
 			fMaxRecentFiles, showSplash, gThousandSeparator, gCurrencySymbol,
-			fAutoSaveEnabled, fAutoSaveIntervalMinutes);
+			fAutoSaveEnabled, fAutoSaveIntervalMinutes,
+			showFormulasDefault, (mask & kStatAverage) != 0,
+			(mask & kStatCount) != 0, (mask & kStatNumCount) != 0,
+			(mask & kStatMin) != 0, (mask & kStatMax) != 0,
+			(mask & kStatSum) != 0, autoSaveDir, restoreSession, language);
 		fPreferencesWindow->Unlock();
 	}
 
@@ -3413,7 +3584,10 @@ void MainWindow::ShowPreferencesWindow()
 
 void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep,
 	int maxRecentFiles, bool showSplash, char thousandSep, const char* currencySymbol,
-	bool autoSaveEnabled, int autoSaveIntervalMinutes)
+	bool autoSaveEnabled, int autoSaveIntervalMinutes,
+	bool showFormulasDefault, bool showAverage, bool showCount,
+	bool showNumCount, bool showMin, bool showMax, bool showSum,
+	const char* autoSaveDir, bool restoreSession, int language)
 {
 	fSheetView->SetShowGrid(showGrid);
 	// showGrid e' ora un attributo per-foglio (vedi AscdSheet::showGrid
@@ -3453,6 +3627,20 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 	// l'intervallo e' cambiato, oppure lo ferma se appena disabilitato
 	// (StartOrUpdateAutoSaveRunner gestisce entrambi i casi da sola).
 	StartOrUpdateAutoSaveRunner();
+	fAutoSaveDir = (autoSaveDir ? autoSaveDir : "");
+
+	// Statistiche footer: stessa maschera del menu tasto destro sulla
+	// barra di stato (vedi ToggleFooterStat) -- qui impostata in blocco
+	// dal dialogo invece che un bit alla volta. Rinfresca subito il
+	// testo come fa ToggleFooterStat.
+	fFooterStatsMask = (showAverage ? kStatAverage : 0)
+		| (showCount ? kStatCount : 0) | (showNumCount ? kStatNumCount : 0)
+		| (showMin ? kStatMin : 0) | (showMax ? kStatMax : 0)
+		| (showSum ? kStatSum : 0);
+	SelectionChanged(fSheetView->Selection());
+
+	if (language < 0 || language > 2)
+		language = 0;
 
 	// gPrefs (Preferences.h) puo' essere NULL in un test che non passa
 	// da App::App() (vedi il commento li'): l'effetto in memoria sopra
@@ -3476,6 +3664,11 @@ void MainWindow::HandlePreferencesRequest(bool showGrid, char decimalSep, char l
 		gPrefs->SetPrefInt("showSplash", showSplash ? 1 : 0);
 		gPrefs->SetPrefInt("autoSaveEnabled", fAutoSaveEnabled ? 1 : 0);
 		gPrefs->SetPrefInt("autoSaveInterval", fAutoSaveIntervalMinutes);
+		gPrefs->SetPrefString("autoSaveDir", fAutoSaveDir.String());
+		gPrefs->SetPrefInt("footerStats", fFooterStatsMask);
+		gPrefs->SetPrefInt("showFormulasDefault", showFormulasDefault ? 1 : 0);
+		gPrefs->SetPrefInt("restoreSession", restoreSession ? 1 : 0);
+		gPrefs->SetPrefInt("language", language);
 		try { gPrefs->WritePrefFile(); }
 		catch (CErr&) { }
 	}
@@ -4174,6 +4367,93 @@ void MainWindow::UnmergeCells()
 
 	fSheetView->Invalidate();
 	MarkModified();
+}
+
+void MainWindow::AutoSum()
+{
+	if (!fDoc)
+		return;
+
+	cell sel = fSheetView->Selection();
+	if (!fSheetView->GuardProtectedEdit(range(sel.h, sel.v, sel.h, sel.v)))
+		return;
+
+	// Ricalcola PRIMA di scansionare: i valori appena digitati (o
+	// importati) potrebbero non essere ancora calcolati, e GetCellResult
+	// su una cella sporca non restituirebbe il numero vero -- la
+	// scansione troverebbe zeri celle numeriche anche con la colonna
+	// piena (bug trovato dal test, non a occhio).
+	RecalculateActiveWorkbook();
+
+	range sumRange;
+	if (!FindAutoSumRange(fDoc, sel, &sumRange))
+		return; // nessun numero adiacente: niente da sommare
+
+	char colL[8], colR[8];
+	ColumnName(sumRange.left, colL);
+	ColumnName(sumRange.right, colR);
+	BString formula;
+	formula << "=SUM(" << colL << sumRange.top << ":" << colR << sumRange.bottom << ")";
+
+	fSheetView->SaveUndoState(sel);
+	try
+	{
+		TryToParseString(formula.String(), sel, fDoc, true);
+	}
+	catch (...)
+	{
+	}
+	RecalculateActiveWorkbook();
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+// Un numero e' cio' che GetCellResult mostra e strtod mangia tutto
+// (spazi ai bordi ok): testo e celle vuote interrompono la scansione,
+// come Excel che si ferma alla prima non numerica.
+static bool IsNumericCell(CContainer* doc, cell c)
+{
+	char text[4096];
+	doc->GetCellResult(c, text, sizeof(text), true);
+	if (text[0] == 0)
+		return false;
+	char* end = NULL;
+	strtod(text, &end);
+	if (end == text)
+		return false;
+	while (*end == ' ' || *end == '\t')
+		end++;
+	return *end == 0;
+}
+
+bool MainWindow::FindAutoSumRange(CContainer* doc, cell active, range* out)
+{
+	if (!doc || !out)
+		return false;
+
+	int top = active.v;
+	for (int r = active.v - 1; r >= 1; r--) {
+		if (IsNumericCell(doc, cell(active.h, r)))
+			top = r;
+		else
+			break;
+	}
+	if (top <= active.v - 1) {
+		*out = range(active.h, top, active.h, active.v - 1);
+		return true;
+	}
+
+	int left = active.h;
+	for (int c = active.h - 1; c >= 1; c--) {
+		if (IsNumericCell(doc, cell(c, active.v)))
+			left = c;
+		else
+			break;
+	}
+	if (left > active.h - 1)
+		return false;
+	*out = range(left, active.v, active.h - 1, active.v);
+	return true;
 }
 
 void MainWindow::SetCellComment(int row, int col, const char* text)
@@ -6155,6 +6435,10 @@ void MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case kMsgAutoSum:
+			AutoSum();
+			break;
+
 		case kMsgShowChart:
 			ShowChartWindow();
 			break;
@@ -6574,6 +6858,18 @@ void MainWindow::MessageReceived(BMessage* message)
 			const char* currencySymbol = gCurrencySymbol;
 			bool autoSaveEnabled = fAutoSaveEnabled;
 			int32 autoSaveInterval = fAutoSaveIntervalMinutes;
+			bool showFormulasDefault = gPrefs
+				? (gPrefs->GetPrefInt("showFormulasDefault", 0) != 0) : false;
+			bool showAverage = (fFooterStatsMask & kStatAverage) != 0;
+			bool showCount = (fFooterStatsMask & kStatCount) != 0;
+			bool showNumCount = (fFooterStatsMask & kStatNumCount) != 0;
+			bool showMin = (fFooterStatsMask & kStatMin) != 0;
+			bool showMax = (fFooterStatsMask & kStatMax) != 0;
+			bool showSum = (fFooterStatsMask & kStatSum) != 0;
+			const char* autoSaveDir = fAutoSaveDir.String();
+			bool restoreSession = gPrefs
+				? (gPrefs->GetPrefInt("restoreSession", 0) != 0) : false;
+			int32 language = gPrefs ? gPrefs->GetPrefInt("language", 0) : 0;
 			message->FindBool("showGrid", &showGrid);
 			message->FindInt8("decimalSeparator", &decimalSep);
 			message->FindInt8("listSeparator", &listSep);
@@ -6583,9 +6879,22 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindString("currencySymbol", &currencySymbol);
 			message->FindBool("autoSaveEnabled", &autoSaveEnabled);
 			message->FindInt32("autoSaveInterval", &autoSaveInterval);
+			message->FindBool("showFormulasDefault", &showFormulasDefault);
+			message->FindBool("showAverage", &showAverage);
+			message->FindBool("showCount", &showCount);
+			message->FindBool("showNumCount", &showNumCount);
+			message->FindBool("showMin", &showMin);
+			message->FindBool("showMax", &showMax);
+			message->FindBool("showSum", &showSum);
+			message->FindString("autoSaveDir", &autoSaveDir);
+			message->FindBool("restoreSession", &restoreSession);
+			message->FindInt32("language", &language);
 			HandlePreferencesRequest(showGrid, (char)decimalSep, (char)listSep,
 				(int)maxRecentFiles, showSplash, (char)thousandSep, currencySymbol,
-				autoSaveEnabled, (int)autoSaveInterval);
+				autoSaveEnabled, (int)autoSaveInterval,
+				showFormulasDefault, showAverage, showCount, showNumCount,
+				showMin, showMax, showSum, autoSaveDir, restoreSession,
+				(int)language);
 			break;
 		}
 

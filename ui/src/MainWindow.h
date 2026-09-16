@@ -199,6 +199,9 @@ public:
 	bool AutoSaveEnabled() const { return fAutoSaveEnabled; }
 	int AutoSaveIntervalMinutes() const { return fAutoSaveIntervalMinutes; }
 	bool IsAutoSaveArmed() const { return fAutoSaveRunner != NULL; }
+	// Stesso motivo di AutoSaveEnabled sopra: cartella backup
+	// personalizzata ("", mai personalizzata, = accanto al file).
+	BString AutoSaveDir() const { return fAutoSaveDir; }
 	// Pubblico apposta per essere testabile senza passare da una vera
 	// finestra di avanzamento (stesso principio di GetSheetView sopra):
 	// vedi tests/test_open_async.cpp -- vero fra OpenFileAsync() e
@@ -262,6 +265,17 @@ public:
 	// contenuto delle celle diverse da quella in alto a sinistra.
 	void MergeCells();
 	void UnmergeCells();
+	// Somma automatica (menu Formule/toolbar, Command+T): scrive nella
+	// cella attiva =SUM() sull'intervallo di numeri contigui sopra di
+	// essa, altrimenti a sinistra -- come Excel. Niente se non c'e'
+	// nessun numero adiacente.
+	void AutoSum();
+	// Trova l'intervallo da sommare per AutoSum (stessa regola sopra):
+	// true + intervallo in "out" se c'e' almeno un numero adiacente,
+	// false altrimenti. Statico e senza UI apposta per essere
+	// testabile direttamente (vedi tests/test_autosum.cpp): tocca solo
+	// il documento, mai la vista.
+	static bool FindAutoSumRange(CContainer* doc, cell active, range* out);
 	void SetAlignment(char alignment);
 	// Allineamento verticale (in alto/al centro/in basso): stesso principio
 	// di SetAlignment sopra -- si applica a tutto SelectionRange(). La
@@ -314,7 +328,10 @@ public:
 	// documento corrente -- stesso comportamento di Sum-It storico.
 	void HandlePreferencesRequest(bool showGrid, char decimalSep, char listSep, int maxRecentFiles,
 		bool showSplash, char thousandSep, const char* currencySymbol,
-		bool autoSaveEnabled, int autoSaveIntervalMinutes);
+		bool autoSaveEnabled, int autoSaveIntervalMinutes,
+		bool showFormulasDefault = false, bool showAverage = true, bool showCount = true,
+		bool showNumCount = false, bool showMin = false, bool showMax = false, bool showSum = true,
+		const char* autoSaveDir = "", bool restoreSession = false, int language = 0);
 
 	// Impostazioni di "Imposta pagina" (Fase 27, rese per-foglio in Fase
 	// 29): persistite in fSheets[fActiveSheetIndex].printSettings (vedi
@@ -722,6 +739,9 @@ private:
 	// NewDocument quando fDocumentName torna vuoto.
 	bool fAutoSaveEnabled;
 	int fAutoSaveIntervalMinutes;
+	// Cartella backup (vuota = accanto al file originale): specchio di
+	// gPrefs "autoSaveDir", usata da AutoSaveBackup.
+	BString fAutoSaveDir;
 	BMessageRunner* fAutoSaveRunner;
 
 	void StartOrUpdateAutoSaveRunner();

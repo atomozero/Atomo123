@@ -1206,6 +1206,26 @@ test-comments: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_comments
 
+# Test della Somma automatica (MainWindow::AutoSum, menu Formule/
+# toolbar): stesso schema di test-comments sopra, senza bitmap -- solo
+# formule scritte e valori ricalcolati. La tabella delle funzioni con
+# nome (SUM) vive nelle risorse 'Func' del binario (vedi App::
+# ReadyToRun): qui si allega Atomo123.rsrc all'eseguibile di prova con
+# xres, altrimenti ogni =SUM() resterebbe un identificatore sconosciuto
+# (stesso limite documentato in test_unary_plus.cpp).
+test-autosum: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
+	$(CXX) -c tests/test_autosum.cpp -o tests/test_autosum.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_autosum tests/test_autosum.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	xres -o tests/test_autosum $(RSRC)
+	./tests/test_autosum
+
 # Test dei collegamenti ipertestuali (Fase 13): stesso schema di
 # test-comments sopra, piu' una verifica sui pixel veri del testo blu
 # sottolineato (stesso principio del triangolo rosso dei commenti).
@@ -1376,6 +1396,7 @@ clean:
 		tests/test_find_replace tests/test_find_replace.o \
 		tests/test_insert_chart tests/test_insert_chart.o \
 		tests/test_comments tests/test_comments.o tests/roundtrip_comments.ascd \
+		tests/test_autosum tests/test_autosum.o \
 		tests/test_hyperlinks tests/test_hyperlinks.o tests/roundtrip_hyperlinks.ascd \
 		tests/test_validation tests/test_validation.o tests/roundtrip_validation.ascd \
 		tests/test_condformat tests/test_condformat.o \
@@ -1394,7 +1415,7 @@ clean:
 		examples/atomo123_demo.ascd \
 		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
-.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection clean
+.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-autosum test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection clean
 
 # Include i file di dipendenza generati da -MMD/-MP (vedi CXXFLAGS in
 # cima) -- src/*.d per la build principale, tests/*.d per ogni target

@@ -131,6 +131,27 @@ int main()
 
 	win->HandlePreferencesRequest(true, '.', ';', 5, true, ',', "$", true, 5); // ripristina il predefinito
 
+	// Nuove preferenze: statistiche footer (stessa maschera del menu
+	// tasto destro sulla barra di stato), cartella backup e default
+	// formule/lingua/sessione (solo persistite, gPrefs e' NULL qui).
+	win->HandlePreferencesRequest(true, '.', ';', 5, true, ',', "$", true, 5,
+		false, true, true, false, false, false, true, "", false, 0);
+	Check(win->FooterStatsMask()
+			== (MainWindow::kStatAverage | MainWindow::kStatCount | MainWindow::kStatSum),
+		"HandlePreferencesRequest imposta la maschera delle statistiche footer (default Excel)");
+	Check(win->AutoSaveDir().Length() == 0,
+		"cartella backup vuota = accanto al file originale");
+
+	win->HandlePreferencesRequest(true, '.', ';', 5, true, ',', "$", true, 5,
+		false, false, false, false, false, false, false, "/tmp", true, 2);
+	Check(win->FooterStatsMask() == 0,
+		"azzerare tutte le statistiche footer svuota la maschera");
+	Check(win->AutoSaveDir() == "/tmp",
+		"HandlePreferencesRequest imposta la cartella backup personalizzata");
+
+	win->HandlePreferencesRequest(true, '.', ';', 5, true, ',', "$", true, 5,
+		false, true, true, false, false, false, true, "", false, 0); // ripristina i predefiniti
+
 	// Ripristina i globali com'erano prima del test: sono processo-globali
 	// al motore, non locali a questo documento, e questo processo di test
 	// potrebbe eseguire altri controlli dopo questo punto (qui non ce ne
