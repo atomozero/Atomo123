@@ -11,6 +11,7 @@
 
 #include <Button.h>
 #include <Catalog.h>
+#include <InterfaceDefs.h>
 #include <LayoutBuilder.h>
 #include <ScrollView.h>
 #include <TextView.h>
@@ -40,14 +41,21 @@ CommentWindow::CommentWindow(BMessenger target)
 	// dettagli da se').
 	fTextView->MakeEditable(true);
 	fTextView->MakeSelectable(true);
-	// Senza queste due righe il colore di sfondo resta quello ereditato
-	// di default (grigio pannello, non bianco): sembra un riquadro
-	// spento invece di un campo di testo modificabile -- bug reale
-	// segnalato dall'utente insieme al fuoco tastiera qui sotto.
-	fTextView->SetViewColor(255, 255, 255);
-	fTextView->SetLowColor(255, 255, 255);
+	// Colori documento invece di bianco fisso: seguono il tema
+	// chiaro/scuro della GUI (prima restava sempre bianco anche con
+	// Dark mode). Senza queste due righe lo sfondo resta quello
+	// ereditato di default (grigio pannello): sembra un riquadro
+	// spento invece di un campo modificabile.
+	fTextView->SetViewColor(ui_color(B_DOCUMENT_BACKGROUND_COLOR));
+	fTextView->SetLowColor(ui_color(B_DOCUMENT_BACKGROUND_COLOR));
+	fTextView->SetHighColor(ui_color(B_DOCUMENT_TEXT_COLOR));
+	// BTextView vuota ha preferred height di una sola riga: senza
+	// min-size esplicita il BScrollView collassa a "riga bianca" e non
+	// riempie la finestra. 0 come flags (come NameWindow/WatchWindow),
+	// non B_FOLLOW_ALL: con BLayoutBuilder i FOLLOW rompono il layout.
 	BScrollView* scroll = new BScrollView("scroll", fTextView,
-		B_FOLLOW_ALL, 0, false, true, B_FANCY_BORDER);
+		0, false, true, B_FANCY_BORDER);
+	scroll->SetExplicitMinSize(BSize(280, 140));
 
 	BButton* removeButton = new BButton("remove", B_TRANSLATE("Rimuovi commento"),
 		new BMessage(kMsgCommentRemoveLocal));
