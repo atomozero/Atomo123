@@ -644,6 +644,20 @@ public:
 	// la calcola gia' prima di chiamare questo metodo).
 	void ShowCellContextMenu(cell target, BPoint screenAnchor);
 
+	// Menu contestuale (tasto destro) sulle intestazioni di colonna/riga:
+	// stesso principio sincrono di ShowCellContextMenu sopra (stesso
+	// limite di test automatico), ma con sole voci Inserisci/Elimina
+	// riga-colonna. "clickedCol/clickedRow" e' l'indice 1-based sotto il
+	// cursore (MouseDown lo calcola gia' via ColumnAtX/RowAtY). Se il clic
+	// cade fuori dalla selezione corrente, la selezione viene spostata
+	// sull'intera colonna/riga cliccata (come Excel/LibreOffice Calc);
+	// se cade dentro una selezione multipla esistente, la selezione resta
+	// invariata cosi' si possono inserire/eliminare piu' righe/colonne in
+	// un colpo solo. Inserisci/Elimina riusano la logica esistente basata
+	// su SelectionRange(), nessuna duplicazione.
+	void ShowColumnHeaderContextMenu(int clickedCol, BPoint screenAnchor);
+	void ShowRowHeaderContextMenu(int clickedRow, BPoint screenAnchor);
+
 	// Rettangolo in pixel (a partire da 0,0, intestazioni comprese) che
 	// copre le celle con contenuto -- usato da MainWindow per la stampa
 	// (Print Kit), per sapere quanto foglio serve davvero senza
@@ -758,6 +772,13 @@ private:
 	// richiamare SetViewCursor a ogni singolo MouseMoved anche quando
 	// non e' cambiato nulla.
 	int fHoverCursor;
+
+	// Tooltip leggero del commento (solo testo, senza aprire la finestra):
+	// cella per cui il tooltip e' impostato in questo momento, (0,0) =
+	// nessuno. Ricordata per chiamare SetToolTip() solo al cambio cella
+	// e non a ogni singolo MouseMoved (altrimenti il timer di comparsa
+	// non scatterebbe mai). Stesso principio di fHoverCursor sopra.
+	cell fHoverTipCell;
 
 	// Mostra/nascondi griglia: vedi SetShowGrid/ShowGrid sopra.
 	bool fShowGrid;

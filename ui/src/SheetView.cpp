@@ -71,6 +71,55 @@ static const uint32 kMsgCellEditCommitTabLeft = 'cetl';
 // la prima viene prima nel file.
 static std::vector<BString> WrapTextLines(BView* view, const char* text, float maxWidth);
 
+// Tooltip commento: BTextToolTip interno non va a capo da solo, una riga
+// lunga resterebbe lunghissima. Spezza a ~60 caratteri sui confini di
+// parola (rispettando gli '\n' gia' presenti), UTF-8 safe: mai tagliare
+// in mezzo a un byte di continuazione 10xxxxxx.
+static std::string WrapCommentTip(const std::string& in, size_t width = 60)
+{
+	std::string out;
+	size_t pos = 0;
+	while (pos < in.size()) {
+		size_t nl = in.find('\n', pos);
+		std::string para = in.substr(pos,
+			nl == std::string::npos ? std::string::npos : nl - pos);
+		size_t p = 0;
+		// Salta spazi iniziali del paragrafo (evita righe che iniziano
+		// con spazi dopo un wrap precedente).
+		while (p < para.size() && (para[p] == ' ' || para[p] == '\t'))
+			p++;
+		while (p < para.size()) {
+			size_t rest = para.size() - p;
+			size_t take = rest <= width ? rest : width;
+			if (rest > width) {
+				// Ultimo spazio entro il limite -> punto di taglio ideale.
+				size_t brk = para.rfind(' ', p + take);
+				if (brk != std::string::npos && brk > p)
+					take = brk - p;
+				else {
+					// Parola lunghissima senza spazi: taglio duro, ma non
+					// in mezzo a una sequenza UTF-8.
+					while (take > 1
+						&& (para[p + take] & 0xC0) == 0x80)
+						take--;
+				}
+			}
+			out.append(para.substr(p, take));
+			p += take;
+			while (p < para.size()
+				&& (para[p] == ' ' || para[p] == '\t'))
+				p++;
+			if (p < para.size())
+				out += '\n';
+		}
+		if (nl == std::string::npos)
+			break;
+		out += '\n';
+		pos = nl + 1;
+	}
+	return out;
+}
+
 // Filtro applicato alla BTextView interna del BTextControl usato per
 // l'editing in-cella: la BTextView interna e' quella che riceve
 // davvero il fuoco tastiera (BTextControl::MakeFocus lo inoltra a
@@ -139,6 +188,7 @@ SheetView::SheetView(CContainer* doc)
 	fResizeDragStart(0),
 	fResizeStartSize(0),
 	fHoverCursor(0),
+	fHoverTipCell(0, 0),
 	fShowGrid(gPrefs ? gPrefs->GetPrefInt("showGrid", 1) != 0 : true),
 	fSuppressPrintHeaders(false),
 	fPrintGridOverride(false),
@@ -911,6 +961,61 @@ void SheetView::ShowCellContextMenu(cell target, BPoint screenAnchor)
 		win->RemoveCellComment(target.v, target.h);
 }
 
+void SheetView::ShowColumnHeaderContextMenu(int clickedCol, BPoint screenAnchor)
+{
+	// Clic fuori dalla selezione corrente: si seleziona l'intera colonna
+	// cliccata. Clic DENTRO una selezione esistente (anche multi-colonna):
+	// la si lascia invariata, come ShowCellContextMenu -- cosi' tasto destro
+	// su C con A:C selezionate ne inserisce/elimina 3 in un colpo solo.
+	range sel = SelectionRange();
+	if (clickedCol < sel.left || clickedCol > sel.right) {
+		SetSelection(cell(clickedCol, kRowCount));
+		ExtendSelection(cell(clickedCol, 1));
+	}
+
+	BPopUpMenu menu("columnHeader");
+	BMenuItem* insertColItem = new BMenuItem(B_TRANSLATE("Inserisci colonna"), NULL);
+	menu.AddItem(insertColItem);
+	BMenuItem* deleteColItem = new BMenuItem(B_TRANSLATE("Elimina colonna"), NULL);
+	menu.AddItem(deleteColItem);
+
+	ConvertToScreen(&screenAnchor);
+	BMenuItem* chosen = menu.Go(screenAnchor, false, false, false);
+	if (!chosen)
+		return;
+
+	if (chosen == insertColItem)
+		InsertColumns();
+	else if (chosen == deleteColItem)
+		DeleteColumns();
+}
+
+void SheetView::ShowRowHeaderContextMenu(int clickedRow, BPoint screenAnchor)
+{
+	// Speculare a ShowColumnHeaderContextMenu sopra, sull'asse verticale.
+	range sel = SelectionRange();
+	if (clickedRow < sel.top || clickedRow > sel.bottom) {
+		SetSelection(cell(kColCount, clickedRow));
+		ExtendSelection(cell(1, clickedRow));
+	}
+
+	BPopUpMenu menu("rowHeader");
+	BMenuItem* insertRowItem = new BMenuItem(B_TRANSLATE("Inserisci riga"), NULL);
+	menu.AddItem(insertRowItem);
+	BMenuItem* deleteRowItem = new BMenuItem(B_TRANSLATE("Elimina riga"), NULL);
+	menu.AddItem(deleteRowItem);
+
+	ConvertToScreen(&screenAnchor);
+	BMenuItem* chosen = menu.Go(screenAnchor, false, false, false);
+	if (!chosen)
+		return;
+
+	if (chosen == insertRowItem)
+		InsertRows();
+	else if (chosen == deleteRowItem)
+		DeleteRows();
+}
+
 void SheetView::RecalculateWrappedRowHeights()
 {
 	if (!fDoc)
@@ -1066,6 +1171,11 @@ void SheetView::SetDocument(CContainer* doc)
 	fDoc = doc;
 	fSelection.Set(1, 1);
 	fAnchor.Set(1, 1);
+	// Il tooltip commento puntava a una cella del documento precedente:
+	// va spento e dimenticato, altrimenti resterebbe appeso al passaggio
+	// successivo sullo stesso punto del nuovo foglio.
+	SetToolTip((const char*)NULL);
+	fHoverTipCell = cell(0, 0);
 	// Le istantanee di Annulla/Ripeti si riferiscono al documento
 	// precedente: applicarle a questo (nuovo/appena aperto) scambierebbe
 	// il contenuto di celle senza relazione.
@@ -3938,6 +4048,23 @@ void SheetView::MouseDown(BPoint where)
 	if (where.y >= bounds.top && where.y < bounds.top + kHeaderHeight
 		&& where.x >= bounds.left + kHeaderWidth)
 	{
+		// Tasto destro sull'intestazione di colonna: menu Inserisci/Elimina
+		// colonna invece di selezione/ridimensionamento. Controllato PRIMA
+		// della maniglia di ridimensionamento: trascinare un bordo col destro
+		// non deve mai allargare la colonna, come per le immagini sotto che
+		// controllano B_SECONDARY_MOUSE_BUTTON prima dello spostamento col
+		// sinistro.
+		{
+			BMessage* btnMsg = Window() ? Window()->CurrentMessage() : NULL;
+			int32 buttons = 0;
+			if (btnMsg)
+				btnMsg->FindInt32("buttons", &buttons);
+			if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+				int rightCol = ColumnAtX(where.x - kHeaderWidth);
+				ShowColumnHeaderContextMenu(rightCol, where);
+				return;
+			}
+		}
 		int col = ColumnBoundaryAt(where.x - kHeaderWidth);
 		if (col > 0)
 		{
@@ -3977,6 +4104,20 @@ void SheetView::MouseDown(BPoint where)
 	if (where.x >= bounds.left && where.x < bounds.left + kHeaderWidth
 		&& where.y >= bounds.top + kHeaderHeight)
 	{
+		// Stesso principio del blocco colonna sopra, per l'intestazione di
+		// riga: tasto destro apre Inserisci/Elimina riga, mai
+		// ridimensionamento.
+		{
+			BMessage* btnMsg = Window() ? Window()->CurrentMessage() : NULL;
+			int32 buttons = 0;
+			if (btnMsg)
+				btnMsg->FindInt32("buttons", &buttons);
+			if (buttons & B_SECONDARY_MOUSE_BUTTON) {
+				int rightRow = RowAtY(where.y - kHeaderHeight);
+				ShowRowHeaderContextMenu(rightRow, where);
+				return;
+			}
+		}
 		int row = RowBoundaryAt(where.y - kHeaderHeight);
 		if (row > 0)
 		{
@@ -4684,6 +4825,48 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 			BCursor cursor(B_CURSOR_ID_SYSTEM_DEFAULT);
 			SetViewCursor(&cursor);
 		}
+	}
+
+	// Tooltip leggero del commento (solo testo, come Excel/Calc): passando
+	// sopra una cella con commento si mostra il testo senza aprire la
+	// finestra. Solo a bottone rilasciato: durante un trascinamento o
+	// sopra le intestazioni il tooltip resta spento per non coprire la
+	// selezione. SetToolTip solo al cambio cella (fHoverTipCell): a ogni
+	// MouseMoved riazzerebbe il timer di comparsa e non si vedrebbe mai.
+	if (code == B_EXITED_VIEW)
+	{
+		if (fHoverTipCell.h != 0) {
+			SetToolTip((const char*)NULL);
+			fHoverTipCell = cell(0, 0);
+		}
+	}
+	else if (!fDragging)
+	{
+		BRect bounds = Bounds();
+		bool overHeaders = where.x < bounds.left + kHeaderWidth
+			|| where.y < bounds.top + kHeaderHeight;
+		cell hover(0, 0);
+		if (!overHeaders && fDoc) {
+			hover = CellAt(where);
+			// Cella unita: il commento vive sull'angolo in alto a sinistra
+			// (stesso principio di MouseDown/Draw), ma l'hover deve scattare
+			// ovunque dentro l'intervallo unito.
+			range merged;
+			if (fDoc->GetMergedRange(hover, &merged))
+				hover = cell(merged.left, merged.top);
+		}
+		if (hover.h != fHoverTipCell.h || hover.v != fHoverTipCell.v) {
+			fHoverTipCell = hover;
+			if (hover.h == 0 || !fDoc || !fDoc->HasComment(hover))
+				SetToolTip((const char*)NULL);
+			else
+				SetToolTip(WrapCommentTip(fDoc->GetComment(hover)).c_str());
+		}
+	}
+	else if (fHoverTipCell.h != 0)
+	{
+		SetToolTip((const char*)NULL);
+		fHoverTipCell = cell(0, 0);
 	}
 
 	if (!fDragging)
