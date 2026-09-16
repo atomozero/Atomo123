@@ -4,6 +4,40 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
+Unreleased (toolbar second wave, AutoSum, new preferences):
+- New toolbar groups reusing the closest MIT catalog icons as
+  placeholders until hand-drawn HVIFs land (see
+  `Atomo123_icons/ATOMO123.md`): Cells (Insert row/column, Merge,
+  Freeze), Rules (Data validation, Conditional formatting), Numbers
+  (AutoSum, Currency), plus Replace (same Find window, same lens)
+- New AutoSum (`Formule` menu, Command+T, toolbar): writes =SUM() over
+  the contiguous numbers above the active cell, else to the left, like
+  Excel; no-op with no adjacent numbers. Two real bugs found by its
+  test: the scan must recalculate first (stale `GetCellResult` on dirty
+  cells finds zero numbers), and the engine's canonical formula text
+  is `SUM(A1..A3)` (no `=`, `..` ranges) so the test compares with
+  `strstr` like `test_fill.cpp`
+- New preferences: show-formulas default for new sheets, footer stats
+  (same mask as the status-bar context menu), backup folder (empty =
+  next to the file), session restore (reopens recent files on clean
+  launch, reusing untouched windows), interface language (system/
+  Italian/English, applied on next launch via `LANGUAGE`)
+- New `tests/test_autosum.cpp` (range finder + end-to-end SUM with
+  `Func` resources attached via `xres`, same init as `App::
+  ReadyToRun`); `test_preferences.cpp` extended for the new prefs
+- Provisional text toolbar buttons (`kProvisionalToolbarButtons`: %,
+  A↑, A↕, A↓) for Percent and vertical alignment, which have real menu
+  actions but no catalog HVIF — `ToolbarButtonDef` grows an optional
+  `text` field (NULL = icon button as before), the glyph is drawn
+  centered on a transparent 16x16 bitmap so the button is structurally
+  identical to the HVIF ones (verified pixel count headless; bitmap
+  needs the `acceptViews` flag or nothing draws), no new catalog keys
+- Deferred with reasons (no silent gaps): hand-drawn HVIFs need the
+  Icon-O-Matic GUI; default font needs a font-browser dialog;
+  function wizard needs an insert-function dialog; zoom needs a zoom
+  feature first (no zoom exists at all); app theme already follows the
+  system via `ui_color` (white grid is correct spreadsheet convention)
+
 What shipped in v0.2.0, on top of the v0.1.0 baseline:
 - XLSX/ODS export now writes live formulas for same-sheet references
   (cross-sheet references still export as a value only, since each

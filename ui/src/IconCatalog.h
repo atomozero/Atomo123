@@ -55,6 +55,19 @@ extern const IconData kIconComment;
 extern const IconData kIconNamedRange;
 extern const IconData kIconGoTo;
 extern const IconData kIconBorderColor;
+// Seconda ondata (stesso catalogo MIT, vedi IconData.cpp): pulsanti
+// Celle/Regole/Numeri promossi da voci di menu. In attesa delle icone
+// disegnate a mano in Icon-O-Matic per le lacune vere (Sostituisci,
+// Bordi, Formato numero, fx, varianti grafico...), queste riusano le
+// piu' vicine semanticamente fra quelle esistenti.
+extern const IconData kIconInsertRow;
+extern const IconData kIconInsertCol;
+extern const IconData kIconMerge;
+extern const IconData kIconFreeze;
+extern const IconData kIconValidate;
+extern const IconData kIconCondFormat;
+extern const IconData kIconAutoSum;
+extern const IconData kIconCurrency;
 
 namespace IconCatalog {
 	// Renderizza "icon" in un BBitmap 16x16 B_RGBA32 di proprieta' del

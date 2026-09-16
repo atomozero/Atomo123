@@ -110,6 +110,18 @@ App::App()
 	// Globals.h dichiara l'array senza dimensione ("extern char
 	// gCurrencySymbol[];"), quindi sizeof() non e' utilizzabile qui.
 	strlcpy(gCurrencySymbol, gPrefs->GetPrefString("currencySymbol", gCurrencySymbol), 32);
+
+	// Lingua interfaccia (finestra Preferenze, 0 = sistema): applicata
+	// qui, prima che qualunque catalogo venga usato -- il Locale Kit
+	// legge LANGUAGE all'avvio. Ha effetto dal prossimo avvio per le
+	// finestre gia' aperte in questa sessione (i cataloghi si caricano
+	// all'apertura), quindi la preferenza dice "al prossimo avvio".
+	// "it" usa le stringhe sorgente (l'italiano non ha un .catkeys).
+	int language = gPrefs->GetPrefInt("language", 0);
+	if (language == 1)
+		setenv("LANGUAGE", "it", 1);
+	else if (language == 2)
+		setenv("LANGUAGE", "en", 1);
 }
 
 App::~App()
@@ -202,8 +214,20 @@ void App::ShowMainWindowIfNeeded()
 	}
 	if (!hasMainWindow)
 	{
-		MainWindow* window = new MainWindow();
-		window->Show();
+		// Ripristino sessione (finestra Preferenze): a lancio pulito
+		// (nessun file da Tracker/riga di comando, che arrivano per
+		// altra via e riusano le finestre vergini via
+		// FindReusableWindow) riapre i file recenti ancora esistenti,
+		// uno per finestra. Se non ce ne sono, una sola finestra vuota
+		// come prima.
+		int restored = 0;
+		if (gPrefs && gPrefs->GetPrefInt("restoreSession", 0) != 0)
+			restored = RestoreSession();
+		if (restored <= 0)
+		{
+			MainWindow* window = new MainWindow();
+			window->Show();
+		}
 	}
 
 	// Show()/l'attivazione della MainWindow appena sopra la porta
@@ -215,6 +239,35 @@ void App::ShowMainWindowIfNeeded()
 	// 8s) e' piu' lunga di kSplashDelay (3s).
 	if (fSplashWindow)
 		fSplashWindow->Activate();
+}
+
+int App::RestoreSession()
+{
+	// Stesso formato di MainWindow (chiavi "recentFileN", la piu'
+	// recente per prima, vedi MainWindow.h): qui serve solo la lettura,
+	// la scrittura resta tutta li'. Il tetto 15 e' kMaxRecentFilesLimit
+	// di MainWindow, duplicato per non esporre un dettaglio privato.
+	if (!gPrefs)
+		return 0;
+	int opened = 0;
+	MainWindow* reusable = NULL;
+	for (int i = 0; i < 15; i++)
+	{
+		char key[32];
+		snprintf(key, sizeof(key), "recentFile%d", i);
+		BString path(gPrefs->GetPrefString(key, ""));
+		if (path.Length() == 0)
+			continue;
+		BEntry entry(path.String(), true);
+		if (!entry.Exists())
+			continue;
+		entry_ref ref;
+		if (entry.GetRef(&ref) != B_OK)
+			continue;
+		OpenOneRef(ref, &reusable);
+		opened++;
+	}
+	return opened;
 }
 
 void App::RegisterFileTypes()

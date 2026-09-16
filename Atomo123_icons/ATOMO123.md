@@ -18,22 +18,38 @@ larghezza della finestra -- vedi `ToolbarView.h`. Al momento sono
 integrate:
 
 - **File**: Nuovo, Apri, Salva, Stampa
-- **Modifica**: Taglia, Copia, Incolla, Annulla, Ripeti, Trova, Elimina
+- **Modifica**: Taglia, Copia, Incolla, Annulla, Ripeti, Trova,
+  Sostituisci (stessa finestra di Trova, stessa lente), Elimina
 - **Dati**: Ordina crescente/decrescente, Vai a, Intervalli con nome
 - **Celle e tabella**: Grafico, (Pivot, con l'icona Tabella),
   Collegamento ipertestuale, Commento cella
+- **Celle**: Inserisci riga (divisore orizzontale 1232), Inserisci
+  colonna (divisore verticale 1233), Unisci celle (tabella 944),
+  Blocca riquadri (puntina 1016)
+- **Regole**: Convalida dati (scudo 925), Formattazione condizionale
+  (filtro 810)
+- **Numeri**: Somma automatica (calcolatrice 53), Valuta (finanza 710)
+- **Provvisori testuali** (lettere/simboli in attesa delle HVIF):
+  Percentuale (%), Allinea in alto (A↑), Centra verticale (A↕),
+  Allinea in basso (A↓) — gruppo `kProvisionalToolbarButtons` in coda,
+  da spostare nei gruppi tematici quando arrivano le icone vere
 - **Formato**: Grassetto, Corsivo, Sottolineato, Allinea sinistra/
   centro/destra, A capo automatico, Colore testo, Colore sfondo,
   Colore bordo
 
+Le icone di Celle/Regole/Numeri riusano le piu' vicine semanticamente
+fra quelle del catalogo (tutte MIT, vedi LICENSES.md): sono segnaposto
+in attesa delle HVIF disegnate a mano in Icon-O-Matic per le lacune
+vere (vedi sotto). Sostituisci riusa la lente di Trova onestamente:
+apre la stessa finestra.
+
 Le altre voci in tabella sono selezionate e verificate a vista, ma non
 ancora usate da nessun pulsante: o la funzione non esiste ancora in
 Atomo123 (Salva con nome come voce distinta, Anteprima di stampa,
-Esporta, Filtro, Zoom, i tipi di grafico...), o esiste solo come voce
-di menu non ancora promossa a pulsante (Bordi cella, Unisci celle,
-Inserisci riga/colonna, Convalida dati, Formattazione condizionale,
-Blocca riquadri -- per queste manca comunque un'icona reale nel
-catalogo, vedi "Lacune" piu' sotto).
+Esporta, Filtro, Zoom, i tipi di grafico, Percentuale come pulsante,
+fx...), o esiste solo come voce di menu non ancora promossa a pulsante
+(Bordi cella, Formato numero, Allinea in alto/centro/basso -- per queste
+manca comunque un'icona reale nel catalogo, vedi "Lacune" piu' sotto).
 
 ## File
 
@@ -144,12 +160,15 @@ Il catalogo non contiene un candidato adatto per queste funzioni. Vanno disegnat
 in [Icon-O-Matic](https://www.haiku-os.org/docs/userguide/en/applications/icon-o-matic.html),
 seguendo le [linee guida icone Haiku](https://www.haiku-os.org/development/icon-guidelines/).
 
-- **Modifica**: Sostituisci
-- **Formato**: Bordi cella, Formato numero, Convalida dati, Formattazione condizionale,
+- **Formato**: Bordi cella, Formato numero,
   Allinea in alto, Centra verticale, Allinea in basso (funzione nuova, voci di menu esistenti)
-- **Celle e tabella**: Inserisci riga, Inserisci colonna, Unisci celle, Blocca riquadri
-- **Formule**: Somma automatica, Percentuale, Funzione (fx)
-- **Grafici**: Grafico a barre, Grafico a torta, Grafico a linee
+- **Formule**: Percentuale (pulsante), Funzione (fx, richiede anche il dialogo di inserimento)
+- **Grafici**: Grafico a barre, Grafico a torta, Grafico a linee (pulsanti per-tipo)
+
+Coperti con segnaposto dal catalogo (in attesa del disegno definitivo):
+Inserisci riga/colonna, Unisci celle, Blocca riquadri, Convalida dati,
+Formattazione condizionale, Somma automatica, Valuta, Sostituisci
+(stessa finestra di Trova).
 
 Totale: 49 funzioni coperte dal catalogo, 16 da disegnare.
 

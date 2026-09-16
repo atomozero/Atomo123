@@ -103,32 +103,72 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 		.SetInsets(8, fileBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fRecentField);
 
-	// Avvio: solo lo splash screen per ora -- letta direttamente da
-	// App::ReadyToRun (non riguarda un documento gia' aperto, a
-	// differenza delle altre preferenze qui sopra, quindi non serve
-	// nessun MainWindow::fXxx a specchio, solo gPrefs).
+	// Avvio: splash screen (letta da App::ReadyToRun), lingua (applicata
+	// al prossimo avvio, vedi App::App) e ripristino sessione (riapre i
+	// file recenti all'avvio pulito, vedi App::ShowMainWindowIfNeeded):
+	// nessuna riguarda un documento gia' aperto, quindi niente
+	// MainWindow::fXxx a specchio, solo gPrefs.
 	fShowSplashBox = new BCheckBox("showSplash", B_TRANSLATE("Mostra lo splash screen all'avvio"), NULL);
+	BPopUpMenu* langMenu = new BPopUpMenu("language");
+	langMenu->AddItem(new BMenuItem(B_TRANSLATE("Sistema"), NULL));
+	langMenu->AddItem(new BMenuItem(B_TRANSLATE("Italiano"), NULL));
+	langMenu->AddItem(new BMenuItem(B_TRANSLATE("English"), NULL));
+	langMenu->ItemAt(0)->SetMarked(true);
+	fLanguageField = new BMenuField("languageField", B_TRANSLATE("Lingua (al prossimo avvio):"),
+		langMenu);
+	fRestoreSessionBox = new BCheckBox("restoreSession",
+		B_TRANSLATE("Riapri i file recenti all'avvio"), NULL);
 	BBox* startupBox = new BBox("startupBox");
 	startupBox->SetLabel(B_TRANSLATE("Avvio"));
 	BLayoutBuilder::Group<>(startupBox, B_VERTICAL, 6)
 		.SetInsets(8, startupBox->TopBorderOffset() + 8, 8, 8)
-		.Add(fShowSplashBox);
+		.Add(fShowSplashBox)
+		.Add(fLanguageField)
+		.Add(fRestoreSessionBox);
 
 	// Salvataggio automatico (Fase 23, richiesta esplicita dell'utente):
 	// scrive un BACKUP a intervalli regolari, mai il file originale
 	// (vedi MainWindow::AutoSaveBackup) -- parte solo dopo il primo
 	// salvataggio manuale (nessun file dove scrivere il backup prima di
 	// quello). Abilitato di default ogni 5 minuti, come richiesto.
+	// Cartella vuota = accanto al file originale.
 	fAutoSaveBox = new BCheckBox("autoSave",
 		B_TRANSLATE("Abilita il salvataggio automatico (backup)"), NULL);
 	fAutoSaveIntervalField = new BTextControl("autoSaveInterval",
 		B_TRANSLATE("Ogni quanti minuti:"), "5", NULL);
+	fAutoSaveDirField = new BTextControl("autoSaveDir",
+		B_TRANSLATE("Cartella backup (vuota = accanto al file):"), "", NULL);
 	BBox* autoSaveBox = new BBox("autoSaveBox");
 	autoSaveBox->SetLabel(B_TRANSLATE("Salvataggio automatico"));
 	BLayoutBuilder::Group<>(autoSaveBox, B_VERTICAL, 6)
 		.SetInsets(8, autoSaveBox->TopBorderOffset() + 8, 8, 8)
 		.Add(fAutoSaveBox)
-		.Add(fAutoSaveIntervalField);
+		.Add(fAutoSaveIntervalField)
+		.Add(fAutoSaveDirField);
+
+	// Vista: default per i fogli NUOVI (i file aperti mantengono il
+	// proprio valore salvato) + statistiche del footer, le stesse del
+	// menu tasto destro sulla barra di stato -- qui come caselle per
+	// chi preferisce un dialogo unico.
+	fShowFormulasBox = new BCheckBox("showFormulas",
+		B_TRANSLATE("Mostra formule nei fogli nuovi"), NULL);
+	fStatAverageBox = new BCheckBox("statAverage", B_TRANSLATE("Media"), NULL);
+	fStatCountBox = new BCheckBox("statCount", B_TRANSLATE("Conteggio"), NULL);
+	fStatNumCountBox = new BCheckBox("statNumCount", B_TRANSLATE("Conteggio numerico"), NULL);
+	fStatMinBox = new BCheckBox("statMin", B_TRANSLATE("Minimo"), NULL);
+	fStatMaxBox = new BCheckBox("statMax", B_TRANSLATE("Massimo"), NULL);
+	fStatSumBox = new BCheckBox("statSum", B_TRANSLATE("Somma"), NULL);
+	BBox* viewBox = new BBox("viewBox");
+	viewBox->SetLabel(B_TRANSLATE("Vista"));
+	BLayoutBuilder::Group<>(viewBox, B_VERTICAL, 6)
+		.SetInsets(8, viewBox->TopBorderOffset() + 8, 8, 8)
+		.Add(fShowFormulasBox)
+		.Add(fStatAverageBox)
+		.Add(fStatCountBox)
+		.Add(fStatNumCountBox)
+		.Add(fStatMinBox)
+		.Add(fStatMaxBox)
+		.Add(fStatSumBox);
 
 	BButton* applyButton = new BButton("apply", B_TRANSLATE("Applica"), new BMessage(kMsgApplyLocal));
 	applyButton->SetTarget(this);
@@ -139,6 +179,7 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 		.Add(generalBox)
 		.Add(fileBox)
 		.Add(startupBox)
+		.Add(viewBox)
 		.Add(autoSaveBox)
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
@@ -148,7 +189,10 @@ PreferencesWindow::PreferencesWindow(BMessenger target)
 
 void PreferencesWindow::SetValues(bool showGrid, char decimalSep, char listSep,
 	int maxRecentFiles, bool showSplash, char thousandSep, const char* currencySymbol,
-	bool autoSaveEnabled, int autoSaveIntervalMinutes)
+	bool autoSaveEnabled, int autoSaveIntervalMinutes,
+	bool showFormulasDefault, bool showAverage, bool showCount,
+	bool showNumCount, bool showMin, bool showMax, bool showSum,
+	const char* autoSaveDir, bool restoreSession, int language)
 {
 	fShowGridBox->SetValue(showGrid ? B_CONTROL_ON : B_CONTROL_OFF);
 	fShowSplashBox->SetValue(showSplash ? B_CONTROL_ON : B_CONTROL_OFF);
@@ -156,6 +200,18 @@ void PreferencesWindow::SetValues(bool showGrid, char decimalSep, char listSep,
 	BString intervalStr;
 	intervalStr << autoSaveIntervalMinutes;
 	fAutoSaveIntervalField->SetText(intervalStr.String());
+	fAutoSaveDirField->SetText(autoSaveDir ? autoSaveDir : "");
+	fShowFormulasBox->SetValue(showFormulasDefault ? B_CONTROL_ON : B_CONTROL_OFF);
+	fStatAverageBox->SetValue(showAverage ? B_CONTROL_ON : B_CONTROL_OFF);
+	fStatCountBox->SetValue(showCount ? B_CONTROL_ON : B_CONTROL_OFF);
+	fStatNumCountBox->SetValue(showNumCount ? B_CONTROL_ON : B_CONTROL_OFF);
+	fStatMinBox->SetValue(showMin ? B_CONTROL_ON : B_CONTROL_OFF);
+	fStatMaxBox->SetValue(showMax ? B_CONTROL_ON : B_CONTROL_OFF);
+	fStatSumBox->SetValue(showSum ? B_CONTROL_ON : B_CONTROL_OFF);
+	fRestoreSessionBox->SetValue(restoreSession ? B_CONTROL_ON : B_CONTROL_OFF);
+	if (language < 0 || language > 2)
+		language = 0;
+	fLanguageField->Menu()->ItemAt(language)->SetMarked(true);
 	fDecimalField->Menu()->ItemAt(decimalSep == ',' ? 1 : 0)->SetMarked(true);
 	fListField->Menu()->ItemAt(listSep == ',' ? 1 : 0)->SetMarked(true);
 	int thousandIndex = thousandSep == '.' ? 1 : (thousandSep == ' ' ? 2 : 0);
@@ -208,6 +264,12 @@ void PreferencesWindow::MessageReceived(BMessage* message)
 			? fThousandField->Menu()->IndexOf(markedThousand) : 0;
 		char thousandSep = thousandIndex == 1 ? '.' : (thousandIndex == 2 ? ' ' : ',');
 
+		BMenuItem* markedLang = fLanguageField->Menu()->FindMarked();
+		int32 language = markedLang
+			? fLanguageField->Menu()->IndexOf(markedLang) : 0;
+		if (language < 0 || language > 2)
+			language = 0;
+
 		// Intervallo: qualunque testo non numerico o fuori dai limiti
 		// sani (1-120 minuti, applicati di nuovo in
 		// MainWindow::HandlePreferencesRequest) ricade su 5, il valore
@@ -227,6 +289,16 @@ void PreferencesWindow::MessageReceived(BMessage* message)
 		request.AddString("currencySymbol", fCurrencyField->Text());
 		request.AddBool("autoSaveEnabled", fAutoSaveBox->Value() == B_CONTROL_ON);
 		request.AddInt32("autoSaveInterval", autoSaveInterval);
+		request.AddBool("showFormulasDefault", fShowFormulasBox->Value() == B_CONTROL_ON);
+		request.AddBool("showAverage", fStatAverageBox->Value() == B_CONTROL_ON);
+		request.AddBool("showCount", fStatCountBox->Value() == B_CONTROL_ON);
+		request.AddBool("showNumCount", fStatNumCountBox->Value() == B_CONTROL_ON);
+		request.AddBool("showMin", fStatMinBox->Value() == B_CONTROL_ON);
+		request.AddBool("showMax", fStatMaxBox->Value() == B_CONTROL_ON);
+		request.AddBool("showSum", fStatSumBox->Value() == B_CONTROL_ON);
+		request.AddString("autoSaveDir", fAutoSaveDirField->Text());
+		request.AddBool("restoreSession", fRestoreSessionBox->Value() == B_CONTROL_ON);
+		request.AddInt32("language", language);
 		fTarget.SendMessage(&request);
 		return;
 	}
