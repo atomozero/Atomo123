@@ -4,7 +4,7 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
-Unreleased (toolbar second wave, AutoSum, new preferences):
+What shipped in v0.3.0, on top of v0.2.9:
 - New toolbar groups reusing the closest MIT catalog icons as
   placeholders until hand-drawn HVIFs land (see
   `Atomo123_icons/ATOMO123.md`): Cells (Insert row/column, Merge,

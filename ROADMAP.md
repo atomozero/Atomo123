@@ -5,8 +5,10 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.2.9 released** (six individually-tested feature/fix
-branches merged — legacy indexed color palette, docProps export,
+**Status: v0.3.0 in preparation** (toolbar second wave, AutoSum, new
+preferences — see CHANGELOG.md; v0.2.9 released with six
+individually-tested feature/fix branches merged — legacy indexed color
+palette, docProps export,
 Excel Table Total Row exclusion, real threaded comments, XLS named
 ranges, openpyxl compatibility gaps — plus the bundled `Welcome.xlsx`
 demo workbook translated to English, a real `FILTER` parsing bug
@@ -46,6 +48,7 @@ along the way lives in `CHANGELOG.md`.
 | Release prep (v0.2.7) | Done | Tagged on GitHub: XLSM macro preservation, sheet/cell protection, critical `.ascd` multi-sheet open fix, XLSX Tier 1 compatibility (array/shared formulas, named ranges) (see CHANGELOG.md) |
 | Release prep (v0.2.8) | Done | Tagged on GitHub: XLSX Tier 2 compatibility complete — comments, hyperlinks, data validation, freeze panes, border color, print settings (see CHANGELOG.md) |
 | Release prep (v0.2.9) | Done | Tagged on GitHub: six merged feature/fix branches, `Welcome.xlsx` demo translated to English, real `FILTER` parsing bug, cell text/number-format fixes found against real Excel (see CHANGELOG.md) |
+| Release prep (v0.3.0) | In progress | Toolbar second wave, AutoSum, new preferences (see CHANGELOG.md) |
 
 ### Phase 13 detail
 
