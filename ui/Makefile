@@ -8,7 +8,12 @@
 # rispettiva cartella) perche' sono add-on caricati a runtime, non
 # linkati staticamente in questo binario.
 
-CXX := g++
+# CXX/CXXFLAGS sovrascrivibili ("?=", non ":="): "make
+# CXX=x86-unknown-haiku-g++" userebbe il compilatore dell'architettura
+# secondaria a 32 bit invece del primario x86_64, se e quando installato
+# (vedi packaging/build-hpkg.sh) -- nessun'altra modifica qui necessaria,
+# stesso Makefile per entrambe le architetture.
+CXX ?= g++
 # -MMD -MP: genera un file .d di dipendenze (header inclusi, non solo
 # il .cpp) accanto a ogni .o -- senza questo, "make" non sa che un
 # .cpp va ricompilato quando cambia solo un header che include (regola
@@ -24,7 +29,7 @@ CXX := g++
 # -O2 (Fase 34): vedi il commento gemello in engine/Makefile -- stesso
 # identico riscontro misurato (LoadASCDBook 30,0s -> 9,2s su un file
 # XLSX reale a 13 fogli).
-CXXFLAGS := -std=gnu++17 -Wall -g -O2 -MMD -MP
+CXXFLAGS ?= -std=gnu++17 -Wall -g -O2 -MMD -MP
 ENGINE_DIR := ../engine
 ENGINE_SRCDIRS := $(ENGINE_DIR)/src/Cell $(ENGINE_DIR)/src/Formula \
 	$(ENGINE_DIR)/src/Functions $(ENGINE_DIR)/src/Excel \

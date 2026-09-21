@@ -5,7 +5,14 @@
 # (vedi ../legacy/opensumit/PORTING_STATUS.md per il porting a 64 bit
 # e ../docs/ENGINE_API.md per la mappa dei file inclusi/esclusi).
 
-CXX := g++
+# CXX/CXXFLAGS/AR sovrascrivibili ("?=", non ":="): questo progetto
+# compila solo per x86_64 finora, ma niente qui lo impone a mano --
+# "make CXX=x86-unknown-haiku-g++ AR=x86-unknown-haiku-ar" (nome del
+# compilatore secondario da verificare quando il toolchain a 32 bit
+# sara' davvero installato, vedi packaging/build-hpkg.sh) userebbe
+# quello invece del primario, senza toccare questo file.
+CXX ?= g++
+AR ?= ar
 # -MMD -MP (Fase 29): senza tracciamento delle dipendenze sugli header,
 # modificare un .h condiviso (es. Container.h) non forzava la
 # ricompilazione di OGNI .cpp che lo include -- risultato: un binario
@@ -25,7 +32,7 @@ CXX := g++
 # RecalculateWorkbook 2,0s -> 0,26s. -g resta insieme a -O2 (entrambi
 # supportati da gcc): i crash report restano leggibili, vedi il
 # commento su feedback_debugger_save_report nella memoria di progetto.
-CXXFLAGS := -std=gnu++17 -Wall -g -O2 -fPIC -MMD -MP
+CXXFLAGS ?= -std=gnu++17 -Wall -g -O2 -fPIC -MMD -MP
 SRCDIRS := src/Cell src/Formula src/Functions src/Excel src/FileSys src/Collections src/Misc-Classes src/Utils src/Config src/bsl src/Metrowerks src/Stubs
 INCLUDES := $(addprefix -I, $(SRCDIRS))
 OBJDIR := obj
@@ -41,7 +48,7 @@ LIB := libengine.a
 all: $(LIB)
 
 $(LIB): $(OBJDIR) $(OBJECTS)
-	ar -cru $(LIB) $(OBJECTS)
+	$(AR) -cru $(LIB) $(OBJECTS)
 
 -include $(DEPS)
 
