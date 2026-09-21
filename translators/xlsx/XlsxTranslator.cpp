@@ -78,8 +78,9 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // commento su kASCDVersion in ui/src/AscdIO.cpp (stesso identico
 // motivo, duplicato qui per lo stesso motivo di WriteASCD sotto).
 // Versione 6 (era 5): aggiunge il colore della barra dei dati, stesso
-// motivo duplicato ancora da ui/src/AscdIO.cpp.
-static const int32 kASCDVersion = 6;
+// motivo duplicato ancora da ui/src/AscdIO.cpp. Versione 7 (era 6):
+// aggiunge il nome dello stile dell'icon set, stesso motivo.
+static const int32 kASCDVersion = 7;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // Formato "cartella di lavoro" multi-foglio (Fase 9): duplicato da
 // ui/src/AscdIO.h/.cpp (magic "ASCB", conteggio fogli, poi per
@@ -911,6 +912,16 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			if (dest->Write(&rule.dataBarColor, sizeof(rule.dataBarColor))
 					!= (ssize_t)sizeof(rule.dataBarColor))
 				return B_IO_ERROR;
+
+			// Nome dello stile dell'icon set (versione 7, vedi il
+			// commento su kASCDVersion e su
+			// ConditionalFormatRule::iconSetStyle in Container.h),
+			// stesso formato di ui/src/AscdIO.cpp.
+			int32 iconStyleLen = (int32)rule.iconSetStyle.size();
+			if (dest->Write(&iconStyleLen, sizeof(iconStyleLen)) != (ssize_t)sizeof(iconStyleLen))
+				return B_IO_ERROR;
+			if (iconStyleLen > 0 && dest->Write(rule.iconSetStyle.data(), iconStyleLen) != iconStyleLen)
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1220,11 +1231,12 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		return B_BAD_DATA;
 	// versioni 1, 2 (byte "kind" per cella), 3 (punti di scala di
 	// colori), 4 (riferimento di cella per il confronto), 5 (formula
-	// "expression") e 6 (colore della barra dei dati, vedi WriteASCD
-	// sopra e il commento su kASCDVersion) restano tutte leggibili --
-	// stesso motivo di LoadASCD in ui/src/AscdIO.cpp.
+	// "expression"), 6 (colore della barra dei dati) e 7 (nome dello
+	// stile dell'icon set, vedi WriteASCD sopra e il commento su
+	// kASCDVersion) restano tutte leggibili -- stesso motivo di
+	// LoadASCD in ui/src/AscdIO.cpp.
 	if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5
-			&& version != kASCDVersion)
+			&& version != 6 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -1881,6 +1893,19 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				// saltato, stesso motivo di sopra.
 				if (version >= 6 && source->Seek(sizeof(rgb_color), SEEK_CUR) < 0)
 					return B_BAD_DATA;
+
+				// Nome dello stile dell'icon set (versione 7): solo
+				// saltato, stesso motivo di sopra.
+				if (version >= 7)
+				{
+					int32 iconStyleLen;
+					if (source->Read(&iconStyleLen, sizeof(iconStyleLen)) != (ssize_t)sizeof(iconStyleLen))
+						return B_BAD_DATA;
+					if (iconStyleLen < 0 || iconStyleLen > 256)
+						return B_BAD_DATA;
+					if (iconStyleLen > 0 && source->Seek(iconStyleLen, SEEK_CUR) < 0)
+						return B_BAD_DATA;
+				}
 			}
 		}
 	}
@@ -4430,6 +4455,13 @@ struct CondFormatRule {
 	// per ColorScalePoint nel motore.
 	std::vector<ColorScaleCfvo> csCfvos;
 	std::vector<rgb_color> csColors;
+	// Solo per type == "iconSet": il nome dello stile
+	// (<iconSet iconSet="3TrafficLights1">), salvato cosi' com'e' --
+	// vedi ConditionalFormatRule::iconSetStyle in Container.h per
+	// perche' NON viene mai interpretato per contare le icone (lo fa
+	// csCfvos.size(), riusato identico a colorScale/dataBar per le
+	// soglie).
+	std::string iconSetStyle;
 };
 
 // Un <hyperlink ref="A1" r:id="rIdX"/> (o, per un collegamento INTERNO
@@ -4985,6 +5017,21 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 	// li interpreta, cosi' nessuna analisi XML e' duplicata.
 	else if (strcmp(name, "dataBar") == 0 && ctx->inCfRule)
 		ctx->inColorScale = true;
+	// <iconSet iconSet="3TrafficLights1"><cfvo type="percent" val="0"/>
+	// <cfvo .../><cfvo .../></iconSet> (Tier 3, Fase C, dentro un
+	// <cfRule type="iconSet">): stessa forma di <colorScale>/<dataBar>
+	// sopra per i <cfvo> (riusa lo stesso flag/accumulatore), ma XLSX
+	// non scrive MAI un <color> qui (il colore di un'icona e' implicito
+	// nel suo stile grafico, non nel file) -- csColors restera' quindi
+	// vuoto per questo tipo, e va bene cosi': ApplyConditionalFormatting
+	// non lo legge per "iconSet".
+	else if (strcmp(name, "iconSet") == 0 && ctx->inCfRule)
+	{
+		ctx->inColorScale = true;
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "iconSet") == 0)
+				ctx->currentRule.iconSetStyle = atts[i + 1];
+	}
 	else if (strcmp(name, "cfvo") == 0 && ctx->inColorScale)
 	{
 		ColorScaleCfvo cfvo;
@@ -5172,6 +5219,8 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 	else if (strcmp(name, "colorScale") == 0 && ctx->inColorScale)
 		ctx->inColorScale = false;
 	else if (strcmp(name, "dataBar") == 0 && ctx->inColorScale)
+		ctx->inColorScale = false;
+	else if (strcmp(name, "iconSet") == 0 && ctx->inColorScale)
 		ctx->inColorScale = false;
 	else if (strcmp(name, "cfRule") == 0 && ctx->inCfRule)
 	{
@@ -6022,16 +6071,17 @@ static bool IsCellReferenceFormula(const std::string& formula, int& outCol, int&
 // letterale o un riferimento di cella), "duplicateValues" (celle il
 // cui valore compare piu' di una volta nello stesso intervallo, Fase
 // 13), "expression" (formula booleana arbitraria con riferimenti
-// relativi), "colorScale" (Fase 33/A punto 6) e "dataBar" (Tier 3,
-// Fase B) -- questi ultimi due, a differenza dei primi tre, non usano
-// dxfId: colori/soglie sono scritti in linea dentro <colorScale>/
-// <dataBar>, raccolti da ParseSheet in CondFormatRule::csCfvos/
-// csColors (stesso accumulatore per entrambi, vedi il commento sul
-// gestore di <dataBar> in ParseSheet). Gli altri tipi ECMA-376
-// (containsText, top10, iconSet...) restano ignorati in sicurezza,
-// nessuna regola aggiunta -- containsText/top10 richiederebbero un
-// vero motore di valutazione formule contro un valore ipotetico,
-// iconSet non ha ancora un tipo di regola lato app (vedi ROADMAP.md).
+// relativi), "colorScale" (Fase 33/A punto 6), "dataBar" (Tier 3, Fase
+// B) e "iconSet" (Tier 3, Fase C) -- questi ultimi tre, a differenza
+// dei primi tre, non usano dxfId: soglie (e per colorScale/dataBar,
+// colori) sono scritti in linea dentro <colorScale>/<dataBar>/
+// <iconSet>, raccolti da ParseSheet in CondFormatRule::csCfvos/
+// csColors (stesso accumulatore per tutti e tre, vedi il commento sul
+// gestore di <iconSet> in ParseSheet -- csColors resta vuoto per
+// iconSet, che non ne scrive mai). Gli altri tipi ECMA-376
+// (containsText, top10...) restano ignorati in sicurezza, nessuna
+// regola aggiunta -- richiederebbero un vero motore di valutazione
+// formule contro un valore ipotetico, fuori scope.
 // Per cellIs/duplicateValues, solo il colore di SFONDO del dxf (non
 // anche il colore del testo): ConditionalFormatRule dell'engine porta
 // un solo colore per quei due tipi, vedi il commento su quello struct
@@ -6083,6 +6133,32 @@ static void ApplyConditionalFormatting(CContainer* doc,
 			engineRule.type = eCondDataBar;
 			engineRule.ranges = rule.ranges;
 			engineRule.dataBarColor = rule.csColors[0];
+			for (size_t p = 0; p < rule.csCfvos.size(); p++)
+			{
+				ColorScalePoint point;
+				point.cfvoType = rule.csCfvos[p].type;
+				point.cfvoValue = rule.csCfvos[p].val;
+				engineRule.colorScalePoints.push_back(point);
+			}
+			doc->AddConditionalFormatRule(engineRule);
+			continue;
+		}
+
+		// Icon set (Tier 3, Fase C): a differenza di <colorScale>/
+		// <dataBar>, XLSX non scrive MAI un <color> qui -- solo i
+		// <cfvo> contano (il numero di icone e' csCfvos.size(), non il
+		// nome dello stile, vedi il commento su eCondIconSet in
+		// Container.h). Servono almeno 2 cfvo per avere una soglia
+		// valida.
+		if (rule.type == "iconSet")
+		{
+			if (rule.csCfvos.size() < 2)
+				continue;
+
+			ConditionalFormatRule engineRule;
+			engineRule.type = eCondIconSet;
+			engineRule.ranges = rule.ranges;
+			engineRule.iconSetStyle = rule.iconSetStyle;
 			for (size_t p = 0; p < rule.csCfvos.size(); p++)
 			{
 				ColorScalePoint point;

@@ -481,3 +481,84 @@ std::map<cell, DataBarInfo> CContainer::EvaluateDataBarFormatting()
 	return result;
 } // CContainer::EvaluateDataBarFormatting
 
+// Icon set vivo (Tier 3, Fase C): stesso schema a due passate di
+// EvaluateDataBarFormatting sopra, ma il risultato per cella e' un
+// indice (quale soglia, in ordine crescente, il valore ha superato)
+// invece di una frazione continua.
+std::map<cell, IconSetInfo> CContainer::EvaluateIconSetFormatting()
+{
+	std::map<cell, IconSetInfo> result;
+
+	for (size_t i = 0; i < fCondFormatRules.size(); i++)
+	{
+		const ConditionalFormatRule& rule = fCondFormatRules[i];
+		if (rule.type != eCondIconSet || rule.colorScalePoints.size() < 2)
+			continue;
+
+		int iconCount = (int)rule.colorScalePoints.size();
+
+		for (size_t r = 0; r < rule.ranges.size(); r++)
+		{
+			const range& rg = rule.ranges[r];
+
+			std::vector<double> values;
+			for (int row = rg.top; row <= rg.bottom; row++)
+			{
+				for (int col = rg.left; col <= rg.right; col++)
+				{
+					Value v;
+					GetValue(cell(col, row), v);
+					if (v.fType == eNumData && !v.IsNan())
+						values.push_back((double)v);
+				}
+			}
+			if (values.empty())
+				continue;
+
+			std::vector<double> sortedValues = values;
+			std::sort(sortedValues.begin(), sortedValues.end());
+			double rangeMin = sortedValues.front();
+			double rangeMax = sortedValues.back();
+
+			std::vector<double> thresholds(rule.colorScalePoints.size());
+			for (size_t p = 0; p < rule.colorScalePoints.size(); p++)
+				thresholds[p] = ResolveColorScaleThreshold(rule.colorScalePoints[p],
+					rangeMin, rangeMax, sortedValues);
+
+			for (int row = rg.top; row <= rg.bottom; row++)
+			{
+				for (int col = rg.left; col <= rg.right; col++)
+				{
+					cell c(col, row);
+					Value v;
+					GetValue(c, v);
+					if (v.fType != eNumData || v.IsNan())
+						continue;
+
+					double val = (double)v;
+					// L'icona e' quella della soglia PIU' ALTA che il
+					// valore ha raggiunto o superato -- stessa logica
+					// di "in quale segmento cade" gia' usata da
+					// EvaluateConditionalFormatting per la scala di
+					// colori, ma qui il risultato e' l'indice del
+					// segmento stesso, non un colore interpolato al
+					// suo interno.
+					int iconIndex = 0;
+					for (size_t t = 1; t < thresholds.size(); t++)
+					{
+						if (val >= thresholds[t])
+							iconIndex = (int)t;
+					}
+
+					IconSetInfo info;
+					info.iconIndex = iconIndex;
+					info.iconCount = iconCount;
+					result[c] = info;
+				}
+			}
+		}
+	}
+
+	return result;
+} // CContainer::EvaluateIconSetFormatting
+

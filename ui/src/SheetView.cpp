@@ -2903,6 +2903,45 @@ void SheetView::DrawTraceArrow(BPoint from, BPoint to)
 	StrokeLine(to, wing2);
 }
 
+// Colore di un'icona di un icon set (Tier 3, Fase C): sfuma dal rosso
+// (indice 0, il livello piu' basso) al verde (l'ultimo indice) --
+// stesso principio "un solo aspetto per qualunque stile" gia'
+// dichiarato sul commento di eCondIconSet in Container.h, invece delle
+// forme vere di Excel (frecce/bandiere/valutazioni). iconCount <= 1
+// non dovrebbe mai arrivare qui (EvaluateIconSetFormatting scarta le
+// regole con meno di 2 soglie), ma un ripiego a "rosso" evita comunque
+// una divisione per zero.
+static rgb_color IconColorForTier(int iconIndex, int iconCount)
+{
+	if (iconCount <= 1)
+	{
+		rgb_color red = { 200, 60, 60, 255 };
+		return red;
+	}
+	double t = (double)iconIndex / (double)(iconCount - 1);
+	rgb_color lo = { 200, 60, 60, 255 };   // rosso
+	rgb_color mid = { 230, 180, 40, 255 }; // giallo/arancio
+	rgb_color hi = { 60, 170, 80, 255 };   // verde
+	rgb_color a, b;
+	double localT;
+	if (t < 0.5)
+	{
+		a = lo; b = mid;
+		localT = t / 0.5;
+	}
+	else
+	{
+		a = mid; b = hi;
+		localT = (t - 0.5) / 0.5;
+	}
+	rgb_color result;
+	result.red = (uint8)(a.red + localT * ((double)b.red - (double)a.red));
+	result.green = (uint8)(a.green + localT * ((double)b.green - (double)a.green));
+	result.blue = (uint8)(a.blue + localT * ((double)b.blue - (double)a.blue));
+	result.alpha = 255;
+	return result;
+}
+
 // Vedi il commento su fFrozenRows/fFrozenCols in SheetView.h: disegna
 // sfondo, griglia e testo per un blocco di celle [firstCol,lastCol] x
 // [firstRow,lastRow], spostato di (xOrigin, yOrigin) -- (0,0) per il
@@ -2972,6 +3011,30 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 						SetHighColor(db->second.color);
 						FillRect(bar);
 					}
+				}
+
+				// Icon set (Tier 3, Fase C): un cerchio colorato
+				// nell'angolo in alto a DESTRA della cella, sopra lo
+				// sfondo/barra appena disegnati. Non a sinistra (dove
+				// sta la barra dei dati sopra): a differenza di Excel,
+				// dove i numeri sono allineati a destra per default,
+				// eAlignGeneral in questo motore resta SEMPRE a
+				// sinistra (vedi il commento sull'allineamento piu'
+				// sotto in questa stessa funzione) -- un'icona a
+				// sinistra finiva quindi sistematicamente coperta dal
+				// testo stesso, disegnato in un ciclo successivo sopra
+				// questo. Bug reale trovato dal test a livello di
+				// pixel qui sotto (icona attesa verde, pixel campionato
+				// nero: la cifra del numero, non il cerchio).
+				std::map<cell, IconSetInfo>::const_iterator ic = fCondFormatIcons.find(c);
+				if (ic != fCondFormatIcons.end())
+				{
+					BRect full = CellRect(c).OffsetByCopy(xOrigin, yOrigin);
+					const float kIconSize = 12;
+					BRect iconRect(full.right - 2 - kIconSize, full.top + 2,
+						full.right - 2, full.top + 2 + kIconSize);
+					SetHighColor(IconColorForTier(ic->second.iconIndex, ic->second.iconCount));
+					FillEllipse(iconRect);
 				}
 			}
 		}
@@ -3074,6 +3137,19 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 					SetHighColor(db->second.color);
 					FillRect(bar);
 				}
+			}
+
+			// Icon set sull'intera cella unita, stesso principio (e
+			// stesso angolo in alto a DESTRA, vedi il commento la')
+			// del ciclo per cella singola sopra.
+			std::map<cell, IconSetInfo>::const_iterator ic = fCondFormatIcons.find(topLeft);
+			if (ic != fCondFormatIcons.end())
+			{
+				const float kIconSize = 12;
+				BRect iconRect(full.right - 2 - kIconSize, full.top + 2,
+					full.right - 2, full.top + 2 + kIconSize);
+				SetHighColor(IconColorForTier(ic->second.iconIndex, ic->second.iconCount));
+				FillEllipse(iconRect);
 			}
 
 			if (PrintGridEffective())
@@ -3505,6 +3581,8 @@ void SheetView::Draw(BRect updateRect)
 		: std::map<cell, rgb_color>();
 	fCondFormatDataBars = fDoc ? fDoc->EvaluateDataBarFormatting()
 		: std::map<cell, DataBarInfo>();
+	fCondFormatIcons = fDoc ? fDoc->EvaluateIconSetFormatting()
+		: std::map<cell, IconSetInfo>();
 
 	SetHighColor(255, 255, 255);
 	FillRect(updateRect);

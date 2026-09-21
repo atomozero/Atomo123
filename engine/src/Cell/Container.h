@@ -196,7 +196,39 @@ enum CondFormatRuleType {
 	// separato di Excel (i valori sotto lo zero si riempiono comunque
 	// verso sinistra dallo stesso punto, non con un colore diverso), ne'
 	// per la variante "solo bordo" -- entrambi rari nell'uso reale.
-	eCondDataBar
+	eCondDataBar,
+	// Icon set (Tier 3, Fase C -- l'ultimo dei tre tipi "relativi
+	// all'intervallo" di questo gruppo): come eCondColorScale/
+	// eCondDataBar, riusa colorScalePoints per le soglie (di solito
+	// "percent" 0/33/67 per un set a 3 icone, il vocabolario cfvo e'
+	// identico), ma il colore di ogni punto resta inutilizzato -- il
+	// NUMERO di soglie (colorScalePoints.size(), tipicamente 3/4/5)
+	// determina direttamente quante icone ha il set, non il nome dello
+	// stile (ConditionalFormatRule::iconSetStyle sotto e' salvato solo
+	// per il giro di andata/ritorno con XLSX, mai interpretato per
+	// contare le icone: piu' robusto che dover conoscere il significato
+	// di ogni nome Excel, "3TrafficLights1"/"3Arrows"/... compresi
+	// quelli non ancora visti). Risultato per cella: un INDICE (0 = il
+	// livello piu' basso), vedi IconSetInfo sotto e
+	// CContainer::EvaluateIconSetFormatting. Scope v1: un solo aspetto
+	// grafico per qualunque nome di stile (cerchi colorati, vedi
+	// SheetView::DrawCellBand) invece delle forme vere di Excel
+	// (frecce/bandiere/valutazioni) -- corretto nel raggruppamento, non
+	// nella fedeltà visiva; nessun supporto per "reverse" (ordine icone
+	// invertito).
+	eCondIconSet
+};
+
+// Risultato per cella di una regola eCondIconSet (vedi sopra): quale
+// icona mostrare (0 = livello piu' basso) e quante ce ne sono in
+// totale nel set (3/4/5) -- serve entrambi per scegliere il colore
+// giusto nel disegno, che sfuma dal rosso al verde sull'intero set,
+// non solo in base all'indice da solo.
+struct IconSetInfo {
+	int iconIndex;
+	int iconCount;
+
+	IconSetInfo() : iconIndex(0), iconCount(3) {}
 };
 
 // Risultato per cella di una regola eCondDataBar (vedi sopra): quanta
@@ -273,12 +305,19 @@ struct ConditionalFormatRule {
 	// riuso deliberato dello stesso vettore invece di un secondo campo
 	// soglie a parte.
 	rgb_color dataBarColor;
+	// Solo per eCondIconSet: il nome dello stile XLSX cosi' com'e'
+	// (es. "3TrafficLights1"), salvato per il solo giro XLSX -> ASCD ->
+	// XLSX -- MAI interpretato per decidere il numero di icone (vedi il
+	// commento su eCondIconSet sopra, colorScalePoints.size() e' la
+	// fonte di verita' per quello).
+	std::string iconSetStyle;
 
 	ConditionalFormatRule() : type(eCondCellIsEqual), compareIsCellRef(false)
 	{
 		bgColor.red = bgColor.green = bgColor.blue = bgColor.alpha = 255;
 		dataBarColor.red = 99; dataBarColor.green = 142; dataBarColor.blue = 198;
 		dataBarColor.alpha = 255; // 638EC6, lo stesso blu predefinito di Excel
+		iconSetStyle = "3TrafficLights1";
 	}
 };
 
@@ -635,6 +674,11 @@ public:
 	// suoi test con lei) e SheetView disegna prima lo sfondo piatto poi,
 	// se presente, la barra sopra.
 	std::map<cell, DataBarInfo> EvaluateDataBarFormatting();
+
+	// Stessa idea, per eCondIconSet (Tier 3, Fase C): il risultato per
+	// cella e' un indice di icona (vedi IconSetInfo), mappa separata
+	// per lo stesso motivo di EvaluateDataBarFormatting sopra.
+	std::map<cell, IconSetInfo> EvaluateIconSetFormatting();
 
 	// Tabelle strutturate di Excel (Fase 14): vedi CTableDef sopra --
 	// stesso schema sparso di fComments/fHyperlinks/fValidations, ma

@@ -28,12 +28,18 @@ static const uint32 kMsgTypeChangedLocal = 'cftc';
 
 // Corrispondenza posizionale con CondFormatRuleType in Container.h
 // (0=eCondCellIsEqual, 1=eCondDuplicateValues, 2=eCondColorScale,
-// 3=eCondDataBar) -- stesso principio gia' usato per ChartType/
-// ChartWindow e ValidationType/ValidationWindow. La scala di colori
-// qui e' sempre a due punti (min->max): copre il caso Excel piu'
-// comune senza dover costruire un editor per un numero arbitrario di
-// soglie. La barra dei dati riusa fColorControl (un solo colore,
+// 3=eCondDataBar, 4=eCondIconSet) -- stesso principio gia' usato per
+// ChartType/ChartWindow e ValidationType/ValidationWindow. La scala di
+// colori qui e' sempre a due punti (min->max): copre il caso Excel
+// piu' comune senza dover costruire un editor per un numero arbitrario
+// di soglie. La barra dei dati riusa fColorControl (un solo colore,
 // come il vero Excel) invece di aggiungere un terzo BColorControl.
+// L'icon set non ha NESSUN colore scelto dall'utente (il colore di
+// ogni icona e' fisso per livello, vedi SheetView::IconColorForTier) e
+// crea sempre un set a 3 livelli (il caso Excel piu' comune, "3
+// semafori") -- nessun editor per il numero di icone o lo stile, a
+// differenza dell'importazione XLSX che li accetta entrambi cosi' come
+// il file li descrive.
 ConditionalFormatWindow::ConditionalFormatWindow(BMessenger target)
 	:
 	BWindow(BRect(180, 180, 480, 400), B_TRANSLATE("Formattazione condizionale"),
@@ -50,6 +56,8 @@ ConditionalFormatWindow::ConditionalFormatWindow(BMessenger target)
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Scala di colori (minimo -> massimo)"),
 		new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Barra dei dati (minimo -> massimo)"),
+		new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Icon set (3 livelli)"),
 		new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->ItemAt(0)->SetMarked(true);
 	typeMenu->SetTargetForItems(this);
@@ -100,14 +108,22 @@ void ConditionalFormatWindow::UpdateFieldsForType()
 	int type = SelectedType();
 	bool isColorScale = (type == 2);
 	bool isDataBar = (type == 3);
+	bool isIconSet = (type == 4);
 	// Il valore di confronto ha senso solo per "uguale a" (0): scala di
-	// colori e barra dei dati derivano tutto dal minimo/massimo reale
-	// dell'intervallo, mai da un valore digitato qui.
-	fValueField->SetEnabled(!isColorScale && !isDataBar);
+	// colori, barra dei dati e icon set derivano tutto dal minimo/
+	// massimo reale dell'intervallo, mai da un valore digitato qui.
+	fValueField->SetEnabled(!isColorScale && !isDataBar && !isIconSet);
 	if (isColorScale)
 		fMaxColorControl->Show();
 	else if (!fMaxColorControl->IsHidden())
 		fMaxColorControl->Hide();
+	// L'icon set non ha nessun colore scelto dall'utente (vedi il
+	// commento sul costruttore sopra): nasconde anche fColorControl,
+	// non solo fMaxColorControl.
+	if (isIconSet && !fColorControl->IsHidden())
+		fColorControl->Hide();
+	else if (!isIconSet && fColorControl->IsHidden())
+		fColorControl->Show();
 }
 
 void ConditionalFormatWindow::MessageReceived(BMessage* message)
@@ -116,15 +132,22 @@ void ConditionalFormatWindow::MessageReceived(BMessage* message)
 	{
 		case kMsgApplyLocal:
 		{
-			rgb_color color = fColorControl->ValueAsColor();
+			int type = SelectedType();
 			BMessage request(kMsgCondFormatCommit);
-			request.AddInt32("type", SelectedType());
+			request.AddInt32("type", type);
 			request.AddString("value", fValueField->Text());
-			request.AddData("color", B_RGB_COLOR_TYPE, &color, sizeof(rgb_color));
-			if (SelectedType() == 2)
+			// L'icon set non porta nessun colore (vedi il commento sul
+			// costruttore sopra): "color" resta assente dal messaggio,
+			// MainWindow lo smista PRIMA di cercare quel campo.
+			if (type != 4)
 			{
-				rgb_color maxColor = fMaxColorControl->ValueAsColor();
-				request.AddData("maxColor", B_RGB_COLOR_TYPE, &maxColor, sizeof(rgb_color));
+				rgb_color color = fColorControl->ValueAsColor();
+				request.AddData("color", B_RGB_COLOR_TYPE, &color, sizeof(rgb_color));
+				if (type == 2)
+				{
+					rgb_color maxColor = fMaxColorControl->ValueAsColor();
+					request.AddData("maxColor", B_RGB_COLOR_TYPE, &maxColor, sizeof(rgb_color));
+				}
 			}
 			fTarget.SendMessage(&request);
 			Hide();

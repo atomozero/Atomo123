@@ -56,8 +56,11 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // che su un nuovo formato di lunghezza. Versione 6 (era 5): un altro
 // campo NUOVO IN MEZZO alla stessa sezione, stesso principio -- il
 // colore della barra dei dati (Tier 3, Fase B, vedi il commento su
-// ConditionalFormatRule::dataBarColor in Container.h).
-static const int32 kASCDVersion = 6;
+// ConditionalFormatRule::dataBarColor in Container.h). Versione 7
+// (era 6): ancora un campo in coda alla stessa sezione -- il nome
+// dello stile dell'icon set (Tier 3, Fase C, vedi il commento su
+// ConditionalFormatRule::iconSetStyle in Container.h).
+static const int32 kASCDVersion = 7;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // "ASCB": formato cartella di lavoro LEGACY, congelato per sempre a
 // questo elenco di sezioni per foglio (fino a "Imposta pagina", Fase
@@ -887,6 +890,18 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			if (dest->Write(&rule.dataBarColor, sizeof(rule.dataBarColor))
 					!= (ssize_t)sizeof(rule.dataBarColor))
 				return B_IO_ERROR;
+
+			// Nome dello stile dell'icon set (versione 7, vedi il
+			// commento su kASCDVersion e su
+			// ConditionalFormatRule::iconSetStyle in Container.h): non
+			// significativo per gli altri quattro tipi, scritto
+			// comunque per ognuno, stesso motivo del colore della
+			// barra dei dati sopra.
+			int32 iconStyleLen = (int32)rule.iconSetStyle.size();
+			if (dest->Write(&iconStyleLen, sizeof(iconStyleLen)) != (ssize_t)sizeof(iconStyleLen))
+				return B_IO_ERROR;
+			if (iconStyleLen > 0 && dest->Write(rule.iconSetStyle.data(), iconStyleLen) != iconStyleLen)
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1238,14 +1253,16 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// contro un riferimento di cella invece che un letterale), 5
 	// (regola "expression", una formula booleana arbitraria con
 	// riferimenti relativi -- vedi il commento su
-	// ConditionalFormatRule::expressionFormula in Container.h) e 6
+	// ConditionalFormatRule::expressionFormula in Container.h), 6
 	// (colore della barra dei dati, vedi il commento su
-	// ConditionalFormatRule::dataBarColor in Container.h) restano
+	// ConditionalFormatRule::dataBarColor in Container.h) e 7 (nome
+	// dello stile dell'icon set, vedi il commento su
+	// ConditionalFormatRule::iconSetStyle in Container.h) restano
 	// TUTTE leggibili -- un file scritto da una versione precedente di
 	// questo formato non deve smettere di aprirsi solo perche' questo
 	// binario e' piu' recente.
 	if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5
-			&& version != kASCDVersion)
+			&& version != 6 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -2172,6 +2189,27 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					if (source->Read(&dataBarColor, sizeof(dataBarColor)) != (ssize_t)sizeof(dataBarColor))
 						return B_BAD_DATA;
 					rule.dataBarColor = dataBarColor;
+				}
+
+				// Nome dello stile dell'icon set: solo un file versione
+				// 7+ ha scritto questi byte (vedi il commento su
+				// kASCDVersion e su ConditionalFormatRule::iconSetStyle
+				// in Container.h).
+				if (version >= 7)
+				{
+					int32 iconStyleLen;
+					if (source->Read(&iconStyleLen, sizeof(iconStyleLen)) != (ssize_t)sizeof(iconStyleLen))
+						return B_BAD_DATA;
+					if (iconStyleLen < 0 || iconStyleLen > 256)
+						return B_BAD_DATA;
+					if (iconStyleLen > 0)
+					{
+						rule.iconSetStyle.resize(iconStyleLen);
+						if (source->Read(&rule.iconSetStyle[0], iconStyleLen) != iconStyleLen)
+							return B_BAD_DATA;
+					}
+					else
+						rule.iconSetStyle.clear();
 				}
 
 				doc->AddConditionalFormatRule(rule);

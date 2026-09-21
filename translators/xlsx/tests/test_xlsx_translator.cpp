@@ -4303,19 +4303,20 @@ int main()
 			// Finalmente, la sezione che questo test vuole davvero
 			// verificare: le quattro regole VIVE importate da
 			// sample_condformat.xlsx (non piu' un colore congelato) --
-			// la terza (colorScale su C1:C10, Fase 33/A punto 6) e la
-			// quarta (dataBar su D1:D10, Tier 3 Fase B) sono state
-			// aggiunte al file di prova insieme al resto.
+			// la terza (colorScale su C1:C10, Fase 33/A punto 6), la
+			// quarta (dataBar su D1:D10, Tier 3 Fase B) e la quinta
+			// (iconSet su E1:E10, Tier 3 Fase C) sono state aggiunte al
+			// file di prova insieme al resto.
 			int32 ruleCount = 0;
 			if (sectionsOk && pos + 4 <= ascdLen)
 			{
 				memcpy(&ruleCount, ascdData + pos, 4); pos += 4;
 			}
-			Check(ruleCount == 4,
-				"quattro regole di formattazione condizionale importate da sample_condformat.xlsx");
+			Check(ruleCount == 5,
+				"cinque regole di formattazione condizionale importate da sample_condformat.xlsx");
 
 			bool foundCellIsRule = false, foundDuplicatesRule = false, foundColorScaleRule = false;
-			bool foundDataBarRule = false;
+			bool foundDataBarRule = false, foundIconSetRule = false;
 			for (int32 i = 0; i < ruleCount && pos + 1 + 4 <= ascdLen; i++)
 			{
 				int8 type;
@@ -4339,7 +4340,7 @@ int main()
 				memcpy(&rangeCount, ascdData + pos, 4); pos += 4;
 
 				bool rangeMatchesA1A3 = false, rangeMatchesB1B3 = false, rangeMatchesC1C10 = false;
-				bool rangeMatchesD1D10 = false;
+				bool rangeMatchesD1D10 = false, rangeMatchesE1E10 = false;
 				for (int32 r = 0; r < rangeCount && pos + 8 <= ascdLen; r++)
 				{
 					int16 left, top, right, bottom;
@@ -4356,6 +4357,8 @@ int main()
 						rangeMatchesC1C10 = true;
 					if (left == 4 && right == 4 && top == 1 && bottom == 10)
 						rangeMatchesD1D10 = true;
+					if (left == 5 && right == 5 && top == 1 && bottom == 10)
+						rangeMatchesE1E10 = true;
 				}
 
 				// Punti di controllo della scala di colori (versione 3
@@ -4433,6 +4436,24 @@ int main()
 						| dataBarColor.blue;
 				}
 
+				// Nome dello stile dell'icon set (versione 7 del
+				// formato ASCD, Tier 3 Fase C): int32 lunghezza +
+				// testo, scritto per OGNI regola ormai -- vedi il
+				// commento su ConditionalFormatRule::iconSetStyle in
+				// Container.h. Vuoto per le prime quattro regole di
+				// questo file di prova.
+				std::string iconSetStyle;
+				if (pos + 4 <= ascdLen)
+				{
+					int32 iconStyleLen;
+					memcpy(&iconStyleLen, ascdData + pos, 4); pos += 4;
+					if (iconStyleLen > 0 && pos + (size_t)iconStyleLen <= ascdLen)
+					{
+						iconSetStyle.assign((const char*)ascdData + pos, iconStyleLen);
+						pos += iconStyleLen;
+					}
+				}
+
 				if (type == eCondCellIsEqual && compareValue == "Mancante" && packed == 0xFFC7CE
 					&& rangeMatchesA1A3)
 					foundCellIsRule = true;
@@ -4448,6 +4469,12 @@ int main()
 					&& cfvoTypes[0] == "min" && cfvoTypes[1] == "max"
 					&& dataBarColorPacked == 0x638EC6)
 					foundDataBarRule = true;
+				if (type == eCondIconSet && rangeMatchesE1E10 && cfvoTypes.size() == 3
+					&& cfvoTypes[0] == "percent" && cfvoTypes[1] == "percent"
+					&& cfvoTypes[2] == "percent"
+					&& cfvoValues[0] == 0 && cfvoValues[1] == 33 && cfvoValues[2] == 67
+					&& iconSetStyle == "3TrafficLights1")
+					foundIconSetRule = true;
 			}
 			Check(foundCellIsRule,
 				"la regola cellIs/equal (\"Mancante\", dxf 0 = FFC7CE) e' importata correttamente");
@@ -4458,6 +4485,9 @@ int main()
 				"con tutti e tre i punti di controllo e i loro colori veri");
 			Check(foundDataBarRule,
 				"la regola dataBar (min/max, D1:D10, colore 638EC6) e' importata correttamente");
+			Check(foundIconSetRule,
+				"la regola iconSet (percent 0/33/67, E1:E10, stile 3TrafficLights1) e' importata "
+				"correttamente");
 
 			// La valutazione VIVA vera e propria (il valore di ogni
 			// cella confrontato con la regola, non solo che la regola

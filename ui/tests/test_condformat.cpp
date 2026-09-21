@@ -160,6 +160,40 @@ int main()
 
 	win->RemoveAllConditionalFormatRules();
 
+	// Icon set (Tier 3, Fase C): nessun colore scelto dall'utente --
+	// ApplyIconSetToSelection e' l'equivalente per questo quinto tipo
+	// di regola, sempre a 3 livelli/soglie percentuali 0/33/67.
+	view->SetSelection(cell(5, 1));
+	view->ExtendSelection(cell(5, 4)); // E1:E4
+	win->ApplyIconSetToSelection();
+	Check(doc->GetConditionalFormatRules().size() == 1,
+		"ApplyIconSetToSelection aggiunge una regola");
+	if (doc->GetConditionalFormatRules().size() == 1)
+	{
+		const ConditionalFormatRule& iconRule = doc->GetConditionalFormatRules()[0];
+		Check(iconRule.type == eCondIconSet, "la regola ha il tipo icon set");
+		Check(iconRule.colorScalePoints.size() == 3,
+			"il set a 3 livelli ha esattamente tre soglie, riusando ColorScalePoint");
+		if (iconRule.colorScalePoints.size() == 3)
+		{
+			Check(iconRule.colorScalePoints[0].cfvoType == "percent"
+					&& iconRule.colorScalePoints[0].cfvoValue == 0,
+				"la prima soglia e' 0%");
+			Check(iconRule.colorScalePoints[1].cfvoType == "percent"
+					&& iconRule.colorScalePoints[1].cfvoValue == 33,
+				"la seconda soglia e' 33%");
+			Check(iconRule.colorScalePoints[2].cfvoType == "percent"
+					&& iconRule.colorScalePoints[2].cfvoValue == 67,
+				"la terza soglia e' 67%");
+		}
+		Check(iconRule.ranges.size() == 1 && iconRule.ranges[0].left == 5
+				&& iconRule.ranges[0].top == 1 && iconRule.ranges[0].right == 5
+				&& iconRule.ranges[0].bottom == 4,
+			"la regola di icon set si applica esattamente alla selezione corrente (E1:E4)");
+	}
+
+	win->RemoveAllConditionalFormatRules();
+
 	win->Unlock();
 
 	// --- Il colore si vede davvero sui pixel (non solo "il codice per
@@ -346,6 +380,78 @@ int main()
 
 		delete canvas;
 		doc6->Release();
+	}
+
+	// --- Icon set: tre celle numeriche (10=minimo, 50=a meta',
+	// 90=massimo) devono ricevere tre icone DIVERSE (indici 0/1/2,
+	// rosso/giallo/verde) -- non un unico colore su tutta la colonna
+	// come la scala di colori, e non una barra parziale come la barra
+	// dei dati: un piccolo cerchio pieno nell'angolo in alto a sinistra
+	// di ogni cella. Soglie 0/33/67 percento di min/max (10/90):
+	// 10 (0%->10), 36,4 (33%), 63,6 (67%) -- 10 supera solo la prima
+	// soglia (icona 0), 50 supera anche la seconda (icona 1), 90 le
+	// supera tutte e tre (icona 2). ---
+	{
+		CContainer* doc7 = new CContainer(NULL, NULL);
+		TryToParseString("10", cell(1, 1), doc7, true); // A1 = 10 (minimo)
+		TryToParseString("50", cell(1, 2), doc7, true); // A2 = 50 (a meta')
+		TryToParseString("90", cell(1, 3), doc7, true); // A3 = 90 (massimo)
+
+		ConditionalFormatRule rule;
+		rule.type = eCondIconSet;
+		rule.ranges.push_back(range(1, 1, 1, 3)); // A1:A3
+		const double kPercents[3] = { 0, 33, 67 };
+		for (int p = 0; p < 3; p++)
+		{
+			ColorScalePoint point;
+			point.cfvoType = "percent";
+			point.cfvoValue = kPercents[p];
+			rule.colorScalePoints.push_back(point);
+		}
+		doc7->AddConditionalFormatRule(rule);
+
+		BRect canvasRect(0, 0, 799, 599);
+		BBitmap* canvas = new BBitmap(canvasRect, B_RGB32, true);
+		SheetView* view7 = new SheetView(doc7);
+		view7->ResizeTo(canvasRect.Width(), canvasRect.Height());
+		canvas->AddChild(view7);
+
+		canvas->Lock();
+		view7->Draw(canvasRect);
+		view7->Sync();
+		canvas->Unlock();
+
+		uint8* bits = (uint8*)canvas->Bits();
+		int32 bpr = canvas->BytesPerRow();
+
+		// B_RGB32 in memoria: B, G, R, A. Icona disegnata come cerchio
+		// pieno di raggio 6 centrato vicino al bordo DESTRO della
+		// cella (cellRight-8, cellTop+8), non sinistro -- questo
+		// motore allinea eAlignGeneral (il default, mai toccato dal
+		// menu Formato) sempre a sinistra anche per i numeri, a
+		// differenza di Excel: un'icona a sinistra finirebbe coperta
+		// dalla cifra stessa, disegnata sopra in un ciclo successivo
+		// (vedi il commento gemello in SheetView::DrawCellBand). Bug
+		// reale trovato da QUESTO test durante lo sviluppo (icona
+		// verde attesa, pixel nero campionato -- la cifra "9", non il
+		// cerchio) prima di spostare l'icona a destra.
+		BRect a1 = view7->CellRect(cell(1, 1));
+		uint8* pxA1 = bits + (int32)(a1.top + 8) * bpr + (int32)(a1.right - 8) * 4;
+		Check(pxA1[2] > 180 && pxA1[1] < 100 && pxA1[0] < 100,
+			"A1 (valore minimo, 10) ha l'icona rossa (livello 0)");
+
+		BRect a2 = view7->CellRect(cell(1, 2));
+		uint8* pxA2 = bits + (int32)(a2.top + 8) * bpr + (int32)(a2.right - 8) * 4;
+		Check(pxA2[2] > 200 && pxA2[1] > 150 && pxA2[0] < 100,
+			"A2 (valore a meta', 50) ha l'icona gialla/arancio (livello 1)");
+
+		BRect a3 = view7->CellRect(cell(1, 3));
+		uint8* pxA3 = bits + (int32)(a3.top + 8) * bpr + (int32)(a3.right - 8) * 4;
+		Check(pxA3[1] > 140 && pxA3[2] < 100 && pxA3[0] < 100,
+			"A3 (valore massimo, 90) ha l'icona verde (livello 2)");
+
+		delete canvas;
+		doc7->Release();
 	}
 
 	// --- Confronto contro un RIFERIMENTO DI CELLA (compareIsCellRef),

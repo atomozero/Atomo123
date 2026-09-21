@@ -1113,6 +1113,8 @@ private:
 	// sopra, cosi' DrawCellBand puo' disegnare prima lo sfondo piatto
 	// (se presente) poi la barra sopra, non l'uno al posto dell'altro.
 	std::map<cell, DataBarInfo> fCondFormatDataBars;
+	// Stessa idea, per eCondIconSet (Tier 3, Fase C).
+	std::map<cell, IconSetInfo> fCondFormatIcons;
 
 	bool fHasAutoFilter;
 	range fAutoFilterRange;

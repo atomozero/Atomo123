@@ -4748,6 +4748,34 @@ void MainWindow::ApplyDataBarToSelection(rgb_color color)
 	MarkModified();
 }
 
+void MainWindow::ApplyIconSetToSelection()
+{
+	if (!fDoc)
+		return;
+
+	fSheetView->SaveCondFormatUndoState();
+	ConditionalFormatRule rule;
+	rule.type = eCondIconSet;
+	rule.ranges.push_back(fSheetView->SelectionRange());
+
+	// Set a 3 livelli, soglie 0%/33%/67% -- lo stesso schema
+	// predefinito di Excel per "Icon Set" senza personalizzazioni
+	// (vedi il commento sul costruttore di ConditionalFormatWindow).
+	const double kPercents[3] = { 0, 33, 67 };
+	for (int p = 0; p < 3; p++)
+	{
+		ColorScalePoint point;
+		point.cfvoType = "percent";
+		point.cfvoValue = kPercents[p];
+		rule.colorScalePoints.push_back(point);
+	}
+
+	fDoc->AddConditionalFormatRule(rule);
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::RemoveAllConditionalFormatRules()
 {
 	if (!fDoc)
@@ -6828,6 +6856,15 @@ void MainWindow::MessageReceived(BMessage* message)
 			ssize_t size = 0;
 			message->FindInt32("type", &type);
 			message->FindString("value", &value);
+			// L'icon set non porta nessun colore (ConditionalFormatWindow
+			// non aggiunge affatto il campo "color" per questo tipo):
+			// smistato PRIMA di richiederlo, a differenza degli altri
+			// quattro tipi sotto.
+			if (type == 4)
+			{
+				ApplyIconSetToSelection();
+				break;
+			}
 			if (message->FindData("color", B_RGB_COLOR_TYPE,
 					(const void**)&color, &size) == B_OK && color)
 			{
