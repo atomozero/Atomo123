@@ -173,6 +173,38 @@ int main()
 			&& (double)multiVal == 120.0,
 		"prima riga scritta su tre colonne (Nord, Mele, 120)");
 
+	// --- CContainer::AddPivotTable/GetPivotTables/ClearPivotTables
+	// (persistenza): verifica che il container conservi l'oggetto
+	// cosi' com'e', senza nessuna logica di ricalcolo qui -- quella e'
+	// gia' provata sopra da BuildPivotTable/WritePivotTable. Vedi
+	// PivotTableObject in Container.h. ---
+	{
+		Check(doc.GetPivotTables().empty(),
+			"un documento appena creato non ha nessuna tabella pivot persistita");
+
+		PivotTableObject pivot;
+		pivot.sourceRange = range(1, 1, 2, 3);
+		pivot.destAnchor = cell(4, 1);
+		pivot.aggFunc = ePivotSum;
+		pivot.cachedRows = rows; // dal blocco Mela/Pera in cima
+		doc.AddPivotTable(pivot);
+
+		Check(doc.GetPivotTables().size() == 1, "AddPivotTable aggiunge la tabella");
+		if (doc.GetPivotTables().size() == 1)
+		{
+			const PivotTableObject& stored = doc.GetPivotTables()[0];
+			Check(stored.sourceRange.left == 1 && stored.sourceRange.right == 2,
+				"sourceRange conservato");
+			Check(stored.destAnchor.h == 4 && stored.destAnchor.v == 1,
+				"destAnchor conservato");
+			Check(stored.aggFunc == ePivotSum, "aggFunc conservato");
+			Check(stored.cachedRows.size() == rows.size(), "cachedRows conservato");
+		}
+
+		doc.ClearPivotTables();
+		Check(doc.GetPivotTables().empty(), "ClearPivotTables svuota davvero");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();

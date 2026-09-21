@@ -1187,8 +1187,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
-	// Sezione allineamento verticale non predefinito, in coda, NUOVA ultima
-	// sezione del formato: un solo byte per cella, stesso schema della sezione
+	// Sezione allineamento verticale non predefinito, in coda (seguita
+	// ora dalla sezione tabelle pivot sotto, la nuova ultima sezione
+	// del formato): un solo byte per cella, stesso schema della sezione
 	// di allineamento orizzontale -- i file scritti prima restano validi
 	// (la lettura salta la sezione se assente, vedi LoadASCD sotto).
 	{
@@ -1216,6 +1217,70 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
 				|| dest->Write(&valign, sizeof(valign)) != (ssize_t)sizeof(valign))
 				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione tabelle pivot persistite, in coda, NUOVA ultima sezione
+	// del formato: stesso schema EOF-tollerante delle sezioni sopra --
+	// vedi PivotTableObject in Container.h. Le celle scritte da
+	// WritePivotTable sono gia' nel documento come celle normali
+	// (sezioni sopra): questa sezione serve solo a NON perdere
+	// sourceRange/destAnchor/aggFunc/cachedRows, che altrimenti
+	// sparirebbero al primo salva->ricarica, rendendo "Aggiorna tabelle
+	// pivot" incapace di ritrovare la tabella o il suo intervallo
+	// sorgente.
+	{
+		const std::vector<PivotTableObject>& pivots = doc->GetPivotTables();
+		int32 pivotCount = (int32)pivots.size();
+		if (dest->Write(&pivotCount, sizeof(pivotCount)) != (ssize_t)sizeof(pivotCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < pivotCount; i++)
+		{
+			const PivotTableObject& pivot = pivots[i];
+			int16 srcLeft = pivot.sourceRange.left, srcTop = pivot.sourceRange.top,
+				srcRight = pivot.sourceRange.right, srcBottom = pivot.sourceRange.bottom;
+			int16 destCol = pivot.destAnchor.h, destRow = pivot.destAnchor.v;
+			int32 aggFunc = (int32)pivot.aggFunc;
+			if (dest->Write(&srcLeft, sizeof(srcLeft)) != (ssize_t)sizeof(srcLeft)
+				|| dest->Write(&srcTop, sizeof(srcTop)) != (ssize_t)sizeof(srcTop)
+				|| dest->Write(&srcRight, sizeof(srcRight)) != (ssize_t)sizeof(srcRight)
+				|| dest->Write(&srcBottom, sizeof(srcBottom)) != (ssize_t)sizeof(srcBottom)
+				|| dest->Write(&destCol, sizeof(destCol)) != (ssize_t)sizeof(destCol)
+				|| dest->Write(&destRow, sizeof(destRow)) != (ssize_t)sizeof(destRow)
+				|| dest->Write(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc))
+				return B_IO_ERROR;
+
+			int32 rowCount = (int32)pivot.cachedRows.size();
+			if (dest->Write(&rowCount, sizeof(rowCount)) != (ssize_t)sizeof(rowCount))
+				return B_IO_ERROR;
+
+			for (int32 r = 0; r < rowCount; r++)
+			{
+				const PivotRow& row = pivot.cachedRows[r];
+				int32 catCount = (int32)row.categories.size();
+				if (dest->Write(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+					return B_IO_ERROR;
+				for (int32 k = 0; k < catCount; k++)
+				{
+					int32 catLen = row.categories[k].Length();
+					if (dest->Write(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+						return B_IO_ERROR;
+					if (catLen > 0 && dest->Write(row.categories[k].String(), catLen) != catLen)
+						return B_IO_ERROR;
+				}
+				// row.count e' "long" in memoria (larghezza dipendente
+				// dalla piattaforma, x86 vs x86_64) -- scritto sempre
+				// come int32 esplicito, come ogni altro intero di questo
+				// formato, cosi' il file non varia in base
+				// all'architettura di compilazione.
+				int32 count32 = (int32)row.count;
+				if (dest->Write(&row.aggregate, sizeof(row.aggregate)) != (ssize_t)sizeof(row.aggregate)
+					|| dest->Write(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+					|| dest->Write(&row.minVal, sizeof(row.minVal)) != (ssize_t)sizeof(row.minVal)
+					|| dest->Write(&row.maxVal, sizeof(row.maxVal)) != (ssize_t)sizeof(row.maxVal))
+					return B_IO_ERROR;
+			}
 		}
 	}
 
@@ -2695,9 +2760,10 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
-	// Sezione allineamento verticale non predefinito, in coda, NUOVA ultima
-	// sezione del formato: stesso schema EOF-tollerante delle sezioni sopra --
-	// i file scritti prima di questa sezione finiscono qui senza errori.
+	// Sezione allineamento verticale non predefinito, in coda (seguita
+	// ora dalla sezione tabelle pivot sotto): stesso schema
+	// EOF-tollerante delle sezioni sopra -- i file scritti prima di
+	// questa sezione finiscono qui senza errori.
 	{
 		int32 valignCount = 0;
 		ssize_t got = source->Read(&valignCount, sizeof(valignCount));
@@ -2722,6 +2788,93 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				doc->GetCellStyle(loc, cs);
 				cs.fVerticalAlignment = (char)valign;
 				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione tabelle pivot persistite, in coda, NUOVA ultima sezione
+	// del formato: stesso schema EOF-tollerante delle sezioni sopra --
+	// vedi il commento gemello nel writer (SaveASCD) e PivotTableObject
+	// in Container.h. NON richiama mai BuildPivotTable qui: le celle di
+	// destinazione sono gia' corrette (caricate dalla normale sezione
+	// celle sopra), questa sezione ricostruisce solo l'oggetto/la
+	// cache, esattamente come una vera cache Excel che resta ferma
+	// finche' non arriva un comando esplicito di aggiornamento.
+	{
+		int32 pivotCount = 0;
+		ssize_t got = source->Read(&pivotCount, sizeof(pivotCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(pivotCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < pivotCount; i++)
+			{
+				int16 srcLeft, srcTop, srcRight, srcBottom, destCol, destRow;
+				int32 aggFunc;
+				if (source->Read(&srcLeft, sizeof(srcLeft)) != (ssize_t)sizeof(srcLeft)
+					|| source->Read(&srcTop, sizeof(srcTop)) != (ssize_t)sizeof(srcTop)
+					|| source->Read(&srcRight, sizeof(srcRight)) != (ssize_t)sizeof(srcRight)
+					|| source->Read(&srcBottom, sizeof(srcBottom)) != (ssize_t)sizeof(srcBottom)
+					|| source->Read(&destCol, sizeof(destCol)) != (ssize_t)sizeof(destCol)
+					|| source->Read(&destRow, sizeof(destRow)) != (ssize_t)sizeof(destRow)
+					|| source->Read(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc))
+					return B_BAD_DATA;
+
+				PivotTableObject pivot;
+				pivot.sourceRange = range(srcLeft, srcTop, srcRight, srcBottom);
+				pivot.destAnchor = cell(destCol, destRow);
+				pivot.aggFunc = (PivotAggFunc)aggFunc;
+
+				int32 rowCount = 0;
+				if (source->Read(&rowCount, sizeof(rowCount)) != (ssize_t)sizeof(rowCount))
+					return B_BAD_DATA;
+				if (rowCount < 0)
+					return B_BAD_DATA;
+
+				for (int32 r = 0; r < rowCount; r++)
+				{
+					PivotRow row;
+					row.aggregate = 0; row.count = 0; row.minVal = 0; row.maxVal = 0;
+
+					int32 catCount = 0;
+					if (source->Read(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+						return B_BAD_DATA;
+					// Stesso tetto delle altre liste di stringhe di questo
+					// formato (commenti, formattazione condizionale...).
+					if (catCount < 0 || catCount > 1024)
+						return B_BAD_DATA;
+
+					for (int32 k = 0; k < catCount; k++)
+					{
+						int32 catLen = 0;
+						if (source->Read(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+							return B_BAD_DATA;
+						if (catLen < 0 || catLen > 4096)
+							return B_BAD_DATA;
+						BString catStr;
+						if (catLen > 0)
+						{
+							std::vector<char> buf(catLen);
+							if (source->Read(&buf[0], catLen) != catLen)
+								return B_BAD_DATA;
+							catStr.SetTo(&buf[0], catLen);
+						}
+						row.categories.push_back(catStr);
+					}
+
+					int32 count32 = 0;
+					if (source->Read(&row.aggregate, sizeof(row.aggregate)) != (ssize_t)sizeof(row.aggregate)
+						|| source->Read(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+						|| source->Read(&row.minVal, sizeof(row.minVal)) != (ssize_t)sizeof(row.minVal)
+						|| source->Read(&row.maxVal, sizeof(row.maxVal)) != (ssize_t)sizeof(row.maxVal))
+						return B_BAD_DATA;
+					row.count = count32;
+
+					pivot.cachedRows.push_back(row);
+				}
+
+				doc->AddPivotTable(pivot);
 			}
 		}
 	}

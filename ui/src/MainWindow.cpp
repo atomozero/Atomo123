@@ -145,6 +145,7 @@ static const uint32 kMsgNewSheet = 'nwsh';
 static const uint32 kMsgSetFormat = 'stfm';
 static const uint32 kMsgShowChart = 'shch';
 static const uint32 kMsgShowPivot = 'shpv';
+static const uint32 kMsgRefreshPivotTables = 'rfpv';
 static const uint32 kMsgShowNames = 'shnm';
 static const uint32 kMsgShowPasteSpecial = 'shps';
 static const uint32 kMsgShowGoTo = 'shgt';
@@ -1053,6 +1054,13 @@ MainWindow::MainWindow()
 		new BMessage(kMsgShowChart)));
 	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Tabella pivot" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowPivot)));
+	// Una tabella pivot creata da "Tabella pivot..." sopra resta ferma
+	// sulla sua cache finche' non arriva questo comando esplicito --
+	// stesso comportamento del vero "Aggiorna" di Excel, non un
+	// ricalcolo automatico a ogni modifica (vedi PivotTableObject in
+	// Container.h e MainWindow::RefreshAllPivotTables).
+	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Aggiorna tabelle pivot"),
+		new BMessage(kMsgRefreshPivotTables)));
 	insertMenu->AddSeparatorItem();
 	// Commento cella/Collegamento ipertestuale (Fase 13, spostate qui
 	// da Formato -- vedi il commento li'): entrambe operano sempre
@@ -5070,13 +5078,68 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 	// perfettamente nello scope di CaptureSnapshot/ApplySnapshot.
 	fSheetView->SaveUndoState(destRange);
 	WritePivotTable(fDoc, dest, rows, (PivotAggFunc)agg);
+
+	// Persiste la DEFINIZIONE (non solo le celle appena scritte sopra),
+	// cosi' sopravvive a salvataggio/ricarica e puo' essere aggiornata
+	// in seguito (vedi RefreshAllPivotTables) invece di sparire nel
+	// nulla come prima -- una vera cache Excel, non solo un risultato
+	// congelato. Vedi PivotTableObject in Container.h.
+	PivotTableObject pivot;
+	pivot.sourceRange = source;
+	pivot.destAnchor = dest;
+	pivot.aggFunc = (PivotAggFunc)agg;
+	pivot.cachedRows = rows;
+	fDoc->AddPivotTable(pivot);
+
 	fSheetView->Invalidate();
 	MarkModified();
 
-	BString msg;
-	msg.SetToFormat(B_TRANSLATE("%d categoria/e trovate."), (int)rows.size());
-	BAlert* alert = new BAlert(B_TRANSLATE("Tabella pivot"), msg.String(), B_TRANSLATE("OK"));
-	alert->Go();
+	// Niente BAlert di conferma sul successo (c'era prima): un
+	// BAlert::Go() senza argomenti e' MODALE, blocca il thread chiamante
+	// aspettando un clic -- scoperto per davvero scrivendo
+	// tests/test_pivot_refresh.cpp, che restava appeso all'infinito
+	// proprio qui (nessun utente presente per cliccare "OK" in un test
+	// headless). Anche il vero Excel non mostra nessuna conferma dopo
+	// aver creato una pivot table riuscita, solo il risultato stesso
+	// gia' visibile sul foglio -- rimosso, non solo reso asincrono,
+	// perche' non aggiungeva informazione che l'utente non veda gia'.
+}
+
+void MainWindow::RefreshAllPivotTables()
+{
+	if (!fDoc)
+		return;
+
+	std::vector<PivotTableObject>& pivots = fDoc->GetPivotTables();
+	if (pivots.empty())
+		return;
+
+	// Un SaveUndoState per tabella (non una sola transazione atomica
+	// per l'intero aggiornamento): stesso limite gia' accettato da
+	// HandlePivotRequest sopra, che ne fa uno per singola creazione --
+	// nessuna API di istantanea multi-intervallo esiste per fare
+	// meglio a basso costo. Aggiornare N tabelle pivot produce quindi N
+	// passi di Annulla, non uno solo.
+	for (size_t i = 0; i < pivots.size(); i++)
+	{
+		std::vector<PivotRow> rows;
+		if (!BuildPivotTable(fDoc, pivots[i].sourceRange, rows))
+			continue; // sorgente svuotata/invalida nel frattempo: lascia la cache com'e'
+
+		int destWidth = (int)rows[0].categories.size();
+		range destRange(pivots[i].destAnchor.h, pivots[i].destAnchor.v,
+			pivots[i].destAnchor.h + destWidth, pivots[i].destAnchor.v + (int)rows.size());
+		fSheetView->SaveUndoState(destRange);
+		WritePivotTable(fDoc, pivots[i].destAnchor, rows, pivots[i].aggFunc);
+		// Se il nuovo risultato ha MENO righe di prima, le righe finali
+		// della scrittura precedente restano nel foglio (limite gia'
+		// esistente di WritePivotTable stesso, non una regressione
+		// introdotta qui): fuori scope per questa fase.
+		pivots[i].cachedRows = rows;
+	}
+
+	fSheetView->Invalidate();
+	MarkModified();
 }
 
 void MainWindow::FindNext(const char* searchText)
@@ -6598,6 +6661,10 @@ void MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgShowPivot:
 			ShowPivotWindow();
+			break;
+
+		case kMsgRefreshPivotTables:
+			RefreshAllPivotTables();
 			break;
 
 		case kMsgShowNames:

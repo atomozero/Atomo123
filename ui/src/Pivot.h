@@ -14,6 +14,14 @@
 	Logica separata dalla finestra (PivotWindow) per essere testabile
 	senza sessione grafica, stesso principio di Chart.h.
 
+	PivotAggFunc/PivotRow/PivotTableObject vivono ormai in Container.h
+	(motore), non piu' qui: un futuro importatore XLSX (che include
+	solo Container.h, mai questo header della UI) deve poter costruire
+	quei tipi direttamente -- vedi il commento su PivotTableObject in
+	Container.h per il ragionamento completo. Questo file resta con la
+	sola LOGICA (BuildPivotTable/WritePivotTable), che opera su quei
+	tipi ma non li possiede.
+
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).
 */
@@ -23,33 +31,7 @@
 
 #include <vector>
 
-#include <String.h>
-
-class CContainer;
-class range;
-struct cell;
-
-enum PivotAggFunc {
-	ePivotSum,
-	ePivotCount,
-	ePivotAverage,
-	ePivotMin,
-	ePivotMax
-};
-
-struct PivotRow {
-	// Una voce per livello di raggruppamento (di solito una sola,
-	// come prima della Fase 29) -- l'ORDINE combacia con l'ordine
-	// delle colonne di categoria nell'intervallo sorgente, cosi' un
-	// raggruppamento a due livelli (es. Regione, Prodotto) produce
-	// righe annidate nello stesso ordine con cui l'utente le ha
-	// selezionate, non riordinate a caso.
-	std::vector<BString> categories;
-	double aggregate; // somma -- usata anche per calcolare la media
-	long count;
-	double minVal;
-	double maxVal;
-};
+#include "Container.h"
 
 // L'intervallo deve avere ALMENO due colonne: l'ULTIMA e' il valore
 // numerico da aggregare, tutte le altre (una o piu') sono chiavi di

@@ -53,6 +53,7 @@
 #include <vector>
 
 #include <GraphicsDefs.h>
+#include <String.h>
 
 #ifndef   CELL_H
 #include "Cell.h"
@@ -359,6 +360,50 @@ struct ValidationRule {
 struct CTableDef {
 	range dataRange;
 	std::vector<std::string> columnNames;
+};
+
+// Tabella pivot (raggruppa un intervallo per una o piu' colonne di
+// categoria testuale, poi aggrega l'ultima colonna numerica -- vedi
+// BuildPivotTable/WritePivotTable in ui/src/Pivot.h/.cpp, dove vive la
+// logica vera). PivotAggFunc/PivotRow vivono qui, nel motore, non in
+// Pivot.h: un futuro importatore XLSX (che include solo Container.h,
+// mai gli header della UI, stesso principio di ConditionalFormatRule/
+// CTableDef sopra) deve poter costruire questi tipi direttamente.
+enum PivotAggFunc {
+	ePivotSum,
+	ePivotCount,
+	ePivotAverage,
+	ePivotMin,
+	ePivotMax
+};
+
+struct PivotRow {
+	// Una voce per livello di raggruppamento -- l'ORDINE combacia con
+	// l'ordine delle colonne di categoria nell'intervallo sorgente.
+	std::vector<BString> categories;
+	double aggregate; // somma -- usata anche per calcolare la media
+	long count;
+	double minVal;
+	double maxVal;
+};
+
+// Tabella pivot PERSISTITA: a differenza di CTableDef sopra (sola
+// importazione XLSX), questa e' creata dalla UI
+// (MainWindow::HandlePivotRequest) e sopravvive a salvataggio/ricarica
+// come una vera cache Excel -- cachedRows e' l'ULTIMO risultato
+// calcolato (gia' scritto a partire da destAnchor), MAI ricalcolato da
+// solo al caricamento: solo un comando esplicito di aggiornamento
+// (MainWindow::RefreshAllPivotTables) rilancia BuildPivotTable contro
+// i dati CORRENTI di sourceRange. Stesso principio del vero "Refresh"
+// di Excel: una pivot table reale non si aggiorna da sola a ogni
+// modifica, resta ferma sulla cache finche' l'utente non lo chiede.
+struct PivotTableObject {
+	range sourceRange;
+	cell destAnchor;
+	PivotAggFunc aggFunc;
+	std::vector<PivotRow> cachedRows;
+
+	PivotTableObject() : aggFunc(ePivotSum) {}
 };
 
 class CContainer : public BLocker {
@@ -694,6 +739,18 @@ public:
 		{ fTables[name] = def; }
 	const std::map<std::string, CTableDef>& GetTables() const { return fTables; }
 
+	// Tabelle pivot persistite (vedi PivotTableObject sopra): un
+	// vettore, non indicizzato per nome a differenza di fTables sopra
+	// -- niente in questo modello ha ancora un nome scelto dall'utente,
+	// stesso schema piatto di fCondFormatRules. Overload non-const
+	// apposta: MainWindow::RefreshAllPivotTables deve poter aggiornare
+	// cachedRows di un elemento esistente sul posto, non solo
+	// aggiungerne/toglierne interi.
+	void AddPivotTable(const PivotTableObject& pivot) { fPivotTables.push_back(pivot); }
+	void ClearPivotTables() { fPivotTables.clear(); }
+	std::vector<PivotTableObject>& GetPivotTables() { return fPivotTables; }
+	const std::vector<PivotTableObject>& GetPivotTables() const { return fPivotTables; }
+
 private:
 	void Visit(const cell&, void*);
 	bool GetCellData(const cell&, CellData&);
@@ -718,6 +775,7 @@ private:
 	std::map<cell, ValidationRule> fValidations;
 	std::vector<ConditionalFormatRule> fCondFormatRules;
 	std::map<std::string, CTableDef> fTables;
+	std::vector<PivotTableObject> fPivotTables;
 	// Vedi ApplySpill/ClearSpill sopra: fSpillOwnerOf include anche
 	// owner->owner (owner e' "membro" del proprio spill), fSpillRangeOf
 	// e' indicizzato SOLO dalla cella owner.

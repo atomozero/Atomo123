@@ -177,8 +177,9 @@ test: $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_ascd_io.cpp -o tests/test_ascd_io.o \
 		$(INCLUDES) $(CXXFLAGS)
 	$(CXX) -c src/AscdIO.cpp -o tests/AscdIO.o $(INCLUDES) $(CXXFLAGS)
-	$(CXX) -o tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
-		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe
+	$(CXX) -c src/Pivot.cpp -o tests/Pivot_ascdio.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o tests/Pivot_ascdio.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
 	./tests/test_ascd_io
 
 # Test del "+" unario davanti a un fattore di formula (bug reale
@@ -1277,6 +1278,23 @@ test-condformat: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_condformat
 
+# Verifica che una tabella pivot persistita (MainWindow::
+# HandlePivotRequest/RefreshAllPivotTables) sia davvero "viva": ferma
+# sulla cache finche' i dati sorgente cambiano, aggiornata per davvero
+# solo dal comando esplicito -- stessa struttura di test-condformat
+# sopra (serve una vera MainWindow, non solo CContainer headless).
+test-pivot-refresh: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_pivot_refresh.cpp -o tests/test_pivot_refresh.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_pivot_refresh tests/test_pivot_refresh.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_pivot_refresh
+
 # Test di Nuovo/Elimina/Rinomina foglio (Fase 13): stessa ragione di
 # test-goto sotto (serve una vera MainWindow). DeleteSheetNoConfirm,
 # non DeleteSheet: quest'ultima mostra un vero BAlert di conferma, che
@@ -1360,10 +1378,11 @@ test-names: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 
 clean:
 	rm -f $(OBJECTS:.o=.d) tests/*.d
-	rm -f $(APP) $(OBJECTS) $(RSRC) $(BUILD_INFO_H) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o \
+	rm -f $(APP) $(OBJECTS) $(RSRC) $(BUILD_INFO_H) tests/test_ascd_io tests/test_ascd_io.o tests/AscdIO.o tests/Pivot_ascdio.o \
 		tests/roundtrip.ascd tests/roundtrip_charts.ascd tests/roundtrip_widths.ascd \
 		tests/roundtrip_colors.ascd tests/roundtrip_border_color.ascd \
-		tests/roundtrip_condformat.ascd \
+		tests/roundtrip_condformat.ascd tests/roundtrip_databar.ascd tests/roundtrip_iconset.ascd \
+		tests/roundtrip_pivot.ascd \
 		tests/roundtrip_ambiguous_text.ascd tests/edge.ascd \
 		tests/test_clipboard tests/test_clipboard.o \
 		tests/test_scroll tests/test_scroll.o \
