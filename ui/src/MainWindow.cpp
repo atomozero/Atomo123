@@ -5701,6 +5701,103 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 			}
 		}
 
+		// Immagini incorporate: stesso ancoraggio a cella (anchor+scarto,
+		// vedi EmbeddedImage.h) gia' usato da SheetView::Draw per il
+		// foglio vero -- ImageFrame restituisce un rettangolo in
+		// coordinate canvas, riproiettato in pixel di anteprima con la
+		// STESSA trasformazione delle celle sopra. Saltata se il
+		// rettangolo cade fuori dall'area dati di questa pagina (la
+		// stessa area usata per calcolare firstCol/lastCol/firstRow/
+		// lastRow sopra), come una cella che non appartiene a questa
+		// pagina.
+		for (size_t i = 0; i < fImages.size(); i++)
+		{
+			const EmbeddedImage& img = fImages[i];
+			BRect frame = fSheetView->ImageFrame(img);
+			if (!frame.Intersects(dataRect))
+				continue;
+
+			BRect previewR(
+				marginLeftPreview + (frame.left - pageOrigin.x) * combinedScale,
+				marginTopPreview + (frame.top - pageOrigin.y) * combinedScale,
+				marginLeftPreview + (frame.right - pageOrigin.x) * combinedScale,
+				marginTopPreview + (frame.bottom - pageOrigin.y) * combinedScale);
+			if (!previewR.IsValid())
+				continue;
+
+			BBitmap* bitmap = DecodeImageBytes(img.pngData);
+			if (bitmap)
+			{
+				// Stessa modalita' alpha di SheetView::Draw: senza,
+				// un PNG con sfondo trasparente mostrerebbe un
+				// riquadro pieno/nero invece della cella sottostante.
+				offscreen->SetDrawingMode(B_OP_ALPHA);
+				offscreen->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+				offscreen->DrawBitmap(bitmap, bitmap->Bounds(), previewR);
+				offscreen->SetDrawingMode(B_OP_COPY);
+				delete bitmap;
+			}
+		}
+
+		// Grafici incorporati: stesso smistamento per tipo/numero di
+		// colonne di SheetView::Draw (dispersione, serie multiple,
+		// singola serie), solo su "offscreen" con un frame scaled
+		// invece che sulla vista vera -- nessuna delle funzioni
+		// DrawChart/DrawBarChart/ecc. passa per BeginPicture, quindi
+		// nessun rischio del crash di app_server documentato sopra.
+		for (size_t i = 0; i < fCharts.size(); i++)
+		{
+			const ChartObject& obj = fCharts[i];
+			if (!obj.frame.Intersects(dataRect))
+				continue;
+
+			BRect previewR(
+				marginLeftPreview + (obj.frame.left - pageOrigin.x) * combinedScale,
+				marginTopPreview + (obj.frame.top - pageOrigin.y) * combinedScale,
+				marginLeftPreview + (obj.frame.right - pageOrigin.x) * combinedScale,
+				marginTopPreview + (obj.frame.bottom - pageOrigin.y) * combinedScale);
+			if (!previewR.IsValid())
+				continue;
+
+			// Font scalato come per il testo di cella sopra: le
+			// funzioni di disegno dei grafici non impostano MAI una
+			// dimensione propria (solo lo stile grassetto del titolo),
+			// ereditano quella gia' attiva sulla vista.
+			BFont chartFont(be_plain_font);
+			chartFont.SetSize(std::max(4.0f, 9.0f * combinedScale));
+			offscreen->SetFont(&chartFont);
+
+			if (obj.type == eScatterChart)
+			{
+				std::vector<ScatterPoint> points;
+				BuildScatterSeries(doc, obj.dataRange, points);
+				DrawScatterChart(offscreen, previewR, points, obj.title);
+				continue;
+			}
+
+			int columnCount = obj.dataRange.right - obj.dataRange.left + 1;
+			if (columnCount > 2 && obj.type != ePieChart)
+			{
+				MultiChartData multi;
+				if (BuildMultiChartSeries(doc, obj.dataRange, multi))
+				{
+					if (obj.type == eLineChart)
+						DrawMultiLineChart(offscreen, previewR, multi, obj.title);
+					else if (obj.type == eAreaChart)
+						DrawMultiAreaChart(offscreen, previewR, multi, obj.title);
+					else if (obj.type == eComboChart)
+						DrawComboChart(offscreen, previewR, multi, obj.title);
+					else
+						DrawGroupedBarChart(offscreen, previewR, multi, obj.title);
+				}
+				continue;
+			}
+
+			std::vector<ChartSeries> series;
+			BuildChartSeries(doc, obj.dataRange, series);
+			DrawChart(offscreen, previewR, series, obj.type, obj.title);
+		}
+
 		// Testi di intestazione/pie' di pagina: bande bianche sopra le
 		// celle (stesse zone riservate in impaginazione, vedi headerH/
 		// footerH sopra) con testo centrato e codici espansi -- come la
