@@ -27,11 +27,13 @@ static const uint32 kMsgRemoveAllLocal = 'cfrl';
 static const uint32 kMsgTypeChangedLocal = 'cftc';
 
 // Corrispondenza posizionale con CondFormatRuleType in Container.h
-// (0=eCondCellIsEqual, 1=eCondDuplicateValues, 2=eCondColorScale) --
-// stesso principio gia' usato per ChartType/ChartWindow e
-// ValidationType/ValidationWindow. La scala di colori qui e' sempre a
-// due punti (min->max): copre il caso Excel piu' comune senza dover
-// costruire un editor per un numero arbitrario di soglie.
+// (0=eCondCellIsEqual, 1=eCondDuplicateValues, 2=eCondColorScale,
+// 3=eCondDataBar) -- stesso principio gia' usato per ChartType/
+// ChartWindow e ValidationType/ValidationWindow. La scala di colori
+// qui e' sempre a due punti (min->max): copre il caso Excel piu'
+// comune senza dover costruire un editor per un numero arbitrario di
+// soglie. La barra dei dati riusa fColorControl (un solo colore,
+// come il vero Excel) invece di aggiungere un terzo BColorControl.
 ConditionalFormatWindow::ConditionalFormatWindow(BMessenger target)
 	:
 	BWindow(BRect(180, 180, 480, 400), B_TRANSLATE("Formattazione condizionale"),
@@ -46,6 +48,8 @@ ConditionalFormatWindow::ConditionalFormatWindow(BMessenger target)
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Valori duplicati nella selezione"),
 		new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Scala di colori (minimo -> massimo)"),
+		new BMessage(kMsgTypeChangedLocal)));
+	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Barra dei dati (minimo -> massimo)"),
 		new BMessage(kMsgTypeChangedLocal)));
 	typeMenu->ItemAt(0)->SetMarked(true);
 	typeMenu->SetTargetForItems(this);
@@ -93,8 +97,13 @@ int ConditionalFormatWindow::SelectedType() const
 
 void ConditionalFormatWindow::UpdateFieldsForType()
 {
-	bool isColorScale = (SelectedType() == 2);
-	fValueField->SetEnabled(!isColorScale);
+	int type = SelectedType();
+	bool isColorScale = (type == 2);
+	bool isDataBar = (type == 3);
+	// Il valore di confronto ha senso solo per "uguale a" (0): scala di
+	// colori e barra dei dati derivano tutto dal minimo/massimo reale
+	// dell'intervallo, mai da un valore digitato qui.
+	fValueField->SetEnabled(!isColorScale && !isDataBar);
 	if (isColorScale)
 		fMaxColorControl->Show();
 	else if (!fMaxColorControl->IsHidden())

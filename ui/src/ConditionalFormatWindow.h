@@ -1,15 +1,17 @@
 /*
 	ConditionalFormatWindow.h
 
-	Finestra "Formattazione condizionale" (Fase 13): sceglie fra i due
-	tipi di regola gestiti (valore uguale a un letterale, o valori
-	duplicati) e un colore di sfondo, applicata a tutta la selezione
-	corrente -- come il vero "Convalida dati", non solo alla cella
-	attiva (a differenza di CommentWindow/HyperlinkWindow), stesso
-	principio di MainWindow::ApplyValidationToSelection. Nessun editing
-	per singola regola gia' esistente: "Rimuovi tutte le regole"
-	toglie l'intero elenco in un colpo solo, stessa semplicita' di
-	scope gia' scelta per il resto di questo punto.
+	Finestra "Formattazione condizionale" (Fase 13, poi Tier 1/Tier 3 di
+	"Path to 100% XLSX standard compatibility"): sceglie fra i quattro
+	tipi di regola gestiti (valore uguale a un letterale, valori
+	duplicati, scala di colori, barra dei dati) e un colore, applicata
+	a tutta la selezione corrente -- come il vero "Convalida dati", non
+	solo alla cella attiva (a differenza di CommentWindow/
+	HyperlinkWindow), stesso principio di
+	MainWindow::ApplyValidationToSelection. Nessun editing per singola
+	regola gia' esistente: "Rimuovi tutte le regole" toglie l'intero
+	elenco in un colpo solo, stessa semplicita' di scope gia' scelta
+	per il resto di questo punto.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).

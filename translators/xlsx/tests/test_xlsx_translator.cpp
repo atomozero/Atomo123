@@ -4301,19 +4301,21 @@ int main()
 				"fino alla formattazione condizionale");
 
 			// Finalmente, la sezione che questo test vuole davvero
-			// verificare: le tre regole VIVE importate da
+			// verificare: le quattro regole VIVE importate da
 			// sample_condformat.xlsx (non piu' un colore congelato) --
-			// la terza, colorScale su C1:C10 (Fase 33/A punto 6), e'
-			// stata aggiunta al file di prova insieme al resto.
+			// la terza (colorScale su C1:C10, Fase 33/A punto 6) e la
+			// quarta (dataBar su D1:D10, Tier 3 Fase B) sono state
+			// aggiunte al file di prova insieme al resto.
 			int32 ruleCount = 0;
 			if (sectionsOk && pos + 4 <= ascdLen)
 			{
 				memcpy(&ruleCount, ascdData + pos, 4); pos += 4;
 			}
-			Check(ruleCount == 3,
-				"tre regole di formattazione condizionale importate da sample_condformat.xlsx");
+			Check(ruleCount == 4,
+				"quattro regole di formattazione condizionale importate da sample_condformat.xlsx");
 
 			bool foundCellIsRule = false, foundDuplicatesRule = false, foundColorScaleRule = false;
+			bool foundDataBarRule = false;
 			for (int32 i = 0; i < ruleCount && pos + 1 + 4 <= ascdLen; i++)
 			{
 				int8 type;
@@ -4337,6 +4339,7 @@ int main()
 				memcpy(&rangeCount, ascdData + pos, 4); pos += 4;
 
 				bool rangeMatchesA1A3 = false, rangeMatchesB1B3 = false, rangeMatchesC1C10 = false;
+				bool rangeMatchesD1D10 = false;
 				for (int32 r = 0; r < rangeCount && pos + 8 <= ascdLen; r++)
 				{
 					int16 left, top, right, bottom;
@@ -4351,6 +4354,8 @@ int main()
 						rangeMatchesB1B3 = true;
 					if (left == 3 && right == 3 && top == 1 && bottom == 10)
 						rangeMatchesC1C10 = true;
+					if (left == 4 && right == 4 && top == 1 && bottom == 10)
+						rangeMatchesD1D10 = true;
 				}
 
 				// Punti di controllo della scala di colori (versione 3
@@ -4413,6 +4418,21 @@ int main()
 						pos += exprLen;
 				}
 
+				// Colore della barra dei dati (versione 6 del formato
+				// ASCD, Tier 3 Fase B): rgb_color (4 byte), scritto per
+				// OGNI regola ormai -- vedi il commento su
+				// ConditionalFormatRule::dataBarColor in Container.h.
+				// Non significativo per le prime tre regole di questo
+				// file di prova, ma i byte vanno comunque consumati.
+				int dataBarColorPacked = -1;
+				if (pos + 4 <= ascdLen)
+				{
+					rgb_color dataBarColor;
+					memcpy(&dataBarColor, ascdData + pos, 4); pos += 4;
+					dataBarColorPacked = (dataBarColor.red << 16) | (dataBarColor.green << 8)
+						| dataBarColor.blue;
+				}
+
 				if (type == eCondCellIsEqual && compareValue == "Mancante" && packed == 0xFFC7CE
 					&& rangeMatchesA1A3)
 					foundCellIsRule = true;
@@ -4424,6 +4444,10 @@ int main()
 					&& cfvoColorsPacked[0] == 0xF8696B && cfvoColorsPacked[1] == 0xFFEB84
 					&& cfvoColorsPacked[2] == 0x63BE7B)
 					foundColorScaleRule = true;
+				if (type == eCondDataBar && rangeMatchesD1D10 && cfvoTypes.size() == 2
+					&& cfvoTypes[0] == "min" && cfvoTypes[1] == "max"
+					&& dataBarColorPacked == 0x638EC6)
+					foundDataBarRule = true;
 			}
 			Check(foundCellIsRule,
 				"la regola cellIs/equal (\"Mancante\", dxf 0 = FFC7CE) e' importata correttamente");
@@ -4432,6 +4456,8 @@ int main()
 			Check(foundColorScaleRule,
 				"la regola colorScale (min/percentile 50/max, C1:C10) e' importata correttamente "
 				"con tutti e tre i punti di controllo e i loro colori veri");
+			Check(foundDataBarRule,
+				"la regola dataBar (min/max, D1:D10, colore 638EC6) e' importata correttamente");
 
 			// La valutazione VIVA vera e propria (il valore di ogni
 			// cella confrontato con la regola, non solo che la regola

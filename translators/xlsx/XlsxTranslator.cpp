@@ -77,7 +77,9 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // condizionale, i punti di controllo della scala di colori, vedi il
 // commento su kASCDVersion in ui/src/AscdIO.cpp (stesso identico
 // motivo, duplicato qui per lo stesso motivo di WriteASCD sotto).
-static const int32 kASCDVersion = 5;
+// Versione 6 (era 5): aggiunge il colore della barra dei dati, stesso
+// motivo duplicato ancora da ui/src/AscdIO.cpp.
+static const int32 kASCDVersion = 6;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // Formato "cartella di lavoro" multi-foglio (Fase 9): duplicato da
 // ui/src/AscdIO.h/.cpp (magic "ASCB", conteggio fogli, poi per
@@ -902,6 +904,13 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 				return B_IO_ERROR;
 			if (exprLen > 0 && dest->Write(rule.expressionFormula.data(), exprLen) != exprLen)
 				return B_IO_ERROR;
+
+			// Colore della barra dei dati (versione 6, vedi il commento
+			// su kASCDVersion e su ConditionalFormatRule::dataBarColor
+			// in Container.h), stesso formato di ui/src/AscdIO.cpp.
+			if (dest->Write(&rule.dataBarColor, sizeof(rule.dataBarColor))
+					!= (ssize_t)sizeof(rule.dataBarColor))
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1210,11 +1219,12 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
 	// versioni 1, 2 (byte "kind" per cella), 3 (punti di scala di
-	// colori), 4 (riferimento di cella per il confronto) e 5 (formula
-	// "expression", vedi WriteASCD sopra e il commento su kASCDVersion)
-	// restano tutte leggibili -- stesso motivo di LoadASCD in
-	// ui/src/AscdIO.cpp.
-	if (version != 1 && version != 2 && version != 3 && version != 4 && version != kASCDVersion)
+	// colori), 4 (riferimento di cella per il confronto), 5 (formula
+	// "expression") e 6 (colore della barra dei dati, vedi WriteASCD
+	// sopra e il commento su kASCDVersion) restano tutte leggibili --
+	// stesso motivo di LoadASCD in ui/src/AscdIO.cpp.
+	if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5
+			&& version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -1866,6 +1876,11 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					if (exprLen > 0 && source->Seek(exprLen, SEEK_CUR) < 0)
 						return B_BAD_DATA;
 				}
+
+				// Colore della barra dei dati (versione 6): solo
+				// saltato, stesso motivo di sopra.
+				if (version >= 6 && source->Seek(sizeof(rgb_color), SEEK_CUR) < 0)
+					return B_BAD_DATA;
 			}
 		}
 	}
@@ -4961,6 +4976,15 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 	// indice.
 	else if (strcmp(name, "colorScale") == 0 && ctx->inCfRule)
 		ctx->inColorScale = true;
+	// <dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="..."/>
+	// </dataBar> (Tier 3, Fase B, dentro un <cfRule type="dataBar">):
+	// stessa identica forma di <colorScale> sopra (cfvo poi color, in
+	// linea, non tramite dxfId) -- riusa apposta lo stesso flag/stessi
+	// accumulatori (ctx->inColorScale/csCfvos/csColors), distinti solo
+	// dal "type" gia' catturato su <cfRule> quando ApplyConditionalFormatting
+	// li interpreta, cosi' nessuna analisi XML e' duplicata.
+	else if (strcmp(name, "dataBar") == 0 && ctx->inCfRule)
+		ctx->inColorScale = true;
 	else if (strcmp(name, "cfvo") == 0 && ctx->inColorScale)
 	{
 		ColorScaleCfvo cfvo;
@@ -5146,6 +5170,8 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 		ctx->currentRule.formula = ctx->condFormula;
 	}
 	else if (strcmp(name, "colorScale") == 0 && ctx->inColorScale)
+		ctx->inColorScale = false;
+	else if (strcmp(name, "dataBar") == 0 && ctx->inColorScale)
 		ctx->inColorScale = false;
 	else if (strcmp(name, "cfRule") == 0 && ctx->inCfRule)
 	{
@@ -5992,20 +6018,24 @@ static bool IsCellReferenceFormula(const std::string& formula, int& outCol, int&
 // (CContainer::AddConditionalFormatRule), rivalutata da SheetView::
 // Draw a ogni ridisegno contro i valori CORRENTI (vedi
 // CContainer::EvaluateConditionalFormatting in Container.styles.cpp).
-// Tre tipi di regola gestiti, i piu' comuni in un file reale:
-// "cellIs"/"equal" (confronto con un letterale, stringa o numero),
-// "duplicateValues" (celle il cui valore compare piu' di una volta
-// nello stesso intervallo, Fase 13) e "colorScale" (Fase 33/A punto 6:
-// a differenza degli altri due, non usa dxfId -- i colori/soglie sono
-// scritti in linea in <colorScale>, raccolti da ParseSheet in
-// CondFormatRule::csCfvos/csColors). Gli altri tipi ECMA-376
-// (containsText, top10, dataBar, iconSet, expression con formula
-// arbitraria...) restano ignorati in sicurezza, nessuna regola
-// aggiunta -- richiederebbero un vero motore di valutazione formule
-// contro un valore ipotetico, fuori scope. Per cellIs/duplicateValues,
-// solo il colore di SFONDO del dxf (non anche il colore del testo):
-// ConditionalFormatRule dell'engine porta un solo colore per quei due
-// tipi, vedi il commento su quello struct in Container.h.
+// Tipi di regola gestiti: "cellIs"/"equal" (confronto con un
+// letterale o un riferimento di cella), "duplicateValues" (celle il
+// cui valore compare piu' di una volta nello stesso intervallo, Fase
+// 13), "expression" (formula booleana arbitraria con riferimenti
+// relativi), "colorScale" (Fase 33/A punto 6) e "dataBar" (Tier 3,
+// Fase B) -- questi ultimi due, a differenza dei primi tre, non usano
+// dxfId: colori/soglie sono scritti in linea dentro <colorScale>/
+// <dataBar>, raccolti da ParseSheet in CondFormatRule::csCfvos/
+// csColors (stesso accumulatore per entrambi, vedi il commento sul
+// gestore di <dataBar> in ParseSheet). Gli altri tipi ECMA-376
+// (containsText, top10, iconSet...) restano ignorati in sicurezza,
+// nessuna regola aggiunta -- containsText/top10 richiederebbero un
+// vero motore di valutazione formule contro un valore ipotetico,
+// iconSet non ha ancora un tipo di regola lato app (vedi ROADMAP.md).
+// Per cellIs/duplicateValues, solo il colore di SFONDO del dxf (non
+// anche il colore del testo): ConditionalFormatRule dell'engine porta
+// un solo colore per quei due tipi, vedi il commento su quello struct
+// in Container.h.
 static void ApplyConditionalFormatting(CContainer* doc,
 	const std::vector<CondFormatRule>& rules, const std::vector<DxfInfo>& dxfs)
 {
@@ -6032,6 +6062,32 @@ static void ApplyConditionalFormatting(CContainer* doc,
 				point.cfvoType = rule.csCfvos[p].type;
 				point.cfvoValue = rule.csCfvos[p].val;
 				point.color = rule.csColors[p];
+				engineRule.colorScalePoints.push_back(point);
+			}
+			doc->AddConditionalFormatRule(engineRule);
+			continue;
+		}
+
+		// Barra dei dati (Tier 3, Fase B): a differenza di <colorScale>,
+		// XLSX scrive sempre UN SOLO <color> dentro <dataBar> (il
+		// riempimento, non un colore per soglia) insieme a 2 <cfvo>
+		// (min/max, raramente percent/percentile/num) -- vedi ECMA-376
+		// 18.3.1.28. Serve almeno 2 cfvo e almeno 1 colore per essere
+		// valida.
+		if (rule.type == "dataBar")
+		{
+			if (rule.csCfvos.size() < 2 || rule.csColors.empty())
+				continue;
+
+			ConditionalFormatRule engineRule;
+			engineRule.type = eCondDataBar;
+			engineRule.ranges = rule.ranges;
+			engineRule.dataBarColor = rule.csColors[0];
+			for (size_t p = 0; p < rule.csCfvos.size(); p++)
+			{
+				ColorScalePoint point;
+				point.cfvoType = rule.csCfvos[p].type;
+				point.cfvoValue = rule.csCfvos[p].val;
 				engineRule.colorScalePoints.push_back(point);
 			}
 			doc->AddConditionalFormatRule(engineRule);

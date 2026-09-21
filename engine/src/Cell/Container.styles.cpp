@@ -403,3 +403,81 @@ std::map<cell, rgb_color> CContainer::EvaluateConditionalFormatting()
 	return result;
 } // CContainer::EvaluateConditionalFormatting
 
+// Barra dei dati viva (Tier 3, Fase B): stesso schema a due passate di
+// eCondColorScale sopra (prima raccoglie min/max reali dell'intervallo,
+// poi assegna un risultato per cella), riusando la STESSA
+// ResolveColorScaleThreshold per risolvere le due soglie (min/max, o
+// percent/percentile/num se mai impostate a mano) -- l'unica differenza
+// e' cosa produce per cella: una frazione 0..1 invece di un colore
+// interpolato.
+std::map<cell, DataBarInfo> CContainer::EvaluateDataBarFormatting()
+{
+	std::map<cell, DataBarInfo> result;
+
+	for (size_t i = 0; i < fCondFormatRules.size(); i++)
+	{
+		const ConditionalFormatRule& rule = fCondFormatRules[i];
+		if (rule.type != eCondDataBar || rule.colorScalePoints.size() < 2)
+			continue;
+
+		for (size_t r = 0; r < rule.ranges.size(); r++)
+		{
+			const range& rg = rule.ranges[r];
+
+			std::vector<double> values;
+			for (int row = rg.top; row <= rg.bottom; row++)
+			{
+				for (int col = rg.left; col <= rg.right; col++)
+				{
+					Value v;
+					GetValue(cell(col, row), v);
+					if (v.fType == eNumData && !v.IsNan())
+						values.push_back((double)v);
+				}
+			}
+			if (values.empty())
+				continue;
+
+			std::vector<double> sortedValues = values;
+			std::sort(sortedValues.begin(), sortedValues.end());
+			double rangeMin = sortedValues.front();
+			double rangeMax = sortedValues.back();
+
+			double lo = ResolveColorScaleThreshold(rule.colorScalePoints[0],
+				rangeMin, rangeMax, sortedValues);
+			double hi = ResolveColorScaleThreshold(rule.colorScalePoints[1],
+				rangeMin, rangeMax, sortedValues);
+
+			for (int row = rg.top; row <= rg.bottom; row++)
+			{
+				for (int col = rg.left; col <= rg.right; col++)
+				{
+					cell c(col, row);
+					Value v;
+					GetValue(c, v);
+					if (v.fType != eNumData || v.IsNan())
+						continue;
+
+					double val = (double)v;
+					double fraction;
+					if (hi > lo)
+					{
+						fraction = (val - lo) / (hi - lo);
+						if (fraction < 0) fraction = 0;
+						if (fraction > 1) fraction = 1;
+					}
+					else
+						fraction = (val > 0) ? 1.0 : 0.0; // ripiego sicuro, intervallo degenere
+
+					DataBarInfo info;
+					info.fraction = fraction;
+					info.color = rule.dataBarColor;
+					result[c] = info;
+				}
+			}
+		}
+	}
+
+	return result;
+} // CContainer::EvaluateDataBarFormatting
+

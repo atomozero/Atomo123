@@ -1108,6 +1108,11 @@ private:
 	// UN Draw(), letta da DrawCellBand invece del colore di sfondo
 	// statico quando una regola scatta sulla cella.
 	std::map<cell, rgb_color> fCondFormatColors;
+	// Stessa idea, per le regole eCondDataBar (Tier 3, Fase B): mappa
+	// separata invece di infilare la frazione nel colore di sfondo
+	// sopra, cosi' DrawCellBand puo' disegnare prima lo sfondo piatto
+	// (se presente) poi la barra sopra, non l'uno al posto dell'altro.
+	std::map<cell, DataBarInfo> fCondFormatDataBars;
 
 	bool fHasAutoFilter;
 	range fAutoFilterRange;

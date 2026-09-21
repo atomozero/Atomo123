@@ -4720,6 +4720,34 @@ void MainWindow::ApplyColorScaleToSelection(rgb_color minColor, rgb_color maxCol
 	MarkModified();
 }
 
+void MainWindow::ApplyDataBarToSelection(rgb_color color)
+{
+	if (!fDoc)
+		return;
+
+	fSheetView->SaveCondFormatUndoState();
+	ConditionalFormatRule rule;
+	rule.type = eCondDataBar;
+	rule.dataBarColor = color;
+	rule.ranges.push_back(fSheetView->SelectionRange());
+
+	// Riusa ColorScalePoint per le due soglie min/max (vedi il
+	// commento su eCondDataBar in Container.h) -- color di ogni punto
+	// resta il ripiego bianco del costruttore, mai letto per questo
+	// tipo di regola.
+	ColorScalePoint minPoint;
+	minPoint.cfvoType = "min";
+	rule.colorScalePoints.push_back(minPoint);
+	ColorScalePoint maxPoint;
+	maxPoint.cfvoType = "max";
+	rule.colorScalePoints.push_back(maxPoint);
+
+	fDoc->AddConditionalFormatRule(rule);
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 void MainWindow::RemoveAllConditionalFormatRules()
 {
 	if (!fDoc)
@@ -6806,6 +6834,8 @@ void MainWindow::MessageReceived(BMessage* message)
 				if (type == 2 && message->FindData("maxColor", B_RGB_COLOR_TYPE,
 						(const void**)&maxColor, &size) == B_OK && maxColor)
 					ApplyColorScaleToSelection(*color, *maxColor);
+				else if (type == 3)
+					ApplyDataBarToSelection(*color);
 				else
 					ApplyConditionalFormatToSelection(type, value.String(), *color);
 			}

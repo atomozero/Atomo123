@@ -180,7 +180,38 @@ enum CondFormatRuleType {
 	// sfrutta CFormula::Calculate (che gia' risolve un riferimento
 	// relativo in base alla "inLocation" passata, lo stesso meccanismo
 	// che rende sicuro copiare/incollare una formula).
-	eCondExpression
+	eCondExpression,
+	// Barra dei dati (Path to 100% XLSX standard compatibility, Tier 3,
+	// Fase B): come eCondColorScale, il risultato di ogni cella dipende
+	// dal minimo/massimo dell'intervallo, non dal proprio valore da
+	// solo -- riusa infatti ConditionalFormatRule::colorScalePoints per
+	// le due soglie (min/max, stesso vocabolario "cfvoType" di
+	// eCondColorScale) invece di un nuovo campo, e la stessa
+	// ResolveColorScaleThreshold per risolverle. A differenza della
+	// scala di colori pero' il risultato non e' un colore interpolato
+	// ma una FRAZIONE (0..1, quanto della larghezza della cella
+	// riempire) sempre nello stesso colore (ConditionalFormatRule::
+	// dataBarColor sotto) -- vedi CContainer::EvaluateDataBarFormatting
+	// e DataBarInfo. Scope v1: nessun supporto per il colore "negativo"
+	// separato di Excel (i valori sotto lo zero si riempiono comunque
+	// verso sinistra dallo stesso punto, non con un colore diverso), ne'
+	// per la variante "solo bordo" -- entrambi rari nell'uso reale.
+	eCondDataBar
+};
+
+// Risultato per cella di una regola eCondDataBar (vedi sopra): quanta
+// parte della larghezza della cella riempire (0..1, gia' interpolata/
+// clampata) e con quale colore -- a differenza del colore di sfondo
+// piatto delle altre regole, il disegno vero (SheetView::DrawCellBand)
+// riempie solo una porzione del rettangolo, non l'intera cella.
+struct DataBarInfo {
+	double fraction;
+	rgb_color color;
+
+	DataBarInfo() : fraction(0)
+	{
+		color.red = color.green = color.blue = color.alpha = 255;
+	}
 };
 
 // Un punto di controllo di una scala di colori: stesso vocabolario di
@@ -235,10 +266,19 @@ struct ConditionalFormatRule {
 	// fronte di un costo trascurabile (ricompilare una formula corta a
 	// ogni ridisegno, non migliaia di volte per cella).
 	std::string expressionFormula;
+	// Solo per eCondDataBar: il colore unico della barra (Excel usa un
+	// solo colore, non due come la scala) -- colorScalePoints sopra
+	// porta comunque i due punti min/max (con color inutilizzato in
+	// quel caso, sempre lo stesso ripiego bianco del costruttore),
+	// riuso deliberato dello stesso vettore invece di un secondo campo
+	// soglie a parte.
+	rgb_color dataBarColor;
 
 	ConditionalFormatRule() : type(eCondCellIsEqual), compareIsCellRef(false)
 	{
 		bgColor.red = bgColor.green = bgColor.blue = bgColor.alpha = 255;
+		dataBarColor.red = 99; dataBarColor.green = 142; dataBarColor.blue = 198;
+		dataBarColor.alpha = 255; // 638EC6, lo stesso blu predefinito di Excel
 	}
 };
 
@@ -586,6 +626,15 @@ public:
 	// coinvolta -- MAI memorizzato, chiamata di nuovo a ogni ridisegno
 	// (vedi SheetView::Draw). Non const: GetCellResult sotto non lo e'.
 	std::map<cell, rgb_color> EvaluateConditionalFormatting();
+
+	// Stessa idea di EvaluateConditionalFormatting sopra, ma per
+	// eCondDataBar (Tier 3, Fase B): il risultato per cella non e' un
+	// colore ma una frazione 0..1 (vedi DataBarInfo) -- mappa separata
+	// invece di generalizzare il valore di ritorno di
+	// EvaluateConditionalFormatting, cosi' quella resta invariata (e i
+	// suoi test con lei) e SheetView disegna prima lo sfondo piatto poi,
+	// se presente, la barra sopra.
+	std::map<cell, DataBarInfo> EvaluateDataBarFormatting();
 
 	// Tabelle strutturate di Excel (Fase 14): vedi CTableDef sopra --
 	// stesso schema sparso di fComments/fHyperlinks/fValidations, ma
