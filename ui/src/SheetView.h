@@ -36,6 +36,14 @@ class BTextControl;
 class CContainer;
 class MainWindow;
 
+// Decodifica un blob PNG (o qualunque altro formato per cui esista un
+// translator installato) in una BBitmap pronta per DrawBitmap -- di
+// proprieta' del chiamante, che deve fare "delete". Libera (non un
+// metodo di SheetView) apposta: la usa anche l'anteprima di stampa in
+// MainWindow.cpp, che disegna su una BView offscreen, non su questa
+// vista.
+BBitmap* DecodeImageBytes(const std::vector<uint8>& data);
+
 class SheetView : public BView {
 public:
 	SheetView(CContainer* doc);

@@ -3425,7 +3425,7 @@ BRect SheetView::FillHandleRect() const
 // il file di gara reale che ha motivato questa fase ne ha una sola,
 // piccola (vedi ROADMAP.md Fase 12), decodificarla a ogni ridisegno
 // resta trascurabile.
-static BBitmap* DecodeImageBytes(const std::vector<uint8>& data)
+BBitmap* DecodeImageBytes(const std::vector<uint8>& data)
 {
 	if (data.empty())
 		return NULL;
