@@ -673,6 +673,60 @@ int main()
 		barReloaded.Release();
 	}
 
+	// Round-trip di una regola a icon set (Tier 3, Fase C, versione 7
+	// del formato): il campo nuovo e' iconSetStyle (una stringa), in
+	// coda al record della regola -- stesso schema di dataBarColor
+	// sopra.
+	{
+		CContainer& iconSaveDoc = *new CContainer(NULL, NULL);
+		ConditionalFormatRule iconRule;
+		iconRule.type = eCondIconSet;
+		iconRule.ranges.push_back(range(3, 1, 3, 10));
+		iconRule.iconSetStyle = "3TrafficLights1";
+
+		const double kPercents[3] = { 0, 33, 67 };
+		for (int p = 0; p < 3; p++)
+		{
+			ColorScalePoint point;
+			point.cfvoType = "percent";
+			point.cfvoValue = kPercents[p];
+			iconRule.colorScalePoints.push_back(point);
+		}
+
+		iconSaveDoc.AddConditionalFormatRule(iconRule);
+
+		BFile iconFile("tests/roundtrip_iconset.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&iconSaveDoc, &iconFile) == B_OK,
+			"SaveASCD con una regola a icon set riesce");
+		iconSaveDoc.Release();
+
+		BFile iconReopened("tests/roundtrip_iconset.ascd", B_READ_ONLY);
+		CContainer& iconReloaded = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&iconReopened, &iconReloaded) == B_OK,
+			"LoadASCD con una regola a icon set riesce");
+
+		const std::vector<ConditionalFormatRule>& iconReloadedRules
+			= iconReloaded.GetConditionalFormatRules();
+		Check(iconReloadedRules.size() == 1, "la regola sopravvive al giro salva->ricarica");
+		if (iconReloadedRules.size() == 1)
+		{
+			const ConditionalFormatRule& r = iconReloadedRules[0];
+			Check(r.type == eCondIconSet, "il tipo icon set sopravvive al giro");
+			Check(r.iconSetStyle == "3TrafficLights1",
+				"il nome dello stile sopravvive al giro");
+			Check(r.colorScalePoints.size() == 3
+					&& r.colorScalePoints[0].cfvoValue == 0
+					&& r.colorScalePoints[1].cfvoValue == 33
+					&& r.colorScalePoints[2].cfvoValue == 67,
+				"le tre soglie percentuali sopravvivono al giro");
+			Check(r.ranges.size() == 1 && r.ranges[0].left == 3 && r.ranges[0].right == 3
+					&& r.ranges[0].top == 1 && r.ranges[0].bottom == 10,
+				"l'intervallo della regola sopravvive al giro");
+		}
+		iconReloaded.Release();
+	}
+
 	// --- Un file .ascd con la colonna di un commento manomessa (fuori
 	// dall'intervallo valido) viene rifiutato con B_BAD_DATA invece di
 	// causare una lettura fuori dai limiti. Bug reale trovato durante
