@@ -118,6 +118,23 @@ cd translators/<name> && make && make test && make install  # csv/xls/xlsx/ods
 cd ui && make && make run                                   # the app (needs a graphical session)
 ```
 
+### Secondary architecture (32-bit x86)
+
+Every Makefile builds for the primary architecture (x86_64) by
+default, but `CXX`/`CXXFLAGS` (and `AR` in `engine/Makefile`) are
+overridable, and `packaging/build-hpkg.sh` accepts an `ARCH` variable
+that drives the package name/architecture/`requires` line. Once
+Haiku's x86 secondary-architecture toolchain is installed (`gcc_x86`/
+`gcc_syslibs_x86` from HaikuPorts):
+
+```
+ARCH=x86 CXX=<secondary-arch-g++> packaging/build-hpkg.sh
+```
+
+No toolchain for a secondary architecture ships with this repository
+or has been verified against it — this is unbuilt, untested
+groundwork, not a supported 32-bit release.
+
 ## Documentation
 
 - [ROADMAP.md](ROADMAP.md) — project phases and current status
