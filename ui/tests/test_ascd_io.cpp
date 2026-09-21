@@ -620,6 +620,59 @@ int main()
 		scaleReloaded.Release();
 	}
 
+	// Round-trip di una regola a barra dei dati (Tier 3, Fase B,
+	// versione 6 del formato): il campo nuovo e' dataBarColor, in coda
+	// al record della regola -- stesso schema "EOF tollerante ma
+	// versionato" gia' verificato sopra per i punti di scala di colori.
+	{
+		CContainer& barSaveDoc = *new CContainer(NULL, NULL);
+		ConditionalFormatRule barRule;
+		barRule.type = eCondDataBar;
+		barRule.ranges.push_back(range(2, 1, 2, 10));
+		barRule.dataBarColor.red = 99; barRule.dataBarColor.green = 142;
+		barRule.dataBarColor.blue = 198; barRule.dataBarColor.alpha = 255;
+
+		ColorScalePoint barMinPoint;
+		barMinPoint.cfvoType = "min";
+		barRule.colorScalePoints.push_back(barMinPoint);
+		ColorScalePoint barMaxPoint;
+		barMaxPoint.cfvoType = "max";
+		barRule.colorScalePoints.push_back(barMaxPoint);
+
+		barSaveDoc.AddConditionalFormatRule(barRule);
+
+		BFile barFile("tests/roundtrip_databar.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&barSaveDoc, &barFile) == B_OK,
+			"SaveASCD con una regola a barra dei dati riesce");
+		barSaveDoc.Release();
+
+		BFile barReopened("tests/roundtrip_databar.ascd", B_READ_ONLY);
+		CContainer& barReloaded = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&barReopened, &barReloaded) == B_OK,
+			"LoadASCD con una regola a barra dei dati riesce");
+
+		const std::vector<ConditionalFormatRule>& barReloadedRules
+			= barReloaded.GetConditionalFormatRules();
+		Check(barReloadedRules.size() == 1, "la regola sopravvive al giro salva->ricarica");
+		if (barReloadedRules.size() == 1)
+		{
+			const ConditionalFormatRule& r = barReloadedRules[0];
+			Check(r.type == eCondDataBar, "il tipo barra dei dati sopravvive al giro");
+			Check(r.dataBarColor.red == 99 && r.dataBarColor.green == 142
+					&& r.dataBarColor.blue == 198,
+				"il colore della barra sopravvive al giro");
+			Check(r.colorScalePoints.size() == 2
+					&& r.colorScalePoints[0].cfvoType == "min"
+					&& r.colorScalePoints[1].cfvoType == "max",
+				"le due soglie min/max sopravvivono al giro");
+			Check(r.ranges.size() == 1 && r.ranges[0].left == 2 && r.ranges[0].right == 2
+					&& r.ranges[0].top == 1 && r.ranges[0].bottom == 10,
+				"l'intervallo della regola sopravvive al giro");
+		}
+		barReloaded.Release();
+	}
+
 	// --- Un file .ascd con la colonna di un commento manomessa (fuori
 	// dall'intervallo valido) viene rifiutato con B_BAD_DATA invece di
 	// causare una lettura fuori dai limiti. Bug reale trovato durante

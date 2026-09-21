@@ -2954,6 +2954,25 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 					SetHighColor(bg);
 					FillRect(CellRect(c).OffsetByCopy(xOrigin, yOrigin));
 				}
+
+				// Barra dei dati (Tier 3, Fase B): disegnata SOPRA lo
+				// sfondo appena riempito (piatto o assente), riempendo
+				// solo una frazione della larghezza della cella dal
+				// bordo sinistro -- il testo, disegnato in un ciclo
+				// separato piu' sotto, resta leggibile sopra la barra
+				// esattamente come sopra un colore di sfondo normale.
+				std::map<cell, DataBarInfo>::const_iterator db = fCondFormatDataBars.find(c);
+				if (db != fCondFormatDataBars.end())
+				{
+					BRect full = CellRect(c).OffsetByCopy(xOrigin, yOrigin);
+					BRect bar = full;
+					bar.right = bar.left + full.Width() * db->second.fraction;
+					if (bar.right >= bar.left)
+					{
+						SetHighColor(db->second.color);
+						FillRect(bar);
+					}
+				}
 			}
 		}
 	}
@@ -3042,6 +3061,20 @@ void SheetView::DrawCellBand(BRect clipRect, int firstCol, int lastCol,
 			std::map<cell, rgb_color>::const_iterator cf = fCondFormatColors.find(topLeft);
 			SetHighColor(cf != fCondFormatColors.end() ? cf->second : cs.fLowColor);
 			FillRect(full);
+
+			// Barra dei dati sull'intera cella unita, stesso principio
+			// del ciclo per cella singola sopra.
+			std::map<cell, DataBarInfo>::const_iterator db = fCondFormatDataBars.find(topLeft);
+			if (db != fCondFormatDataBars.end())
+			{
+				BRect bar = full;
+				bar.right = bar.left + full.Width() * db->second.fraction;
+				if (bar.right >= bar.left)
+				{
+					SetHighColor(db->second.color);
+					FillRect(bar);
+				}
+			}
 
 			if (PrintGridEffective())
 			{
@@ -3470,6 +3503,8 @@ void SheetView::Draw(BRect updateRect)
 	// istante di calcolo.
 	fCondFormatColors = fDoc ? fDoc->EvaluateConditionalFormatting()
 		: std::map<cell, rgb_color>();
+	fCondFormatDataBars = fDoc ? fDoc->EvaluateDataBarFormatting()
+		: std::map<cell, DataBarInfo>();
 
 	SetHighColor(255, 255, 255);
 	FillRect(updateRect);

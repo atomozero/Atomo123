@@ -129,6 +129,37 @@ int main()
 
 	win->RemoveAllConditionalFormatRules();
 
+	// Barra dei dati (Tier 3, Fase B): un solo colore invece di due --
+	// ApplyDataBarToSelection e' l'equivalente per questo quarto tipo
+	// di regola.
+	view->SetSelection(cell(4, 1));
+	view->ExtendSelection(cell(4, 4)); // D1:D4
+	rgb_color barColor = { 99, 142, 198, 255 };
+	win->ApplyDataBarToSelection(barColor);
+	Check(doc->GetConditionalFormatRules().size() == 1,
+		"ApplyDataBarToSelection aggiunge una regola");
+	if (doc->GetConditionalFormatRules().size() == 1)
+	{
+		const ConditionalFormatRule& barRule = doc->GetConditionalFormatRules()[0];
+		Check(barRule.type == eCondDataBar, "la regola ha il tipo barra dei dati");
+		Check(barRule.dataBarColor.red == 99 && barRule.dataBarColor.green == 142
+				&& barRule.dataBarColor.blue == 198,
+			"la regola ha il colore scelto");
+		Check(barRule.colorScalePoints.size() == 2,
+			"la barra ha esattamente due soglie (min/max), riusando ColorScalePoint");
+		if (barRule.colorScalePoints.size() == 2)
+		{
+			Check(barRule.colorScalePoints[0].cfvoType == "min", "la prima soglia e' il minimo");
+			Check(barRule.colorScalePoints[1].cfvoType == "max", "la seconda soglia e' il massimo");
+		}
+		Check(barRule.ranges.size() == 1 && barRule.ranges[0].left == 4
+				&& barRule.ranges[0].top == 1 && barRule.ranges[0].right == 4
+				&& barRule.ranges[0].bottom == 4,
+			"la regola di barra dei dati si applica esattamente alla selezione corrente (D1:D4)");
+	}
+
+	win->RemoveAllConditionalFormatRules();
+
 	win->Unlock();
 
 	// --- Il colore si vede davvero sui pixel (non solo "il codice per
@@ -252,6 +283,69 @@ int main()
 
 		delete canvas;
 		doc3->Release();
+	}
+
+	// --- Barra dei dati: a differenza della scala di colori sopra, il
+	// risultato non e' un colore diverso per cella ma la STESSA
+	// colonna, riempita colorata solo per una FRAZIONE della sua
+	// larghezza (kColWidth = 80px, vedi SheetView.h) proporzionale al
+	// valore -- min->0% (nessun pixel colorato, nemmeno vicino al
+	// bordo sinistro), meta'->50% (colorato vicino al bordo sinistro,
+	// bianco vicino a quello destro), max->100% (colorato ovunque). ---
+	{
+		CContainer* doc6 = new CContainer(NULL, NULL);
+		TryToParseString("1", cell(1, 1), doc6, true); // A1 = 1 (minimo)
+		TryToParseString("2", cell(1, 2), doc6, true); // A2 = 2 (a meta')
+		TryToParseString("3", cell(1, 3), doc6, true); // A3 = 3 (massimo)
+
+		ConditionalFormatRule rule;
+		rule.type = eCondDataBar;
+		rule.dataBarColor = barColor; // (99,142,198)
+		rule.ranges.push_back(range(1, 1, 1, 3)); // A1:A3
+		ColorScalePoint minPoint;
+		minPoint.cfvoType = "min";
+		rule.colorScalePoints.push_back(minPoint);
+		ColorScalePoint maxPoint;
+		maxPoint.cfvoType = "max";
+		rule.colorScalePoints.push_back(maxPoint);
+		doc6->AddConditionalFormatRule(rule);
+
+		BRect canvasRect(0, 0, 799, 599);
+		BBitmap* canvas = new BBitmap(canvasRect, B_RGB32, true);
+		SheetView* view6 = new SheetView(doc6);
+		view6->ResizeTo(canvasRect.Width(), canvasRect.Height());
+		canvas->AddChild(view6);
+
+		canvas->Lock();
+		view6->Draw(canvasRect);
+		view6->Sync();
+		canvas->Unlock();
+
+		uint8* bits = (uint8*)canvas->Bits();
+		int32 bpr = canvas->BytesPerRow();
+
+		// B_RGB32 in memoria: B, G, R, A -- il colore atteso e'
+		// (99,142,198) in R,G,B, quindi (198,142,99) in ordine BGRA.
+		BRect a1 = view6->CellRect(cell(1, 1));
+		uint8* pxA1Near = bits + (int32)(a1.top + 3) * bpr + (int32)(a1.left + 3) * 4;
+		Check(pxA1Near[0] > 250 && pxA1Near[1] > 250 && pxA1Near[2] > 250,
+			"A1 (valore minimo, frazione 0): nessuna barra, resta bianca anche vicino al bordo sinistro");
+
+		BRect a2 = view6->CellRect(cell(1, 2));
+		uint8* pxA2Near = bits + (int32)(a2.top + 3) * bpr + (int32)(a2.left + 3) * 4;
+		Check(pxA2Near[0] > 180 && pxA2Near[0] < 220 && pxA2Near[2] > 80 && pxA2Near[2] < 120,
+			"A2 (valore a meta', frazione 0.5): colorata vicino al bordo sinistro");
+		uint8* pxA2Far = bits + (int32)(a2.top + 3) * bpr + (int32)(a2.right - 3) * 4;
+		Check(pxA2Far[0] > 250 && pxA2Far[1] > 250 && pxA2Far[2] > 250,
+			"A2 (valore a meta', frazione 0.5): resta bianca vicino al bordo destro, oltre meta' barra");
+
+		BRect a3 = view6->CellRect(cell(1, 3));
+		uint8* pxA3Far = bits + (int32)(a3.top + 3) * bpr + (int32)(a3.right - 3) * 4;
+		Check(pxA3Far[0] > 180 && pxA3Far[0] < 220 && pxA3Far[2] > 80 && pxA3Far[2] < 120,
+			"A3 (valore massimo, frazione 1): colorata fino al bordo destro");
+
+		delete canvas;
+		doc6->Release();
 	}
 
 	// --- Confronto contro un RIFERIMENTO DI CELLA (compareIsCellRef),

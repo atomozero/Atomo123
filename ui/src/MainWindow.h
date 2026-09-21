@@ -493,6 +493,7 @@ public:
 	// kMsgCondFormatCommit/kMsgCondFormatRemoveAll.
 	void ApplyConditionalFormatToSelection(int type, const char* value, rgb_color color);
 	void ApplyColorScaleToSelection(rgb_color minColor, rgb_color maxColor);
+	void ApplyDataBarToSelection(rgb_color color);
 	void RemoveAllConditionalFormatRules();
 
 	// ISheetResolver (Fase 9): risolve "NomeFoglio!Cella" verso il

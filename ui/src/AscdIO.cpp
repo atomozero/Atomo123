@@ -53,8 +53,11 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // identico bug di principio gia' risolto una volta per i confini fra
 // fogli con "ASC2" (vedi il commento su kASCDBook2Magic sotto), qui
 // risolto con un controllo esplicito sulla versione del file invece
-// che su un nuovo formato di lunghezza.
-static const int32 kASCDVersion = 5;
+// che su un nuovo formato di lunghezza. Versione 6 (era 5): un altro
+// campo NUOVO IN MEZZO alla stessa sezione, stesso principio -- il
+// colore della barra dei dati (Tier 3, Fase B, vedi il commento su
+// ConditionalFormatRule::dataBarColor in Container.h).
+static const int32 kASCDVersion = 6;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // "ASCB": formato cartella di lavoro LEGACY, congelato per sempre a
 // questo elenco di sezioni per foglio (fino a "Imposta pagina", Fase
@@ -875,6 +878,15 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 				return B_IO_ERROR;
 			if (exprLen > 0 && dest->Write(rule.expressionFormula.data(), exprLen) != exprLen)
 				return B_IO_ERROR;
+
+			// Colore della barra dei dati (versione 6, vedi il commento
+			// su kASCDVersion e su ConditionalFormatRule::dataBarColor
+			// in Container.h): non significativo per gli altri quattro
+			// tipi, scritto comunque per ognuno per restare a lunghezza
+			// fissa (piu' semplice che condizionarlo al tipo).
+			if (dest->Write(&rule.dataBarColor, sizeof(rule.dataBarColor))
+					!= (ssize_t)sizeof(rule.dataBarColor))
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1223,14 +1235,17 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		return B_BAD_DATA;
 	// versioni 1 (mai il byte "kind" per cella), 2 (Fase 15), 3 (punti
 	// di scala di colori), 4 (regola di formattazione condizionale
-	// contro un riferimento di cella invece che un letterale) e 5
+	// contro un riferimento di cella invece che un letterale), 5
 	// (regola "expression", una formula booleana arbitraria con
 	// riferimenti relativi -- vedi il commento su
-	// ConditionalFormatRule::expressionFormula in Container.h)
-	// restano TUTTE leggibili -- un file scritto da una versione
-	// precedente di questo formato non deve smettere di aprirsi solo
-	// perche' questo binario e' piu' recente.
-	if (version != 1 && version != 2 && version != 3 && version != 4 && version != kASCDVersion)
+	// ConditionalFormatRule::expressionFormula in Container.h) e 6
+	// (colore della barra dei dati, vedi il commento su
+	// ConditionalFormatRule::dataBarColor in Container.h) restano
+	// TUTTE leggibili -- un file scritto da una versione precedente di
+	// questo formato non deve smettere di aprirsi solo perche' questo
+	// binario e' piu' recente.
+	if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5
+			&& version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -2145,6 +2160,18 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 						if (source->Read(&rule.expressionFormula[0], exprLen) != exprLen)
 							return B_BAD_DATA;
 					}
+				}
+
+				// Colore della barra dei dati: solo un file versione 6+
+				// ha scritto questi byte (vedi il commento su
+				// kASCDVersion e su ConditionalFormatRule::dataBarColor
+				// in Container.h).
+				if (version >= 6)
+				{
+					rgb_color dataBarColor;
+					if (source->Read(&dataBarColor, sizeof(dataBarColor)) != (ssize_t)sizeof(dataBarColor))
+						return B_BAD_DATA;
+					rule.dataBarColor = dataBarColor;
 				}
 
 				doc->AddConditionalFormatRule(rule);
