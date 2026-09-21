@@ -91,11 +91,12 @@ percent/currency formats, and XLSX import's default vertical
 alignment. See `CHANGELOG.md` for the full detail on each, including
 the real bugs found while building them.
 
-**Tier 3 in progress**: conditional formatting `dataBar` is now done
-(app-side rule type + XLSX import, see below); `iconSet` is next,
-same reasoning, then real Excel pivot table round-trip (the legacy
-indexed color palette is already done, see below) — see "Path to 100%
-XLSX standard compatibility" below for the full detail.
+**Tier 3 in progress**: conditional formatting `dataBar` and `iconSet`
+are both done now (app-side rule type + XLSX import, see below) —
+closes the three-part color scale/data bar/icon set plan. Next up is
+real Excel pivot table round-trip (the legacy indexed color palette is
+already done, see below) — see "Path to 100% XLSX standard
+compatibility" below for the full detail.
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
@@ -317,13 +318,36 @@ through `.xlsx`, in either direction, before this work.
   reusing the exact same in-line cfvo/color parsing as `<colorScale>`)
   landed in the same pass, per the plan below. Native + XLSX ASCD
   format bumped to version 6 (`dataBarColor`, one more field appended
-  to the existing conditional-formatting section). `iconSet`/
-  `containsText`/`top10`/arbitrary-formula `expression` rules are
-  still recognized and safely ignored (no rule added) rather than
-  misapplied — correct but incomplete. `iconSet` should happen next,
-  same reasoning (Fase C of the same plan) — implementing the app-side
-  rule type and its XLSX import in the same pass avoids building the
-  evaluator twice
+  to the existing conditional-formatting section). ~~`iconSet`~~ Fixed
+  (Fase C, the last of the three "relative to the range" types) — see
+  `CHANGELOG.md`. New rule type `eCondIconSet`: the number of icons
+  (3/4/5) comes from `colorScalePoints.size()` itself, never from the
+  XLSX style name (`ConditionalFormatRule::iconSetStyle` is stored only
+  for XLSX round-tripping, deliberately never parsed for meaning — more
+  robust than needing to know every Excel style name, including ones
+  never seen yet). Per-cell result is an icon index (`IconSetInfo`),
+  drawn as a small colored circle (red→yellow→green across the whole
+  set) — one visual style for every XLSX icon style name, not the real
+  distinct shapes (arrows/flags/ratings); no "reverse" support. Found
+  and fixed a real rendering bug while writing the pixel-level test for
+  this: this engine's default alignment (`eAlignGeneral`) is always
+  LEFT, even for numbers (unlike Excel's right-aligned numbers by
+  default) — an icon drawn at the cell's left edge was silently
+  overpainted by the cell's own left-aligned text, drawn in a later
+  pass; moved to the right edge instead, which the pixel test caught
+  before this ever shipped. App-side UI (`ConditionalFormatWindow`, a
+  5th type, no color picker — always a 3-level set, matching Excel's
+  own unconfigured default) and XLSX import (`<iconSet iconSet="...">
+  <cfvo/>...</iconSet>`, reusing the same in-line cfvo parsing as
+  `<colorScale>`/`<dataBar>` — note XLSX never writes a `<color>` here,
+  unlike those two) landed in the same pass. Native + XLSX ASCD format
+  bumped to version 7 (`iconSetStyle`). `containsText`/`top10`/
+  arbitrary-formula `expression` rules are still recognized and safely
+  ignored (no rule added) rather than misapplied — correct but
+  incomplete; both would need a real formula-evaluation-against-a-
+  hypothetical-value engine, a larger, separate effort. This closes the
+  three-part "relative to the range" conditional formatting plan
+  (Fase A/B/C).
 - ~~**Legacy indexed color palette** (`indexed="N"`, the fixed 64-entry
   Excel 97-2003 table)~~ Fixed — see `CHANGELOG.md`. Added as a third
   fallback in `ResolveColorAttrs` (after `rgb`/`theme`), so it applies
