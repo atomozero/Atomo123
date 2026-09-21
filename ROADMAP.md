@@ -91,10 +91,11 @@ percent/currency formats, and XLSX import's default vertical
 alignment. See `CHANGELOG.md` for the full detail on each, including
 the real bugs found while building them.
 
-**Next up is Tier 3** (conditional formatting rule types beyond
-`cellIs`/`duplicateValues`, real Excel pivot table round-trip; the
-legacy indexed color palette is now done, see below) — see "Path to
-100% XLSX standard compatibility" below for the full detail.
+**Tier 3 in progress**: conditional formatting `dataBar` is now done
+(app-side rule type + XLSX import, see below); `iconSet` is next,
+same reasoning, then real Excel pivot table round-trip (the legacy
+indexed color palette is already done, see below) — see "Path to 100%
+XLSX standard compatibility" below for the full detail.
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
@@ -303,13 +304,26 @@ through `.xlsx`, in either direction, before this work.
 
 - **Conditional formatting rule types beyond `cellIs`/
   `duplicateValues`.** `colorScale` is now imported for real (see
-  "Path to full Excel parity" Tier 1 above). `dataBar`/`iconSet`/
+  "Path to full Excel parity" Tier 1 above). ~~`dataBar`~~ Fixed (Fase
+  B of the same plan) — see `CHANGELOG.md`. New rule type
+  `eCondDataBar` (`Container.h`): reuses `ColorScalePoint` for the
+  min/max thresholds instead of a new struct, resolved the same way as
+  `colorScale` (`ResolveColorScaleThreshold`), but produces a per-cell
+  FRACTION (0..1 of the cell width to fill, `DataBarInfo`) instead of
+  an interpolated color — `SheetView::DrawCellBand` draws it as a
+  partial-width rectangle on top of the normal background, text still
+  legible on top. App-side UI (`ConditionalFormatWindow`, a 4th type,
+  one color) and XLSX import (`<dataBar><cfvo/><cfvo/><color/></dataBar>`,
+  reusing the exact same in-line cfvo/color parsing as `<colorScale>`)
+  landed in the same pass, per the plan below. Native + XLSX ASCD
+  format bumped to version 6 (`dataBarColor`, one more field appended
+  to the existing conditional-formatting section). `iconSet`/
   `containsText`/`top10`/arbitrary-formula `expression` rules are
   still recognized and safely ignored (no rule added) rather than
-  misapplied — correct but incomplete. `dataBar`/`iconSet` should
-  happen together with their app-side rule type (Fase B/C of the same
-  plan) — implementing the app-side rule type and its XLSX import in
-  the same pass avoids building the evaluator twice
+  misapplied — correct but incomplete. `iconSet` should happen next,
+  same reasoning (Fase C of the same plan) — implementing the app-side
+  rule type and its XLSX import in the same pass avoids building the
+  evaluator twice
 - ~~**Legacy indexed color palette** (`indexed="N"`, the fixed 64-entry
   Excel 97-2003 table)~~ Fixed — see `CHANGELOG.md`. Added as a third
   fallback in `ResolveColorAttrs` (after `rgb`/`theme`), so it applies
