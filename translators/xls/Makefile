@@ -3,9 +3,12 @@
 # Compila XlsTranslator.cpp in un add-on installabile (shared object)
 # che usa il motore di calcolo isolato (../../engine/libengine.a).
 
-CXX := g++
+# CXX/CXXFLAGS sovrascrivibili ("?="): vedi il commento in
+# ../../engine/Makefile sul compilatore dell'architettura secondaria a
+# 32 bit.
+CXX ?= g++
 # -O2 (Fase 34): vedi il commento in ../../engine/Makefile.
-CXXFLAGS := -std=gnu++17 -Wall -g -O2 -fPIC
+CXXFLAGS ?= -std=gnu++17 -Wall -g -O2 -fPIC
 ENGINE_DIR := ../../engine
 ENGINE_SRCDIRS := $(ENGINE_DIR)/src/Cell $(ENGINE_DIR)/src/Formula \
 	$(ENGINE_DIR)/src/Functions $(ENGINE_DIR)/src/Excel \
