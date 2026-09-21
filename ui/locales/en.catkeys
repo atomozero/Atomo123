@@ -1,4 +1,4 @@
-1	English	application/x-vnd.Atomo-Atomo123	65417261
+1	English	application/x-vnd.Atomo-Atomo123	1829224689
 Dividi	PasteSpecialWindow		Divide
 Nuovo documento	MainWindow		New document
 Sostituisci con:	FindWindow		Replace with:
@@ -38,6 +38,7 @@ Spesso	MainWindow		Thick
 Sottrai	PasteSpecialWindow		Subtract
 Media	PivotWindow		Average
 Tabella pivot	MainWindow		Pivot table
+Aggiorna tabelle pivot	MainWindow		Refresh pivot tables
 Collegamento ipertestuale	MainWindow		Hyperlink
 Imposta area di stampa	MainWindow		Imposta area di stampa
 Salva	MainWindow		Save
@@ -136,7 +137,6 @@ Trova e sostituisci…	MainWindow		Find and replace…
 Blocca riquadri	MainWindow		Freeze panes
 Nessun dato da mostrare.	Chart		No data to show.
 Inserisci colonna	MainWindow		Insert column
-%d categoria/e trovate.	MainWindow		%d categories found.
   ·  per Haiku	AboutWindow		  ·  for Haiku
 Incolla speciale	PasteSpecialWindow		Paste special
 Convalida dati…	MainWindow		Data validation…

@@ -497,6 +497,12 @@ public:
 	void ApplyIconSetToSelection();
 	void RemoveAllConditionalFormatRules();
 
+	// Rese pubbliche apposta per essere testabili senza passare da una
+	// vera PivotWindow, stesso principio di ApplyConditionalFormatToSelection
+	// sopra -- vedi tests/test_pivot_refresh.cpp.
+	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg);
+	void RefreshAllPivotTables();
+
 	// ISheetResolver (Fase 9): risolve "NomeFoglio!Cella" verso il
 	// CContainer corrispondente in fSheets, per nome. Pubblico perche'
 	// la classe lo espone come override di un'interfaccia pubblica, non
@@ -797,7 +803,6 @@ private:
 	void ShowChartWindow();
 	void ShowPivotWindow();
 	void HandleChartRequest(const char* rangeText, ChartType type);
-	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg);
 	void ShowNameWindow();
 	void RefreshNameWindow();
 	void ShowPasteSpecialWindow();

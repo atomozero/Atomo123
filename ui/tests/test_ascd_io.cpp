@@ -31,6 +31,7 @@
 #include "Cell.h"
 #include "CellStyle.h"
 #include "Chart.h"
+#include "Pivot.h"
 #include "Value.h"
 #include "Container.h"
 #include "CellParser.h"
@@ -725,6 +726,64 @@ int main()
 				"l'intervallo della regola sopravvive al giro");
 		}
 		iconReloaded.Release();
+	}
+
+	// Round-trip di una tabella pivot persistita (oggetto + cache, non
+	// solo le celle che WritePivotTable scrive): vedi PivotTableObject
+	// in Container.h.
+	{
+		CContainer& pivotSaveDoc = *new CContainer(NULL, NULL);
+		pivotSaveDoc.NewCell(cell(1, 1), Value("Mela"), NULL);
+		pivotSaveDoc.NewCell(cell(2, 1), Value(10.0), NULL);
+		pivotSaveDoc.NewCell(cell(1, 2), Value("Pera"), NULL);
+		pivotSaveDoc.NewCell(cell(2, 2), Value(5.0), NULL);
+
+		std::vector<PivotRow> pivotRows;
+		range pivotSource(1, 1, 2, 2);
+		BuildPivotTable(&pivotSaveDoc, pivotSource, pivotRows);
+		WritePivotTable(&pivotSaveDoc, cell(4, 1), pivotRows, ePivotSum);
+
+		PivotTableObject pivot;
+		pivot.sourceRange = pivotSource;
+		pivot.destAnchor = cell(4, 1);
+		pivot.aggFunc = ePivotSum;
+		pivot.cachedRows = pivotRows;
+		pivotSaveDoc.AddPivotTable(pivot);
+
+		BFile pivotFile("tests/roundtrip_pivot.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&pivotSaveDoc, &pivotFile) == B_OK,
+			"SaveASCD con una tabella pivot persistita riesce");
+		pivotSaveDoc.Release();
+
+		BFile pivotReopened("tests/roundtrip_pivot.ascd", B_READ_ONLY);
+		CContainer& pivotReloaded = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&pivotReopened, &pivotReloaded) == B_OK,
+			"LoadASCD con una tabella pivot persistita riesce");
+
+		const std::vector<PivotTableObject>& reloadedPivots = pivotReloaded.GetPivotTables();
+		Check(reloadedPivots.size() == 1, "la tabella pivot sopravvive al giro salva->ricarica");
+		if (reloadedPivots.size() == 1)
+		{
+			Check(reloadedPivots[0].sourceRange.left == 1 && reloadedPivots[0].sourceRange.right == 2,
+				"sourceRange sopravvive al giro salva->ricarica");
+			Check(reloadedPivots[0].destAnchor.h == 4 && reloadedPivots[0].destAnchor.v == 1,
+				"destAnchor sopravvive al giro salva->ricarica");
+			Check(reloadedPivots[0].aggFunc == ePivotSum, "aggFunc sopravvive al giro salva->ricarica");
+			Check(reloadedPivots[0].cachedRows.size() == pivotRows.size(),
+				"cachedRows sopravvive al giro salva->ricarica");
+		}
+
+		// Le celle scritte da WritePivotTable sono anch'esse nel file,
+		// caricate dalla normale sezione celle -- NON ricalcolate da
+		// LoadASCD (nessuna chiamata a BuildPivotTable qui): verifica
+		// che il valore rimasto sia quello scritto al salvataggio.
+		Value reloadedHeader;
+		pivotReloaded.GetValue(cell(4, 1), reloadedHeader);
+		Check(BString((const char*)reloadedHeader) == "Categoria",
+			"le celle scritte da WritePivotTable sopravvivono anch'esse (LoadASCD non ricalcola)");
+
+		pivotReloaded.Release();
 	}
 
 	// --- Un file .ascd con la colonna di un commento manomessa (fuori
