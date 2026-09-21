@@ -93,10 +93,12 @@ the real bugs found while building them.
 
 **Tier 3 in progress**: conditional formatting `dataBar` and `iconSet`
 are both done now (app-side rule type + XLSX import, see below) —
-closes the three-part color scale/data bar/icon set plan. Next up is
-real Excel pivot table round-trip (the legacy indexed color palette is
-already done, see below) — see "Path to 100% XLSX standard
-compatibility" below for the full detail.
+closes the three-part color scale/data bar/icon set plan. Real Excel
+pivot table round-trip is also in progress: Phase 1 (persisted,
+cache-based native pivot object) is done; Phases 2/3 (XLSX
+export/import of that object) are not started yet (the legacy indexed
+color palette is already done, see below) — see "Path to 100% XLSX
+standard compatibility" below for the full detail.
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
@@ -356,15 +358,45 @@ through `.xlsx`, in either direction, before this work.
   Foreground"/"System Background", i.e. automatic) are deliberately
   left unresolved; a custom `<colors><indexedColors>` override (rare)
   is not read, only the fixed default table
-- **Real Excel pivot tables** (`<pivotTable>`/
-  `xl/pivotCache/pivotCacheDefinition*.xml`) have no XLSX round-trip
-  at all — a pivot table in an imported file is invisible today (only
-  its underlying source data imports, if that's on a separate visible
-  sheet), and this app's own pivot feature never exports as a real
-  OOXML pivot table, only as plain calculated cells. Large: needs its
-  own design pass, likely comparable in effort to the chart
-  import/export work already done, probably belongs after Tier 1/2
-  land
+- **Real Excel pivot tables**: XLSX round-trip (`<pivotTable>`/
+  `xl/pivotCache/pivotCacheDefinition*.xml`) split into three phases,
+  same shape charts were historically built in (native object first,
+  then XLSX import, then XLSX export).
+  - ~~**Phase 1: persisted, cache-based native pivot object.**~~ Fixed
+    — see `CHANGELOG.md`. Before this, the pivot feature
+    (`BuildPivotTable`/`WritePivotTable` in `ui/src/Pivot.h`/`.cpp`)
+    was fire-and-forget: it wrote plain calculated cells with no
+    definition kept anywhere, so a reopened file's pivot table was
+    indistinguishable from any other block of cells, with nothing to
+    refresh and nothing a future XLSX export could turn into a real
+    cache. New `PivotTableObject` (`engine/src/Cell/Container.h`,
+    alongside `PivotAggFunc`/`PivotRow`, moved there from the UI layer
+    so a future importer can construct them without depending on
+    `ui/src/Pivot.h`) persists `sourceRange`/`destAnchor`/`aggFunc`/
+    `cachedRows` in a new native `.ascd` trailing section (no version
+    bump — pure EOF-tolerant append, same shape as the `CTableDef`
+    section). `MainWindow::HandlePivotRequest` now persists the object
+    after creating a pivot; a new `RefreshAllPivotTables()` (wired to
+    "Aggiorna tabelle pivot" in the Inserisci menu) re-runs
+    `BuildPivotTable` against the *current* source and rewrites both
+    the sheet and the cache — matching real Excel's own behavior
+    (a pivot table cache sits still until an explicit Refresh, not a
+    live auto-recalculating formula). Found and fixed a real
+    testability/UX bug while writing the live-refresh test:
+    `HandlePivotRequest` showed a modal `BAlert::Go()` "N categories
+    found" confirmation on every successful pivot creation, which
+    blocks forever with no user present to click it — removed
+    entirely (real Excel doesn't confirm a successful pivot creation
+    either, so this was also a minor real UX wart, not just a test
+    problem).
+  - **Phase 2: XLSX export** of a persisted `PivotTableObject` as real
+    OOXML pivot parts (`pivotCacheDefinition`/`pivotCacheRecords`/
+    `pivotTable` XML + relationships + `[Content_Types].xml`) — not
+    started.
+  - **Phase 3: XLSX import** of a real `<pivotTable>` into a
+    `PivotTableObject` where the shape fits this app's model (row
+    fields only, single measure); otherwise import is expected to keep
+    only the underlying source data, same as today — not started.
 
 ### Tier 4 — rare spec corners, low priority
 
