@@ -116,6 +116,45 @@ What shipped in v0.3.0, on top of v0.2.9:
   interactions); verification instead uses an in-process translator
   round-trip (`CXlsxTranslator::Translate` directly), which exercises
   the exact same new code without that dependency.
+- Range-vs-scalar comparison inside a function argument (e.g.
+  `FILTER(A2:A8,B2:B8>=20)`, the natural way to write `FILTER`'s
+  condition and the form real Excel/openpyxl actually produce) now
+  evaluates to a real per-cell boolean array instead of a single wrong
+  boolean — closes the last open item in "Path to full Excel parity"
+  Tier 2. Scoped narrowly to comparison operators, not a general
+  array-broadcast engine — arithmetic operators still don't understand
+  ranges, deliberately, matching the roadmap item's own stated scope.
+  A new transient `eBoolArrayData` `Value` type (never persisted to a
+  real cell, same principle as the existing `eRangeData`) carries a
+  per-cell boolean array through expression evaluation.
+  `Value::CompareLT/LE/GT/GE/EQ/NE` build one when either comparison
+  operand is a multi-cell range, reading real cell values through a
+  `CContainer*` now threaded in from `CFormula::Calculate`. These
+  replace the old `operator<` etc. — a real design correction found
+  only once the actual build rejected the originally-planned
+  default-argument approach: the C++ standard forbids an overloaded
+  binary operator from taking more than one explicit parameter at all,
+  defaulted or not. `FILTER` (`GetBoolArrayArgument`,
+  `FunctionUtils.cpp`) tries the new array form first, falling back
+  unchanged to the existing literal-boolean-range path — the
+  `Welcome.xlsx` demo's helper-column workaround keeps working byte
+  for byte. A bare whole-cell `=B2:B8>=20` (no `FILTER` wrapper)
+  collapses to its first element, the same "implicit intersection"
+  Excel applies and this engine already applied for a bare `eRangeData`
+  result. Renaming the comparison operators required updating every
+  call site across the whole codebase — six in `Formula.cpp`, plus
+  four more a full rebuild caught that a repo-wide grep for direct
+  operator calls had missed: `Container.cpp`'s Sort comparator,
+  `Functions.logical.cpp`'s `SWITCH`, and
+  `Functions.spreadsheet.cpp`'s `UNIQUE`/`SORT`/`SORTBY` (all were
+  using plain infix `<`/`==` on two `Value`s, invisible to a grep for
+  `stack[...] < stack[...]`-shaped patterns). The full existing test
+  suite across `engine`/`ui`/`translators/xlsx` (500+ checks) passed
+  unchanged after the fix — the strongest available signal that the
+  new `Value` memory-ownership branches (a heap-owned array member
+  added alongside the existing `fText` deep-copy discipline in
+  `Clear()`/the copy constructor/`operator=`/the destructor) didn't
+  regress anything already working.
 
 What shipped in v0.2.0, on top of the v0.1.0 baseline:
 - XLSX/ODS export now writes live formulas for same-sheet references
