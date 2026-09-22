@@ -2394,6 +2394,159 @@ static bool ApplyNamesFromAscdForTest(const unsigned char* data, size_t len, siz
 	return true;
 }
 
+// Same walk as ApplyNamesFromAscdForTest above (same assumptions: no
+// chart, no VBA project, every other trailing section empty), but
+// continues PAST named ranges into vertical alignment (assumed empty
+// too) and then into the tabelle pivot section (Fase 3 delle tabelle
+// pivot -- vedi ROADMAP.md/CHANGELOG.md), the real new LAST section of
+// the format, reading its real data instead of skipping it. Names
+// themselves are skipped (not applied to any doc) since this caller
+// doesn't need them.
+static bool ReadFirstPivotFromAscdForTest(const unsigned char* data, size_t len, size_t pos,
+	std::vector<PivotTableObject>* out)
+{
+	out->clear();
+
+	if (pos + 4 > len) return false;
+	int32 chartCount;
+	memcpy(&chartCount, data + pos, 4); pos += 4;
+	if (chartCount != 0) return false;
+
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 8 > len) return false;
+	pos += 8;
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 1 > len) return false;
+	pos += 1;
+	if (pos + 4 > len) return false;
+	pos += 4;
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	if (pos + 9 > len) return false;
+	pos += 9;
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	if (pos + 9 > len) return false;
+	pos += 9;
+	if (pos + 45 > len) return false;
+	pos += 45;
+	if (pos + 1 > len) return false;
+	if (data[pos] != 0) return false;
+	pos += 1;
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	if (pos + 1 > len) return false;
+	pos += 1;
+
+	// Intervalli con nome: saltati, non serve applicarli qui.
+	if (pos + 4 > len) return false;
+	int32 nameCount;
+	memcpy(&nameCount, data + pos, 4); pos += 4;
+	for (int32 i = 0; i < nameCount; i++)
+	{
+		if (pos + 4 > len) return false;
+		int32 nameLen;
+		memcpy(&nameLen, data + pos, 4); pos += 4;
+		if (nameLen < 0 || pos + (size_t)nameLen > len) return false;
+		pos += nameLen;
+		if (pos + 8 > len) return false;
+		pos += 8;
+	}
+
+	// Allineamento verticale: assunto vuoto (nessuna cella del fixture
+	// usa un allineamento non predefinito).
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// Tabelle pivot (Fase 3), NUOVA ultima sezione del formato: i dati
+	// veri, stesso schema byte per byte di ui/src/AscdIO.cpp (SaveASCD).
+	if (pos + 4 > len) return false;
+	int32 pivotCount;
+	memcpy(&pivotCount, data + pos, 4); pos += 4;
+	if (pivotCount < 0) return false;
+
+	for (int32 i = 0; i < pivotCount; i++)
+	{
+		if (pos + 16 > len) return false;
+		int16 srcLeft, srcTop, srcRight, srcBottom, destCol, destRow;
+		int32 aggFunc;
+		memcpy(&srcLeft, data + pos, 2); pos += 2;
+		memcpy(&srcTop, data + pos, 2); pos += 2;
+		memcpy(&srcRight, data + pos, 2); pos += 2;
+		memcpy(&srcBottom, data + pos, 2); pos += 2;
+		memcpy(&destCol, data + pos, 2); pos += 2;
+		memcpy(&destRow, data + pos, 2); pos += 2;
+		memcpy(&aggFunc, data + pos, 4); pos += 4;
+
+		PivotTableObject pivot;
+		pivot.sourceRange = range(srcLeft, srcTop, srcRight, srcBottom);
+		pivot.destAnchor = cell(destCol, destRow);
+		pivot.aggFunc = (PivotAggFunc)aggFunc;
+
+		if (pos + 4 > len) return false;
+		int32 rowCount;
+		memcpy(&rowCount, data + pos, 4); pos += 4;
+		if (rowCount < 0) return false;
+
+		for (int32 r = 0; r < rowCount; r++)
+		{
+			if (pos + 4 > len) return false;
+			int32 catCount;
+			memcpy(&catCount, data + pos, 4); pos += 4;
+			if (catCount < 0) return false;
+
+			PivotRow row;
+			for (int32 k = 0; k < catCount; k++)
+			{
+				if (pos + 4 > len) return false;
+				int32 catLen;
+				memcpy(&catLen, data + pos, 4); pos += 4;
+				if (catLen < 0 || pos + (size_t)catLen > len) return false;
+				row.categories.push_back(BString((const char*)data + pos, catLen));
+				pos += catLen;
+			}
+
+			if (pos + 28 > len) return false;
+			int32 count32;
+			memcpy(&row.aggregate, data + pos, 8); pos += 8;
+			memcpy(&count32, data + pos, 4); pos += 4;
+			memcpy(&row.minVal, data + pos, 8); pos += 8;
+			memcpy(&row.maxVal, data + pos, 8); pos += 8;
+			row.count = count32;
+
+			pivot.cachedRows.push_back(row);
+		}
+
+		out->push_back(pivot);
+	}
+
+	return true;
+}
+
 int main()
 {
 	// Serve da Fase 12 (import grassetto/corsivo): gFontSizeTable::
@@ -3009,6 +3162,19 @@ int main()
 								"sample.xlsx ha celle stilizzate, quindi almeno un allineamento "
 								"verticale esplicito (il vero default Bottom di Excel) e' persistito");
 							pos += valignCount * (2 + 2 + 1);
+						}
+
+						// Tabelle pivot (Fase 3 delle tabelle pivot -- vedi
+						// ROADMAP.md/CHANGELOG.md): un conteggio, la
+						// NUOVISSIMA ultima sezione del formato -- sample.xlsx
+						// non ha nessuna tabella pivot, quindi il conteggio e'
+						// zero e non ci sono record a seguire.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 pivotCount;
+							memcpy(&pivotCount, ascdData + pos, 4); pos += 4;
+							Check(pivotCount == 0,
+								"nessuna tabella pivot in sample.xlsx, il conteggio e' zero");
 						}
 
 						// sample.xlsx e' un solo foglio: dopo tutte le
@@ -8048,6 +8214,77 @@ int main()
 			}
 			else
 				Check(false, "xl/worksheets/_rels/sheet1.xml.rels si legge dall'archivio");
+
+			// Fase 3 delle tabelle pivot (import XLSX di un <pivotTable>
+			// reale): lo stesso file appena esportato si RIIMPORTA con lo
+			// stesso translator, verificando che un vero PivotTableObject
+			// venga ricostruito -- non solo le celle statiche gia'
+			// verificate sopra. Round-trip simmetrico con la Fase 2.
+			pivotXlsxOut.Seek(0, SEEK_SET);
+			translator_info pivotReimportInfo;
+			err = translator->Identify(&pivotXlsxOut, NULL, NULL, &pivotReimportInfo, 0);
+			Check(err == B_OK && pivotReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX con una tabella pivot si riconosce ancora come XLSX valido rileggendolo");
+
+			pivotXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO pivotReimportAscd;
+			err = translator->Translate(&pivotXlsxOut, &pivotReimportInfo, NULL,
+				kAtomoNativeFormat, &pivotReimportAscd);
+			Check(err == B_OK, "il file XLSX con una tabella pivot si rilegge correttamente (round-trip)");
+
+			const unsigned char* pivotReimportData = NULL;
+			size_t pivotReimportLen = 0;
+			bool pivotReimportUnwrapped = UnwrapFirstSheet(
+				(const unsigned char*)pivotReimportAscd.Buffer(), pivotReimportAscd.BufferLength(),
+				&pivotReimportData, &pivotReimportLen);
+			Check(pivotReimportUnwrapped,
+				"il round-trip della tabella pivot produce anch'esso una cartella ASCB valida");
+
+			if (pivotReimportUnwrapped && pivotReimportLen > 12
+				&& memcmp(pivotReimportData, "ASCD", 4) == 0)
+			{
+				int32 reimportCellCount;
+				memcpy(&reimportCellCount, pivotReimportData + 8, 4);
+
+				size_t pos = 12;
+				for (int32 i = 0; i < reimportCellCount && pos + 9 <= pivotReimportLen; i++)
+				{
+					int32 clen;
+					memcpy(&clen, pivotReimportData + pos + 4, 4);
+					pos += 9 + clen;
+				}
+
+				std::vector<PivotTableObject> reimportedPivots;
+				bool pivotSectionRead = ReadFirstPivotFromAscdForTest(pivotReimportData, pivotReimportLen,
+					pos, &reimportedPivots);
+				Check(pivotSectionRead,
+					"la sezione tabelle pivot in coda all'ASCD riletto si legge correttamente");
+
+				Check(reimportedPivots.size() == 1,
+					"il giro completo XLSX -> ASCD ricostruisce un vero PivotTableObject "
+					"(Fase 3 delle tabelle pivot), non solo le celle statiche");
+				if (reimportedPivots.size() == 1)
+				{
+					const PivotTableObject& p = reimportedPivots[0];
+					Check(p.sourceRange.left == 1 && p.sourceRange.top == 1
+							&& p.sourceRange.right == 2 && p.sourceRange.bottom == 5,
+						"sourceRange ricostruito combacia con la sorgente vera (A1:B5)");
+					Check(p.destAnchor.h == 4 && p.destAnchor.v == 1,
+						"destAnchor ricostruito combacia con la destinazione vera (D1)");
+					Check(p.aggFunc == ePivotSum, "aggFunc ricostruito e' quello vero (Sum)");
+					Check(p.cachedRows.size() == 2,
+						"cachedRows ricostruito ha le due categorie vere (Nord/Sud)");
+					if (p.cachedRows.size() == 2)
+					{
+						Check(BString((const char*)p.cachedRows[0].categories[0]) == "Nord"
+								&& p.cachedRows[0].aggregate == 370.0 && p.cachedRows[0].count == 3,
+							"la riga Nord ricostruita ha i valori veri (somma 370, 3 righe grezze)");
+						Check(BString((const char*)p.cachedRows[1].categories[0]) == "Sud"
+								&& p.cachedRows[1].aggregate == 140.0 && p.cachedRows[1].count == 2,
+							"la riga Sud ricostruita ha i valori veri (somma 140, 2 righe grezze)");
+					}
+				}
+			}
 		}
 	}
 
@@ -8130,6 +8367,54 @@ int main()
 			}
 			else
 				Check(false, "xl/worksheets/sheet1.xml si legge dall'archivio (pivot a 2 colonne di categoria)");
+
+			// Fase 3: con nessuna parte pivot esportata (verificato sopra),
+			// la riimportazione non ha nulla da ricostruire -- solo le
+			// celle, nessun PivotTableObject fasullo.
+			multiCatXlsxOut.Seek(0, SEEK_SET);
+			translator_info multiCatReimportInfo;
+			err = translator->Identify(&multiCatXlsxOut, NULL, NULL, &multiCatReimportInfo, 0);
+			Check(err == B_OK && multiCatReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX (pivot a 2 colonne di categoria) si riconosce ancora come XLSX valido rileggendolo");
+
+			multiCatXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO multiCatReimportAscd;
+			err = translator->Translate(&multiCatXlsxOut, &multiCatReimportInfo, NULL,
+				kAtomoNativeFormat, &multiCatReimportAscd);
+			Check(err == B_OK,
+				"il file XLSX (pivot a 2 colonne di categoria) si rilegge correttamente (round-trip)");
+
+			const unsigned char* multiCatReimportData = NULL;
+			size_t multiCatReimportLen = 0;
+			bool multiCatReimportUnwrapped = UnwrapFirstSheet(
+				(const unsigned char*)multiCatReimportAscd.Buffer(), multiCatReimportAscd.BufferLength(),
+				&multiCatReimportData, &multiCatReimportLen);
+			Check(multiCatReimportUnwrapped,
+				"il round-trip (pivot a 2 colonne di categoria) produce anch'esso una cartella ASCB valida");
+
+			if (multiCatReimportUnwrapped && multiCatReimportLen > 12
+				&& memcmp(multiCatReimportData, "ASCD", 4) == 0)
+			{
+				int32 reimportCellCount;
+				memcpy(&reimportCellCount, multiCatReimportData + 8, 4);
+
+				size_t pos = 12;
+				for (int32 i = 0; i < reimportCellCount && pos + 9 <= multiCatReimportLen; i++)
+				{
+					int32 clen;
+					memcpy(&clen, multiCatReimportData + pos + 4, 4);
+					pos += 9 + clen;
+				}
+
+				std::vector<PivotTableObject> reimportedPivots;
+				bool pivotSectionRead = ReadFirstPivotFromAscdForTest(multiCatReimportData,
+					multiCatReimportLen, pos, &reimportedPivots);
+				Check(pivotSectionRead,
+					"la sezione tabelle pivot in coda all'ASCD riletto (2 colonne di categoria) si legge correttamente");
+				Check(reimportedPivots.empty(),
+					"nessun PivotTableObject fasullo ricostruito per una tabella pivot fuori dall'ambito v1 "
+					"(2+ colonne di categoria), coerente con l'assenza di parti pivot in esportazione");
+			}
 		}
 	}
 
