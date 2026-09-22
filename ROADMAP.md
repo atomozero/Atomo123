@@ -101,6 +101,11 @@ also done (app-side rule type + XLSX import), closing the three-part
 color scale/data bar/icon set plan (the legacy indexed color palette
 is already done too, see below).
 
+**Range-vs-scalar comparison in a function argument** (e.g.
+`FILTER(A2:A8,B2:B8>=20)`, without a helper column) is also done now,
+closing the last open item in "Path to full Excel parity" Tier 2 — see
+below for the full detail.
+
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
 **v3.0 is functionally complete** as of the array formulas item above
@@ -587,30 +592,44 @@ list deliberately deviates from pure effort-sorting:
   before it ever reached function-name resolution; and
   `GetFunctionNr` stripped only one `_XLFN.` prefix, never a second
   `_XLWS.` one
-- **A range compared to a scalar inside a function argument (e.g.
+- ~~**A range compared to a scalar inside a function argument (e.g.
   `FILTER(A2:A8,B2:B8>=20)`, the natural way to write `FILTER`'s
   condition and the form real Excel/openpyxl produce by default) does
-  not evaluate to a per-cell boolean array.** Found fixing the bug
-  above: the comparison operators (`Value::operator>=` etc.) only
-  handle two scalars of the same type; when the left side is a
-  multi-cell range, it falls through to a generic type-order fallback,
-  silently producing one wrong boolean instead of one boolean per
-  cell, and the range argument beyond that is unrecoverable
-  (`GetRangeArgument` fails, `FILTER` returns its empty-result
-  sentinel). Excel's real "array formula" implicit-intersection
-  semantics — a range op scalar (or range op range) producing a
-  parallel array of results — aren't implemented anywhere in this
-  engine, and this is very likely the same underlying gap referenced
-  in "Not currently planned" for `INDEX`/`INDIRECT` as `:` operands.
-  Workaround that already works today, and what `Welcome.xlsx` now
-  uses: a helper column with one comparison formula per row
-  (`=B2>=20`), then `FILTER` against that plain boolean range — this
-  is also literally how Excel stores it once a user builds it that
-  way, no different from the fixed case above. Fixing this for real
-  would mean teaching the comparison operators (and potentially every
-  other operator) to produce a range/array result when either operand
-  is a range, a change with much broader reach than `FILTER` alone —
-  deserves its own design pass, not a narrow patch
+  not evaluate to a per-cell boolean array.**~~ Fixed — see
+  `CHANGELOG.md`. Scoped narrowly to comparison operators, not a
+  general array-broadcast engine (arithmetic operators still don't
+  understand ranges, deliberately, matching the reasoning this item
+  originally called for). A new transient `eBoolArrayData` `Value`
+  type carries a per-cell boolean array through expression evaluation
+  — `Value::CompareLT/LE/GT/GE/EQ/NE` (renamed from the old
+  `operator<` etc., which the C++ standard forbids from taking more
+  than one explicit parameter, discovered only once the real build
+  rejected the originally-planned default-argument design) build one
+  when either comparison operand is a multi-cell range, reading real
+  cell values via a `CContainer*` now threaded through from
+  `CFormula::Calculate`. `FILTER` (`GetBoolArrayArgument`,
+  `FunctionUtils.cpp`) tries this new form first, falling back
+  unchanged to the existing literal-boolean-range path — the
+  `Welcome.xlsx` helper-column workaround keeps working byte for byte,
+  it's just no longer the only option. A bare whole-cell
+  `=B2:B8>=20` (no `FILTER` wrapper) collapses to its first element,
+  matching the identical "implicit intersection" precedent already in
+  place for a bare `eRangeData` result. Scope limits, deliberate and
+  documented in code: only 1D ranges (single row or column); an
+  already-computed array compared again degrades to a plain `FALSE`
+  rather than a second broadcast pass. `INDEX`/`INDIRECT` using `:` as
+  an operand remains a separate, unaddressed gap (see "Not currently
+  planned"). Every call site of the renamed comparison methods across
+  the whole codebase (six in `Formula.cpp`, plus four more found only
+  by attempting a full rebuild after the rename — `Container.cpp`'s
+  sort comparator, `Functions.logical.cpp`'s `SWITCH`, and
+  `Functions.spreadsheet.cpp`'s `UNIQUE`/`SORT`/`SORTBY` — grep alone
+  had missed these) needed updating; the full existing test suite
+  across `engine`/`ui`/`translators/xlsx` (500+ checks) passed
+  unchanged after the fix, the strongest signal available that the
+  `Value` memory-ownership changes (a new heap-owned array member
+  alongside the existing `fText` deep-copy discipline) didn't regress
+  anything already working
 - ~~**More chart types**: scatter/XY, area, combo (bar+line sharing
   one chart).~~ Shipped, one commit each. Area reuses
   `ComputeLineLayout`/`ComputeMultiLineLayout` unchanged, filling the
