@@ -161,7 +161,12 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// originale (vedi ApplyDefinedNames) -- un valore vero ora, prima
 	// sempre "assente" (vedi il commento piu' sotto dove veniva
 	// scritto).
-	const bool* hasPrintArea = NULL, const range* printArea = NULL)
+	const bool* hasPrintArea = NULL, const range* printArea = NULL,
+	// Tabelle pivot (Fase 3 delle tabelle pivot -- vedi ROADMAP.md/
+	// CHANGELOG.md): NULL o vuoto = nessuna tabella pivot ricostruita
+	// da questo foglio XLSX (fuori dall'ambito v1, o il file non ne ha
+	// affatto) -- vedi ParsePivotTableXml sopra.
+	const std::vector<PivotTableObject>* pivotTables = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -1173,6 +1178,64 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
 				|| dest->Write(&valign, sizeof(valign)) != (ssize_t)sizeof(valign))
 				return B_IO_ERROR;
+		}
+	}
+
+	// Tabelle pivot (Fase 3 delle tabelle pivot -- vedi ROADMAP.md/
+	// CHANGELOG.md), NUOVA ultima sezione del formato, stesso formato
+	// byte per byte di ui/src/AscdIO.cpp (SaveASCD): senza questa
+	// sezione, un <pivotTable> reale riconosciuto da ParsePivotTableXml
+	// sopra sparirebbe comunque al giro XLSX -> ASCD (le sue celle
+	// resterebbero, ma nessun PivotTableObject arriverebbe mai al vero
+	// LoadASCD dell'app). "pivotTables" e' sempre un puntatore valido
+	// (anche vuoto) da WriteASCDBook sotto, come "charts"/"images" gia'
+	// sopra -- pivotCount=0 quando non c'e' nulla da dire.
+	{
+		int32 pivotCount = pivotTables ? (int32)pivotTables->size() : 0;
+		if (dest->Write(&pivotCount, sizeof(pivotCount)) != (ssize_t)sizeof(pivotCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < pivotCount; i++)
+		{
+			const PivotTableObject& pivot = (*pivotTables)[i];
+			int16 srcLeft = pivot.sourceRange.left, srcTop = pivot.sourceRange.top,
+				srcRight = pivot.sourceRange.right, srcBottom = pivot.sourceRange.bottom;
+			int16 destCol = pivot.destAnchor.h, destRow = pivot.destAnchor.v;
+			int32 aggFunc = (int32)pivot.aggFunc;
+			if (dest->Write(&srcLeft, sizeof(srcLeft)) != (ssize_t)sizeof(srcLeft)
+				|| dest->Write(&srcTop, sizeof(srcTop)) != (ssize_t)sizeof(srcTop)
+				|| dest->Write(&srcRight, sizeof(srcRight)) != (ssize_t)sizeof(srcRight)
+				|| dest->Write(&srcBottom, sizeof(srcBottom)) != (ssize_t)sizeof(srcBottom)
+				|| dest->Write(&destCol, sizeof(destCol)) != (ssize_t)sizeof(destCol)
+				|| dest->Write(&destRow, sizeof(destRow)) != (ssize_t)sizeof(destRow)
+				|| dest->Write(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc))
+				return B_IO_ERROR;
+
+			int32 rowCount = (int32)pivot.cachedRows.size();
+			if (dest->Write(&rowCount, sizeof(rowCount)) != (ssize_t)sizeof(rowCount))
+				return B_IO_ERROR;
+
+			for (int32 r = 0; r < rowCount; r++)
+			{
+				const PivotRow& row = pivot.cachedRows[r];
+				int32 catCount = (int32)row.categories.size();
+				if (dest->Write(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+					return B_IO_ERROR;
+				for (int32 k = 0; k < catCount; k++)
+				{
+					int32 catLen = row.categories[k].Length();
+					if (dest->Write(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+						return B_IO_ERROR;
+					if (catLen > 0 && dest->Write(row.categories[k].String(), catLen) != catLen)
+						return B_IO_ERROR;
+				}
+				int32 count32 = (int32)row.count;
+				if (dest->Write(&row.aggregate, sizeof(row.aggregate)) != (ssize_t)sizeof(row.aggregate)
+					|| dest->Write(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+					|| dest->Write(&row.minVal, sizeof(row.minVal)) != (ssize_t)sizeof(row.minVal)
+					|| dest->Write(&row.maxVal, sizeof(row.maxVal)) != (ssize_t)sizeof(row.maxVal))
+					return B_IO_ERROR;
+			}
 		}
 	}
 
@@ -7467,6 +7530,229 @@ static bool ReconstructChartRange(const std::string& sheetName, const std::strin
 	return true;
 }
 
+// --- Importazione tabelle pivot (Fase 3 delle tabelle pivot -- vedi
+// ROADMAP.md/CHANGELOG.md) --------------------------------------------
+//
+// Ambito v1, simmetrico a BuildPivotXmlParts in esportazione (Fase 2,
+// sopra): una sola colonna di categoria, una sola misura. Solo due
+// parti vengono davvero lette (pivotTableN.xml e pivotCacheDefinitionN.
+// xml, quest'ultima solo per <worksheetSource>) -- pivotCacheRecordsN.
+// xml non viene mai letta: cachedRows si ricostruisce rileggendo le
+// celle sorgente GIA' importate da ParseSheet nello stesso giro (vedi
+// BuildPivotCachedRowsFromCells sotto), non dai record di cache. Una
+// forma non riconosciuta (2+ campi riga, campi colonna/pagina, 2+
+// misure, aggregazione sconosciuta, sorgente su un altro foglio) fa
+// scartare in silenzio quella singola tabella pivot -- le celle,
+// importate normalmente prima di arrivare qui, non ne risentono in
+// nessun caso.
+
+struct PivotTableParseInfo {
+	range destRange;
+	bool hasLocation;
+	int rowFieldCount;
+	bool hasColFields;
+	bool hasPageFields;
+	int dataFieldCount;
+	int dataFieldFld; // -1 = non impostato
+	std::string subtotal;
+};
+
+static void XMLCALL PivotTableStart(void* userData, const char* name, const char** atts)
+{
+	PivotTableParseInfo* info = (PivotTableParseInfo*)userData;
+	if (strcmp(name, "location") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "ref") == 0)
+				info->hasLocation = ParseMergeCellRef(atts[i + 1], &info->destRange);
+	}
+	else if (strcmp(name, "rowFields") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "count") == 0)
+				info->rowFieldCount = atoi(atts[i + 1]);
+	}
+	else if (strcmp(name, "colFields") == 0)
+		info->hasColFields = true;
+	else if (strcmp(name, "pageFields") == 0)
+		info->hasPageFields = true;
+	else if (strcmp(name, "dataFields") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "count") == 0)
+				info->dataFieldCount = atoi(atts[i + 1]);
+	}
+	else if (strcmp(name, "dataField") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "fld") == 0)
+				info->dataFieldFld = atoi(atts[i + 1]);
+			else if (strcmp(atts[i], "subtotal") == 0)
+				info->subtotal = atts[i + 1];
+		}
+	}
+}
+
+static bool ParsePivotTableXml(const std::vector<unsigned char>& xml, PivotTableParseInfo* out)
+{
+	out->hasLocation = false;
+	out->rowFieldCount = 0;
+	out->hasColFields = false;
+	out->hasPageFields = false;
+	out->dataFieldCount = 0;
+	out->dataFieldFld = -1;
+	out->subtotal.clear();
+	if (xml.empty())
+		return false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, out);
+	XML_SetElementHandler(parser, PivotTableStart, NULL);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
+	XML_ParserFree(parser);
+
+	return status == XML_STATUS_OK && out->hasLocation;
+}
+
+// "shape" -- non solo "esiste" -- deve combaciare col modello di questa
+// app: una sola colonna di categoria (rowFieldCount==1, niente colFields/
+// pageFields), una sola misura sul secondo campo cache (dataFieldCount==1,
+// fld==1, "1" e' proprio la posizione del campo valore nel nostro stesso
+// schema a due cacheFields, vedi BuildPivotXmlParts in esportazione).
+static bool PivotShapeSupported(const PivotTableParseInfo& info)
+{
+	return info.rowFieldCount == 1 && !info.hasColFields && !info.hasPageFields
+		&& info.dataFieldCount == 1 && info.dataFieldFld == 1;
+}
+
+static bool PivotSubtotalToAggFunc(const std::string& subtotal, PivotAggFunc* out)
+{
+	if (subtotal == "sum") *out = ePivotSum;
+	else if (subtotal == "count") *out = ePivotCount;
+	else if (subtotal == "average") *out = ePivotAverage;
+	else if (subtotal == "min") *out = ePivotMin;
+	else if (subtotal == "max") *out = ePivotMax;
+	else return false;
+	return true;
+}
+
+struct PivotCacheSourceInfo {
+	bool hasSource;
+	std::string sheet;
+	range sourceRange;
+};
+
+static void XMLCALL PivotCacheDefStart(void* userData, const char* name, const char** atts)
+{
+	PivotCacheSourceInfo* info = (PivotCacheSourceInfo*)userData;
+	if (strcmp(name, "worksheetSource") != 0)
+		return;
+
+	std::string ref, sheetAttr;
+	for (int i = 0; atts[i]; i += 2)
+	{
+		if (strcmp(atts[i], "ref") == 0)
+			ref = atts[i + 1];
+		else if (strcmp(atts[i], "sheet") == 0)
+			sheetAttr = atts[i + 1];
+	}
+	if (ref.empty())
+		return;
+
+	// "ref" qui include SEMPRE il prefisso foglio (es. "Foglio1!$A$1:
+	// $B$5", come scrive anche questo stesso translator in
+	// esportazione via AbsRangeRef -- vedi BuildPivotXmlParts) --
+	// stessa forma di <c:f> in un grafico, riusa ParseSheetRangeRef
+	// invece di ParseMergeCellRef (che si aspetta un riferimento senza
+	// prefisso/$, come <location ref="D1:E3"> sopra).
+	std::string sheetFromRef;
+	if (!ParseSheetRangeRef(ref, &sheetFromRef, &info->sourceRange))
+		return;
+	info->hasSource = true;
+	info->sheet = !sheetAttr.empty() ? sheetAttr : sheetFromRef;
+}
+
+static bool ParsePivotCacheSourceXml(const std::vector<unsigned char>& xml,
+	std::string* outSheet, range* outSourceRange)
+{
+	PivotCacheSourceInfo info;
+	info.hasSource = false;
+	if (xml.empty())
+		return false;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &info);
+	XML_SetElementHandler(parser, PivotCacheDefStart, NULL);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK || !info.hasSource)
+		return false;
+	*outSheet = info.sheet;
+	*outSourceRange = info.sourceRange;
+	return true;
+}
+
+// Ricostruisce cachedRows RILEGGENDO le celle sorgente gia' importate in
+// "doc" da ParseSheet (stessa identica logica di raggruppamento di
+// BuildPivotTable in ui/src/Pivot.cpp -- non richiamata direttamente
+// perche' e' UI-layer, questo translator dipende solo dall'engine,
+// stesso principio di BuildPivotXmlParts in esportazione), MAI dai
+// pivotCacheRecords del file XLSX originale -- vedi il commento sulla
+// scelta di ambito in cima a questa sezione. std::map ordina gia' da
+// solo per chiave (il testo della categoria), stesso ordine lessicografico
+// di BuildPivotTable, senza bisogno di un sort separato dopo.
+static bool BuildPivotCachedRowsFromCells(CContainer* doc, const range& sourceRange,
+	std::vector<PivotRow>* out)
+{
+	out->clear();
+	if (!doc || sourceRange.right - sourceRange.left != 1)
+		return false; // ambito v1: una sola colonna di categoria
+
+	int catCol = sourceRange.left;
+	int valCol = sourceRange.right;
+
+	std::map<std::string, PivotRow> groups;
+	for (int row = sourceRange.top; row <= sourceRange.bottom; row++)
+	{
+		Value cv;
+		doc->GetValue(cell(catCol, row), cv);
+		if (cv.fType != eTextData)
+			continue;
+		Value vv;
+		doc->GetValue(cell(valCol, row), vv);
+		if (vv.fType != eNumData)
+			continue;
+
+		std::string key((const char*)cv);
+		std::map<std::string, PivotRow>::iterator it = groups.find(key);
+		if (it == groups.end())
+		{
+			PivotRow r;
+			r.categories.push_back(BString((const char*)cv));
+			r.aggregate = 0; r.count = 0; r.minVal = 0; r.maxVal = 0;
+			it = groups.insert(std::make_pair(key, r)).first;
+		}
+
+		double v = (double)vv;
+		if (it->second.count == 0) { it->second.minVal = v; it->second.maxVal = v; }
+		else
+		{
+			if (v < it->second.minVal) it->second.minVal = v;
+			if (v > it->second.maxVal) it->second.maxVal = v;
+		}
+		it->second.aggregate += v;
+		it->second.count++;
+	}
+
+	for (std::map<std::string, PivotRow>::iterator it = groups.begin(); it != groups.end(); ++it)
+		out->push_back(it->second);
+	return !out->empty();
+}
+
 // Un foglio gia' analizzato, pronto per essere scritto in formato
 // ASCD/ASCB: nome, documento, e le sole colonne con una larghezza
 // esplicita nel file XLSX originale (vedi ParseSheet/SheetStart).
@@ -7483,6 +7769,13 @@ struct ParsedSheet {
 	bool hasAutoFilter = false;
 	range autoFilterRange;
 	std::vector<XlsxChartInfo> charts;
+	// Tabelle pivot (Fase 3 delle tabelle pivot -- vedi ROADMAP.md/
+	// CHANGELOG.md): ricostruite SOLO quando la forma combacia col
+	// modello di questa app (una colonna di categoria, una misura, vedi
+	// ParsePivotTableXml/BuildPivotCachedRowsFromCells piu' sotto) --
+	// altrimenti restano semplicemente assenti, le celle gia' importate
+	// da ParseSheet sopra non ne risentono in nessun caso.
+	std::vector<PivotTableObject> pivotTables;
 	// Progetto VBA (XLSM, Fase 31): popolato SOLO sul primo foglio (un
 	// progetto VBA e' un concetto per l'intera cartella di lavoro, non
 	// per foglio, vedi il commento gemello su AscdSheet::vbaProject in
@@ -7626,7 +7919,8 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			&sheets[i].hasPrintSettings, sheets[i].marginTopCm, sheets[i].marginBottomCm,
 			sheets[i].marginLeftCm, sheets[i].marginRightCm,
 			sheets[i].scaleMode, sheets[i].scalePercent,
-			&sheets[i].hasPrintArea, &sheets[i].printArea);
+			&sheets[i].hasPrintArea, &sheets[i].printArea,
+			&sheets[i].pivotTables);
 		if (err != B_OK)
 			return err;
 
@@ -8201,6 +8495,69 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							info.title = chartResult.title;
 							parsed.charts.push_back(info);
 						}
+					}
+					else if (target.compare(0, 12, "pivotTables/") == 0)
+					{
+						// Tabelle pivot (Fase 3): un livello di _rels in
+						// piu' (indipendente da quello del foglio, stesso
+						// principio del drawing -> immagine/grafico sopra)
+						// porta da pivotTableN.xml a pivotCacheDefinitionN.
+						// xml -- ma quest'ultima viene letta SOLO per
+						// <worksheetSource>, mai per cacheFields/
+						// pivotCacheRecords (vedi il commento in cima a
+						// ParsePivotTableXml sopra sulla scelta di ambito).
+						std::string pivotTablePath = "xl/" + target;
+						std::vector<unsigned char> pivotTableXml;
+						PivotTableParseInfo ptInfo;
+						if (!zip.ReadEntry(pivotTablePath.c_str(), pivotTableXml)
+							|| !ParsePivotTableXml(pivotTableXml, &ptInfo)
+							|| !PivotShapeSupported(ptInfo))
+							continue; // fuori ambito v1 o file malformato:
+									  // le celle sono gia' importate sopra
+
+						PivotAggFunc aggFunc;
+						if (!PivotSubtotalToAggFunc(ptInfo.subtotal, &aggFunc))
+							continue; // aggregazione non riconosciuta
+
+						size_t ptSlash = pivotTablePath.find_last_of('/');
+						std::string ptDir = ptSlash == std::string::npos ? ""
+							: pivotTablePath.substr(0, ptSlash);
+						std::string ptFile = ptSlash == std::string::npos ? pivotTablePath
+							: pivotTablePath.substr(ptSlash + 1);
+						std::string ptRelsPath = ptDir + "/_rels/" + ptFile + ".rels";
+
+						std::vector<unsigned char> ptRelsXml;
+						std::map<std::string, std::string> ptRelTargets;
+						if (!zip.ReadEntry(ptRelsPath.c_str(), ptRelsXml)
+							|| !ParseRelationships(ptRelsXml, ptRelTargets)
+							|| ptRelTargets.empty())
+							continue;
+
+						std::string cacheDefTarget = ptRelTargets.begin()->second;
+						if (cacheDefTarget.compare(0, 3, "../") == 0)
+							cacheDefTarget = cacheDefTarget.substr(3);
+						std::string cacheDefPath = "xl/" + cacheDefTarget;
+
+						std::vector<unsigned char> cacheDefXml;
+						std::string cacheSheet;
+						range sourceRange;
+						if (!zip.ReadEntry(cacheDefPath.c_str(), cacheDefXml)
+							|| !ParsePivotCacheSourceXml(cacheDefXml, &cacheSheet, &sourceRange)
+							|| cacheSheet != parsed.name)
+							continue; // sorgente su un altro foglio: non
+									  // supportato (stesso principio
+									  // same-sheet-only di HandlePivotRequest)
+
+						std::vector<PivotRow> rows;
+						if (!BuildPivotCachedRowsFromCells(parsed.doc, sourceRange, &rows))
+							continue;
+
+						PivotTableObject pivot;
+						pivot.sourceRange = sourceRange;
+						pivot.destAnchor = cell(ptInfo.destRange.left, ptInfo.destRange.top);
+						pivot.aggFunc = aggFunc;
+						pivot.cachedRows = rows;
+						parsed.pivotTables.push_back(pivot);
 					}
 				}
 
