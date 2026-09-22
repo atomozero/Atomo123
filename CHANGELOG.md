@@ -84,6 +84,38 @@ What shipped in v0.3.0, on top of v0.2.9:
   `dataField=` attribute on the measure's own `<pivotField>` (the
   Values-area association is only ever declared via
   `<dataFields><dataField fld=.../></dataFields>`).
+- Real Excel pivot tables, Phase 3: opening an `.xlsx` file with a
+  real `<pivotTable>` (Excel-authored, or one this app exported via
+  Phase 2) now reconstructs a `PivotTableObject`, not just its
+  already-computed cells, when the shape matches Phase 2's own export
+  shape (single category column, single measure). Deliberately never
+  parses `pivotCacheRecords` at all — `cachedRows` is recomputed by
+  re-grouping the sheet's own cells (already imported by `ParseSheet`
+  earlier in the same import pass), the same technique
+  `BuildPivotXmlParts` already uses on the export side — symmetric
+  scope by design, not a coincidence. Reads only two things from the
+  real XLSX pivot parts: `pivotTableN.xml`'s `<location>` (destination)
+  and `<dataField subtotal=... fld=...>` (aggregation), plus
+  `pivotCacheDefinitionN.xml`'s `<worksheetSource>` (source range +
+  sheet, for the same-sheet-only check `HandlePivotRequest` already
+  enforces). Anything outside the supported shape (2+ row fields,
+  column/page fields, 2+ data fields, an unrecognized `subtotal`, or a
+  cross-sheet cache source) is skipped silently, exactly like an
+  unsupported chart — the cells were already imported normally moments
+  earlier regardless, so a skip never loses or corrupts visible data,
+  only the "this is a live, refreshable pivot" metadata on top. Found
+  and fixed a real regression while writing the test for this: adding
+  the new trailing pivot section to `WriteASCD` broke an existing
+  exhaustiveness check (`sample.xlsx`'s whole ASCD stream had to end
+  exactly at the buffer's end after every section) — fixed by teaching
+  that check about the new section, not by weakening it. A live
+  end-to-end UI test (open/save/reopen through a real `MainWindow` and
+  the installed translator) was attempted first but proved too slow/
+  unreliable in this sandbox to trust (a known sandbox limitation, not
+  a code issue — see prior notes on `BTranslatorRoster`/`app_server`
+  interactions); verification instead uses an in-process translator
+  round-trip (`CXlsxTranslator::Translate` directly), which exercises
+  the exact same new code without that dependency.
 
 What shipped in v0.2.0, on top of the v0.1.0 baseline:
 - XLSX/ODS export now writes live formulas for same-sheet references

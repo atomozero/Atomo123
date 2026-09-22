@@ -91,16 +91,15 @@ percent/currency formats, and XLSX import's default vertical
 alignment. See `CHANGELOG.md` for the full detail on each, including
 the real bugs found while building them.
 
-**Tier 3 in progress**: conditional formatting `dataBar` and `iconSet`
-are both done now (app-side rule type + XLSX import, see below) —
-closes the three-part color scale/data bar/icon set plan. Real Excel
-pivot table round-trip is also in progress: Phase 1 (persisted,
-cache-based native pivot object) and Phase 2 (XLSX export of that
-object as real OOXML pivot parts, single-category-column pivots) are
-both done; Phase 3 (XLSX import of a real `<pivotTable>`) is not
-started yet (the legacy indexed color palette is already done, see
-below) — see "Path to 100% XLSX standard compatibility" below for the
-full detail.
+**Real Excel pivot table round-trip is now complete**: Phase 1
+(persisted, cache-based native pivot object), Phase 2 (XLSX export as
+real OOXML pivot parts), and Phase 3 (XLSX import of a real
+`<pivotTable>` back into that same object) are all done, closing this
+Tier 3 item — see "Path to 100% XLSX standard compatibility" below for
+the full detail. Conditional formatting `dataBar` and `iconSet` are
+also done (app-side rule type + XLSX import), closing the three-part
+color scale/data bar/icon set plan (the legacy indexed color palette
+is already done too, see below).
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
@@ -422,10 +421,21 @@ through `.xlsx`, in either direction, before this work.
     `<sharedItems>`, and an invalid `dataField=` attribute on the
     measure's own `<pivotField>` (the Values-area association is only
     ever declared via `<dataFields><dataField fld=.../></dataFields>`).
-  - **Phase 3: XLSX import** of a real `<pivotTable>` into a
-    `PivotTableObject` where the shape fits this app's model (row
-    fields only, single measure); otherwise import is expected to keep
-    only the underlying source data, same as today — not started.
+  - ~~**Phase 3: XLSX import**~~ Fixed — see `CHANGELOG.md`. Opening a
+    real `.xlsx` file with a `<pivotTable>` now reconstructs a
+    `PivotTableObject`, not just its already-computed cells, when the
+    shape matches Phase 2's own export shape (single category column,
+    single measure). Deliberately does NOT parse `pivotCacheRecords`
+    at all — `cachedRows` is recomputed by re-grouping the sheet's own
+    cells (already imported by `ParseSheet` earlier in the same pass),
+    the same technique `BuildPivotXmlParts` already uses on the export
+    side, symmetric by design. Anything outside the supported shape
+    (2+ row fields, column/page fields, 2+ data fields, an
+    unrecognized `subtotal`, or a cache source on a different sheet)
+    is skipped silently — the cells were already imported normally
+    moments earlier regardless, so a skip never loses or corrupts
+    visible data, only the "this is a live, refreshable pivot"
+    metadata on top.
 
 ### Tier 4 — rare spec corners, low priority
 
