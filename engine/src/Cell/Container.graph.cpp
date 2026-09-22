@@ -86,6 +86,20 @@ bool CContainer::CalcCell(const cell& c)
 				GetValue(r.TopLeft(), newVal);
 			}
 
+			// Stesso principio del blocco eRangeData appena sopra, per un
+			// confronto range-scalare/range-range il cui risultato e' il
+			// valore FINALE dell'intera formula (es. una cella scritta a
+			// mano come "=B2:B8>=20", mai incapsulata in FILTER -- Tier 2
+			// di "Path to full Excel parity"): CellData non sa
+			// rappresentare eBoolArrayData nemmeno lei, quindi si collassa
+			// al PRIMO elemento dell'array, stessa "intersezione implicita"
+			// di Excel gia' applicata sopra per eRangeData.
+			if (newVal.fType == eBoolArrayData)
+			{
+				bool first = newVal.fArrayCount > 0 && newVal.fBoolArray && newVal.fBoolArray[0];
+				newVal = first;
+			}
+
 			if (newVal.fType == eNoData && fInView && fInView->DoesDisplayZero())
 				newVal = 0.0;
 
@@ -93,7 +107,7 @@ bool CContainer::CalcCell(const cell& c)
 			(*i).second = newVal;
 			(*i).second.mStatus = kCalculated;
 
-			result = (val != newVal);
+			result = val.CompareNE(newVal, this);
 		}
 	}
 	

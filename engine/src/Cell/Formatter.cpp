@@ -266,6 +266,16 @@ float CFormatter::FormatValue(const Value& inValue, char *outString,
 		case eTimeData:
 			result = FormatDate(inValue.fTime, outString, inFontNr, inWidth);
 			break;
+		// eRangeData/eBoolArrayData non sono mai pensati per finire in una
+		// cella vera (vedi il collasso in Container.graph.cpp per
+		// entrambi) -- se uno dei due arrivasse comunque qui per una
+		// strada non prevista, meglio una stringa vuota che l'ASSERT del
+		// default sotto in una build di debug.
+		case eRangeData:
+		case eBoolArrayData:
+			outString[0] = 0;
+			result = 0;
+			break;
 		default:
 			ASSERT(false);
 			break;

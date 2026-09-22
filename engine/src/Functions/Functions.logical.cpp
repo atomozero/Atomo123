@@ -143,7 +143,7 @@ void SWITCHFunction(Value *stack, int argCnt, CContainer *cells)
 	int i;
 	for (i = 1; i + 1 < argCnt; i += 2)
 	{
-		if (expr == stack[i])
+		if (expr.CompareEQ(stack[i], cells))
 		{
 			stack[0] = stack[i + 1];
 			return;
