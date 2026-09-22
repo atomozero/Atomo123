@@ -2654,6 +2654,61 @@ int main()
 		Check(v.fType == eTextData && strcmp((const char*)v, "nessuno") == 0,
 			"=FILTER(...;\"nessuno\") con nessuna riga inclusa restituisce if_empty invece di un errore muto");
 
+		// Confronto range-scalare come condizione dal vivo, SENZA colonna
+		// di appoggio (Tier 2 di "Path to full Excel parity", gia'
+		// anticipato dal commento in cima a questo blocco): stessi Nome/
+		// Punteggio di sopra, "B1:B3>=15" al posto di un intervallo
+		// booleano gia' pronto -- Anna (30) e Carla (20) soddisfano la
+		// condizione, Bruno (10) no, stesso esito di
+		// "=FILTER(A1:B3;C1:C3)" sopra ma senza C1:C3. Vedi
+		// Value::CompareGE/CompareRangeAware in Value.cpp.
+		TryToParseString("=FILTER(A1:B3;B1:B3>=15)", cell(7, 1), &doc, true);
+		doc.CalcCell(cell(7, 1));
+
+		doc.GetValue(cell(7, 1), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Anna") == 0,
+			"=FILTER(A1:B3;B1:B3>=15), confronto dal vivo senza colonna di appoggio, "
+			"nella cella owner (G1) mostra Anna");
+		doc.GetValue(cell(8, 1), v);
+		Check(v.fType == eNumData && (double)v == 30,
+			"la seconda colonna della prima riga (H1) resta 30");
+		doc.GetValue(cell(7, 2), v);
+		Check(v.fType == eTextData && strcmp((const char*)v, "Carla") == 0,
+			"la seconda riga (G2) e' Carla (20>=15), Bruno (10) e' stato escluso, "
+			"esattamente come col confronto pre-calcolato");
+		doc.GetValue(cell(8, 2), v);
+		Check(v.fType == eNumData && (double)v == 20,
+			"la seconda colonna della seconda riga (H2) resta 20");
+
+		range liveSpillRange = doc.GetSpillRange(cell(7, 1));
+		Check(liveSpillRange.top == 1 && liveSpillRange.bottom == 2
+				&& liveSpillRange.left == 7 && liveSpillRange.right == 8,
+			"lo spill di FILTER con confronto dal vivo copre esattamente G1:H2, due righe");
+
+		// Confronto range-scalare "nudo" (senza FILTER intorno), scritto
+		// direttamente in una cella: collassa al PRIMO elemento, stessa
+		// "intersezione implicita" di Excel gia' applicata per un
+		// eRangeData "nudo" -- vedi il collasso in Container.graph.cpp.
+		TryToParseString("=B1:B3>=15", cell(9, 1), &doc, true);
+		doc.CalcCell(cell(9, 1));
+		doc.GetValue(cell(9, 1), v);
+		Check(v.fType == eBoolData && v.fBool == true,
+			"=B1:B3>=15 senza FILTER intorno collassa al primo elemento (Anna, 30>=15, VERO)");
+
+		// Forme incompatibili (range-range con un numero diverso di
+		// celle): degrada a uno scalare FALSO, non un crash ne' una
+		// lettura fuori dai limiti -- vedi il commento in cima a
+		// CompareRangeAware in Value.cpp sull'ambito deliberatamente
+		// ristretto.
+		TryToParseString("1", cell(11, 1), &doc, true);
+		TryToParseString("2", cell(11, 2), &doc, true);
+		TryToParseString("=B1:B3=K1:K2", cell(12, 1), &doc, true);
+		doc.CalcCell(cell(12, 1));
+		doc.GetValue(cell(12, 1), v);
+		Check(v.fType == eBoolData && v.fBool == false,
+			"un confronto range-range con forme incompatibili (3 celle contro 2) "
+			"degrada a FALSO invece di un crash o una lettura fuori dai limiti");
+
 		doc.Release();
 	}
 

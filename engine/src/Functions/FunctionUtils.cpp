@@ -549,6 +549,24 @@ CContainer* GetRangeContainer(Value *inStack, int inArgNr, CContainer *inFallbac
 	return owner ? owner : inFallback;
 } /* GetRangeContainer */
 
+// Confronto range-scalare/range-range gia' calcolato in un argomento
+// di funzione (es. "FILTER(A2:A8;B2:B8>=20)", Tier 2 di "Path to full
+// Excel parity", vedi Value::CompareLT & co. in Value.cpp) -- stesso
+// schema di GetRangeArgument sopra, ma per eBoolArrayData invece di
+// eRangeData. L'array e' gia' materializzato (non un riferimento),
+// quindi il chiamante non ha bisogno di un CContainer per leggerlo.
+bool GetBoolArrayArgument(Value *inStack, int inArgCnt,
+	int inArgNr, bool **outArray, int *outCount)
+{
+	if (inArgNr <= inArgCnt && inStack[inArgNr - 1].fType == eBoolArrayData)
+	{
+		*outArray = inStack[inArgNr - 1].fBoolArray;
+		*outCount = inStack[inArgNr - 1].fArrayCount;
+		return true;
+	}
+	return false;
+} /* GetBoolArrayArgument */
+
 void Return(Value *stack, ValueType type, void *data)
 {
 	switch (type)

@@ -227,42 +227,42 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 			case opLT:
 				if (stack[stackIndx - 1].IsNan())	{}
 				else if (stack[stackIndx].IsNan())	stack[stackIndx - 1] = stack[stackIndx];
-				else	stack[stackIndx - 1] = stack[stackIndx - 1] < stack[stackIndx];
+				else	stack[stackIndx - 1] = stack[stackIndx - 1].CompareLT(stack[stackIndx], inContainer);
 				stackIndx--;
 				break;
 
 			case opLE:
 				if (stack[stackIndx - 1].IsNan())	{}
 				else if (stack[stackIndx].IsNan())	stack[stackIndx - 1] = stack[stackIndx];
-				else	stack[stackIndx - 1] = stack[stackIndx - 1] <= stack[stackIndx];
+				else	stack[stackIndx - 1] = stack[stackIndx - 1].CompareLE(stack[stackIndx], inContainer);
 				stackIndx--;
 				break;
 
 			case opEQ:
 				if (stack[stackIndx - 1].IsNan())	{}
 				else if (stack[stackIndx].IsNan())	stack[stackIndx - 1] = stack[stackIndx];
-				else	stack[stackIndx - 1] = stack[stackIndx - 1] == stack[stackIndx];
+				else	stack[stackIndx - 1] = stack[stackIndx - 1].CompareEQ(stack[stackIndx], inContainer);
 				stackIndx--;
 				break;
 
 			case opGE:
 				if (stack[stackIndx - 1].IsNan())	{}
 				else if (stack[stackIndx].IsNan())	stack[stackIndx - 1] = stack[stackIndx];
-				else	stack[stackIndx - 1] = stack[stackIndx - 1] >= stack[stackIndx];
+				else	stack[stackIndx - 1] = stack[stackIndx - 1].CompareGE(stack[stackIndx], inContainer);
 				stackIndx--;
 				break;
 
 			case opGT:
 				if (stack[stackIndx - 1].IsNan())	{}
 				else if (stack[stackIndx].IsNan())	stack[stackIndx - 1] = stack[stackIndx];
-				else	stack[stackIndx - 1] = stack[stackIndx - 1] > stack[stackIndx];
+				else	stack[stackIndx - 1] = stack[stackIndx - 1].CompareGT(stack[stackIndx], inContainer);
 				stackIndx--;
 				break;
 
 			case opNE:
 				if (stack[stackIndx - 1].IsNan())	{}
 				else if (stack[stackIndx].IsNan())	stack[stackIndx - 1] = stack[stackIndx];
-				else	stack[stackIndx - 1] = stack[stackIndx - 1] != stack[stackIndx];
+				else	stack[stackIndx - 1] = stack[stackIndx - 1].CompareNE(stack[stackIndx], inContainer);
 				stackIndx--;
 				break;
 

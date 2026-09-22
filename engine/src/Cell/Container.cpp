@@ -671,9 +671,9 @@ int CContainer::CompareValue(const cell& a, const cell& b)
 	GetValue(a, va);
 	GetValue(b, vb);
 	
-	if (va < vb)
+	if (va.CompareLT(vb, this))
 		return -1;
-	else if (va == vb)
+	else if (va.CompareEQ(vb, this))
 		return 0;
 	else
 		return 1;

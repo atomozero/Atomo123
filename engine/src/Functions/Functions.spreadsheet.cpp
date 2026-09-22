@@ -1111,7 +1111,7 @@ void UNIQUEFunction(Value *stack, int argCnt, CContainer *cells)
 
 		bool found = false;
 		for (size_t u = 0; u < uniqueValues.size() && !found; u++)
-			found = (uniqueValues[u] == v);
+			found = uniqueValues[u].CompareEQ(v, cells);
 		if (!found)
 			uniqueValues.push_back(v);
 	}
@@ -1202,7 +1202,8 @@ void SORTFunction(Value *stack, int argCnt, CContainer *cells)
 	// stessa app).
 	std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
 		Value va = table[a][keyCol], vb = table[b][keyCol];
-		return ascending ? (va < vb) : (vb < va);
+		return ascending ? va.CompareLT(vb, cells).operator bool()
+			: vb.CompareLT(va, cells).operator bool();
 	});
 
 	std::vector<Value> values;
@@ -1289,7 +1290,8 @@ void SORTBYFunction(Value *stack, int argCnt, CContainer *cells)
 	for (int i = 0; i < rows; i++)
 		order[i] = i;
 	std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
-		return ascending ? (byValues[a] < byValues[b]) : (byValues[b] < byValues[a]);
+		return ascending ? byValues[a].CompareLT(byValues[b], cells).operator bool()
+			: byValues[b].CompareLT(byValues[a], cells).operator bool();
 	});
 
 	std::vector<Value> values;
@@ -1329,13 +1331,12 @@ void SORTBYFunction(Value *stack, int argCnt, CContainer *cells)
 // sopra: "array" orizzontale (una riga sola) non e' supportato.
 void FILTERFunction(Value *stack, int argCnt, CContainer *cells)
 {
-	range arrayRange, includeRange;
+	range arrayRange;
 
 	if (CheckForNanParameters(stack, argCnt))
 		return;
 
-	if (!GetRangeArgument(stack, argCnt, 1, &arrayRange) || !arrayRange.IsValid() ||
-		!GetRangeArgument(stack, argCnt, 2, &includeRange) || !includeRange.IsValid())
+	if (!GetRangeArgument(stack, argCnt, 1, &arrayRange) || !arrayRange.IsValid())
 	{
 		stack[0] = gRefNan;
 		return;
@@ -1343,31 +1344,68 @@ void FILTERFunction(Value *stack, int argCnt, CContainer *cells)
 
 	int rows = arrayRange.bottom - arrayRange.top + 1;
 	int cols = arrayRange.right - arrayRange.left + 1;
-	int incRows = includeRange.bottom - includeRange.top + 1;
-	int incCols = includeRange.right - includeRange.left + 1;
-	bool incHorizontal = (incRows == 1 && incCols > 1);
-	int incCount = incHorizontal ? incCols : incRows;
 
-	if (incCount != rows || (incRows != 1 && incCols != 1))
+	// La condizione (secondo argomento) puo' essere un intervallo
+	// booleano LETTERALE (colonna di appoggio, il caso storico -- vedi
+	// GetRangeArgument sotto) o, da Tier 2 di "Path to full Excel
+	// parity", un eBoolArrayData gia' calcolato dal vivo (es.
+	// "FILTER(A2:A8;B2:B8>=20)", vedi Value::CompareGE & co. in
+	// Value.cpp) -- l'array e' gia' materializzato, nessun CContainer
+	// da risolvere per leggerlo.
+	bool *condArray = NULL;
+	int condCount = 0;
+	bool useCondArray = GetBoolArrayArgument(stack, argCnt, 2, &condArray, &condCount);
+
+	range includeRange;
+	bool incHorizontal = false;
+	CContainer *incCells = NULL;
+	int incCount;
+
+	if (useCondArray)
+		incCount = condCount;
+	else if (GetRangeArgument(stack, argCnt, 2, &includeRange) && includeRange.IsValid())
+	{
+		int incRows = includeRange.bottom - includeRange.top + 1;
+		int incCols = includeRange.right - includeRange.left + 1;
+		if (incRows != 1 && incCols != 1)
+		{
+			stack[0] = gRefNan;
+			return;
+		}
+		incHorizontal = (incRows == 1 && incCols > 1);
+		incCount = incHorizontal ? incCols : incRows;
+		incCells = GetRangeContainer(stack, 2, cells);
+	}
+	else
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	if (incCount != rows)
 	{
 		stack[0] = gRefNan;
 		return;
 	}
 
 	CContainer *srcCells = GetRangeContainer(stack, 1, cells);
-	CContainer *incCells = GetRangeContainer(stack, 2, cells);
 
 	std::vector<std::vector<Value> > table;
 	table.reserve(rows);
 	for (int row = 0; row < rows; row++)
 	{
-		cell incCell = incHorizontal ? cell(includeRange.left + row, includeRange.top)
-			: cell(includeRange.left, includeRange.top + row);
-		Value incVal;
-		incCells->GetValue(incCell, incVal);
-
-		bool keep = (incVal.fType == eBoolData && incVal.fBool)
-			|| (incVal.fType == eNumData && incVal.fDouble != 0);
+		bool keep;
+		if (useCondArray)
+			keep = condArray[row];
+		else
+		{
+			cell incCell = incHorizontal ? cell(includeRange.left + row, includeRange.top)
+				: cell(includeRange.left, includeRange.top + row);
+			Value incVal;
+			incCells->GetValue(incCell, incVal);
+			keep = (incVal.fType == eBoolData && incVal.fBool)
+				|| (incVal.fType == eNumData && incVal.fDouble != 0);
+		}
 		if (!keep)
 			continue;
 

@@ -71,7 +71,16 @@ enum ValueType {
 	eTimeData,
 	eUnused,			// was ooit datedata
 	eTextData,
-	eRangeData			// Niet echt een mogelijk type, maar wel handig bij berekeningen.
+	eRangeData,			// Niet echt een mogelijk type, maar wel handig bij berekeningen.
+	// Confronto range-scalare dentro un argomento di funzione (es.
+	// "FILTER(A2:A8;B2:B8>=20)", Tier 2 di "Path to full Excel parity"):
+	// un booleano PER CELLA del range confrontato, mai persistito in una
+	// cella vera (stesso principio di eRangeData sopra -- vedi il
+	// collasso in Container.graph.cpp per una formula il cui risultato
+	// FINALE e' di questo tipo), non aggiunto a kCompareTypes in
+	// Value.cpp (resta a 7 righe/colonne: gli operatori di confronto
+	// intercettano questo tipo PRIMA di raggiungere quella tabella).
+	eBoolArrayData
 };
 
 struct Value {
@@ -106,12 +115,25 @@ struct Value {
 	void operator&=(Value &);
 	void operator|=(Value &);
 	
-	bool operator<(Value &v);
-	bool operator<=(Value &v);
-	bool operator>(Value &v);
-	bool operator>=(Value &v);
-	bool operator==(Value &v);
-	bool operator!=(Value &v);
+	// Confronti veri e propri (Tier 2 di "Path to full Excel parity",
+	// es. "FILTER(A2:A8;B2:B8>=20)"): metodi con nome, NON operatori
+	// sovraccaricati -- il C++ vieta a un operatore binario membro di
+	// avere piu' di un parametro esplicito, con o senza valore
+	// predefinito ([over.oper]), e qui serve "inContainer" per
+	// rileggere le celle vere quando questo o l'altro operando e' un
+	// range multi-cella (eRangeData) senza un fRangeContainer proprio,
+	// per costruire un risultato eBoolArrayData invece del singolo
+	// booleano sbagliato di prima. Il tipo di ritorno e' Value, non
+	// bool, per poter rappresentare anche il caso array. Le uniche
+	// chiamate a questi confronti in tutto il repository sono le sei
+	// in Formula.cpp (verificato con grep) -- non c'era nessun altro
+	// chiamante di "operator<" & co. da aggiornare.
+	Value CompareLT(Value &v, CContainer *inContainer);
+	Value CompareLE(Value &v, CContainer *inContainer);
+	Value CompareGT(Value &v, CContainer *inContainer);
+	Value CompareGE(Value &v, CContainer *inContainer);
+	Value CompareEQ(Value &v, CContainer *inContainer);
+	Value CompareNE(Value &v, CContainer *inContainer);
 
 	void operator=(const Value &inValue);
 	void operator=(const double d);
@@ -140,6 +162,11 @@ struct Value {
 		bool			fBool;
 		time_t		fTime;
 		_range		fRange;
+		// eBoolArrayData: POSSEDUTO da questa Value (allocato in new[],
+		// liberato in delete[]), a differenza di fRangeContainer sotto
+		// (mai posseduto) -- stessa disciplina di copia profonda gia'
+		// in vigore per fText/fTextIsCopy, non quella di fRangeContainer.
+		bool*			fBoolArray;
 	};
 	ValueType 	fType;
 	bool 		fTextIsCopy;
@@ -158,6 +185,12 @@ struct Value {
 	// in cui la formula stessa vive. Puntatore preso in prestito, MAI
 	// posseduto da Value (stesso principio di CContainer::fSheetResolver).
 	CContainer*	fRangeContainer;
+
+	// Numero di elementi validi in fBoolArray quando fType==eBoolArrayData
+	// -- fuori dall'union sopra per lo stesso motivo di fRangeContainer,
+	// deve convivere con fBoolArray (che invece STA nell'union: sono due
+	// campi indipendenti dello stesso Value, non alternative fra loro).
+	int			fArrayCount;
 };
 
 /*

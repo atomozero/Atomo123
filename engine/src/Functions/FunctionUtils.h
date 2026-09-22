@@ -99,6 +99,15 @@ _EXPORT bool GetRangeArgument(Value *inStack, int inArgCnt,
 // GetRangeArgument per lo stesso argomento ha gia' restituito true.
 _EXPORT CContainer* GetRangeContainer(Value *inStack, int inArgNr, CContainer *inFallback);
 
+// Confronto range-scalare/range-range gia' calcolato (Tier 2 di "Path
+// to full Excel parity", es. "FILTER(A2:A8;B2:B8>=20)") -- stesso
+// schema di GetRangeArgument sopra, per eBoolArrayData invece di
+// eRangeData. "outArray" e' un puntatore PRESO IN PRESTITO dentro la
+// Value dello stack (mai posseduto dal chiamante), valido solo finche'
+// quello slot dello stack non viene sovrascritto.
+_EXPORT bool GetBoolArrayArgument(Value *inStack, int inArgCnt,
+	int inArgNr, bool **outArray, int *outCount);
+
 _EXPORT void Return(Value *stack, ValueType type, void *data);
 
 _EXPORT bool CheckForNanParameters(Value *inStack, int inArgCnt);
