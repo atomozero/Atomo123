@@ -43,6 +43,47 @@ What shipped in v0.3.0, on top of v0.2.9:
   function wizard needs an insert-function dialog; zoom needs a zoom
   feature first (no zoom exists at all); app theme already follows the
   system via `ui_color` (white grid is correct spreadsheet convention)
+- Real Excel pivot tables, Phase 1: a new `PivotTableObject`
+  (`engine/src/Cell/Container.h`, alongside `PivotAggFunc`/`PivotRow`
+  moved there from the UI layer) persists `sourceRange`/`destAnchor`/
+  `aggFunc`/`cachedRows` in a new native `.ascd` trailing section, so a
+  pivot built via Insert → "Pivot table..." survives save/reload as a
+  real cache-based object (matching real Excel: it sits still until an
+  explicit refresh, not a live auto-recalculating formula) instead of
+  turning into indistinguishable plain cells the moment the file is
+  reopened. New "Refresh pivot tables" command
+  (`MainWindow::RefreshAllPivotTables`) re-runs the grouping against
+  the *current* source and rewrites both the cells and the cache.
+  Found and fixed a real bug while writing the live-refresh test:
+  `HandlePivotRequest` showed a modal confirmation dialog
+  (`BAlert::Go()`, no arguments) on every successful pivot creation,
+  blocking forever with nobody present to click it — removed entirely
+  (real Excel doesn't confirm a successful pivot creation either).
+- Real Excel pivot tables, Phase 2: "Save As XLSX" now writes a
+  `PivotTableObject` (Phase 1) as real OOXML pivot parts —
+  `pivotCacheDefinitionN.xml`, `pivotCacheRecordsN.xml` (one `<r>` per
+  raw source row, re-read live from the document, not the aggregated
+  cache), `pivotTableN.xml`, plus relationships/`[Content_Types].xml`
+  and a new `<pivotCaches>` element in `xl/workbook.xml` — instead of
+  only the pivot's already-computed cell values, indistinguishable
+  from hand-typed numbers to anyone opening the file in real Excel.
+  Scoped to pivots with exactly one category column; a 2+-column pivot
+  still exports its cells correctly but gets no live pivot metadata (a
+  documented v1 limit — nested `<rowItems>` for multi-level grouping is
+  real OOXML-validated territory this phase deliberately didn't
+  attempt). Found and fixed a real prerequisite bug: the XLSX
+  translator's own internal `ReadASCD` (used for the ASCD→XLSX export
+  round-trip) never read the pivot section Phase 1 added to the native
+  format, so `doc->GetPivotTables()` was unconditionally empty at
+  export time — Phase 2 would have shipped silently inert without it.
+  The OOXML shape itself went through a dedicated ECMA-376
+  schema-validation pass before any code was written (no real
+  Microsoft Excel is available in this sandbox to catch a "repair"
+  prompt after the fact), catching two real mistakes ahead of time: an
+  invalid `count=` attribute on `<sharedItems>`, and an invalid
+  `dataField=` attribute on the measure's own `<pivotField>` (the
+  Values-area association is only ever declared via
+  `<dataFields><dataField fld=.../></dataFields>`).
 
 What shipped in v0.2.0, on top of the v0.1.0 baseline:
 - XLSX/ODS export now writes live formulas for same-sheet references
