@@ -1103,6 +1103,245 @@ static status_t WriteASCDWithNameForTest(CContainer* doc, BPositionIO* dest)
 	return B_OK;
 }
 
+// Same idea as WriteASCDWithNameForTest above, but for a persisted pivot
+// table object (Fase 2 delle tabelle pivot -- vedi ROADMAP.md/
+// CHANGELOG.md): la sezione pivot e' la NUOVISSIMA ultima sezione del
+// formato, DOPO quella di allineamento verticale (che a sua volta viene
+// dopo i nomi) -- ogni sezione intermedia va scritta vuota per le stesse
+// ragioni gia' spiegate sopra per WriteASCDWithNameForTest, con l'aggiunta
+// di un conteggio a zero per l'allineamento verticale, nuovo anche lui
+// rispetto a quella funzione. "pivot" e' scritta cosi' com'e', nessuna
+// chiamata a BuildPivotTable/WritePivotTable (ui/src/Pivot.cpp, non
+// linkato in questo binario di test): il chiamante deve gia' aver scritto
+// sia le celle sorgente sia quelle di destinazione (header + righe) come
+// vere celle tramite TryToParseString, esattamente come farebbe
+// MainWindow::HandlePivotRequest nella vera app.
+static status_t WriteASCDWithPivotForTest(CContainer* doc, const PivotTableObject& pivot,
+	BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati: chartCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi a zero.
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+
+	// commenti, collegamenti ipertestuali: due conteggi a zero.
+	for (int i = 0; i < 2; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Tipo di grafico incorporato: chartTypeCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Colore del bordo di cella: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Convalida dati, formattazione condizionale, tabelle strutturate:
+	// tre conteggi a zero.
+	for (int i = 0; i < 3; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Titolo di grafico incorporato: chartTitleCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Area di stampa: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+
+	// Margini/scala di "Imposta pagina": un byte "has" + quattro
+	// margini (double), la modalita' di scala (int32) e la percentuale
+	// (double), sempre presenti.
+	{
+		uint8 has = 0;
+		double zD = 0;
+		int32 zeroMode = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zeroMode, sizeof(zeroMode)) != (ssize_t)sizeof(zeroMode)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD))
+			return B_IO_ERROR;
+	}
+
+	// Progetto VBA: un byte "has"=0, nient'altro.
+	{
+		uint8 has = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has))
+			return B_IO_ERROR;
+	}
+
+	// Celle sbloccate: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Protezione foglio: un byte a zero.
+	{
+		uint8 protectedByte = 0;
+		if (dest->Write(&protectedByte, sizeof(protectedByte)) != (ssize_t)sizeof(protectedByte))
+			return B_IO_ERROR;
+	}
+
+	// Intervalli con nome: un conteggio a zero (non servono per questo test).
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Allineamento verticale: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Tabelle pivot, ULTIMA sezione del formato: i dati veri, stesso
+	// ordine byte-per-byte del vero SaveASCD (ui/src/AscdIO.cpp).
+	{
+		int32 pivotCount = 1;
+		if (dest->Write(&pivotCount, sizeof(pivotCount)) != (ssize_t)sizeof(pivotCount))
+			return B_IO_ERROR;
+
+		int16 srcLeft = pivot.sourceRange.left, srcTop = pivot.sourceRange.top,
+			srcRight = pivot.sourceRange.right, srcBottom = pivot.sourceRange.bottom;
+		int16 destCol = pivot.destAnchor.h, destRow = pivot.destAnchor.v;
+		int32 aggFunc = (int32)pivot.aggFunc;
+		if (dest->Write(&srcLeft, sizeof(srcLeft)) != (ssize_t)sizeof(srcLeft)
+			|| dest->Write(&srcTop, sizeof(srcTop)) != (ssize_t)sizeof(srcTop)
+			|| dest->Write(&srcRight, sizeof(srcRight)) != (ssize_t)sizeof(srcRight)
+			|| dest->Write(&srcBottom, sizeof(srcBottom)) != (ssize_t)sizeof(srcBottom)
+			|| dest->Write(&destCol, sizeof(destCol)) != (ssize_t)sizeof(destCol)
+			|| dest->Write(&destRow, sizeof(destRow)) != (ssize_t)sizeof(destRow)
+			|| dest->Write(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc))
+			return B_IO_ERROR;
+
+		int32 rowCount = (int32)pivot.cachedRows.size();
+		if (dest->Write(&rowCount, sizeof(rowCount)) != (ssize_t)sizeof(rowCount))
+			return B_IO_ERROR;
+
+		for (int32 r = 0; r < rowCount; r++)
+		{
+			const PivotRow& row = pivot.cachedRows[r];
+			int32 catCount = (int32)row.categories.size();
+			if (dest->Write(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+				return B_IO_ERROR;
+			for (int32 k = 0; k < catCount; k++)
+			{
+				int32 catLen = row.categories[k].Length();
+				if (dest->Write(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+					return B_IO_ERROR;
+				if (catLen > 0 && dest->Write(row.categories[k].String(), catLen) != catLen)
+					return B_IO_ERROR;
+			}
+			int32 count32 = (int32)row.count;
+			if (dest->Write(&row.aggregate, sizeof(row.aggregate)) != (ssize_t)sizeof(row.aggregate)
+				|| dest->Write(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+				|| dest->Write(&row.minVal, sizeof(row.minVal)) != (ssize_t)sizeof(row.minVal)
+				|| dest->Write(&row.maxVal, sizeof(row.maxVal)) != (ssize_t)sizeof(row.maxVal))
+				return B_IO_ERROR;
+		}
+	}
+
+	return B_OK;
+}
+
 // Translate(XLSX -> nativo) produce ora sempre una cartella di lavoro
 // multi-foglio ("ASCB", Fase 9), anche per un file XLSX con un solo
 // foglio come tests/sample.xlsx: salta l'header e il nome del primo
@@ -7639,6 +7878,258 @@ int main()
 						&& ctText.find("/docProps/app.xml") != std::string::npos,
 					"[Content_Types].xml dichiara le Override per docProps/core.xml e docProps/app.xml");
 			}
+		}
+	}
+
+	// Tabelle pivot, Fase 2 (export XLSX di un PivotTableObject
+	// persistito come vere parti OOXML pivotCache/pivotTable -- vedi
+	// ROADMAP.md/CHANGELOG.md): stesso schema Nord/Sud gia' usato nella
+	// dimostrazione dal vivo di questa sessione. Ambito v1: una sola
+	// colonna di categoria (A) piu' una di valore (B) -- questo e'
+	// esattamente il caso che deve produrre parti pivot vere.
+	{
+		CContainer& pivotDoc = *new CContainer(NULL, NULL);
+		// Sorgente: A1:B5, 5 righe grezze (non raggruppate).
+		TryToParseString("Nord", cell(1, 1), &pivotDoc, true); // A1
+		TryToParseString("100", cell(2, 1), &pivotDoc, true);  // B1
+		TryToParseString("Nord", cell(1, 2), &pivotDoc, true); // A2
+		TryToParseString("150", cell(2, 2), &pivotDoc, true);  // B2
+		TryToParseString("Sud", cell(1, 3), &pivotDoc, true);  // A3
+		TryToParseString("80", cell(2, 3), &pivotDoc, true);   // B3
+		TryToParseString("Sud", cell(1, 4), &pivotDoc, true);  // A4
+		TryToParseString("60", cell(2, 4), &pivotDoc, true);   // B4
+		TryToParseString("Nord", cell(1, 5), &pivotDoc, true); // A5
+		TryToParseString("120", cell(2, 5), &pivotDoc, true);  // B5
+
+		// Destinazione: D1:E3, stesso layout che WritePivotTable avrebbe
+		// scritto (header + una riga per categoria, gia' ordinate/
+		// deduplicate -- niente riga di totale generale).
+		TryToParseString("Category", cell(4, 1), &pivotDoc, true); // D1
+		TryToParseString("Sum", cell(5, 1), &pivotDoc, true);      // E1
+		TryToParseString("Nord", cell(4, 2), &pivotDoc, true);     // D2
+		TryToParseString("370", cell(5, 2), &pivotDoc, true);      // E2
+		TryToParseString("Sud", cell(4, 3), &pivotDoc, true);      // D3
+		TryToParseString("140", cell(5, 3), &pivotDoc, true);      // E3
+
+		PivotTableObject pivot;
+		pivot.sourceRange = range(1, 1, 2, 5);
+		pivot.destAnchor = cell(4, 1);
+		pivot.aggFunc = ePivotSum;
+		{
+			PivotRow r;
+			r.categories.push_back(BString("Nord"));
+			r.aggregate = 370; r.count = 3; r.minVal = 100; r.maxVal = 150;
+			pivot.cachedRows.push_back(r);
+		}
+		{
+			PivotRow r;
+			r.categories.push_back(BString("Sud"));
+			r.aggregate = 140; r.count = 2; r.minVal = 60; r.maxVal = 80;
+			pivot.cachedRows.push_back(r);
+		}
+
+		BMallocIO pivotAscdIn;
+		status_t pivotSaveErr = WriteASCDWithPivotForTest(&pivotDoc, pivot, &pivotAscdIn);
+		Check(pivotSaveErr == B_OK, "preparazione dell'ASCD di prova con una tabella pivot riesce");
+		pivotDoc.Release();
+
+		pivotAscdIn.Seek(0, SEEK_SET);
+		translator_info pivotInfo;
+		err = translator->Identify(&pivotAscdIn, NULL, NULL, &pivotInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && pivotInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD di prova con una tabella pivot");
+
+		pivotAscdIn.Seek(0, SEEK_SET);
+		BMallocIO pivotXlsxOut;
+		err = translator->Translate(&pivotAscdIn, &pivotInfo, NULL, kAtomoXlsxFormat, &pivotXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con una tabella pivot) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			pivotXlsxOut.Seek(0, SEEK_SET);
+			CZipReader pivotZip;
+			Check(pivotZip.Open(&pivotXlsxOut),
+				"il file XLSX con una tabella pivot e' un vero archivio ZIP leggibile");
+
+			Check(pivotZip.HasEntry("xl/pivotCache/pivotCacheDefinition1.xml"),
+				"il file XLSX contiene xl/pivotCache/pivotCacheDefinition1.xml");
+			Check(pivotZip.HasEntry("xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels"),
+				"il file XLSX contiene la relazione della cache verso pivotCacheRecords1.xml");
+			Check(pivotZip.HasEntry("xl/pivotCache/pivotCacheRecords1.xml"),
+				"il file XLSX contiene xl/pivotCache/pivotCacheRecords1.xml");
+			Check(pivotZip.HasEntry("xl/pivotTables/pivotTable1.xml"),
+				"il file XLSX contiene xl/pivotTables/pivotTable1.xml");
+			Check(pivotZip.HasEntry("xl/pivotTables/_rels/pivotTable1.xml.rels"),
+				"il file XLSX contiene la relazione della tabella pivot verso la cache");
+
+			std::vector<unsigned char> ctBytes;
+			if (pivotZip.ReadEntry("[Content_Types].xml", ctBytes))
+			{
+				std::string ct((const char*)&ctBytes[0], ctBytes.size());
+				Check(ct.find("pivotCacheDefinition+xml") != std::string::npos
+						&& ct.find("pivotCacheRecords+xml") != std::string::npos
+						&& ct.find("spreadsheetml.pivotTable+xml") != std::string::npos,
+					"[Content_Types].xml dichiara le tre Override per le parti pivot");
+			}
+			else
+				Check(false, "[Content_Types].xml si legge dall'archivio");
+
+			std::vector<unsigned char> wbBytes;
+			if (pivotZip.ReadEntry("xl/workbook.xml", wbBytes))
+			{
+				std::string wb((const char*)&wbBytes[0], wbBytes.size());
+				Check(wb.find("<pivotCaches>") != std::string::npos
+						&& wb.find("<pivotCache cacheId=\"0\"") != std::string::npos,
+					"xl/workbook.xml dichiara <pivotCaches><pivotCache cacheId=\"0\" .../></pivotCaches>");
+			}
+			else
+				Check(false, "xl/workbook.xml si legge dall'archivio");
+
+			std::vector<unsigned char> defBytes;
+			if (pivotZip.ReadEntry("xl/pivotCache/pivotCacheDefinition1.xml", defBytes))
+			{
+				std::string def((const char*)&defBytes[0], defBytes.size());
+				Check(def.find("recordCount=\"5\"") != std::string::npos,
+					"pivotCacheDefinition1.xml conta le 5 righe GREZZE della sorgente, non le 2 categorie aggregate");
+				Check(def.find("<s v=\"Nord\"/>") != std::string::npos
+						&& def.find("<s v=\"Sud\"/>") != std::string::npos,
+					"pivotCacheDefinition1.xml elenca le categorie vere come elementi condivisi");
+				Check(def.find("sharedItems count=") == std::string::npos,
+					"pivotCacheDefinition1.xml non scrive il fasullo attributo count= su <sharedItems> (bocciato dalla validazione OOXML)");
+				Check(def.find("Foglio1!$A$1:$B$5") != std::string::npos,
+					"pivotCacheDefinition1.xml referenzia la vera sorgente (Foglio1!$A$1:$B$5)");
+			}
+			else
+				Check(false, "xl/pivotCache/pivotCacheDefinition1.xml si legge dall'archivio");
+
+			std::vector<unsigned char> recBytes;
+			if (pivotZip.ReadEntry("xl/pivotCache/pivotCacheRecords1.xml", recBytes))
+			{
+				std::string rec((const char*)&recBytes[0], recBytes.size());
+				int rCount = 0;
+				size_t pos = 0;
+				while ((pos = rec.find("<r>", pos)) != std::string::npos)
+				{
+					rCount++;
+					pos += 3;
+				}
+				Check(rCount == 5,
+					"pivotCacheRecords1.xml ha un <r> per ognuna delle 5 righe grezze, non per le 2 categorie aggregate");
+			}
+			else
+				Check(false, "xl/pivotCache/pivotCacheRecords1.xml si legge dall'archivio");
+
+			std::vector<unsigned char> ptBytes;
+			if (pivotZip.ReadEntry("xl/pivotTables/pivotTable1.xml", ptBytes))
+			{
+				std::string pt((const char*)&ptBytes[0], ptBytes.size());
+				Check(pt.find("cacheId=\"0\"") != std::string::npos,
+					"pivotTable1.xml usa lo stesso cacheId=0 dichiarato in xl/workbook.xml");
+				Check(pt.find("<location ref=\"D1:E3\"") != std::string::npos,
+					"pivotTable1.xml posiziona la tabella esattamente sulle celle gia' scritte (D1:E3)");
+				Check(pt.find("subtotal=\"sum\"") != std::string::npos,
+					"pivotTable1.xml usa subtotal=\"sum\" (l'aggregazione scelta)");
+				Check(pt.find("rowGrandTotals=\"0\"") != std::string::npos,
+					"pivotTable1.xml non ha riga di totale generale (WritePivotTable non ne scrive una)");
+				Check(pt.find(" dataField=\"1\"") == std::string::npos,
+					"pivotTable1.xml non scrive il fasullo attributo dataField= su <pivotField> (bocciato dalla validazione OOXML)");
+				Check(pt.find("<pivotTableStyleInfo") != std::string::npos,
+					"pivotTable1.xml include <pivotTableStyleInfo> (presente in ogni file vero scritto da Excel)");
+			}
+			else
+				Check(false, "xl/pivotTables/pivotTable1.xml si legge dall'archivio");
+
+			std::vector<unsigned char> sheetRelsBytes;
+			if (pivotZip.ReadEntry("xl/worksheets/_rels/sheet1.xml.rels", sheetRelsBytes))
+			{
+				std::string sr((const char*)&sheetRelsBytes[0], sheetRelsBytes.size());
+				Check(sr.find("relationships/pivotTable") != std::string::npos,
+					"xl/worksheets/_rels/sheet1.xml.rels collega il foglio a pivotTable1.xml");
+			}
+			else
+				Check(false, "xl/worksheets/_rels/sheet1.xml.rels si legge dall'archivio");
+		}
+	}
+
+	// Ambito v1 dichiarato: una tabella pivot con 2+ colonne di
+	// categoria NON produce parti OOXML pivot (layout <rowItems>
+	// annidato troppo delicato per questa fase) -- le celle gia' scritte
+	// restano comunque corrette, e' solo un limite noto, non un errore
+	// silenzioso (vedi il commento su BuildPivotXmlParts in
+	// XlsxTranslator.cpp).
+	{
+		CContainer& multiCatDoc = *new CContainer(NULL, NULL);
+		TryToParseString("Nord", cell(1, 1), &multiCatDoc, true);   // A1
+		TryToParseString("Rosso", cell(2, 1), &multiCatDoc, true);  // B1
+		TryToParseString("100", cell(3, 1), &multiCatDoc, true);    // C1
+		TryToParseString("Sud", cell(1, 2), &multiCatDoc, true);    // A2
+		TryToParseString("Blu", cell(2, 2), &multiCatDoc, true);    // B2
+		TryToParseString("50", cell(3, 2), &multiCatDoc, true);     // C2
+		TryToParseString("Category1", cell(5, 1), &multiCatDoc, true); // E1
+		TryToParseString("Category2", cell(6, 1), &multiCatDoc, true); // F1
+		TryToParseString("Sum", cell(7, 1), &multiCatDoc, true);       // G1
+		TryToParseString("Nord", cell(5, 2), &multiCatDoc, true);      // E2
+		TryToParseString("Rosso", cell(6, 2), &multiCatDoc, true);     // F2
+		TryToParseString("100", cell(7, 2), &multiCatDoc, true);       // G2
+		TryToParseString("Sud", cell(5, 3), &multiCatDoc, true);       // E3
+		TryToParseString("Blu", cell(6, 3), &multiCatDoc, true);       // F3
+		TryToParseString("50", cell(7, 3), &multiCatDoc, true);        // G3
+
+		PivotTableObject multiCatPivot;
+		multiCatPivot.sourceRange = range(1, 1, 3, 2); // A1:C2, DUE colonne di categoria
+		multiCatPivot.destAnchor = cell(5, 1);
+		multiCatPivot.aggFunc = ePivotSum;
+		{
+			PivotRow r;
+			r.categories.push_back(BString("Nord")); r.categories.push_back(BString("Rosso"));
+			r.aggregate = 100; r.count = 1; r.minVal = 100; r.maxVal = 100;
+			multiCatPivot.cachedRows.push_back(r);
+		}
+		{
+			PivotRow r;
+			r.categories.push_back(BString("Sud")); r.categories.push_back(BString("Blu"));
+			r.aggregate = 50; r.count = 1; r.minVal = 50; r.maxVal = 50;
+			multiCatPivot.cachedRows.push_back(r);
+		}
+
+		BMallocIO multiCatAscdIn;
+		status_t multiCatSaveErr = WriteASCDWithPivotForTest(&multiCatDoc, multiCatPivot, &multiCatAscdIn);
+		Check(multiCatSaveErr == B_OK,
+			"preparazione dell'ASCD di prova con una tabella pivot a 2 colonne di categoria riesce");
+		multiCatDoc.Release();
+
+		multiCatAscdIn.Seek(0, SEEK_SET);
+		translator_info multiCatInfo;
+		err = translator->Identify(&multiCatAscdIn, NULL, NULL, &multiCatInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && multiCatInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD di prova con una tabella pivot a 2 colonne di categoria");
+
+		multiCatAscdIn.Seek(0, SEEK_SET);
+		BMallocIO multiCatXlsxOut;
+		err = translator->Translate(&multiCatAscdIn, &multiCatInfo, NULL, kAtomoXlsxFormat, &multiCatXlsxOut);
+		Check(err == B_OK,
+			"Translate ASCD (pivot a 2 colonne di categoria) -> XLSX riesce comunque (solo celle, ambito v1)");
+
+		if (err == B_OK)
+		{
+			multiCatXlsxOut.Seek(0, SEEK_SET);
+			CZipReader multiCatZip;
+			Check(multiCatZip.Open(&multiCatXlsxOut),
+				"il file XLSX (pivot a 2 colonne di categoria) e' un vero archivio ZIP leggibile");
+			Check(!multiCatZip.HasEntry("xl/pivotTables/pivotTable1.xml"),
+				"nessuna parte pivotTable viene scritta per una tabella pivot fuori dall'ambito v1 (2+ colonne di categoria)");
+			Check(!multiCatZip.HasEntry("xl/pivotCache/pivotCacheDefinition1.xml"),
+				"nessuna parte pivotCache viene scritta per una tabella pivot fuori dall'ambito v1 (2+ colonne di categoria)");
+
+			std::vector<unsigned char> sheetBytes;
+			if (multiCatZip.ReadEntry("xl/worksheets/sheet1.xml", sheetBytes))
+			{
+				std::string sheet((const char*)&sheetBytes[0], sheetBytes.size());
+				Check(sheet.find("Category1") != std::string::npos && sheet.find("Rosso") != std::string::npos,
+					"le celle gia' scritte (fuori ambito v1) restano comunque corrette nell'export");
+			}
+			else
+				Check(false, "xl/worksheets/sheet1.xml si legge dall'archivio (pivot a 2 colonne di categoria)");
 		}
 	}
 

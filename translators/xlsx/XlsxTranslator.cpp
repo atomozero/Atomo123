@@ -2185,6 +2185,94 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione tabelle pivot persistite, in coda, NUOVA ultima sezione del
+	// formato: stesso schema EOF-tollerante delle sezioni sopra, byte per
+	// byte identico al gemello in ui/src/AscdIO.cpp (LoadASCD). A
+	// differenza delle sezioni colori/allineamento/bordi piu' sopra
+	// (ancora scartate), qui l'oggetto VA ricostruito su "doc": senza
+	// questo, l'esportazione XLSX (Fase 2 delle tabelle pivot, vedi
+	// WriteXLSX sotto) vedrebbe sempre zero pivot, qualunque cosa
+	// contenga davvero il documento dal vivo. Non richiama mai
+	// BuildPivotTable qui: le celle di destinazione sono gia' corrette
+	// (caricate dalla normale sezione celle sopra), questa sezione
+	// ricostruisce solo l'oggetto/la cache.
+	{
+		int32 pivotCount = 0;
+		ssize_t got = source->Read(&pivotCount, sizeof(pivotCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(pivotCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < pivotCount; i++)
+			{
+				int16 srcLeft, srcTop, srcRight, srcBottom, destCol, destRow;
+				int32 aggFunc;
+				if (source->Read(&srcLeft, sizeof(srcLeft)) != (ssize_t)sizeof(srcLeft)
+					|| source->Read(&srcTop, sizeof(srcTop)) != (ssize_t)sizeof(srcTop)
+					|| source->Read(&srcRight, sizeof(srcRight)) != (ssize_t)sizeof(srcRight)
+					|| source->Read(&srcBottom, sizeof(srcBottom)) != (ssize_t)sizeof(srcBottom)
+					|| source->Read(&destCol, sizeof(destCol)) != (ssize_t)sizeof(destCol)
+					|| source->Read(&destRow, sizeof(destRow)) != (ssize_t)sizeof(destRow)
+					|| source->Read(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc))
+					return B_BAD_DATA;
+
+				PivotTableObject pivot;
+				pivot.sourceRange = range(srcLeft, srcTop, srcRight, srcBottom);
+				pivot.destAnchor = cell(destCol, destRow);
+				pivot.aggFunc = (PivotAggFunc)aggFunc;
+
+				int32 rowCount = 0;
+				if (source->Read(&rowCount, sizeof(rowCount)) != (ssize_t)sizeof(rowCount))
+					return B_BAD_DATA;
+				if (rowCount < 0)
+					return B_BAD_DATA;
+
+				for (int32 r = 0; r < rowCount; r++)
+				{
+					PivotRow row;
+					row.aggregate = 0; row.count = 0; row.minVal = 0; row.maxVal = 0;
+
+					int32 catCount = 0;
+					if (source->Read(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+						return B_BAD_DATA;
+					if (catCount < 0 || catCount > 1024)
+						return B_BAD_DATA;
+
+					for (int32 k = 0; k < catCount; k++)
+					{
+						int32 catLen = 0;
+						if (source->Read(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+							return B_BAD_DATA;
+						if (catLen < 0 || catLen > 4096)
+							return B_BAD_DATA;
+						BString catStr;
+						if (catLen > 0)
+						{
+							std::vector<char> buf(catLen);
+							if (source->Read(&buf[0], catLen) != catLen)
+								return B_BAD_DATA;
+							catStr.SetTo(&buf[0], catLen);
+						}
+						row.categories.push_back(catStr);
+					}
+
+					int32 count32 = 0;
+					if (source->Read(&row.aggregate, sizeof(row.aggregate)) != (ssize_t)sizeof(row.aggregate)
+						|| source->Read(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+						|| source->Read(&row.minVal, sizeof(row.minVal)) != (ssize_t)sizeof(row.minVal)
+						|| source->Read(&row.maxVal, sizeof(row.maxVal)) != (ssize_t)sizeof(row.maxVal))
+						return B_BAD_DATA;
+					row.count = count32;
+
+					pivot.cachedRows.push_back(row);
+				}
+
+				doc->AddPivotTable(pivot);
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -2750,6 +2838,235 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 	return xml;
 }
 
+// Riferimento di cella/intervallo SENZA "$" e senza prefisso foglio (a
+// differenza di AbsCellRef/AbsRangeRef sopra) -- e' la forma che
+// <location ref="..."> di un vero pivotTableN.xml si aspetta, visto che
+// la parte e' gia' implicitamente legata a un foglio tramite la sua
+// stessa relazione (vedi BuildPivotXmlParts sotto).
+static std::string PlainCellRef(int col, int row)
+{
+	char rowBuf[16];
+	snprintf(rowBuf, sizeof(rowBuf), "%d", row);
+	return ColumnLetters(col) + rowBuf;
+}
+
+static std::string PlainRangeRef(const range& r)
+{
+	std::string ref = PlainCellRef(r.left, r.top);
+	if (r.left != r.right || r.top != r.bottom)
+		ref += ":" + PlainCellRef(r.right, r.bottom);
+	return ref;
+}
+
+struct PivotXmlParts {
+	std::string cacheDefXml;
+	std::string cacheRecordsXml;
+	std::string tableXml;
+};
+
+// Costruisce le tre parti OOXML di UNA tabella pivot esportata (Fase 2
+// delle tabelle pivot -- vedi ROADMAP.md/CHANGELOG.md): pivotCacheDefinition
+// (schema/campi), pivotCacheRecords (righe grezze della sorgente) e
+// pivotTable (la definizione vera e propria, posizione/raggruppamento/
+// aggregazione). Restituisce false -- niente da scrivere, PivotTableObject
+// resta comunque una cache valida per le sole celle statiche gia' scritte
+// da WritePivotTable -- per due motivi: (1) ambito v1 dichiarato, una sola
+// colonna di categoria (source.right - source.left == 1): il layout
+// annidato di <rowItems> per 2+ livelli di raggruppamento e' molto piu'
+// delicato da costruire correttamente e Excel valida le parti pivot in modo
+// piu' severo del resto del foglio, un <rowItems> annidato sbagliato e'
+// esattamente il tipo di errore che fa comparire il prompt di ripristino;
+// (2) righe sorgente grezze rilette da "doc" tutte invalide (nessuna
+// combinazione categoria testo + valore numero sopravvissuta).
+//
+// "pivotIndex" e' 0-based e DEVE essere lo stesso valore usato dal
+// chiamante per popolare sia cacheId qui sotto sia <pivotCache cacheId=.../>
+// in xl/workbook.xml per la stessa tabella pivot -- e' un identificativo
+// numerico tra parti diverse, non risolto tramite alcuna relazione (a
+// differenza del collegamento pivotTable -> pivotCacheDefinition, quello
+// si', tramite pivotTableN.xml.rels).
+static bool BuildPivotXmlParts(CContainer* doc, const PivotTableObject& pivot,
+	int pivotIndex, PivotXmlParts* out)
+{
+	static const char kSheetName[] = "Foglio1";
+
+	// Ambito v1: esattamente una colonna di categoria piu' una di valore.
+	if (!doc || pivot.sourceRange.right - pivot.sourceRange.left != 1)
+		return false;
+	if (pivot.cachedRows.empty())
+		return false;
+
+	int catCol = pivot.sourceRange.left;
+	int valCol = pivot.sourceRange.right;
+
+	// Ordine di visualizzazione = ordine gia' scritto nelle celle da
+	// WritePivotTable (cachedRows e' gia' ordinato/deduplicato) -- la
+	// tabella pivot "viva" che Excel disegnerebbe combacia esattamente
+	// con i valori statici gia' presenti nel foglio.
+	std::vector<std::string> categories;
+	std::map<std::string, int> categoryIndex;
+	for (size_t i = 0; i < pivot.cachedRows.size(); i++)
+	{
+		std::string catStr((const char*)pivot.cachedRows[i].categories[0]);
+		categoryIndex[catStr] = (int)categories.size();
+		categories.push_back(catStr);
+	}
+
+	// Righe grezze (non raggruppate) rilette dal vivo da "doc": servono
+	// per pivotCacheRecords, che rappresenta la sorgente record-per-
+	// record, non il risultato gia' aggregato -- stessa regola di
+	// validita' di BuildPivotTable in ui/src/Pivot.cpp (categoria testo,
+	// valore numero, altrimenti riga saltata), ripetuta qui invece di
+	// richiamare quella funzione perche' e' UI-layer e questo translator
+	// dipende solo dall'engine (stesso principio che ha messo
+	// PivotTableObject in Container.h nella Fase 1).
+	std::vector<std::pair<int, double> > rawRows; // (indice sharedItems categoria, valore)
+	double minVal = 0, maxVal = 0;
+	bool haveMinMax = false;
+	for (int row = pivot.sourceRange.top; row <= pivot.sourceRange.bottom; row++)
+	{
+		Value cv;
+		doc->GetValue(cell(catCol, row), cv);
+		if (cv.fType != eTextData)
+			continue;
+		Value vv;
+		doc->GetValue(cell(valCol, row), vv);
+		if (vv.fType != eNumData)
+			continue;
+
+		std::map<std::string, int>::iterator it = categoryIndex.find((const char*)cv);
+		if (it == categoryIndex.end())
+			continue; // difensivo, non dovrebbe capitare: stessa sorgente di cachedRows
+
+		double v = (double)vv;
+		rawRows.push_back(std::make_pair(it->second, v));
+		if (!haveMinMax) { minVal = maxVal = v; haveMinMax = true; }
+		else { if (v < minVal) minVal = v; if (v > maxVal) maxVal = v; }
+	}
+	if (rawRows.empty())
+		return false;
+
+	// Nomi campo: letti dalla riga di intestazione GIA' scritta da
+	// WritePivotTable in "doc" (destAnchor.v), non ricostruiti da
+	// AggLabel() (UI-layer, irraggiungibile da qui, e rischierebbe di
+	// disallinearsi dal testo davvero presente nella cella).
+	std::string categoryHeaderText = ChartCellLabel(doc, pivot.destAnchor.h, pivot.destAnchor.v);
+	if (categoryHeaderText.empty())
+		categoryHeaderText = "Category";
+	std::string valueHeaderText = ChartCellLabel(doc, pivot.destAnchor.h + 1, pivot.destAnchor.v);
+	if (valueHeaderText.empty())
+		valueHeaderText = "Value";
+
+	const char* subtotal = "sum";
+	switch (pivot.aggFunc)
+	{
+		case ePivotCount: subtotal = "count"; break;
+		case ePivotAverage: subtotal = "average"; break;
+		case ePivotMin: subtotal = "min"; break;
+		case ePivotMax: subtotal = "max"; break;
+		default: subtotal = "sum"; break;
+	}
+
+	char buf[640];
+
+	// 1) pivotCacheDefinitionN.xml
+	std::string& cd = out->cacheDefXml;
+	cd = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+	cd += "<pivotCacheDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+		"r:id=\"rId1\" refreshedBy=\"Atomo123\" refreshedDate=\"0\" createdVersion=\"6\" "
+		"refreshedVersion=\"6\" minRefreshableVersion=\"3\" recordCount=\"";
+	snprintf(buf, sizeof(buf), "%zu", rawRows.size());
+	cd += buf;
+	cd += "\"><cacheSource type=\"worksheet\"><worksheetSource ref=\"";
+	cd += AbsRangeRef(kSheetName, pivot.sourceRange);
+	cd += "\" sheet=\"";
+	cd += kSheetName;
+	cd += "\"/></cacheSource><cacheFields count=\"2\"><cacheField name=\"";
+	AppendXmlEscaped(cd, categoryHeaderText.c_str());
+	cd += "\" numFmtId=\"0\"><sharedItems>";
+	for (size_t i = 0; i < categories.size(); i++)
+	{
+		cd += "<s v=\"";
+		AppendXmlEscaped(cd, categories[i].c_str());
+		cd += "\"/>";
+	}
+	cd += "</sharedItems></cacheField><cacheField name=\"";
+	AppendXmlEscaped(cd, valueHeaderText.c_str());
+	cd += "\" numFmtId=\"0\"><sharedItems containsSemiMixedTypes=\"0\" containsString=\"0\" "
+		"containsNumber=\"1\" minValue=\"";
+	cd += FormatChartNumber(minVal);
+	cd += "\" maxValue=\"";
+	cd += FormatChartNumber(maxVal);
+	cd += "\"/></cacheField></cacheFields></pivotCacheDefinition>\n";
+
+	// 2) pivotCacheRecordsN.xml
+	std::string& cr = out->cacheRecordsXml;
+	cr = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+	cr += "<pivotCacheRecords xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" count=\"";
+	snprintf(buf, sizeof(buf), "%zu", rawRows.size());
+	cr += buf;
+	cr += "\">";
+	for (size_t i = 0; i < rawRows.size(); i++)
+	{
+		snprintf(buf, sizeof(buf), "<r><x v=\"%d\"/><n v=\"%s\"/></r>",
+			rawRows[i].first, FormatChartNumber(rawRows[i].second).c_str());
+		cr += buf;
+	}
+	cr += "</pivotCacheRecords>\n";
+
+	// 3) pivotTableN.xml
+	int destWidth = 1; // ambito v1: una sola colonna di categoria
+	range destRange(pivot.destAnchor.h, pivot.destAnchor.v,
+		pivot.destAnchor.h + destWidth, pivot.destAnchor.v + (int)pivot.cachedRows.size());
+
+	std::string& pt = out->tableXml;
+	pt = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+	snprintf(buf, sizeof(buf),
+		"<pivotTableDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+		"name=\"PivotTable%d\" cacheId=\"%d\" applyNumberFormats=\"0\" applyBorderFormats=\"0\" "
+		"applyFontFormats=\"0\" applyPatternFormats=\"0\" applyAlignmentFormats=\"0\" "
+		"applyWidthHeightFormats=\"1\" dataCaption=\"Values\" updatedVersion=\"6\" "
+		"minRefreshableVersion=\"3\" useAutoformatting=\"1\" itemPrintTitles=\"1\" "
+		"createdVersion=\"6\" indent=\"0\" outline=\"1\" outlineData=\"1\" "
+		"multipleFieldFilters=\"0\" rowGrandTotals=\"0\" colGrandTotals=\"0\">",
+		pivotIndex + 1, pivotIndex);
+	pt += buf;
+	pt += "<location ref=\"";
+	pt += PlainRangeRef(destRange);
+	pt += "\" firstHeaderRow=\"1\" firstDataRow=\"1\" firstDataCol=\"1\"/>";
+	pt += "<pivotFields count=\"2\"><pivotField axis=\"axisRow\" showAll=\"0\"><items count=\"";
+	snprintf(buf, sizeof(buf), "%zu", categories.size() + 1);
+	pt += buf;
+	pt += "\">";
+	for (size_t i = 0; i < categories.size(); i++)
+	{
+		snprintf(buf, sizeof(buf), "<item x=\"%zu\"/>", i);
+		pt += buf;
+	}
+	pt += "<item t=\"default\"/></items></pivotField><pivotField showAll=\"0\"/></pivotFields>";
+	pt += "<rowFields count=\"1\"><field x=\"0\"/></rowFields><rowItems count=\"";
+	snprintf(buf, sizeof(buf), "%zu", categories.size());
+	pt += buf;
+	pt += "\">";
+	for (size_t i = 0; i < categories.size(); i++)
+	{
+		snprintf(buf, sizeof(buf), "<i><x v=\"%zu\"/></i>", i);
+		pt += buf;
+	}
+	pt += "</rowItems><dataFields count=\"1\"><dataField name=\"";
+	AppendXmlEscaped(pt, valueHeaderText.c_str());
+	pt += "\" fld=\"1\" subtotal=\"";
+	pt += subtotal;
+	pt += "\" baseField=\"0\" baseItem=\"0\"/></dataFields>";
+	pt += "<pivotTableStyleInfo name=\"PivotStyleLight16\" showRowHeaders=\"1\" showColHeaders=\"1\" "
+		"showRowStripes=\"0\" showColStripes=\"0\" showLastColumn=\"1\"/>";
+	pt += "</pivotTableDefinition>\n";
+
+	return true;
+}
+
 static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& charts, BPositionIO* dest,
 	const std::vector<unsigned char>& vbaProject = std::vector<unsigned char>(),
 	// Protezione foglio (Fase 32): vedi il commento gemello in
@@ -2838,7 +3155,46 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		}
 	}
 
-	std::string workbookXmlOut = std::string(kWorkbookHeader) + definedNamesXml + "</workbook>\n";
+	// Tabelle pivot (Fase 2 delle tabelle pivot -- vedi ROADMAP.md/
+	// CHANGELOG.md): a differenza dei grafici sotto, questa raccolta va
+	// fatta PRIMA di costruire workbookXmlOut/workbookRels, perche' una
+	// tabella pivot tocca anche xl/workbook.xml (<pivotCaches>) e
+	// xl/_rels/workbook.xml.rels, non solo il foglio. BuildPivotXmlParts
+	// scarta in silenzio le tabelle fuori dall'ambito v1 (2+ colonne di
+	// categoria) o senza righe sorgente valide -- non e' un errore di
+	// esportazione, le celle gia' scritte restano comunque corrette.
+	std::vector<PivotXmlParts> pivotParts;
+	{
+		const std::vector<PivotTableObject>& pivots = doc->GetPivotTables();
+		for (size_t i = 0; i < pivots.size(); i++)
+		{
+			PivotXmlParts parts;
+			if (BuildPivotXmlParts(doc, pivots[i], (int)pivotParts.size(), &parts))
+				pivotParts.push_back(parts);
+		}
+	}
+	bool hasPivots = !pivotParts.empty();
+
+	std::string pivotCachesXml;
+	if (hasPivots)
+	{
+		pivotCachesXml = "<pivotCaches>";
+		char buf[128];
+		for (size_t i = 0; i < pivotParts.size(); i++)
+		{
+			// rIdX qui e nel .rels sotto DEVONO combaciare: rId1/rId2
+			// sono sempre foglio/stili, rId3 e' vbaProject SOLO se
+			// hasMacros, quindi il primo rId libero per i cache pivot e'
+			// 3 + (hasMacros ? 1 : 0).
+			int rid = 3 + (hasMacros ? 1 : 0) + (int)i;
+			snprintf(buf, sizeof(buf), "<pivotCache cacheId=\"%zu\" r:id=\"rId%d\"/>", i, rid);
+			pivotCachesXml += buf;
+		}
+		pivotCachesXml += "</pivotCaches>\n";
+	}
+
+	std::string workbookXmlOut = std::string(kWorkbookHeader) + definedNamesXml
+		+ pivotCachesXml + "</workbook>\n";
 
 	// xl/styles.xml (rId2) e' sempre presente (vedi kStyles sotto), la
 	// relazione verso xl/vbaProject.bin (rId3) va aggiunta SOLO in
@@ -2851,6 +3207,19 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		"<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>\n";
 	if (hasMacros)
 		workbookRels += "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/vbaProject\" Target=\"vbaProject.bin\"/>\n";
+	if (hasPivots)
+	{
+		char buf[256];
+		for (size_t i = 0; i < pivotParts.size(); i++)
+		{
+			int rid = 3 + (hasMacros ? 1 : 0) + (int)i;
+			snprintf(buf, sizeof(buf),
+				"<Relationship Id=\"rId%d\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition\" "
+				"Target=\"pivotCache/pivotCacheDefinition%zu.xml\"/>\n",
+				rid, i + 1);
+			workbookRels += buf;
+		}
+	}
 	workbookRels += "</Relationships>\n";
 
 	// Costruisce prima ogni xl/charts/chartN.xml: un ChartObject il cui
@@ -3158,6 +3527,28 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	if (hasComments)
 		contentTypes += "<Override PartName=\"/xl/comments1.xml\" "
 			"ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml\"/>\n";
+	if (hasPivots)
+	{
+		for (size_t i = 0; i < pivotParts.size(); i++)
+		{
+			char buf[224];
+			snprintf(buf, sizeof(buf),
+				"<Override PartName=\"/xl/pivotCache/pivotCacheDefinition%zu.xml\" "
+				"ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml\"/>\n",
+				i + 1);
+			contentTypes += buf;
+			snprintf(buf, sizeof(buf),
+				"<Override PartName=\"/xl/pivotCache/pivotCacheRecords%zu.xml\" "
+				"ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheRecords+xml\"/>\n",
+				i + 1);
+			contentTypes += buf;
+			snprintf(buf, sizeof(buf),
+				"<Override PartName=\"/xl/pivotTables/pivotTable%zu.xml\" "
+				"ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml\"/>\n",
+				i + 1);
+			contentTypes += buf;
+		}
+	}
 	contentTypes += "</Types>\n";
 
 	CZipWriter zip;
@@ -3186,7 +3577,7 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 			return B_IO_ERROR;
 	}
 
-	if (hasDrawing || hasComments || hasHyperlinks)
+	if (hasDrawing || hasComments || hasHyperlinks || hasPivots)
 	{
 		// Il foglio si collega al drawing tramite rId1 (vedi
 		// <drawing r:id="rId1"/> scritto da BuildSheetXml sopra, solo in
@@ -3198,7 +3589,12 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		// trovano solo tramite questa relazione (vedi il commento sul
 		// VML legacy piu' sopra); i collegamenti invece HANNO un
 		// elemento (<hyperlink r:id="..."/> in hyperlinksXml) che
-		// referenzia questi stessi Id.
+		// referenzia questi stessi Id. Le tabelle pivot (Fase 2) vanno
+		// dopo tutto il resto, con gli rId che restano liberi da qui in
+		// poi -- a differenza dei grafici/commenti/link, NON serve alcun
+		// elemento inline dentro <worksheet> per queste: il collegamento
+		// foglio -> pivotTableN.xml si scopre solo tramite questo stesso
+		// file .rels (CT_Worksheet non ha un elemento pivot).
 		std::string sheetRels;
 		sheetRels += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
 			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n";
@@ -3227,6 +3623,19 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 					"Target=\"";
 				AppendXmlEscaped(sheetRels, it->second.c_str());
 				sheetRels += "\" TargetMode=\"External\"/>\n";
+			}
+		}
+		if (hasPivots)
+		{
+			int rid = hyperlinkRidStart + (int)links.size();
+			for (size_t i = 0; i < pivotParts.size(); i++, rid++)
+			{
+				char buf[256];
+				snprintf(buf, sizeof(buf),
+					"<Relationship Id=\"rId%d\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable\" "
+					"Target=\"../pivotTables/pivotTable%zu.xml\"/>\n",
+					rid, i + 1);
+				sheetRels += buf;
 			}
 		}
 		sheetRels += "</Relationships>\n";
@@ -3306,6 +3715,51 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 			char name[64];
 			snprintf(name, sizeof(name), "xl/charts/chart%zu.xml", i + 1);
 			if (!zip.AddEntry(name, chartXmls[i].data(), chartXmls[i].size()))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Le 5 parti per ogni tabella pivot davvero esportata (Fase 2 delle
+	// tabelle pivot): stesso schema "zip.AddEntry" di ogni altra parte
+	// sopra, nessuna scrittura condizionale addizionale nel foglio
+	// stesso -- vedi il commento su hasPivots piu' sopra.
+	if (hasPivots)
+	{
+		for (size_t i = 0; i < pivotParts.size(); i++)
+		{
+			char name[96];
+			snprintf(name, sizeof(name), "xl/pivotCache/pivotCacheDefinition%zu.xml", i + 1);
+			if (!zip.AddEntry(name, pivotParts[i].cacheDefXml.data(), pivotParts[i].cacheDefXml.size()))
+				return B_IO_ERROR;
+
+			char relsXml[400];
+			snprintf(relsXml, sizeof(relsXml),
+				"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+				"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+				"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheRecords\" "
+				"Target=\"pivotCacheRecords%zu.xml\"/>\n</Relationships>\n",
+				i + 1);
+			snprintf(name, sizeof(name), "xl/pivotCache/_rels/pivotCacheDefinition%zu.xml.rels", i + 1);
+			if (!zip.AddEntry(name, relsXml, strlen(relsXml)))
+				return B_IO_ERROR;
+
+			snprintf(name, sizeof(name), "xl/pivotCache/pivotCacheRecords%zu.xml", i + 1);
+			if (!zip.AddEntry(name, pivotParts[i].cacheRecordsXml.data(), pivotParts[i].cacheRecordsXml.size()))
+				return B_IO_ERROR;
+
+			snprintf(name, sizeof(name), "xl/pivotTables/pivotTable%zu.xml", i + 1);
+			if (!zip.AddEntry(name, pivotParts[i].tableXml.data(), pivotParts[i].tableXml.size()))
+				return B_IO_ERROR;
+
+			char tableRelsXml[420];
+			snprintf(tableRelsXml, sizeof(tableRelsXml),
+				"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+				"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+				"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition\" "
+				"Target=\"../pivotCache/pivotCacheDefinition%zu.xml\"/>\n</Relationships>\n",
+				i + 1);
+			snprintf(name, sizeof(name), "xl/pivotTables/_rels/pivotTable%zu.xml.rels", i + 1);
+			if (!zip.AddEntry(name, tableRelsXml, strlen(tableRelsXml)))
 				return B_IO_ERROR;
 		}
 	}
