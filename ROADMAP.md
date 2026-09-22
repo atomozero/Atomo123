@@ -95,10 +95,12 @@ the real bugs found while building them.
 are both done now (app-side rule type + XLSX import, see below) —
 closes the three-part color scale/data bar/icon set plan. Real Excel
 pivot table round-trip is also in progress: Phase 1 (persisted,
-cache-based native pivot object) is done; Phases 2/3 (XLSX
-export/import of that object) are not started yet (the legacy indexed
-color palette is already done, see below) — see "Path to 100% XLSX
-standard compatibility" below for the full detail.
+cache-based native pivot object) and Phase 2 (XLSX export of that
+object as real OOXML pivot parts, single-category-column pivots) are
+both done; Phase 3 (XLSX import of a real `<pivotTable>`) is not
+started yet (the legacy indexed color palette is already done, see
+below) — see "Path to 100% XLSX standard compatibility" below for the
+full detail.
 
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
@@ -389,10 +391,37 @@ through `.xlsx`, in either direction, before this work.
     entirely (real Excel doesn't confirm a successful pivot creation
     either, so this was also a minor real UX wart, not just a test
     problem).
-  - **Phase 2: XLSX export** of a persisted `PivotTableObject` as real
-    OOXML pivot parts (`pivotCacheDefinition`/`pivotCacheRecords`/
-    `pivotTable` XML + relationships + `[Content_Types].xml`) — not
-    started.
+  - ~~**Phase 2: XLSX export**~~ Fixed — see `CHANGELOG.md`. A
+    persisted `PivotTableObject` (Phase 1) now writes real OOXML pivot
+    parts on "Save As XLSX": `pivotCacheDefinitionN.xml` (schema +
+    shared items for the category field, min/max for the numeric
+    field), `pivotCacheRecordsN.xml` (one `<r>` per RAW source row,
+    re-read live from the document at export time — not the aggregated
+    `cachedRows`, which only gives the cache's display order),
+    `pivotTableN.xml` (location/pivotFields/rowFields/rowItems/
+    dataFields, `rowGrandTotals="0"` to match `WritePivotTable`'s own
+    output, one `subtotal` value per `PivotAggFunc`), plus the
+    relationships/`[Content_Types].xml` wiring and a new
+    `<pivotCaches>` element in `xl/workbook.xml`. Scoped to pivots with
+    exactly one category column (`sourceRange` two columns wide) — a
+    2+-column pivot still exports its already-computed cells correctly
+    but gets no live pivot metadata, a documented v1 limit, not a
+    silent gap (nested `<rowItems>` for multi-level grouping is
+    real OOXML-validated territory this phase deliberately didn't
+    attempt). A real prerequisite bug was found and fixed along the
+    way: the XLSX translator's own `ReadASCD` (used internally for the
+    ASCD→XLSX export round-trip) never read the pivot table trailing
+    section Phase 1 added to the native format, so
+    `doc->GetPivotTables()` was unconditionally empty at export time
+    until this was fixed — without it, Phase 2 would have shipped
+    silently inert. The OOXML pivot/cache XML shape itself was checked
+    against the ECMA-376 schema via a dedicated validation pass before
+    writing any code (no real Microsoft Excel is available in this
+    sandbox to catch a "repair" prompt after the fact) — it caught two
+    real mistakes ahead of time: an invalid `count=` attribute on
+    `<sharedItems>`, and an invalid `dataField=` attribute on the
+    measure's own `<pivotField>` (the Values-area association is only
+    ever declared via `<dataFields><dataField fld=.../></dataFields>`).
   - **Phase 3: XLSX import** of a real `<pivotTable>` into a
     `PivotTableObject` where the shape fits this app's model (row
     fields only, single measure); otherwise import is expected to keep
