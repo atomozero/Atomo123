@@ -320,6 +320,7 @@ void SetupDefaultFuncs()
 	gFuncs[kCOUNTIFFuncNr] = COUNTIFFunction;
 	gFuncs[kCOUNTIFSFuncNr] = COUNTIFSFunction;
 	gFuncs[kSUMIFSFuncNr] = SUMIFSFunction;
+	gFuncs[kHYPERLINKFuncNr] = HYPERLINKFunction;
 	gFuncs[kROUNDUPFuncNr] = ROUNDUPFunction;
 	gFuncs[kROUNDDOWNFuncNr] = ROUNDDOWNFunction;
 	gFuncs[kTEXTFuncNr] = TEXTFunction;

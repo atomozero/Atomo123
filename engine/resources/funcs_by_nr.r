@@ -259,6 +259,12 @@ resource 'Func' (128, "Functions")
 		// (money-manager-2.xlsx, foglio YearlyReport). 65535 (argCnt
 		// variabile): l'intervallo da sommare piu' un numero variabile
 		// di coppie intervallo/criterio, come COUNTIFS sopra.
-		"SUMIFS", 65535, 144, 5
+		"SUMIFS", 65535, 144, 5,
+		// HYPERLINK: genuinamente mancante (nessuna implementazione ne'
+		// alias sotto nessun nome) -- trovato analizzando un file utente
+		// reale (content-calendar.xlsx). 65535 (argCnt variabile): il
+		// secondo argomento (nome descrittivo) e' facoltativo, stesso
+		// principio del quarto argomento di HLOOKUP sopra.
+		"HYPERLINK", 65535, 145, 6
 	}
 };

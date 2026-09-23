@@ -121,6 +121,27 @@ void LENGTHFunction(Value *stack, int argCnt, CContainer *cells)
 		stack[0] = gValueNan;
 }
 
+void HYPERLINKFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	char link[1024], friendlyName[1024];
+
+	if (!GetTextArgument(stack, argCnt, 1, link))
+	{
+		stack[0] = gValueNan;
+		return;
+	}
+
+	// This engine has no real navigation to trigger from a calculated
+	// formula result, only a separate, non-formula cell-property
+	// mechanism for hyperlinks -- so the calculated value is just the
+	// friendly name Excel would show, or the link itself when no
+	// friendly name is given (Excel's own display behavior).
+	if (argCnt >= 2 && GetTextArgument(stack, argCnt, 2, friendlyName))
+		stack[0] = friendlyName;
+	else
+		stack[0] = link;
+}
+
 void MIDFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	char s[256];

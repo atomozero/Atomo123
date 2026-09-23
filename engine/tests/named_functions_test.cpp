@@ -73,7 +73,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 145, "InitFunctions carica tutte le 145 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 146, "InitFunctions carica tutte le 146 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -481,6 +481,62 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =PI(): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// LEN: bug reale trovato aprendo un file utente vero
+	// (content-calendar.xlsx), dove =LEN(F6), da solo, falliva l'analisi
+	// grammaticale -- la tabella registrava solo il nome storico di
+	// Sum-It "LENGTH", mai collegato al nome Excel moderno (vedi l'alias
+	// in GetFunctionNr, Utils.cpp).
+	doc.NewCell(cell(6, 101), Value("hello"), NULL); // F101
+	try
+	{
+		TryToParseString("=LEN(F101)", cell(1, 101), &doc, true, '.', ',');
+		doc.CalcCell(cell(1, 101));
+		doc.GetValue(cell(1, 101), v);
+		Check(v.fType == eNumData && (double)v == 5.0, "=LEN(F101) calcola 5");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =LEN: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// HYPERLINK: genuinamente mancante (nessuna implementazione ne' alias
+	// sotto nessun nome) -- bug reale trovato nello stesso file
+	// (content-calendar.xlsx), formule come
+	// =HYPERLINK("https://..."&SUBSTITUTE(B7,"#","")&"/","View")
+	// restavano testo grezzo invece che calcolate. Senza vera
+	// navigazione da un risultato di formula in questo motore, il
+	// valore calcolato e' semplicemente il nome descrittivo (secondo
+	// argomento) se presente, altrimenti il link stesso -- lo stesso
+	// valore che Excel mostra nella cella.
+	try
+	{
+		TryToParseString("=HYPERLINK(\"https://example.com\",\"View\")", cell(2, 101), &doc, true, '.', ',');
+		doc.CalcCell(cell(2, 101));
+		doc.GetValue(cell(2, 101), v);
+		Check(v.fType == eTextData && strcmp((const char *)v, "View") == 0,
+			"=HYPERLINK(url,\"View\") calcola \"View\" (il nome descrittivo, non l'URL)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =HYPERLINK con nome descrittivo: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=HYPERLINK(\"https://example.com\")", cell(3, 101), &doc, true, '.', ',');
+		doc.CalcCell(cell(3, 101));
+		doc.GetValue(cell(3, 101), v);
+		Check(v.fType == eTextData && strcmp((const char *)v, "https://example.com") == 0,
+			"=HYPERLINK(url) senza nome descrittivo calcola l'URL stesso");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =HYPERLINK senza nome descrittivo: %s\n", (char *)e);
 		gFailures++;
 	}
 
@@ -2881,8 +2937,8 @@ int main()
 			wait_for_thread(threads[i], &exitVal);
 		}
 
-		Check(gFuncCount == 145,
-			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 145 "
+		Check(gFuncCount == 146,
+			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 146 "
 			"(nessuna doppia inizializzazione)");
 		Check(GetFunctionNr("SUM") == kSUMFuncNr,
 			"GetFunctionNr(\"SUM\") funziona ancora dopo le chiamate concorrenti, "

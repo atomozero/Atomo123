@@ -297,6 +297,16 @@ int GetFunctionNr(const char *name)
 	if (MatchesFuncNameAlias(name, "ROWS"))
 		return kNROWSFuncNr;
 
+	// "LEN" (3 caratteri, entrerebbe comunque nella tabella normale
+	// sotto -- non e' un problema di lunghezza come CEILING.MATH e
+	// simili sopra): bug reale trovato aprendo un file utente vero
+	// (content-calendar.xlsx), dove =LEN(F6), da solo, falliva l'analisi
+	// grammaticale. La tabella registra solo il nome storico di Sum-It
+	// "LENGTH" (LENGTHFunction, Functions.text.cpp), mai collegato al
+	// nome Excel moderno e piu' corto -- stesso principio di LOG10 sopra.
+	if (MatchesFuncNameAlias(name, "LEN"))
+		return kLENGTHFuncNr;
+
 	if (sLen >= (long)sizeof(myFunc))
 		return -1;
 
