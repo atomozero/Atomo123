@@ -58,6 +58,21 @@ What shipped in v0.3.0, on top of v0.2.9:
   row heights. Reverted to the same fixed 80x20px fallback `SheetView`
   itself uses, so the chart lines up with the grid as this app actually
   draws it, not with a theoretical Excel position it doesn't render.
+- Fixed embedded charts imported from XLSX still landing too high and
+  too far left even after the two column/row-size fixes above — the
+  real, root cause: `ChartObject::frame` lives in the same coordinate
+  system as `SheetView::CellRect`/`CellOrigin` (used by the manual
+  "insert chart" UI path), which always adds the row-number/column-
+  letter header gutter (`SheetView::kHeaderWidth`/`kHeaderHeight`,
+  30x20px) on top of the cell grid itself. The XLSX chart-anchor
+  conversion never added this offset, so every chart imported from a
+  real `<xdr:twoCellAnchor>`/`<xdr:oneCellAnchor>` — not just this
+  file's — has always been positioned one header's worth of pixels
+  above and to the left of its true anchor cell, invisible until a
+  file with charts that actually render exposed it. Added two
+  regression tests asserting the exact pixel frame (not just the data
+  range, which the existing tests already covered) for both the
+  `<xdr:to>` and explicit `<xdr:ext>` anchor forms.
 - Fixed `COLUMNS`/`ROWS` not being recognized as function names. Real
   bug found opening a user's file (`money-manager-2.xlsx`, a Vertex42
   budget template): shared formulas like `=O13/COLUMNS(C13:N13)`,
