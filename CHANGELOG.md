@@ -5,6 +5,23 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped in v0.3.0, on top of v0.2.9:
+- Added horizontal bar chart support (Excel's real "Bar" type —
+  categories on the vertical axis, bars extending left-to-right — as
+  opposed to this app's existing "Bar", which is actually Excel's
+  "Column"): rendering (single- and multi-series), a menu item in the
+  chart-creation window, and XLSX import/export (`<c:barDir
+  val="bar"/>`, previously explicitly rejected as unsupported). Found
+  opening the same `money-manager-2.xlsx` user file below — its 3
+  embedded charts showed "chart type not supported". Fixing the
+  orientation alone wasn't enough: those charts also have two value
+  columns that aren't adjacent to each other (a spacer/unrelated column
+  sits between them, e.g. category A, values B and D with C empty),
+  which the multi-series import path rejected outright. Fixed both:
+  `ChartObject::valueColumns` now carries the true source columns when
+  they're non-contiguous (empty for every ordinary chart, unchanged
+  behavior), threaded through import, live redraw, native `.ascd`
+  persistence, and XLSX export — a real fix for every multi-series
+  chart type with a gap column, not just horizontal bar.
 - Fixed `COLUMNS`/`ROWS` not being recognized as function names. Real
   bug found opening a user's file (`money-manager-2.xlsx`, a Vertex42
   budget template): shared formulas like `=O13/COLUMNS(C13:N13)`,

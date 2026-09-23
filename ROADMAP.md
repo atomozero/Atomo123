@@ -649,6 +649,29 @@ list deliberately deviates from pure effort-sorting:
   gap from the existing bar/line/pie XLSX chart support. Sparklines
   are a distinct rendering path (in-cell, no chart object) and would
   come later even in this tier
+- ~~**Horizontal bar charts** (Excel's real "Bar" type — categories on
+  the vertical axis, bars extending left-to-right — as opposed to this
+  app's `eBarChart`, which is actually Excel's "Column").~~ Shipped,
+  found opening a real user file (`money-manager-2.xlsx`, a Vertex42
+  budget template) whose 3 embedded charts showed "chart type not
+  supported". `ComputeHBarLayout`/`DrawHBarChart` (single-series) and
+  `ComputeGroupedHBarLayout`/`DrawGroupedHBarChart` (multi-series) are
+  axis-swapped mirrors of the existing vertical-bar functions, reusing
+  the `ChartValueToX` helper already written for the scatter chart;
+  XLSX import (`<c:barDir val="bar"/>`, previously explicitly rejected)
+  and export are both wired up too — the first of the "More chart
+  types" batch above to get real XLSX round-trip, not just native
+  `.ascd`. A second, unrelated bug surfaced investigating that same
+  file and got fixed alongside it: multi-series chart import required
+  the value columns to be strictly adjacent to the category column
+  (`ReconstructChartRange`), so a real "Budget vs Actual"-style chart
+  with a spacer/unrelated column between its two series (e.g. category
+  A, values B and D, C empty) silently failed with every data row
+  dropped. `ChartObject::valueColumns` (empty = legacy contiguous
+  behavior, unchanged for every existing chart) now carries the true,
+  possibly non-adjacent source columns end to end — import, live
+  redraw, native persistence, and XLSX export — fixing this for every
+  chart type with 2+ series, not just horizontal bar
 - ~~**Excel Table Total Row: import correctness**~~ Fixed — see
   `CHANGELOG.md`. `RegisterTable`/`ApplyTableBanding`
   (`translators/xlsx/XlsxTranslator.cpp`) now read `totalsRowCount`
