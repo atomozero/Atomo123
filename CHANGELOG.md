@@ -46,13 +46,18 @@ What shipped in v0.3.0, on top of v0.2.9:
   those columns/rows weren't exactly 80x20px (this file's column A is
   220px wide). `SumColumnWidths`/`SumRowHeights` now reconstruct the
   real position from the same per-column/per-row sizes already parsed
-  for the sheet itself, falling back to the sheet's own declared
-  `<sheetFormatPr>` default (not just this translator's fixed 80x20)
-  when a column/row has no explicit size. A small residual imprecision
-  remains for rows Excel writes with an explicit height but no
-  `customHeight` flag (auto-fit rows) — those still fall back to the
-  sheet default instead of their real written height, a narrower,
-  separate gap.
+  for the sheet itself. A first attempt also fell back to the sheet's
+  own declared `<sheetFormatPr>` default for columns/rows with no
+  explicit size, which turned out to be the wrong target: `SheetView`
+  itself always renders those at its own fixed 80x20px regardless of
+  what the sheet declares (`SetRowHeights` fills every row with
+  `kRowHeight` first, then applies only the explicit overrides,
+  ignoring `<sheetFormatPr>` entirely) — matching Excel's "true"
+  position instead of the grid actually on screen just reintroduced a
+  smaller version of the same misalignment on sheets with un-flagged
+  row heights. Reverted to the same fixed 80x20px fallback `SheetView`
+  itself uses, so the chart lines up with the grid as this app actually
+  draws it, not with a theoretical Excel position it doesn't render.
 - Fixed `COLUMNS`/`ROWS` not being recognized as function names. Real
   bug found opening a user's file (`money-manager-2.xlsx`, a Vertex42
   budget template): shared formulas like `=O13/COLUMNS(C13:N13)`,
