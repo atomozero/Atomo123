@@ -5116,6 +5116,19 @@ struct SheetContext {
 	const std::vector<std::string>* sharedStrings;
 	std::vector<std::pair<int, float> >* colWidths; // opzionale (NULL = non raccolte)
 	std::vector<std::pair<int, float> >* rowHeights; // opzionale (NULL = non raccolte)
+	// <sheetFormatPr defaultColWidth="..." defaultRowHeight="..."/>: la
+	// larghezza/altezza VERA di ogni colonna/riga SENZA una voce
+	// esplicita in colWidths/rowHeights sopra (Excel scrive sempre
+	// questo elemento con almeno defaultRowHeight; defaultColWidth e'
+	// invece spesso assente, il foglio usa allora la larghezza standard
+	// di Excel gia' incorporata in ExcelColWidthToPixels). Opzionali
+	// (NULL = non raccolti): usati solo per posizionare correttamente
+	// un grafico/immagine ancorato oltre la prima colonna/riga (vedi
+	// SumColumnWidths/SumRowHeights piu' sotto), MAI per il rendering
+	// delle celle vere (SheetView usa gia' i propri default se non
+	// trova una voce esplicita).
+	float* defaultColWidthPx;
+	float* defaultRowHeightPx;
 	bool* showGrid; // opzionale (NULL = non raccolto)
 	bool* hasTabColor; // opzionale (NULL = non raccolto)
 	rgb_color* tabColor; // valido solo se *hasTabColor diventa true
@@ -5324,6 +5337,24 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 			if (strcmp(atts[i], "showGridLines") == 0)
 				show = XlsxAttrIsTrue(atts[i + 1]);
 		*ctx->showGrid = show;
+	}
+	// <sheetFormatPr defaultColWidth="9.14" defaultRowHeight="12.75"/>,
+	// prima di <cols>/<sheetData> -- vedi il commento su
+	// SheetContext::defaultColWidthPx/defaultRowHeightPx sopra.
+	// defaultRowHeight e' in punti (stessa unita' di <row ht="...">,
+	// convertita con lo stesso fattore 4/3 usato li'); defaultColWidth
+	// e' nella stessa unita' "caratteri" di <col width="...">
+	// (ExcelColWidthToPixels, gia' usata sopra per le colonne esplicite).
+	else if (strcmp(name, "sheetFormatPr") == 0
+		&& (ctx->defaultColWidthPx || ctx->defaultRowHeightPx))
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "defaultColWidth") == 0 && ctx->defaultColWidthPx)
+				*ctx->defaultColWidthPx = ExcelColWidthToPixels(atof(atts[i + 1]));
+			else if (strcmp(atts[i], "defaultRowHeight") == 0 && ctx->defaultRowHeightPx)
+				*ctx->defaultRowHeightPx = (float)(atof(atts[i + 1]) * 4.0 / 3.0);
+		}
 	}
 	// <sheetPr><tabColor rgb="FF00B050"/></sheetPr>, prima di
 	// <sheetViews>/<cols>/<sheetData> -- il colore scelto dall'utente
@@ -6103,13 +6134,16 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	bool* hasPrintSettings = NULL,
 	double* marginTopCm = NULL, double* marginBottomCm = NULL,
 	double* marginLeftCm = NULL, double* marginRightCm = NULL,
-	int* scaleMode = NULL, double* scalePercent = NULL)
+	int* scaleMode = NULL, double* scalePercent = NULL,
+	float* defaultColWidthPx = NULL, float* defaultRowHeightPx = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
 	ctx.sharedStrings = &sharedStrings;
 	ctx.colWidths = colWidths;
 	ctx.rowHeights = rowHeights;
+	ctx.defaultColWidthPx = defaultColWidthPx;
+	ctx.defaultRowHeightPx = defaultRowHeightPx;
 	ctx.showGrid = showGrid;
 	ctx.hasTabColor = hasTabColor;
 	ctx.tabColor = tabColor;
@@ -7359,6 +7393,54 @@ static bool PngDimensions(const std::vector<unsigned char>& data, uint32* outW, 
 
 static const double kEmuPerPixel = 9525.0; // DrawingML, 96 DPI (predefinito Excel)
 
+// Somma le larghezze VERE (da <col> esplicite nel file XLSX,
+// ParsedSheet::colWidths -- gia' in pixel, vedi ExcelColWidthToPixels)
+// di ogni colonna PRIMA di "col0based" (0-based, la stessa convenzione
+// di xdr:col), usando "defaultWidth" per ogni colonna senza una voce
+// esplicita -- sostituisce la vecchia "col0based * defaultWidth" per
+// l'ancoraggio di immagini/grafici. Bug reale: un'ancora oltre la
+// prima colonna finiva fuori posto se il foglio aveva colonne piu'
+// larghe o piu' strette del default (money-manager-2.xlsx: colonna A
+// larga 220px contro l'80px predefinito, un grafico ancorato dopo
+// diverse colonne cadeva molto piu' a sinistra del vero punto Excel).
+static float SumColumnWidths(int col0based, const std::vector<std::pair<int, float> >& colWidths,
+	float defaultWidth)
+{
+	if (col0based <= 0)
+		return 0;
+	std::vector<float> widths(col0based, defaultWidth);
+	for (size_t i = 0; i < colWidths.size(); i++)
+	{
+		int col1based = colWidths[i].first;
+		if (col1based >= 1 && col1based <= col0based)
+			widths[col1based - 1] = colWidths[i].second;
+	}
+	float sum = 0;
+	for (int i = 0; i < col0based; i++)
+		sum += widths[i];
+	return sum;
+}
+
+// Gemella di SumColumnWidths sopra, ma per le righe (ParsedSheet::
+// rowHeights, gia' in pixel -- vedi RowXmlStart/heightPt*4.0/3.0).
+static float SumRowHeights(int row0based, const std::vector<std::pair<int, float> >& rowHeights,
+	float defaultHeight)
+{
+	if (row0based <= 0)
+		return 0;
+	std::vector<float> heights(row0based, defaultHeight);
+	for (size_t i = 0; i < rowHeights.size(); i++)
+	{
+		int row1based = rowHeights[i].first;
+		if (row1based >= 1 && row1based <= row0based)
+			heights[row1based - 1] = rowHeights[i].second;
+	}
+	float sum = 0;
+	for (int i = 0; i < row0based; i++)
+		sum += heights[i];
+	return sum;
+}
+
 // --- Parsing di xl/charts/chartN.xml (Fase 25, importazione dei grafici) --
 //
 // Estrae solo cio' che serve per ricostruire un ChartObject: tipo di
@@ -7892,6 +7974,13 @@ struct ParsedSheet {
 	CContainer* doc;
 	std::vector<std::pair<int, float> > colWidths;
 	std::vector<std::pair<int, float> > rowHeights;
+	// <sheetFormatPr>, vedi il commento gemello su
+	// SheetContext::defaultColWidthPx/defaultRowHeightPx -- <= 0
+	// significa "il foglio non lo dichiara esplicitamente", usa i
+	// predefiniti fissi di questo translator (kDefColWidth/
+	// kDefRowHeight) invece.
+	float defaultColWidthPx = 0;
+	float defaultRowHeightPx = 0;
 	std::vector<EmbeddedImage> images;
 	bool showGrid = true;
 	bool hasTabColor = false;
@@ -8296,7 +8385,8 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			&parsed.frozenRows, &parsed.frozenCols,
 			&parsed.hasPrintSettings, &parsed.marginTopCm, &parsed.marginBottomCm,
 			&parsed.marginLeftCm, &parsed.marginRightCm,
-			&parsed.scaleMode, &parsed.scalePercent))
+			&parsed.scaleMode, &parsed.scalePercent,
+			&parsed.defaultColWidthPx, &parsed.defaultRowHeightPx))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
@@ -8564,14 +8654,36 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							// Dimensione dell'ancoraggio in pixel: se manca
 							// un <xdr:ext> esplicito (il caso comune per un
 							// vero xdr:twoCellAnchor), si ricava da "to" -
-							// "from" usando la larghezza/altezza PREDEFINITA
-							// di colonna/riga (SheetView::kColWidth/
-							// kRowHeight, 80/20 px) -- un'approssimazione: a
-							// differenza delle immagini (Fase 12), qui non
-							// c'e' nessuna "dimensione naturale" di riserva,
-							// e le larghezze/altezze VERE della SheetView non
-							// sono note in questa fase di importazione.
-							static const float kDefColWidth = 80.0f, kDefRowHeight = 20.0f;
+							// "from" sommando le larghezze/altezze VERE di
+							// colonna/riga gia' note da <col>/<row> espliciti
+							// nel file (parsed.colWidths/rowHeights, la
+							// stessa lista che WriteASCD persiste per il
+							// foglio) tramite SumColumnWidths/SumRowHeights
+							// sopra -- per ogni colonna/riga SENZA una voce
+							// esplicita si usa il predefinito VERO del foglio
+							// (<sheetFormatPr>, parsed.defaultColWidthPx/
+							// defaultRowHeightPx) quando dichiarato, altrimenti
+							// il predefinito fisso di questo translator
+							// (kFallbackColWidth/kFallbackRowHeight, 80/20 px,
+							// scelti per coincidere con SheetView::kColWidth/
+							// kRowHeight per un foglio del tutto nuovo). Bug
+							// reale corretto qui: prima si usava SEMPRE 80/20,
+							// quindi un grafico ancorato dopo colonne/righe
+							// piu' larghe/alte del default finiva fuori posto
+							// rispetto alle celle vere (money-manager-2.xlsx:
+							// colonna A larga 220px, non 80px, defaultRowHeight
+							// dichiarato 12.75pt=17px, non 20px).
+							static const float kFallbackColWidth = 80.0f, kFallbackRowHeight = 20.0f;
+							// Predefinito VERO del foglio (<sheetFormatPr>,
+							// vedi SumColumnWidths/SumRowHeights sopra) se il
+							// file lo dichiara, altrimenti il predefinito fisso
+							// di questo translator -- Excel scrive quasi
+							// sempre defaultRowHeight, molto piu' raramente
+							// defaultColWidth.
+							float defColWidth = parsed.defaultColWidthPx > 0
+								? parsed.defaultColWidthPx : kFallbackColWidth;
+							float defRowHeight = parsed.defaultRowHeightPx > 0
+								? parsed.defaultRowHeightPx : kFallbackRowHeight;
 							float left, top;
 							if (pics[p].isAbsolute)
 							{
@@ -8586,9 +8698,9 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							}
 							else
 							{
-								left = pics[p].fromCol * kDefColWidth
+								left = SumColumnWidths(pics[p].fromCol, parsed.colWidths, defColWidth)
 									+ (float)(pics[p].fromColOffEmu / kEmuPerPixel);
-								top = pics[p].fromRow * kDefRowHeight
+								top = SumRowHeights(pics[p].fromRow, parsed.rowHeights, defRowHeight)
 									+ (float)(pics[p].fromRowOffEmu / kEmuPerPixel);
 							}
 							float width, height;
@@ -8599,9 +8711,9 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							}
 							else if (pics[p].hasTo)
 							{
-								float right = pics[p].toCol * kDefColWidth
+								float right = SumColumnWidths(pics[p].toCol, parsed.colWidths, defColWidth)
 									+ (float)(pics[p].toColOffEmu / kEmuPerPixel);
-								float bottom = pics[p].toRow * kDefRowHeight
+								float bottom = SumRowHeights(pics[p].toRow, parsed.rowHeights, defRowHeight)
 									+ (float)(pics[p].toRowOffEmu / kEmuPerPixel);
 								width = right - left;
 								height = bottom - top;
