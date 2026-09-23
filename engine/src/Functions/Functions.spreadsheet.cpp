@@ -1662,12 +1662,43 @@ void OFFSETFunction(Value *stack, int argCnt, CContainer *cells)
 	if (GetRangeArgument(stack, argCnt, 1, &cRange) &&
 		cRange.IsValid() &&
 		GetDoubleArgument(stack, argCnt, 2, &dv) &&
-		( v = static_cast<int>(rint(dv)) ) + cRange.top > 0 && v + cRange.bottom <= kRowCount &&
-		GetDoubleArgument(stack, argCnt, 3, &dh) &&
-		( h = static_cast<int>(rint(dh)) ) + cRange.left > 0 && h + cRange.right <= kColCount)
+		GetDoubleArgument(stack, argCnt, 3, &dh))
 	{
-		cRange.OffsetBy(h, v);
-		stack[0] = cRange;
+		v = static_cast<int>(rint(dv));
+		h = static_cast<int>(rint(dh));
+
+		// Quarto/quinto argomento facoltativo (altezza/larghezza, vero
+		// Excel OFFSET(riferimento,righe,colonne,[altezza],[larghezza])):
+		// se presenti RIDIMENSIONANO l'intervallo risultante invece di
+		// limitarsi a spostarlo, esattamente come Excel -- se assenti
+		// restano le dimensioni originali di "cRange" (comportamento
+		// invariato, la sola forma a 3 argomenti gestita prima di
+		// questo fix). Bug reale trovato su un file utente
+		// (money-manager-2.xlsx, "=OFFSET(A21,0,0,1,1)" dentro un
+		// intervallo dinamico di SUMIF): il parser rifiutava del tutto
+		// una chiamata a 5 argomenti (funcs_by_nr.r dichiarava OFFSET a
+		// 3 argomenti fissi), l'intera formula finiva importata come
+		// testo grezzo invece che calcolata.
+		int height = cRange.bottom - cRange.top + 1;
+		int width = cRange.right - cRange.left + 1;
+		double dHeight, dWidth;
+		if (argCnt >= 4 && GetDoubleArgument(stack, argCnt, 4, &dHeight) && dHeight >= 1)
+			height = static_cast<int>(rint(dHeight));
+		if (argCnt >= 5 && GetDoubleArgument(stack, argCnt, 5, &dWidth) && dWidth >= 1)
+			width = static_cast<int>(rint(dWidth));
+
+		int newTop = cRange.top + v;
+		int newLeft = cRange.left + h;
+		int newBottom = newTop + height - 1;
+		int newRight = newLeft + width - 1;
+
+		if (newTop > 0 && newLeft > 0 && newBottom <= kRowCount && newRight <= kColCount)
+		{
+			cRange.Set(newLeft, newTop, newRight, newBottom);
+			stack[0] = cRange;
+		}
+		else
+			stack[0] = gRefNan;
 	}
 	else
 		stack[0] = gRefNan;
