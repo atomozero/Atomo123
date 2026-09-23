@@ -252,6 +252,13 @@ resource 'Func' (128, "Functions")
 		"SORTBY", 65535, 142, 1,
 		// FILTER (Fase 34, stesso gruppo di SORTBY sopra): quinta e
 		// ultima funzione "spill" di questo gruppo.
-		"FILTER", 65535, 143, 1
+		"FILTER", 65535, 143, 1,
+		// SUMIFS: genuinamente mancante (nessuna implementazione sotto
+		// nessun nome, a differenza di COLUMNS/ROWS che erano solo un
+		// alias mancante) -- trovato analizzando un file utente reale
+		// (money-manager-2.xlsx, foglio YearlyReport). 65535 (argCnt
+		// variabile): l'intervallo da sommare piu' un numero variabile
+		// di coppie intervallo/criterio, come COUNTIFS sopra.
+		"SUMIFS", 65535, 144, 5
 	}
 };

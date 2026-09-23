@@ -73,7 +73,7 @@ int main()
 		return 1;
 	}
 
-	Check(gFuncCount == 144, "InitFunctions carica tutte le 144 funzioni della risorsa 'Func'");
+	Check(gFuncCount == 145, "InitFunctions carica tutte le 145 funzioni della risorsa 'Func'");
 
 	CContainer &doc = *new CContainer(NULL, NULL);
 
@@ -213,6 +213,28 @@ int main()
 	catch (CErr &e)
 	{
 		printf("FAIL =COUNTIFS: %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// SUMIFS: genuinamente mancante (nessuna implementazione sotto
+	// nessun nome, a differenza di COLUMNS/ROWS che erano solo un alias
+	// mancante) -- trovato analizzando un file utente reale
+	// (money-manager-2.xlsx, foglio YearlyReport): ogni formula che la
+	// usava restava testo grezzo invece che calcolata. Stessi dati di
+	// COUNTIFS sopra (D1:D4/E1:E4/V1:V4): solo la riga 1 (Mela E Si)
+	// soddisfa entrambi i criteri, quindi la somma e' 10 (il valore di
+	// quella sola riga), non 30 (10+20, tutte le righe "Mela").
+	try
+	{
+		TryToParseString("=SUMIFS(E1:E4;D1:D4;\"Mela\";V1:V4;\"Si\")", cell(23, 2), &doc, true);
+		doc.CalcCell(cell(23, 2));
+		doc.GetValue(cell(23, 2), v);
+		Check((double)v == 10.0,
+			"=SUMIFS(E1:E4;D1:D4;\"Mela\";V1:V4;\"Si\") somma solo la riga 1 (10), non 30 come SUMIF a un solo criterio");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =SUMIFS: %s\n", (char *)e);
 		gFailures++;
 	}
 
@@ -2786,8 +2808,8 @@ int main()
 			wait_for_thread(threads[i], &exitVal);
 		}
 
-		Check(gFuncCount == 144,
-			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 144 "
+		Check(gFuncCount == 145,
+			"dopo 8 chiamate concorrenti a InitFunctions(), gFuncCount resta 145 "
 			"(nessuna doppia inizializzazione)");
 		Check(GetFunctionNr("SUM") == kSUMFuncNr,
 			"GetFunctionNr(\"SUM\") funziona ancora dopo le chiamate concorrenti, "

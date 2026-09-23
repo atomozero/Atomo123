@@ -844,6 +844,83 @@ void COUNTIFSFunction(Value *stack, int argCnt, CContainer *cells)
 	stack[0] = (double)count;
 } /* COUNTIFSFunction */
 
+// SUMIFS(intervallo_da_sommare, intervallo1, criterio1, [intervallo2,
+// criterio2], ...): a differenza di SUMIF sopra (un solo intervallo/
+// criterio, intervallo da sommare FACOLTATIVO in terza posizione),
+// l'intervallo da sommare qui e' SEMPRE il primo argomento, seguito da
+// un AND fra piu' coppie intervallo/criterio -- stesso schema di
+// COUNTIFSFunction sopra (stessa iterazione su ranges[0], stesso
+// MatchesCriteria), con l'aggiunta di sommare il valore alla stessa
+// posizione relativa nell'intervallo da sommare quando tutte le coppie
+// corrispondono.
+void SUMIFSFunction(Value *stack, int argCnt, CContainer *cells)
+{
+	const int kMaxPairs = 12; // vedi kMaxStackHeight in Formula.h: mai piu' di ~12 coppie in una formula reale
+
+	// argCnt = 1 (intervallo da sommare) + 2 * numero di coppie -- deve
+	// essere dispari e almeno 3 (un intervallo da sommare + una coppia).
+	if (argCnt < 3 || argCnt % 2 == 0 || (argCnt - 1) / 2 > kMaxPairs)
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+
+	range sumRange;
+	if (!GetRangeArgument(stack, argCnt, 1, &sumRange) || !sumRange.IsValid())
+	{
+		stack[0] = gRefNan;
+		return;
+	}
+	CContainer *sumCells = GetRangeContainer(stack, 1, cells);
+
+	int pairCount = (argCnt - 1) / 2;
+	range ranges[kMaxPairs];
+	CContainer *rangeCells[kMaxPairs];
+	for (int p = 0; p < pairCount; p++)
+	{
+		int rangeArgNr = 2 + 2 * p; // 1-based: intervallo1=arg2, intervallo2=arg4, ...
+		if (!GetRangeArgument(stack, argCnt, rangeArgNr, &ranges[p]) || !ranges[p].IsValid())
+		{
+			stack[0] = gRefNan;
+			return;
+		}
+		// Fase 16: ogni coppia intervallo/criterio (e l'intervallo da
+		// sommare) puo' vivere su un foglio diverso dalle altre,
+		// risolta per conto proprio -- stesso principio di SUMIF/
+		// COUNTIFS sopra.
+		rangeCells[p] = GetRangeContainer(stack, rangeArgNr, cells);
+	}
+
+	double result = 0.0;
+	CCellIterator iter(rangeCells[0], &ranges[0]);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		bool allMatch = true;
+		for (int p = 0; p < pairCount && allMatch; p++)
+		{
+			cell target(ranges[p].left + (c.h - ranges[0].left),
+				ranges[p].top + (c.v - ranges[0].top));
+			Value val;
+			rangeCells[p]->GetValue(target, val);
+			int critArgNr = 3 + 2 * p; // 1-based: criterio1=arg3, criterio2=arg5, ...
+			if (!MatchesCriteria(val, stack[critArgNr - 1]))
+				allMatch = false;
+		}
+		if (!allMatch)
+			continue;
+
+		cell target(sumRange.left + (c.h - ranges[0].left),
+			sumRange.top + (c.v - ranges[0].top));
+		Value sumVal;
+		sumCells->GetValue(target, sumVal);
+		if (sumVal.fType == eNumData)
+			result += sumVal.fDouble;
+	}
+
+	stack[0] = result;
+} /* SUMIFSFunction */
+
 void AVERAGEIFFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	range criteriaRange, sumRange;
