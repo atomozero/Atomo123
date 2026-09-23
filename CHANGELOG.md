@@ -109,6 +109,17 @@ What shipped in v0.3.0, on top of v0.2.9:
   Excel names were just never aliased to them. Fixed the same way as
   the existing `LOG10` alias in `GetFunctionNr` — no changes to the
   shared binary function table.
+- Fixed `LEN` not being recognized as a function name, and added
+  `HYPERLINK`, genuinely missing. Both found opening `content-calendar.xlsx`
+  (a Vertex42 template) while systematically testing every sample XLSX
+  file: `=LEN(F6)` failed to parse for the same reason as `COLUMNS`/`ROWS`
+  above (only the legacy Sum-It name `LENGTH` was registered, never
+  aliased to Excel's shorter modern name), while `=HYPERLINK(url,"View")`
+  failed because no implementation existed under any name. Since this
+  engine has no real link navigation to trigger from a calculated
+  formula result, `HYPERLINK`'s value is simply the friendly name
+  argument when given, else the link itself — the same value Excel shows
+  in the cell.
 - Known pre-existing failures, reproduced on the pristine tree before
   this release (not regressions): `test_selection` dies silently after
   3 OKs around the direct `Draw()` call, `test_xlsm_macro_preservation`
