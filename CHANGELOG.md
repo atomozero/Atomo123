@@ -5,6 +5,21 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped in v0.3.0, on top of v0.2.9:
+- Fixed a trailing empty function argument (e.g. `ROUND(F6*G6,)` — a
+  comma written with nothing after it, before the closing parenthesis)
+  being silently dropped by the parser instead of counted as an empty
+  argument. `CParser::ParamList` already handled an empty argument
+  *between* two commas (`IF(a,,c)`), but the loop exited before ever
+  considering a final empty slot, undercounting the argument list by
+  one and failing the callee's expected-argument-count check. Found
+  systematically testing a batch of real user XLSX files: one had
+  hundreds of formulas in this exact shape, every one imported as raw,
+  uncalculated text. Also fixed the resulting runtime gap once parsing
+  succeeded: a present-but-blank argument evaluates to a distinct
+  "no data" value that `GetDoubleArgument` rejects outright —
+  `ROUND`/`ROUNDUP`/`ROUNDDOWN`'s mandatory (not optional, despite
+  looking it) `num_digits` argument now treats a blank value as 0, the
+  same way Excel treats a blank cell used in a numeric context.
 - Added `SUMIFS`, genuinely missing (not just an unaliased legacy name
   like the `COLUMNS`/`ROWS` fix below — no implementation existed under
   any name). Found opening `money-manager-2.xlsx`'s YearlyReport sheet
