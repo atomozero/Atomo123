@@ -234,6 +234,38 @@ int main()
 		gFailures++;
 	}
 
+	// COLUMNS/ROWS: bug reale trovato aprendo un vero foglio di bilancio
+	// (money-manager-2.xlsx, un modello Vertex42): formule condivise
+	// diffuse su piu' fogli come "=O13/COLUMNS(C13:N13)" restavano
+	// testo grezzo invece che calcolate -- ogni riga che le usa non
+	// veniva visualizzata correttamente. Stesso motivo di CEILING.MATH
+	// sopra ma senza il problema di lunghezza: questo motore calcola
+	// gia' esattamente la stessa cosa sotto i nomi storici di Sum-It
+	// "NCOLS"/"NROWS" (vedi GetFunctionNr in Utils.cpp), solo mai
+	// collegati ai nomi Excel moderni prima di questo fix.
+	try
+	{
+		TryToParseString("120", cell(15, 200), &doc, true); // O200
+		TryToParseString("=O200/COLUMNS(C200:N200)", cell(16, 200), &doc, true); // P200, C:N = 12 colonne
+		doc.CalcCell(cell(16, 200));
+		doc.GetValue(cell(16, 200), v);
+		Check(v.fType == eNumData && (double)v == 10.0,
+			"=O200/COLUMNS(C200:N200) (12 colonne) calcola 120/12=10, esattamente come nel file reale "
+			"che ha fatto scoprire il bug");
+
+		TryToParseString("=ROWS(A1:A5)", cell(17, 200), &doc, true); // Q200
+		doc.CalcCell(cell(17, 200));
+		doc.GetValue(cell(17, 200), v);
+		Check(v.fType == eNumData && (double)v == 5.0,
+			"=ROWS(A1:A5) calcola 5 -- stesso gap di COLUMNS, non ancora visto in un file reale ma "
+			"stesso alias mancante, corretto insieme");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL COLUMNS/ROWS: %s\n", (char *)e);
+		gFailures++;
+	}
+
 	// FILTER: bug reale trovato sul file dimostrativo Welcome.xlsx
 	// dell'app stessa (foglio "Advanced Functions"), scritto da Excel
 	// (via openpyxl, che riproduce fedelmente la sintassi reale di

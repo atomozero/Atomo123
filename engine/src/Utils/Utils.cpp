@@ -280,6 +280,23 @@ int GetFunctionNr(const char *name)
 	if (MatchesFuncNameAlias(name, "AVERAGEIFS"))
 		return kAVERAGEIFSFuncNr;
 
+	// "COLUMNS"/"ROWS" (bug reale trovato aprendo un vero foglio di
+	// bilancio, "money-manager-2.xlsx": formule condivise diffuse su piu'
+	// fogli come "=O13/COLUMNS(C13:N13)" restavano testo grezzo invece
+	// che calcolate -- ogni riga che le usa "non viene visualizzata
+	// correttamente"). Entrambi i nomi entrerebbero comunque nella
+	// tabella normale sotto (7/4 caratteri, non il problema di lunghezza
+	// di CEILING.MATH/CONCATENATE/SUBSTITUTE/NETWORKDAYS/SUMPRODUCT/
+	// AVERAGEIFS sopra): alias diretto qui per lo stesso motivo di LOG10
+	// piu' sopra, un calcolo IDENTICO esiste gia' sotto il nome storico
+	// di Sum-It "NCOLS"/"NROWS" (NCOLSFunction/NROWSFunction,
+	// Functions.spreadsheet.cpp), solo mai collegato al nome Excel
+	// moderno -- evita di toccare la risorsa binaria 'Func' condivisa.
+	if (MatchesFuncNameAlias(name, "COLUMNS"))
+		return kNCOLSFuncNr;
+	if (MatchesFuncNameAlias(name, "ROWS"))
+		return kNROWSFuncNr;
+
 	if (sLen >= (long)sizeof(myFunc))
 		return -1;
 
