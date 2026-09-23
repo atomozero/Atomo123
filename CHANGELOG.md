@@ -22,6 +22,23 @@ What shipped in v0.3.0, on top of v0.2.9:
   behavior), threaded through import, live redraw, native `.ascd`
   persistence, and XLSX export — a real fix for every multi-series
   chart type with a gap column, not just horizontal bar.
+- Fixed embedded charts imported from XLSX landing in the wrong place
+  on the sheet, overlapping cells they shouldn't cover. Real bug found
+  right after shipping the fix above and reopening `money-manager-2.xlsx`
+  in the real app: the anchor-to-pixel conversion always used a fixed
+  80x20px column/row size, ignoring the sheet's real (often very
+  different) column widths and row heights — a chart anchored past the
+  first column/row landed far from its true Excel position whenever
+  those columns/rows weren't exactly 80x20px (this file's column A is
+  220px wide). `SumColumnWidths`/`SumRowHeights` now reconstruct the
+  real position from the same per-column/per-row sizes already parsed
+  for the sheet itself, falling back to the sheet's own declared
+  `<sheetFormatPr>` default (not just this translator's fixed 80x20)
+  when a column/row has no explicit size. A small residual imprecision
+  remains for rows Excel writes with an explicit height but no
+  `customHeight` flag (auto-fit rows) — those still fall back to the
+  sheet default instead of their real written height, a narrower,
+  separate gap.
 - Fixed `COLUMNS`/`ROWS` not being recognized as function names. Real
   bug found opening a user's file (`money-manager-2.xlsx`, a Vertex42
   budget template): shared formulas like `=O13/COLUMNS(C13:N13)`,
