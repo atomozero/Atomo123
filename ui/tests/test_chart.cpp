@@ -499,6 +499,119 @@ int main()
 	Check(comboSingle.bars.size() == 3, "ComputeComboLayout con una sola serie produce comunque le barre");
 	Check(comboSingle.lines.empty(), "ComputeComboLayout con una sola serie non produce nessuna linea");
 
+	// ComputeHBarLayout (barre orizzontali, il vero "Bar" di Excel):
+	// stesso principio di ComputeBarLayout ma con gli assi scambiati --
+	// le "fette" di categoria si impilano verticalmente (non
+	// orizzontalmente) e ogni barra si estende in orizzontale dalla
+	// linea di zero al valore (non in verticale).
+	std::vector<HBarLayout> hbars;
+	BRect hBounds(0, 0, 100, 50);
+	ComputeHBarLayout(layoutData, hBounds, hbars);
+
+	Check(hbars.size() == 2, "ComputeHBarLayout produce una barra per voce");
+	if (hbars.size() == 2)
+	{
+		Check(hbars[0].bar.top < hbars[1].bar.top,
+			"le barre sono impilate dall'alto in basso come i dati (non affiancate)");
+		Check(hbars[1].bar.Width() > hbars[0].bar.Width(),
+			"la barra col valore maggiore (B=20) e' piu' larga di quella con A=10");
+		Check(hbars[0].bar.left == hBounds.left && hbars[1].bar.left == hBounds.left,
+			"tutte le barre positive partono dallo stesso bordo sinistro (linea di zero)");
+	}
+
+	std::vector<HBarLayout> emptyHBars;
+	ComputeHBarLayout(noData, hBounds, emptyHBars);
+	Check(emptyHBars.empty(), "ComputeHBarLayout su una serie vuota non produce barre");
+
+	// ComputeHBarLayout con valori sia positivi che negativi: la barra
+	// negativa deve estendersi a SINISTRA della linea di zero, non a
+	// destra -- stesso principio di ComputeBarLayout ma sull'asse X.
+	std::vector<HBarLayout> mixedHBars;
+	BRect mixedHBounds(0, 0, 100, 40);
+	ComputeHBarLayout(mixedData, mixedHBounds, mixedHBars);
+
+	Check(mixedHBars.size() == 2, "ComputeHBarLayout produce una barra per voce anche con valori misti");
+	if (mixedHBars.size() == 2)
+	{
+		Check(mixedHBars[0].bar.left < mixedHBars[0].bar.right,
+			"la barra positiva e' un rettangolo valido (left prima di right)");
+		Check(mixedHBars[1].bar.left < mixedHBars[1].bar.right,
+			"la barra negativa e' un rettangolo valido (left prima di right), non invertita");
+		Check(mixedHBars[0].bar.left == mixedHBars[1].bar.right,
+			"le due barre (valori opposti e simmetrici) si toccano esattamente sulla linea di zero");
+		Check(mixedHBars[0].bar.right == mixedHBounds.right,
+			"la barra positiva massima tocca il bordo destro dell'area");
+		Check(mixedHBars[1].bar.left == mixedHBounds.left,
+			"la barra negativa minima tocca il bordo sinistro dell'area");
+	}
+
+	// ComputeGroupedHBarLayout: stesso principio di
+	// ComputeGroupedBarLayout ma con bande di categoria orizzontali
+	// (impilate dall'alto in basso) invece di verticali.
+	GroupedHBarLayout groupedH;
+	BRect groupedHBounds(0, 0, 40, 120);
+	ComputeGroupedHBarLayout(multi, groupedHBounds, groupedH);
+	Check(groupedH.bars.size() == 2, "ComputeGroupedHBarLayout produce un vettore di barre per serie");
+	if (groupedH.bars.size() == 2)
+	{
+		Check(groupedH.bars[0].size() == 3 && groupedH.bars[1].size() == 3,
+			"ogni serie ha una barra per categoria");
+		Check(groupedH.bars[0][0].top < groupedH.bars[1][0].top,
+			"dentro la stessa banda di categoria, la barra della serie 0 sta sopra quella della serie 1");
+		Check(groupedH.bars[0][0].bottom <= groupedH.bars[0][1].top,
+			"le barre di categorie diverse (stessa serie) non si sovrappongono");
+		Check(groupedH.bars[0][2].Width() > groupedH.bars[1][2].Width(),
+			"la barra col valore maggiore (serie 0, Mar=30) e' piu' larga di quella con valore minore nello stesso gruppo (serie 1, Mar=10)");
+	}
+
+	// BuildMultiChartSeries con "valueColumns" esplicito (Task 2,
+	// colonne valore NON adiacenti -- caso reale trovato in un file
+	// utente, money-manager-2.xlsx: categoria + due serie con una
+	// colonna vuota/spacer in mezzo). Colonne 20-23 per non toccare i
+	// dati usati sopra: 20=categoria, 21=serie B, 22=SEMPRE VUOTA
+	// (spacer), 23=serie D.
+	doc.NewCell(cell(20, 1), Value("Gen"), NULL);
+	doc.NewCell(cell(21, 1), Value(1.0), NULL);
+	doc.NewCell(cell(23, 1), Value(100.0), NULL);
+	doc.NewCell(cell(20, 2), Value("Feb"), NULL);
+	doc.NewCell(cell(21, 2), Value(2.0), NULL);
+	doc.NewCell(cell(23, 2), Value(200.0), NULL);
+	doc.NewCell(cell(20, 3), Value("Mar"), NULL);
+	doc.NewCell(cell(21, 3), Value(3.0), NULL);
+	doc.NewCell(cell(23, 3), Value(300.0), NULL);
+
+	range gapRange(20, 1, 23, 3);
+
+	// Comportamento PRIMA di questo fix (documenta il bug: senza
+	// "valueColumns", la colonna 22 sempre vuota fa scartare OGNI riga
+	// per intero, essendo trattata come una terza serie mancante).
+	MultiChartData multiLegacyOverGap;
+	bool legacyOk = BuildMultiChartSeries(&doc, gapRange, multiLegacyOverGap);
+	Check(!legacyOk,
+		"BuildMultiChartSeries senza valueColumns fallisce su colonne con uno spacer in mezzo (il bug reale)");
+
+	// Con "valueColumns" esplicito {21, 23}: legge le due serie vere,
+	// ignora completamente la colonna 22.
+	std::vector<int16> gapValueColumns;
+	gapValueColumns.push_back(21);
+	gapValueColumns.push_back(23);
+	MultiChartData multiWithExplicitColumns;
+	bool explicitOk = BuildMultiChartSeries(&doc, gapRange, multiWithExplicitColumns, gapValueColumns);
+	Check(explicitOk, "BuildMultiChartSeries con valueColumns esplicito riesce nonostante lo spacer");
+	Check(multiWithExplicitColumns.categories.size() == 3,
+		"tutte e 3 le righe vengono lette (lo spacer in colonna 22 non le scarta piu')");
+	Check(multiWithExplicitColumns.seriesNames.size() == 2,
+		"vengono lette esattamente 2 serie (una per colonna esplicita), non 3");
+	if (multiWithExplicitColumns.categories.size() == 3 && multiWithExplicitColumns.values.size() == 2)
+	{
+		Check(multiWithExplicitColumns.values[0][0] == 1.0 && multiWithExplicitColumns.values[0][1] == 2.0
+				&& multiWithExplicitColumns.values[0][2] == 3.0,
+			"la prima serie esplicita legge davvero dalla colonna 21");
+		Check(multiWithExplicitColumns.values[1][0] == 100.0 && multiWithExplicitColumns.values[1][1] == 200.0
+				&& multiWithExplicitColumns.values[1][2] == 300.0,
+			"la seconda serie esplicita legge davvero dalla colonna 23, non dalla 22 (vuota)");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();

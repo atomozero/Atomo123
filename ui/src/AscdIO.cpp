@@ -977,6 +977,32 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione colonne valore esplicite di grafico incorporato, in coda:
+	// come la sezione titolo sopra, ma un conteggio+elenco di colonne
+	// (int16) per grafico invece di una stringa -- VUOTO per la
+	// stragrande maggioranza dei grafici (creati dal selettore di
+	// intervallo semplice, sempre contigui, vedi il commento su
+	// ChartObject::valueColumns in Chart.h), popolato solo per un
+	// grafico importato da XLSX con colonne valore non adiacenti. Un
+	// file scritto prima di questo campo (o senza questa sezione)
+	// lascia ogni valueColumns vuoto, cioe' il comportamento
+	// "contigue" di sempre.
+	{
+		int32 chartValueColCount = charts ? (int32)charts->size() : 0;
+		if (dest->Write(&chartValueColCount, sizeof(chartValueColCount)) != (ssize_t)sizeof(chartValueColCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < chartValueColCount; i++)
+		{
+			const std::vector<int16>& cols = (*charts)[i].valueColumns;
+			int32 colCount = (int32)cols.size();
+			if (dest->Write(&colCount, sizeof(colCount)) != (ssize_t)sizeof(colCount))
+				return B_IO_ERROR;
+			for (int32 c = 0; c < colCount; c++)
+				if (dest->Write(&cols[c], sizeof(cols[c])) != (ssize_t)sizeof(cols[c]))
+					return B_IO_ERROR;
+		}
+	}
+
 	// Sezione area di stampa, in coda (Fase 29): stesso schema esatto
 	// della sezione AutoFilter piu' sopra (un byte "presente si'/no"
 	// seguito da quattro interi, sempre scritti).
@@ -2382,6 +2408,38 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				}
 				if (charts && i < (int32)charts->size())
 					(*charts)[i].title = title.c_str();
+			}
+		}
+	}
+
+	// Sezione colonne valore esplicite di grafico incorporato, in coda:
+	// stesso schema EOF-tollerante delle sezioni sopra (vedi il
+	// commento gemello in SaveASCD). Un file scritto prima di questo
+	// campo lascia ogni valueColumns vuoto (comportamento "contigue"
+	// invariato).
+	{
+		int32 chartValueColCount = 0;
+		ssize_t got = source->Read(&chartValueColCount, sizeof(chartValueColCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartValueColCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartValueColCount; i++)
+			{
+				int32 colCount;
+				if (source->Read(&colCount, sizeof(colCount)) != (ssize_t)sizeof(colCount))
+					return B_BAD_DATA;
+				if (colCount < 0 || colCount > 4096)
+					return B_BAD_DATA;
+
+				std::vector<int16> cols(colCount);
+				for (int32 c = 0; c < colCount; c++)
+					if (source->Read(&cols[c], sizeof(cols[c])) != (ssize_t)sizeof(cols[c]))
+						return B_BAD_DATA;
+
+				if (charts && i < (int32)charts->size())
+					(*charts)[i].valueColumns = cols;
 			}
 		}
 	}

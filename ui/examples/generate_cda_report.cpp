@@ -622,6 +622,17 @@ int main()
 	chartProductScatter.dataRange = range(17, scatterFirstRow, 18, scatterFirstRow + (int)products.size() - 1);
 	chartProductScatter.frame = BRect(920, 450, 1300, 650);
 
+	// Grafico a BARRE ORIZZONTALI (eHBarChart): stessi dati di
+	// chartProduct sopra, riuso deliberato -- la differenza e' solo
+	// l'orientamento (categorie sull'asse verticale, barre che si
+	// estendono da sinistra a destra), il vero "Bar" di Excel a
+	// differenza di "Column" (eBarChart).
+	ChartObject chartProductHBar;
+	chartProductHBar.type = eHBarChart;
+	chartProductHBar.title = "Unita' vendute per prodotto (barre orizzontali)";
+	chartProductHBar.dataRange = chartProduct.dataRange;
+	chartProductHBar.frame = BRect(1320, 450, 1700, 650);
+
 	// Tabella pivot VERA (Inserisci -> Tabella Pivot, Fase 29 per il
 	// raggruppamento a piu' livelli): a differenza dei quattro blocchi
 	// SUMIF sopra (dal vivo, MAI congelati), questa e' deliberatamente
@@ -1135,6 +1146,7 @@ int main()
 	pivotSheet.charts.push_back(chartMonthArea);
 	pivotSheet.charts.push_back(chartSegCombo);
 	pivotSheet.charts.push_back(chartProductScatter);
+	pivotSheet.charts.push_back(chartProductHBar);
 	pivotSheet.colWidths.push_back(std::make_pair(1, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(4, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(7, 130.0f));

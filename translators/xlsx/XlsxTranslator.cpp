@@ -120,8 +120,11 @@ static bool ColorsEqual(rgb_color a, rgb_color b)
 struct XlsxChartInfo {
 	int16 dataLeft, dataTop, dataRight, dataBottom; // ChartObject::dataRange (celle, 1-based)
 	float frameLeft, frameTop, frameRight, frameBottom; // ChartObject::frame (pixel nel foglio)
-	int8 type; // 0 = barre, 1 = linee, 2 = torta (ChartType in Chart.h)
+	int8 type; // valori identici a ChartType in Chart.h (0=barre, 1=linee, 2=torta, 6=barre orizzontali, ...)
 	std::string title;
+	// Vedi il commento gemello su ChartObject::valueColumns in
+	// ui/src/Chart.h -- stesso significato, stesso "vuoto = contigue".
+	std::vector<int16> valueColumns;
 };
 
 // Stessa serializzazione ASCD degli altri translator (vedi
@@ -1010,6 +1013,30 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 				return B_IO_ERROR;
 			if (len > 0 && dest->Write(title.data(), len) != len)
 				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione colonne valore esplicite di grafico incorporato, in coda:
+	// stesso schema e stesso motivo del BUG REALE spiegato nel commento
+	// della sezione titolo qui sopra -- va scritta SEMPRE (anche
+	// conteggio 0) per ogni foglio, altrimenti un file XLSX
+	// multi-foglio disallinea la lettura di ogni foglio dopo il primo.
+	// Vedi il commento gemello su ChartObject::valueColumns in
+	// ui/src/Chart.h -- vuoto per la stragrande maggioranza dei
+	// grafici, popolato solo per uno con colonne valore non adiacenti.
+	{
+		int32 chartValueColCount = charts ? (int32)charts->size() : 0;
+		if (dest->Write(&chartValueColCount, sizeof(chartValueColCount)) != (ssize_t)sizeof(chartValueColCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < chartValueColCount; i++)
+		{
+			const std::vector<int16>& cols = (*charts)[i].valueColumns;
+			int32 colCount = (int32)cols.size();
+			if (dest->Write(&colCount, sizeof(colCount)) != (ssize_t)sizeof(colCount))
+				return B_IO_ERROR;
+			for (int32 c = 0; c < colCount; c++)
+				if (dest->Write(&cols[c], sizeof(cols[c])) != (ssize_t)sizeof(cols[c]))
+					return B_IO_ERROR;
 		}
 	}
 
@@ -2048,6 +2075,38 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione colonne valore esplicite di grafico incorporato, in coda:
+	// stesso schema EOF-tollerante delle sezioni sopra (vedi il
+	// commento gemello in WriteASCD). Un file scritto prima di questo
+	// campo lascia ogni valueColumns vuoto (comportamento "contigue"
+	// invariato).
+	{
+		int32 chartValueColCount = 0;
+		ssize_t got = source->Read(&chartValueColCount, sizeof(chartValueColCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartValueColCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartValueColCount; i++)
+			{
+				int32 colCount;
+				if (source->Read(&colCount, sizeof(colCount)) != (ssize_t)sizeof(colCount))
+					return B_BAD_DATA;
+				if (colCount < 0 || colCount > 4096)
+					return B_BAD_DATA;
+
+				std::vector<int16> cols(colCount);
+				for (int32 c = 0; c < colCount; c++)
+					if (source->Read(&cols[c], sizeof(cols[c])) != (ssize_t)sizeof(cols[c]))
+						return B_BAD_DATA;
+
+				if (i < (int32)outCharts->size())
+					(*outCharts)[i].valueColumns = cols;
+			}
+		}
+	}
+
 	// Sezione area di stampa, in coda: applicata davvero agli out-param
 	// ora (100% XLSX standard compatibility, Tier 2, passo 4/4), non
 	// piu' solo consumata per restare allineata -- serve
@@ -2653,22 +2712,38 @@ struct MultiChartDataXlsx {
 	int firstDataRow;
 };
 
-static bool BuildMultiChartDataXlsx(CContainer* doc, const XlsxChartInfo& info, MultiChartDataXlsx* out)
+static bool BuildMultiChartDataXlsx(CContainer* doc, const XlsxChartInfo& info, MultiChartDataXlsx* out,
+	const std::vector<int16>& valueColumns = std::vector<int16>())
 {
 	out->categories.clear();
 	out->seriesNames.clear();
 	out->values.clear();
 
-	int seriesCount = info.dataRight - info.dataLeft;
-	if (seriesCount < 1)
-		return false;
+	int seriesCount;
+	if (!valueColumns.empty())
+		seriesCount = (int)valueColumns.size();
+	else
+	{
+		seriesCount = info.dataRight - info.dataLeft;
+		if (seriesCount < 1)
+			return false;
+	}
 	out->values.resize(seriesCount);
+
+	// Colonna della serie s: esplicita se "valueColumns" e' popolato
+	// (grafico con colonne valore non adiacenti, vedi il commento su
+	// ChartObject::valueColumns in ui/src/Chart.h), altrimenti
+	// dataLeft+1+s come sempre -- stesso principio di
+	// BuildMultiChartSeries in ui/src/Chart.cpp.
+	auto seriesCol = [&](int s) -> int {
+		return valueColumns.empty() ? (info.dataLeft + 1 + s) : valueColumns[s];
+	};
 
 	bool hasHeader = false;
 	for (int s = 0; s < seriesCount && !hasHeader; s++)
 	{
 		Value hv;
-		doc->GetValue(cell(info.dataLeft + 1 + s, info.dataTop), hv);
+		doc->GetValue(cell(seriesCol(s), info.dataTop), hv);
 		if (hv.fType == eTextData && ((const char*)hv)[0] != 0)
 			hasHeader = true;
 	}
@@ -2679,7 +2754,7 @@ static bool BuildMultiChartDataXlsx(CContainer* doc, const XlsxChartInfo& info, 
 		if (hasHeader)
 		{
 			Value hv;
-			doc->GetValue(cell(info.dataLeft + 1 + s, info.dataTop), hv);
+			doc->GetValue(cell(seriesCol(s), info.dataTop), hv);
 			if (hv.fType == eTextData)
 				name = (const char*)hv;
 		}
@@ -2700,7 +2775,7 @@ static bool BuildMultiChartDataXlsx(CContainer* doc, const XlsxChartInfo& info, 
 		for (int s = 0; s < seriesCount && rowOk; s++)
 		{
 			Value vv;
-			doc->GetValue(cell(info.dataLeft + 1 + s, row), vv);
+			doc->GetValue(cell(seriesCol(s), row), vv);
 			if (vv.fType != eNumData)
 				rowOk = false;
 			else
@@ -2808,7 +2883,7 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 	if (multiSeries)
 	{
 		MultiChartDataXlsx data;
-		if (!BuildMultiChartDataXlsx(doc, info, &data))
+		if (!BuildMultiChartDataXlsx(doc, info, &data, info.valueColumns))
 			return std::string();
 
 		std::string catRef = AbsColumnRangeRef(kSheetName, info.dataLeft,
@@ -2816,7 +2891,14 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 
 		for (int s = 0; s < (int)data.seriesNames.size(); s++)
 		{
-			std::string valRef = AbsColumnRangeRef(kSheetName, info.dataLeft + 1 + s,
+			// Colonna vera della serie: esplicita se "valueColumns" e'
+			// popolato (grafico con colonne valore non adiacenti),
+			// altrimenti dataLeft+1+s come sempre -- senza questo un
+			// grafico riesportato punterebbe alle colonne SBAGLIATE
+			// (dataLeft+1/+2 invece delle vere B/D con una colonna
+			// spacer in mezzo).
+			int valCol = info.valueColumns.empty() ? (info.dataLeft + 1 + s) : info.valueColumns[s];
+			std::string valRef = AbsColumnRangeRef(kSheetName, valCol,
 				data.firstDataRow, info.dataBottom);
 			AppendSeries(plot, s, data.seriesNames[s], catRef, data.categories,
 				valRef, data.values[s], true);
@@ -2877,7 +2959,23 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 		xml += "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
 			"<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>";
 	}
-	else // barre (predefinito)
+	else if (info.type == 6) // barre orizzontali
+	{
+		xml += "<c:barChart><c:barDir val=\"bar\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>";
+		xml += plot;
+		xml += "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:barChart>";
+		// Assi scambiati rispetto alle barre verticali sotto: categoria
+		// a sinistra (axPos "l"), valori in basso (axPos "b") -- il
+		// contrario esatto di un grafico a colonne, coerente con
+		// c:barDir val="bar" sopra. Senza questo scambio Excel/
+		// LibreOffice riaprirebbero il file con gli assi visivamente
+		// incoerenti col tipo di grafico dichiarato.
+		xml += "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"222222222\"/></c:catAx>";
+		xml += "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"111111111\"/></c:valAx>";
+	}
+	else // barre verticali (predefinito, include type 0)
 	{
 		xml += "<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>";
 		xml += plot;
@@ -7308,16 +7406,16 @@ static void XMLCALL ChartXmlStart(void* userData, const char* name, const char**
 	}
 	else if (strcmp(name, "c:barDir") == 0)
 	{
-		// Un grafico a barre ORIZZONTALI ("bar" invece di "col") non ha
-		// equivalente disegnato da questa app -- solo barre verticali
-		// (vedi ChartType/DrawBarChart in ui/src/Chart*).
+		// Barre orizzontali: il vero "Bar" di Excel, distinto da
+		// "Column" (val="col", il caso comune sopra in c:barChart, che
+		// imposta gia' type=0/eBarChart come default finche' non si
+		// scopre il contrario qui). type=6 == eHBarChart in Chart.h.
+		// typeRecognized resta invariato (gia' true dall'elemento
+		// c:barChart, sempre genitore di questo): solo il tipo cambia.
 		for (int i = 0; atts[i]; i += 2)
 		{
 			if (strcmp(atts[i], "val") == 0 && strcmp(atts[i + 1], "bar") == 0)
-			{
-				ctx->result.typeRecognized = false;
-				ctx->result.unsupportedReason = "Barre orizzontali";
-			}
+				ctx->result.type = 6;
 		}
 	}
 	else if (strcmp(name, "c:lineChart") == 0)
@@ -7332,10 +7430,13 @@ static void XMLCALL ChartXmlStart(void* userData, const char* name, const char**
 	}
 	else if (!ctx->result.typeRecognized)
 	{
-		// Qualunque altro "c:xxxChart" (area, dispersione, radar,
-		// ciambella, azionario, superficie, bolle, 3D, ecc.) non ha un
-		// equivalente disegnato da questa app -- solo 3 tipi esistono
-		// in ChartType (ui/src/Chart.h).
+		// Qualunque altro "c:xxxChart" (radar, ciambella, azionario,
+		// superficie, bolle, 3D, ecc.) non ha un percorso di
+		// importazione XLSX in questo file -- area/dispersione/
+		// combinato/barre orizzontali esistono in ChartType (ui/src/
+		// Chart.h) ma solo come tipi creabili dall'app stessa
+		// (ChartWindow), non ancora riconosciuti qui in importazione,
+		// tranne le barre orizzontali (c:barDir sopra).
 		size_t len = strlen(name);
 		if (len > 5 && strncmp(name, "c:", 2) == 0 && strcmp(name + len - 5, "Chart") == 0)
 			ctx->result.unsupportedReason = std::string(name).substr(2);
@@ -7487,19 +7588,30 @@ static bool ParseSheetRangeRef(const std::string& ref, std::string* outSheetName
 }
 
 // Ricostruisce ChartObject::dataRange da un riferimento di categoria e
-// uno o piu' riferimenti di valori (uno per serie), verificando che
-// abbiano ESATTAMENTE la forma che questo stesso translator produce in
-// esportazione (vedi BuildChartXml/AbsColumnRangeRef sopra): tutti
-// sullo stesso foglio del grafico, colonna di categoria seguita
-// immediatamente da colonne di valori contigue nello stesso ordine
-// delle serie, stessa riga iniziale/finale per tutte. Un grafico che
-// non rispetta questa forma (es. valori sparsi, fogli diversi, righe
-// diverse) non e' rappresentabile dall'unico "range" rettangolare
-// contiguo che ChartObject::dataRange richiede -- trattato come non
-// supportato, stesso meccanismo di un tipo di grafico sconosciuto.
+// uno o piu' riferimenti di valori (uno per serie). Ricostruisce
+// ChartObject::dataRange (rettangolo che racchiude categoria + tutte
+// le colonne valore, comprese eventuali colonne "spacer" saltate in
+// mezzo) e "outValueColumns" (colonne valore ESATTE, 1-based, nello
+// stesso ordine delle serie) -- le colonne valore NON devono essere
+// contigue fra loro (un file XLSX reale puo' avere una colonna vuota/
+// non pertinente fra due serie di uno stesso grafico, vedi
+// money-manager-2.xlsx: categoria A, valori B e D con C vuota in
+// mezzo): l'unico vincolo rimasto e' che categoria e OGNI colonna
+// valore siano sullo stesso foglio del grafico e coprano esattamente
+// lo stesso intervallo di righe. Se le colonne valore risultano gia'
+// contigue (il caso comune), "outValueColumns" esce vuoto apposta
+// (vedi il commento su ChartObject::valueColumns in ui/src/Chart.h):
+// un grafico "normale" resta rappresentato esattamente come prima di
+// questa modifica, nessun rumore in piu' nel formato persistito. Un
+// grafico che non rispetta nemmeno questo vincolo ridotto (es. fogli
+// diversi, righe diverse, un riferimento non a singola colonna) resta
+// non rappresentabile -- trattato come non supportato, stesso
+// meccanismo di un tipo di grafico sconosciuto.
 static bool ReconstructChartRange(const std::string& sheetName, const std::string& catRefText,
-	const std::vector<std::string>& valRefTexts, range* outRange)
+	const std::vector<std::string>& valRefTexts, range* outRange,
+	std::vector<int16>* outValueColumns)
 {
+	outValueColumns->clear();
 	if (catRefText.empty() || valRefTexts.empty())
 		return false;
 
@@ -7510,7 +7622,8 @@ static bool ReconstructChartRange(const std::string& sheetName, const std::strin
 	if (catSheet != sheetName || catRange.left != catRange.right)
 		return false;
 
-	int expectedCol = catRange.left + 1;
+	std::vector<int16> valueCols;
+	int maxCol = catRange.left;
 	for (size_t i = 0; i < valRefTexts.size(); i++)
 	{
 		std::string valSheet;
@@ -7519,14 +7632,32 @@ static bool ReconstructChartRange(const std::string& sheetName, const std::strin
 			return false;
 		if (valSheet != sheetName || valRange.left != valRange.right)
 			return false;
-		if (valRange.left != expectedCol)
-			return false;
 		if (valRange.top != catRange.top || valRange.bottom != catRange.bottom)
 			return false;
+		valueCols.push_back((int16)valRange.left);
+		if (valRange.left > maxCol)
+			maxCol = valRange.left;
+	}
+
+	// Contigue? Stesso controllo di prima (colonna attesa crescente di
+	// 1 a partire da subito dopo la categoria): se si', "valueColumns"
+	// resta vuoto -- comportamento identico a prima di questa modifica
+	// per il caso comune.
+	bool contiguous = true;
+	int expectedCol = catRange.left + 1;
+	for (size_t i = 0; i < valueCols.size(); i++)
+	{
+		if (valueCols[i] != expectedCol)
+		{
+			contiguous = false;
+			break;
+		}
 		expectedCol++;
 	}
 
-	outRange->Set(catRange.left, catRange.top, expectedCol - 1, catRange.bottom);
+	outRange->Set(catRange.left, catRange.top, maxCol, catRange.bottom);
+	if (!contiguous)
+		*outValueColumns = valueCols;
 	return true;
 }
 
@@ -8422,8 +8553,9 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							}
 
 							range dataRange;
+							std::vector<int16> valueColumns;
 							if (!ReconstructChartRange(parsed.name, chartResult.catRef,
-								chartResult.valRefs, &dataRange))
+								chartResult.valRefs, &dataRange, &valueColumns))
 							{
 								unsupportedCharts.push_back("layout dati non compatibile");
 								continue;
@@ -8493,6 +8625,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							info.frameBottom = top + height;
 							info.type = chartResult.type;
 							info.title = chartResult.title;
+							info.valueColumns = valueColumns;
 							parsed.charts.push_back(info);
 						}
 					}

@@ -693,13 +693,181 @@ void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 // Coordinata X di "value" dentro "bounds", scalata sull'intervallo
 // [minValue, maxValue] -- minValue cade su bounds.left, maxValue su
 // bounds.right. Stesso principio di ChartValueToY sopra, ma per l'asse
-// orizzontale: nessun altro tipo di grafico in questo file ne ha
-// bisogno (barre/linee/aree hanno sempre una categoria discreta sulle
-// ascisse, mai un valore continuo), quindi resta locale a questo
-// blocco invece di un parametro in piu' su ChartValueToY.
+// orizzontale: usata sia dal grafico a dispersione (asse X a valori
+// continui) sia dalle barre orizzontali qui sotto (asse dei valori, non
+// piu' quello delle categorie).
 static float ChartValueToX(double value, double minValue, double maxValue, BRect bounds)
 {
 	return bounds.left + bounds.Width() * (float)((value - minValue) / (maxValue - minValue));
+}
+
+// Gemella di DrawYAxisGrid ma per un asse a valori orizzontale: griglia
+// verticale (linee chiare) + etichette numeriche sotto plotArea, invece
+// di griglia orizzontale + etichette a sinistra -- usata da
+// DrawHBarChart/DrawGroupedHBarChart sotto.
+void DrawXAxisGrid(BView* view, BRect plotArea, double minValue, double maxValue)
+{
+	if (maxValue <= minValue)
+		maxValue = minValue + 1;
+
+	const int kDivisions = 4;
+	view->SetHighColor(225, 225, 225);
+	for (int i = 0; i <= kDivisions; i++)
+	{
+		double value = minValue + (maxValue - minValue) * i / kDivisions;
+		float x = ChartValueToX(value, minValue, maxValue, plotArea);
+		view->StrokeLine(BPoint(x, plotArea.top), BPoint(x, plotArea.bottom));
+	}
+
+	view->SetHighColor(90, 90, 90);
+	for (int i = 0; i <= kDivisions; i++)
+	{
+		double value = minValue + (maxValue - minValue) * i / kDivisions;
+		float x = ChartValueToX(value, minValue, maxValue, plotArea);
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%g", value);
+		float width = view->StringWidth(buf);
+		view->DrawString(buf, BPoint(x - width / 2, plotArea.bottom + 14));
+	}
+}
+
+// Gemella di ComputeBarLayout, ma con le "fette" (una per categoria)
+// impilate verticalmente (bounds.Height() invece di bounds.Width()) e
+// la barra che si estende in orizzontale dalla linea di zero al valore
+// (ChartValueToX, non ChartValueToY) -- il vero "Bar" di Excel, a
+// differenza di eBarChart che e' in realta' il suo "Column". Categoria
+// 0 in cima (bounds.top), stesso ordine di lettura dall'alto in basso
+// di un elenco.
+void ComputeHBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
+	std::vector<HBarLayout>& out)
+{
+	out.clear();
+	if (data.empty())
+		return;
+
+	double minValue, maxValue;
+	ChartValueRange(data, &minValue, &maxValue);
+
+	float slotHeight = bounds.Height() / data.size();
+	float gap = slotHeight * 0.2f;
+	if (gap > 10)
+		gap = 10;
+
+	float zeroX = ChartValueToX(0.0, minValue, maxValue, bounds);
+
+	for (size_t i = 0; i < data.size(); i++)
+	{
+		float top = bounds.top + i * slotHeight + gap / 2;
+		float bottom = top + slotHeight - gap;
+		float valueX = ChartValueToX(data[i].value, minValue, maxValue, bounds);
+
+		HBarLayout bl;
+		// Stesso principio di ComputeBarLayout: min/max invece di
+		// "left fisso, right fisso" cosi' un valore negativo estende
+		// la barra a sinistra dello zero invece di produrre un
+		// rettangolo con left > right.
+		bl.bar.Set(std::min(valueX, zeroX), top, std::max(valueX, zeroX), bottom);
+		out.push_back(bl);
+	}
+}
+
+void DrawHBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title)
+{
+	view->SetHighColor(255, 255, 255);
+	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
+
+	if (data.empty())
+	{
+		view->SetHighColor(120, 120, 120);
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
+		return;
+	}
+
+	BRect plotArea = frame;
+	plotArea.InsetBy(10, 10);
+	if (!title.IsEmpty())
+		plotArea.top += 18;	// spazio per il titolo, vedi DrawChartTitle
+
+	double minValue, maxValue;
+	ChartValueRange(data, &minValue, &maxValue);
+
+	// Spazio sotto per la griglia/etichette numeriche dell'asse a
+	// valori (ora orizzontale, vedi DrawXAxisGrid) -- gemello di
+	// "plotArea.left += axisLabelWidth" in DrawBarChart, ma sul lato
+	// opposto perche' l'asse a valori qui e' in basso, non a sinistra.
+	font_height fh;
+	view->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+	plotArea.bottom -= lineHeight + 10;
+
+	// Spazio a sinistra per le etichette di categoria, una riga per
+	// categoria -- misurate qui per riservare una larghezza fissa,
+	// stesso principio di axisLabelWidth in DrawBarChart ma per il
+	// lato sinistro invece che per le tacche numeriche. Un tetto al
+	// 35% della larghezza del grafico evita che una singola etichetta
+	// lunghissima consumi tutto lo spazio disegnabile: oltre quella
+	// soglia viene troncata (vedi il ciclo di disegno sotto).
+	float categoryLabelWidth = 0;
+	for (size_t i = 0; i < data.size(); i++)
+	{
+		float width = view->StringWidth(data[i].label.String());
+		if (width > categoryLabelWidth)
+			categoryLabelWidth = width;
+	}
+	float maxCategoryLabelWidth = plotArea.Width() * 0.35f;
+	if (categoryLabelWidth > maxCategoryLabelWidth)
+		categoryLabelWidth = maxCategoryLabelWidth;
+	plotArea.left += categoryLabelWidth + 10;
+
+	std::vector<HBarLayout> bars;
+	ComputeHBarLayout(data, plotArea, bars);
+
+	DrawXAxisGrid(view, plotArea, minValue, maxValue);
+
+	view->SetHighColor(70, 110, 190);
+	for (size_t i = 0; i < bars.size(); i++)
+		view->FillRect(bars[i].bar);
+
+	// Valore numerico accanto alla punta di ogni barra: a destra per
+	// un valore positivo, a sinistra per uno negativo -- gemello della
+	// logica sopra/sotto di DrawBarChart, ruotata di 90 gradi.
+	view->SetHighColor(40, 40, 40);
+	for (size_t i = 0; i < bars.size() && i < data.size(); i++)
+	{
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%g", data[i].value);
+		float width = view->StringWidth(buf);
+		float y = bars[i].bar.top + bars[i].bar.Height() / 2 + 4;
+		float x = (data[i].value >= 0) ? bars[i].bar.right + 4 : bars[i].bar.left - width - 4;
+		view->DrawString(buf, BPoint(x, y));
+	}
+
+	view->SetHighColor(0, 0, 0);
+	view->StrokeRect(frame);
+	float zeroX = ChartValueToX(0.0, minValue, maxValue, plotArea);
+	view->StrokeLine(BPoint(zeroX, plotArea.top), BPoint(zeroX, plotArea.bottom));
+
+	// Etichette di categoria a sinistra di plotArea, una riga per
+	// categoria, allineate a destra contro il bordo di plotArea --
+	// stesso idioma di DrawYAxisGrid per le etichette numeriche
+	// (plotArea.left - width - 6), ma una sola riga (troncata se troppo
+	// lunga, vedi categoryLabelWidth sopra) invece di andare a capo su
+	// piu' righe: la banda di ogni categoria ha un'altezza fissa
+	// (ComputeHBarLayout), un'etichetta su piu' righe sconfinerebbe
+	// nella banda vicina.
+	for (size_t i = 0; i < bars.size() && i < data.size(); i++)
+	{
+		float centerY = bars[i].bar.top + bars[i].bar.Height() / 2 - lineHeight / 2 + fh.ascent;
+		BString label = data[i].label;
+		BFont font;
+		view->GetFont(&font);
+		if (view->StringWidth(label.String()) > categoryLabelWidth)
+			font.TruncateString(&label, B_TRUNCATE_END, categoryLabelWidth);
+		float width = view->StringWidth(label.String());
+		view->DrawString(label.String(), BPoint(plotArea.left - width - 6, centerY));
+	}
 }
 
 // Intervallo VERO di X e Y (a differenza di ChartValueRange sopra, qui
@@ -982,16 +1150,34 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	}
 }
 
-bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out)
+bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
+	const std::vector<int16>& valueColumns)
 {
 	out.categories.clear();
 	out.seriesNames.clear();
 	out.values.clear();
-	if (!doc || r.right - r.left < 1)
+	if (!doc)
 		return false;
 
-	int seriesCount = r.right - r.left;
+	int seriesCount;
+	if (!valueColumns.empty())
+		seriesCount = (int)valueColumns.size();
+	else
+	{
+		if (r.right - r.left < 1)
+			return false;
+		seriesCount = r.right - r.left;
+	}
 	out.values.resize(seriesCount);
+
+	// Colonna della serie s: esplicita se "valueColumns" e' popolato
+	// (grafico importato con colonne valore non adiacenti, vedi il
+	// commento su ChartObject::valueColumns in Chart.h), altrimenti
+	// r.left+1+s come sempre -- unico punto di questa funzione che
+	// distingue i due casi, tutto il resto sotto e' identico.
+	auto seriesCol = [&](int s) -> int {
+		return valueColumns.empty() ? (r.left + 1 + s) : valueColumns[s];
+	};
 
 	// Riga di intestazione (Fase 18): se la prima riga dell'intervallo
 	// ha un valore testuale in ALMENO una colonna serie, la si assume
@@ -1006,7 +1192,7 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out)
 	bool hasHeader = false;
 	for (int s = 0; s < seriesCount; s++)
 	{
-		cell headerCell(r.left + 1 + s, r.top);
+		cell headerCell(seriesCol(s), r.top);
 		Value hv;
 		doc->GetValue(headerCell, hv);
 		if (hv.fType == eTextData && BString((const char*)hv).Length() > 0)
@@ -1021,7 +1207,7 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out)
 		BString name;
 		if (hasHeader)
 		{
-			cell headerCell(r.left + 1 + s, r.top);
+			cell headerCell(seriesCol(s), r.top);
 			Value hv;
 			doc->GetValue(headerCell, hv);
 			if (hv.fType == eTextData)
@@ -1052,7 +1238,7 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out)
 		bool rowOk = true;
 		for (int s = 0; s < seriesCount; s++)
 		{
-			cell valueCell(r.left + 1 + s, row);
+			cell valueCell(seriesCol(s), row);
 			Value vv;
 			doc->GetValue(valueCell, vv);
 			if (vv.fType != eNumData)
@@ -1132,6 +1318,45 @@ void ComputeGroupedBarLayout(const MultiChartData& data, BRect bounds, GroupedBa
 			float right = left + barWidth;
 			float valueY = ChartValueToY(data.values[s][c], minValue, maxValue, bounds);
 			out.bars[s][c].Set(left, std::min(valueY, zeroY), right, std::max(valueY, zeroY));
+		}
+	}
+}
+
+// Gemella orizzontale di ComputeGroupedBarLayout: le "fette" di
+// categoria diventano bande orizzontali (bounds.Height() invece di
+// bounds.Width()), ogni banda suddivisa in una barra affiancata per
+// serie che si estende in orizzontale (ChartValueToX) -- stesso
+// principio di ComputeHBarLayout, esteso a serie multiple.
+void ComputeGroupedHBarLayout(const MultiChartData& data, BRect bounds, GroupedHBarLayout& out)
+{
+	out.bars.clear();
+	size_t seriesCount = data.seriesNames.size();
+	size_t catCount = data.categories.size();
+	if (seriesCount == 0 || catCount == 0)
+		return;
+
+	double minValue, maxValue;
+	MultiChartValueRange(data, &minValue, &maxValue);
+	float zeroX = ChartValueToX(0.0, minValue, maxValue, bounds);
+
+	float slotHeight = bounds.Height() / catCount;
+	float slotGap = slotHeight * 0.15f;
+	if (slotGap > 10)
+		slotGap = 10;
+	float groupHeight = slotHeight - slotGap;
+	float barHeight = groupHeight / seriesCount;
+
+	out.bars.resize(seriesCount);
+	for (size_t s = 0; s < seriesCount; s++)
+	{
+		out.bars[s].resize(catCount);
+		for (size_t c = 0; c < catCount; c++)
+		{
+			float groupTop = bounds.top + c * slotHeight + slotGap / 2;
+			float top = groupTop + s * barHeight;
+			float bottom = top + barHeight;
+			float valueX = ChartValueToX(data.values[s][c], minValue, maxValue, bounds);
+			out.bars[s][c].Set(std::min(valueX, zeroX), top, std::max(valueX, zeroX), bottom);
 		}
 	}
 }
@@ -1326,6 +1551,123 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 	}
 
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
+}
+
+// Gemella orizzontale di DrawGroupedBarChart: griglia/etichette
+// dell'asse a valori in basso (DrawXAxisGrid) invece che a sinistra,
+// etichette di categoria a sinistra (come DrawHBarChart, una riga
+// troncata per banda) invece che sotto -- legenda a destra invariata
+// (stesso schema di DrawMultiSeriesFooter, orientamento indipendente),
+// duplicata qui invece di condivisa perche' il resto del "footer" li'
+// (bordo/linea di zero/etichette sotto) e' specifico dell'asse
+// verticale.
+void DrawGroupedHBarChart(BView* view, BRect frame, const MultiChartData& data, const BString& title)
+{
+	view->SetHighColor(255, 255, 255);
+	view->FillRect(frame);
+	DrawChartTitle(view, frame, title);
+
+	if (data.categories.empty() || data.seriesNames.empty())
+	{
+		view->SetHighColor(120, 120, 120);
+		view->DrawString(B_TRANSLATE("Nessun dato da mostrare."), frame.LeftTop() + BPoint(10, 20));
+		return;
+	}
+
+	float legendWidth = 110;
+	BRect plotArea = frame;
+	plotArea.InsetBy(10, 10);
+	if (!title.IsEmpty())
+		plotArea.top += 18;
+	plotArea.right -= legendWidth;
+
+	double minValue, maxValue;
+	MultiChartValueRange(data, &minValue, &maxValue);
+
+	font_height fh;
+	view->GetFontHeight(&fh);
+	float lineHeight = fh.ascent + fh.descent + fh.leading;
+	plotArea.bottom -= lineHeight + 10;
+
+	float categoryLabelWidth = 0;
+	for (size_t c = 0; c < data.categories.size(); c++)
+	{
+		float width = view->StringWidth(data.categories[c].String());
+		if (width > categoryLabelWidth)
+			categoryLabelWidth = width;
+	}
+	float maxCategoryLabelWidth = plotArea.Width() * 0.35f;
+	if (categoryLabelWidth > maxCategoryLabelWidth)
+		categoryLabelWidth = maxCategoryLabelWidth;
+	plotArea.left += categoryLabelWidth + 10;
+
+	GroupedHBarLayout layout;
+	ComputeGroupedHBarLayout(data, plotArea, layout);
+
+	DrawXAxisGrid(view, plotArea, minValue, maxValue);
+
+	for (size_t s = 0; s < layout.bars.size(); s++)
+	{
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		for (size_t c = 0; c < layout.bars[s].size(); c++)
+			view->FillRect(layout.bars[s][c]);
+	}
+
+	for (size_t s = 0; s < layout.bars.size(); s++)
+	{
+		if (!SeriesShowsValues(data, s))
+			continue;
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		for (size_t c = 0; c < layout.bars[s].size(); c++)
+		{
+			char buf[32];
+			snprintf(buf, sizeof(buf), "%g", data.values[s][c]);
+			float width = view->StringWidth(buf);
+			BRect bar = layout.bars[s][c];
+			float y = bar.top + bar.Height() / 2 + 4;
+			float x = (data.values[s][c] >= 0) ? bar.right + 4 : bar.left - width - 4;
+			view->DrawString(buf, BPoint(x, y));
+		}
+	}
+
+	view->SetHighColor(0, 0, 0);
+	view->StrokeRect(frame);
+	float zeroX = ChartValueToX(0.0, minValue, maxValue, plotArea);
+	view->StrokeLine(BPoint(zeroX, plotArea.top), BPoint(zeroX, plotArea.bottom));
+
+	// Etichette di categoria a sinistra, una banda per categoria --
+	// stesso principio di DrawHBarChart (troncate su una riga, non
+	// avvolte: ogni banda ha un'altezza fissa condivisa fra tutte le
+	// serie).
+	float slotHeightForLabel = plotArea.Height() / data.categories.size();
+	for (size_t c = 0; c < data.categories.size(); c++)
+	{
+		float centerY = plotArea.top + c * slotHeightForLabel + slotHeightForLabel / 2
+			- lineHeight / 2 + fh.ascent;
+		BString label = data.categories[c];
+		BFont font;
+		view->GetFont(&font);
+		if (view->StringWidth(label.String()) > categoryLabelWidth)
+			font.TruncateString(&label, B_TRUNCATE_END, categoryLabelWidth);
+		float width = view->StringWidth(label.String());
+		view->DrawString(label.String(), BPoint(plotArea.left - width - 6, centerY));
+	}
+
+	// Legenda a destra -- stesso schema di DrawMultiSeriesFooter (110px,
+	// quadratino colore + testo avvolto).
+	float legendX = plotArea.right + 16;
+	float legendY = plotArea.top + 4;
+	float legendTextWidth = 110 - 16 - 8;
+	for (size_t s = 0; s < data.seriesNames.size(); s++)
+	{
+		BRect swatch(legendX, legendY - 8, legendX + 10, legendY + 2);
+		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		view->FillRect(swatch);
+		view->SetHighColor(0, 0, 0);
+		float used = DrawWrappedLabel(view, data.seriesNames[s].String(), BPoint(legendX + 16, legendY),
+			legendTextWidth, kLegendLabelMaxLines, false);
+		legendY += std::max(16.0f, used + 4);
+	}
 }
 
 void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, const BString& title)
@@ -1605,6 +1947,9 @@ void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
 			return;
 		case ePieChart:
 			DrawPieChart(view, frame, data, title);
+			return;
+		case eHBarChart:
+			DrawHBarChart(view, frame, data, title);
 			return;
 		case eBarChart:
 		default:

@@ -659,6 +659,13 @@ static status_t WriteASCDWithPrintAreaForTest(CContainer* doc, int16 top, int16 
 		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
 			return B_IO_ERROR;
 	}
+	// Colonne valore esplicite di grafico incorporato (Task 2): un
+	// conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
 	// Area di stampa: i dati veri, un byte "has=1" + 4 int16.
 	{
 		uint8 has = 1;
@@ -764,6 +771,13 @@ static status_t WriteASCDWithPrintSettingsForTest(CContainer* doc, double margin
 			return B_IO_ERROR;
 	}
 	// Titolo di grafico incorporato: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Colonne valore esplicite di grafico incorporato (Task 2): un
+	// conteggio a zero.
 	{
 		int32 zero = 0;
 		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
@@ -1022,6 +1036,16 @@ static status_t WriteASCDWithNameForTest(CContainer* doc, BPositionIO* dest)
 			return B_IO_ERROR;
 	}
 
+	// Colonne valore esplicite di grafico incorporato (Task 2, colonne
+	// valore non adiacenti): stesso principio della sezione titolo
+	// appena sopra -- chartValueColCount=0, nessun grafico in questo
+	// documento di prova.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
 	// Area di stampa: un byte "has" + 4 int16, sempre presenti.
 	{
 		uint8 has = 0;
@@ -1222,6 +1246,15 @@ static status_t WriteASCDWithPivotForTest(CContainer* doc, const PivotTableObjec
 	}
 
 	// Titolo di grafico incorporato: chartTitleCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Colonne valore esplicite di grafico incorporato (Task 2, colonne
+	// valore non adiacenti): stesso principio della sezione titolo
+	// appena sopra -- chartValueColCount=0.
 	{
 		int32 zero = 0;
 		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
@@ -1489,7 +1522,8 @@ static bool ReadFreezeFromAscdForTest(const unsigned char* ascdData, size_t ascd
 // sezione intermedia e' sempre vuota -- non un parser ASCD generico.
 static bool ReadFirstChartForTest(const unsigned char* ascdData, size_t ascdLen,
 	int16* outLeft, int16* outTop, int16* outRight, int16* outBottom,
-	int8* outType, std::string* outTitle, float outFrame[4] = NULL)
+	int8* outType, std::string* outTitle, float outFrame[4] = NULL,
+	std::vector<int16>* outValueColumns = NULL)
 {
 	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
 		return false;
@@ -1607,6 +1641,33 @@ static bool ReadFirstChartForTest(const unsigned char* ascdData, size_t ascdLen,
 	memcpy(&titleLen, ascdData + pos, 4); pos += 4;
 	if (titleLen < 0 || pos + (size_t)titleLen > ascdLen) return false;
 	outTitle->assign((const char*)ascdData + pos, titleLen);
+	pos += titleLen;
+
+	// Colonne valore esplicite (Task 2, colonne valore non adiacenti):
+	// stessa sezione aggiunta dopo il titolo del grafico in WriteASCD
+	// (XlsxTranslator.cpp) -- un contatore + un elenco di colonne
+	// (int16) per grafico. Facoltativa da leggere qui: un chiamante che
+	// non passa "outValueColumns" si ferma al titolo come prima di
+	// questa aggiunta.
+	if (outValueColumns)
+	{
+		if (pos + 4 > ascdLen) return false;
+		int32 n;
+		memcpy(&n, ascdData + pos, 4); pos += 4;
+		if (n != 1) return false;
+
+		if (pos + 4 > ascdLen) return false;
+		int32 colCount;
+		memcpy(&colCount, ascdData + pos, 4); pos += 4;
+		if (colCount < 0 || pos + (size_t)colCount * 2 > ascdLen) return false;
+		outValueColumns->clear();
+		for (int32 c = 0; c < colCount; c++)
+		{
+			int16 col;
+			memcpy(&col, ascdData + pos, 2); pos += 2;
+			outValueColumns->push_back(col);
+		}
+	}
 
 	return true;
 }
@@ -2054,6 +2115,9 @@ static bool ReadPrintSettingsFromAscdForTest(const unsigned char* ascdData, size
 	// Titolo di grafico: un contatore (0).
 	if (pos + 4 > ascdLen) return false;
 	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+	// Colonne valore esplicite di grafico (Task 2): un contatore (0).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
 	// Area di stampa: 1 byte "has" + 4 int16 fissi (9 byte totali),
 	// assunta assente (0) -- item separato dal roadmap, non toccato qui.
 	if (pos + 9 > ascdLen) return false;
@@ -2151,6 +2215,9 @@ static bool ReadFirstPrintAreaFromAscdForTest(const unsigned char* ascdData, siz
 		if (n != 0) return false;
 	}
 	// Titolo di grafico: un contatore (0).
+	if (pos + 4 > ascdLen) return false;
+	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
+	// Colonne valore esplicite di grafico (Task 2): un contatore (0).
 	if (pos + 4 > ascdLen) return false;
 	{ int32 n; memcpy(&n, ascdData + pos, 4); pos += 4; if (n != 0) return false; }
 
@@ -2354,6 +2421,9 @@ static bool ApplyNamesFromAscdForTest(const unsigned char* data, size_t len, siz
 	// Titolo di grafico: un conteggio (0).
 	if (pos + 4 > len) return false;
 	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	// Colonne valore esplicite di grafico (Task 2): un conteggio (0).
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
 	// Area di stampa: 1 byte "has" + 4 int16 fissi (9 byte totali).
 	if (pos + 9 > len) return false;
 	pos += 9;
@@ -2448,6 +2518,9 @@ static bool ReadFirstPivotFromAscdForTest(const unsigned char* data, size_t len,
 		int32 n; memcpy(&n, data + pos, 4); pos += 4;
 		if (n != 0) return false;
 	}
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	// Colonne valore esplicite di grafico (Task 2): un conteggio (0).
 	if (pos + 4 > len) return false;
 	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
 	if (pos + 9 > len) return false;
@@ -3062,6 +3135,19 @@ int main()
 							memcpy(&chartTitleCount, ascdData + pos, 4); pos += 4;
 							Check(chartTitleCount == 0,
 								"nessun grafico in sample.xlsx, il contatore dei titoli e' zero");
+						}
+
+						// Colonne valore esplicite di grafico incorporato
+						// (Task 2, colonne valore non adiacenti): stesso
+						// principio della sezione titolo appena sopra --
+						// sample.xlsx non ha grafici, quindi il conteggio
+						// e' zero e non ci sono record a seguire.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 chartValueColCount;
+							memcpy(&chartValueColCount, ascdData + pos, 4); pos += 4;
+							Check(chartValueColCount == 0,
+								"nessun grafico in sample.xlsx, il contatore delle colonne valore e' zero");
 						}
 
 						// Area di stampa (Fase 29 di ui/src/AscdIO.cpp):
@@ -5681,6 +5767,162 @@ int main()
 				"il tipo e' riconosciuto come \"barre\" (0) anche con <barChart>/<barDir val=\"col\"/> "
 				"senza il prefisso \"c:\"");
 		}
+	}
+
+	// Barre orizzontali con colonne valore NON adiacenti (Task 1 + Task
+	// 2): la forma ESATTA trovata in un file utente reale
+	// (money-manager-2.xlsx) -- categoria A, due serie B e D con una
+	// colonna C SEMPRE VUOTA in mezzo (nessuna cella scritta), grafico
+	// dichiarato <c:barDir val="bar"/> (il vero "Bar" orizzontale di
+	// Excel, non "col"). Prima di questo lavoro il barDir da solo
+	// sarebbe stato rifiutato come "Barre orizzontali"; con SOLO quella
+	// correzione (senza Task 2) sarebbe stato rifiutato lo stesso con
+	// "layout dati non compatibile" per l'adiacenza delle colonne
+	// valore. Questo test verifica che, con entrambi i fix, il grafico
+	// arrivi fino all'ASCD con il tipo giusto (6) e le colonne valore
+	// esplicite giuste (B=2, D=4), non contigue.
+	{
+		static const char kHBarContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kHBarRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kHBarWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kHBarWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		// Colonna C (indice 3) deliberatamente ASSENTE da ogni riga --
+		// lo spacer vuoto reale trovato in money-manager-2.xlsx.
+		static const char kHBarSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Gen</t></is></c>"
+			"<c r=\"B1\"><v>1</v></c><c r=\"D1\"><v>100</v></c></row>"
+			"<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>Feb</t></is></c>"
+			"<c r=\"B2\"><v>2</v></c><c r=\"D2\"><v>200</v></c></row>"
+			"<row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>Mar</t></is></c>"
+			"<c r=\"B3\"><v>3</v></c><c r=\"D3\"><v>300</v></c></row>"
+			"</sheetData>"
+			"<drawing r:id=\"rId1\"/>"
+			"</worksheet>\n";
+		static const char kHBarSheetRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" Target=\"../drawings/drawing1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kHBarDrawing[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<xdr:oneCellAnchor>"
+			"<xdr:from><xdr:col>5</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>"
+			"<xdr:ext cx=\"3000000\" cy=\"2000000\"/>"
+			"<xdr:graphicFrame>"
+			"<xdr:nvGraphicFramePr><xdr:cNvPr id=\"1\" name=\"Chart 1\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"
+			"<xdr:xfrm/>"
+			"<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+			"<c:chart r:id=\"rId1\"/></a:graphicData></a:graphic>"
+			"</xdr:graphicFrame>"
+			"<xdr:clientData/>"
+			"</xdr:oneCellAnchor>"
+			"</xdr:wsDr>\n";
+		static const char kHBarDrawingRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"../charts/chart1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kHBarChart[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<c:chart><c:plotArea><c:barChart><c:barDir val=\"bar\"/><c:grouping val=\"clustered\"/>"
+			"<c:ser><c:idx val=\"0\"/><c:order val=\"0\"/>"
+			"<c:cat><c:strRef><c:f>Foglio1!$A$1:$A$3</c:f></c:strRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$B$1:$B$3</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"<c:ser><c:idx val=\"1\"/><c:order val=\"1\"/>"
+			"<c:cat><c:strRef><c:f>Foglio1!$A$1:$A$3</c:f></c:strRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$D$1:$D$3</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"</c:barChart></c:plotArea></c:chart>"
+			"</c:chartSpace>\n";
+
+		BMallocIO hbarXlsx;
+		CZipWriter hbarZip;
+		hbarZip.Begin(&hbarXlsx);
+		hbarZip.AddEntry("[Content_Types].xml", kHBarContentTypes, strlen(kHBarContentTypes));
+		hbarZip.AddEntry("_rels/.rels", kHBarRootRels, strlen(kHBarRootRels));
+		hbarZip.AddEntry("xl/workbook.xml", kHBarWorkbook, strlen(kHBarWorkbook));
+		hbarZip.AddEntry("xl/_rels/workbook.xml.rels", kHBarWorkbookRels, strlen(kHBarWorkbookRels));
+		hbarZip.AddEntry("xl/worksheets/sheet1.xml", kHBarSheet, strlen(kHBarSheet));
+		hbarZip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kHBarSheetRels, strlen(kHBarSheetRels));
+		hbarZip.AddEntry("xl/drawings/drawing1.xml", kHBarDrawing, strlen(kHBarDrawing));
+		hbarZip.AddEntry("xl/drawings/_rels/drawing1.xml.rels", kHBarDrawingRels, strlen(kHBarDrawingRels));
+		hbarZip.AddEntry("xl/charts/chart1.xml", kHBarChart, strlen(kHBarChart));
+		Check(hbarZip.Close(),
+			"costruzione del file XLSX di prova con barre orizzontali/colonne non adiacenti riuscita");
+
+		hbarXlsx.Seek(0, SEEK_SET);
+		translator_info hbarInfo;
+		err = translator->Identify(&hbarXlsx, NULL, NULL, &hbarInfo, 0);
+		Check(err == B_OK && hbarInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con barre orizzontali");
+
+		hbarXlsx.Seek(0, SEEK_SET);
+		BMallocIO hbarOut;
+		BMessage hbarExtension;
+		err = translator->Translate(&hbarXlsx, &hbarInfo, &hbarExtension, kAtomoNativeFormat, &hbarOut);
+		Check(err == B_OK, "Translate del file di prova con barre orizzontali riesce");
+
+		const unsigned char* hbarAscdData = NULL;
+		size_t hbarAscdLen = 0;
+		bool hbarUnwrapped = UnwrapFirstSheet((const unsigned char*)hbarOut.Buffer(),
+			hbarOut.BufferLength(), &hbarAscdData, &hbarAscdLen);
+		Check(hbarUnwrapped, "l'output di Translate del file con barre orizzontali e' un ASCD valido");
+
+		int16 hbarLeft = 0, hbarTop = 0, hbarRight = 0, hbarBottom = 0;
+		int8 hbarType = -1;
+		std::string hbarTitle;
+		std::vector<int16> hbarValueColumns;
+		bool hbarChartRead = hbarUnwrapped && ReadFirstChartForTest(hbarAscdData, hbarAscdLen,
+			&hbarLeft, &hbarTop, &hbarRight, &hbarBottom, &hbarType, &hbarTitle, NULL, &hbarValueColumns);
+		Check(hbarChartRead,
+			"il grafico a barre orizzontali con colonne non adiacenti arriva fino all'ASCD "
+			"(prima di questo lavoro sarebbe stato rifiutato, prima per il tipo poi per il layout)");
+		Check(hbarChartRead && hbarType == 6,
+			"il tipo importato e' 6 (eHBarChart), non 0 (barre verticali) -- <c:barDir val=\"bar\"/> riconosciuto");
+		Check(hbarChartRead && hbarLeft == 1 && hbarRight == 4,
+			"il rettangolo racchiude categoria+entrambe le serie comprendendo la colonna spacer C "
+			"(A=1 a D=4), non solo le colonne effettivamente lette come serie");
+		Check(hbarChartRead && hbarValueColumns.size() == 2
+				&& hbarValueColumns[0] == 2 && hbarValueColumns[1] == 4,
+			"le colonne valore esplicite sono B (2) e D (4), NON contigue (manca la 3, colonna C)");
+
+		type_code hbarMsgType;
+		int32 hbarUnsupportedCount = 0;
+		hbarExtension.GetInfo("atomo:unsupportedChart", &hbarMsgType, &hbarUnsupportedCount);
+		Check(hbarUnsupportedCount == 0,
+			"nessun grafico segnalato come non supportato (ne' per il tipo ne' per il layout dati)");
 	}
 
 	// Formula array legacy (CSE, Ctrl+Maiusc+Invio): in un file XLSX
