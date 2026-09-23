@@ -231,6 +231,46 @@ int main()
 	// InsertRows, non qui -- stesso motivo del round-trip sopra
 	// (richiede GetCellFormula/UnMangle per leggere il risultato).
 
+	// OFFSET a 4o/5o argomento (altezza/larghezza opzionali, vero Excel
+	// OFFSET(riferimento,righe,colonne,[altezza],[larghezza])): bug
+	// reale trovato su un file utente (money-manager-2.xlsx),
+	// "=OFFSET(A21,0,0,1,1)" dentro un intervallo dinamico di SUMIF --
+	// il parser rifiutava del tutto una chiamata a 5 argomenti
+	// (funcs_by_nr.r dichiarava OFFSET a 3 argomenti fissi), l'intera
+	// formula finiva importata come testo grezzo invece che calcolata.
+	// M18="Car" (categoria), N18=100 (valore) -- colonne 13/14, lontane
+	// da H/J gia' usate sopra.
+	ParseXlsxStyle("Car", cell(13, 18), &doc);  // M18
+	ParseXlsxStyle("100", cell(14, 18), &doc);  // N18
+
+	ParseXlsxStyle("=OFFSET(M18,0,0,1,1)", cell(10, 9), &doc); // J9
+	doc.CalcCell(cell(10, 9));
+	doc.GetValue(cell(10, 9), v);
+	Check(v.fType == eTextData && strcmp((const char *)v, "Car") == 0,
+		"OFFSET(M18,0,0,1,1) a 5 argomenti collassa a M18 stessa (altezza/larghezza=1, nessuno spostamento)");
+
+	// La forma reale trovata nel file utente: SUMIF con un intervallo
+	// $M$18:OFFSET(M18,0,0,1,1) (un intervallo di UNA sola cella,
+	// costruito dinamicamente) come primo argomento.
+	ParseXlsxStyle("=SUMIF($M$18:OFFSET(M18,0,0,1,1),M18,$N$18:OFFSET(N18,0,0,1,1))", cell(10, 10), &doc); // J10
+	doc.CalcCell(cell(10, 10));
+	doc.GetValue(cell(10, 10), v);
+	Check((double)v == 100.0,
+		"SUMIF con range dinamico a 5 argomenti (\"stessa cella\") = 100: la forma esatta di money-manager-2.xlsx");
+
+	// L'altezza/larghezza deve davvero RIDIMENSIONARE l'intervallo
+	// risultante, non solo essere accettata e ignorata: OFFSET(N18,0,0,
+	// 2,1) deve coprire N18:N19 (due righe), non collassare a N18 sola.
+	// Stessa forma "SUM(OFFSET(...))" del primissimo test in questo
+	// file (riga ~109), qui con altezza=2 invece del 3-argomenti
+	// implicito 1x1.
+	ParseXlsxStyle("50", cell(14, 19), &doc); // N19
+	ParseXlsxStyle("=SUM(OFFSET(N18,0,0,2,1))", cell(10, 11), &doc); // J11
+	doc.CalcCell(cell(10, 11));
+	doc.GetValue(cell(10, 11), v);
+	Check((double)v == 150.0,
+		"SUM(OFFSET(N18,0,0,2,1)) = 150 (N18+N19): l'altezza=2 ridimensiona davvero l'intervallo, non lo lascia 1x1");
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

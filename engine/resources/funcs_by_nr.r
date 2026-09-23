@@ -98,7 +98,7 @@ resource 'Func' (128, "Functions")
 		"NROWS", 1, 52, 1,
 		"NUM2C", 1, 53, 6,
 		"NUMPAGES", 0, 54, 1,
-		"OFFSET", 3, 55, 1,
+		"OFFSET", 65535, 55, 1, // 65535 = 4o/5o argomento (altezza/larghezza) opzionale, come in Excel -- OFFSETFunction (Functions.spreadsheet.cpp) gia' aggiornata per gestirli
 		"PAGE", 0, 56, 1,
 		"PI", 0, 57, 4,
 		"PMT", 3, 58, 3,
