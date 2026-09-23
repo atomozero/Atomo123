@@ -5,6 +5,16 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped in v0.3.0, on top of v0.2.9:
+- Fixed `COLUMNS`/`ROWS` not being recognized as function names. Real
+  bug found opening a user's file (`money-manager-2.xlsx`, a Vertex42
+  budget template): shared formulas like `=O13/COLUMNS(C13:N13)`,
+  spread across multiple sheets, silently failed to import as live
+  formulas — every row using them stayed raw text instead of a
+  calculated value. This engine already computes exactly the same
+  thing under the legacy Sum-It names `NCOLS`/`NROWS`; the modern
+  Excel names were just never aliased to them. Fixed the same way as
+  the existing `LOG10` alias in `GetFunctionNr` — no changes to the
+  shared binary function table.
 - Known pre-existing failures, reproduced on the pristine tree before
   this release (not regressions): `test_selection` dies silently after
   3 OKs around the direct `Draw()` call, `test_xlsm_macro_preservation`
