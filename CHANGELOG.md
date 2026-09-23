@@ -5,6 +5,17 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped in v0.3.0, on top of v0.2.9:
+- Added `SUMIFS`, genuinely missing (not just an unaliased legacy name
+  like the `COLUMNS`/`ROWS` fix below — no implementation existed under
+  any name). Found opening `money-manager-2.xlsx`'s YearlyReport sheet
+  while re-verifying the chart fixes below on every sheet: rows using
+  it showed raw, uncalculated formula text instead of a value.
+  `SUMIFSFunction` (`Functions.math.cpp`) mirrors the existing
+  `COUNTIFSFunction` (sum range first, then a variable number of
+  criteria-range/criteria pairs ANDed together), registered the same
+  way as every other function added this session (a new `kSUMIFSFuncNr`
+  appended to the enum, `funcs_by_nr.r` entry with the variable-argument
+  sentinel).
 - Fixed `OFFSET`'s optional 4th/5th arguments (`[height]`/`[width]`)
   being rejected outright instead of resizing the returned range. Real
   bug found opening `money-manager-2.xlsx`'s Goals sheet: formulas like
