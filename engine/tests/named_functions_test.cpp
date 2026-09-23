@@ -411,6 +411,79 @@ int main()
 		gFailures++;
 	}
 
+	// Argomento finale PRESENTE ma vuoto (es. "ROUND(F6*G6,)", una
+	// virgola scritta ma senza valore dopo): bug reale trovato
+	// importando un vero file XLSX (centinaia di formule con questa
+	// identica forma, tutte "formula condivisa non importata: syntax
+	// error"). Due bug distinti, entrambi corretti: 1) il parser
+	// (CParser::ParamList) contava un argomento in meno di quelli
+	// scritti quando l'ultimo era vuoto, facendo fallire il controllo
+	// del numero di argomenti attesi -- qui verificato che ora almeno
+	// analizza senza errori; 2) anche analizzato correttamente,
+	// GetDoubleArgument da solo avrebbe comunque fallito su un
+	// argomento vuoto (eNoData, non eNumData) -- GetRoundDigitsArgument
+	// (Functions.math.cpp) lo tratta come 0, lo stesso valore che
+	// avrebbe una cella vuota usata in un contesto numerico, esattamente
+	// come farebbe Excel.
+	doc.NewCell(cell(6, 100), Value(6.0), NULL);  // F100
+	doc.NewCell(cell(7, 100), Value(5.0), NULL);  // G100
+	try
+	{
+		TryToParseString("=ROUND(F100*G100,)", cell(8, 100), &doc, true, '.', ',');
+		doc.CalcCell(cell(8, 100));
+		doc.GetValue(cell(8, 100), v);
+		Check((double)v == 30.0,
+			"=ROUND(F100*G100,) (virgola finale, nessun valore) calcola 30, come ROUND(30,0)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUND(F100*G100,): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ROUNDUP(F100*G100+0.1,)", cell(9, 100), &doc, true, '.', ',');
+		doc.CalcCell(cell(9, 100));
+		doc.GetValue(cell(9, 100), v);
+		Check((double)v == 31.0, "=ROUNDUP(F100*G100+0.1,) (virgola finale) calcola 31");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUNDUP(...,): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ROUNDDOWN(F100*G100+0.9,)", cell(10, 100), &doc, true, '.', ',');
+		doc.CalcCell(cell(10, 100));
+		doc.GetValue(cell(10, 100), v);
+		Check((double)v == 30.0, "=ROUNDDOWN(F100*G100+0.9,) (virgola finale) calcola 30");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUNDDOWN(...,): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	// Regressione: "()" (nessun argomento affatto) deve restare argCnt=0,
+	// non 1 (un valNil fasullo) -- verificato con una funzione a zero
+	// argomenti fissi reale.
+	try
+	{
+		TryToParseString("=PI()", cell(11, 100), &doc, true, '.', ',');
+		doc.CalcCell(cell(11, 100));
+		doc.GetValue(cell(11, 100), v);
+		Check(v.fType == eNumData && (double)v > 3.14 && (double)v < 3.15,
+			"=PI() con zero argomenti reali continua a funzionare (\"()\" non conta come un argomento vuoto)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =PI(): %s\n", (char *)e);
+		gFailures++;
+	}
+
 	// "&" is Excel's text concatenation operator. This grammar's case
 	// '&' used to compile it as opAND (logical AND, inherited from the
 	// pre-Excel Sum-It grammar) instead: found while investigating why

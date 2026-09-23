@@ -518,12 +518,34 @@ void MINFunction(Value *stack, int argCnt, CContainer *cells)
 // (instead of "deel >= 0.5") excluded every exact-halfway value from
 // the rounding check entirely, always rounding down -- ROUND(3.5,0)
 // gave 3 instead of 4.
+// Un secondo argomento PRESENTE ma vuoto (es. "ROUND(F6*G6,)", una
+// virgola scritta ma senza valore dopo -- bug reale trovato importando
+// un vero file XLSX, centinaia di formule con questa identica forma,
+// prima ancora rifiutate del tutto dal parser: vedi il commento su
+// CParser::ParamList in parser.cpp) vale 0 in Excel, come una cella
+// vuota usata in un contesto numerico -- num_digits di ROUND/ROUNDUP/
+// ROUNDDOWN e' sempre obbligatorio in Excel, quindi questo non e' un
+// argomento OMESSO ma un valore BIANCO. GetDoubleArgument da solo
+// richiede eNumData esatto e fallirebbe (eNoData per l'argomento vuoto,
+// vedi CFormula::Calculate/valNil), quindi qui si tratta esplicitamente
+// eNoData come 0.0 prima di delegare a GetDoubleArgument per il caso
+// normale.
+static bool GetRoundDigitsArgument(Value *stack, int argCnt, int argNr, double *outDigits)
+{
+	if (argNr <= argCnt && stack[argNr - 1].fType == eNoData)
+	{
+		*outDigits = 0.0;
+		return true;
+	}
+	return GetDoubleArgument(stack, argCnt, argNr, outDigits);
+}
+
 void ROUNDFunction(Value *stack, int argCnt, CContainer *cells)
 {
 	double d, n;
 
 	if (GetDoubleArgument(stack, argCnt, 1, &d) &&
-		GetDoubleArgument(stack, argCnt, 2, &n))
+		GetRoundDigitsArgument(stack, argCnt, 2, &n))
 	{
 		if (isnan(d))
 			;
@@ -549,7 +571,7 @@ void ROUNDUPFunction(Value *stack, int argCnt, CContainer *cells)
 	double d, n;
 
 	if (GetDoubleArgument(stack, argCnt, 1, &d) &&
-		GetDoubleArgument(stack, argCnt, 2, &n))
+		GetRoundDigitsArgument(stack, argCnt, 2, &n))
 	{
 		if (isnan(d))
 			;
@@ -573,7 +595,7 @@ void ROUNDDOWNFunction(Value *stack, int argCnt, CContainer *cells)
 	double d, n;
 
 	if (GetDoubleArgument(stack, argCnt, 1, &d) &&
-		GetDoubleArgument(stack, argCnt, 2, &n))
+		GetRoundDigitsArgument(stack, argCnt, 2, &n))
 	{
 		if (isnan(d))
 			;

@@ -810,12 +810,35 @@ void CParser::Factor()
 void CParser::ParamList()
 {
 	int args = 0;
-	
+
 	mIsFormula = true;
-	
-	while (mLookahead != ')')
+
+	// "()" -- nessun argomento affatto, deve restare args=0 (non un
+	// unico argomento vuoto): esce qui PRIMA del ciclo sotto, che
+	// altrimenti tratterebbe il "()" come un valNil singolo, rompendo
+	// ogni funzione a zero argomenti fissi (TODAY/NOW/PI/...).
+	if (mLookahead == ')')
 	{
-		if (mLookahead != LIST)
+		mArgCnt = 0;
+		return;
+	}
+
+	while (true)
+	{
+		// Un argomento vuoto (nessun token fra due LIST, o fra un LIST
+		// e la ")" finale) conta comunque come un argomento a se',
+		// valNil -- non solo quello "in mezzo" (es. "IF(a,,c)", gia'
+		// gestito prima di questo fix), ma anche quello FINALE prima
+		// della parentesi chiusa (es. "ROUND(F6*G6,)", un secondo
+		// argomento omesso ma la virgola scritta comunque -- bug reale
+		// trovato importando un vero file XLSX, "formula condivisa non
+		// importata: syntax error" su centinaia di celle: il vecchio
+		// ciclo "while (mLookahead != ')')" usciva PRIMA di controllare
+		// l'ultimo argomento quando non c'era nulla fra l'ultima
+		// virgola e la parentesi, contando un argomento in meno di
+		// quelli scritti e facendo fallire il controllo del numero di
+		// argomenti attesi).
+		if (mLookahead != LIST && mLookahead != ')')
 			RelExpr();
 		else
 			AddToken(valNil);
@@ -831,12 +854,14 @@ void CParser::ParamList()
 		// argomento.
 		mNextFactorWantsRef = false;
 
-		if (mLookahead != ')')
-			Match(LIST);
-
 		args++;
+
+		if (mLookahead != LIST)
+			break; // deve essere ")", l'elenco e' finito
+
+		Match(LIST);
 	}
-	
+
 	mArgCnt = args;
 } // CParser::ParamList
 
