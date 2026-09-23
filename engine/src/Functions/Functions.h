@@ -254,6 +254,16 @@ enum {
 	// ogni formula che la usava restava testo grezzo invece che
 	// calcolata.
 	kSUMIFSFuncNr,
+	// HYPERLINK: genuinely missing (this engine only ever had a separate,
+	// non-formula cell-property mechanism for hyperlinks, see the XLSX
+	// hyperlink round-trip work -- never a callable spreadsheet function).
+	// Found opening a real file (content-calendar.xlsx) whose formulas use
+	// =HYPERLINK(url,"View") inside cell text; since there is no real link
+	// navigation from a formula result in this engine, the calculated
+	// value is simply the friendly name (second argument) when given,
+	// else the link location itself -- the same value Excel shows in the
+	// cell for a HYPERLINK() call.
+	kHYPERLINKFuncNr,
 	kFunctionCount
 };
 
@@ -288,6 +298,7 @@ void FVFunction(Value *stack, int argCnt, CContainer *cells);
 void HINDEXFunction(Value *stack, int argCnt, CContainer *cells);
 void HLOOKUPFunction(Value *stack, int argCnt, CContainer *cells);
 void HOURFunction(Value *stack, int argCnt, CContainer *cells);
+void HYPERLINKFunction(Value *stack, int argCnt, CContainer *cells);
 void IFFunction(Value *stack, int argCnt, CContainer *cells);
 void IFERRFunction(Value *stack, int argCnt, CContainer *cells);
 void INTFunction(Value *stack, int argCnt, CContainer *cells);
