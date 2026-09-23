@@ -5,6 +5,20 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped in v0.3.0, on top of v0.2.9:
+- Fixed `OFFSET`'s optional 4th/5th arguments (`[height]`/`[width]`)
+  being rejected outright instead of resizing the returned range. Real
+  bug found opening `money-manager-2.xlsx`'s Goals sheet: formulas like
+  `=SUMIF($A$18:OFFSET(A21,0,0,1,1),$A21,...)` (a dynamic "same cell"
+  range built with the 5-argument form of `OFFSET`) failed to parse at
+  all and were imported as raw, uncalculated formula text spilling
+  across the row. `funcs_by_nr.r` declared `OFFSET` with a fixed
+  3-argument count; changed to the same "variable arguments" sentinel
+  already used for `IF`/`SUM`/`VLOOKUP`/`SUBTOTAL`. `OFFSETFunction`
+  itself only ever read the first 3 arguments before this fix (moving
+  the range but never resizing it) — now reads height/width when
+  present and resizes the resulting range accordingly, defaulting to
+  the reference's own size when they're omitted (unchanged behavior
+  for every existing 3-argument call).
 - Added horizontal bar chart support (Excel's real "Bar" type —
   categories on the vertical axis, bars extending left-to-right — as
   opposed to this app's existing "Bar", which is actually Excel's
