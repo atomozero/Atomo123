@@ -243,6 +243,17 @@ enum {
 	// funzione "spill" di questo gruppo, restituisce solo le righe che
 	// soddisfano una condizione.
 	kFILTERFuncNr,
+	// SUMIFS: a differenza di SUMIF sopra (un solo intervallo/criterio,
+	// intervallo da sommare facoltativo in TERZA posizione), SUMIFS
+	// vuole l'intervallo da sommare per PRIMO seguito da un AND fra piu'
+	// coppie intervallo/criterio -- stesso schema di COUNTIFS sopra,
+	// vedi SUMIFSFunction in Functions.math.cpp. Trovato genuinamente
+	// mancante (nessuna implementazione sotto nessun nome, a differenza
+	// di COLUMNS/ROWS che erano solo un alias mancante) analizzando un
+	// file utente reale (money-manager-2.xlsx, foglio YearlyReport):
+	// ogni formula che la usava restava testo grezzo invece che
+	// calcolata.
+	kSUMIFSFuncNr,
 	kFunctionCount
 };
 
@@ -336,6 +347,7 @@ void COUNTAFunction(Value *stack, int argCnt, CContainer *cells);
 void SUMIFFunction(Value *stack, int argCnt, CContainer *cells);
 void COUNTIFFunction(Value *stack, int argCnt, CContainer *cells);
 void COUNTIFSFunction(Value *stack, int argCnt, CContainer *cells);
+void SUMIFSFunction(Value *stack, int argCnt, CContainer *cells);
 void ROUNDUPFunction(Value *stack, int argCnt, CContainer *cells);
 void ROUNDDOWNFunction(Value *stack, int argCnt, CContainer *cells);
 void TEXTFunction(Value *stack, int argCnt, CContainer *cells);
