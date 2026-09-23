@@ -48,7 +48,13 @@ enum ChartType {
 	// types"): richiede serie multiple (MultiChartData, vedi sotto) per
 	// avere senso -- con una sola serie degenera in un grafico a barre
 	// normale, vedi il commento su DrawComboChart.
-	eComboChart = 5
+	eComboChart = 5,
+	// Barre orizzontali: il vero "Bar" di Excel (categorie sull'asse
+	// verticale, barre che si estendono da sinistra a destra) --
+	// distinto da eBarChart sopra, che e' in realta' il "Column" di
+	// Excel (barre verticali). Appeso in coda, mai in mezzo, stesso
+	// principio di eAreaChart sopra.
+	eHBarChart = 6
 };
 
 // Un grafico incorporato nel foglio (vedi SheetView::Draw): posizione
@@ -67,6 +73,23 @@ struct ChartObject {
 	// non ce l'ha, resta vuoto (nessun titolo disegnato) -- vedi la
 	// sezione dedicata, EOF-tollerante, in AscdIO.cpp.
 	BString title;
+	// Colonne valore ESPLICITE, 1-based, stesso sistema di
+	// range::left/right: usato SOLO quando le colonne valore di un
+	// grafico importato non sono contigue (es. una colonna vuota/non
+	// pertinente fra due serie in un file XLSX reale, vedi
+	// money-manager-2.xlsx) -- VUOTO (il caso comune, e ogni ChartObject
+	// creato dal semplice selettore di intervallo di ChartWindow/
+	// MainWindow::HandleChartInsert, o letto da un file .ascd scritto
+	// prima di questo campo) significa "usa dataRange.left+1 ..
+	// dataRange.right nell'ordine, contigue" -- il comportamento di
+	// sempre, senza nessun cambiamento. dataRange.left resta SEMPRE la
+	// colonna di categoria; dataRange racchiude comunque per intero il
+	// rettangolo che contiene sia le colonne valore esplicite sia le
+	// colonne "spacer" saltate in mezzo (serve per il posizionamento/per
+	// capire l'estensione dei dati sorgente), ma SOLO le colonne
+	// elencate qui vengono davvero lette come serie quando non vuoto.
+	// Vedi la sezione dedicata, EOF-tollerante, in AscdIO.cpp.
+	std::vector<int16> valueColumns;
 };
 
 // L'intervallo deve avere esattamente due colonne: la prima con le
@@ -119,6 +142,26 @@ void ComputeBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 // "title" e' opzionale (vedi ChartObject::title): una stringa vuota non
 // disegna nulla e non riserva spazio in piu' rispetto a prima.
 void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
+	const BString& title = BString());
+
+struct HBarLayout {
+	BRect bar;
+};
+
+// Gemella di ComputeBarLayout, ma con le "fette" (una per categoria)
+// impilate verticalmente (bounds.Height() invece di bounds.Width()) e
+// la barra che si estende in orizzontale dalla linea di zero al
+// valore (ChartValueToX, non ChartValueToY) -- il vero "Bar" di Excel,
+// a differenza di eBarChart sopra che e' in realta' il suo "Column".
+void ComputeHBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
+	std::vector<HBarLayout>& out);
+
+// Gemella di DrawYAxisGrid, ma per un asse a valori orizzontale:
+// griglia verticale (linee chiare) + etichette numeriche sotto
+// plotArea, invece di griglia orizzontale + etichette a sinistra.
+void DrawXAxisGrid(BView* view, BRect plotArea, double minValue, double maxValue);
+
+void DrawHBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
 	const BString& title = BString());
 
 struct LinePoint {
@@ -247,7 +290,17 @@ struct MultiChartData {
 // principio di BuildChartSeries, esteso per restare allineata su tutte
 // le serie). Restituisce false se l'intervallo ha meno di due colonne
 // o se non risulta nessuna riga di dati valida.
-bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out);
+// "valueColumns" opzionale: se non vuoto, ogni serie legge dalla propria
+// colonna esplicita elencata li' (stesso ordine, 1-based, vedi il
+// commento su ChartObject::valueColumns in questo file) invece di
+// assumere colonne contigue r.left+1..r.right -- usato per un grafico
+// importato da XLSX con colonne valore non adiacenti (es. una colonna
+// vuota/spacer in mezzo). Quando vuoto (il caso comune, invariato),
+// comportamento IDENTICO a prima: zero cambio per ogni grafico creato
+// dal selettore di intervallo semplice o letto da un file .ascd scritto
+// prima di questo parametro.
+bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
+	const std::vector<int16>& valueColumns = std::vector<int16>());
 
 struct GroupedBarLayout {
 	std::vector<std::vector<BRect> > bars;	// bars[serie][categoria]
@@ -267,6 +320,26 @@ void ComputeGroupedBarLayout(const MultiChartData& data, BRect bounds,
 // destra invece del valore sopra ogni barra (con piu' serie affiancate
 // diventerebbe illeggibile).
 void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data,
+	const BString& title = BString());
+
+struct GroupedHBarLayout {
+	std::vector<std::vector<BRect> > bars;	// bars[serie][categoria]
+};
+
+// Gemella orizzontale di ComputeGroupedBarLayout: le "fette" di
+// categoria diventano bande orizzontali (bounds.Height() invece di
+// bounds.Width()), ogni banda suddivisa in una barra affiancata per
+// serie che si estende in orizzontale (ChartValueToX) -- stesso
+// principio di ComputeHBarLayout, esteso a serie multiple.
+void ComputeGroupedHBarLayout(const MultiChartData& data, BRect bounds,
+	GroupedHBarLayout& out);
+
+// Disegna il grafico a barre orizzontali raggruppate: stessa
+// tavolozza/legenda a destra di DrawGroupedBarChart, griglia/etichette
+// dell'asse a valori in basso (DrawXAxisGrid) invece che a sinistra,
+// etichette di categoria a sinistra (come DrawHBarChart) invece che
+// sotto.
+void DrawGroupedHBarChart(BView* view, BRect frame, const MultiChartData& data,
 	const BString& title = BString());
 
 struct MultiLinePoint {

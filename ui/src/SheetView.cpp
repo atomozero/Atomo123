@@ -3931,11 +3931,20 @@ void SheetView::Draw(BRect updateRect)
 			// commento su ChartView::Draw), che in quel caso usa
 			// comunque solo le prime due colonne tramite il percorso
 			// a singola serie sotto.
-			int columnCount = obj.dataRange.right - obj.dataRange.left + 1;
-			if (columnCount > 2 && obj.type != ePieChart)
+			// Numero di serie: esplicito se "valueColumns" e' popolato
+			// (grafico importato con colonne valore non adiacenti, vedi
+			// il commento su ChartObject::valueColumns in Chart.h),
+			// altrimenti dedotto dalla larghezza di dataRange come
+			// sempre -- riscrittura equivalente del vecchio
+			// "columnCount > 2" per il caso comune (dataRange.right -
+			// dataRange.left > 1 e' la stessa condizione), estesa per
+			// il caso esplicito.
+			int seriesCount = !obj.valueColumns.empty()
+				? (int)obj.valueColumns.size() : (obj.dataRange.right - obj.dataRange.left);
+			if (seriesCount > 1 && obj.type != ePieChart)
 			{
 				MultiChartData multi;
-				if (BuildMultiChartSeries(fDoc, obj.dataRange, multi))
+				if (BuildMultiChartSeries(fDoc, obj.dataRange, multi, obj.valueColumns))
 				{
 					if (obj.type == eLineChart)
 						DrawMultiLineChart(this, obj.frame, multi, obj.title);
@@ -3943,6 +3952,8 @@ void SheetView::Draw(BRect updateRect)
 						DrawMultiAreaChart(this, obj.frame, multi, obj.title);
 					else if (obj.type == eComboChart)
 						DrawComboChart(this, obj.frame, multi, obj.title);
+					else if (obj.type == eHBarChart)
+						DrawGroupedHBarChart(this, obj.frame, multi, obj.title);
 					else
 						DrawGroupedBarChart(this, obj.frame, multi, obj.title);
 				}
