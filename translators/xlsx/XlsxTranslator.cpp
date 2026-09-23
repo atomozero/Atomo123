@@ -8638,6 +8638,27 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							// alle celle vere (money-manager-2.xlsx: colonna A
 							// larga 220px, non 80px).
 							static const float kDefColWidth = 80.0f, kDefRowHeight = 20.0f;
+							// ChartObject::frame e' nello stesso sistema di
+							// coordinate di SheetView::CellRect/CellOrigin
+							// (usato dalla creazione manuale di un grafico,
+							// MainWindow::HandleChartInsert), che include
+							// SEMPRE lo scarto dell'intestazione (numeri di
+							// riga a sinistra, lettere di colonna sopra) --
+							// SheetView::kHeaderWidth/kHeaderHeight, 30/20px.
+							// Bug reale corretto qui: un grafico importato da
+							// un vero xdr:twoCellAnchor/oneCellAnchor non
+							// aggiungeva mai questo scarto, quindi finiva
+							// SEMPRE disegnato un'intestazione piu' in alto e
+							// piu' a sinistra della cella di ancoraggio vera
+							// -- invisibile finche' non si guarda un file con
+							// grafici davvero renderizzati (le stesse 3 carte
+							// di money-manager-2.xlsx che hanno scoperto
+							// anche i due bug precedenti). Non si applica al
+							// ramo "isAbsolute" sotto: quel valore arriva
+							// gia' da un ChartObject::frame vero ESPORTATO da
+							// BuildChartXml (vedi il commento su isAbsolute
+							// in DrawingPic), che include gia' questo scarto.
+							static const float kHeaderWidth = 30.0f, kHeaderHeight = 20.0f;
 							float left, top;
 							if (pics[p].isAbsolute)
 							{
@@ -8652,9 +8673,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							}
 							else
 							{
-								left = SumColumnWidths(pics[p].fromCol, parsed.colWidths, kDefColWidth)
+								left = kHeaderWidth
+									+ SumColumnWidths(pics[p].fromCol, parsed.colWidths, kDefColWidth)
 									+ (float)(pics[p].fromColOffEmu / kEmuPerPixel);
-								top = SumRowHeights(pics[p].fromRow, parsed.rowHeights, kDefRowHeight)
+								top = kHeaderHeight
+									+ SumRowHeights(pics[p].fromRow, parsed.rowHeights, kDefRowHeight)
 									+ (float)(pics[p].fromRowOffEmu / kEmuPerPixel);
 							}
 							float width, height;
@@ -8665,9 +8688,16 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							}
 							else if (pics[p].hasTo)
 							{
-								float right = SumColumnWidths(pics[p].toCol, parsed.colWidths, kDefColWidth)
+								// Stesso scarto di intestazione di "left"/"top"
+								// sopra applicato anche qui, cosi' si cancella
+								// nella sottrazione sotto (width/height restano
+								// corrette) -- l'angolo "to" non e' mai usato
+								// da solo, solo per la differenza con "from".
+								float right = kHeaderWidth
+									+ SumColumnWidths(pics[p].toCol, parsed.colWidths, kDefColWidth)
 									+ (float)(pics[p].toColOffEmu / kEmuPerPixel);
-								float bottom = SumRowHeights(pics[p].toRow, parsed.rowHeights, kDefRowHeight)
+								float bottom = kHeaderHeight
+									+ SumRowHeights(pics[p].toRow, parsed.rowHeights, kDefRowHeight)
 									+ (float)(pics[p].toRowOffEmu / kEmuPerPixel);
 								width = right - left;
 								height = bottom - top;

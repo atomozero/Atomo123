@@ -5600,13 +5600,31 @@ int main()
 		int16 impLeft = 0, impTop = 0, impRight = 0, impBottom = 0;
 		int8 impType = -1;
 		std::string impTitle;
+		float impFrame[4] = { 0, 0, 0, 0 };
 		bool importChartRead = importUnwrapped && ReadFirstChartForTest(importAscdData, importAscdLen,
-			&impLeft, &impTop, &impRight, &impBottom, &impType, &impTitle);
+			&impLeft, &impTop, &impRight, &impBottom, &impType, &impTitle, impFrame);
 		Check(importChartRead, "il grafico a barre in stile Excel (xdr:twoCellAnchor) arriva fino all'ASCD");
 		Check(importChartRead && impLeft == 1 && impTop == 1 && impRight == 2 && impBottom == 3,
 			"il grafico a barre importato punta ad A1:B3, ricostruito dai riferimenti veri di chart1.xml");
 		Check(importChartRead && impType == 0,
 			"il grafico importato e' di tipo \"barre\" (0), <c:barChart>/<c:barDir val=\"col\"/> di chart1.xml");
+		// Il vero <xdr:twoCellAnchor> di chart1.xml e' from col=2/row=0,
+		// to col=7/row=15 (nessuna colonna/riga larga/alta esplicita in
+		// questo foglio, quindi kDefColWidth/kDefRowHeight, 80/20px,
+		// ovunque): il frame in pixel DEVE includere lo scarto
+		// dell'intestazione (SheetView::kHeaderWidth/kHeaderHeight,
+		// 30/20px -- lo stesso sistema di coordinate di CellRect/
+		// CellOrigin, usato dalla creazione manuale di un grafico via
+		// MainWindow::HandleChartInsert), non le sole colonne/righe
+		// sommate da sole -- bug reale: un grafico importato da un vero
+		// xdr:twoCellAnchor finiva SEMPRE disegnato uno scarto
+		// d'intestazione piu' in alto/a sinistra della cella di
+		// ancoraggio vera, invisibile finche' non si guarda un file con
+		// grafici davvero renderizzati.
+		Check(importChartRead && (int)impFrame[0] == 190 && (int)impFrame[1] == 20
+				&& (int)impFrame[2] == 590 && (int)impFrame[3] == 320,
+			"il frame del grafico a barre importato (190,20,590,320) include lo scarto "
+			"dell'intestazione (30,20px), non solo colonna 2/riga 0 * 80/20px (160,0)");
 
 		// Il grafico ad area (chart2.xml) non deve essere il SECONDO
 		// grafico nell'ASCD (solo 1 record atteso, non 2): la sua
@@ -5904,8 +5922,9 @@ int main()
 		int8 hbarType = -1;
 		std::string hbarTitle;
 		std::vector<int16> hbarValueColumns;
+		float hbarFrame[4] = { 0, 0, 0, 0 };
 		bool hbarChartRead = hbarUnwrapped && ReadFirstChartForTest(hbarAscdData, hbarAscdLen,
-			&hbarLeft, &hbarTop, &hbarRight, &hbarBottom, &hbarType, &hbarTitle, NULL, &hbarValueColumns);
+			&hbarLeft, &hbarTop, &hbarRight, &hbarBottom, &hbarType, &hbarTitle, hbarFrame, &hbarValueColumns);
 		Check(hbarChartRead,
 			"il grafico a barre orizzontali con colonne non adiacenti arriva fino all'ASCD "
 			"(prima di questo lavoro sarebbe stato rifiutato, prima per il tipo poi per il layout)");
@@ -5917,6 +5936,15 @@ int main()
 		Check(hbarChartRead && hbarValueColumns.size() == 2
 				&& hbarValueColumns[0] == 2 && hbarValueColumns[1] == 4,
 			"le colonne valore esplicite sono B (2) e D (4), NON contigue (manca la 3, colonna C)");
+		// <xdr:oneCellAnchor> con <xdr:ext> esplicito (non <xdr:to>, un
+		// percorso di codice diverso dal test sample_chart_import.xlsx
+		// sopra): from col=5/row=0, nessuna colonna/riga larga/alta
+		// esplicita in questo foglio di prova, quindi lo scarto
+		// dell'intestazione (30,20px) deve comunque comparire nel frame
+		// finale.
+		Check(hbarChartRead && (int)hbarFrame[0] == 430 && (int)hbarFrame[1] == 20,
+			"il frame del grafico a barre orizzontali (430,20,...) include lo scarto "
+			"dell'intestazione anche col percorso <xdr:ext> esplicito (non solo <xdr:to>)");
 
 		type_code hbarMsgType;
 		int32 hbarUnsupportedCount = 0;
