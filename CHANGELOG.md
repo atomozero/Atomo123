@@ -195,6 +195,21 @@ What shipped in v0.3.0, on top of v0.2.9:
   those still writes correct cells but no XLSX pivot parts, exactly
   like the existing multi-level-row-only limit already documented
   above.
+- XLSX export of conditional formatting: `WriteXLSX` never wrote a
+  single `<conditionalFormatting>`/`<dxf>`, for any rule type old or
+  new — every rule was silently lost whenever a document was saved
+  back out as `.xlsx`. Now all six rule types this engine models
+  export for real: `cellIs` and `expression` write a quoted literal or
+  absolute cell reference / the raw formula text plus a real `<dxf>`
+  background color; `duplicateValues` shares that same `<dxf>`
+  machinery; `colorScale`/`dataBar`/`iconSet` write their thresholds
+  and colors fully inline, matching the exact shapes already accepted
+  on import. Found and fixed a second, independent bug while verifying
+  this end to end: the translator's own internal `ReadASCD` (used only
+  for the ASCD→XLSX export direction) read every conditional-formatting
+  field correctly but only consumed the bytes to stay aligned, never
+  applying them — the same class of bug already hit twice this project
+  for pivot tables and per-cell styles.
 - Known pre-existing failures, reproduced on the pristine tree before
   this release (not regressions): `test_selection` dies silently after
   3 OKs around the direct `Draw()` call, `test_xlsm_macro_preservation`
