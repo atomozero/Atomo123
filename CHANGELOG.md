@@ -172,6 +172,29 @@ What shipped in v0.3.0, on top of v0.2.9:
   never applied them to the document — harmless before since nothing
   downstream consulted the data, but a hard blocker for the new export
   until fixed.
+- Real 2D pivot tables: a "Columns" field and multiple simultaneous
+  measures, closing the last item in the "Path to full Excel parity"
+  backlog. Previously a pivot table was flat/1D only — one or more
+  row-grouping columns plus exactly one aggregated value column. Now a
+  pivot can also spread a second field's distinct values across new
+  columns (Excel's own "Columns" axis) and/or aggregate 2+ value
+  columns side by side, each with its own Sum/Count/Average/Min/Max.
+  The result grid gets two header rows (Columns-field value, then
+  measure label) instead of one. `PivotWindow` gained a dynamic
+  Columns-field picker and a checkbox+aggregation row per detected
+  source column, modeled on the chart dialog's per-series checkboxes,
+  with a new round trip so the dialog can learn the source range's
+  columns before "Crea" is pressed. Every existing 1D pivot (no Columns
+  field, one measure) keeps using the original grouping/writing code
+  path byte-for-byte — this was additive throughout, including the
+  native `.ascd` persistence (a new trailing, EOF-tolerant section) and
+  the XLSX round-trip (real `<colFields>`/multiple `<dataField>`
+  elements on export, recognized on import) — scoped for now to a
+  single row-grouping column when a Columns field or 2+ measures are
+  used; a pivot needing 2+ row-grouping columns together with either of
+  those still writes correct cells but no XLSX pivot parts, exactly
+  like the existing multi-level-row-only limit already documented
+  above.
 - Known pre-existing failures, reproduced on the pristine tree before
   this release (not regressions): `test_selection` dies silently after
   3 OKs around the direct `Draw()` call, `test_xlsm_macro_preservation`
