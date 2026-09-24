@@ -1026,6 +1026,19 @@ test-chart-export-xlsx: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 	xres -o tests/test_chart_export_xlsx $(RSRC)
 	./tests/test_chart_export_xlsx
 
+test-style-export-xlsx: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
+	$(CXX) -c tests/test_style_export_xlsx.cpp -o tests/test_style_export_xlsx.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_style_export_xlsx tests/test_style_export_xlsx.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	xres -o tests/test_style_export_xlsx $(RSRC)
+	./tests/test_style_export_xlsx
+
 # Preservazione "alla cieca" del progetto VBA di un file XLSM (Fase
 # 31): ciclo end-to-end reale (apertura + Salva con nome), vedi il
 # commento in cima al test. MiniZip.cpp (stesso scrittore ZIP minimale
