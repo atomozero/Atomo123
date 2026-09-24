@@ -1310,6 +1310,34 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione orientamento riga di grafico incorporato, in coda, NUOVA
+	// ultima sezione del formato: trasposizione esatta della sezione
+	// "colonne valore esplicite" piu' sopra, per un grafico con
+	// categoria/serie disposte per RIGA invece che per colonna (vedi il
+	// commento su ChartObject::rowOriented/valueRows in Chart.h).
+	// Falso/vuoto per la stragrande maggioranza dei grafici -- un file
+	// scritto prima di questo campo lascia ogni grafico "per colonna",
+	// comportamento di sempre.
+	{
+		int32 chartRowOrientCount = charts ? (int32)charts->size() : 0;
+		if (dest->Write(&chartRowOrientCount, sizeof(chartRowOrientCount)) != (ssize_t)sizeof(chartRowOrientCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < chartRowOrientCount; i++)
+		{
+			uint8 rowOriented = (*charts)[i].rowOriented ? 1 : 0;
+			if (dest->Write(&rowOriented, sizeof(rowOriented)) != (ssize_t)sizeof(rowOriented))
+				return B_IO_ERROR;
+
+			const std::vector<int16>& rows = (*charts)[i].valueRows;
+			int32 rowCount2 = (int32)rows.size();
+			if (dest->Write(&rowCount2, sizeof(rowCount2)) != (ssize_t)sizeof(rowCount2))
+				return B_IO_ERROR;
+			for (int32 r = 0; r < rowCount2; r++)
+				if (dest->Write(&rows[r], sizeof(rows[r])) != (ssize_t)sizeof(rows[r]))
+					return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -2933,6 +2961,45 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				}
 
 				doc->AddPivotTable(pivot);
+			}
+		}
+	}
+
+	// Sezione orientamento riga di grafico incorporato, in coda: stesso
+	// schema EOF-tollerante delle sezioni sopra (vedi il commento
+	// gemello in SaveASCD). Un file scritto prima di questo campo lascia
+	// ogni grafico "per colonna" (rowOriented=false, valueRows vuoto),
+	// comportamento di sempre.
+	{
+		int32 chartRowOrientCount = 0;
+		ssize_t got = source->Read(&chartRowOrientCount, sizeof(chartRowOrientCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartRowOrientCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartRowOrientCount; i++)
+			{
+				uint8 rowOriented;
+				if (source->Read(&rowOriented, sizeof(rowOriented)) != (ssize_t)sizeof(rowOriented))
+					return B_BAD_DATA;
+
+				int32 rowCount2 = 0;
+				if (source->Read(&rowCount2, sizeof(rowCount2)) != (ssize_t)sizeof(rowCount2))
+					return B_BAD_DATA;
+				if (rowCount2 < 0 || rowCount2 > 4096)
+					return B_BAD_DATA;
+
+				std::vector<int16> rows(rowCount2);
+				for (int32 r = 0; r < rowCount2; r++)
+					if (source->Read(&rows[r], sizeof(rows[r])) != (ssize_t)sizeof(rows[r]))
+						return B_BAD_DATA;
+
+				if (charts && i < (int32)charts->size())
+				{
+					(*charts)[i].rowOriented = rowOriented != 0;
+					(*charts)[i].valueRows = rows;
+				}
 			}
 		}
 	}

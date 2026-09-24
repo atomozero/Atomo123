@@ -1265,6 +1265,90 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
 	return !out.categories.empty();
 }
 
+bool BuildMultiChartSeriesRows(CContainer* doc, const range& r, MultiChartData& out,
+	const std::vector<int16>& valueRows)
+{
+	out.categories.clear();
+	out.seriesNames.clear();
+	out.values.clear();
+	if (!doc || valueRows.empty())
+		return false;
+
+	int seriesCount = (int)valueRows.size();
+	out.values.resize(seriesCount);
+
+	// Colonna di intestazione trasposta: se r.left ha un valore testuale
+	// su ALMENO una riga serie, quella colonna si assume il nome delle
+	// serie -- gemella esatta del controllo "riga di intestazione" di
+	// BuildMultiChartSeries sopra.
+	bool hasHeader = false;
+	for (int s = 0; s < seriesCount; s++)
+	{
+		cell headerCell(r.left, valueRows[s]);
+		Value hv;
+		doc->GetValue(headerCell, hv);
+		if (hv.fType == eTextData && BString((const char*)hv).Length() > 0)
+		{
+			hasHeader = true;
+			break;
+		}
+	}
+
+	for (int s = 0; s < seriesCount; s++)
+	{
+		BString name;
+		if (hasHeader)
+		{
+			cell headerCell(r.left, valueRows[s]);
+			Value hv;
+			doc->GetValue(headerCell, hv);
+			if (hv.fType == eTextData)
+				name = (const char*)hv;
+		}
+		if (name.IsEmpty())
+		{
+			name = B_TRANSLATE("Serie");
+			name << " " << (int32)(s + 1);
+		}
+		out.seriesNames.push_back(name);
+	}
+
+	int firstDataCol = hasHeader ? r.left + 1 : r.left;
+	for (int col = firstDataCol; col <= r.right; col++)
+	{
+		// Stesso principio "riga scartata per intero" di
+		// BuildMultiChartSeries, trasposto su colonne.
+		std::vector<double> colValues(seriesCount);
+		bool colOk = true;
+		for (int s = 0; s < seriesCount; s++)
+		{
+			cell valueCell(col, valueRows[s]);
+			Value vv;
+			doc->GetValue(valueCell, vv);
+			if (vv.fType != eNumData)
+			{
+				colOk = false;
+				break;
+			}
+			colValues[s] = (double)vv;
+		}
+		if (!colOk)
+			continue;
+
+		cell labelCell(col, r.top);
+		Value lv;
+		doc->GetValue(labelCell, lv);
+		BString label;
+		ValueToLabel(lv, label);
+
+		out.categories.push_back(label);
+		for (int s = 0; s < seriesCount; s++)
+			out.values[s].push_back(colValues[s]);
+	}
+
+	return !out.categories.empty();
+}
+
 // Intervallo di valori su TUTTE le serie insieme (non una per serie):
 // le barre/linee di serie diverse devono restare sullo stesso asse per
 // essere confrontabili, stesso principio di ChartValueRange ma esteso

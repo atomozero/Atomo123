@@ -1523,7 +1523,8 @@ static bool ReadFreezeFromAscdForTest(const unsigned char* ascdData, size_t ascd
 static bool ReadFirstChartForTest(const unsigned char* ascdData, size_t ascdLen,
 	int16* outLeft, int16* outTop, int16* outRight, int16* outBottom,
 	int8* outType, std::string* outTitle, float outFrame[4] = NULL,
-	std::vector<int16>* outValueColumns = NULL)
+	std::vector<int16>* outValueColumns = NULL,
+	bool* outRowOriented = NULL, std::vector<int16>* outValueRows = NULL)
 {
 	if (ascdLen < 12 || memcmp(ascdData, "ASCD", 4) != 0)
 		return false;
@@ -1666,6 +1667,80 @@ static bool ReadFirstChartForTest(const unsigned char* ascdData, size_t ascdLen,
 			int16 col;
 			memcpy(&col, ascdData + pos, 2); pos += 2;
 			outValueColumns->push_back(col);
+		}
+
+		// Orientamento riga (vedi ChartObject::rowOriented/valueRows in
+		// ui/src/Chart.h): NUOVA ultima sezione del formato, MOLTO piu'
+		// in coda di quella colonne valore appena sopra -- fra le due,
+		// WriteASCD scrive ancora area di stampa, margini/scala,
+		// progetto VBA, celle sbloccate+protezione, intervalli con
+		// nome, allineamento verticale e tabelle pivot (vedi l'ordine
+		// completo delle sezioni in WriteASCD). Questo blocco le salta
+		// tutte alla cieca (stessa struttura fissa gia' verificata dal
+		// test dedicato su sample.xlsx, che cammina l'intero formato)
+		// per raggiungere l'orientamento riga -- valido SOLO per una
+		// prova senza nessuna di quelle sezioni popolata (nessuna area
+		// di stampa/VBA/nome/pivot/cella protetta o esplicitamente
+		// allineata), come ogni fixture minima di questo file usata coi
+		// nuovi parametri opzionali.
+		if (outRowOriented && outValueRows)
+		{
+			if (pos + 9 > ascdLen) return false; // area di stampa
+			pos += 9;
+			if (pos + 45 > ascdLen) return false; // margini/scala
+			pos += 45;
+			if (pos + 1 > ascdLen) return false; // progetto VBA
+			pos += 1;
+			if (pos + 4 > ascdLen) return false; // celle sbloccate
+			pos += 4;
+			if (pos + 1 > ascdLen) return false; // protezione foglio
+			pos += 1;
+			if (pos + 4 > ascdLen) return false; // intervalli con nome
+			pos += 4;
+			if (pos + 4 > ascdLen) return false; // allineamento verticale
+			{
+				int32 valignCount;
+				memcpy(&valignCount, ascdData + pos, 4); pos += 4;
+				if (valignCount < 0 || pos + (size_t)valignCount * 5 > ascdLen) return false;
+				pos += valignCount * 5;
+			}
+			if (pos + 4 > ascdLen) return false; // tabelle pivot: solo il conteggio, mai popolate qui
+			{
+				int32 pivotCount;
+				memcpy(&pivotCount, ascdData + pos, 4); pos += 4;
+				if (pivotCount != 0) return false;
+			}
+
+			// Orientamento riga: un contatore di grafici (qui sempre 1,
+			// stesso principio delle sezioni tipo/titolo sopra) seguito
+			// da un record per grafico -- il contatore che avevo
+			// dimenticato la prima volta, causando una lettura
+			// disallineata di un intero byte (rowCount letto a partire
+			// dal byte "rowOriented" vero, non dal vero inizio di
+			// rowCount).
+			if (pos + 4 > ascdLen) return false;
+			{
+				int32 n;
+				memcpy(&n, ascdData + pos, 4); pos += 4;
+				if (n != 1) return false;
+			}
+
+			if (pos + 1 > ascdLen) return false;
+			uint8 rowOriented;
+			memcpy(&rowOriented, ascdData + pos, 1); pos += 1;
+			*outRowOriented = rowOriented != 0;
+
+			if (pos + 4 > ascdLen) return false;
+			int32 rowCount;
+			memcpy(&rowCount, ascdData + pos, 4); pos += 4;
+			if (rowCount < 0 || pos + (size_t)rowCount * 2 > ascdLen) return false;
+			outValueRows->clear();
+			for (int32 r = 0; r < rowCount; r++)
+			{
+				int16 row;
+				memcpy(&row, ascdData + pos, 2); pos += 2;
+				outValueRows->push_back(row);
+			}
 		}
 	}
 
@@ -3251,8 +3326,7 @@ int main()
 						}
 
 						// Tabelle pivot (Fase 3 delle tabelle pivot -- vedi
-						// ROADMAP.md/CHANGELOG.md): un conteggio, la
-						// NUOVISSIMA ultima sezione del formato -- sample.xlsx
+						// ROADMAP.md/CHANGELOG.md): un conteggio -- sample.xlsx
 						// non ha nessuna tabella pivot, quindi il conteggio e'
 						// zero e non ci sono record a seguire.
 						if (pos + 4 <= ascdLen)
@@ -3261,6 +3335,19 @@ int main()
 							memcpy(&pivotCount, ascdData + pos, 4); pos += 4;
 							Check(pivotCount == 0,
 								"nessuna tabella pivot in sample.xlsx, il conteggio e' zero");
+						}
+
+						// Orientamento riga di grafico incorporato: un
+						// conteggio, la NUOVISSIMA ultima sezione del
+						// formato -- sample.xlsx non ha nessun grafico,
+						// quindi il conteggio e' zero e non ci sono
+						// record a seguire.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 chartRowOrientCount;
+							memcpy(&chartRowOrientCount, ascdData + pos, 4); pos += 4;
+							Check(chartRowOrientCount == 0,
+								"nessun grafico in sample.xlsx, il conteggio orientamento riga e' zero");
 						}
 
 						// sample.xlsx e' un solo foglio: dopo tutte le
@@ -5951,6 +6038,165 @@ int main()
 		hbarExtension.GetInfo("atomo:unsupportedChart", &hbarMsgType, &hbarUnsupportedCount);
 		Check(hbarUnsupportedCount == 0,
 			"nessun grafico segnalato come non supportato (ne' per il tipo ne' per il layout dati)");
+	}
+
+	// Grafico con orientamento riga (categoria/serie disposte per RIGA
+	// invece che per colonna): la forma ESATTA trovata in due file utente
+	// reali (earned-value-management.xlsx, family-budget-planner.xlsx) --
+	// categoria su UNA riga sola (qui riga 5, colonne B:D), ogni serie su
+	// una riga propria NON contigua alla categoria ne' fra loro (righe 10
+	// e 8, non 6/7 subito sotto -- stesso spacer "a riga" del caso
+	// "colonne non adiacenti" sopra, solo trasposto). Prima di questo
+	// lavoro un riferimento di categoria a singola riga multi-colonna
+	// veniva rifiutato subito da ReconstructChartRange (richiedeva
+	// SEMPRE una singola colonna) con "layout dati non compatibile".
+	{
+		static const char kRowContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kRowRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kRowWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kRowWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		// Riga 5 = categoria (1,2,3), riga 8 = serie 2 (20,40,60), riga
+		// 10 = serie 1 (100,200,300) -- deliberatamente NON adiacenti ne'
+		// fra loro ne' alla categoria, come nei due file reali.
+		static const char kRowSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheetData>"
+			"<row r=\"5\"><c r=\"B5\"><v>1</v></c><c r=\"C5\"><v>2</v></c><c r=\"D5\"><v>3</v></c></row>"
+			"<row r=\"8\"><c r=\"B8\"><v>20</v></c><c r=\"C8\"><v>40</v></c><c r=\"D8\"><v>60</v></c></row>"
+			"<row r=\"10\"><c r=\"B10\"><v>100</v></c><c r=\"C10\"><v>200</v></c><c r=\"D10\"><v>300</v></c></row>"
+			"</sheetData>"
+			"<drawing r:id=\"rId1\"/>"
+			"</worksheet>\n";
+		static const char kRowSheetRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" Target=\"../drawings/drawing1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kRowDrawing[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<xdr:oneCellAnchor>"
+			"<xdr:from><xdr:col>5</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>"
+			"<xdr:ext cx=\"3000000\" cy=\"2000000\"/>"
+			"<xdr:graphicFrame>"
+			"<xdr:nvGraphicFramePr><xdr:cNvPr id=\"1\" name=\"Chart 1\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"
+			"<xdr:xfrm/>"
+			"<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+			"<c:chart r:id=\"rId1\"/></a:graphicData></a:graphic>"
+			"</xdr:graphicFrame>"
+			"<xdr:clientData/>"
+			"</xdr:oneCellAnchor>"
+			"</xdr:wsDr>\n";
+		static const char kRowDrawingRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"../charts/chart1.xml\"/>\n"
+			"</Relationships>\n";
+		// <c:cat> come <c:numRef> (non <c:strRef>): stessa forma esatta
+		// di earned-value-management.xlsx, dove la categoria e' un
+		// numero progressivo (1, 2, 3...), non testo.
+		static const char kRowChart[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<c:chart><c:plotArea><c:lineChart><c:grouping val=\"standard\"/>"
+			"<c:ser><c:idx val=\"0\"/><c:order val=\"0\"/>"
+			"<c:cat><c:numRef><c:f>Foglio1!$B$5:$D$5</c:f></c:numRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$B$10:$D$10</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"<c:ser><c:idx val=\"1\"/><c:order val=\"1\"/>"
+			"<c:cat><c:numRef><c:f>Foglio1!$B$5:$D$5</c:f></c:numRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$B$8:$D$8</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"</c:lineChart></c:plotArea></c:chart>"
+			"</c:chartSpace>\n";
+
+		BMallocIO rowXlsx;
+		CZipWriter rowZip;
+		rowZip.Begin(&rowXlsx);
+		rowZip.AddEntry("[Content_Types].xml", kRowContentTypes, strlen(kRowContentTypes));
+		rowZip.AddEntry("_rels/.rels", kRowRootRels, strlen(kRowRootRels));
+		rowZip.AddEntry("xl/workbook.xml", kRowWorkbook, strlen(kRowWorkbook));
+		rowZip.AddEntry("xl/_rels/workbook.xml.rels", kRowWorkbookRels, strlen(kRowWorkbookRels));
+		rowZip.AddEntry("xl/worksheets/sheet1.xml", kRowSheet, strlen(kRowSheet));
+		rowZip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kRowSheetRels, strlen(kRowSheetRels));
+		rowZip.AddEntry("xl/drawings/drawing1.xml", kRowDrawing, strlen(kRowDrawing));
+		rowZip.AddEntry("xl/drawings/_rels/drawing1.xml.rels", kRowDrawingRels, strlen(kRowDrawingRels));
+		rowZip.AddEntry("xl/charts/chart1.xml", kRowChart, strlen(kRowChart));
+		Check(rowZip.Close(),
+			"costruzione del file XLSX di prova con grafico per riga riuscita");
+
+		rowXlsx.Seek(0, SEEK_SET);
+		translator_info rowInfo;
+		err = translator->Identify(&rowXlsx, NULL, NULL, &rowInfo, 0);
+		Check(err == B_OK && rowInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con grafico per riga");
+
+		rowXlsx.Seek(0, SEEK_SET);
+		BMallocIO rowOut;
+		BMessage rowExtension;
+		err = translator->Translate(&rowXlsx, &rowInfo, &rowExtension, kAtomoNativeFormat, &rowOut);
+		Check(err == B_OK, "Translate del file di prova con grafico per riga riesce");
+
+		const unsigned char* rowAscdData = NULL;
+		size_t rowAscdLen = 0;
+		bool rowUnwrapped = UnwrapFirstSheet((const unsigned char*)rowOut.Buffer(),
+			rowOut.BufferLength(), &rowAscdData, &rowAscdLen);
+		Check(rowUnwrapped, "l'output di Translate del file con grafico per riga e' un ASCD valido");
+
+		int16 rowLeft = 0, rowTop = 0, rowRight = 0, rowBottom = 0;
+		int8 rowType = -1;
+		std::string rowTitle;
+		std::vector<int16> rowValueColumns;
+		bool rowRowOriented = false;
+		std::vector<int16> rowValueRows;
+		bool rowChartRead = rowUnwrapped && ReadFirstChartForTest(rowAscdData, rowAscdLen,
+			&rowLeft, &rowTop, &rowRight, &rowBottom, &rowType, &rowTitle, NULL,
+			&rowValueColumns, &rowRowOriented, &rowValueRows);
+		Check(rowChartRead,
+			"il grafico con orientamento riga arriva fino all'ASCD (prima di questo lavoro sarebbe "
+			"stato rifiutato con \"layout dati non compatibile\")");
+		Check(rowChartRead && rowType == 1, "il tipo importato e' 1 (eLineChart), da <c:lineChart>");
+		Check(rowChartRead && rowRowOriented, "il grafico e' marcato per orientamento riga");
+		Check(rowChartRead && rowLeft == 2 && rowTop == 5 && rowRight == 4 && rowBottom == 10,
+			"il rettangolo racchiude la riga di categoria (5) e la riga valore piu' bassa (10), "
+			"colonne B..D (2..4)");
+		Check(rowChartRead && rowValueRows.size() == 2
+				&& rowValueRows[0] == 10 && rowValueRows[1] == 8,
+			"le righe valore esplicite sono 10 (prima serie) e 8 (seconda), nell'ordine delle serie "
+			"nel file, NON contigue ne' fra loro ne' con la riga di categoria (5)");
+
+		type_code rowMsgType;
+		int32 rowUnsupportedCount = 0;
+		rowExtension.GetInfo("atomo:unsupportedChart", &rowMsgType, &rowUnsupportedCount);
+		Check(rowUnsupportedCount == 0,
+			"nessun grafico segnalato come non supportato (l'orientamento riga e' ora riconosciuto)");
 	}
 
 	// Formula array legacy (CSE, Ctrl+Maiusc+Invio): in un file XLSX

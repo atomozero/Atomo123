@@ -3938,13 +3938,22 @@ void SheetView::Draw(BRect updateRect)
 			// sempre -- riscrittura equivalente del vecchio
 			// "columnCount > 2" per il caso comune (dataRange.right -
 			// dataRange.left > 1 e' la stessa condizione), estesa per
-			// il caso esplicito.
-			int seriesCount = !obj.valueColumns.empty()
-				? (int)obj.valueColumns.size() : (obj.dataRange.right - obj.dataRange.left);
-			if (seriesCount > 1 && obj.type != ePieChart)
+			// il caso esplicito. Un grafico per RIGA (obj.rowOriented,
+			// vedi ChartObject::valueRows in Chart.h) e' SEMPRE
+			// multi-serie qui, anche con una sola riga valori: non
+			// esiste un percorso a singola serie equivalente a
+			// BuildChartSeries per quell'orientamento.
+			int seriesCount = obj.rowOriented ? (int)obj.valueRows.size()
+				: (!obj.valueColumns.empty()
+					? (int)obj.valueColumns.size() : (obj.dataRange.right - obj.dataRange.left));
+			if (seriesCount > 0 && obj.type != ePieChart
+				&& (obj.rowOriented || seriesCount > 1))
 			{
 				MultiChartData multi;
-				if (BuildMultiChartSeries(fDoc, obj.dataRange, multi, obj.valueColumns))
+				bool built = obj.rowOriented
+					? BuildMultiChartSeriesRows(fDoc, obj.dataRange, multi, obj.valueRows)
+					: BuildMultiChartSeries(fDoc, obj.dataRange, multi, obj.valueColumns);
+				if (built)
 				{
 					if (obj.type == eLineChart)
 						DrawMultiLineChart(this, obj.frame, multi, obj.title);
