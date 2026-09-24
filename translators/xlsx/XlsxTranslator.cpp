@@ -1511,7 +1511,13 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 	{
-		// Colori di cella: (int16 row, int16 col, 8 byte colore) per record.
+		// Colori di cella: (int16 row, int16 col, 8 byte colore -- bg
+		// poi fg, vedi WriteColorEntry) per record. Applicati davvero a
+		// "doc" (ROADMAP.md "Path to full Excel parity" Tier 2, export
+		// del colore del bordo): BuildStylesXml/BuildSheetXml sotto
+		// leggono questi campi per costruire un vero xl/styles.xml,
+		// quindi scartarli qui perderebbe silenziosamente ogni colore
+		// per l'intero giro ASCD -> XLSX, non solo il bordo.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1524,11 +1530,23 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(colorBuf, sizeof(colorBuf)) != (ssize_t)sizeof(colorBuf))
 					return B_BAD_DATA;
+				cell loc(col, row);
+				if (loc.IsValid())
+				{
+					CellStyle cs;
+					doc->GetCellStyle(loc, cs);
+					cs.fLowColor.red = colorBuf[0]; cs.fLowColor.green = colorBuf[1];
+					cs.fLowColor.blue = colorBuf[2]; cs.fLowColor.alpha = colorBuf[3];
+					cs.fHighColor.red = colorBuf[4]; cs.fHighColor.green = colorBuf[5];
+					cs.fHighColor.blue = colorBuf[6]; cs.fHighColor.alpha = colorBuf[7];
+					doc->SetCellStyle(loc, cs);
+				}
 			}
 		}
 	}
 	{
-		// Colori di colonna: (int16 col, 8 byte colore) per record.
+		// Colori di colonna: (int16 col, 8 byte colore) per record --
+		// stesso motivo della sezione celle appena sopra.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1540,6 +1558,16 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(colorBuf, sizeof(colorBuf)) != (ssize_t)sizeof(colorBuf))
 					return B_BAD_DATA;
+				if (col >= 1 && col <= kColCount)
+				{
+					CellStyle cs;
+					doc->GetColumnStyle(col, cs);
+					cs.fLowColor.red = colorBuf[0]; cs.fLowColor.green = colorBuf[1];
+					cs.fLowColor.blue = colorBuf[2]; cs.fLowColor.alpha = colorBuf[3];
+					cs.fHighColor.red = colorBuf[4]; cs.fHighColor.green = colorBuf[5];
+					cs.fHighColor.blue = colorBuf[6]; cs.fHighColor.alpha = colorBuf[7];
+					doc->SetColumnStyle(col, cs);
+				}
 			}
 		}
 	}
@@ -1574,7 +1602,13 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		if (outFrozenCols) *outFrozenCols = fc;
 	}
 	{
-		// Font di cella: (int16 row, int16 col, font_family, font_style, float size).
+		// Font di cella: (int16 row, int16 col, font_family, font_style,
+		// float size). Applicato davvero a "doc" (stesso motivo della
+		// sezione colori sopra) tramite lo stesso GetFontID gia' usato
+		// dal lettore reale (ui/src/AscdIO.cpp/LoadASCD): un indice
+		// fFont e' VOLATILE per processo, quindi va sempre ricostruito
+		// dalla tripla famiglia/stile/dimensione, mai riletto come
+		// numero grezzo.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1589,11 +1623,20 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(style, sizeof(font_style)) != (ssize_t)sizeof(font_style)
 					|| source->Read(&size, sizeof(size)) != (ssize_t)sizeof(size))
 					return B_BAD_DATA;
+				cell loc(col, row);
+				if (loc.IsValid())
+				{
+					CellStyle cs;
+					doc->GetCellStyle(loc, cs);
+					cs.fFont = (int)gFontSizeTable.GetFontID(family, style, size);
+					doc->SetCellStyle(loc, cs);
+				}
 			}
 		}
 	}
 	{
 		// Allineamento di cella: (int16 row, int16 col, int8 allineamento).
+		// Applicato davvero a "doc" -- stesso motivo delle sezioni sopra.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1606,11 +1649,20 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(&alignment, sizeof(alignment)) != (ssize_t)sizeof(alignment))
 					return B_BAD_DATA;
+				cell loc(col, row);
+				if (loc.IsValid())
+				{
+					CellStyle cs;
+					doc->GetCellStyle(loc, cs);
+					cs.fAlignment = alignment;
+					doc->SetCellStyle(loc, cs);
+				}
 			}
 		}
 	}
 	{
 		// Bordi di cella (spessore): (int16 row, int16 col, 4 byte lati).
+		// Applicato davvero a "doc" -- stesso motivo delle sezioni sopra.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1623,11 +1675,21 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(sides, sizeof(sides)) != (ssize_t)sizeof(sides))
 					return B_BAD_DATA;
+				cell loc(col, row);
+				if (loc.IsValid())
+				{
+					CellStyle cs;
+					doc->GetCellStyle(loc, cs);
+					cs.fTBorderColor = sides[0]; cs.fLBorderColor = sides[1];
+					cs.fBBorderColor = sides[2]; cs.fRBorderColor = sides[3];
+					doc->SetCellStyle(loc, cs);
+				}
 			}
 		}
 	}
 	{
 		// Formato numero di cella: (int16 row, int16 col, int32 formato).
+		// Applicato davvero a "doc" -- stesso motivo delle sezioni sopra.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1640,11 +1702,20 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(&format, sizeof(format)) != (ssize_t)sizeof(format))
 					return B_BAD_DATA;
+				cell loc(col, row);
+				if (loc.IsValid())
+				{
+					CellStyle cs;
+					doc->GetCellStyle(loc, cs);
+					cs.fFormat = format;
+					doc->SetCellStyle(loc, cs);
+				}
 			}
 		}
 	}
 	{
 		// Sottolineato di cella: (int16 row, int16 col), nessun valore.
+		// Applicato davvero a "doc" -- stesso motivo delle sezioni sopra.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1656,11 +1727,20 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
 					return B_BAD_DATA;
+				cell loc(col, row);
+				if (loc.IsValid())
+				{
+					CellStyle cs;
+					doc->GetCellStyle(loc, cs);
+					cs.fUnderline = true;
+					doc->SetCellStyle(loc, cs);
+				}
 			}
 		}
 	}
 	{
 		// Testo a capo di cella: (int16 row, int16 col), nessun valore.
+		// Applicato davvero a "doc" -- stesso motivo delle sezioni sopra.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1672,6 +1752,14 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
 					return B_BAD_DATA;
+				cell loc(col, row);
+				if (loc.IsValid())
+				{
+					CellStyle cs;
+					doc->GetCellStyle(loc, cs);
+					cs.fWrapText = true;
+					doc->SetCellStyle(loc, cs);
+				}
 			}
 		}
 	}
@@ -2363,10 +2451,13 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
-	// Sezione allineamento verticale: solo scartata (stesso principio delle
-	// sezioni colori/allineamento/bordi piu sopra) -- la direzione ASCD -> XLSX
-	// scrive stili minimi senza allineamento per-cella, quindi non c e nulla
-	// da applicare a doc qui, basta non perdere la posizione nel flusso.
+	// Sezione allineamento verticale: applicata davvero a "doc" (ROADMAP.md
+	// "Path to full Excel parity" Tier 2, export del colore del bordo):
+	// BuildStylesXml/BuildSheetXml sotto ora leggono anche
+	// CellStyle::fVerticalAlignment per costruire un vero xl/styles.xml
+	// -- prima di questo lavoro la direzione ASCD -> XLSX scriveva stili
+	// minimi senza allineamento per-cella, quindi non c'era nulla da
+	// applicare a "doc" qui, solo da non perdere la posizione nel flusso.
 	{
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
@@ -2380,6 +2471,14 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(&valign, sizeof(valign)) != (ssize_t)sizeof(valign))
 					return B_BAD_DATA;
+				cell loc(col, row);
+				if (loc.IsValid())
+				{
+					CellStyle cs;
+					doc->GetCellStyle(loc, cs);
+					cs.fVerticalAlignment = valign;
+					doc->SetCellStyle(loc, cs);
+				}
 			}
 		}
 	}
@@ -2528,6 +2627,456 @@ static void AppendXmlEscaped(std::string& out, const char* text)
 	}
 }
 
+// Decodifica CellStyle::fFormat in un numFmtId XLSX incorporato (quando
+// combacia esattamente) o un formatCode personalizzato -- l'inverso di
+// ResolveNumberFormat/BuiltinNumFmtCode sopra. Rispecchia la stessa
+// codifica di CFormatter::ParseTemplate (Formatter.template.cpp):
+// l'ID "vecchio" (oldFormatID) seleziona la famiglia (General/Fixed/
+// Percent/Currency/ZeroPad -- Scientific non viene mai prodotto da
+// ParseTemplate, ma e' comunque gestito qui per completezza, essendo
+// un valore raggiungibile impostando lo stile da un documento nativo),
+// fDigits/fCommas le cifre decimali/il separatore delle migliaia.
+// "gFormatTable[cellFormat]" (non "CFormatter(cellFormat)" diretto) e'
+// l'UNICO modo corretto di decodificare un formato: il costruttore a un
+// solo intero rifiuta silenziosamente (fFormatID=-1) qualunque valore
+// registrato (>= eFirstNewFormat, il caso comune per un formato
+// personalizzato importato da un vero file XLSX), che serve invece
+// cercare nella tabella globale. La valuta usa il simbolo/posizione
+// globali dell'app (gCurrencySymbol/gCurrencyBefore -- CellStyle non ha
+// un simbolo per cella) racchiuso fra virgolette, dato che un simbolo
+// non ASCII (es. "€") va citato come testo letterale in un vero
+// formatCode XLSX.
+static void ResolveCellFormatForExport(int cellFormat, int* outNumFmtId, std::string* outCustomCode)
+{
+	*outNumFmtId = 0; // General
+	outCustomCode->clear();
+
+	const CFormatter& fmt = gFormatTable[cellFormat];
+	int oldId = fmt.OldFormatID();
+	int digits = fmt.Digits();
+	bool commas = fmt.Commas();
+
+	switch (oldId)
+	{
+		case eFixed:
+			if (!commas && digits == 0) { *outNumFmtId = 1; return; }
+			if (!commas && digits == 2) { *outNumFmtId = 2; return; }
+			if (commas && digits == 0) { *outNumFmtId = 3; return; }
+			if (commas && digits == 2) { *outNumFmtId = 4; return; }
+			*outCustomCode = commas ? "#,##0" : "0";
+			if (digits > 0) { *outCustomCode += "."; outCustomCode->append(digits, '0'); }
+			return;
+		case ePercent:
+			if (!commas && digits == 0) { *outNumFmtId = 9; return; }
+			if (!commas && digits == 2) { *outNumFmtId = 10; return; }
+			*outCustomCode = commas ? "#,##0" : "0";
+			if (digits > 0) { *outCustomCode += "."; outCustomCode->append(digits, '0'); }
+			*outCustomCode += "%";
+			return;
+		case eCurrency:
+		{
+			std::string body = commas ? "#,##0" : "0";
+			if (digits > 0) { body += "."; body.append(digits, '0'); }
+			std::string sym = "\"";
+			sym += gCurrencySymbol;
+			sym += "\"";
+			*outCustomCode = gCurrencyBefore ? (sym + body) : (body + sym);
+			return;
+		}
+		case eScientific:
+			*outNumFmtId = 11; // "0.00E+00", il piu' vicino incorporato
+			return;
+		case eZeroPad:
+			outCustomCode->assign(digits > 0 ? digits : 1, '0');
+			return;
+		default: // eGeneral, o un valore non riconosciuto: mai inventare un formato
+			*outNumFmtId = 0;
+			return;
+	}
+}
+
+// Un font/riempimento/bordo distinto da scrivere in <fonts>/<fills>/
+// <borders> -- vedi BuildStylesXml sotto.
+struct XlsxFontEntry {
+	std::string family;
+	bool bold, italic, underline;
+	float size;
+	bool hasColor;
+	rgb_color color;
+};
+
+struct XlsxBorderEntry {
+	bool top, left, bottom, right;
+	rgb_color color;
+};
+
+struct XlsxNumFmtEntry {
+	int numFmtId; // gia' un ID incorporato valido, oppure un ID personalizzato assegnato qui (>= 164)
+	std::string code; // non vuoto solo per una voce personalizzata
+};
+
+// Una voce <cellXfs> completa: font/riempimento/bordo/formato numero
+// (indici nelle rispettive tabelle sopra) piu' i campi che XLSX
+// codifica direttamente nell'elemento <xf> stesso (allineamento,
+// testo a capo, protezione).
+struct XlsxCellXfEntry {
+	int fontId, fillId, borderId, numFmtId;
+	char alignment, valignment;
+	bool wrapText;
+	bool locked;
+};
+
+// Raccoglie ogni CellStyle DISTINTO davvero usato nel documento (una
+// cella mai formattata esplicitamente ha CellStyle() di default,
+// sempre indice <cellXfs> 0 -- nessun byte "s=\"...\"" in piu' per la
+// stragrande maggioranza delle celle di un foglio tipico) e costruisce
+// una vera xl/styles.xml, sostituendo il segnaposto a due sole voci
+// (locked/unlocked) usato finora -- vedi ROADMAP.md "Path to full
+// Excel parity" Tier 2, "export del colore del bordo": chiudere quel
+// gap richiede comunque questa stessa infrastruttura, quindi grassetto/
+// corsivo/colore di sfondo/colore del testo escono risolti insieme,
+// non solo il colore del bordo. "outXfIndexForStyle" mappa i byte grezzi
+// di ogni CellStyle (tutti campi POD, nessun puntatore -- operator==
+// e' gia' un memcmp) all'indice <cellXfs> corrispondente, cosi'
+// BuildSheetXml puo' scrivere "s=\"N\"" per cella senza rifare la
+// risoluzione font/riempimento/bordo/formato per ognuna.
+static std::string BuildStylesXml(CContainer* doc, std::map<std::string, int>* outXfIndexForStyle)
+{
+	outXfIndexForStyle->clear();
+
+	std::vector<XlsxFontEntry> fonts;
+	std::vector<rgb_color> fills; // indice 0 = "none", indice 1 = "gray125" (boilerplate OOXML, mai referenziato da una cella vera)
+	std::vector<XlsxBorderEntry> borders;
+	std::vector<XlsxNumFmtEntry> numFmts;
+	std::vector<XlsxCellXfEntry> xfs;
+	int nextCustomNumFmtId = 164; // convenzione ECMA-376: 0..163 sono riservati agli incorporati
+
+	// Voce 0 fissa per ognuna delle quattro tabelle: font/riempimento/
+	// bordo/xf "di default", coincide esattamente con CellStyle() —
+	// stesso font/colore/assenza di bordo gia' scritti dal vecchio
+	// segnaposto, cosi' un documento senza nessuna formattazione
+	// esplicita produce uno styles.xml quasi identico a prima.
+	fonts.push_back(XlsxFontEntry{"Calibri", false, false, false, 11.0f, false, rgb_color{0, 0, 0, 255}});
+	fills.push_back(rgb_color{255, 255, 255, 255}); // "none": mai scritto come fill reale, solo boilerplate
+	fills.push_back(rgb_color{128, 128, 128, 255}); // "gray125": idem
+	borders.push_back(XlsxBorderEntry{false, false, false, false, rgb_color{0, 0, 0, 255}});
+	{
+		XlsxCellXfEntry xf0;
+		xf0.fontId = 0; xf0.fillId = 0; xf0.borderId = 0; xf0.numFmtId = 0;
+		xf0.alignment = eAlignGeneral; xf0.valignment = eVAlignTop;
+		xf0.wrapText = false; xf0.locked = true;
+		xfs.push_back(xf0);
+	}
+	{
+		CellStyle defaultStyle;
+		std::string key(reinterpret_cast<const char*>(&defaultStyle), sizeof(CellStyle));
+		(*outXfIndexForStyle)[key] = 0;
+	}
+
+	range bounds;
+	doc->GetBounds(bounds);
+	CCellIterator iter(doc, &bounds);
+	cell c;
+	while (iter.NextExisting(c))
+	{
+		CellStyle cs;
+		doc->GetCellStyle(c, cs);
+		std::string key(reinterpret_cast<const char*>(&cs), sizeof(CellStyle));
+		if (outXfIndexForStyle->find(key) != outXfIndexForStyle->end())
+			continue;
+
+		// Font: family/style/size vuoti (fFont == 0, mai impostato
+		// esplicitamente) e' il segnaposto "usa il font di default"
+		// (vedi CFontSizeTable::ReserveDefaultSlot) -- stesso font
+		// dell'indice 0 sopra, non un font vero da cercare/aggiungere.
+		font_family family; font_style style; float size; rgb_color fontColor;
+		gFontSizeTable.GetFontInfo(cs.fFont, &family, &style, &size, &fontColor);
+		int fontId = 0;
+		if (family[0] != 0)
+		{
+			bool bold = strstr(style, "Bold") != NULL;
+			bool italic = strstr(style, "Italic") != NULL;
+			bool hasFontColor = fontColor.red != 0 || fontColor.green != 0 || fontColor.blue != 0;
+			fontId = -1;
+			for (size_t i = 1; i < fonts.size(); i++)
+			{
+				const XlsxFontEntry& f = fonts[i];
+				if (f.family == family && f.bold == bold && f.italic == italic
+					&& f.underline == cs.fUnderline && f.size == size
+					&& f.hasColor == hasFontColor
+					&& (!hasFontColor || (f.color.red == fontColor.red && f.color.green == fontColor.green
+						&& f.color.blue == fontColor.blue)))
+				{
+					fontId = (int)i;
+					break;
+				}
+			}
+			if (fontId < 0)
+			{
+				fonts.push_back(XlsxFontEntry{family, bold, italic, cs.fUnderline, size, hasFontColor, fontColor});
+				fontId = (int)fonts.size() - 1;
+			}
+		}
+		else if (cs.fUnderline)
+		{
+			// Sottolineato senza nessun altro attributo di font esplicito:
+			// stesso font di default, solo con l'attributo <u/> in piu'.
+			fontId = -1;
+			for (size_t i = 1; i < fonts.size(); i++)
+			{
+				if (fonts[i].family == "Calibri" && !fonts[i].bold && !fonts[i].italic
+					&& fonts[i].underline && fonts[i].size == 11.0f && !fonts[i].hasColor)
+				{
+					fontId = (int)i;
+					break;
+				}
+			}
+			if (fontId < 0)
+			{
+				fonts.push_back(XlsxFontEntry{"Calibri", false, false, true, 11.0f, false, rgb_color{0, 0, 0, 255}});
+				fontId = (int)fonts.size() - 1;
+			}
+		}
+
+		// Riempimento: solo se lo sfondo differisce dal bianco di
+		// default di CellStyle() -- una cella bianca esplicita e una
+		// cella mai toccata sono visivamente identiche, nessun bisogno
+		// di un secondo riempimento "bianco" ridondante.
+		int fillId = 0;
+		if (cs.fLowColor.red != 255 || cs.fLowColor.green != 255 || cs.fLowColor.blue != 255)
+		{
+			fillId = -1;
+			for (size_t i = 2; i < fills.size(); i++)
+			{
+				if (fills[i].red == cs.fLowColor.red && fills[i].green == cs.fLowColor.green
+					&& fills[i].blue == cs.fLowColor.blue)
+				{
+					fillId = (int)i;
+					break;
+				}
+			}
+			if (fillId < 0)
+			{
+				fills.push_back(cs.fLowColor);
+				fillId = (int)fills.size() - 1;
+			}
+		}
+
+		// Bordo: quattro lati booleani (vedi il commento gemello su
+		// BorderSides in fase di importazione) + il colore condiviso
+		// da tutti i lati -- stesso ambito che il motore stesso ha gia'
+		// scelto per CellStyle::fBorderColor.
+		bool bTop = cs.fTBorderColor > 0, bLeft = cs.fLBorderColor > 0,
+			bBottom = cs.fBBorderColor > 0, bRight = cs.fRBorderColor > 0;
+		int borderId = 0;
+		if (bTop || bLeft || bBottom || bRight)
+		{
+			borderId = -1;
+			for (size_t i = 1; i < borders.size(); i++)
+			{
+				const XlsxBorderEntry& b = borders[i];
+				if (b.top == bTop && b.left == bLeft && b.bottom == bBottom && b.right == bRight
+					&& b.color.red == cs.fBorderColor.red && b.color.green == cs.fBorderColor.green
+					&& b.color.blue == cs.fBorderColor.blue)
+				{
+					borderId = (int)i;
+					break;
+				}
+			}
+			if (borderId < 0)
+			{
+				borders.push_back(XlsxBorderEntry{bTop, bLeft, bBottom, bRight, cs.fBorderColor});
+				borderId = (int)borders.size() - 1;
+			}
+		}
+
+		// Formato numero: General (indice 0, mai aggiunto a "numFmts",
+		// che ospita solo le voci personalizzate >= 164) resta l'indice
+		// piu' comune di gran lunga.
+		int numFmtId; std::string customCode;
+		ResolveCellFormatForExport(cs.fFormat, &numFmtId, &customCode);
+		if (!customCode.empty())
+		{
+			int foundId = -1;
+			for (size_t i = 0; i < numFmts.size(); i++)
+			{
+				if (numFmts[i].code == customCode)
+				{
+					foundId = numFmts[i].numFmtId;
+					break;
+				}
+			}
+			if (foundId < 0)
+			{
+				foundId = nextCustomNumFmtId++;
+				numFmts.push_back(XlsxNumFmtEntry{foundId, customCode});
+			}
+			numFmtId = foundId;
+		}
+
+		XlsxCellXfEntry xf;
+		xf.fontId = fontId; xf.fillId = fillId; xf.borderId = borderId; xf.numFmtId = numFmtId;
+		xf.alignment = cs.fAlignment; xf.valignment = cs.fVerticalAlignment;
+		xf.wrapText = cs.fWrapText; xf.locked = cs.fLocked;
+
+		int xfIndex = -1;
+		for (size_t i = 0; i < xfs.size(); i++)
+		{
+			const XlsxCellXfEntry& x = xfs[i];
+			if (x.fontId == xf.fontId && x.fillId == xf.fillId && x.borderId == xf.borderId
+				&& x.numFmtId == xf.numFmtId && x.alignment == xf.alignment
+				&& x.valignment == xf.valignment && x.wrapText == xf.wrapText && x.locked == xf.locked)
+			{
+				xfIndex = (int)i;
+				break;
+			}
+		}
+		if (xfIndex < 0)
+		{
+			xfs.push_back(xf);
+			xfIndex = (int)xfs.size() - 1;
+		}
+
+		(*outXfIndexForStyle)[key] = xfIndex;
+	}
+
+	char buf[64];
+	std::string xml;
+	xml += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+	xml += "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n";
+
+	if (!numFmts.empty())
+	{
+		xml += "<numFmts count=\"";
+		snprintf(buf, sizeof(buf), "%zu", numFmts.size());
+		xml += buf;
+		xml += "\">";
+		for (size_t i = 0; i < numFmts.size(); i++)
+		{
+			snprintf(buf, sizeof(buf), "<numFmt numFmtId=\"%d\" formatCode=\"", numFmts[i].numFmtId);
+			xml += buf;
+			AppendXmlEscaped(xml, numFmts[i].code.c_str());
+			xml += "\"/>";
+		}
+		xml += "</numFmts>\n";
+	}
+
+	snprintf(buf, sizeof(buf), "<fonts count=\"%zu\">", fonts.size());
+	xml += buf;
+	for (size_t i = 0; i < fonts.size(); i++)
+	{
+		const XlsxFontEntry& f = fonts[i];
+		xml += "<font>";
+		if (f.bold) xml += "<b/>";
+		if (f.italic) xml += "<i/>";
+		if (f.underline) xml += "<u/>";
+		snprintf(buf, sizeof(buf), "<sz val=\"%g\"/>", f.size);
+		xml += buf;
+		if (f.hasColor)
+		{
+			snprintf(buf, sizeof(buf), "<color rgb=\"FF%02X%02X%02X\"/>",
+				f.color.red, f.color.green, f.color.blue);
+			xml += buf;
+		}
+		xml += "<name val=\"";
+		AppendXmlEscaped(xml, f.family.c_str());
+		xml += "\"/></font>";
+	}
+	xml += "</fonts>\n";
+
+	snprintf(buf, sizeof(buf), "<fills count=\"%zu\">", fills.size());
+	xml += buf;
+	xml += "<fill><patternFill patternType=\"none\"/></fill>";
+	xml += "<fill><patternFill patternType=\"gray125\"/></fill>";
+	for (size_t i = 2; i < fills.size(); i++)
+	{
+		char fillBuf[128];
+		snprintf(fillBuf, sizeof(fillBuf),
+			"<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF%02X%02X%02X\"/>"
+			"<bgColor indexed=\"64\"/></patternFill></fill>",
+			fills[i].red, fills[i].green, fills[i].blue);
+		xml += fillBuf;
+	}
+	xml += "</fills>\n";
+
+	snprintf(buf, sizeof(buf), "<borders count=\"%zu\">", borders.size());
+	xml += buf;
+	for (size_t i = 0; i < borders.size(); i++)
+	{
+		const XlsxBorderEntry& b = borders[i];
+		char colorBuf[16] = "";
+		if (b.top || b.left || b.bottom || b.right)
+			snprintf(colorBuf, sizeof(colorBuf), "FF%02X%02X%02X", b.color.red, b.color.green, b.color.blue);
+		xml += "<border>";
+		const char* sides[4] = {"left", "right", "top", "bottom"};
+		bool present[4] = {b.left, b.right, b.top, b.bottom};
+		for (int s = 0; s < 4; s++)
+		{
+			if (present[s])
+			{
+				xml += "<";
+				xml += sides[s];
+				xml += " style=\"thin\"><color rgb=\"";
+				xml += colorBuf;
+				xml += "\"/></";
+				xml += sides[s];
+				xml += ">";
+			}
+			else
+			{
+				xml += "<";
+				xml += sides[s];
+				xml += "/>";
+			}
+		}
+		xml += "<diagonal/></border>";
+	}
+	xml += "</borders>\n";
+
+	xml += "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>\n";
+
+	snprintf(buf, sizeof(buf), "<cellXfs count=\"%zu\">", xfs.size());
+	xml += buf;
+	for (size_t i = 0; i < xfs.size(); i++)
+	{
+		const XlsxCellXfEntry& xf = xfs[i];
+		snprintf(buf, sizeof(buf),
+			"<xf numFmtId=\"%d\" fontId=\"%d\" fillId=\"%d\" borderId=\"%d\" xfId=\"0\"",
+			xf.numFmtId, xf.fontId, xf.fillId, xf.borderId);
+		xml += buf;
+		bool applyAlign = xf.alignment != eAlignGeneral || xf.valignment != eVAlignTop || xf.wrapText;
+		bool needProtection = !xf.locked;
+		if (!applyAlign && !needProtection)
+		{
+			xml += "/>";
+			continue;
+		}
+		xml += ">";
+		if (applyAlign)
+		{
+			const char* hAlign = xf.alignment == eAlignLeft ? "left"
+				: xf.alignment == eAlignCenter ? "center"
+				: xf.alignment == eAlignRight ? "right"
+				: xf.alignment == eAlignFill ? "fill"
+				: xf.alignment == eAlignJustify ? "justify" : NULL;
+			const char* vAlign = xf.valignment == eVAlignMiddle ? "center"
+				: xf.valignment == eVAlignBottom ? "bottom" : NULL;
+			xml += "<alignment";
+			if (hAlign) { xml += " horizontal=\""; xml += hAlign; xml += "\""; }
+			if (vAlign) { xml += " vertical=\""; xml += vAlign; xml += "\""; }
+			if (xf.wrapText) xml += " wrapText=\"1\"";
+			xml += "/>";
+		}
+		if (needProtection)
+			xml += "<protection locked=\"0\"/>";
+		xml += "</xf>";
+	}
+	xml += "</cellXfs>\n";
+
+	xml += "</styleSheet>\n";
+	return xml;
+}
+
 // Genera xl/worksheets/sheet1.xml a partire dal documento. Una cella
 // con formula scrive sia <f> (la formula viva, in sintassi canonica
 // ECMA-376: riferimenti A1, decimali con ".", argomenti separati da
@@ -2566,7 +3115,11 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// <pageMargins>/<pageSetup> (100% XLSX standard compatibility,
 	// Tier 2), gia' pronti da WriteXLSX sopra -- vanno DOPO <hyperlinks>,
 	// PRIMA di <drawing> per lo schema OOXML.
-	const std::string& pageSetupXml = std::string())
+	const std::string& pageSetupXml = std::string(),
+	// Mappa CellStyle (i suoi byte grezzi) -> indice <cellXfs>, gia'
+	// costruita da BuildStylesXml sopra -- vedi il commento li' per il
+	// perche' non si rifa' quella risoluzione qui per ogni cella.
+	const std::map<std::string, int>* xfIndexForStyle = NULL)
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -2613,14 +3166,21 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 
 		c.GetName(nameBuf);
 
-		// Blocco cella (Fase 32): "s=\"1\"" referenzia il secondo (indice
-		// 1) xf di xl/styles.xml, l'UNICO che ha <protection locked="0"/>
-		// -- vedi il commento su kStyles sotto in WriteXLSX. L'indice 0
-		// (nessun attributo s="...") e' implicitamente bloccato, stessa
-		// convenzione del default di CellStyle::fLocked.
+		// Indice <cellXfs> reale (vedi BuildStylesXml sopra): l'indice 0
+		// (nessun attributo s="...") coincide sempre con CellStyle() di
+		// default, quindi una cella mai formattata non scrive nessun
+		// byte in piu' qui, esattamente come nel vecchio segnaposto
+		// locked/unlocked a due sole voci.
 		CellStyle cellStyle;
 		doc->GetCellStyle(c, cellStyle);
-		bool unlocked = !cellStyle.fLocked;
+		int xfIndex = 0;
+		if (xfIndexForStyle)
+		{
+			std::string styleKey(reinterpret_cast<const char*>(&cellStyle), sizeof(CellStyle));
+			std::map<std::string, int>::const_iterator xfIt = xfIndexForStyle->find(styleKey);
+			if (xfIt != xfIndexForStyle->end())
+				xfIndex = xfIt->second;
+		}
 
 		bool writeFormula = false;
 		void* rawFormula = doc->GetCellFormula(c);
@@ -2636,11 +3196,13 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 
 		if (v.fType == eNumData)
 		{
-			snprintf(numBuf, sizeof(numBuf), "%.15g", (double)v);
 			xml += "<c r=\"";
 			xml += nameBuf;
-			if (unlocked)
-				xml += "\" s=\"1";
+			if (xfIndex != 0)
+			{
+				snprintf(numBuf, sizeof(numBuf), "\" s=\"%d", xfIndex);
+				xml += numBuf;
+			}
 			xml += "\">";
 			if (writeFormula)
 			{
@@ -2648,6 +3210,7 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 				AppendXmlEscaped(xml, formulaBuf);
 				xml += "</f>";
 			}
+			snprintf(numBuf, sizeof(numBuf), "%.15g", (double)v);
 			xml += "<v>";
 			xml += numBuf;
 			xml += "</v></c>";
@@ -2656,8 +3219,11 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 		{
 			xml += "<c r=\"";
 			xml += nameBuf;
-			if (unlocked)
-				xml += "\" s=\"1";
+			if (xfIndex != 0)
+			{
+				snprintf(numBuf, sizeof(numBuf), "\" s=\"%d", xfIndex);
+				xml += numBuf;
+			}
 			xml += "\" t=\"";
 			xml += writeFormula ? "str" : "inlineStr";
 			xml += "\">";
@@ -3577,7 +4143,7 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	std::string workbookXmlOut = std::string(kWorkbookHeader) + definedNamesXml
 		+ pivotCachesXml + "</workbook>\n";
 
-	// xl/styles.xml (rId2) e' sempre presente (vedi kStyles sotto), la
+	// xl/styles.xml (rId2) e' sempre presente (vedi BuildStylesXml sopra), la
 	// relazione verso xl/vbaProject.bin (rId3) va aggiunta SOLO in
 	// presenza di macro: un file .xlsx normale non deve avere una
 	// relazione verso una parte che non scrive.
@@ -3812,32 +4378,20 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		}
 	}
 
-	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected,
-		dataValidationXml + hyperlinksXml, sheetViewsXml, sheetPrXml, pageSetupXml);
+	// xl/styles.xml (ROADMAP.md "Path to full Excel parity" Tier 2,
+	// export del colore del bordo): una vera tabella stili, non piu' il
+	// segnaposto a due sole voci (locked/unlocked) di prima -- vedi
+	// BuildStylesXml sopra per il perche' chiudere quel gap richiede
+	// comunque grassetto/corsivo/colore di sfondo/colore del testo
+	// insieme, non solo il bordo. Costruita PRIMA di BuildSheetXml
+	// (serve la mappa CellStyle -> indice <cellXfs> per scrivere "s="
+	// per cella).
+	std::map<std::string, int> xfIndexForStyle;
+	std::string styles = BuildStylesXml(doc, &xfIndexForStyle);
 
-	// xl/styles.xml (Fase 32): finora questo export non scriveva NESSUNO
-	// stile (solo valori/formule, vedi BuildSheetXml) -- una vera tabella
-	// stili completa (colori/font/bordi/formati) resta fuori scopo qui,
-	// ma il blocco cella e' cosi' semplice (un solo bit) da non
-	// richiederla: due sole voci <xf>, la seconda (indice 1, referenziata
-	// da "s=\"1\"" sulle celle sbloccate in BuildSheetXml) con
-	// <protection locked="0"/>. Il boilerplate fonts/fills/borders resta
-	// il minimo che Excel accetta come styles.xml valido (fills conta
-	// SEMPRE almeno "none" e "gray125" anche se inutilizzati, per
-	// convenzione OOXML).
-	static const char kStyles[] =
-		"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-		"<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">\n"
-		"<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>\n"
-		"<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill>"
-		"<fill><patternFill patternType=\"gray125\"/></fill></fills>\n"
-		"<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>\n"
-		"<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>\n"
-		"<cellXfs count=\"2\">"
-		"<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>"
-		"<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"><protection locked=\"0\"/></xf>"
-		"</cellXfs>\n"
-		"</styleSheet>\n";
+	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected,
+		dataValidationXml + hyperlinksXml, sheetViewsXml, sheetPrXml, pageSetupXml,
+		&xfIndexForStyle);
 
 	// docProps/core.xml e docProps/app.xml (Tier 4 "100% XLSX standard
 	// compatibility", cosmetico -- vedi ROADMAP.md): questo export non
@@ -3949,7 +4503,7 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		return B_IO_ERROR;
 	if (!zip.AddEntry("xl/worksheets/sheet1.xml", sheet.data(), sheet.size()))
 		return B_IO_ERROR;
-	if (!zip.AddEntry("xl/styles.xml", kStyles, strlen(kStyles)))
+	if (!zip.AddEntry("xl/styles.xml", styles.c_str(), styles.size()))
 		return B_IO_ERROR;
 
 	if (hasMacros)
