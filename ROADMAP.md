@@ -347,13 +347,24 @@ through `.xlsx`, in either direction, before this work.
   <cfvo/>...</iconSet>`, reusing the same in-line cfvo parsing as
   `<colorScale>`/`<dataBar>` — note XLSX never writes a `<color>` here,
   unlike those two) landed in the same pass. Native + XLSX ASCD format
-  bumped to version 7 (`iconSetStyle`). `containsText`/`top10`/
-  arbitrary-formula `expression` rules are still recognized and safely
-  ignored (no rule added) rather than misapplied — correct but
-  incomplete; both would need a real formula-evaluation-against-a-
-  hypothetical-value engine, a larger, separate effort. This closes the
-  three-part "relative to the range" conditional formatting plan
-  (Fase A/B/C).
+  bumped to version 7 (`iconSetStyle`). This closes the three-part
+  "relative to the range" conditional formatting plan (Fase A/B/C).
+  `cellIs` against a cell reference (not just a literal) and arbitrary
+  boolean `expression` rules with relative references are also
+  supported (`eCondExpression`, `compareIsCellRef` — see
+  `CHANGELOG.md`, found closing a real gap on `agile-kanban-board.xlsx`).
+  `containsText`/`top10`/`aboveAverage` and any `cellIs` operator other
+  than "equal" (`greaterThan`/`lessThan`/`between`/...) are still
+  recognized and safely ignored on import (no rule added) rather than
+  misapplied — real, separate, still-open gaps, not this bullet's
+  scope. ~~XLSX export of conditional formatting~~ Fixed — see
+  `CHANGELOG.md`. `WriteXLSX` never wrote a single
+  `<conditionalFormatting>`/`<dxf>` for any rule type, old or new,
+  before this — every rule was silently lost on re-export. Now all six
+  rule types export for real (`cellIs`/`duplicateValues`/`expression`
+  via a real `<dxfs>` table, `colorScale`/`dataBar`/`iconSet` fully
+  inline), closing the gap flagged separately in "Path to full Excel
+  parity" Tier 1 above.
 - ~~**Legacy indexed color palette** (`indexed="N"`, the fixed 64-entry
   Excel 97-2003 table)~~ Fixed — see `CHANGELOG.md`. Added as a third
   fallback in `ResolveColorAttrs` (after `rgb`/`theme`), so it applies
@@ -547,9 +558,9 @@ list deliberately deviates from pure effort-sorting:
   evaluated but has no UI editor yet), live evaluation
   (`eCondColorScale` in `Container.styles.cpp`), native `.ascd`
   persistence (format version 3), and real XLSX import from
-  `<colorScale>`/`<cfvo>` — XLSX *export* of conditional formatting
-  (any rule type, old or new) is still a separate, unaddressed gap,
-  see Tier 3 below
+  `<colorScale>`/`<cfvo>`. ~~XLSX *export* of conditional formatting
+  (any rule type, old or new)~~ Fixed — see Tier 3 below and
+  `CHANGELOG.md`.
 - ~~**Open a file passed on the command line** (`atomo123
   file.xlsx`).~~ Shipped: `App::ArgvReceived` converts each argument
   (skipping `argv[0]`, the executable's own path) into a `BEntry`/
