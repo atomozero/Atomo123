@@ -1474,6 +1474,349 @@ static status_t WriteASCDWithPivot2DForTest(CContainer* doc, const PivotTableObj
 	return B_OK;
 }
 
+// Same idea as WriteASCDWithPivotForTest above, but for the
+// conditional-formatting section (export gap: WriteXLSX never wrote a
+// single <conditionalFormatting>/<dxf>, for any rule type -- see
+// ROADMAP.md/CHANGELOG.md). Unlike the pivot helper, this data sits in
+// the MIDDLE of the trailing-sections boilerplate (between "convalida
+// dati" and "tabelle strutturate", both zero here), not at the very
+// end, so this duplicates the full skeleton rather than calling another
+// helper and appending -- same reasoning already given for
+// WriteASCDWithPivotForTest itself. "rules" is written byte-for-byte
+// like the real SaveASCD (ui/src/AscdIO.cpp).
+//
+// Unlike every other helper in this file, this one CANNOT reuse
+// WriteASCDForTest's shared kASCDVersionForTest (1): the colorScale/
+// dataBar/iconSet thresholds, compareIsCellRef and expressionFormula
+// fields only exist from format version 3-5 onward (see the version
+// checks in ReadASCD/kASCDVersion), so a version-1 stream would leave
+// ReadASCD believing those fields were never written, misaligning
+// everything after -- a real bug caught while writing this very test.
+// Writing version 7 also means every cell needs an explicit "kind"
+// byte (version >= 2, Fase 15) that WriteASCDForTest's shared cell
+// loop never writes (it relies on kAscdCellFormula being the READER's
+// own default for version 1) -- so this duplicates that loop too,
+// always writing kAscdCellFormula explicitly, which is byte-for-byte
+// what a version-1 reader would have assumed anyway.
+static status_t WriteASCDWithCondFormatForTest(CContainer* doc,
+	const std::vector<ConditionalFormatRule>& rules, BPositionIO* dest)
+{
+	static const int32 kVersion7 = 7;
+	int32 count = 0;
+	{
+		CCellIterator counter(doc, NULL);
+		cell c;
+		while (counter.NextExisting(c))
+			count++;
+	}
+	if (dest->Write(kASCDMagicForTest, 4) != 4)
+		return B_IO_ERROR;
+	if (dest->Write(&kVersion7, sizeof(kVersion7)) != (ssize_t)sizeof(kVersion7))
+		return B_IO_ERROR;
+	if (dest->Write(&count, sizeof(count)) != (ssize_t)sizeof(count))
+		return B_IO_ERROR;
+	{
+		CCellIterator iter(doc, NULL);
+		cell c;
+		while (iter.NextExisting(c))
+		{
+			char text[512];
+			doc->GetCellFormula(c, text, sizeof(text), false);
+
+			int16 row = c.v, col = c.h;
+			int32 len = strlen(text);
+			uint8 kind = 0; // kAscdCellFormula
+
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len)
+				|| dest->Write(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(text, len) != len)
+				return B_IO_ERROR;
+		}
+	}
+
+	// Grafici incorporati: chartCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi a zero.
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+
+	// fonts, alignment, borders, numberFormat, underline, wrapText,
+	// mergedCells, images: otto conteggi a zero.
+	for (int i = 0; i < 8; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Visibilita' griglia: un byte, sempre presente.
+	{
+		uint8 sg = 1;
+		if (dest->Write(&sg, sizeof(sg)) != (ssize_t)sizeof(sg))
+			return B_IO_ERROR;
+	}
+
+	// Colore linguetta foglio: un byte "has" + 3 byte rgb, sempre presenti.
+	{
+		uint8 has = 0;
+		uint8 rgb[3] = { 0, 0, 0 };
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(rgb, sizeof(rgb)) != (ssize_t)sizeof(rgb))
+			return B_IO_ERROR;
+	}
+
+	// Righe nascoste: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// AutoFilter: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+
+	// commenti, collegamenti ipertestuali: due conteggi a zero.
+	for (int i = 0; i < 2; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Tipo di grafico incorporato: chartTypeCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Colore del bordo di cella: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Convalida dati: un conteggio a zero (non serve per questo test).
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Formattazione condizionale: i dati VERI, stesso ordine
+	// byte-per-byte del vero SaveASCD (ui/src/AscdIO.cpp).
+	{
+		int32 count = (int32)rules.size();
+		if (dest->Write(&count, sizeof(count)) != (ssize_t)sizeof(count))
+			return B_IO_ERROR;
+
+		for (size_t i = 0; i < rules.size(); i++)
+		{
+			const ConditionalFormatRule& rule = rules[i];
+			int8 type = (int8)rule.type;
+			int32 valueLen = (int32)rule.compareValue.size();
+			if (dest->Write(&type, sizeof(type)) != (ssize_t)sizeof(type)
+				|| dest->Write(&valueLen, sizeof(valueLen)) != (ssize_t)sizeof(valueLen))
+				return B_IO_ERROR;
+			if (valueLen > 0 && dest->Write(rule.compareValue.data(), valueLen) != valueLen)
+				return B_IO_ERROR;
+
+			if (dest->Write(&rule.bgColor, sizeof(rule.bgColor)) != (ssize_t)sizeof(rule.bgColor))
+				return B_IO_ERROR;
+
+			int32 rangeCount = (int32)rule.ranges.size();
+			if (dest->Write(&rangeCount, sizeof(rangeCount)) != (ssize_t)sizeof(rangeCount))
+				return B_IO_ERROR;
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				int16 left = rule.ranges[r].left, top = rule.ranges[r].top,
+					right = rule.ranges[r].right, bottom = rule.ranges[r].bottom;
+				if (dest->Write(&left, sizeof(left)) != (ssize_t)sizeof(left)
+					|| dest->Write(&top, sizeof(top)) != (ssize_t)sizeof(top)
+					|| dest->Write(&right, sizeof(right)) != (ssize_t)sizeof(right)
+					|| dest->Write(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
+					return B_IO_ERROR;
+			}
+
+			int32 pointCount = (int32)rule.colorScalePoints.size();
+			if (dest->Write(&pointCount, sizeof(pointCount)) != (ssize_t)sizeof(pointCount))
+				return B_IO_ERROR;
+			for (size_t p = 0; p < rule.colorScalePoints.size(); p++)
+			{
+				const ColorScalePoint& point = rule.colorScalePoints[p];
+				int32 cfvoTypeLen = (int32)point.cfvoType.size();
+				if (dest->Write(&cfvoTypeLen, sizeof(cfvoTypeLen)) != (ssize_t)sizeof(cfvoTypeLen))
+					return B_IO_ERROR;
+				if (cfvoTypeLen > 0 && dest->Write(point.cfvoType.data(), cfvoTypeLen) != cfvoTypeLen)
+					return B_IO_ERROR;
+				if (dest->Write(&point.cfvoValue, sizeof(point.cfvoValue)) != (ssize_t)sizeof(point.cfvoValue)
+					|| dest->Write(&point.color, sizeof(point.color)) != (ssize_t)sizeof(point.color))
+					return B_IO_ERROR;
+			}
+
+			int8 compareIsCellRef = rule.compareIsCellRef ? 1 : 0;
+			int16 compareRefCol = rule.compareRefCell.h, compareRefRow = rule.compareRefCell.v;
+			if (dest->Write(&compareIsCellRef, sizeof(compareIsCellRef)) != (ssize_t)sizeof(compareIsCellRef)
+				|| dest->Write(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
+				|| dest->Write(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
+				return B_IO_ERROR;
+
+			int32 exprLen = (int32)rule.expressionFormula.size();
+			if (dest->Write(&exprLen, sizeof(exprLen)) != (ssize_t)sizeof(exprLen))
+				return B_IO_ERROR;
+			if (exprLen > 0 && dest->Write(rule.expressionFormula.data(), exprLen) != exprLen)
+				return B_IO_ERROR;
+
+			if (dest->Write(&rule.dataBarColor, sizeof(rule.dataBarColor)) != (ssize_t)sizeof(rule.dataBarColor))
+				return B_IO_ERROR;
+
+			int32 iconStyleLen = (int32)rule.iconSetStyle.size();
+			if (dest->Write(&iconStyleLen, sizeof(iconStyleLen)) != (ssize_t)sizeof(iconStyleLen))
+				return B_IO_ERROR;
+			if (iconStyleLen > 0 && dest->Write(rule.iconSetStyle.data(), iconStyleLen) != iconStyleLen)
+				return B_IO_ERROR;
+		}
+	}
+
+	// Tabelle strutturate: un conteggio a zero (non servono per questo test).
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Titolo di grafico incorporato: chartTitleCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Colonne valore esplicite di grafico incorporato: chartValueColCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Area di stampa: un byte "has" + 4 int16, sempre presenti.
+	{
+		uint8 has = 0;
+		int16 z16 = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16)
+			|| dest->Write(&z16, sizeof(z16)) != (ssize_t)sizeof(z16))
+			return B_IO_ERROR;
+	}
+
+	// Margini/scala di "Imposta pagina": un byte "has" + quattro
+	// margini (double), la modalita' di scala (int32) e la percentuale
+	// (double), sempre presenti.
+	{
+		uint8 has = 0;
+		double zD = 0;
+		int32 zeroMode = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD)
+			|| dest->Write(&zeroMode, sizeof(zeroMode)) != (ssize_t)sizeof(zeroMode)
+			|| dest->Write(&zD, sizeof(zD)) != (ssize_t)sizeof(zD))
+			return B_IO_ERROR;
+	}
+
+	// Progetto VBA: un byte "has"=0, nient'altro.
+	{
+		uint8 has = 0;
+		if (dest->Write(&has, sizeof(has)) != (ssize_t)sizeof(has))
+			return B_IO_ERROR;
+	}
+
+	// Celle sbloccate: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Protezione foglio: un byte a zero.
+	{
+		uint8 protectedByte = 0;
+		if (dest->Write(&protectedByte, sizeof(protectedByte)) != (ssize_t)sizeof(protectedByte))
+			return B_IO_ERROR;
+	}
+
+	// Intervalli con nome: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Allineamento verticale: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Tabelle pivot: un conteggio a zero (non servono per questo test).
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Orientamento riga di grafico incorporato: chartRowOrientCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Tabelle pivot 2D: un conteggio a zero.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
 // Translate(XLSX -> nativo) produce ora sempre una cartella di lavoro
 // multi-foglio ("ASCB", Fase 9), anche per un file XLSX con un solo
 // foglio come tests/sample.xlsx: salta l'header e il nome del primo
@@ -3024,6 +3367,161 @@ static bool ReadFirstPivot2DFromAscdForTest(const unsigned char* data, size_t le
 			(*out)[i].columnValues = columnValues;
 			(*out)[i].cachedRows2D = rows2D;
 		}
+	}
+
+	return true;
+}
+
+// Same walk as ReadFirstPivotFromAscdForTest above through the border
+// color count, but then reads the REAL conditional-formatting rules
+// (byte-for-byte identical reconstruction logic to the real LoadASCD in
+// ui/src/AscdIO.cpp) instead of asserting they're absent -- used to
+// verify the export->reimport round trip for the new XLSX conditional-
+// formatting export.
+static bool ReadCondFormatRulesFromAscdForTest(const unsigned char* data, size_t len, size_t pos,
+	std::vector<ConditionalFormatRule>* out)
+{
+	out->clear();
+
+	if (pos + 4 > len) return false;
+	int32 chartCount;
+	memcpy(&chartCount, data + pos, 4); pos += 4;
+	if (chartCount != 0) return false;
+
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 8 > len) return false;
+	pos += 8;
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 1 > len) return false;
+	pos += 1;
+	if (pos + 4 > len) return false;
+	pos += 4;
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	if (pos + 9 > len) return false;
+	pos += 9;
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	// Tipo di grafico incorporato: un conteggio (0).
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	// Colore del bordo di cella: un conteggio (0).
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	// Convalida dati: un conteggio (0).
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// Formattazione condizionale: i dati VERI.
+	if (pos + 4 > len) return false;
+	int32 count;
+	memcpy(&count, data + pos, 4); pos += 4;
+	if (count < 0) return false;
+
+	for (int32 i = 0; i < count; i++)
+	{
+		if (pos + 5 > len) return false;
+		int8 type; int32 valueLen;
+		memcpy(&type, data + pos, 1); pos += 1;
+		memcpy(&valueLen, data + pos, 4); pos += 4;
+		if (valueLen < 0 || pos + (size_t)valueLen > len) return false;
+
+		ConditionalFormatRule rule;
+		rule.type = (CondFormatRuleType)type;
+		if (valueLen > 0)
+		{
+			rule.compareValue.assign((const char*)data + pos, valueLen);
+			pos += valueLen;
+		}
+
+		if (pos + sizeof(rgb_color) > len) return false;
+		memcpy(&rule.bgColor, data + pos, sizeof(rgb_color)); pos += sizeof(rgb_color);
+
+		if (pos + 4 > len) return false;
+		int32 rangeCount;
+		memcpy(&rangeCount, data + pos, 4); pos += 4;
+		if (rangeCount < 0) return false;
+		for (int32 r = 0; r < rangeCount; r++)
+		{
+			if (pos + 8 > len) return false;
+			int16 left, top, right, bottom;
+			memcpy(&left, data + pos, 2); pos += 2;
+			memcpy(&top, data + pos, 2); pos += 2;
+			memcpy(&right, data + pos, 2); pos += 2;
+			memcpy(&bottom, data + pos, 2); pos += 2;
+			rule.ranges.push_back(range(left, top, right, bottom));
+		}
+
+		if (pos + 4 > len) return false;
+		int32 pointCount;
+		memcpy(&pointCount, data + pos, 4); pos += 4;
+		if (pointCount < 0) return false;
+		for (int32 p = 0; p < pointCount; p++)
+		{
+			if (pos + 4 > len) return false;
+			int32 cfvoTypeLen;
+			memcpy(&cfvoTypeLen, data + pos, 4); pos += 4;
+			if (cfvoTypeLen < 0 || pos + (size_t)cfvoTypeLen > len) return false;
+
+			ColorScalePoint point;
+			if (cfvoTypeLen > 0)
+			{
+				point.cfvoType.assign((const char*)data + pos, cfvoTypeLen);
+				pos += cfvoTypeLen;
+			}
+			if (pos + sizeof(double) + sizeof(rgb_color) > len) return false;
+			memcpy(&point.cfvoValue, data + pos, sizeof(double)); pos += sizeof(double);
+			memcpy(&point.color, data + pos, sizeof(rgb_color)); pos += sizeof(rgb_color);
+			rule.colorScalePoints.push_back(point);
+		}
+
+		if (pos + 5 > len) return false;
+		int8 compareIsCellRef;
+		int16 compareRefCol, compareRefRow;
+		memcpy(&compareIsCellRef, data + pos, 1); pos += 1;
+		memcpy(&compareRefCol, data + pos, 2); pos += 2;
+		memcpy(&compareRefRow, data + pos, 2); pos += 2;
+		rule.compareIsCellRef = compareIsCellRef != 0;
+		rule.compareRefCell = cell(compareRefCol, compareRefRow);
+
+		if (pos + 4 > len) return false;
+		int32 exprLen;
+		memcpy(&exprLen, data + pos, 4); pos += 4;
+		if (exprLen < 0 || pos + (size_t)exprLen > len) return false;
+		if (exprLen > 0)
+		{
+			rule.expressionFormula.assign((const char*)data + pos, exprLen);
+			pos += exprLen;
+		}
+
+		if (pos + sizeof(rgb_color) > len) return false;
+		memcpy(&rule.dataBarColor, data + pos, sizeof(rgb_color)); pos += sizeof(rgb_color);
+
+		if (pos + 4 > len) return false;
+		int32 iconStyleLen;
+		memcpy(&iconStyleLen, data + pos, 4); pos += 4;
+		if (iconStyleLen < 0 || pos + (size_t)iconStyleLen > len) return false;
+		if (iconStyleLen > 0)
+		{
+			rule.iconSetStyle.assign((const char*)data + pos, iconStyleLen);
+			pos += iconStyleLen;
+		}
+
+		out->push_back(rule);
 	}
 
 	return true;
@@ -9573,6 +10071,290 @@ int main()
 			}
 			else
 				Check(false, "xl/worksheets/sheet1.xml si legge dall'archivio (pivot 2D a 2 colonne chiave di riga)");
+		}
+	}
+
+	// Formattazione condizionale, esportazione XLSX (ROADMAP.md "Path to
+	// full Excel parity" Tier 3, export -- prima di questo, WriteXLSX
+	// non scriveva MAI un <conditionalFormatting>/<dxf>, per nessun
+	// tipo di regola, vecchia o nuova): un fixture con tutti e sei i
+	// tipi di regola modellati dal motore, su colonne non sovrapposte.
+	// Le regole cellIs e duplicateValues condividono deliberatamente lo
+	// stesso bgColor (rosso) per verificare anche il dedup del dxf.
+	{
+		CContainer& cfDoc = *new CContainer(NULL, NULL);
+		TryToParseString("High", cell(1, 1), &cfDoc, true);  // A1: cellIs
+		TryToParseString("Low", cell(1, 2), &cfDoc, true);   // A2
+		TryToParseString("X", cell(2, 1), &cfDoc, true);     // B1: duplicateValues
+		TryToParseString("X", cell(2, 2), &cfDoc, true);     // B2
+		TryToParseString("1", cell(3, 1), &cfDoc, true);     // C1: expression
+		TryToParseString("2", cell(3, 2), &cfDoc, true);     // C2
+		TryToParseString("10", cell(4, 1), &cfDoc, true);    // D1: colorScale
+		TryToParseString("20", cell(4, 2), &cfDoc, true);    // D2
+		TryToParseString("30", cell(5, 1), &cfDoc, true);    // E1: dataBar
+		TryToParseString("40", cell(5, 2), &cfDoc, true);    // E2
+		TryToParseString("50", cell(6, 1), &cfDoc, true);    // F1: iconSet
+		TryToParseString("60", cell(6, 2), &cfDoc, true);    // F2
+
+		rgb_color red = { 255, 0, 0, 255 };
+		rgb_color green = { 0, 255, 0, 255 };
+		rgb_color white = { 255, 255, 255, 255 };
+		rgb_color blue = { 0, 0, 255, 255 };
+
+		std::vector<ConditionalFormatRule> cfRules;
+		{
+			ConditionalFormatRule r;
+			r.type = eCondCellIsEqual;
+			r.compareValue = "High";
+			r.bgColor = red;
+			r.ranges.push_back(range(1, 1, 1, 3));
+			cfRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondDuplicateValues;
+			r.bgColor = red; // stesso colore della regola sopra: deve condividere il dxfId
+			r.ranges.push_back(range(2, 1, 2, 3));
+			cfRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondExpression;
+			r.expressionFormula = "C1=1";
+			r.bgColor = green;
+			r.ranges.push_back(range(3, 1, 3, 3));
+			cfRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondColorScale;
+			ColorScalePoint pMin; pMin.cfvoType = "min"; pMin.color = white;
+			ColorScalePoint pMax; pMax.cfvoType = "max"; pMax.color = blue;
+			r.colorScalePoints.push_back(pMin);
+			r.colorScalePoints.push_back(pMax);
+			r.ranges.push_back(range(4, 1, 4, 3));
+			cfRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondDataBar;
+			ColorScalePoint pMin; pMin.cfvoType = "min";
+			ColorScalePoint pMax; pMax.cfvoType = "max";
+			r.colorScalePoints.push_back(pMin);
+			r.colorScalePoints.push_back(pMax);
+			r.dataBarColor = blue;
+			r.ranges.push_back(range(5, 1, 5, 3));
+			cfRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondIconSet;
+			ColorScalePoint p0; p0.cfvoType = "percent"; p0.cfvoValue = 0;
+			ColorScalePoint p1; p1.cfvoType = "percent"; p1.cfvoValue = 33;
+			ColorScalePoint p2; p2.cfvoType = "percent"; p2.cfvoValue = 67;
+			r.colorScalePoints.push_back(p0);
+			r.colorScalePoints.push_back(p1);
+			r.colorScalePoints.push_back(p2);
+			r.iconSetStyle = "3TrafficLights1";
+			r.ranges.push_back(range(6, 1, 6, 3));
+			cfRules.push_back(r);
+		}
+
+		BMallocIO cfAscdIn;
+		status_t cfSaveErr = WriteASCDWithCondFormatForTest(&cfDoc, cfRules, &cfAscdIn);
+		Check(cfSaveErr == B_OK, "preparazione dell'ASCD di prova con sei regole di formattazione condizionale riesce");
+		cfDoc.Release();
+
+		cfAscdIn.Seek(0, SEEK_SET);
+		translator_info cfInfo;
+		err = translator->Identify(&cfAscdIn, NULL, NULL, &cfInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && cfInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD di prova con formattazione condizionale");
+
+		cfAscdIn.Seek(0, SEEK_SET);
+		BMallocIO cfXlsxOut;
+		err = translator->Translate(&cfAscdIn, &cfInfo, NULL, kAtomoXlsxFormat, &cfXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con formattazione condizionale) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			cfXlsxOut.Seek(0, SEEK_SET);
+			CZipReader cfZip;
+			Check(cfZip.Open(&cfXlsxOut),
+				"il file XLSX con formattazione condizionale e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> sheetBytes;
+			bool readSheet = cfZip.ReadEntry("xl/worksheets/sheet1.xml", sheetBytes);
+			Check(readSheet, "il file XLSX con formattazione condizionale contiene xl/worksheets/sheet1.xml");
+
+			std::vector<unsigned char> stylesBytes;
+			bool readStyles = cfZip.ReadEntry("xl/styles.xml", stylesBytes);
+			Check(readStyles, "il file XLSX con formattazione condizionale contiene xl/styles.xml");
+
+			if (readSheet && readStyles)
+			{
+				std::string sheet((const char*)&sheetBytes[0], sheetBytes.size());
+				std::string styles((const char*)&stylesBytes[0], stylesBytes.size());
+
+				Check(styles.find("<dxfs count=\"2\">") != std::string::npos,
+					"styles.xml ha due dxf (cellIs/duplicateValues condividono lo stesso colore, expression ne ha uno diverso)");
+				Check(styles.find("<dxf><fill><patternFill><bgColor rgb=\"FFFF0000\"/>") != std::string::npos,
+					"styles.xml ha il dxf rosso vero (cellIs/duplicateValues)");
+				Check(styles.find("<dxf><fill><patternFill><bgColor rgb=\"FF00FF00\"/>") != std::string::npos,
+					"styles.xml ha il dxf verde vero (expression)");
+
+				Check(sheet.find("<conditionalFormatting sqref=\"A1:A3\">") != std::string::npos,
+					"sheet1.xml scrive il vero sqref della regola cellIs (A1:A3)");
+				Check(sheet.find("<cfRule type=\"cellIs\" dxfId=\"0\" priority=\"1\" operator=\"equal\">"
+						"<formula>&quot;High&quot;</formula></cfRule>") != std::string::npos,
+					"sheet1.xml scrive un vero <cfRule type=\"cellIs\"> con la formula letterale corretta");
+
+				Check(sheet.find("<conditionalFormatting sqref=\"B1:B3\">"
+						"<cfRule type=\"duplicateValues\" dxfId=\"0\" priority=\"2\"/>") != std::string::npos,
+					"sheet1.xml scrive un vero <cfRule type=\"duplicateValues\">, stesso dxfId di cellIs (colore condiviso)");
+
+				Check(sheet.find("<cfRule type=\"expression\" dxfId=\"1\" priority=\"3\">"
+						"<formula>C1=1</formula></cfRule>") != std::string::npos,
+					"sheet1.xml scrive un vero <cfRule type=\"expression\"> con la formula grezza, dxfId diverso (colore diverso)");
+
+				Check(sheet.find("<cfRule type=\"colorScale\" priority=\"4\"><colorScale>"
+						"<cfvo type=\"min\"/><cfvo type=\"max\"/>"
+						"<color rgb=\"FFFFFFFF\"/><color rgb=\"FF0000FF\"/></colorScale></cfRule>") != std::string::npos,
+					"sheet1.xml scrive un vero <cfRule type=\"colorScale\">, val omesso per min/max");
+
+				Check(sheet.find("<cfRule type=\"dataBar\" priority=\"5\"><dataBar>"
+						"<cfvo type=\"min\"/><cfvo type=\"max\"/>"
+						"<color rgb=\"FF0000FF\"/></dataBar></cfRule>") != std::string::npos,
+					"sheet1.xml scrive un vero <cfRule type=\"dataBar\">, un solo colore (dataBarColor)");
+
+				Check(sheet.find("<cfRule type=\"iconSet\" priority=\"6\">"
+						"<iconSet iconSet=\"3TrafficLights1\">"
+						"<cfvo type=\"percent\" val=\"0\"/><cfvo type=\"percent\" val=\"33\"/>"
+						"<cfvo type=\"percent\" val=\"67\"/></iconSet></cfRule>") != std::string::npos,
+					"sheet1.xml scrive un vero <cfRule type=\"iconSet\">, nessun <color> (mai previsto per questo tipo)");
+			}
+
+			// Round-trip: la stessa formattazione condizionale
+			// riesportata deve sopravvivere alla riimportazione XLSX ->
+			// ASCD -- prova che sia l'importazione (gia' esistente) sia
+			// la nuova esportazione producono dati coerenti fra loro.
+			cfXlsxOut.Seek(0, SEEK_SET);
+			translator_info cfReimportInfo;
+			err = translator->Identify(&cfXlsxOut, NULL, NULL, &cfReimportInfo, 0);
+			Check(err == B_OK && cfReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX con formattazione condizionale si riconosce ancora come XLSX valido rileggendolo");
+
+			cfXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO cfReimportAscd;
+			err = translator->Translate(&cfXlsxOut, &cfReimportInfo, NULL, kAtomoNativeFormat, &cfReimportAscd);
+			Check(err == B_OK, "il file XLSX con formattazione condizionale si rilegge correttamente (round-trip)");
+
+			const unsigned char* cfReimportData = NULL;
+			size_t cfReimportLen = 0;
+			bool cfReimportUnwrapped = UnwrapFirstSheet(
+				(const unsigned char*)cfReimportAscd.Buffer(), cfReimportAscd.BufferLength(),
+				&cfReimportData, &cfReimportLen);
+			Check(cfReimportUnwrapped,
+				"il round-trip della formattazione condizionale produce anch'esso una cartella ASCB valida");
+
+			if (cfReimportUnwrapped && cfReimportLen > 12 && memcmp(cfReimportData, "ASCD", 4) == 0)
+			{
+				int32 reimportCellCount;
+				memcpy(&reimportCellCount, cfReimportData + 8, 4);
+
+				size_t pos = 12;
+				for (int32 i = 0; i < reimportCellCount && pos + 9 <= cfReimportLen; i++)
+				{
+					int32 clen;
+					memcpy(&clen, cfReimportData + pos + 4, 4);
+					pos += 9 + clen;
+				}
+
+				std::vector<ConditionalFormatRule> reimportedRules;
+				bool cfSectionRead = ReadCondFormatRulesFromAscdForTest(cfReimportData, cfReimportLen,
+					pos, &reimportedRules);
+				Check(cfSectionRead,
+					"la sezione formattazione condizionale in coda all'ASCD riletto si legge correttamente");
+				Check(reimportedRules.size() == 6,
+					"il giro completo XLSX -> ASCD ricostruisce tutte e sei le regole");
+				if (reimportedRules.size() == 6)
+				{
+					Check(reimportedRules[0].type == eCondCellIsEqual
+							&& reimportedRules[0].compareValue == "High"
+							&& !reimportedRules[0].compareIsCellRef
+							&& reimportedRules[0].bgColor.red == 255 && reimportedRules[0].bgColor.green == 0,
+						"la regola cellIs ricostruita combacia (valore letterale, colore rosso)");
+					Check(reimportedRules[1].type == eCondDuplicateValues
+							&& reimportedRules[1].bgColor.red == 255 && reimportedRules[1].bgColor.green == 0,
+						"la regola duplicateValues ricostruita combacia (colore rosso, condiviso col dxf di cellIs)");
+					Check(reimportedRules[2].type == eCondExpression
+							&& reimportedRules[2].expressionFormula == "C1=1",
+						"la regola expression ricostruita combacia (formula grezza)");
+					Check(reimportedRules[3].type == eCondColorScale
+							&& reimportedRules[3].colorScalePoints.size() == 2
+							&& reimportedRules[3].colorScalePoints[0].cfvoType == "min"
+							&& reimportedRules[3].colorScalePoints[1].cfvoType == "max"
+							&& reimportedRules[3].colorScalePoints[1].color.blue == 255,
+						"la regola colorScale ricostruita combacia (due soglie min/max, colore massimo blu)");
+					Check(reimportedRules[4].type == eCondDataBar
+							&& reimportedRules[4].colorScalePoints.size() == 2
+							&& reimportedRules[4].dataBarColor.blue == 255,
+						"la regola dataBar ricostruita combacia (due soglie, colore della barra blu)");
+					Check(reimportedRules[5].type == eCondIconSet
+							&& reimportedRules[5].colorScalePoints.size() == 3
+							&& reimportedRules[5].iconSetStyle == "3TrafficLights1",
+						"la regola iconSet ricostruita combacia (tre soglie, nome dello stile)");
+				}
+			}
+		}
+	}
+
+	// Regressione: un documento SENZA nessuna regola di formattazione
+	// condizionale non deve scrivere ne' <dxfs> ne' <conditionalFormatting>
+	// per niente -- non solo un <dxfs count="0"> vuoto, l'elemento stesso
+	// deve mancare, per non introdurre rumore in un file altrimenti
+	// identico a prima di questa funzionalita'.
+	{
+		CContainer& noCfDoc = *new CContainer(NULL, NULL);
+		TryToParseString("Ciao", cell(1, 1), &noCfDoc, true);
+
+		std::vector<ConditionalFormatRule> noRules;
+		BMallocIO noCfAscdIn;
+		status_t noCfSaveErr = WriteASCDWithCondFormatForTest(&noCfDoc, noRules, &noCfAscdIn);
+		Check(noCfSaveErr == B_OK, "preparazione dell'ASCD di prova senza regole riesce");
+		noCfDoc.Release();
+
+		noCfAscdIn.Seek(0, SEEK_SET);
+		translator_info noCfInfo;
+		err = translator->Identify(&noCfAscdIn, NULL, NULL, &noCfInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && noCfInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD di prova senza regole");
+
+		noCfAscdIn.Seek(0, SEEK_SET);
+		BMallocIO noCfXlsxOut;
+		err = translator->Translate(&noCfAscdIn, &noCfInfo, NULL, kAtomoXlsxFormat, &noCfXlsxOut);
+		Check(err == B_OK, "Translate ASCD (senza regole) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			noCfXlsxOut.Seek(0, SEEK_SET);
+			CZipReader noCfZip;
+			Check(noCfZip.Open(&noCfXlsxOut), "il file XLSX senza regole e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> sheetBytes, stylesBytes;
+			bool readSheet = noCfZip.ReadEntry("xl/worksheets/sheet1.xml", sheetBytes);
+			bool readStyles = noCfZip.ReadEntry("xl/styles.xml", stylesBytes);
+			if (readSheet && readStyles)
+			{
+				std::string sheet((const char*)&sheetBytes[0], sheetBytes.size());
+				std::string styles((const char*)&stylesBytes[0], stylesBytes.size());
+				Check(sheet.find("conditionalFormatting") == std::string::npos,
+					"un documento senza regole non scrive nessun <conditionalFormatting>");
+				Check(styles.find("dxfs") == std::string::npos,
+					"un documento senza regole non scrive nemmeno un <dxfs> vuoto");
+			}
+			else
+				Check(false, "xl/worksheets/sheet1.xml e xl/styles.xml si leggono dall'archivio (senza regole)");
 		}
 	}
 

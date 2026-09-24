@@ -2093,8 +2093,14 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 	{
-		// Formattazione condizionale: (int8 tipo, int32 valueLen, valueLen
-		// byte, rgb_color 4 byte, int32 rangeCount, rangeCount * 4 int16).
+		// Formattazione condizionale: byte per byte identico al gemello
+		// in ui/src/AscdIO.cpp (LoadASCD) -- VA ricostruita su "doc"
+		// (non solo saltata come prima): senza questo, l'esportazione
+		// XLSX della formattazione condizionale vedrebbe sempre zero
+		// regole, qualunque cosa contenga davvero il documento dal vivo
+		// (stesso principio gia' corretto una volta per le tabelle
+		// pivot e una volta per gli stili di cella in questa stessa
+		// funzione).
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -2108,13 +2114,27 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					return B_BAD_DATA;
 				if (valueLen < 0 || valueLen > 16 * 1024 * 1024)
 					return B_BAD_DATA;
-				if (valueLen > 0 && source->Seek(valueLen, SEEK_CUR) < 0)
+				std::string compareValue;
+				if (valueLen > 0)
+				{
+					compareValue.resize(valueLen);
+					if (source->Read(&compareValue[0], valueLen) != valueLen)
+						return B_BAD_DATA;
+				}
+
+				rgb_color bgColor;
+				if (source->Read(&bgColor, sizeof(bgColor)) != (ssize_t)sizeof(bgColor))
 					return B_BAD_DATA;
-				uint8 bgColorBuf[4];
+
 				int32 rangeCount;
-				if (source->Read(bgColorBuf, sizeof(bgColorBuf)) != (ssize_t)sizeof(bgColorBuf)
-					|| source->Read(&rangeCount, sizeof(rangeCount)) != (ssize_t)sizeof(rangeCount))
+				if (source->Read(&rangeCount, sizeof(rangeCount)) != (ssize_t)sizeof(rangeCount))
 					return B_BAD_DATA;
+
+				ConditionalFormatRule rule;
+				rule.type = (CondFormatRuleType)type;
+				rule.compareValue = compareValue;
+				rule.bgColor = bgColor;
+
 				for (int32 r = 0; r < rangeCount; r++)
 				{
 					int16 left, top, right, bottom;
@@ -2123,16 +2143,12 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 						|| source->Read(&right, sizeof(right)) != (ssize_t)sizeof(right)
 						|| source->Read(&bottom, sizeof(bottom)) != (ssize_t)sizeof(bottom))
 						return B_BAD_DATA;
+					rule.ranges.push_back(range(left, top, right, bottom));
 				}
 
-				// Punti di controllo della scala di colori (versione 3,
-				// vedi il commento su kASCDVersion): solo saltati, non
-				// ricostruiti in "doc" -- questa ReadASCD non
-				// ricostruisce nessuna ConditionalFormatRule (usata solo
-				// per il percorso ASCD -> XLSX, che non esporta ancora
-				// nessuna regola, vecchia o nuova), ma i byte vanno
-				// comunque consumati per non disallineare le sezioni
-				// successive.
+				// Punti di controllo della scala di colori: solo un
+				// file versione 3+ li ha scritti (vedi il commento su
+				// kASCDVersion).
 				if (version >= 3)
 				{
 					int32 pointCount;
@@ -2145,20 +2161,26 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 							return B_BAD_DATA;
 						if (cfvoTypeLen < 0 || cfvoTypeLen > 256)
 							return B_BAD_DATA;
-						if (cfvoTypeLen > 0 && source->Seek(cfvoTypeLen, SEEK_CUR) < 0)
+
+						ColorScalePoint point;
+						if (cfvoTypeLen > 0)
+						{
+							point.cfvoType.resize(cfvoTypeLen);
+							if (source->Read(&point.cfvoType[0], cfvoTypeLen) != cfvoTypeLen)
+								return B_BAD_DATA;
+						}
+						if (source->Read(&point.cfvoValue, sizeof(point.cfvoValue)) != (ssize_t)sizeof(point.cfvoValue))
 							return B_BAD_DATA;
-						double cfvoValue;
-						uint8 colorBuf[4];
-						if (source->Read(&cfvoValue, sizeof(cfvoValue)) != (ssize_t)sizeof(cfvoValue)
-							|| source->Read(colorBuf, sizeof(colorBuf)) != (ssize_t)sizeof(colorBuf))
+						if (source->Read(&point.color, sizeof(point.color)) != (ssize_t)sizeof(point.color))
 							return B_BAD_DATA;
+						rule.colorScalePoints.push_back(point);
 					}
 				}
 
-				// Riferimento di cella per il confronto (versione 4, vedi
-				// il commento su kASCDVersion e su ConditionalFormatRule::
-				// compareIsCellRef in Container.h): solo saltato, stesso
-				// motivo dei punti di scala di colori sopra.
+				// Riferimento di cella per il confronto: solo un file
+				// versione 4+ ha scritto questi byte (vedi il commento
+				// su kASCDVersion e su ConditionalFormatRule::
+				// compareIsCellRef in Container.h).
 				if (version >= 4)
 				{
 					int8 compareIsCellRef;
@@ -2167,10 +2189,12 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 						|| source->Read(&compareRefCol, sizeof(compareRefCol)) != (ssize_t)sizeof(compareRefCol)
 						|| source->Read(&compareRefRow, sizeof(compareRefRow)) != (ssize_t)sizeof(compareRefRow))
 						return B_BAD_DATA;
+					rule.compareIsCellRef = compareIsCellRef != 0;
+					rule.compareRefCell = cell(compareRefCol, compareRefRow);
 				}
 
-				// Formula "expression" (versione 5): solo saltata,
-				// stesso motivo del riferimento di cella sopra.
+				// Formula "expression": solo un file versione 5+ ha
+				// scritto questi byte.
 				if (version >= 5)
 				{
 					int32 exprLen;
@@ -2178,17 +2202,26 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 						return B_BAD_DATA;
 					if (exprLen < 0 || exprLen > 16 * 1024 * 1024)
 						return B_BAD_DATA;
-					if (exprLen > 0 && source->Seek(exprLen, SEEK_CUR) < 0)
-						return B_BAD_DATA;
+					if (exprLen > 0)
+					{
+						rule.expressionFormula.resize(exprLen);
+						if (source->Read(&rule.expressionFormula[0], exprLen) != exprLen)
+							return B_BAD_DATA;
+					}
 				}
 
-				// Colore della barra dei dati (versione 6): solo
-				// saltato, stesso motivo di sopra.
-				if (version >= 6 && source->Seek(sizeof(rgb_color), SEEK_CUR) < 0)
-					return B_BAD_DATA;
+				// Colore della barra dei dati: solo un file versione 6+
+				// ha scritto questi byte.
+				if (version >= 6)
+				{
+					rgb_color dataBarColor;
+					if (source->Read(&dataBarColor, sizeof(dataBarColor)) != (ssize_t)sizeof(dataBarColor))
+						return B_BAD_DATA;
+					rule.dataBarColor = dataBarColor;
+				}
 
-				// Nome dello stile dell'icon set (versione 7): solo
-				// saltato, stesso motivo di sopra.
+				// Nome dello stile dell'icon set: solo un file versione
+				// 7+ ha scritto questi byte.
 				if (version >= 7)
 				{
 					int32 iconStyleLen;
@@ -2196,9 +2229,17 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 						return B_BAD_DATA;
 					if (iconStyleLen < 0 || iconStyleLen > 256)
 						return B_BAD_DATA;
-					if (iconStyleLen > 0 && source->Seek(iconStyleLen, SEEK_CUR) < 0)
-						return B_BAD_DATA;
+					if (iconStyleLen > 0)
+					{
+						rule.iconSetStyle.resize(iconStyleLen);
+						if (source->Read(&rule.iconSetStyle[0], iconStyleLen) != iconStyleLen)
+							return B_BAD_DATA;
+					}
+					else
+						rule.iconSetStyle.clear();
 				}
+
+				doc->AddConditionalFormatRule(rule);
 			}
 		}
 	}
@@ -2956,9 +2997,20 @@ struct XlsxCellXfEntry {
 // e' gia' un memcmp) all'indice <cellXfs> corrispondente, cosi'
 // BuildSheetXml puo' scrivere "s=\"N\"" per cella senza rifare la
 // risoluzione font/riempimento/bordo/formato per ognuna.
-static std::string BuildStylesXml(CContainer* doc, std::map<std::string, int>* outXfIndexForStyle)
+static std::string BuildStylesXml(CContainer* doc, std::map<std::string, int>* outXfIndexForStyle,
+	// Formattazione condizionale: dxfId per regola (indice in
+	// doc->GetConditionalFormatRules(), NON l'indice del dxf stesso --
+	// piu' regole con lo stesso colore condividono lo stesso dxf, vedi
+	// sotto), popolato SOLO per i tre tipi che usano davvero un dxfId
+	// (eCondCellIsEqual/eCondDuplicateValues/eCondExpression, gli unici
+	// che assegnano rule.bgColor in EvaluateConditionalFormatting) --
+	// colorScale/dataBar/iconSet sono sempre inline, mai in questa
+	// mappa. Usato da BuildConditionalFormattingXml sotto.
+	std::map<int, int>* outDxfIndexForRule = NULL)
 {
 	outXfIndexForStyle->clear();
+	if (outDxfIndexForRule)
+		outDxfIndexForRule->clear();
 
 	std::vector<XlsxFontEntry> fonts;
 	std::vector<rgb_color> fills; // indice 0 = "none", indice 1 = "gray125" (boilerplate OOXML, mai referenziato da una cella vera)
@@ -3289,6 +3341,61 @@ static std::string BuildStylesXml(CContainer* doc, std::map<std::string, int>* o
 	}
 	xml += "</cellXfs>\n";
 
+	// <dxfs> (formattazione condizionale): solo tre dei sei tipi di
+	// regola usano un dxfId (cellIs/duplicateValues/expression, gli
+	// unici tre che scattano su rule.bgColor -- colorScale/dataBar/
+	// iconSet restano sempre inline dentro il proprio <cfRule>, vedi
+	// BuildConditionalFormattingXml sotto). Deduplica per colore grezzo
+	// (un dxf qui e' solo UN colore di sfondo, molto piu' semplice del
+	// dedup CellStyle sopra) cosi' N regole con lo stesso colore
+	// condividono lo stesso dxfId, come farebbe Excel stesso. Ordine
+	// ECMA-376 reale: cellXfs -> cellStyles (mai scritto qui) -> dxfs ->
+	// tableStyles -- per questo va DOPO </cellXfs>, non prima.
+	if (outDxfIndexForRule)
+	{
+		std::vector<rgb_color> dxfColors;
+		std::map<std::string, int> dxfIndexForColor;
+		const std::vector<ConditionalFormatRule>& condRules = doc->GetConditionalFormatRules();
+		for (size_t i = 0; i < condRules.size(); i++)
+		{
+			const ConditionalFormatRule& rule = condRules[i];
+			if (rule.type != eCondCellIsEqual && rule.type != eCondDuplicateValues
+					&& rule.type != eCondExpression)
+				continue;
+
+			std::string colorKey(reinterpret_cast<const char*>(&rule.bgColor), sizeof(rgb_color));
+			std::map<std::string, int>::iterator it = dxfIndexForColor.find(colorKey);
+			int dxfIdx;
+			if (it != dxfIndexForColor.end())
+				dxfIdx = it->second;
+			else
+			{
+				dxfIdx = (int)dxfColors.size();
+				dxfColors.push_back(rule.bgColor);
+				dxfIndexForColor[colorKey] = dxfIdx;
+			}
+			(*outDxfIndexForRule)[(int)i] = dxfIdx;
+		}
+
+		if (!dxfColors.empty())
+		{
+			snprintf(buf, sizeof(buf), "<dxfs count=\"%zu\">", dxfColors.size());
+			xml += buf;
+			for (size_t i = 0; i < dxfColors.size(); i++)
+			{
+				// buf[64] e' troppo corto per questa stringa (~80
+				// caratteri con la sostituzione) -- stesso motivo del
+				// fillBuf dedicato gia' usato piu' sopra per <fill>.
+				char dxfBuf[128];
+				snprintf(dxfBuf, sizeof(dxfBuf),
+					"<dxf><fill><patternFill><bgColor rgb=\"FF%02X%02X%02X\"/></patternFill></fill></dxf>",
+					dxfColors[i].red, dxfColors[i].green, dxfColors[i].blue);
+				xml += dxfBuf;
+			}
+			xml += "</dxfs>\n";
+		}
+	}
+
 	xml += "</styleSheet>\n";
 	return xml;
 }
@@ -3335,7 +3442,12 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// Mappa CellStyle (i suoi byte grezzi) -> indice <cellXfs>, gia'
 	// costruita da BuildStylesXml sopra -- vedi il commento li' per il
 	// perche' non si rifa' quella risoluzione qui per ogni cella.
-	const std::map<std::string, int>* xfIndexForStyle = NULL)
+	const std::map<std::string, int>* xfIndexForStyle = NULL,
+	// <conditionalFormatting>...</conditionalFormatting> (uno o piu'
+	// blocchi, uno per regola), gia' pronto da BuildConditionalFormattingXml
+	// sopra -- va DOPO <sheetProtection>, PRIMA di <dataValidations>/
+	// <hyperlinks> nell'ordine reale ECMA-376 (CT_Worksheet).
+	const std::string& conditionalFormattingXml = std::string())
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -3470,6 +3582,13 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// (l'app non protegge mai con password, solo on/off).
 	if (isProtected)
 		xml += "<sheetProtection sheetId=\"1\"/>";
+	// <conditionalFormatting> (uno o piu' blocchi): DOPO
+	// <sheetProtection>, PRIMA di <dataValidations>/<hyperlinks>
+	// nell'ordine reale ECMA-376 (CT_Worksheet: ... sheetProtection,
+	// protectedRanges, scenarios, autoFilter, sortState,
+	// dataConsolidate, customSheetViews, mergeCells, phoneticPr,
+	// conditionalFormatting, dataValidations, hyperlinks, ...).
+	xml += conditionalFormattingXml;
 	// <dataValidations>/<hyperlinks> (100% XLSX standard compatibility,
 	// Tier 2): DOPO <sheetProtection>, PRIMA di <drawing> nell'ordine
 	// richiesto dallo schema OOXML (CT_Worksheet).
@@ -4019,6 +4138,151 @@ static std::string PlainRangeRef(const range& r)
 	if (r.left != r.right || r.top != r.bottom)
 		ref += ":" + PlainCellRef(r.right, r.bottom);
 	return ref;
+}
+
+// Esportazione della formattazione condizionale: simmetrica a
+// ApplyConditionalFormatting (importazione, vedi sopra) per tutti e sei
+// i tipi di regola che questo motore modella. "dxfIndexForRule" viene
+// da BuildStylesXml (indice regola -> indice dxf, solo per i tre tipi
+// che ne usano uno). Un blocco <conditionalFormatting sqref="..."> per
+// regola (non raggruppate anche quando condividono lo stesso
+// intervallo) -- piu' semplice e comunque valido, corrisponde a come
+// appare spesso un vero file Excel quando le regole sono state
+// aggiunte una alla volta.
+static std::string BuildConditionalFormattingXml(CContainer* doc,
+	const std::map<int, int>& dxfIndexForRule)
+{
+	std::string xml;
+	const std::vector<ConditionalFormatRule>& rules = doc->GetConditionalFormatRules();
+	char buf[256];
+
+	for (size_t i = 0; i < rules.size(); i++)
+	{
+		const ConditionalFormatRule& rule = rules[i];
+		if (rule.ranges.empty())
+			continue;
+
+		std::string sqref;
+		for (size_t r = 0; r < rule.ranges.size(); r++)
+		{
+			if (r > 0)
+				sqref += " ";
+			sqref += PlainRangeRef(rule.ranges[r]);
+		}
+
+		xml += "<conditionalFormatting sqref=\"";
+		AppendXmlEscaped(xml, sqref.c_str());
+		xml += "\">";
+
+		int priority = (int)i + 1;
+		std::map<int, int>::const_iterator dxfIt = dxfIndexForRule.find((int)i);
+		int dxfId = dxfIt != dxfIndexForRule.end() ? dxfIt->second : -1;
+
+		if (rule.type == eCondCellIsEqual)
+		{
+			snprintf(buf, sizeof(buf),
+				"<cfRule type=\"cellIs\" dxfId=\"%d\" priority=\"%d\" operator=\"equal\">",
+				dxfId, priority);
+			xml += buf;
+			xml += "<formula>";
+			if (rule.compareIsCellRef)
+				xml += AbsCellRef(rule.compareRefCell.h, rule.compareRefCell.v);
+			else
+			{
+				xml += "&quot;";
+				AppendXmlEscaped(xml, rule.compareValue.c_str());
+				xml += "&quot;";
+			}
+			xml += "</formula></cfRule>";
+		}
+		else if (rule.type == eCondDuplicateValues)
+		{
+			snprintf(buf, sizeof(buf), "<cfRule type=\"duplicateValues\" dxfId=\"%d\" priority=\"%d\"/>",
+				dxfId, priority);
+			xml += buf;
+		}
+		else if (rule.type == eCondExpression)
+		{
+			snprintf(buf, sizeof(buf), "<cfRule type=\"expression\" dxfId=\"%d\" priority=\"%d\">",
+				dxfId, priority);
+			xml += buf;
+			xml += "<formula>";
+			AppendXmlEscaped(xml, rule.expressionFormula.c_str());
+			xml += "</formula></cfRule>";
+		}
+		else if (rule.type == eCondColorScale)
+		{
+			snprintf(buf, sizeof(buf), "<cfRule type=\"colorScale\" priority=\"%d\"><colorScale>", priority);
+			xml += buf;
+			for (size_t p = 0; p < rule.colorScalePoints.size(); p++)
+			{
+				const ColorScalePoint& point = rule.colorScalePoints[p];
+				xml += "<cfvo type=\"";
+				AppendXmlEscaped(xml, point.cfvoType.c_str());
+				if (point.cfvoType != "min" && point.cfvoType != "max")
+				{
+					snprintf(buf, sizeof(buf), "\" val=\"%s", FormatChartNumber(point.cfvoValue).c_str());
+					xml += buf;
+				}
+				xml += "\"/>";
+			}
+			for (size_t p = 0; p < rule.colorScalePoints.size(); p++)
+			{
+				snprintf(buf, sizeof(buf), "<color rgb=\"FF%02X%02X%02X\"/>",
+					rule.colorScalePoints[p].color.red, rule.colorScalePoints[p].color.green,
+					rule.colorScalePoints[p].color.blue);
+				xml += buf;
+			}
+			xml += "</colorScale></cfRule>";
+		}
+		else if (rule.type == eCondDataBar)
+		{
+			snprintf(buf, sizeof(buf), "<cfRule type=\"dataBar\" priority=\"%d\"><dataBar>", priority);
+			xml += buf;
+			for (size_t p = 0; p < rule.colorScalePoints.size(); p++)
+			{
+				const ColorScalePoint& point = rule.colorScalePoints[p];
+				xml += "<cfvo type=\"";
+				AppendXmlEscaped(xml, point.cfvoType.c_str());
+				if (point.cfvoType != "min" && point.cfvoType != "max")
+				{
+					snprintf(buf, sizeof(buf), "\" val=\"%s", FormatChartNumber(point.cfvoValue).c_str());
+					xml += buf;
+				}
+				xml += "\"/>";
+			}
+			snprintf(buf, sizeof(buf), "<color rgb=\"FF%02X%02X%02X\"/>",
+				rule.dataBarColor.red, rule.dataBarColor.green, rule.dataBarColor.blue);
+			xml += buf;
+			xml += "</dataBar></cfRule>";
+		}
+		else if (rule.type == eCondIconSet)
+		{
+			xml += "<cfRule type=\"iconSet\" priority=\"";
+			snprintf(buf, sizeof(buf), "%d", priority);
+			xml += buf;
+			xml += "\"><iconSet iconSet=\"";
+			AppendXmlEscaped(xml, rule.iconSetStyle.c_str());
+			xml += "\">";
+			for (size_t p = 0; p < rule.colorScalePoints.size(); p++)
+			{
+				const ColorScalePoint& point = rule.colorScalePoints[p];
+				xml += "<cfvo type=\"";
+				AppendXmlEscaped(xml, point.cfvoType.c_str());
+				if (point.cfvoType != "min" && point.cfvoType != "max")
+				{
+					snprintf(buf, sizeof(buf), "\" val=\"%s", FormatChartNumber(point.cfvoValue).c_str());
+					xml += buf;
+				}
+				xml += "\"/>";
+			}
+			xml += "</iconSet></cfRule>";
+		}
+
+		xml += "</conditionalFormatting>";
+	}
+
+	return xml;
 }
 
 struct PivotXmlParts {
@@ -4970,11 +5234,18 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	// (serve la mappa CellStyle -> indice <cellXfs> per scrivere "s="
 	// per cella).
 	std::map<std::string, int> xfIndexForStyle;
-	std::string styles = BuildStylesXml(doc, &xfIndexForStyle);
+	std::map<int, int> dxfIndexForRule;
+	std::string styles = BuildStylesXml(doc, &xfIndexForStyle, &dxfIndexForRule);
+
+	// Formattazione condizionale (ROADMAP.md "Path to full Excel
+	// parity" Tier 3, export): costruita DOPO BuildStylesXml sopra
+	// (serve dxfIndexForRule per i tre tipi che usano un dxfId), PRIMA
+	// di BuildSheetXml sotto, che la inserisce al punto giusto.
+	std::string conditionalFormattingXml = BuildConditionalFormattingXml(doc, dxfIndexForRule);
 
 	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected,
 		dataValidationXml + hyperlinksXml, sheetViewsXml, sheetPrXml, pageSetupXml,
-		&xfIndexForStyle);
+		&xfIndexForStyle, conditionalFormattingXml);
 
 	// docProps/core.xml e docProps/app.xml (Tier 4 "100% XLSX standard
 	// compatibility", cosmetico -- vedi ROADMAP.md): questo export non
