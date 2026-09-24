@@ -301,13 +301,19 @@ through `.xlsx`, in either direction, before this work.
   `CellStyle::fBorderColor` (one color shared by all four sides, the
   scope the engine itself already committed to — not a per-side
   color), reusing the same `ResolveColorAttrs` helper fill/font colors
-  already used. **Export is NOT fixed**: this translator writes no
-  dynamic `styles.xml` at all yet (a single hardcoded 2-entry table,
-  only for locked/unlocked cells) — fill, font, and now border color
-  all still export as plain uncolored cells. Building a real per-style
-  XLSX export (collect distinct `CellStyle`s, emit `<fonts>`/
-  `<fills>`/`<borders>`/`<cellXfs>`) is a separate, larger effort, not
-  attempted here
+  already used. ~~Export is NOT fixed~~ Fixed — see `CHANGELOG.md`.
+  This translator now builds a real dynamic `styles.xml` (distinct
+  `CellStyle`s deduplicated into `<fonts>`/`<fills>`/`<borders>`/
+  `<numFmts>`/`<cellXfs>`), so fill, font, border color/thickness,
+  alignment, and number format all export for real instead of plain
+  uncolored cells — border color couldn't be closed in isolation since
+  it needs the same style-table machinery as the rest. Verifying this
+  end to end also turned up a separate pre-existing bug: this
+  translator's own internal `ReadASCD` (used on the ASCD→XLSX export
+  path) had several sections that read color/font/alignment/
+  border-thickness/number-format/underline/wrap-text bytes only to
+  stay aligned in the stream, without ever applying them to the
+  document — fixed alongside the export work
 
 ### Tier 3 — partial fidelity, moderate value
 
