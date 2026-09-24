@@ -21,7 +21,10 @@
 	  statica (BuildPivotTable/WritePivotTable, Inserisci -> Tabella
 	  Pivot, raggruppamento a due livelli Prodotto+Fascia sconto) a
 	  fianco di quelle dal vivo, per mostrare la differenza reale fra
-	  i due approcci.
+	  i due approcci, PIU' una vera tabella pivot 2D (v0.3.0,
+	  BuildPivotTable2D/WritePivotTable2D: campo Colonne + due misure
+	  con aggregazioni diverse, Somma e Media, sullo stesso intervallo
+	  sorgente del pivot 1D appena sopra).
 	- "Funzioni": un catalogo di circa 50 funzioni con nome (RATE
 	  compresa) applicate ai dati reali, una formula a blocco
 	  (SEQUENCE), una tabella strutturata ("Vendite[Colonna]"), una
@@ -657,6 +660,38 @@ int main()
 		std::vector<PivotRow> rows;
 		if (BuildPivotTable(dati, range(3, 2, 5, 701), rows))
 			WritePivotTable(pivot, cell(1, realPivotDataRow), rows, ePivotSum);
+	}
+
+	// Tabella pivot 2D VERA (campo Colonne + misure multiple -- v0.3.0,
+	// vedi CHANGELOG.md): stesso intervallo sorgente adiacente C:F del
+	// blocco sopra (Prodotto, Fascia sconto, Unita' vendute, Prezzo di
+	// produzione), ma qui la Fascia sconto diventa il campo COLONNE
+	// (i suoi valori si spargono su nuove colonne) e vengono aggregate
+	// DUE misure fianco a fianco con aggregazioni diverse (Somma per le
+	// unita', Media per il prezzo) -- le due capacita' nuove insieme,
+	// non separate, sullo stesso dataset gia' usato per il confronto
+	// col pivot 1D appena sopra.
+	int realPivot2DLabelRow = realPivotLabelRow + 40;
+	WriteLabel(pivot, cell(1, realPivot2DLabelRow),
+		"Tabella pivot 2D VERA (v0.3.0): campo Colonne (Fascia sconto) + due misure "
+		"(Somma unita', Media prezzo di produzione), righe per Prodotto");
+	pivot->AddMergedRange(range(1, realPivot2DLabelRow, 11, realPivot2DLabelRow));
+	Style(pivot, cell(1, realPivot2DLabelRow), [&](CellStyle& cs) {
+		cs.fLowColor = kOrange; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter; cs.fWrapText = true;
+	});
+	Bold(pivot, cell(1, realPivot2DLabelRow));
+
+	int realPivot2DDataRow = realPivot2DLabelRow + 1;
+	{
+		std::vector<PivotMeasure> measures(2);
+		measures[0].sourceCol = 5; measures[0].aggFunc = ePivotSum; measures[0].label = "Unita'";
+		measures[1].sourceCol = 6; measures[1].aggFunc = ePivotAverage; measures[1].label = "Prezzo medio";
+
+		std::vector<BString> columnValues;
+		std::vector<PivotRow2D> rows2D;
+		if (BuildPivotTable2D(dati, range(3, 2, 6, 701), 4 /* Fascia sconto */, measures,
+				&columnValues, &rows2D))
+			WritePivotTable2D(pivot, cell(1, realPivot2DDataRow), columnValues, measures, rows2D);
 	}
 
 	// ==================== Foglio "Riunione CdA" ====================
