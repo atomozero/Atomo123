@@ -5,6 +5,20 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped in v0.3.0, on top of v0.2.9:
+- Completed the systematic XLSX sweep: opened every one of the 15
+  sample files in the test folder (agile-kanban-board, confronto
+  preventivi fotovoltaico, content-calendar, earned-value-management,
+  EN16798_2025_Aldes_ingDottori, family-budget-planner, Financial
+  Sample, Modello_dati_allievi, money-manager-2, PRG-Dec 449-2024,
+  UNI10339_EN16798_Aldes_ingDottori, verifica_perdite_carico_villa_
+  lassi, the two "riepilogo dati" workbooks, and one large 3.4MB/
+  1500-site clustering file) and confirmed all of them import cleanly
+  with no errors and no "not implemented" dialogs. The last two
+  checked (Modello_dati_allievi, verifica_perdite_carico_villa_lassi)
+  came back clean with no changes needed — every other real bug this
+  sweep turned up is documented separately below (chart position,
+  `SUMIFS`, trailing empty argument, `LEN`/`HYPERLINK`, row-oriented
+  charts).
 - Added support for charts with categories/series laid out across a
   ROW instead of down a column (Excel's other valid layout) — found in
   two real files during the systematic XLSX sweep below
