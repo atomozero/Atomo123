@@ -353,11 +353,16 @@ through `.xlsx`, in either direction, before this work.
   boolean `expression` rules with relative references are also
   supported (`eCondExpression`, `compareIsCellRef` — see
   `CHANGELOG.md`, found closing a real gap on `agile-kanban-board.xlsx`).
-  `containsText`/`top10`/`aboveAverage` and any `cellIs` operator other
-  than "equal" (`greaterThan`/`lessThan`/`between`/...) are still
-  recognized and safely ignored on import (no rule added) rather than
-  misapplied — real, separate, still-open gaps, not this bullet's
-  scope. ~~XLSX export of conditional formatting~~ Fixed — see
+  ~~`containsText`/`top10`/`aboveAverage` and any `cellIs` operator
+  other than "equal"~~ Fixed — see `CHANGELOG.md`. `cellIs` now
+  supports all 8 ECMA-376 operators, and the rest of the standard rule
+  family (`containsText`/`notContainsText`/`beginsWith`/`endsWith`,
+  `containsBlanks`/`notContainsBlanks`/`containsErrors`/
+  `notContainsErrors`, `top10`, `aboveAverage`/`belowAverage`) is
+  modeled for real, both import and export, native UI included.
+  `timePeriod` rules remain explicitly out of scope (date-arithmetic-
+  heavy, a separate feature, never named as a gap). ~~XLSX export of
+  conditional formatting~~ Fixed — see
   `CHANGELOG.md`. `WriteXLSX` never wrote a single
   `<conditionalFormatting>`/`<dxf>` for any rule type, old or new,
   before this — every rule was silently lost on re-export. Now all six
