@@ -672,6 +672,24 @@ list deliberately deviates from pure effort-sorting:
   possibly non-adjacent source columns end to end — import, live
   redraw, native persistence, and XLSX export — fixing this for every
   chart type with 2+ series, not just horizontal bar
+- ~~**Charts with categories/series laid out across a row instead of
+  down a column** (Excel's other valid layout).~~ Shipped, found
+  opening two more real files during the systematic XLSX sweep
+  (`earned-value-management.xlsx`, `family-budget-planner.xlsx`),
+  both previously rejected with "layout dati non compatibile" even
+  after the horizontal-bar/non-adjacent-column fix above.
+  `ChartObject::rowOriented`/`valueRows` is the transposition of the
+  `valueColumns` non-contiguous-column support from that same fix —
+  `ReconstructChartRange` now also recognizes a single-row category
+  reference, with a matching row-major series builder wired through
+  import, live redraw, print preview, native `.ascd` persistence, and
+  XLSX export. A real, separate bug was found and fixed while
+  verifying the export path end to end: the XLSX translator's own
+  copy of the ASCD reader never learned about a versioned tail
+  (header/footer/print-titles) the app's own native writer always
+  appends after print settings, silently misaligning every section
+  written after it — including embedded charts — for any document
+  exported through that path
 - ~~**Excel Table Total Row: import correctness**~~ Fixed — see
   `CHANGELOG.md`. `RegisterTable`/`ApplyTableBanding`
   (`translators/xlsx/XlsxTranslator.cpp`) now read `totalsRowCount`
