@@ -155,6 +155,23 @@ What shipped in v0.3.0, on top of v0.2.9:
   formula result, `HYPERLINK`'s value is simply the friendly name
   argument when given, else the link itself — the same value Excel shows
   in the cell.
+- XLSX export now writes real per-cell styles instead of a two-entry
+  locked/unlocked placeholder `styles.xml`: bold/italic, font color,
+  fill color, border color and thickness, alignment, and number format
+  all round-trip now, closing the long-standing "border color export"
+  gap for real (it couldn't be fixed in isolation — border color needs
+  the same `<fonts>`/`<fills>`/`<borders>`/`<numFmts>`/`<cellXfs>`
+  machinery as the rest of a cell's style, so the whole table was
+  built together). Distinct `CellStyle`s used anywhere in the document
+  are deduplicated into that table, and each exported cell now points
+  at its real style index. Found and fixed a separate pre-existing bug
+  while verifying this end to end: this translator's own internal
+  `ReadASCD` (used on the ASCD→XLSX export path) had several sections
+  that read color/font/alignment/border-thickness/number-format/
+  underline/wrap-text bytes only to stay aligned in the stream, but
+  never applied them to the document — harmless before since nothing
+  downstream consulted the data, but a hard blocker for the new export
+  until fixed.
 - Known pre-existing failures, reproduced on the pristine tree before
   this release (not regressions): `test_selection` dies silently after
   3 OKs around the direct `Draw()` call, `test_xlsm_macro_preservation`
