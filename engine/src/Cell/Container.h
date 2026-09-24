@@ -217,7 +217,40 @@ enum CondFormatRuleType {
 	// (frecce/bandiere/valutazioni) -- corretto nel raggruppamento, non
 	// nella fedeltà visiva; nessun supporto per "reverse" (ordine icone
 	// invertito).
-	eCondIconSet
+	eCondIconSet,
+	// Famiglia ECMA-376 rimasta fuori scope fino ad ora ("Path to full
+	// Excel parity" Tier 3): riusa ConditionalFormatRule::ruleOperator
+	// per distinguere le 4 varianti invece di aggiungere un enum per
+	// ognuna, stesso principio gia' usato per eCondCellIsEqual sotto.
+	// containsText/notContainsText/beginsWith/endsWith: confronto
+	// testuale case-insensitive di ConditionalFormatRule::compareValue
+	// contro il testo corrente della cella (GetCellResult, come
+	// eCondCellIsEqual/eCondDuplicateValues) -- vedi
+	// CContainer::EvaluateConditionalFormatting.
+	eCondTextRule,
+	// containsBlanks/notContainsBlanks/containsErrors/notContainsErrors:
+	// anche questa famiglia riusa ruleOperator per le 4 varianti. A
+	// differenza di eCondTextRule sopra, non serve nessun valore di
+	// confronto: "vuota" e "errore" sono proprieta' della cella stessa
+	// (Value::fType == eNoData per vuota, eNumData+NaN per errore --
+	// stessa identica logica gia' usata da ISBLANK/ISERROR in
+	// Functions.logical.cpp, riletta li' invece di reinventata qui).
+	eCondBlankErrorRule,
+	// Primi/ultimi N valori (o N%) dell'intervallo (ECMA-376 "top10",
+	// il nome storico di Excel anche se N e' configurabile): come
+	// eCondColorScale/eCondDataBar/eCondIconSet, il risultato di ogni
+	// cella dipende dalle ALTRE celle dell'intervallo (due passate,
+	// vedi CContainer::EvaluateConditionalFormatting) -- non riusa
+	// colorScalePoints perche' non ci sono soglie cfvo da descrivere,
+	// solo un rango/percentuale e una direzione (ConditionalFormatRule::
+	// top10Rank/top10Percent/top10Bottom sotto).
+	eCondTop10,
+	// Sopra/sotto la media dell'intervallo (ECMA-376 "aboveAverage"):
+	// stesso schema a due passate di eCondTop10 sopra, ma la soglia e'
+	// la MEDIA aritmetica delle celle numeriche invece di un
+	// rango/percentuale (ConditionalFormatRule::belowAverage/
+	// equalAverage sotto per la direzione).
+	eCondAboveAverage
 };
 
 // Risultato per cella di una regola eCondIconSet (vedi sopra): quale
@@ -312,8 +345,40 @@ struct ConditionalFormatRule {
 	// commento su eCondIconSet sopra, colorScalePoints.size() e' la
 	// fonte di verita' per quello).
 	std::string iconSetStyle;
+	// Distingue le varianti dentro le famiglie che riusano un solo tipo
+	// (versione 8 dell'ASCD, vedi il commento su kASCDVersion in
+	// ui/src/AscdIO.cpp): per eCondCellIsEqual, 0-7 =
+	// equal/notEqual/greaterThan/lessThan/greaterThanOrEqual/
+	// lessThanOrEqual/between/notBetween (0 = il solo comportamento
+	// esistente prima di questa versione, cosi' ogni regola gia'
+	// salvata resta identica); per eCondTextRule, 0-3 =
+	// contains/notContains/beginsWith/endsWith; per
+	// eCondBlankErrorRule, 0-3 = containsBlanks/notContainsBlanks/
+	// containsErrors/notContainsErrors. Non significativo per gli
+	// altri tipi.
+	int8 ruleOperator;
+	// Solo per eCondCellIsEqual con ruleOperator == between/notBetween:
+	// il secondo limite (superiore). A differenza di compareValue,
+	// nessuna forma "riferimento di cella" per questo -- solo
+	// letterale, scelta di scope v1.
+	std::string compareValue2;
+	// Solo per eCondTop10: rango o percentuale (top10Percent decide
+	// quale) e direzione (top10Bottom = ultimi invece di primi).
+	bool top10Bottom;
+	bool top10Percent;
+	int32 top10Rank;
+	// Solo per eCondAboveAverage: belowAverage inverte la direzione
+	// (sotto invece di sopra), equalAverage include anche il caso di
+	// uguaglianza esatta alla media -- stesso vocabolario del vero
+	// attributo XLSX aboveAverage/equalAverage, mai esposto insieme
+	// nella UI nativa (vedi ConditionalFormatWindow) ma sempre
+	// interpretato correttamente in importazione.
+	bool belowAverage;
+	bool equalAverage;
 
-	ConditionalFormatRule() : type(eCondCellIsEqual), compareIsCellRef(false)
+	ConditionalFormatRule() : type(eCondCellIsEqual), compareIsCellRef(false),
+		ruleOperator(0), top10Bottom(false), top10Percent(false), top10Rank(10),
+		belowAverage(false), equalAverage(false)
 	{
 		bgColor.red = bgColor.green = bgColor.blue = bgColor.alpha = 255;
 		dataBarColor.red = 99; dataBarColor.green = 142; dataBarColor.blue = 198;

@@ -63,7 +63,7 @@ int main()
 	view->ExtendSelection(cell(1, 3)); // A1:A3
 
 	rgb_color red = { 255, 199, 206, 255 };
-	win->ApplyConditionalFormatToSelection(0 /* eCondCellIsEqual */, "Mancante", red);
+	win->ApplyConditionalFormatToSelection(0 /* eCondCellIsEqual */, "Mancante", "", 0, 10, false, false, false, red);
 
 	const std::vector<ConditionalFormatRule>& rules = doc->GetConditionalFormatRules();
 	Check(rules.size() == 1, "ApplyConditionalFormatToSelection aggiunge una regola");
@@ -86,7 +86,7 @@ int main()
 	view->SetSelection(cell(2, 1));
 	view->ExtendSelection(cell(2, 3)); // B1:B3
 	rgb_color yellow = { 255, 235, 156, 255 };
-	win->ApplyConditionalFormatToSelection(1 /* eCondDuplicateValues */, "", yellow);
+	win->ApplyConditionalFormatToSelection(1 /* eCondDuplicateValues */, "", "", 0, 10, false, false, false, yellow);
 	Check(doc->GetConditionalFormatRules().size() == 2,
 		"una seconda regola su un'altra selezione si aggiunge, non sostituisce la prima");
 
@@ -578,6 +578,263 @@ int main()
 
 		delete canvas;
 		doc5->Release();
+	}
+
+	// --- Path to full Excel parity, Tier 3: cellIs con gli operatori
+	// numerici diversi da "equal" (0), containsText/containsBlanks/
+	// containsErrors, top10 e aboveAverage -- qui via
+	// CContainer::EvaluateConditionalFormatting direttamente (map<cell,
+	// rgb_color>), non tramite pixel: il disegno vero per uno sfondo
+	// singolo e' gia' provato a fondo sopra per eCondCellIsEqual
+	// "equal", stessa identica strada di disegno per tutti i tipi
+	// nuovi (SheetView::DrawCellBand legge lo stesso
+	// EvaluateConditionalFormatting). ---
+	{
+		CContainer* doc8 = new CContainer(NULL, NULL);
+		TryToParseString("5", cell(1, 1), doc8, true);  // A1 = 5
+		TryToParseString("10", cell(1, 2), doc8, true); // A2 = 10
+		TryToParseString("15", cell(1, 3), doc8, true); // A3 = 15
+		TryToParseString("20", cell(1, 4), doc8, true); // A4 = 20
+		TryToParseString("25", cell(1, 5), doc8, true); // A5 = 25
+
+		ConditionalFormatRule rule;
+		rule.type = eCondCellIsEqual;
+		rule.ruleOperator = 2; // greaterThan
+		rule.compareValue = "15";
+		rule.bgColor = red;
+		rule.ranges.push_back(range(1, 1, 1, 5));
+		doc8->AddConditionalFormatRule(rule);
+
+		std::map<cell, rgb_color> result = doc8->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) == result.end(), "cellIs greaterThan 15: A1=5 non corrisponde");
+		Check(result.find(cell(1, 3)) == result.end(), "cellIs greaterThan 15: A3=15 non corrisponde (non e' >)");
+		Check(result.find(cell(1, 4)) != result.end(), "cellIs greaterThan 15: A4=20 corrisponde");
+		Check(result.find(cell(1, 5)) != result.end(), "cellIs greaterThan 15: A5=25 corrisponde");
+
+		doc8->ClearConditionalFormatRules();
+		ConditionalFormatRule between;
+		between.type = eCondCellIsEqual;
+		between.ruleOperator = 6; // between
+		between.compareValue = "10";
+		between.compareValue2 = "20";
+		between.bgColor = red;
+		between.ranges.push_back(range(1, 1, 1, 5));
+		doc8->AddConditionalFormatRule(between);
+		result = doc8->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) == result.end(), "cellIs between 10..20: A1=5 fuori dal limite inferiore");
+		Check(result.find(cell(1, 2)) != result.end(), "cellIs between 10..20: A2=10 e' il limite inferiore incluso");
+		Check(result.find(cell(1, 3)) != result.end(), "cellIs between 10..20: A3=15 e' dentro");
+		Check(result.find(cell(1, 4)) != result.end(), "cellIs between 10..20: A4=20 e' il limite superiore incluso");
+		Check(result.find(cell(1, 5)) == result.end(), "cellIs between 10..20: A5=25 fuori dal limite superiore");
+
+		doc8->ClearConditionalFormatRules();
+		ConditionalFormatRule notBetween;
+		notBetween.type = eCondCellIsEqual;
+		notBetween.ruleOperator = 7; // notBetween
+		notBetween.compareValue = "10";
+		notBetween.compareValue2 = "20";
+		notBetween.bgColor = red;
+		notBetween.ranges.push_back(range(1, 1, 1, 5));
+		doc8->AddConditionalFormatRule(notBetween);
+		result = doc8->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) != result.end(), "cellIs notBetween 10..20: A1=5 e' fuori, quindi corrisponde");
+		Check(result.find(cell(1, 3)) == result.end(), "cellIs notBetween 10..20: A3=15 e' dentro, quindi non corrisponde");
+		Check(result.find(cell(1, 5)) != result.end(), "cellIs notBetween 10..20: A5=25 e' fuori, quindi corrisponde");
+
+		doc8->Release();
+	}
+
+	{
+		CContainer* doc9 = new CContainer(NULL, NULL);
+		TryToParseString("Rosso Mela", cell(1, 1), doc9, true);
+		TryToParseString("Verde Lime", cell(1, 2), doc9, true);
+		TryToParseString("Blu Cielo", cell(1, 3), doc9, true);
+
+		ConditionalFormatRule contains;
+		contains.type = eCondTextRule;
+		contains.ruleOperator = 0; // contains, case-insensitive
+		contains.compareValue = "rosso";
+		contains.bgColor = red;
+		contains.ranges.push_back(range(1, 1, 1, 3));
+		doc9->AddConditionalFormatRule(contains);
+		std::map<cell, rgb_color> result = doc9->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) != result.end(), "containsText \"rosso\" trova \"Rosso Mela\" (case-insensitive)");
+		Check(result.find(cell(1, 2)) == result.end(), "containsText \"rosso\" non trova \"Verde Lime\"");
+
+		doc9->ClearConditionalFormatRules();
+		ConditionalFormatRule beginsWith;
+		beginsWith.type = eCondTextRule;
+		beginsWith.ruleOperator = 2; // beginsWith
+		beginsWith.compareValue = "Verde";
+		beginsWith.bgColor = red;
+		beginsWith.ranges.push_back(range(1, 1, 1, 3));
+		doc9->AddConditionalFormatRule(beginsWith);
+		result = doc9->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 2)) != result.end(), "beginsWith \"Verde\" trova \"Verde Lime\"");
+		Check(result.find(cell(1, 1)) == result.end(), "beginsWith \"Verde\" non trova \"Rosso Mela\"");
+
+		doc9->ClearConditionalFormatRules();
+		ConditionalFormatRule endsWith;
+		endsWith.type = eCondTextRule;
+		endsWith.ruleOperator = 3; // endsWith
+		endsWith.compareValue = "Cielo";
+		endsWith.bgColor = red;
+		endsWith.ranges.push_back(range(1, 1, 1, 3));
+		doc9->AddConditionalFormatRule(endsWith);
+		result = doc9->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 3)) != result.end(), "endsWith \"Cielo\" trova \"Blu Cielo\"");
+		Check(result.find(cell(1, 1)) == result.end(), "endsWith \"Cielo\" non trova \"Rosso Mela\"");
+
+		doc9->ClearConditionalFormatRules();
+		ConditionalFormatRule notContains;
+		notContains.type = eCondTextRule;
+		notContains.ruleOperator = 1; // notContains
+		notContains.compareValue = "rosso";
+		notContains.bgColor = red;
+		notContains.ranges.push_back(range(1, 1, 1, 3));
+		doc9->AddConditionalFormatRule(notContains);
+		result = doc9->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) == result.end(), "notContainsText \"rosso\": \"Rosso Mela\" non corrisponde");
+		Check(result.find(cell(1, 2)) != result.end(), "notContainsText \"rosso\": \"Verde Lime\" corrisponde");
+
+		doc9->Release();
+	}
+
+	{
+		CContainer* doc10 = new CContainer(NULL, NULL);
+		TryToParseString("valore", cell(1, 1), doc10, true); // A1, non vuota
+		// A2 resta vuota davvero (mai scritta).
+		TryToParseString("=1/0", cell(1, 3), doc10, true);   // A3, errore
+
+		ConditionalFormatRule blanks;
+		blanks.type = eCondBlankErrorRule;
+		blanks.ruleOperator = 0; // containsBlanks
+		blanks.bgColor = red;
+		blanks.ranges.push_back(range(1, 1, 1, 3));
+		doc10->AddConditionalFormatRule(blanks);
+		std::map<cell, rgb_color> result = doc10->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) == result.end(), "containsBlanks: A1 (valore) non e' vuota");
+		Check(result.find(cell(1, 2)) != result.end(), "containsBlanks: A2 (mai scritta) e' vuota");
+
+		doc10->ClearConditionalFormatRules();
+		ConditionalFormatRule notBlanks;
+		notBlanks.type = eCondBlankErrorRule;
+		notBlanks.ruleOperator = 1; // notContainsBlanks
+		notBlanks.bgColor = red;
+		notBlanks.ranges.push_back(range(1, 1, 1, 3));
+		doc10->AddConditionalFormatRule(notBlanks);
+		result = doc10->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) != result.end(), "notContainsBlanks: A1 (valore) corrisponde");
+		Check(result.find(cell(1, 2)) == result.end(), "notContainsBlanks: A2 (vuota) non corrisponde");
+
+		doc10->ClearConditionalFormatRules();
+		ConditionalFormatRule errors;
+		errors.type = eCondBlankErrorRule;
+		errors.ruleOperator = 2; // containsErrors
+		errors.bgColor = red;
+		errors.ranges.push_back(range(1, 1, 1, 3));
+		doc10->AddConditionalFormatRule(errors);
+		result = doc10->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 3)) != result.end(), "containsErrors: A3 (1/0) e' un errore");
+		Check(result.find(cell(1, 1)) == result.end(), "containsErrors: A1 (valore) non e' un errore");
+
+		doc10->ClearConditionalFormatRules();
+		ConditionalFormatRule notErrors;
+		notErrors.type = eCondBlankErrorRule;
+		notErrors.ruleOperator = 3; // notContainsErrors
+		notErrors.bgColor = red;
+		notErrors.ranges.push_back(range(1, 1, 1, 3));
+		doc10->AddConditionalFormatRule(notErrors);
+		result = doc10->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) != result.end(), "notContainsErrors: A1 (valore) corrisponde");
+		Check(result.find(cell(1, 3)) == result.end(), "notContainsErrors: A3 (errore) non corrisponde");
+
+		doc10->Release();
+	}
+
+	{
+		// 10 valori: 10,20,...,100 -- primi 3 = {80,90,100}, ultimi 3 =
+		// {10,20,30}, primi 20% (2 valori) = {90,100}.
+		CContainer* doc11 = new CContainer(NULL, NULL);
+		for (int r = 1; r <= 10; r++)
+		{
+			char buf[8];
+			snprintf(buf, sizeof(buf), "%d", r * 10);
+			TryToParseString(buf, cell(1, r), doc11, true);
+		}
+
+		ConditionalFormatRule top3;
+		top3.type = eCondTop10;
+		top3.top10Rank = 3;
+		top3.bgColor = red;
+		top3.ranges.push_back(range(1, 1, 1, 10));
+		doc11->AddConditionalFormatRule(top3);
+		std::map<cell, rgb_color> result = doc11->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 10)) != result.end(), "top10 rank=3: A10=100 e' fra i primi 3");
+		Check(result.find(cell(1, 8)) != result.end(), "top10 rank=3: A8=80 e' fra i primi 3");
+		Check(result.find(cell(1, 7)) == result.end(), "top10 rank=3: A7=70 non e' fra i primi 3");
+
+		doc11->ClearConditionalFormatRules();
+		ConditionalFormatRule bottom3;
+		bottom3.type = eCondTop10;
+		bottom3.top10Rank = 3;
+		bottom3.top10Bottom = true;
+		bottom3.bgColor = red;
+		bottom3.ranges.push_back(range(1, 1, 1, 10));
+		doc11->AddConditionalFormatRule(bottom3);
+		result = doc11->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) != result.end(), "top10 bottom rank=3: A1=10 e' fra gli ultimi 3");
+		Check(result.find(cell(1, 3)) != result.end(), "top10 bottom rank=3: A3=30 e' fra gli ultimi 3");
+		Check(result.find(cell(1, 4)) == result.end(), "top10 bottom rank=3: A4=40 non e' fra gli ultimi 3");
+
+		doc11->ClearConditionalFormatRules();
+		ConditionalFormatRule top20pct;
+		top20pct.type = eCondTop10;
+		top20pct.top10Rank = 20;
+		top20pct.top10Percent = true;
+		top20pct.bgColor = red;
+		top20pct.ranges.push_back(range(1, 1, 1, 10));
+		doc11->AddConditionalFormatRule(top20pct);
+		result = doc11->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 10)) != result.end(), "top10 20%: A10=100 e' nel 20% superiore (2 valori su 10)");
+		Check(result.find(cell(1, 9)) != result.end(), "top10 20%: A9=90 e' nel 20% superiore");
+		Check(result.find(cell(1, 8)) == result.end(), "top10 20%: A8=80 non e' nel 20% superiore");
+
+		doc11->Release();
+	}
+
+	{
+		// 5 valori: 10,20,30,40,50 -- media 30. Sopra: 40,50. Sotto: 10,20.
+		CContainer* doc12 = new CContainer(NULL, NULL);
+		TryToParseString("10", cell(1, 1), doc12, true);
+		TryToParseString("20", cell(1, 2), doc12, true);
+		TryToParseString("30", cell(1, 3), doc12, true);
+		TryToParseString("40", cell(1, 4), doc12, true);
+		TryToParseString("50", cell(1, 5), doc12, true);
+
+		ConditionalFormatRule above;
+		above.type = eCondAboveAverage;
+		above.bgColor = red;
+		above.ranges.push_back(range(1, 1, 1, 5));
+		doc12->AddConditionalFormatRule(above);
+		std::map<cell, rgb_color> result = doc12->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 4)) != result.end(), "aboveAverage: A4=40 e' sopra la media (30)");
+		Check(result.find(cell(1, 3)) == result.end(), "aboveAverage: A3=30 (la media stessa) non e' sopra");
+		Check(result.find(cell(1, 1)) == result.end(), "aboveAverage: A1=10 non e' sopra");
+
+		doc12->ClearConditionalFormatRules();
+		ConditionalFormatRule below;
+		below.type = eCondAboveAverage;
+		below.belowAverage = true;
+		below.bgColor = red;
+		below.ranges.push_back(range(1, 1, 1, 5));
+		doc12->AddConditionalFormatRule(below);
+		result = doc12->EvaluateConditionalFormatting();
+		Check(result.find(cell(1, 1)) != result.end(), "belowAverage: A1=10 e' sotto la media (30)");
+		Check(result.find(cell(1, 3)) == result.end(), "belowAverage: A3=30 (la media stessa) non e' sotto");
+		Check(result.find(cell(1, 5)) == result.end(), "belowAverage: A5=50 non e' sotto");
+
+		doc12->Release();
 	}
 
 	win->Lock();

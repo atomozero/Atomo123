@@ -79,8 +79,12 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // motivo, duplicato qui per lo stesso motivo di WriteASCD sotto).
 // Versione 6 (era 5): aggiunge il colore della barra dei dati, stesso
 // motivo duplicato ancora da ui/src/AscdIO.cpp. Versione 7 (era 6):
-// aggiunge il nome dello stile dell'icon set, stesso motivo.
-static const int32 kASCDVersion = 7;
+// aggiunge il nome dello stile dell'icon set, stesso motivo. Versione 8
+// (era 7): aggiunge ruleOperator/compareValue2/top10Bottom/
+// top10Percent/top10Rank/belowAverage/equalAverage (Path to full
+// Excel parity, Tier 3), stesso motivo duplicato ancora da
+// ui/src/AscdIO.cpp.
+static const int32 kASCDVersion = 8;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // Formato "cartella di lavoro" multi-foglio (Fase 9): duplicato da
 // ui/src/AscdIO.h/.cpp (magic "ASCB", conteggio fogli, poi per
@@ -939,6 +943,33 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 				return B_IO_ERROR;
 			if (iconStyleLen > 0 && dest->Write(rule.iconSetStyle.data(), iconStyleLen) != iconStyleLen)
 				return B_IO_ERROR;
+
+			// Operatore/secondo limite/top10/aboveAverage (versione 8,
+			// vedi il commento su kASCDVersion), stesso formato di
+			// ui/src/AscdIO.cpp.
+			int8 ruleOperator = rule.ruleOperator;
+			if (dest->Write(&ruleOperator, sizeof(ruleOperator)) != (ssize_t)sizeof(ruleOperator))
+				return B_IO_ERROR;
+
+			int32 value2Len = (int32)rule.compareValue2.size();
+			if (dest->Write(&value2Len, sizeof(value2Len)) != (ssize_t)sizeof(value2Len))
+				return B_IO_ERROR;
+			if (value2Len > 0 && dest->Write(rule.compareValue2.data(), value2Len) != value2Len)
+				return B_IO_ERROR;
+
+			int8 top10Bottom = rule.top10Bottom ? 1 : 0;
+			int8 top10Percent = rule.top10Percent ? 1 : 0;
+			int32 top10Rank = rule.top10Rank;
+			if (dest->Write(&top10Bottom, sizeof(top10Bottom)) != (ssize_t)sizeof(top10Bottom)
+				|| dest->Write(&top10Percent, sizeof(top10Percent)) != (ssize_t)sizeof(top10Percent)
+				|| dest->Write(&top10Rank, sizeof(top10Rank)) != (ssize_t)sizeof(top10Rank))
+				return B_IO_ERROR;
+
+			int8 belowAverage = rule.belowAverage ? 1 : 0;
+			int8 equalAverage = rule.equalAverage ? 1 : 0;
+			if (dest->Write(&belowAverage, sizeof(belowAverage)) != (ssize_t)sizeof(belowAverage)
+				|| dest->Write(&equalAverage, sizeof(equalAverage)) != (ssize_t)sizeof(equalAverage))
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1436,12 +1467,12 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		return B_BAD_DATA;
 	// versioni 1, 2 (byte "kind" per cella), 3 (punti di scala di
 	// colori), 4 (riferimento di cella per il confronto), 5 (formula
-	// "expression"), 6 (colore della barra dei dati) e 7 (nome dello
-	// stile dell'icon set, vedi WriteASCD sopra e il commento su
-	// kASCDVersion) restano tutte leggibili -- stesso motivo di
-	// LoadASCD in ui/src/AscdIO.cpp.
+	// "expression"), 6 (colore della barra dei dati), 7 (nome dello
+	// stile dell'icon set) e 8 (operatori cellIs/top10/aboveAverage,
+	// vedi WriteASCD sopra e il commento su kASCDVersion) restano tutte
+	// leggibili -- stesso motivo di LoadASCD in ui/src/AscdIO.cpp.
 	if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5
-			&& version != 6 && version != kASCDVersion)
+			&& version != 6 && version != 7 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -2237,6 +2268,51 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					}
 					else
 						rule.iconSetStyle.clear();
+				}
+
+				// Operatore/secondo limite/top10/aboveAverage: solo un
+				// file versione 8+ ha scritto questi byte -- stesso
+				// motivo di LoadASCD in ui/src/AscdIO.cpp, un file piu'
+				// vecchio lascia i default del costruttore
+				// (ruleOperator 0 = "equal", il solo comportamento che
+				// esisteva prima di questa versione).
+				if (version >= 8)
+				{
+					int8 ruleOperator;
+					if (source->Read(&ruleOperator, sizeof(ruleOperator)) != (ssize_t)sizeof(ruleOperator))
+						return B_BAD_DATA;
+					rule.ruleOperator = ruleOperator;
+
+					int32 value2Len;
+					if (source->Read(&value2Len, sizeof(value2Len)) != (ssize_t)sizeof(value2Len))
+						return B_BAD_DATA;
+					if (value2Len < 0 || value2Len > 4096)
+						return B_BAD_DATA;
+					if (value2Len > 0)
+					{
+						rule.compareValue2.resize(value2Len);
+						if (source->Read(&rule.compareValue2[0], value2Len) != value2Len)
+							return B_BAD_DATA;
+					}
+					else
+						rule.compareValue2.clear();
+
+					int8 top10Bottom, top10Percent;
+					int32 top10Rank;
+					if (source->Read(&top10Bottom, sizeof(top10Bottom)) != (ssize_t)sizeof(top10Bottom)
+						|| source->Read(&top10Percent, sizeof(top10Percent)) != (ssize_t)sizeof(top10Percent)
+						|| source->Read(&top10Rank, sizeof(top10Rank)) != (ssize_t)sizeof(top10Rank))
+						return B_BAD_DATA;
+					rule.top10Bottom = top10Bottom != 0;
+					rule.top10Percent = top10Percent != 0;
+					rule.top10Rank = top10Rank;
+
+					int8 belowAverage, equalAverage;
+					if (source->Read(&belowAverage, sizeof(belowAverage)) != (ssize_t)sizeof(belowAverage)
+						|| source->Read(&equalAverage, sizeof(equalAverage)) != (ssize_t)sizeof(equalAverage))
+						return B_BAD_DATA;
+					rule.belowAverage = belowAverage != 0;
+					rule.equalAverage = equalAverage != 0;
 				}
 
 				doc->AddConditionalFormatRule(rule);
@@ -3341,10 +3417,11 @@ static std::string BuildStylesXml(CContainer* doc, std::map<std::string, int>* o
 	}
 	xml += "</cellXfs>\n";
 
-	// <dxfs> (formattazione condizionale): solo tre dei sei tipi di
-	// regola usano un dxfId (cellIs/duplicateValues/expression, gli
-	// unici tre che scattano su rule.bgColor -- colorScale/dataBar/
-	// iconSet restano sempre inline dentro il proprio <cfRule>, vedi
+	// <dxfs> (formattazione condizionale): solo i tipi che scattano su
+	// rule.bgColor usano un dxfId -- cellIs/duplicateValues/expression
+	// (i tre originali) piu', dal "Path to full Excel parity" Tier 3,
+	// textRule/blankErrorRule/top10/aboveAverage (tutti "per cella" o
+	// "per soglia", mai inline come colorScale/dataBar/iconSet, vedi
 	// BuildConditionalFormattingXml sotto). Deduplica per colore grezzo
 	// (un dxf qui e' solo UN colore di sfondo, molto piu' semplice del
 	// dedup CellStyle sopra) cosi' N regole con lo stesso colore
@@ -3360,7 +3437,9 @@ static std::string BuildStylesXml(CContainer* doc, std::map<std::string, int>* o
 		{
 			const ConditionalFormatRule& rule = condRules[i];
 			if (rule.type != eCondCellIsEqual && rule.type != eCondDuplicateValues
-					&& rule.type != eCondExpression)
+					&& rule.type != eCondExpression && rule.type != eCondTextRule
+					&& rule.type != eCondBlankErrorRule && rule.type != eCondTop10
+					&& rule.type != eCondAboveAverage)
 				continue;
 
 			std::string colorKey(reinterpret_cast<const char*>(&rule.bgColor), sizeof(rgb_color));
@@ -4141,10 +4220,12 @@ static std::string PlainRangeRef(const range& r)
 }
 
 // Esportazione della formattazione condizionale: simmetrica a
-// ApplyConditionalFormatting (importazione, vedi sopra) per tutti e sei
-// i tipi di regola che questo motore modella. "dxfIndexForRule" viene
-// da BuildStylesXml (indice regola -> indice dxf, solo per i tre tipi
-// che ne usano uno). Un blocco <conditionalFormatting sqref="..."> per
+// ApplyConditionalFormatting (importazione, vedi sopra) per tutti i
+// tipi di regola che questo motore modella (i 6 originali piu' i 4 del
+// "Path to full Excel parity" Tier 3: textRule/blankErrorRule/top10/
+// aboveAverage). "dxfIndexForRule" viene da BuildStylesXml (indice
+// regola -> indice dxf, solo per i tipi che ne usano uno). Un blocco
+// <conditionalFormatting sqref="..."> per
 // regola (non raggruppate anche quando condividono lo stesso
 // intervallo) -- piu' semplice e comunque valido, corrisponde a come
 // appare spesso un vero file Excel quando le regole sono state
@@ -4180,9 +4261,16 @@ static std::string BuildConditionalFormattingXml(CContainer* doc,
 
 		if (rule.type == eCondCellIsEqual)
 		{
+			// Tabella inversa di quella in ApplyConditionalFormatting
+			// (ruleOperator -> nome operatore XLSX).
+			static const char* kCellIsOpNames[8] = {
+				"equal", "notEqual", "greaterThan", "lessThan",
+				"greaterThanOrEqual", "lessThanOrEqual", "between", "notBetween"
+			};
+			int8 op = (rule.ruleOperator >= 0 && rule.ruleOperator < 8) ? rule.ruleOperator : 0;
 			snprintf(buf, sizeof(buf),
-				"<cfRule type=\"cellIs\" dxfId=\"%d\" priority=\"%d\" operator=\"equal\">",
-				dxfId, priority);
+				"<cfRule type=\"cellIs\" dxfId=\"%d\" priority=\"%d\" operator=\"%s\">",
+				dxfId, priority, kCellIsOpNames[op]);
 			xml += buf;
 			xml += "<formula>";
 			if (rule.compareIsCellRef)
@@ -4193,7 +4281,18 @@ static std::string BuildConditionalFormattingXml(CContainer* doc,
 				AppendXmlEscaped(xml, rule.compareValue.c_str());
 				xml += "&quot;";
 			}
-			xml += "</formula></cfRule>";
+			xml += "</formula>";
+			// between/notBetween (ECMA-376 18.3.1.10): un secondo
+			// <formula> fratello per il limite superiore, sempre
+			// letterale (vedi il commento su
+			// ConditionalFormatRule::compareValue2 in Container.h).
+			if (op == 6 || op == 7)
+			{
+				xml += "<formula2>&quot;";
+				AppendXmlEscaped(xml, rule.compareValue2.c_str());
+				xml += "&quot;</formula2>";
+			}
+			xml += "</cfRule>";
 		}
 		else if (rule.type == eCondDuplicateValues)
 		{
@@ -4277,6 +4376,99 @@ static std::string BuildConditionalFormattingXml(CContainer* doc,
 				xml += "\"/>";
 			}
 			xml += "</iconSet></cfRule>";
+		}
+		else if (rule.type == eCondTextRule)
+		{
+			// containsText/notContainsText/beginsWith/endsWith
+			// (ECMA-376 18.3.1.10): l'attributo text="..." e' la fonte
+			// di verita' per questa app in importazione (vedi
+			// ApplyConditionalFormatting), ma un <formula> equivalente
+			// va comunque scritto per l'interoperabilita' con Excel/
+			// LibreOffice, che non leggono affatto text= per decidere
+			// il match -- stessa forma SEARCH/LEFT/RIGHT che scrivono
+			// loro stessi.
+			static const char* kTextOpNames[4] = {
+				"containsText", "notContainsText", "beginsWith", "endsWith"
+			};
+			int8 op = (rule.ruleOperator >= 0 && rule.ruleOperator < 4) ? rule.ruleOperator : 0;
+			std::string anchor = PlainCellRef(rule.ranges.empty() ? 0 : rule.ranges[0].left,
+				rule.ranges.empty() ? 0 : rule.ranges[0].top);
+			xml += "<cfRule type=\"";
+			xml += kTextOpNames[op];
+			snprintf(buf, sizeof(buf), "\" dxfId=\"%d\" priority=\"%d\" operator=\"", dxfId, priority);
+			xml += buf;
+			xml += kTextOpNames[op];
+			xml += "\" text=\"";
+			AppendXmlEscaped(xml, rule.compareValue.c_str());
+			xml += "\"><formula>";
+			switch (op)
+			{
+				case 0: // containsText
+					xml += "NOT(ISERROR(SEARCH(&quot;";
+					AppendXmlEscaped(xml, rule.compareValue.c_str());
+					xml += "&quot;," + anchor + ")))";
+					break;
+				case 1: // notContainsText
+					xml += "ISERROR(SEARCH(&quot;";
+					AppendXmlEscaped(xml, rule.compareValue.c_str());
+					xml += "&quot;," + anchor + "))";
+					break;
+				case 2: // beginsWith
+					snprintf(buf, sizeof(buf), "LEFT(%s,%d)=&quot;", anchor.c_str(),
+						(int)rule.compareValue.size());
+					xml += buf;
+					AppendXmlEscaped(xml, rule.compareValue.c_str());
+					xml += "&quot;";
+					break;
+				case 3: // endsWith
+					snprintf(buf, sizeof(buf), "RIGHT(%s,%d)=&quot;", anchor.c_str(),
+						(int)rule.compareValue.size());
+					xml += buf;
+					AppendXmlEscaped(xml, rule.compareValue.c_str());
+					xml += "&quot;";
+					break;
+			}
+			xml += "</formula></cfRule>";
+		}
+		else if (rule.type == eCondBlankErrorRule)
+		{
+			// containsBlanks/notContainsBlanks/containsErrors/
+			// notContainsErrors: nessun attributo dedicato in ECMA-376,
+			// solo la formula equivalente (stessa forma che scrive
+			// Excel stesso: LEN(TRIM(...))=0 per vuota, ISERROR(...)
+			// per errore).
+			static const char* kBlankErrOpNames[4] = {
+				"containsBlanks", "notContainsBlanks", "containsErrors", "notContainsErrors"
+			};
+			int8 op = (rule.ruleOperator >= 0 && rule.ruleOperator < 4) ? rule.ruleOperator : 0;
+			std::string anchor = PlainCellRef(rule.ranges.empty() ? 0 : rule.ranges[0].left,
+				rule.ranges.empty() ? 0 : rule.ranges[0].top);
+			snprintf(buf, sizeof(buf), "<cfRule type=\"%s\" dxfId=\"%d\" priority=\"%d\"><formula>",
+				kBlankErrOpNames[op], dxfId, priority);
+			xml += buf;
+			switch (op)
+			{
+				case 0: xml += "LEN(TRIM(" + anchor + "))=0"; break;
+				case 1: xml += "LEN(TRIM(" + anchor + "))&gt;0"; break;
+				case 2: xml += "ISERROR(" + anchor + ")"; break;
+				case 3: xml += "NOT(ISERROR(" + anchor + "))"; break;
+			}
+			xml += "</formula></cfRule>";
+		}
+		else if (rule.type == eCondTop10)
+		{
+			snprintf(buf, sizeof(buf),
+				"<cfRule type=\"top10\" dxfId=\"%d\" priority=\"%d\" rank=\"%d\"%s%s/>",
+				dxfId, priority, (int)rule.top10Rank,
+				rule.top10Percent ? " percent=\"1\"" : "", rule.top10Bottom ? " bottom=\"1\"" : "");
+			xml += buf;
+		}
+		else if (rule.type == eCondAboveAverage)
+		{
+			snprintf(buf, sizeof(buf),
+				"<cfRule type=\"aboveAverage\" dxfId=\"%d\" priority=\"%d\" aboveAverage=\"%d\" equalAverage=\"%d\"/>",
+				dxfId, priority, rule.belowAverage ? 0 : 1, rule.equalAverage ? 1 : 0);
+			xml += buf;
 		}
 
 		xml += "</conditionalFormatting>";
@@ -6688,8 +6880,8 @@ struct ColorScaleCfvo {
 struct CondFormatRule {
 	std::vector<range> ranges; // da sqref, uno o piu' intervalli/celle separati da spazio
 	std::string type;          // "cellIs", "duplicateValues", "colorScale", ...
-	std::string operatorAttr;  // solo per "cellIs": "equal" e' l'unico gestito
-	std::string formula;       // solo per "cellIs"
+	std::string operatorAttr;  // per "cellIs": uno degli 8 operatori ECMA-376
+	std::string formula;       // per "cellIs" (limite inferiore per between/notBetween)
 	int dxfId;
 	// Solo per type == "colorScale": <cfvo>/<color> sono scritti IN
 	// LINEA dentro <colorScale>, non tramite dxfId come cellIs/
@@ -6705,6 +6897,25 @@ struct CondFormatRule {
 	// csCfvos.size(), riusato identico a colorScale/dataBar per le
 	// soglie).
 	std::string iconSetStyle;
+	// Solo per "cellIs" con operator="between"/"notBetween" (ECMA-376
+	// 18.3.1.10, l'UNICA forma con due <formula> fratelli invece di uno
+	// solo): il limite superiore. Vuoto per ogni altro operatore/tipo.
+	std::string formula2;
+	// Solo per "top10": attributi diretti su <cfRule>, niente
+	// <formula>/<cfvo> (rank di default 10 se assente, per ECMA-376).
+	int rank;
+	bool percent;
+	bool bottom;
+	// Solo per "aboveAverage": idem, attributi diretti su <cfRule>.
+	bool aboveAverage;
+	bool equalAverage;
+	// Solo per containsText/notContainsText/beginsWith/endsWith:
+	// l'attributo text="..." di <cfRule>, piu' affidabile che
+	// ricavarlo dal testo della formula SEARCH/LEFT/RIGHT.
+	std::string text;
+
+	CondFormatRule() : dxfId(-1), rank(10), percent(false), bottom(false),
+		aboveAverage(true), equalAverage(false) {}
 };
 
 // Un <hyperlink ref="A1" r:id="rIdX"/> (o, per un collegamento INTERNO
@@ -6824,6 +7035,13 @@ struct SheetContext {
 	CondFormatRule currentRule;
 	bool inCondFormula;
 	std::string condFormula;
+	// <formula2>, solo dentro un <cfRule> (limite superiore di
+	// operator="between"/"notBetween", ECMA-376 18.3.1.10) -- stato a
+	// parte da inValidationFormula2/currentValidation.formula2 sopra,
+	// che e' invece per <dataValidation>, un elemento completamente
+	// diverso che riusa lo stesso nome di tag.
+	bool inCondFormula2;
+	std::string condFormula2;
 	// Stato per <colorScale>/<cfvo>/<color>, figli di <cfRule
 	// type="colorScale"> (Fase 33/A punto 6) -- <color> qui non ha
 	// nessun altro gestore in questo parser (a differenza di
@@ -7234,12 +7452,36 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 				ctx->currentRule.operatorAttr = atts[i + 1];
 			else if (strcmp(atts[i], "dxfId") == 0)
 				ctx->currentRule.dxfId = atoi(atts[i + 1]);
+			// top10 (ECMA-376 18.3.1.32): rank/percent/bottom sono
+			// attributi diretti su <cfRule>, niente <formula>.
+			else if (strcmp(atts[i], "rank") == 0)
+				ctx->currentRule.rank = atoi(atts[i + 1]);
+			else if (strcmp(atts[i], "percent") == 0)
+				ctx->currentRule.percent = XlsxAttrIsTrue(atts[i + 1]);
+			else if (strcmp(atts[i], "bottom") == 0)
+				ctx->currentRule.bottom = XlsxAttrIsTrue(atts[i + 1]);
+			// aboveAverage (ECMA-376 18.3.1.1): idem, attributi diretti.
+			else if (strcmp(atts[i], "aboveAverage") == 0)
+				ctx->currentRule.aboveAverage = XlsxAttrIsTrue(atts[i + 1]);
+			else if (strcmp(atts[i], "equalAverage") == 0)
+				ctx->currentRule.equalAverage = XlsxAttrIsTrue(atts[i + 1]);
+			// containsText/notContainsText/beginsWith/endsWith
+			// (ECMA-376 18.3.1.10): l'attributo text="..." e' piu'
+			// affidabile della formula SEARCH/LEFT/RIGHT che lo
+			// accompagna.
+			else if (strcmp(atts[i], "text") == 0)
+				ctx->currentRule.text = atts[i + 1];
 		}
 	}
 	else if (strcmp(name, "formula") == 0 && ctx->inCfRule)
 	{
 		ctx->inCondFormula = true;
 		ctx->condFormula.clear();
+	}
+	else if (strcmp(name, "formula2") == 0 && ctx->inCfRule)
+	{
+		ctx->inCondFormula2 = true;
+		ctx->condFormula2.clear();
 	}
 	// <colorScale><cfvo type="min"/><cfvo type="percentile" val="50"/>
 	// <cfvo type="max"/><color rgb="..."/><color rgb="..."/>
@@ -7458,6 +7700,11 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 	{
 		ctx->inCondFormula = false;
 		ctx->currentRule.formula = ctx->condFormula;
+	}
+	else if (strcmp(name, "formula2") == 0 && ctx->inCondFormula2)
+	{
+		ctx->inCondFormula2 = false;
+		ctx->currentRule.formula2 = ctx->condFormula2;
 	}
 	else if (strcmp(name, "colorScale") == 0 && ctx->inColorScale)
 		ctx->inColorScale = false;
@@ -7707,6 +7954,8 @@ static void XMLCALL SheetChars(void* userData, const char* s, int len)
 		ctx->formula.append(s, len);
 	else if (ctx->inCondFormula)
 		ctx->condFormula.append(s, len);
+	else if (ctx->inCondFormula2)
+		ctx->condFormula2.append(s, len);
 	else if (ctx->inValidationFormula1)
 		ctx->currentValidation.formula1.append(s, len);
 	else if (ctx->inValidationFormula2)
@@ -7765,6 +8014,7 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.inFormula = false;
 	ctx.inCfRule = false;
 	ctx.inCondFormula = false;
+	ctx.inCondFormula2 = false;
 	ctx.inColorScale = false;
 	ctx.inDataValidation = false;
 	ctx.inValidationFormula1 = false;
@@ -8310,25 +8560,28 @@ static bool IsCellReferenceFormula(const std::string& formula, int& outCol, int&
 // (CContainer::AddConditionalFormatRule), rivalutata da SheetView::
 // Draw a ogni ridisegno contro i valori CORRENTI (vedi
 // CContainer::EvaluateConditionalFormatting in Container.styles.cpp).
-// Tipi di regola gestiti: "cellIs"/"equal" (confronto con un
-// letterale o un riferimento di cella), "duplicateValues" (celle il
-// cui valore compare piu' di una volta nello stesso intervallo, Fase
-// 13), "expression" (formula booleana arbitraria con riferimenti
-// relativi), "colorScale" (Fase 33/A punto 6), "dataBar" (Tier 3, Fase
-// B) e "iconSet" (Tier 3, Fase C) -- questi ultimi tre, a differenza
-// dei primi tre, non usano dxfId: soglie (e per colorScale/dataBar,
-// colori) sono scritti in linea dentro <colorScale>/<dataBar>/
-// <iconSet>, raccolti da ParseSheet in CondFormatRule::csCfvos/
-// csColors (stesso accumulatore per tutti e tre, vedi il commento sul
-// gestore di <iconSet> in ParseSheet -- csColors resta vuoto per
-// iconSet, che non ne scrive mai). Gli altri tipi ECMA-376
-// (containsText, top10...) restano ignorati in sicurezza, nessuna
-// regola aggiunta -- richiederebbero un vero motore di valutazione
-// formule contro un valore ipotetico, fuori scope.
-// Per cellIs/duplicateValues, solo il colore di SFONDO del dxf (non
-// anche il colore del testo): ConditionalFormatRule dell'engine porta
-// un solo colore per quei due tipi, vedi il commento su quello struct
-// in Container.h.
+// Tipi di regola gestiti: "cellIs" con tutti gli 8 operatori ECMA-376
+// (confronto con un letterale o, solo per il limite inferiore, un
+// riferimento di cella), "duplicateValues" (celle il cui valore
+// compare piu' di una volta nello stesso intervallo, Fase 13),
+// "expression" (formula booleana arbitraria con riferimenti relativi),
+// "colorScale" (Fase 33/A punto 6), "dataBar" (Tier 3, Fase B) e
+// "iconSet" (Tier 3, Fase C) -- questi ultimi tre, a differenza degli
+// altri, non usano dxfId: soglie (e per colorScale/dataBar, colori)
+// sono scritti in linea dentro <colorScale>/<dataBar>/<iconSet>,
+// raccolti da ParseSheet in CondFormatRule::csCfvos/csColors (stesso
+// accumulatore per tutti e tre, vedi il commento sul gestore di
+// <iconSet> in ParseSheet -- csColors resta vuoto per iconSet, che non
+// ne scrive mai). Path to full Excel parity, Tier 3: anche
+// containsText/notContainsText/beginsWith/endsWith, containsBlanks/
+// notContainsBlanks/containsErrors/notContainsErrors, top10 e
+// aboveAverage sono ora gestiti (tutti dxf-based, come cellIs). Nessun
+// altro tipo ECMA-376 (es. timePeriod) e' modellato -- richiederebbe
+// un vero motore di calendario, fuori scope.
+// Per cellIs/duplicateValues/le nuove famiglie, solo il colore di
+// SFONDO del dxf (non anche il colore del testo): ConditionalFormatRule
+// dell'engine porta un solo colore per questi tipi, vedi il commento
+// su quello struct in Container.h.
 static void ApplyConditionalFormatting(CContainer* doc,
 	const std::vector<CondFormatRule>& rules, const std::vector<DxfInfo>& dxfs)
 {
@@ -8423,9 +8676,24 @@ static void ApplyConditionalFormatting(CContainer* doc,
 		engineRule.ranges = rule.ranges;
 		engineRule.bgColor = dxf.bg;
 
-		if (rule.type == "cellIs" && rule.operatorAttr == "equal")
+		if (rule.type == "cellIs")
 		{
+			// Tabella operatore XLSX -> ConditionalFormatRule::ruleOperator
+			// (Container.h): 0 = equal preserva esattamente il solo
+			// comportamento che esisteva prima di questa tabella.
+			static const struct { const char* name; int8 op; } kCellIsOps[] = {
+				{ "equal", 0 }, { "notEqual", 1 }, { "greaterThan", 2 },
+				{ "lessThan", 3 }, { "greaterThanOrEqual", 4 },
+				{ "lessThanOrEqual", 5 }, { "between", 6 }, { "notBetween", 7 }
+			};
+			int8 op = -1;
+			for (size_t k = 0; k < sizeof(kCellIsOps) / sizeof(kCellIsOps[0]); k++)
+				if (rule.operatorAttr == kCellIsOps[k].name) { op = kCellIsOps[k].op; break; }
+			if (op < 0)
+				continue; // operatore non riconosciuto: scartata in sicurezza.
+
 			engineRule.type = eCondCellIsEqual;
+			engineRule.ruleOperator = op;
 			int refCol, refRow;
 			bool isQuotedLiteral = rule.formula.size() >= 2 && rule.formula.front() == '"';
 			if (!isQuotedLiteral && IsCellReferenceFormula(rule.formula, refCol, refRow))
@@ -8435,6 +8703,13 @@ static void ApplyConditionalFormatting(CContainer* doc,
 			}
 			else
 				engineRule.compareValue = StripQuotes(rule.formula);
+			// Limite superiore di between/notBetween (ECMA-376
+			// 18.3.1.10, <formula2>): sempre letterale, mai un
+			// riferimento di cella (scelta di scope v1, vedi il
+			// commento su ConditionalFormatRule::compareValue2 in
+			// Container.h).
+			if (op == 6 || op == 7)
+				engineRule.compareValue2 = StripQuotes(rule.formula2);
 		}
 		else if (rule.type == "duplicateValues")
 			engineRule.type = eCondDuplicateValues;
@@ -8450,8 +8725,44 @@ static void ApplyConditionalFormatting(CContainer* doc,
 			engineRule.type = eCondExpression;
 			engineRule.expressionFormula = rule.formula;
 		}
+		else if (rule.type == "containsText" || rule.type == "notContainsText"
+			|| rule.type == "beginsWith" || rule.type == "endsWith")
+		{
+			engineRule.type = eCondTextRule;
+			engineRule.ruleOperator = (rule.type == "containsText") ? 0
+				: (rule.type == "notContainsText") ? 1
+				: (rule.type == "beginsWith") ? 2 : 3;
+			// L'attributo text="..." e' quasi sempre presente in un file
+			// reale; se manca (scrittore insolito) si scarta piuttosto
+			// che indovinare dalla formula SEARCH/LEFT/RIGHT -- stesso
+			// principio "sicuro" del resto di questa funzione.
+			if (rule.text.empty())
+				continue;
+			engineRule.compareValue = rule.text;
+		}
+		else if (rule.type == "containsBlanks" || rule.type == "notContainsBlanks"
+			|| rule.type == "containsErrors" || rule.type == "notContainsErrors")
+		{
+			engineRule.type = eCondBlankErrorRule;
+			engineRule.ruleOperator = (rule.type == "containsBlanks") ? 0
+				: (rule.type == "notContainsBlanks") ? 1
+				: (rule.type == "containsErrors") ? 2 : 3;
+		}
+		else if (rule.type == "top10")
+		{
+			engineRule.type = eCondTop10;
+			engineRule.top10Rank = rule.rank;
+			engineRule.top10Percent = rule.percent;
+			engineRule.top10Bottom = rule.bottom;
+		}
+		else if (rule.type == "aboveAverage")
+		{
+			engineRule.type = eCondAboveAverage;
+			engineRule.belowAverage = !rule.aboveAverage;
+			engineRule.equalAverage = rule.equalAverage;
+		}
 		else
-			continue; // altri tipi: ignorati, vedi il commento sopra la funzione.
+			continue; // altri tipi (es. timePeriod): ignorati, vedi il commento sopra la funzione.
 
 		doc->AddConditionalFormatRule(engineRule);
 	}
