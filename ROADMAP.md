@@ -48,7 +48,7 @@ along the way lives in `CHANGELOG.md`.
 | Release prep (v0.2.7) | Done | Tagged on GitHub: XLSM macro preservation, sheet/cell protection, critical `.ascd` multi-sheet open fix, XLSX Tier 1 compatibility (array/shared formulas, named ranges) (see CHANGELOG.md) |
 | Release prep (v0.2.8) | Done | Tagged on GitHub: XLSX Tier 2 compatibility complete — comments, hyperlinks, data validation, freeze panes, border color, print settings (see CHANGELOG.md) |
 | Release prep (v0.2.9) | Done | Tagged on GitHub: six merged feature/fix branches, `Welcome.xlsx` demo translated to English, real `FILTER` parsing bug, cell text/number-format fixes found against real Excel (see CHANGELOG.md) |
-| Release prep (v0.3.0) | Done | Tagged v0.3.0, hpkg built and install-tested, app launches clean (see CHANGELOG.md; 2 pre-existing test failures documented there) |
+| Release prep (v0.3.0) | In progress | Git tag `v0.3.0` exists and was hpkg-built/install-tested, but **no GitHub Release has been published yet** — v0.2.9 is still the latest actual release. Substantial work has landed on `master` since the tag was cut (pivot table round-trip, conditional formatting data bars/icon sets, range-vs-scalar comparison, horizontal bar charts, the full XLSX sample sweep, per-cell style export — see CHANGELOG.md); the tag will need to move before publishing |
 
 ### Phase 13 detail
 
