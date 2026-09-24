@@ -5,6 +5,27 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped in v0.3.0, on top of v0.2.9:
+- Added support for charts with categories/series laid out across a
+  ROW instead of down a column (Excel's other valid layout) — found in
+  two real files during the systematic XLSX sweep below
+  (`earned-value-management.xlsx`, `family-budget-planner.xlsx`), both
+  previously rejected with "layout dati non compatibile". Real
+  architectural extension, not a one-line fix: `ChartObject` gained
+  `rowOriented`/`valueRows` (the transposition of the existing
+  `valueColumns` non-contiguous-column support), a matching row-major
+  series builder for both the live app and the XLSX translator, and
+  `ReconstructChartRange` now recognizes a single-row category
+  reference — wired through import, live redraw, print preview, native
+  `.ascd` persistence, and XLSX export.
+- Fixed a real, separate bug found while verifying the chart export
+  path end to end for the feature above: the XLSX translator's own
+  copy of the ASCD reader never learned about a versioned tail
+  (header/footer/print-titles) that the app's own native writer always
+  appends after print settings — every export of a document through
+  this path silently misaligned every section written after print
+  settings, including embedded charts, corrupting the whole file.
+  Ported the same tail-skipping logic already used by the app's own
+  native reader.
 - Fixed a trailing empty function argument (e.g. `ROUND(F6*G6,)` — a
   comma written with nothing after it, before the closing parenthesis)
   being silently dropped by the parser instead of counted as an empty
