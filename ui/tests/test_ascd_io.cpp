@@ -25,6 +25,7 @@
 #include <vector>
 
 #include <Application.h>
+#include <DataIO.h>
 #include <File.h>
 
 #include "AscdIO.h"
@@ -784,6 +785,171 @@ int main()
 			"le celle scritte da WritePivotTable sopravvivono anch'esse (LoadASCD non ricalcola)");
 
 		pivotReloaded.Release();
+	}
+
+	// Round-trip di un pivot 2D (campo Colonne + misure multiple, la
+	// NUOVISSIMA ultima sezione del formato): stesso principio del
+	// blocco 1D sopra, ma confrontando anche columnFieldCol/measures/
+	// columnValues/cachedRows2D campo per campo.
+	{
+		CContainer& pivot2DSaveDoc = *new CContainer(NULL, NULL);
+
+		PivotTableObject pivot2D;
+		pivot2D.sourceRange = range(1, 1, 4, 4);
+		pivot2D.destAnchor = cell(6, 1);
+		pivot2D.columnFieldCol = 2;
+		{
+			PivotMeasure m;
+			m.sourceCol = 3; m.aggFunc = ePivotSum; m.label = "TotA";
+			pivot2D.measures.push_back(m);
+		}
+		{
+			PivotMeasure m;
+			m.sourceCol = 4; m.aggFunc = ePivotAverage; m.label = "TotB";
+			pivot2D.measures.push_back(m);
+		}
+		pivot2D.columnValues.push_back(BString("Est"));
+		pivot2D.columnValues.push_back(BString("Ovest"));
+		{
+			PivotRow2D r;
+			r.categories.push_back(BString("Nord"));
+			r.cells.resize(2);
+			r.cells[0].resize(2); r.cells[1].resize(2);
+			r.cells[0][0].aggregate = 110; r.cells[0][0].count = 2;
+			r.cells[0][0].minVal = 10; r.cells[0][0].maxVal = 100;
+			r.cells[0][1].aggregate = 11; r.cells[0][1].count = 2;
+			r.cells[0][1].minVal = 1; r.cells[0][1].maxVal = 10;
+			r.cells[1][0].aggregate = 200; r.cells[1][0].count = 1;
+			r.cells[1][0].minVal = 200; r.cells[1][0].maxVal = 200;
+			r.cells[1][1].aggregate = 20; r.cells[1][1].count = 1;
+			r.cells[1][1].minVal = 20; r.cells[1][1].maxVal = 20;
+			pivot2D.cachedRows2D.push_back(r);
+		}
+		{
+			PivotRow2D r;
+			r.categories.push_back(BString("Sud"));
+			r.cells.resize(2);
+			r.cells[0].resize(2); r.cells[1].resize(2);
+			r.cells[0][0].aggregate = 50; r.cells[0][0].count = 1;
+			r.cells[0][0].minVal = 50; r.cells[0][0].maxVal = 50;
+			r.cells[0][1].aggregate = 5; r.cells[0][1].count = 1;
+			r.cells[0][1].minVal = 5; r.cells[0][1].maxVal = 5;
+			r.cells[1][0].aggregate = 100; r.cells[1][0].count = 2;
+			r.cells[1][0].minVal = 20; r.cells[1][0].maxVal = 80;
+			r.cells[1][1].aggregate = 10; r.cells[1][1].count = 2;
+			r.cells[1][1].minVal = 2; r.cells[1][1].maxVal = 8;
+			pivot2D.cachedRows2D.push_back(r);
+		}
+		pivot2DSaveDoc.AddPivotTable(pivot2D);
+
+		BFile pivot2DFile("tests/roundtrip_pivot2d.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&pivot2DSaveDoc, &pivot2DFile) == B_OK,
+			"SaveASCD con un pivot 2D persistito riesce");
+		pivot2DSaveDoc.Release();
+
+		BFile pivot2DReopened("tests/roundtrip_pivot2d.ascd", B_READ_ONLY);
+		CContainer& pivot2DReloaded = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&pivot2DReopened, &pivot2DReloaded) == B_OK,
+			"LoadASCD con un pivot 2D persistito riesce");
+
+		const std::vector<PivotTableObject>& reloadedPivots2D = pivot2DReloaded.GetPivotTables();
+		Check(reloadedPivots2D.size() == 1, "il pivot 2D sopravvive al giro salva->ricarica");
+		if (reloadedPivots2D.size() == 1)
+		{
+			const PivotTableObject& p = reloadedPivots2D[0];
+			Check(p.columnFieldCol == 2, "columnFieldCol sopravvive al giro salva->ricarica");
+			Check(p.measures.size() == 2
+					&& p.measures[0].sourceCol == 3 && p.measures[0].aggFunc == ePivotSum
+					&& p.measures[0].label == "TotA"
+					&& p.measures[1].sourceCol == 4 && p.measures[1].aggFunc == ePivotAverage
+					&& p.measures[1].label == "TotB",
+				"measures (colonna/aggregazione/etichetta) sopravvivono al giro salva->ricarica");
+			Check(p.columnValues.size() == 2 && p.columnValues[0] == "Est" && p.columnValues[1] == "Ovest",
+				"columnValues sopravvivono al giro salva->ricarica");
+			Check(p.cachedRows2D.size() == 2,
+				"cachedRows2D sopravvive al giro salva->ricarica (due gruppi)");
+			if (p.cachedRows2D.size() == 2)
+			{
+				Check(p.cachedRows2D[0].categories[0] == "Nord"
+						&& p.cachedRows2D[0].cells[0][0].aggregate == 110
+						&& p.cachedRows2D[0].cells[0][0].count == 2
+						&& p.cachedRows2D[0].cells[1][1].aggregate == 20,
+					"il grigliato di Nord sopravvive campo per campo");
+				Check(p.cachedRows2D[1].categories[0] == "Sud"
+						&& p.cachedRows2D[1].cells[1][0].aggregate == 100
+						&& p.cachedRows2D[1].cells[1][0].count == 2,
+					"il grigliato di Sud sopravvive campo per campo");
+			}
+		}
+		pivot2DReloaded.Release();
+
+		// Compatibilita' con un file scritto PRIMA di questa sezione:
+		// tronca il buffer esattamente alla fine della sezione
+		// orientamento riga di grafico (l'ultima sezione PRIMA di questa,
+		// vedi il commento in SaveASCD) -- per un documento con UN solo
+		// pivot interamente 1D (columnFieldCol=-1, measures/columnValues/
+		// cachedRows2D tutti vuoti), la sezione pivot 2D e' sempre
+		// ESATTAMENTE 18 byte (int32 count=1, poi int16+int32+int32+int32
+		// tutti "vuoti" per quell'unico pivot) -- troncare quei 18 byte
+		// equivale esattamente a un file scritto prima che questa
+		// sezione esistesse.
+		{
+			CContainer& legacyDoc = *new CContainer(NULL, NULL);
+			PivotTableObject legacyPivot;
+			legacyPivot.sourceRange = range(1, 1, 2, 2);
+			legacyPivot.destAnchor = cell(4, 1);
+			legacyPivot.aggFunc = ePivotSum;
+			legacyDoc.AddPivotTable(legacyPivot);
+
+			BMallocIO legacyBuf;
+			Check(SaveASCD(&legacyDoc, &legacyBuf) == B_OK,
+				"SaveASCD con un pivot puramente 1D (per il test di compatibilita') riesce");
+			legacyDoc.Release();
+
+			size_t legacyFullLen = legacyBuf.BufferLength();
+			Check(legacyFullLen > 18, "il buffer di riferimento e' abbastanza lungo da poter troncare 18 byte");
+			if (legacyFullLen > 18)
+			{
+				BFile legacyFile("tests/roundtrip_pivot2d_legacy.ascd",
+					B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+				legacyFile.Write(legacyBuf.Buffer(), legacyFullLen - 18);
+				legacyFile.Unset();
+
+				BFile legacyReopened("tests/roundtrip_pivot2d_legacy.ascd", B_READ_ONLY);
+				CContainer& legacyReloaded = *new CContainer(NULL, NULL);
+				status_t legacyErr = LoadASCD(&legacyReopened, &legacyReloaded);
+				Check(legacyErr == B_OK,
+					"un file .ascd senza la sezione pivot 2D (scritto prima che esistesse) si carica comunque");
+
+				const std::vector<PivotTableObject>& legacyPivots = legacyReloaded.GetPivotTables();
+				Check(legacyPivots.size() == 1
+						&& legacyPivots[0].columnFieldCol == -1
+						&& legacyPivots[0].measures.empty()
+						&& legacyPivots[0].columnValues.empty()
+						&& legacyPivots[0].cachedRows2D.empty(),
+					"senza la sezione, il pivot resta al suo default 1D legacy "
+					"(columnFieldCol=-1, measures/columnValues/cachedRows2D vuoti)");
+				legacyReloaded.Release();
+
+				// Un solo byte in meno (17 troncati invece di 18): l'intero
+				// record del pivot (pivot2DCount, columnFieldCol,
+				// measureCount, columnValueCount) si legge per intero, ma
+				// l'ultimo byte di rowCount2D manca -- deve fallire con
+				// B_BAD_DATA, non leggere oltre i limiti del buffer.
+				BFile shortFile("tests/roundtrip_pivot2d_short.ascd",
+					B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+				shortFile.Write(legacyBuf.Buffer(), legacyFullLen - 1);
+				shortFile.Unset();
+
+				BFile shortReopened("tests/roundtrip_pivot2d_short.ascd", B_READ_ONLY);
+				CContainer& shortReloaded = *new CContainer(NULL, NULL);
+				status_t shortErr = LoadASCD(&shortReopened, &shortReloaded);
+				Check(shortErr == B_BAD_DATA,
+					"una sezione pivot 2D troncata a meta' record viene rifiutata con B_BAD_DATA");
+				shortReloaded.Release();
+			}
+		}
 	}
 
 	// --- Un file .ascd con la colonna di un commento manomessa (fuori

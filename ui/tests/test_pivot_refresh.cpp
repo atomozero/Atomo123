@@ -25,6 +25,7 @@
 #include "Container.h"
 #include "SheetView.h"
 #include "MainWindow.h"
+#include "Pivot.h"
 
 static int gFailures = 0;
 
@@ -94,6 +95,77 @@ int main()
 	Check(doc->GetPivotTables()[0].cachedRows.size() == 2
 			&& doc->GetPivotTables()[0].cachedRows[0].aggregate == 110.0,
 		"RefreshAllPivotTables aggiorna anche la cache persistita");
+
+	// --- Stesso comportamento "vivo" per un pivot 2D (campo Colonne +
+	// misure multiple) costruito tramite la firma estesa di
+	// HandlePivotRequest -- verifica che PivotIsMultiDimensional() lo
+	// riconosca e RefreshAllPivotTables() lo aggiorni per davvero
+	// tramite BuildPivotTable2D/WritePivotTable2D, non il vecchio
+	// percorso 1D. ---
+	doc->NewCell(cell(1, 10), Value("Nord"), NULL); // A10
+	doc->NewCell(cell(2, 10), Value("Q1"), NULL);   // B10
+	doc->NewCell(cell(3, 10), Value(100.0), NULL);  // C10
+	doc->NewCell(cell(1, 11), Value("Nord"), NULL); // A11
+	doc->NewCell(cell(2, 11), Value("Q2"), NULL);   // B11
+	doc->NewCell(cell(3, 11), Value(200.0), NULL);  // C11
+	doc->NewCell(cell(1, 12), Value("Sud"), NULL);  // A12
+	doc->NewCell(cell(2, 12), Value("Q1"), NULL);   // B12
+	doc->NewCell(cell(3, 12), Value(50.0), NULL);   // C12
+	doc->NewCell(cell(1, 13), Value("Sud"), NULL);  // A13
+	doc->NewCell(cell(2, 13), Value("Q2"), NULL);   // B13
+	doc->NewCell(cell(3, 13), Value(80.0), NULL);   // C13
+
+	std::vector<int32> measureCols2D, measureAggs2D;
+	std::vector<BString> measureLabels2D;
+	measureCols2D.push_back(3); // C
+	measureAggs2D.push_back((int32)ePivotSum);
+	win->HandlePivotRequest("A10:C13", "E10", (int32)ePivotSum,
+		2 /* columnFieldCol = B */, measureCols2D, measureAggs2D, measureLabels2D);
+
+	Check(doc->GetPivotTables().size() == 2,
+		"HandlePivotRequest persiste anche il pivot 2D (ora due tabelle in totale)");
+	if (doc->GetPivotTables().size() == 2)
+	{
+		const PivotTableObject& p2D = doc->GetPivotTables()[1];
+		Check(PivotIsMultiDimensional(p2D),
+			"PivotIsMultiDimensional riconosce il pivot appena creato come 2D");
+		Check(p2D.columnFieldCol == 2 && p2D.measures.size() == 1 && p2D.measures[0].sourceCol == 3,
+			"il pivot 2D persistito ha il campo Colonne e la misura giusti");
+	}
+
+	Value nordQ1Before, sudQ1Before;
+	doc->GetValue(cell(6, 12), nordQ1Before); // F12: Nord/Q1
+	doc->GetValue(cell(6, 13), sudQ1Before);  // F13: Sud/Q1
+	Check((double)nordQ1Before == 100.0 && (double)sudQ1Before == 50.0,
+		"il grigliato 2D e' scritto correttamente subito dopo la creazione (Nord/Q1=100, Sud/Q1=50)");
+
+	// Cambia un dato sorgente direttamente: stesso principio del blocco
+	// 1D sopra, il grigliato 2D deve restare fermo finche' non arriva
+	// un Aggiorna esplicito.
+	doc->NewCell(cell(3, 12), Value(999.0), NULL); // Sud/Q1: 50 -> 999
+
+	Value sudQ1Frozen;
+	doc->GetValue(cell(6, 13), sudQ1Frozen);
+	Check((double)sudQ1Frozen == 50.0,
+		"cambiare un dato sorgente NON aggiorna da solo il grigliato 2D (cache ferma)");
+	Check(doc->GetPivotTables()[1].cachedRows2D[1].cells[0][0].aggregate == 50.0,
+		"la cache 2D persistita resta ferma anch'essa, non solo le celle");
+
+	win->RefreshAllPivotTables();
+
+	Value sudQ1After;
+	doc->GetValue(cell(6, 13), sudQ1After);
+	Check((double)sudQ1After == 999.0,
+		"RefreshAllPivotTables aggiorna davvero le celle del grigliato 2D (Sud/Q1 -> 999)");
+	Check(doc->GetPivotTables()[1].cachedRows2D[1].cells[0][0].aggregate == 999.0,
+		"RefreshAllPivotTables aggiorna anche la cache 2D persistita");
+
+	// Il pivot 1D (indice 0) non deve aver risentito in alcun modo del
+	// refresh del pivot 2D accanto ad esso.
+	Value melaStillOk;
+	doc->GetValue(cell(5, 2), melaStillOk);
+	Check((double)melaStillOk == 110.0,
+		"il pivot 1D accanto resta corretto dopo il refresh del pivot 2D (nessuna interferenza)");
 
 	win->Lock();
 	win->Quit();

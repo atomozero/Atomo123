@@ -500,8 +500,27 @@ public:
 	// Rese pubbliche apposta per essere testabili senza passare da una
 	// vera PivotWindow, stesso principio di ApplyConditionalFormatToSelection
 	// sopra -- vedi tests/test_pivot_refresh.cpp.
-	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg);
+	//
+	// columnFieldCol/measureCols/measureAggs/measureLabels sono
+	// l'estensione pivot 2D (campo Colonne + misure multiple):
+	// columnFieldCol==-1 e measureCols vuoto riproducono ESATTAMENTE il
+	// vecchio percorso 1D (vedi PivotIsMultiDimensional in Pivot.h) --
+	// un chiamante che ignora questi parametri (come ogni test/chiamata
+	// gia' esistente prima di questa estensione) si comporta com'era.
+	void HandlePivotRequest(const char* sourceText, const char* destText, int32 agg,
+		int32 columnFieldCol = -1,
+		const std::vector<int32>& measureCols = std::vector<int32>(),
+		const std::vector<int32>& measureAggs = std::vector<int32>(),
+		const std::vector<BString>& measureLabels = std::vector<BString>());
 	void RefreshAllPivotTables();
+
+	// Analizza SOLO l'intervallo (nessuna scrittura), per popolare i
+	// controlli dinamici di PivotWindow (campo Colonne/misure) PRIMA che
+	// l'utente prema "Crea" -- stesso principio round-trip di
+	// HandleChartRequest (che risponde con kMsgChartDataMulti), mai
+	// implementato finora per PivotWindow perche' il vecchio dialogo non
+	// aveva controlli dinamici da popolare.
+	void HandlePivotDetectColumns(const char* sourceText);
 
 	// ISheetResolver (Fase 9): risolve "NomeFoglio!Cella" verso il
 	// CContainer corrispondente in fSheets, per nome. Pubblico perche'

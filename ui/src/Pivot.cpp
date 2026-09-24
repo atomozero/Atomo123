@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 
 #include <Catalog.h>
 
@@ -174,4 +175,247 @@ void WritePivotTable(CContainer* doc, const cell& dest,
 		cell valCell(dest.h + numKeyCols, dest.v + 1 + i);
 		doc->NewCell(valCell, Value(shown), NULL);
 	}
+}
+
+static bool RowLess2D(const PivotRow2D& a, const PivotRow2D& b)
+{
+	return a.categories < b.categories;
+}
+
+bool BuildPivotTable2D(CContainer* doc, const range& source, int columnFieldCol,
+	const std::vector<PivotMeasure>& measures,
+	std::vector<BString>* outColumnValues, std::vector<PivotRow2D>* outRows)
+{
+	outColumnValues->clear();
+	outRows->clear();
+	if (!doc || measures.empty())
+		return false;
+
+	// Colonne chiave di riga: ogni colonna di "source" tranne
+	// columnFieldCol e tranne ogni measures[i].sourceCol -- insieme
+	// escluso esplicito, il resto implicito, stesso principio del
+	// vettore ChartObject::valueColumns in Chart.h.
+	std::vector<int> rowKeyCols;
+	for (int col = source.left; col <= source.right; col++)
+	{
+		if (col == columnFieldCol)
+			continue;
+		bool isMeasureCol = false;
+		for (size_t m = 0; m < measures.size(); m++)
+		{
+			if (measures[m].sourceCol == col)
+			{
+				isMeasureCol = true;
+				break;
+			}
+		}
+		if (isMeasureCol)
+			continue;
+		rowKeyCols.push_back(col);
+	}
+	if (rowKeyCols.empty())
+		return false;
+
+	// Prima passata: valori distinti del campo Colonne (se presente),
+	// ordinati lessicograficamente -- std::set<BString> li ordina da
+	// solo (BString ha operator< gia' usato altrove in questo file).
+	std::map<BString, int> columnValueIndex;
+	if (columnFieldCol >= 0)
+	{
+		std::set<BString> distinctVals;
+		for (int row = source.top; row <= source.bottom; row++)
+		{
+			Value cv;
+			doc->GetValue(cell(columnFieldCol, row), cv);
+			if (cv.fType != eTextData)
+				continue;
+			distinctVals.insert(BString((const char*)cv));
+		}
+		for (std::set<BString>::iterator it = distinctVals.begin(); it != distinctVals.end(); ++it)
+		{
+			columnValueIndex[*it] = (int)outColumnValues->size();
+			outColumnValues->push_back(*it);
+		}
+		if (outColumnValues->empty())
+			return false; // campo Colonne scelto ma nessun valore testuale trovato
+	}
+	int numColSlots = columnFieldCol >= 0 ? (int)outColumnValues->size() : 1;
+
+	// Seconda passata: raggruppamento per chiave di riga, aggregazione
+	// per (valore di colonna, misura) dentro ogni gruppo.
+	std::map<std::vector<BString>, PivotRow2D> groups;
+	for (int row = source.top; row <= source.bottom; row++)
+	{
+		std::vector<BString> rowKey;
+		bool validRowKey = true;
+		for (size_t k = 0; k < rowKeyCols.size(); k++)
+		{
+			Value cv;
+			doc->GetValue(cell(rowKeyCols[k], row), cv);
+			if (cv.fType != eTextData)
+			{
+				validRowKey = false;
+				break;
+			}
+			rowKey.push_back(BString((const char*)cv));
+		}
+		if (!validRowKey)
+			continue;
+
+		int colIndex = 0;
+		if (columnFieldCol >= 0)
+		{
+			Value cv;
+			doc->GetValue(cell(columnFieldCol, row), cv);
+			if (cv.fType != eTextData)
+				continue;
+			std::map<BString, int>::iterator cit = columnValueIndex.find(BString((const char*)cv));
+			if (cit == columnValueIndex.end())
+				continue; // difensivo, non dovrebbe capitare: stessa sorgente della prima passata
+			colIndex = cit->second;
+		}
+
+		std::map<std::vector<BString>, PivotRow2D>::iterator git = groups.find(rowKey);
+		if (git == groups.end())
+		{
+			PivotRow2D r;
+			r.categories = rowKey;
+			r.cells.resize(numColSlots);
+			for (int c = 0; c < numColSlots; c++)
+				r.cells[c].resize(measures.size());
+			git = groups.insert(std::make_pair(rowKey, r)).first;
+		}
+
+		// Ogni misura e' valutata indipendentemente: un valore non
+		// numerico esclude SOLO quella misura per questa riga, le altre
+		// misure della stessa riga sorgente restano valide (a
+		// differenza di BuildPivotTable sopra, che scarta l'intera riga
+		// se l'unica misura non e' numerica).
+		for (size_t m = 0; m < measures.size(); m++)
+		{
+			Value vv;
+			doc->GetValue(cell(measures[m].sourceCol, row), vv);
+			if (vv.fType != eNumData)
+				continue;
+
+			double v = (double)vv;
+			PivotCellAgg& agg = git->second.cells[colIndex][m];
+			if (agg.count == 0)
+			{
+				agg.minVal = v;
+				agg.maxVal = v;
+			}
+			else
+			{
+				if (v < agg.minVal)
+					agg.minVal = v;
+				if (v > agg.maxVal)
+					agg.maxVal = v;
+			}
+			agg.aggregate += v;
+			agg.count++;
+		}
+	}
+
+	for (std::map<std::vector<BString>, PivotRow2D>::iterator it = groups.begin();
+			it != groups.end(); ++it)
+		outRows->push_back(it->second);
+
+	std::sort(outRows->begin(), outRows->end(), RowLess2D);
+	return !outRows->empty();
+}
+
+void WritePivotTable2D(CContainer* doc, const cell& dest,
+	const std::vector<BString>& columnValues, const std::vector<PivotMeasure>& measures,
+	const std::vector<PivotRow2D>& rows)
+{
+	if (!doc || rows.empty() || measures.empty())
+		return;
+
+	int numKeyCols = (int)rows[0].categories.size();
+	int numColSlots = columnValues.empty() ? 1 : (int)columnValues.size();
+	int numMeasures = (int)measures.size();
+
+	// Riga di intestazione 1: valore del campo Colonne, ripetuto su
+	// tutte le colonne misura di quel valore -- vuoto sotto le colonne
+	// chiave di riga (mai scritte qui) e vuoto ovunque quando non c'e'
+	// campo Colonne (columnValues vuoto, stesso schema "due righe
+	// sempre" per non introdurre un caso a parte in questa funzione).
+	if (!columnValues.empty())
+	{
+		for (int c = 0; c < numColSlots; c++)
+		{
+			for (int m = 0; m < numMeasures; m++)
+			{
+				cell headerCell(dest.h + numKeyCols + c * numMeasures + m, dest.v);
+				doc->NewCell(headerCell, Value(columnValues[c].String()), NULL);
+			}
+		}
+	}
+
+	// Riga di intestazione 2: etichette di categoria (colonne chiave di
+	// riga) e di misura (colonne dati).
+	for (int k = 0; k < numKeyCols; k++)
+	{
+		cell headerCell(dest.h + k, dest.v + 1);
+		BString label(B_TRANSLATE("Categoria"));
+		if (numKeyCols > 1)
+			label << " " << (k + 1);
+		doc->NewCell(headerCell, Value(label.String()), NULL);
+	}
+	for (int c = 0; c < numColSlots; c++)
+	{
+		for (int m = 0; m < numMeasures; m++)
+		{
+			cell headerCell(dest.h + numKeyCols + c * numMeasures + m, dest.v + 1);
+			BString label = measures[m].label;
+			if (label.IsEmpty())
+				label = AggLabel(measures[m].aggFunc);
+			doc->NewCell(headerCell, Value(label.String()), NULL);
+		}
+	}
+
+	for (size_t i = 0; i < rows.size(); i++)
+	{
+		int rowY = dest.v + 2 + (int)i;
+		for (int k = 0; k < numKeyCols; k++)
+		{
+			cell catCell(dest.h + k, rowY);
+			doc->NewCell(catCell, Value(rows[i].categories[k].String()), NULL);
+		}
+		for (int c = 0; c < numColSlots; c++)
+		{
+			for (int m = 0; m < numMeasures; m++)
+			{
+				const PivotCellAgg& agg = rows[i].cells[c][m];
+				if (agg.count == 0)
+					continue; // combinazione mai vista nei dati: cella vuota
+
+				double shown = agg.aggregate;
+				PivotAggFunc fn = measures[m].aggFunc;
+				if (fn == ePivotCount)
+					shown = agg.count;
+				else if (fn == ePivotAverage)
+					shown = agg.aggregate / agg.count;
+				else if (fn == ePivotMin)
+					shown = agg.minVal;
+				else if (fn == ePivotMax)
+					shown = agg.maxVal;
+
+				cell valCell(dest.h + numKeyCols + c * numMeasures + m, rowY);
+				doc->NewCell(valCell, Value(shown), NULL);
+			}
+		}
+	}
+}
+
+range PivotTable2DDestRange(const cell& dest, int numRowKeyCols,
+	const std::vector<BString>& columnValues, const std::vector<PivotMeasure>& measures,
+	size_t rowCount)
+{
+	int numColSlots = columnValues.empty() ? 1 : (int)columnValues.size();
+	int numMeasures = (int)measures.size();
+	int width = numRowKeyCols + numColSlots * numMeasures;
+	int height = 2 + (int)rowCount; // due righe di intestazione + una per gruppo
+	return range(dest.h, dest.v, dest.h + width - 1, dest.v + height - 1);
 }

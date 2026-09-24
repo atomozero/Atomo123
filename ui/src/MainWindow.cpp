@@ -5028,7 +5028,8 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 // Come sopra: legge/scrive fDoc sul thread di MainWindow, poi
 // aggiorna direttamente la griglia (stesso thread, sicuro).
 void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText,
-	int32 agg)
+	int32 agg, int32 columnFieldCol, const std::vector<int32>& measureCols,
+	const std::vector<int32>& measureAggs, const std::vector<BString>& measureLabels)
 {
 	if (!fDoc)
 		return;
@@ -5043,23 +5044,104 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 		return;
 	}
 
-	std::vector<PivotRow> rows;
-	if (!BuildPivotTable(fDoc, source, rows))
+	// columnFieldCol==-1 e measureCols vuoto = percorso 1D di sempre,
+	// ESATTAMENTE il codice gia' esistente prima dell'estensione pivot
+	// 2D (vedi PivotIsMultiDimensional in Pivot.h) -- nessun cambio di
+	// comportamento per un chiamante che ignora i nuovi parametri.
+	if (columnFieldCol == -1 && measureCols.empty())
+	{
+		std::vector<PivotRow> rows;
+		if (!BuildPivotTable(fDoc, source, rows))
+		{
+			BAlert* alert = new BAlert(B_TRANSLATE("Tabella pivot"),
+				B_TRANSLATE("Nessun dato valido nell'intervallo (servono almeno due colonne: "
+					"una o piu' di categoria testuale, poi il valore numerico)."), B_TRANSLATE("OK"));
+			alert->Go();
+			return;
+		}
+
+		// La destinazione (intestazioni + una riga per gruppo, larga
+		// quante sono le colonne di categoria piu' quella di
+		// aggregazione -- Fase 29, raggruppamento multi-livello) non deve
+		// sovrapporsi ai dati sorgente, altrimenti la scrittura riga per
+		// riga li corromperebbe mentre li si sta ancora leggendo.
+		int destWidth = (int)rows[0].categories.size();
+		range destRange(dest.h, dest.v, dest.h + destWidth, dest.v + (int)rows.size());
+		if (destRange.left <= source.right && destRange.right >= source.left
+			&& destRange.top <= source.bottom && destRange.bottom >= source.top)
+		{
+			BAlert* alert = new BAlert(B_TRANSLATE("Tabella pivot"),
+				B_TRANSLATE("La cella di destinazione si sovrappone all'intervallo dati: "
+					"scegline una fuori dai dati sorgente."), B_TRANSLATE("OK"));
+			alert->Go();
+			return;
+		}
+
+		// Trovato durante l'audit: mancava SaveUndoState, a differenza di
+		// ogni altra scrittura di celle vere (incolla, riempi, ordina,
+		// formattazione...) -- a differenza di grafici/celle unite (fuori
+		// dallo scope di UndoSnapshot per motivi architetturali, vedi
+		// MainWindow::MergeCells), qui i dati scritti sono celle normali,
+		// perfettamente nello scope di CaptureSnapshot/ApplySnapshot.
+		fSheetView->SaveUndoState(destRange);
+		WritePivotTable(fDoc, dest, rows, (PivotAggFunc)agg);
+
+		// Persiste la DEFINIZIONE (non solo le celle appena scritte sopra),
+		// cosi' sopravvive a salvataggio/ricarica e puo' essere aggiornata
+		// in seguito (vedi RefreshAllPivotTables) invece di sparire nel
+		// nulla come prima -- una vera cache Excel, non solo un risultato
+		// congelato. Vedi PivotTableObject in Container.h.
+		PivotTableObject pivot;
+		pivot.sourceRange = source;
+		pivot.destAnchor = dest;
+		pivot.aggFunc = (PivotAggFunc)agg;
+		pivot.cachedRows = rows;
+		fDoc->AddPivotTable(pivot);
+
+		fSheetView->Invalidate();
+		MarkModified();
+		return;
+	}
+
+	// Percorso 2D: campo Colonne e/o 2+ misure esplicite. measureCols
+	// vuoto ma columnFieldCol >= 0 = una sola misura implicita (ultima
+	// colonna dell'intervallo + "agg"), stesso caso semplice del
+	// percorso 1D ma con un campo Colonne in piu'.
+	std::vector<PivotMeasure> measures;
+	if (measureCols.empty())
+	{
+		PivotMeasure m;
+		m.sourceCol = source.right;
+		m.aggFunc = (PivotAggFunc)agg;
+		measures.push_back(m);
+	}
+	else
+	{
+		for (size_t i = 0; i < measureCols.size(); i++)
+		{
+			PivotMeasure m;
+			m.sourceCol = (int16)measureCols[i];
+			m.aggFunc = (PivotAggFunc)measureAggs[i];
+			if (i < measureLabels.size())
+				m.label = measureLabels[i];
+			measures.push_back(m);
+		}
+	}
+
+	std::vector<BString> columnValues;
+	std::vector<PivotRow2D> rows2D;
+	if (!BuildPivotTable2D(fDoc, source, columnFieldCol, measures, &columnValues, &rows2D))
 	{
 		BAlert* alert = new BAlert(B_TRANSLATE("Tabella pivot"),
-			B_TRANSLATE("Nessun dato valido nell'intervallo (servono almeno due colonne: "
-				"una o piu' di categoria testuale, poi il valore numerico)."), B_TRANSLATE("OK"));
+			B_TRANSLATE("Nessun dato valido nell'intervallo per la combinazione di campo "
+				"Colonne/misure scelta."), B_TRANSLATE("OK"));
 		alert->Go();
 		return;
 	}
 
-	// La destinazione (intestazioni + una riga per gruppo, larga
-	// quante sono le colonne di categoria piu' quella di
-	// aggregazione -- Fase 29, raggruppamento multi-livello) non deve
-	// sovrapporsi ai dati sorgente, altrimenti la scrittura riga per
-	// riga li corromperebbe mentre li si sta ancora leggendo.
-	int destWidth = (int)rows[0].categories.size();
-	range destRange(dest.h, dest.v, dest.h + destWidth, dest.v + (int)rows.size());
+	int numRowKeyCols = (int)rows2D[0].categories.size();
+	range destRange = PivotTable2DDestRange(dest, numRowKeyCols, columnValues, measures,
+		rows2D.size());
 	if (destRange.left <= source.right && destRange.right >= source.left
 		&& destRange.top <= source.bottom && destRange.bottom >= source.top)
 	{
@@ -5070,39 +5152,63 @@ void MainWindow::HandlePivotRequest(const char* sourceText, const char* destText
 		return;
 	}
 
-	// Trovato durante l'audit: mancava SaveUndoState, a differenza di
-	// ogni altra scrittura di celle vere (incolla, riempi, ordina,
-	// formattazione...) -- a differenza di grafici/celle unite (fuori
-	// dallo scope di UndoSnapshot per motivi architetturali, vedi
-	// MainWindow::MergeCells), qui i dati scritti sono celle normali,
-	// perfettamente nello scope di CaptureSnapshot/ApplySnapshot.
 	fSheetView->SaveUndoState(destRange);
-	WritePivotTable(fDoc, dest, rows, (PivotAggFunc)agg);
+	WritePivotTable2D(fDoc, dest, columnValues, measures, rows2D);
 
-	// Persiste la DEFINIZIONE (non solo le celle appena scritte sopra),
-	// cosi' sopravvive a salvataggio/ricarica e puo' essere aggiornata
-	// in seguito (vedi RefreshAllPivotTables) invece di sparire nel
-	// nulla come prima -- una vera cache Excel, non solo un risultato
-	// congelato. Vedi PivotTableObject in Container.h.
 	PivotTableObject pivot;
 	pivot.sourceRange = source;
 	pivot.destAnchor = dest;
-	pivot.aggFunc = (PivotAggFunc)agg;
-	pivot.cachedRows = rows;
+	pivot.columnFieldCol = (int16)columnFieldCol;
+	pivot.measures = measures;
+	pivot.columnValues = columnValues;
+	pivot.cachedRows2D = rows2D;
 	fDoc->AddPivotTable(pivot);
 
 	fSheetView->Invalidate();
 	MarkModified();
 
-	// Niente BAlert di conferma sul successo (c'era prima): un
-	// BAlert::Go() senza argomenti e' MODALE, blocca il thread chiamante
-	// aspettando un clic -- scoperto per davvero scrivendo
-	// tests/test_pivot_refresh.cpp, che restava appeso all'infinito
-	// proprio qui (nessun utente presente per cliccare "OK" in un test
-	// headless). Anche il vero Excel non mostra nessuna conferma dopo
-	// aver creato una pivot table riuscita, solo il risultato stesso
-	// gia' visibile sul foglio -- rimosso, non solo reso asincrono,
-	// perche' non aggiungeva informazione che l'utente non veda gia'.
+	// Niente BAlert di conferma sul successo, in nessuno dei due
+	// percorsi: un BAlert::Go() senza argomenti e' MODALE, blocca il
+	// thread chiamante aspettando un clic -- scoperto per davvero
+	// scrivendo tests/test_pivot_refresh.cpp, che restava appeso
+	// all'infinito proprio qui (nessun utente presente per cliccare
+	// "OK" in un test headless). Anche il vero Excel non mostra nessuna
+	// conferma dopo aver creato una pivot table riuscita, solo il
+	// risultato stesso gia' visibile sul foglio.
+}
+
+void MainWindow::HandlePivotDetectColumns(const char* sourceText)
+{
+	if (!fDoc || !fPivotWindow)
+		return;
+
+	range source;
+	BMessage info(kMsgPivotColumnsInfo);
+	if (ParseRangeRef(sourceText, source) && source.right >= source.left)
+	{
+		for (int col = source.left; col <= source.right; col++)
+		{
+			// Intestazione = testo della prima riga se testuale (stessa
+			// convenzione "riga di intestazione opzionale" di
+			// BuildMultiChartSeries), altrimenti la lettera di colonna
+			// (mai una stringa vuota: la checkbox deve avere sempre
+			// un'etichetta leggibile).
+			Value v;
+			fDoc->GetValue(cell(col, source.top), v);
+			BString label;
+			if (v.fType == eTextData)
+				label = (const char*)v;
+			if (label.IsEmpty())
+			{
+				char buf[8];
+				ColumnName(col, buf);
+				label = buf;
+			}
+			info.AddInt32("col", col);
+			info.AddString("label", label);
+		}
+	}
+	BMessenger(fPivotWindow).SendMessage(&info);
 }
 
 void MainWindow::RefreshAllPivotTables()
@@ -5122,6 +5228,27 @@ void MainWindow::RefreshAllPivotTables()
 	// passi di Annulla, non uno solo.
 	for (size_t i = 0; i < pivots.size(); i++)
 	{
+		if (PivotIsMultiDimensional(pivots[i]))
+		{
+			std::vector<BString> columnValues;
+			std::vector<PivotRow2D> rows2D;
+			if (!BuildPivotTable2D(fDoc, pivots[i].sourceRange, pivots[i].columnFieldCol,
+					pivots[i].measures, &columnValues, &rows2D))
+				continue; // sorgente svuotata/invalida nel frattempo: lascia la cache com'e'
+
+			int numRowKeyCols = (int)rows2D[0].categories.size();
+			range destRange = PivotTable2DDestRange(pivots[i].destAnchor, numRowKeyCols,
+				columnValues, pivots[i].measures, rows2D.size());
+			fSheetView->SaveUndoState(destRange);
+			WritePivotTable2D(fDoc, pivots[i].destAnchor, columnValues, pivots[i].measures, rows2D);
+			// Stesso limite gia' accettato sotto per il caso 1D: righe/
+			// colonne finali di una scrittura precedente piu' grande
+			// restano nel foglio, fuori scope per questa fase.
+			pivots[i].columnValues = columnValues;
+			pivots[i].cachedRows2D = rows2D;
+			continue;
+		}
+
 		std::vector<PivotRow> rows;
 		if (!BuildPivotTable(fDoc, pivots[i].sourceRange, rows))
 			continue; // sorgente svuotata/invalida nel frattempo: lascia la cache com'e'
@@ -7420,7 +7547,38 @@ void MainWindow::MessageReceived(BMessage* message)
 			if (message->FindString("source", &sourceText) == B_OK
 				&& message->FindString("dest", &destText) == B_OK
 				&& message->FindInt32("agg", &agg) == B_OK)
-				HandlePivotRequest(sourceText.String(), destText.String(), agg);
+			{
+				// columnField/measureCol/measureAgg/measureLabel sono
+				// tutti opzionali (estensione pivot 2D): assenti = il
+				// vecchio messaggio 1D di sempre, columnField assente
+				// vale -1 tramite il default di FindInt32 che non tocca
+				// la variabile in caso di B_NAME_NOT_FOUND.
+				int32 columnFieldCol = -1;
+				message->FindInt32("columnField", &columnFieldCol);
+
+				std::vector<int32> measureCols, measureAggs;
+				std::vector<BString> measureLabels;
+				int32 mc;
+				for (int32 i = 0; message->FindInt32("measureCol", i, &mc) == B_OK; i++)
+					measureCols.push_back(mc);
+				int32 ma;
+				for (int32 i = 0; message->FindInt32("measureAgg", i, &ma) == B_OK; i++)
+					measureAggs.push_back(ma);
+				BString ml;
+				for (int32 i = 0; message->FindString("measureLabel", i, &ml) == B_OK; i++)
+					measureLabels.push_back(ml);
+
+				HandlePivotRequest(sourceText.String(), destText.String(), agg,
+					columnFieldCol, measureCols, measureAggs, measureLabels);
+			}
+			break;
+		}
+
+		case kMsgPivotDetectColumns:
+		{
+			BString sourceText;
+			if (message->FindString("source", &sourceText) == B_OK)
+				HandlePivotDetectColumns(sourceText.String());
 			break;
 		}
 
