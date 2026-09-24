@@ -125,6 +125,15 @@ struct XlsxChartInfo {
 	// Vedi il commento gemello su ChartObject::valueColumns in
 	// ui/src/Chart.h -- stesso significato, stesso "vuoto = contigue".
 	std::vector<int16> valueColumns;
+	// Vedi il commento gemello su ChartObject::rowOriented/valueRows in
+	// ui/src/Chart.h -- stesso significato, stesso "MAI vuoto quando
+	// rowOriented e' true".
+	bool rowOriented;
+	std::vector<int16> valueRows;
+
+	XlsxChartInfo() : dataLeft(0), dataTop(0), dataRight(0), dataBottom(0),
+		frameLeft(0), frameTop(0), frameRight(0), frameBottom(0),
+		type(0), rowOriented(false) {}
 };
 
 // Stessa serializzazione ASCD degli altri translator (vedi
@@ -1266,6 +1275,31 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Orientamento riga di grafico incorporato (vedi il commento
+	// gemello su ChartObject::rowOriented/valueRows in ui/src/Chart.h),
+	// NUOVA ultima sezione del formato, stesso formato byte per byte di
+	// ui/src/AscdIO.cpp (SaveASCD). "charts" e' sempre un puntatore
+	// valido (anche vuoto) da WriteASCDBook sotto, come sopra.
+	{
+		int32 chartRowOrientCount = charts ? (int32)charts->size() : 0;
+		if (dest->Write(&chartRowOrientCount, sizeof(chartRowOrientCount)) != (ssize_t)sizeof(chartRowOrientCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < chartRowOrientCount; i++)
+		{
+			uint8 rowOriented = (*charts)[i].rowOriented ? 1 : 0;
+			if (dest->Write(&rowOriented, sizeof(rowOriented)) != (ssize_t)sizeof(rowOriented))
+				return B_IO_ERROR;
+
+			const std::vector<int16>& rows = (*charts)[i].valueRows;
+			int32 rowCount = (int32)rows.size();
+			if (dest->Write(&rowCount, sizeof(rowCount)) != (ssize_t)sizeof(rowCount))
+				return B_IO_ERROR;
+			for (int32 r = 0; r < rowCount; r++)
+				if (dest->Write(&rows[r], sizeof(rows[r])) != (ssize_t)sizeof(rows[r]))
+					return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -2163,6 +2197,49 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 			if (outMarginRightCm) *outMarginRightCm = marginRight;
 			if (outScaleMode) *outScaleMode = scaleMode;
 			if (outScalePercent) *outScalePercent = scalePercent;
+
+			// Coda versionata opzionale (Fase 29, vedi il commento gemello
+			// in ui/src/AscdIO.cpp/SaveASCD e LoadASCD): dopo scalePercent
+			// puo' seguire 'H' + un flag (formato breve, superato), 'G' +
+			// int32 di lunghezza + payload versionato (intestazioni/
+			// pie'-pagina/titoli di stampa -- questo translator non li
+			// esporta ancora, vedi ROADMAP.md, quindi si limita a
+			// SALTARLI per intero senza analizzarli), oppure NIENTE (file
+			// scritto prima di questa coda -- il byte appena letto
+			// appartiene gia' alla sezione successiva ed EOF-BUG REALE:
+			// mancava questo blocco, quindi ogni esportazione ASCD -> XLSX
+			// di un documento con la coda versionata (scritta SEMPRE da
+			// SaveASCD, anche con impostazioni di stampa predefinite)
+			// disallineava tutte le sezioni successive, compresi i
+			// grafici -- va SEMPRE restituito con Seek quando non e' ne'
+			// 'H' ne' 'G'.
+			uint8 marker = 0;
+			ssize_t mgot = source->Read(&marker, sizeof(marker));
+			if (mgot != 0)
+			{
+				if (mgot != (ssize_t)sizeof(marker))
+					return B_BAD_DATA;
+				if (marker == 'H')
+				{
+					uint8 headers = 1;
+					if (source->Read(&headers, sizeof(headers)) != (ssize_t)sizeof(headers))
+						return B_BAD_DATA;
+				}
+				else if (marker == 'G')
+				{
+					int32 tailLen = 0;
+					if (source->Read(&tailLen, sizeof(tailLen)) != (ssize_t)sizeof(tailLen)
+						|| tailLen < 0 || tailLen > 16384)
+						return B_BAD_DATA;
+					if (tailLen > 0 && source->Seek(tailLen, SEEK_CUR) < 0)
+						return B_BAD_DATA;
+				}
+				else
+				{
+					if (source->Seek(-(off_t)sizeof(marker), SEEK_CUR) < 0)
+						return B_BAD_DATA;
+				}
+			}
 		}
 	}
 
@@ -2391,6 +2468,45 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				}
 
 				doc->AddPivotTable(pivot);
+			}
+		}
+	}
+
+	// Orientamento riga di grafico incorporato: stesso schema
+	// EOF-tollerante delle sezioni sopra (vedi il commento gemello nel
+	// writer, WriteASCD, e in ui/src/AscdIO.cpp/LoadASCD). Un flusso
+	// scritto prima di questo campo lascia ogni grafico "per colonna"
+	// (rowOriented=false, valueRows vuoto), comportamento di sempre.
+	{
+		int32 chartRowOrientCount = 0;
+		ssize_t got = source->Read(&chartRowOrientCount, sizeof(chartRowOrientCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartRowOrientCount))
+				return B_BAD_DATA;
+
+			for (int32 i = 0; i < chartRowOrientCount; i++)
+			{
+				uint8 rowOriented;
+				if (source->Read(&rowOriented, sizeof(rowOriented)) != (ssize_t)sizeof(rowOriented))
+					return B_BAD_DATA;
+
+				int32 rowCount;
+				if (source->Read(&rowCount, sizeof(rowCount)) != (ssize_t)sizeof(rowCount))
+					return B_BAD_DATA;
+				if (rowCount < 0 || rowCount > 4096)
+					return B_BAD_DATA;
+
+				std::vector<int16> rows(rowCount);
+				for (int32 r = 0; r < rowCount; r++)
+					if (source->Read(&rows[r], sizeof(rows[r])) != (ssize_t)sizeof(rows[r]))
+						return B_BAD_DATA;
+
+				if (outCharts && i < (int32)outCharts->size())
+				{
+					(*outCharts)[i].rowOriented = rowOriented != 0;
+					(*outCharts)[i].valueRows = rows;
+				}
 			}
 		}
 	}
@@ -2635,6 +2751,14 @@ static std::string AbsColumnRangeRef(const char* sheetName, int col, int topRow,
 	return std::string(sheetName) + "!" + AbsCellRef(col, topRow) + ":" + AbsCellRef(col, bottomRow);
 }
 
+// Gemella orizzontale di AbsColumnRangeRef sopra: stessa riga, colonne
+// da leftCol a rightCol -- usata per un grafico con orientamento riga
+// (vedi ChartObject::rowOriented in ui/src/Chart.h).
+static std::string AbsRowRangeRef(const char* sheetName, int row, int leftCol, int rightCol)
+{
+	return std::string(sheetName) + "!" + AbsCellRef(leftCol, row) + ":" + AbsCellRef(rightCol, row);
+}
+
 // "Foglio1!$A$1:$B$2", or just "Foglio1!$A$1" for a single cell
 // (matching Excel's own convention of omitting the redundant
 // ":$A$1" for a 1x1 named range) -- used when writing <definedName>
@@ -2792,6 +2916,80 @@ static bool BuildMultiChartDataXlsx(CContainer* doc, const XlsxChartInfo& info, 
 	return !out->categories.empty();
 }
 
+// Trasposizione esatta di BuildMultiChartDataXlsx sopra, per un grafico
+// con orientamento riga (vedi ChartObject::rowOriented/valueRows in
+// ui/src/Chart.h): la riga di categoria e' info.dataTop (etichette
+// lette dalle colonne info.dataLeft..dataRight), ogni serie legge dalla
+// propria riga elencata in "valueRows" (mai vuoto). "firstDataRow" del
+// risultato diventa concettualmente "firstDataCol", riusato cosi' com'e'
+// per non duplicare il campo -- il chiamante lo interpreta secondo
+// l'orientamento, esattamente come fa BuildMultiChartSeriesRows in
+// ui/src/Chart.cpp con "r.left"/"r.left+1".
+static bool BuildMultiChartDataXlsxRows(CContainer* doc, const XlsxChartInfo& info, MultiChartDataXlsx* out,
+	const std::vector<int16>& valueRows)
+{
+	out->categories.clear();
+	out->seriesNames.clear();
+	out->values.clear();
+	if (valueRows.empty())
+		return false;
+
+	int seriesCount = (int)valueRows.size();
+	out->values.resize(seriesCount);
+
+	bool hasHeader = false;
+	for (int s = 0; s < seriesCount && !hasHeader; s++)
+	{
+		Value hv;
+		doc->GetValue(cell(info.dataLeft, valueRows[s]), hv);
+		if (hv.fType == eTextData && ((const char*)hv)[0] != 0)
+			hasHeader = true;
+	}
+
+	for (int s = 0; s < seriesCount; s++)
+	{
+		std::string name;
+		if (hasHeader)
+		{
+			Value hv;
+			doc->GetValue(cell(info.dataLeft, valueRows[s]), hv);
+			if (hv.fType == eTextData)
+				name = (const char*)hv;
+		}
+		if (name.empty())
+		{
+			char buf[32];
+			snprintf(buf, sizeof(buf), "Serie %d", s + 1);
+			name = buf;
+		}
+		out->seriesNames.push_back(name);
+	}
+
+	out->firstDataRow = hasHeader ? info.dataLeft + 1 : info.dataLeft;
+	for (int col = out->firstDataRow; col <= info.dataRight; col++)
+	{
+		std::vector<double> colValues(seriesCount);
+		bool colOk = true;
+		for (int s = 0; s < seriesCount && colOk; s++)
+		{
+			Value vv;
+			doc->GetValue(cell(col, valueRows[s]), vv);
+			if (vv.fType != eNumData)
+				colOk = false;
+			else
+				colValues[s] = (double)vv;
+		}
+		if (!colOk)
+			continue;
+
+		out->categories.push_back(ChartCellLabel(doc, col, info.dataTop));
+		for (int s = 0; s < seriesCount; s++)
+			out->values[s].push_back(colValues[s]);
+	}
+
+	return !out->categories.empty();
+}
+
 static void AppendStrCache(std::string& xml, const std::vector<std::string>& labels)
 {
 	char buf[32];
@@ -2880,7 +3078,29 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 	std::string plot;
 	int seriesCountForLegend = 0;
 
-	if (multiSeries)
+	if (info.rowOriented)
+	{
+		// Grafico con orientamento riga (vedi ChartObject::rowOriented in
+		// ui/src/Chart.h): trasposizione esatta del ramo "multiSeries"
+		// sotto -- categoria su una riga sola, ogni serie su una riga
+		// propria elencata in info.valueRows.
+		MultiChartDataXlsx data;
+		if (!BuildMultiChartDataXlsxRows(doc, info, &data, info.valueRows))
+			return std::string();
+
+		std::string catRef = AbsRowRangeRef(kSheetName, info.dataTop,
+			data.firstDataRow, info.dataRight);
+
+		for (int s = 0; s < (int)data.seriesNames.size(); s++)
+		{
+			std::string valRef = AbsRowRangeRef(kSheetName, info.valueRows[s],
+				data.firstDataRow, info.dataRight);
+			AppendSeries(plot, s, data.seriesNames[s], catRef, data.categories,
+				valRef, data.values[s], true);
+		}
+		seriesCountForLegend = (int)data.seriesNames.size();
+	}
+	else if (multiSeries)
 	{
 		MultiChartDataXlsx data;
 		if (!BuildMultiChartDataXlsx(doc, info, &data, info.valueColumns))
@@ -7650,16 +7870,34 @@ static bool ParseSheetRangeRef(const std::string& ref, std::string* outSheetName
 // contigue (il caso comune), "outValueColumns" esce vuoto apposta
 // (vedi il commento su ChartObject::valueColumns in ui/src/Chart.h):
 // un grafico "normale" resta rappresentato esattamente come prima di
-// questa modifica, nessun rumore in piu' nel formato persistito. Un
-// grafico che non rispetta nemmeno questo vincolo ridotto (es. fogli
-// diversi, righe diverse, un riferimento non a singola colonna) resta
-// non rappresentabile -- trattato come non supportato, stesso
-// meccanismo di un tipo di grafico sconosciuto.
+// questa modifica, nessun rumore in piu' nel formato persistito.
+//
+// Orientamento riga (vedi ChartObject::rowOriented/valueRows in
+// ui/src/Chart.h): quando il riferimento di categoria e' una singola
+// RIGA a piu' colonne invece che una singola colonna a piu' righe (es.
+// earned-value-management.xlsx: categoria Report!$D$21:$O$21, valori di
+// ogni serie sulla STESSA riga, Report!$D$36:$O$36 ecc.), si ricostruisce
+// la trasposizione esatta del caso per colonna sopra: "outRange" ha la
+// riga di categoria in top e le colonne coperte in left/right, ogni
+// riferimento di valore deve coprire esattamente le STESSE colonne (non
+// necessariamente contigue fra loro come righe), "outRowOriented" esce
+// true e "outValueRows" elenca le righe serie VERE (mai vuoto in quel
+// caso, a differenza di outValueColumns che puo' restare vuoto per il
+// caso "contigue": non esiste un equivalente "per colonna" da questa
+// parte, quindi si scrive sempre esplicitamente).
+//
+// Un grafico che non rispetta nessuno dei due schemi (es. fogli
+// diversi, un riferimento di categoria che non e' ne' una singola
+// colonna ne' una singola riga) resta non rappresentabile -- trattato
+// come non supportato, stesso meccanismo di un tipo di grafico
+// sconosciuto.
 static bool ReconstructChartRange(const std::string& sheetName, const std::string& catRefText,
 	const std::vector<std::string>& valRefTexts, range* outRange,
-	std::vector<int16>* outValueColumns)
+	std::vector<int16>* outValueColumns, bool* outRowOriented, std::vector<int16>* outValueRows)
 {
 	outValueColumns->clear();
+	outValueRows->clear();
+	*outRowOriented = false;
 	if (catRefText.empty() || valRefTexts.empty())
 		return false;
 
@@ -7667,45 +7905,83 @@ static bool ReconstructChartRange(const std::string& sheetName, const std::strin
 	range catRange;
 	if (!ParseSheetRangeRef(catRefText, &catSheet, &catRange))
 		return false;
-	if (catSheet != sheetName || catRange.left != catRange.right)
+	if (catSheet != sheetName)
 		return false;
 
-	std::vector<int16> valueCols;
-	int maxCol = catRange.left;
+	bool catIsColumn = (catRange.left == catRange.right);
+	bool catIsRow = (catRange.top == catRange.bottom);
+	// Una singola cella (entrambe vere) si tratta per colonna, il
+	// percorso di sempre -- nessun cambio per un grafico gia'
+	// rappresentabile prima di questa modifica.
+	if (!catIsColumn && !catIsRow)
+		return false;
+
+	if (catIsColumn)
+	{
+		std::vector<int16> valueCols;
+		int maxCol = catRange.left;
+		for (size_t i = 0; i < valRefTexts.size(); i++)
+		{
+			std::string valSheet;
+			range valRange;
+			if (!ParseSheetRangeRef(valRefTexts[i], &valSheet, &valRange))
+				return false;
+			if (valSheet != sheetName || valRange.left != valRange.right)
+				return false;
+			if (valRange.top != catRange.top || valRange.bottom != catRange.bottom)
+				return false;
+			valueCols.push_back((int16)valRange.left);
+			if (valRange.left > maxCol)
+				maxCol = valRange.left;
+		}
+
+		// Contigue? Stesso controllo di prima (colonna attesa crescente
+		// di 1 a partire da subito dopo la categoria): se si',
+		// "valueColumns" resta vuoto -- comportamento identico a prima
+		// di questa modifica per il caso comune.
+		bool contiguous = true;
+		int expectedCol = catRange.left + 1;
+		for (size_t i = 0; i < valueCols.size(); i++)
+		{
+			if (valueCols[i] != expectedCol)
+			{
+				contiguous = false;
+				break;
+			}
+			expectedCol++;
+		}
+
+		outRange->Set(catRange.left, catRange.top, maxCol, catRange.bottom);
+		if (!contiguous)
+			*outValueColumns = valueCols;
+		return true;
+	}
+
+	// Orientamento riga: trasposizione esatta di sopra. Ogni riferimento
+	// di valore deve essere una singola riga che copre ESATTAMENTE le
+	// stesse colonne della categoria -- le righe stesse non devono
+	// essere contigue fra loro (stesso motivo "riga/colonna spacer" del
+	// caso per colonna).
+	std::vector<int16> valueRows;
+	int maxRow = catRange.top;
 	for (size_t i = 0; i < valRefTexts.size(); i++)
 	{
 		std::string valSheet;
 		range valRange;
 		if (!ParseSheetRangeRef(valRefTexts[i], &valSheet, &valRange))
 			return false;
-		if (valSheet != sheetName || valRange.left != valRange.right)
+		if (valSheet != sheetName || valRange.top != valRange.bottom)
 			return false;
-		if (valRange.top != catRange.top || valRange.bottom != catRange.bottom)
+		if (valRange.left != catRange.left || valRange.right != catRange.right)
 			return false;
-		valueCols.push_back((int16)valRange.left);
-		if (valRange.left > maxCol)
-			maxCol = valRange.left;
+		valueRows.push_back((int16)valRange.top);
+		if (valRange.top > maxRow)
+			maxRow = valRange.top;
 	}
 
-	// Contigue? Stesso controllo di prima (colonna attesa crescente di
-	// 1 a partire da subito dopo la categoria): se si', "valueColumns"
-	// resta vuoto -- comportamento identico a prima di questa modifica
-	// per il caso comune.
-	bool contiguous = true;
-	int expectedCol = catRange.left + 1;
-	for (size_t i = 0; i < valueCols.size(); i++)
-	{
-		if (valueCols[i] != expectedCol)
-		{
-			contiguous = false;
-			break;
-		}
-		expectedCol++;
-	}
-
-	outRange->Set(catRange.left, catRange.top, maxCol, catRange.bottom);
-	if (!contiguous)
-		*outValueColumns = valueCols;
+	outRange->Set(catRange.left, catRange.top, catRange.right, maxRow);
+	*outRowOriented = true;
+	*outValueRows = valueRows;
 	return true;
 }
 
@@ -8602,8 +8878,10 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 
 							range dataRange;
 							std::vector<int16> valueColumns;
+							bool rowOriented;
+							std::vector<int16> valueRows;
 							if (!ReconstructChartRange(parsed.name, chartResult.catRef,
-								chartResult.valRefs, &dataRange, &valueColumns))
+								chartResult.valRefs, &dataRange, &valueColumns, &rowOriented, &valueRows))
 							{
 								unsupportedCharts.push_back("layout dati non compatibile");
 								continue;
@@ -8722,6 +9000,8 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							info.type = chartResult.type;
 							info.title = chartResult.title;
 							info.valueColumns = valueColumns;
+							info.rowOriented = rowOriented;
+							info.valueRows = valueRows;
 							parsed.charts.push_back(info);
 						}
 					}

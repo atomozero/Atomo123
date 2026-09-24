@@ -5894,6 +5894,30 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 				continue;
 			}
 
+			// Grafico per RIGA (obj.rowOriented, vedi ChartObject::valueRows
+			// in Chart.h): percorso a parte, come la dispersione sopra --
+			// non esiste un "columnCount" equivalente per questo
+			// orientamento, e BuildChartSeries/BuildMultiChartSeries sotto
+			// leggerebbero le celle sbagliate se applicati qui.
+			if (obj.rowOriented)
+			{
+				MultiChartData multi;
+				if (BuildMultiChartSeriesRows(doc, obj.dataRange, multi, obj.valueRows))
+				{
+					if (obj.type == eLineChart)
+						DrawMultiLineChart(offscreen, previewR, multi, obj.title);
+					else if (obj.type == eAreaChart)
+						DrawMultiAreaChart(offscreen, previewR, multi, obj.title);
+					else if (obj.type == eComboChart)
+						DrawComboChart(offscreen, previewR, multi, obj.title);
+					else if (obj.type == eHBarChart)
+						DrawGroupedHBarChart(offscreen, previewR, multi, obj.title);
+					else
+						DrawGroupedBarChart(offscreen, previewR, multi, obj.title);
+				}
+				continue;
+			}
+
 			int columnCount = obj.dataRange.right - obj.dataRange.left + 1;
 			if (columnCount > 2 && obj.type != ePieChart)
 			{

@@ -64,7 +64,7 @@ enum ChartType {
 // ChartWindow) -- cosi' modificando i dati sorgente il grafico
 // incorporato si aggiorna da solo.
 struct ChartObject {
-	ChartObject() : type(eBarChart) {}
+	ChartObject() : type(eBarChart), rowOriented(false) {}
 
 	range dataRange;
 	BRect frame;
@@ -90,6 +90,24 @@ struct ChartObject {
 	// elencate qui vengono davvero lette come serie quando non vuoto.
 	// Vedi la sezione dedicata, EOF-tollerante, in AscdIO.cpp.
 	std::vector<int16> valueColumns;
+	// Orientamento riga (Fase 36 circa): quando true, "dataRange" ha la
+	// riga di categoria in dataRange.top (colonne dataRange.left..right)
+	// invece che la colonna di categoria in dataRange.left -- la
+	// trasposizione esatta di valueColumns sopra, per un layout Excel
+	// altrettanto valido dove le serie corrono per RIGA invece che per
+	// colonna (es. earned-value-management.xlsx: categoria
+	// Report!$D$21:$O$21, valori di ogni serie sulla STESSA riga,
+	// Report!$D$36:$O$36 ecc. -- righe non necessariamente contigue fra
+	// loro, stesso motivo "colonna spacer in mezzo" di valueColumns).
+	// "valueRows" elenca le righe SERIE vere, 1-based, MAI vuoto quando
+	// rowOriented e' true (a differenza di valueColumns, che puo' restare
+	// vuoto per il caso "contigue" -- qui non esiste un caso "per
+	// colonna" equivalente, quindi si scrive sempre esplicitamente).
+	// Falso/vuoto per ogni grafico esistente (creato dal selettore di
+	// intervallo semplice, o letto da un file .ascd scritto prima di
+	// questo campo): resta per colonna, zero cambio di comportamento.
+	bool rowOriented;
+	std::vector<int16> valueRows;
 };
 
 // L'intervallo deve avere esattamente due colonne: la prima con le
@@ -301,6 +319,19 @@ struct MultiChartData {
 // prima di questo parametro.
 bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
 	const std::vector<int16>& valueColumns = std::vector<int16>());
+
+// Trasposizione esatta di BuildMultiChartSeries sopra, per un grafico
+// con orientamento riga (vedi ChartObject::rowOriented/valueRows): "r"
+// ha la riga di categoria in r.top (etichette lette dalle colonne
+// r.left..r.right di quella riga), e ogni serie legge dalla propria
+// riga elencata in "valueRows" (mai vuoto, MAI dedotto implicitamente
+// come in BuildMultiChartSeries -- non esiste un caso "per colonna"
+// equivalente qui). Riga di intestazione facoltativa: se la colonna
+// r.left ha un valore testuale su ALMENO una riga serie, quella colonna
+// diventa il nome della serie e i dati partono dalla colonna
+// successiva -- stessa convenzione, solo trasposta.
+bool BuildMultiChartSeriesRows(CContainer* doc, const range& r, MultiChartData& out,
+	const std::vector<int16>& valueRows);
 
 struct GroupedBarLayout {
 	std::vector<std::vector<BRect> > bars;	// bars[serie][categoria]
