@@ -361,6 +361,36 @@ What shipped in v0.3.0, on top of v0.2.9:
   `Clear()`/the copy constructor/`operator=`/the destructor) didn't
   regress anything already working.
 
+What shipped since v0.3.0 (in progress):
+- Closed the two remaining named gaps in conditional formatting from
+  "Path to full Excel parity" Tier 3: `cellIs` now supports all 8
+  ECMA-376 operators (`notEqual`/`greaterThan`/`lessThan`/
+  `greaterThanOrEqual`/`lessThanOrEqual`/`between`/`notBetween`, not
+  just `equal`), and the rest of the standard rule family now has a
+  real engine representation — `containsText`/`notContainsText`/
+  `beginsWith`/`endsWith`, `containsBlanks`/`notContainsBlanks`/
+  `containsErrors`/`notContainsErrors`, `top10` (rank or percent, top
+  or bottom) and `aboveAverage`/`belowAverage`. `timePeriod` rules are
+  explicitly out of scope (a separate, date-arithmetic-heavy feature,
+  never named as a gap). `CondFormatRuleType` gained 4 new values
+  (`eCondTextRule`/`eCondBlankErrorRule`/`eCondTop10`/
+  `eCondAboveAverage`), `ConditionalFormatRule` gained `ruleOperator`/
+  `compareValue2`/`top10Bottom`/`top10Percent`/`top10Rank`/
+  `belowAverage`/`equalAverage` — the existing `ruleOperator == 0`
+  ("equal") path is byte-for-byte unchanged, so every rule already on
+  disk keeps working exactly as before. Wired through live evaluation
+  (`CContainer::EvaluateConditionalFormatting`), native persistence
+  (`ui/src/AscdIO.cpp`, ASCD format bumped to version 8), XLSX
+  import/export (including the `between`/`notBetween` `<formula2>`
+  shape, the only ECMA-376 `cfRule` variant using two sibling
+  `<formula>` elements), and the native "Formattazione condizionale"
+  window (a new operator menu, a second value field for `between`, and
+  10 new type entries). CSV/XLS/ODS translators were confirmed to
+  never touch conditional formatting on either side today (a
+  pre-existing, consistent format limitation, not the "read-but-
+  discard" bug class fixed three times previously for XLSX
+  specifically) — no changes needed there.
+
 What shipped in v0.2.0, on top of the v0.1.0 baseline:
 - XLSX/ODS export now writes live formulas for same-sheet references
   (cross-sheet references still export as a value only, since each
