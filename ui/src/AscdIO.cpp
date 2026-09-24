@@ -59,8 +59,15 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // ConditionalFormatRule::dataBarColor in Container.h). Versione 7
 // (era 6): ancora un campo in coda alla stessa sezione -- il nome
 // dello stile dell'icon set (Tier 3, Fase C, vedi il commento su
-// ConditionalFormatRule::iconSetStyle in Container.h).
-static const int32 kASCDVersion = 7;
+// ConditionalFormatRule::iconSetStyle in Container.h). Versione 8
+// (era 7): ancora campi in coda alla stessa sezione -- ruleOperator/
+// compareValue2/top10Bottom/top10Percent/top10Rank/belowAverage/
+// equalAverage (Path to full Excel parity, Tier 3: cellIs con tutti
+// gli operatori ECMA-376, containsText/notContainsText/beginsWith/
+// endsWith, containsBlanks/notContainsBlanks/containsErrors/
+// notContainsErrors, top10, aboveAverage -- vedi ConditionalFormatRule
+// in Container.h).
+static const int32 kASCDVersion = 8;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // "ASCB": formato cartella di lavoro LEGACY, congelato per sempre a
 // questo elenco di sezioni per foglio (fino a "Imposta pagina", Fase
@@ -902,6 +909,35 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 				return B_IO_ERROR;
 			if (iconStyleLen > 0 && dest->Write(rule.iconSetStyle.data(), iconStyleLen) != iconStyleLen)
 				return B_IO_ERROR;
+
+			// Operatore/secondo limite/top10/aboveAverage (versione 8,
+			// vedi il commento su kASCDVersion): non significativi per
+			// i tipi che non li usano, scritti comunque per ognuno,
+			// stesso motivo del colore della barra dei dati e del nome
+			// dello stile dell'icon set sopra.
+			int8 ruleOperator = rule.ruleOperator;
+			if (dest->Write(&ruleOperator, sizeof(ruleOperator)) != (ssize_t)sizeof(ruleOperator))
+				return B_IO_ERROR;
+
+			int32 value2Len = (int32)rule.compareValue2.size();
+			if (dest->Write(&value2Len, sizeof(value2Len)) != (ssize_t)sizeof(value2Len))
+				return B_IO_ERROR;
+			if (value2Len > 0 && dest->Write(rule.compareValue2.data(), value2Len) != value2Len)
+				return B_IO_ERROR;
+
+			int8 top10Bottom = rule.top10Bottom ? 1 : 0;
+			int8 top10Percent = rule.top10Percent ? 1 : 0;
+			int32 top10Rank = rule.top10Rank;
+			if (dest->Write(&top10Bottom, sizeof(top10Bottom)) != (ssize_t)sizeof(top10Bottom)
+				|| dest->Write(&top10Percent, sizeof(top10Percent)) != (ssize_t)sizeof(top10Percent)
+				|| dest->Write(&top10Rank, sizeof(top10Rank)) != (ssize_t)sizeof(top10Rank))
+				return B_IO_ERROR;
+
+			int8 belowAverage = rule.belowAverage ? 1 : 0;
+			int8 equalAverage = rule.equalAverage ? 1 : 0;
+			if (dest->Write(&belowAverage, sizeof(belowAverage)) != (ssize_t)sizeof(belowAverage)
+				|| dest->Write(&equalAverage, sizeof(equalAverage)) != (ssize_t)sizeof(equalAverage))
+				return B_IO_ERROR;
 		}
 	}
 
@@ -1464,14 +1500,15 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// riferimenti relativi -- vedi il commento su
 	// ConditionalFormatRule::expressionFormula in Container.h), 6
 	// (colore della barra dei dati, vedi il commento su
-	// ConditionalFormatRule::dataBarColor in Container.h) e 7 (nome
+	// ConditionalFormatRule::dataBarColor in Container.h), 7 (nome
 	// dello stile dell'icon set, vedi il commento su
-	// ConditionalFormatRule::iconSetStyle in Container.h) restano
-	// TUTTE leggibili -- un file scritto da una versione precedente di
-	// questo formato non deve smettere di aprirsi solo perche' questo
-	// binario e' piu' recente.
+	// ConditionalFormatRule::iconSetStyle in Container.h) e 8 (operatori
+	// cellIs/top10/aboveAverage, vedi il commento su kASCDVersion)
+	// restano TUTTE leggibili -- un file scritto da una versione
+	// precedente di questo formato non deve smettere di aprirsi solo
+	// perche' questo binario e' piu' recente.
 	if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5
-			&& version != 6 && version != kASCDVersion)
+			&& version != 6 && version != 7 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -2419,6 +2456,52 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					}
 					else
 						rule.iconSetStyle.clear();
+				}
+
+				// Operatore/secondo limite/top10/aboveAverage: solo un
+				// file versione 8+ ha scritto questi byte (vedi il
+				// commento su kASCDVersion in cima al file). Un file
+				// piu' vecchio lascia i default del costruttore di
+				// ConditionalFormatRule (ruleOperator 0 = "equal",
+				// esattamente il solo comportamento che esisteva prima
+				// di questa versione).
+				if (version >= 8)
+				{
+					int8 ruleOperator;
+					if (source->Read(&ruleOperator, sizeof(ruleOperator)) != (ssize_t)sizeof(ruleOperator))
+						return B_BAD_DATA;
+					rule.ruleOperator = ruleOperator;
+
+					int32 value2Len;
+					if (source->Read(&value2Len, sizeof(value2Len)) != (ssize_t)sizeof(value2Len))
+						return B_BAD_DATA;
+					if (value2Len < 0 || value2Len > 4096)
+						return B_BAD_DATA;
+					if (value2Len > 0)
+					{
+						rule.compareValue2.resize(value2Len);
+						if (source->Read(&rule.compareValue2[0], value2Len) != value2Len)
+							return B_BAD_DATA;
+					}
+					else
+						rule.compareValue2.clear();
+
+					int8 top10Bottom, top10Percent;
+					int32 top10Rank;
+					if (source->Read(&top10Bottom, sizeof(top10Bottom)) != (ssize_t)sizeof(top10Bottom)
+						|| source->Read(&top10Percent, sizeof(top10Percent)) != (ssize_t)sizeof(top10Percent)
+						|| source->Read(&top10Rank, sizeof(top10Rank)) != (ssize_t)sizeof(top10Rank))
+						return B_BAD_DATA;
+					rule.top10Bottom = top10Bottom != 0;
+					rule.top10Percent = top10Percent != 0;
+					rule.top10Rank = top10Rank;
+
+					int8 belowAverage, equalAverage;
+					if (source->Read(&belowAverage, sizeof(belowAverage)) != (ssize_t)sizeof(belowAverage)
+						|| source->Read(&equalAverage, sizeof(equalAverage)) != (ssize_t)sizeof(equalAverage))
+						return B_BAD_DATA;
+					rule.belowAverage = belowAverage != 0;
+					rule.equalAverage = equalAverage != 0;
 				}
 
 				doc->AddConditionalFormatRule(rule);

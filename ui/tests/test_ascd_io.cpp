@@ -729,6 +729,78 @@ int main()
 		iconReloaded.Release();
 	}
 
+	// Round-trip dei campi versione 8 (Path to full Excel parity, Tier
+	// 3 -- cellIs con operatori oltre "equal", top10, aboveAverage):
+	// stesso schema "EOF tollerante ma versionato" gia' verificato
+	// sopra per i campi versione 3/6/7. Due regole in una volta, una
+	// cellIs "between" e una top10 "ultimi 20%", per coprire sia
+	// compareValue2 sia i tre campi di eCondTop10 in un solo giro.
+	{
+		CContainer& v8SaveDoc = *new CContainer(NULL, NULL);
+		ConditionalFormatRule betweenRule;
+		betweenRule.type = eCondCellIsEqual;
+		betweenRule.ruleOperator = 6; // between
+		betweenRule.compareValue = "10";
+		betweenRule.compareValue2 = "20";
+		betweenRule.ranges.push_back(range(1, 1, 1, 10));
+		v8SaveDoc.AddConditionalFormatRule(betweenRule);
+
+		ConditionalFormatRule top10Rule;
+		top10Rule.type = eCondTop10;
+		top10Rule.top10Bottom = true;
+		top10Rule.top10Percent = true;
+		top10Rule.top10Rank = 20;
+		top10Rule.ranges.push_back(range(2, 1, 2, 10));
+		v8SaveDoc.AddConditionalFormatRule(top10Rule);
+
+		BFile v8File("tests/roundtrip_condformat_v8.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&v8SaveDoc, &v8File) == B_OK,
+			"SaveASCD con regole cellIs \"between\" e top10 (campi versione 8) riesce");
+		v8SaveDoc.Release();
+
+		BFile v8Reopened("tests/roundtrip_condformat_v8.ascd", B_READ_ONLY);
+		CContainer& v8Reloaded = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&v8Reopened, &v8Reloaded) == B_OK,
+			"LoadASCD con regole cellIs \"between\" e top10 riesce");
+
+		const std::vector<ConditionalFormatRule>& v8ReloadedRules
+			= v8Reloaded.GetConditionalFormatRules();
+		Check(v8ReloadedRules.size() == 2, "entrambe le regole sopravvivono al giro salva->ricarica");
+		if (v8ReloadedRules.size() == 2)
+		{
+			const ConditionalFormatRule& br = v8ReloadedRules[0];
+			Check(br.type == eCondCellIsEqual && br.ruleOperator == 6,
+				"la regola cellIs mantiene il tipo e l'operatore \"between\" dopo il giro");
+			Check(br.compareValue == "10" && br.compareValue2 == "20",
+				"entrambi i limiti (compareValue/compareValue2) sopravvivono al giro");
+
+			const ConditionalFormatRule& tr = v8ReloadedRules[1];
+			Check(tr.type == eCondTop10, "la regola top10 mantiene il tipo dopo il giro");
+			Check(tr.top10Bottom && tr.top10Percent && tr.top10Rank == 20,
+				"top10Bottom/top10Percent/top10Rank sopravvivono tutti e tre al giro");
+		}
+		v8Reloaded.Release();
+
+		// A differenza del pivot 2D legacy sotto (dove la sezione era
+		// davvero l'ULTIMA scritta da SaveASCD al momento in cui fu
+		// aggiunta, rendendo sicuro un troncamento diretto del
+		// buffer), la formattazione condizionale e' seguita da molte
+		// altre sezioni (tabelle strutturate, titolo/colonne di
+		// grafico, area di stampa, impostazioni di stampa, VBA,
+		// protezione...): troncare un numero fisso di byte in coda al
+		// buffer intero rischia di tagliare dentro una di QUELLE
+		// sezioni invece che esattamente ai campi versione 8 di questa
+		// regola, un test fragile e non rappresentativo. Il principio
+		// "un file piu' vecchio resta leggibile" per questa sezione e'
+		// gia' verificato sopra ("un file senza sezione formattazione
+		// condizionale si rilegge senza errori e senza regole", stesso
+		// principio EOF-tollerante) e il gate "if (version >= 8)" in
+		// LoadASCD segue lo stesso identico schema gia' in uso per le
+		// versioni 4/5/6/7 -- nessuna delle quali ha un test di
+		// troncamento dedicato in questo file.
+	}
+
 	// Round-trip di una tabella pivot persistita (oggetto + cache, non
 	// solo le celle che WritePivotTable scrive): vedi PivotTableObject
 	// in Container.h.

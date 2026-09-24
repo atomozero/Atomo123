@@ -39,6 +39,9 @@
 */
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <cstdlib>
 
 #include <support/Debug.h>
 
@@ -220,6 +223,64 @@ static rgb_color InterpolateColor(const rgb_color& a, const rgb_color& b, double
 	return result;
 }
 
+// Confronto NUMERICO per i 7 operatori eCondCellIsEqual diversi da
+// "equal" (Path to full Excel parity, Tier 3): a differenza
+// dell'unico operatore gia' esistente (confronto testuale via
+// GetCellResult), questi confrontano il VALORE della cella -- una
+// cella non numerica semplicemente non soddisfa mai la condizione,
+// stesso comportamento di Excel per una regola cellIs numerica contro
+// testo.
+static bool EvaluateCellIsOperator(int8 op, double cellVal, double lo, double hi)
+{
+	switch (op)
+	{
+		case 1: return cellVal != lo; // notEqual
+		case 2: return cellVal > lo;  // greaterThan
+		case 3: return cellVal < lo;  // lessThan
+		case 4: return cellVal >= lo; // greaterThanOrEqual
+		case 5: return cellVal <= lo; // lessThanOrEqual
+		case 6: return cellVal >= lo && cellVal <= hi; // between
+		case 7: return cellVal < lo || cellVal > hi;   // notBetween
+		default: return false;
+	}
+}
+
+// Ricerca di sottostringa case-insensitive (Excel usa la semantica di
+// SEARCH, non quella case-sensitive di FIND, per containsText/
+// beginsWith/endsWith): nessun helper del genere esisteva gia' in
+// questo motore (verificato in Utils.h/Utils.cpp), ne serve solo uno
+// piccolo e locale, non un'astrazione a parte.
+static bool ContainsCaseInsensitive(const std::string& haystack, const std::string& needle)
+{
+	if (needle.empty())
+		return true;
+	std::string h = haystack, n = needle;
+	for (size_t i = 0; i < h.size(); i++) h[i] = (char)tolower((unsigned char)h[i]);
+	for (size_t i = 0; i < n.size(); i++) n[i] = (char)tolower((unsigned char)n[i]);
+	return h.find(n) != std::string::npos;
+}
+
+static bool StartsWithCaseInsensitive(const std::string& haystack, const std::string& needle)
+{
+	if (needle.size() > haystack.size())
+		return false;
+	for (size_t i = 0; i < needle.size(); i++)
+		if (tolower((unsigned char)haystack[i]) != tolower((unsigned char)needle[i]))
+			return false;
+	return true;
+}
+
+static bool EndsWithCaseInsensitive(const std::string& haystack, const std::string& needle)
+{
+	if (needle.size() > haystack.size())
+		return false;
+	size_t offset = haystack.size() - needle.size();
+	for (size_t i = 0; i < needle.size(); i++)
+		if (tolower((unsigned char)haystack[offset + i]) != tolower((unsigned char)needle[i]))
+			return false;
+	return true;
+}
+
 // Formattazione condizionale viva (Fase 13): stessa identica logica di
 // valutazione gia' scritta per l'importazione XLSX (Fase 12,
 // ApplyConditionalFormatting/XlsxTranslator.cpp) -- solo il risultato
@@ -234,7 +295,7 @@ std::map<cell, rgb_color> CContainer::EvaluateConditionalFormatting()
 	{
 		const ConditionalFormatRule& rule = fCondFormatRules[i];
 
-		if (rule.type == eCondCellIsEqual)
+		if (rule.type == eCondCellIsEqual && rule.ruleOperator == 0)
 		{
 			// Formattazione VIVA anche per il valore di confronto stesso
 			// quando la regola XLSX confrontava contro un riferimento di
@@ -261,6 +322,47 @@ std::map<cell, rgb_color> CContainer::EvaluateConditionalFormatting()
 						char text[4096];
 						GetCellResult(c, text, sizeof(text), true);
 						if (compareAgainst == text)
+							result[c] = rule.bgColor;
+					}
+				}
+			}
+		}
+		else if (rule.type == eCondCellIsEqual)
+		{
+			// I 7 operatori numerici (Path to full Excel parity, Tier 3):
+			// a differenza di "equal" sopra, qui si confronta il VALORE
+			// (GetValue), non il testo -- una cella non numerica non
+			// soddisfa mai la condizione. compareValue/compareValue2
+			// restano letterali testuali (come scritti dall'utente o da
+			// XLSX), convertiti in double una volta per regola; il solo
+			// riferimento di cella VIVO supportato resta compareValue
+			// (limite inferiore/valore di confronto), stessa convenzione
+			// di "equal" sopra -- compareValue2 (limite superiore di
+			// between/notBetween) e' sempre un letterale, mai un
+			// riferimento (scelta di scope v1, vedi il commento su
+			// ConditionalFormatRule::compareValue2 in Container.h).
+			std::string compareAgainst = rule.compareValue;
+			if (rule.compareIsCellRef)
+			{
+				char refText[4096];
+				GetCellResult(rule.compareRefCell, refText, sizeof(refText), true);
+				compareAgainst = refText;
+			}
+			double lo = atof(compareAgainst.c_str());
+			double hi = atof(rule.compareValue2.c_str());
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						Value v;
+						GetValue(c, v);
+						if (v.fType != eNumData || v.IsNan())
+							continue;
+						if (EvaluateCellIsOperator(rule.ruleOperator, (double)v, lo, hi))
 							result[c] = rule.bgColor;
 					}
 				}
@@ -394,6 +496,176 @@ std::map<cell, rgb_color> CContainer::EvaluateConditionalFormatting()
 							if (truthy)
 								result[c] = rule.bgColor;
 						}
+					}
+				}
+			}
+		}
+		else if (rule.type == eCondTextRule)
+		{
+			// contains/notContains/beginsWith/endsWith (Path to full
+			// Excel parity, Tier 3): confronto per cella indipendente,
+			// stesso schema di eCondCellIsEqual "equal" -- niente da
+			// raccogliere sull'intero intervallo prima.
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						char text[4096];
+						GetCellResult(c, text, sizeof(text), true);
+						std::string cellText = text;
+						bool match = false;
+						switch (rule.ruleOperator)
+						{
+							case 0: match = ContainsCaseInsensitive(cellText, rule.compareValue); break;
+							case 1: match = !ContainsCaseInsensitive(cellText, rule.compareValue); break;
+							case 2: match = StartsWithCaseInsensitive(cellText, rule.compareValue); break;
+							case 3: match = EndsWithCaseInsensitive(cellText, rule.compareValue); break;
+						}
+						if (match)
+							result[c] = rule.bgColor;
+					}
+				}
+			}
+		}
+		else if (rule.type == eCondBlankErrorRule)
+		{
+			// containsBlanks/notContainsBlanks/containsErrors/
+			// notContainsErrors: proprieta' del VALORE della cella
+			// (Value::fType), non del suo testo -- stessa identica
+			// logica gia' usata da ISBLANK/ISERROR in
+			// Functions.logical.cpp, riletta li' invece di reinventata.
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						Value v;
+						GetValue(c, v);
+						bool isBlank = (v.fType == eNoData);
+						bool isError = (v.fType == eNumData && v.IsNan());
+						bool match = false;
+						switch (rule.ruleOperator)
+						{
+							case 0: match = isBlank; break;
+							case 1: match = !isBlank; break;
+							case 2: match = isError; break;
+							case 3: match = !isError; break;
+						}
+						if (match)
+							result[c] = rule.bgColor;
+					}
+				}
+			}
+		}
+		else if (rule.type == eCondTop10)
+		{
+			// Primi/ultimi N valori (o N%) dell'intervallo: due passate
+			// come eCondColorScale sopra -- prima raccoglie i valori
+			// numerici per trovare la soglia (il rango-esimo valore
+			// ordinato), poi colora ogni cella che la raggiunge o
+			// supera (o e' sotto, per top10Bottom). Pareggi inclusi
+			// tutti, stessa semantica del vero "top10" di Excel.
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+				std::vector<double> values;
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						Value v;
+						GetValue(cell(col, row), v);
+						if (v.fType == eNumData && !v.IsNan())
+							values.push_back((double)v);
+					}
+				}
+				if (values.empty())
+					continue;
+
+				std::vector<double> sortedValues = values;
+				std::sort(sortedValues.begin(), sortedValues.end());
+
+				int32 count;
+				if (rule.top10Percent)
+				{
+					count = (int32)ceil((rule.top10Rank / 100.0) * (double)sortedValues.size());
+					if (count < 1) count = 1;
+				}
+				else
+					count = rule.top10Rank;
+				if (count < 1) count = 1;
+				if (count > (int32)sortedValues.size()) count = (int32)sortedValues.size();
+
+				double boundary = rule.top10Bottom
+					? sortedValues[count - 1]
+					: sortedValues[sortedValues.size() - count];
+
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						Value v;
+						GetValue(c, v);
+						if (v.fType != eNumData || v.IsNan())
+							continue;
+						double val = (double)v;
+						bool match = rule.top10Bottom ? (val <= boundary) : (val >= boundary);
+						if (match)
+							result[c] = rule.bgColor;
+					}
+				}
+			}
+		}
+		else if (rule.type == eCondAboveAverage)
+		{
+			// Sopra/sotto la media: due passate, la soglia e' la media
+			// aritmetica delle celle numeriche invece di un rango
+			// (eCondTop10 sopra) o di un min/max (eCondColorScale).
+			for (size_t r = 0; r < rule.ranges.size(); r++)
+			{
+				const range& rg = rule.ranges[r];
+				std::vector<double> values;
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						Value v;
+						GetValue(cell(col, row), v);
+						if (v.fType == eNumData && !v.IsNan())
+							values.push_back((double)v);
+					}
+				}
+				if (values.empty())
+					continue;
+
+				double sum = 0;
+				for (size_t k = 0; k < values.size(); k++)
+					sum += values[k];
+				double average = sum / (double)values.size();
+
+				for (int row = rg.top; row <= rg.bottom; row++)
+				{
+					for (int col = rg.left; col <= rg.right; col++)
+					{
+						cell c(col, row);
+						Value v;
+						GetValue(c, v);
+						if (v.fType != eNumData || v.IsNan())
+							continue;
+						double val = (double)v;
+						bool match = rule.equalAverage && val == average;
+						if (!match)
+							match = rule.belowAverage ? (val < average) : (val > average);
+						if (match)
+							result[c] = rule.bgColor;
 					}
 				}
 			}

@@ -35,9 +35,11 @@
 	  PROTETTO tranne le due celle interattive (Fase 32, "Proteggi
 	  foglio").
 	- "Dati": le 700 righe importate integralmente, blocca riquadri
-	  per riga E per colonna, con due regole di formattazione
+	  per riga E per colonna, con quattro regole di formattazione
 	  condizionale dal vivo (Discount Band = "High", scala di colori
-	  a due punti sulla colonna Profit).
+	  a due punti sulla colonna Profit, primi 10% per Sales e sopra
+	  la media per Units Sold -- questi ultimi due dal completamento
+	  di "Path to full Excel parity" Tier 3).
 
 	Deliberatamente NON rappresentate in questo file: le tre "Formula
 	auditing views" (Mostra formule, Traccia precedenti/dipendenti,
@@ -464,6 +466,33 @@ int main()
 		maxPoint.color = (rgb_color){ 99, 190, 123, 255 }; // 63BE7B, verde Excel
 		rule.colorScalePoints.push_back(maxPoint);
 
+		dati->AddConditionalFormatRule(rule);
+	}
+
+	// Primi 10% per Vendite (Path to full Excel parity, Tier 3, appena
+	// completato): a differenza della scala di colori sopra (un colore
+	// diverso per OGNI cella), qui solo le celle nella fascia piu' alta
+	// prendono un colore, tutte uguale -- lo stesso "Top 10%" di Excel,
+	// sulla colonna Sales (J, 700 righe).
+	{
+		ConditionalFormatRule rule;
+		rule.type = eCondTop10;
+		rule.top10Rank = 10;
+		rule.top10Percent = true;
+		rule.bgColor = (rgb_color){ 198, 239, 206, 255 }; // C6EFCE, verde Excel per "Top 10%"
+		rule.ranges.push_back(range(10, 2, 10, 701)); // J2:J701 (Sales)
+		dati->AddConditionalFormatRule(rule);
+	}
+
+	// Sopra la media per Units Sold (stesso gruppo di regole appena
+	// completato): la soglia e' la MEDIA aritmetica dell'intervallo,
+	// ricalcolata a ogni valutazione -- non un valore fisso come la
+	// regola "High" in cima a questo blocco.
+	{
+		ConditionalFormatRule rule;
+		rule.type = eCondAboveAverage;
+		rule.bgColor = (rgb_color){ 255, 235, 156, 255 }; // FFEB9C, giallo Excel
+		rule.ranges.push_back(range(5, 2, 5, 701)); // E2:E701 (Units Sold)
 		dati->AddConditionalFormatRule(rule);
 	}
 

@@ -1501,7 +1501,7 @@ static status_t WriteASCDWithPivot2DForTest(CContainer* doc, const PivotTableObj
 static status_t WriteASCDWithCondFormatForTest(CContainer* doc,
 	const std::vector<ConditionalFormatRule>& rules, BPositionIO* dest)
 {
-	static const int32 kVersion7 = 7;
+	static const int32 kVersion8 = 8;
 	int32 count = 0;
 	{
 		CCellIterator counter(doc, NULL);
@@ -1511,7 +1511,7 @@ static status_t WriteASCDWithCondFormatForTest(CContainer* doc,
 	}
 	if (dest->Write(kASCDMagicForTest, 4) != 4)
 		return B_IO_ERROR;
-	if (dest->Write(&kVersion7, sizeof(kVersion7)) != (ssize_t)sizeof(kVersion7))
+	if (dest->Write(&kVersion8, sizeof(kVersion8)) != (ssize_t)sizeof(kVersion8))
 		return B_IO_ERROR;
 	if (dest->Write(&count, sizeof(count)) != (ssize_t)sizeof(count))
 		return B_IO_ERROR;
@@ -1704,6 +1704,29 @@ static status_t WriteASCDWithCondFormatForTest(CContainer* doc,
 			if (dest->Write(&iconStyleLen, sizeof(iconStyleLen)) != (ssize_t)sizeof(iconStyleLen))
 				return B_IO_ERROR;
 			if (iconStyleLen > 0 && dest->Write(rule.iconSetStyle.data(), iconStyleLen) != iconStyleLen)
+				return B_IO_ERROR;
+
+			// Versione 8 (Path to full Excel parity, Tier 3): stesso
+			// ordine byte-per-byte del vero SaveASCD.
+			int8 ruleOperator = rule.ruleOperator;
+			if (dest->Write(&ruleOperator, sizeof(ruleOperator)) != (ssize_t)sizeof(ruleOperator))
+				return B_IO_ERROR;
+			int32 value2Len = (int32)rule.compareValue2.size();
+			if (dest->Write(&value2Len, sizeof(value2Len)) != (ssize_t)sizeof(value2Len))
+				return B_IO_ERROR;
+			if (value2Len > 0 && dest->Write(rule.compareValue2.data(), value2Len) != value2Len)
+				return B_IO_ERROR;
+			int8 top10Bottom = rule.top10Bottom ? 1 : 0;
+			int8 top10Percent = rule.top10Percent ? 1 : 0;
+			int32 top10Rank = rule.top10Rank;
+			if (dest->Write(&top10Bottom, sizeof(top10Bottom)) != (ssize_t)sizeof(top10Bottom)
+				|| dest->Write(&top10Percent, sizeof(top10Percent)) != (ssize_t)sizeof(top10Percent)
+				|| dest->Write(&top10Rank, sizeof(top10Rank)) != (ssize_t)sizeof(top10Rank))
+				return B_IO_ERROR;
+			int8 belowAverage = rule.belowAverage ? 1 : 0;
+			int8 equalAverage = rule.equalAverage ? 1 : 0;
+			if (dest->Write(&belowAverage, sizeof(belowAverage)) != (ssize_t)sizeof(belowAverage)
+				|| dest->Write(&equalAverage, sizeof(equalAverage)) != (ssize_t)sizeof(equalAverage))
 				return B_IO_ERROR;
 		}
 	}
@@ -3520,6 +3543,40 @@ static bool ReadCondFormatRulesFromAscdForTest(const unsigned char* data, size_t
 			rule.iconSetStyle.assign((const char*)data + pos, iconStyleLen);
 			pos += iconStyleLen;
 		}
+
+		// Versione 8 (Path to full Excel parity, Tier 3): stesso ordine
+		// byte-per-byte del vero LoadASCD.
+		if (pos + 1 > len) return false;
+		int8 ruleOperator;
+		memcpy(&ruleOperator, data + pos, 1); pos += 1;
+		rule.ruleOperator = ruleOperator;
+
+		if (pos + 4 > len) return false;
+		int32 value2Len;
+		memcpy(&value2Len, data + pos, 4); pos += 4;
+		if (value2Len < 0 || pos + (size_t)value2Len > len) return false;
+		if (value2Len > 0)
+		{
+			rule.compareValue2.assign((const char*)data + pos, value2Len);
+			pos += value2Len;
+		}
+
+		if (pos + 6 > len) return false;
+		int8 top10Bottom, top10Percent;
+		int32 top10Rank;
+		memcpy(&top10Bottom, data + pos, 1); pos += 1;
+		memcpy(&top10Percent, data + pos, 1); pos += 1;
+		memcpy(&top10Rank, data + pos, 4); pos += 4;
+		rule.top10Bottom = top10Bottom != 0;
+		rule.top10Percent = top10Percent != 0;
+		rule.top10Rank = top10Rank;
+
+		if (pos + 2 > len) return false;
+		int8 belowAverage, equalAverage;
+		memcpy(&belowAverage, data + pos, 1); pos += 1;
+		memcpy(&equalAverage, data + pos, 1); pos += 1;
+		rule.belowAverage = belowAverage != 0;
+		rule.equalAverage = equalAverage != 0;
 
 		out->push_back(rule);
 	}
@@ -5876,6 +5933,28 @@ int main()
 						pos += iconStyleLen;
 					}
 				}
+
+				// ruleOperator/compareValue2/top10*/belowAverage/
+				// equalAverage (versione 8 del formato ASCD, Path to
+				// full Excel parity Tier 3): scritti per OGNI regola
+				// ormai -- vedi il commento su kASCDVersion. Non
+				// significativi per nessuna delle cinque regole di
+				// questo file di prova (tutte precedenti a questa
+				// versione), ma i byte vanno comunque consumati per non
+				// disallineare la regola successiva.
+				if (pos + 1 <= ascdLen)
+					pos += 1; // ruleOperator
+				if (pos + 4 <= ascdLen)
+				{
+					int32 value2Len;
+					memcpy(&value2Len, ascdData + pos, 4); pos += 4;
+					if (value2Len > 0 && pos + (size_t)value2Len <= ascdLen)
+						pos += value2Len;
+				}
+				if (pos + 1 + 1 + 4 <= ascdLen)
+					pos += 1 + 1 + 4; // top10Bottom, top10Percent, top10Rank
+				if (pos + 1 + 1 <= ascdLen)
+					pos += 1 + 1; // belowAverage, equalAverage
 
 				if (type == eCondCellIsEqual && compareValue == "Mancante" && packed == 0xFFC7CE
 					&& rangeMatchesA1A3)
@@ -10304,6 +10383,227 @@ int main()
 							&& reimportedRules[5].colorScalePoints.size() == 3
 							&& reimportedRules[5].iconSetStyle == "3TrafficLights1",
 						"la regola iconSet ricostruita combacia (tre soglie, nome dello stile)");
+				}
+			}
+		}
+	}
+
+	// Formattazione condizionale, ROADMAP "Path to full Excel parity"
+	// Tier 3: cellIs con un operatore diverso da "equal" (greaterThan),
+	// cellIs "between" (le due <formula>/<formula2>), containsText,
+	// containsBlanks, top10 e aboveAverage -- un fixture con un
+	// rappresentante per famiglia, su colonne non sovrapposte (G..L),
+	// colori tutti diversi cosi' ogni dxfId e' univoco e facile da
+	// verificare senza dipendere dal dedup (gia' provato sopra).
+	{
+		CContainer& newDoc = *new CContainer(NULL, NULL);
+		TryToParseString("10", cell(7, 1), &newDoc, true);  // G1: cellIs greaterThan
+		TryToParseString("20", cell(7, 2), &newDoc, true);  // G2
+		TryToParseString("5", cell(8, 1), &newDoc, true);   // H1: cellIs between
+		TryToParseString("15", cell(8, 2), &newDoc, true);  // H2
+		TryToParseString("apple pie", cell(9, 1), &newDoc, true); // I1: containsText
+		TryToParseString("grape", cell(9, 2), &newDoc, true);     // I2
+		// J1..J3 (containsBlanks) restano deliberatamente senza contenuto.
+		TryToParseString("30", cell(11, 1), &newDoc, true); // K1: top10
+		TryToParseString("40", cell(11, 2), &newDoc, true); // K2
+		TryToParseString("50", cell(12, 1), &newDoc, true); // L1: aboveAverage
+		TryToParseString("60", cell(12, 2), &newDoc, true); // L2
+
+		rgb_color colorA = { 255, 0, 0, 255 };
+		rgb_color colorB = { 0, 255, 0, 255 };
+		rgb_color colorC = { 0, 0, 255, 255 };
+		rgb_color colorD = { 255, 255, 0, 255 };
+		rgb_color colorE = { 255, 0, 255, 255 };
+		rgb_color colorF = { 0, 255, 255, 255 };
+
+		std::vector<ConditionalFormatRule> newRules;
+		{
+			ConditionalFormatRule r;
+			r.type = eCondCellIsEqual;
+			r.ruleOperator = 2; // greaterThan
+			r.compareValue = "15";
+			r.bgColor = colorA;
+			r.ranges.push_back(range(7, 1, 7, 3));
+			newRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondCellIsEqual;
+			r.ruleOperator = 6; // between
+			r.compareValue = "10";
+			r.compareValue2 = "20";
+			r.bgColor = colorB;
+			r.ranges.push_back(range(8, 1, 8, 3));
+			newRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondTextRule;
+			r.ruleOperator = 0; // containsText
+			r.compareValue = "apple";
+			r.bgColor = colorC;
+			r.ranges.push_back(range(9, 1, 9, 3));
+			newRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondBlankErrorRule;
+			r.ruleOperator = 0; // containsBlanks
+			r.bgColor = colorD;
+			r.ranges.push_back(range(10, 1, 10, 3));
+			newRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondTop10;
+			r.top10Rank = 3;
+			r.bgColor = colorE;
+			r.ranges.push_back(range(11, 1, 11, 3));
+			newRules.push_back(r);
+		}
+		{
+			ConditionalFormatRule r;
+			r.type = eCondAboveAverage;
+			r.bgColor = colorF;
+			r.ranges.push_back(range(12, 1, 12, 3));
+			newRules.push_back(r);
+		}
+
+		BMallocIO newAscdIn;
+		status_t newSaveErr = WriteASCDWithCondFormatForTest(&newDoc, newRules, &newAscdIn);
+		Check(newSaveErr == B_OK,
+			"preparazione dell'ASCD di prova con le regole ECMA-376 aggiuntive (cellIs/containsText/top10/aboveAverage) riesce");
+		newDoc.Release();
+
+		newAscdIn.Seek(0, SEEK_SET);
+		translator_info newInfo;
+		err = translator->Identify(&newAscdIn, NULL, NULL, &newInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && newInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD di prova con le regole ECMA-376 aggiuntive");
+
+		newAscdIn.Seek(0, SEEK_SET);
+		BMallocIO newXlsxOut;
+		err = translator->Translate(&newAscdIn, &newInfo, NULL, kAtomoXlsxFormat, &newXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con le regole ECMA-376 aggiuntive) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			newXlsxOut.Seek(0, SEEK_SET);
+			CZipReader newZip;
+			Check(newZip.Open(&newXlsxOut),
+				"il file XLSX con le regole ECMA-376 aggiuntive e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> sheetBytes, stylesBytes;
+			bool readSheet = newZip.ReadEntry("xl/worksheets/sheet1.xml", sheetBytes);
+			bool readStyles = newZip.ReadEntry("xl/styles.xml", stylesBytes);
+			Check(readSheet && readStyles,
+				"xl/worksheets/sheet1.xml e xl/styles.xml si leggono dall'archivio (regole ECMA-376 aggiuntive)");
+
+			if (readSheet && readStyles)
+			{
+				std::string sheet((const char*)&sheetBytes[0], sheetBytes.size());
+				std::string styles((const char*)&stylesBytes[0], stylesBytes.size());
+
+				Check(styles.find("<dxfs count=\"6\">") != std::string::npos,
+					"styles.xml ha sei dxf distinti (un colore diverso per regola)");
+
+				Check(sheet.find("<conditionalFormatting sqref=\"G1:G3\">"
+						"<cfRule type=\"cellIs\" dxfId=\"0\" priority=\"1\" operator=\"greaterThan\">"
+						"<formula>&quot;15&quot;</formula></cfRule>") != std::string::npos,
+					"sheet1.xml scrive cellIs con operator=\"greaterThan\" (non piu' solo \"equal\")");
+
+				Check(sheet.find("<conditionalFormatting sqref=\"H1:H3\">"
+						"<cfRule type=\"cellIs\" dxfId=\"1\" priority=\"2\" operator=\"between\">"
+						"<formula>&quot;10&quot;</formula><formula2>&quot;20&quot;</formula2></cfRule>") != std::string::npos,
+					"sheet1.xml scrive cellIs \"between\" con <formula> E <formula2>");
+
+				Check(sheet.find("<conditionalFormatting sqref=\"I1:I3\">"
+						"<cfRule type=\"containsText\" dxfId=\"2\" priority=\"3\" operator=\"containsText\" text=\"apple\">"
+						"<formula>NOT(ISERROR(SEARCH(&quot;apple&quot;,I1)))</formula></cfRule>") != std::string::npos,
+					"sheet1.xml scrive containsText con l'attributo text= e una formula SEARCH equivalente");
+
+				Check(sheet.find("<conditionalFormatting sqref=\"J1:J3\">"
+						"<cfRule type=\"containsBlanks\" dxfId=\"3\" priority=\"4\">"
+						"<formula>LEN(TRIM(J1))=0</formula></cfRule>") != std::string::npos,
+					"sheet1.xml scrive containsBlanks con una formula LEN(TRIM(...))=0 equivalente");
+
+				Check(sheet.find("<conditionalFormatting sqref=\"K1:K3\">"
+						"<cfRule type=\"top10\" dxfId=\"4\" priority=\"5\" rank=\"3\"/>") != std::string::npos,
+					"sheet1.xml scrive top10 con rank=\"3\", nessun percent/bottom (entrambi falsi)");
+
+				Check(sheet.find("<conditionalFormatting sqref=\"L1:L3\">"
+						"<cfRule type=\"aboveAverage\" dxfId=\"5\" priority=\"6\" "
+						"aboveAverage=\"1\" equalAverage=\"0\"/>") != std::string::npos,
+					"sheet1.xml scrive aboveAverage con aboveAverage=\"1\" (sopra, non sotto)");
+			}
+
+			// Round-trip: le stesse sei regole riesportate devono
+			// sopravvivere alla riimportazione XLSX -> ASCD.
+			newXlsxOut.Seek(0, SEEK_SET);
+			translator_info newReimportInfo;
+			err = translator->Identify(&newXlsxOut, NULL, NULL, &newReimportInfo, 0);
+			Check(err == B_OK && newReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX con le regole ECMA-376 aggiuntive si riconosce ancora come XLSX valido rileggendolo");
+
+			newXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO newReimportAscd;
+			err = translator->Translate(&newXlsxOut, &newReimportInfo, NULL, kAtomoNativeFormat, &newReimportAscd);
+			Check(err == B_OK, "il file XLSX con le regole ECMA-376 aggiuntive si rilegge correttamente (round-trip)");
+
+			const unsigned char* newReimportData = NULL;
+			size_t newReimportLen = 0;
+			bool newReimportUnwrapped = UnwrapFirstSheet(
+				(const unsigned char*)newReimportAscd.Buffer(), newReimportAscd.BufferLength(),
+				&newReimportData, &newReimportLen);
+			Check(newReimportUnwrapped,
+				"il round-trip delle regole ECMA-376 aggiuntive produce anch'esso una cartella ASCB valida");
+
+			if (newReimportUnwrapped && newReimportLen > 12 && memcmp(newReimportData, "ASCD", 4) == 0)
+			{
+				int32 reimportCellCount;
+				memcpy(&reimportCellCount, newReimportData + 8, 4);
+
+				size_t pos = 12;
+				for (int32 i = 0; i < reimportCellCount && pos + 9 <= newReimportLen; i++)
+				{
+					int32 clen;
+					memcpy(&clen, newReimportData + pos + 4, 4);
+					pos += 9 + clen;
+				}
+
+				std::vector<ConditionalFormatRule> reimportedNewRules;
+				bool newSectionRead = ReadCondFormatRulesFromAscdForTest(newReimportData, newReimportLen,
+					pos, &reimportedNewRules);
+				Check(newSectionRead,
+					"la sezione formattazione condizionale (regole ECMA-376 aggiuntive) si legge correttamente");
+				Check(reimportedNewRules.size() == 6,
+					"il giro completo XLSX -> ASCD ricostruisce tutte e sei le regole ECMA-376 aggiuntive");
+				if (reimportedNewRules.size() == 6)
+				{
+					Check(reimportedNewRules[0].type == eCondCellIsEqual
+							&& reimportedNewRules[0].ruleOperator == 2
+							&& reimportedNewRules[0].compareValue == "15",
+						"la regola cellIs greaterThan ricostruita combacia (operatore e valore)");
+					Check(reimportedNewRules[1].type == eCondCellIsEqual
+							&& reimportedNewRules[1].ruleOperator == 6
+							&& reimportedNewRules[1].compareValue == "10"
+							&& reimportedNewRules[1].compareValue2 == "20",
+						"la regola cellIs between ricostruita combacia (limite inferiore E superiore)");
+					Check(reimportedNewRules[2].type == eCondTextRule
+							&& reimportedNewRules[2].ruleOperator == 0
+							&& reimportedNewRules[2].compareValue == "apple",
+						"la regola containsText ricostruita combacia (testo cercato)");
+					Check(reimportedNewRules[3].type == eCondBlankErrorRule
+							&& reimportedNewRules[3].ruleOperator == 0,
+						"la regola containsBlanks ricostruita combacia (tipo e operatore)");
+					Check(reimportedNewRules[4].type == eCondTop10
+							&& reimportedNewRules[4].top10Rank == 3
+							&& !reimportedNewRules[4].top10Percent
+							&& !reimportedNewRules[4].top10Bottom,
+						"la regola top10 ricostruita combacia (rank=3, non percentuale, non ultimi)");
+					Check(reimportedNewRules[5].type == eCondAboveAverage
+							&& !reimportedNewRules[5].belowAverage,
+						"la regola aboveAverage ricostruita combacia (sopra, non sotto)");
 				}
 			}
 		}

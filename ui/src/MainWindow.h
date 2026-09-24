@@ -491,7 +491,11 @@ public:
 	// selezione corrente diventa direttamente quell'insieme (un solo
 	// intervallo). Chiamate da ConditionalFormatWindow via
 	// kMsgCondFormatCommit/kMsgCondFormatRemoveAll.
-	void ApplyConditionalFormatToSelection(int type, const char* value, rgb_color color);
+	// "type" e' l'indice posizionale del menu di ConditionalFormatWindow
+	// (NON lo stesso ordine di CondFormatRuleType), vedi il commento
+	// sull'implementazione per la tabella di smistamento completa.
+	void ApplyConditionalFormatToSelection(int type, const char* value, const char* value2,
+		int operatorIdx, int32 rank, bool percent, bool bottom, bool belowAverage, rgb_color color);
 	void ApplyColorScaleToSelection(rgb_color minColor, rgb_color maxColor);
 	void ApplyDataBarToSelection(rgb_color color);
 	void ApplyIconSetToSelection();

@@ -4680,15 +4680,55 @@ void MainWindow::RemoveValidationFromSelection()
 	MarkModified();
 }
 
-void MainWindow::ApplyConditionalFormatToSelection(int type, const char* value, rgb_color color)
+// "type" e' l'indice posizionale del menu di ConditionalFormatWindow
+// (vedi il commento li' per la tabella completa), NON lo stesso ordine
+// di CondFormatRuleType -- questa funzione ospita ogni tipo "per
+// cella"/"per soglia" con un solo colore di sfondo (tutti tranne
+// colorScale/dataBar/iconSet, che restano nelle loro funzioni dedicate
+// sotto perche' portano piu' di un colore o nessuno).
+void MainWindow::ApplyConditionalFormatToSelection(int type, const char* value, const char* value2,
+	int operatorIdx, int32 rank, bool percent, bool bottom, bool belowAverage, rgb_color color)
 {
 	if (!fDoc)
 		return;
 
 	fSheetView->SaveCondFormatUndoState();
 	ConditionalFormatRule rule;
-	rule.type = (type == 1) ? eCondDuplicateValues : eCondCellIsEqual;
-	rule.compareValue = value ? value : "";
+	switch (type)
+	{
+		case 0: // cellIs, con l'operatore scelto nel menu dedicato
+			rule.type = eCondCellIsEqual;
+			rule.ruleOperator = (int8)operatorIdx;
+			rule.compareValue = value ? value : "";
+			rule.compareValue2 = value2 ? value2 : "";
+			break;
+		case 1:
+			rule.type = eCondDuplicateValues;
+			break;
+		case 5: case 6: case 7: case 8: // contiene/non contiene/inizia/finisce
+			rule.type = eCondTextRule;
+			rule.ruleOperator = (int8)(type - 5);
+			rule.compareValue = value ? value : "";
+			break;
+		case 9: case 10: case 11: case 12: // celle vuote/non vuote/errori/non errori
+			rule.type = eCondBlankErrorRule;
+			rule.ruleOperator = (int8)(type - 9);
+			break;
+		case 13: // primi/ultimi N valori
+			rule.type = eCondTop10;
+			rule.top10Rank = rank;
+			rule.top10Percent = percent;
+			rule.top10Bottom = bottom;
+			break;
+		case 14: // sopra/sotto la media
+			rule.type = eCondAboveAverage;
+			rule.belowAverage = belowAverage;
+			break;
+		default:
+			rule.type = eCondCellIsEqual;
+			rule.compareValue = value ? value : "";
+			break;
+	}
 	rule.bgColor = color;
 	rule.ranges.push_back(fSheetView->SelectionRange());
 	fDoc->AddConditionalFormatRule(rule);
@@ -7068,16 +7108,24 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgCondFormatCommit:
 		{
 			int32 type = 0;
-			BString value;
+			BString value, value2;
+			int32 operatorIdx = 0, rank = 10;
+			bool percent = false, bottom = false, belowAverage = false;
 			rgb_color* color = NULL;
 			rgb_color* maxColor = NULL;
 			ssize_t size = 0;
 			message->FindInt32("type", &type);
 			message->FindString("value", &value);
+			message->FindString("value2", &value2);
+			message->FindInt32("operator", &operatorIdx);
+			message->FindInt32("rank", &rank);
+			message->FindBool("percent", &percent);
+			message->FindBool("bottom", &bottom);
+			message->FindBool("belowAverage", &belowAverage);
 			// L'icon set non porta nessun colore (ConditionalFormatWindow
 			// non aggiunge affatto il campo "color" per questo tipo):
 			// smistato PRIMA di richiederlo, a differenza degli altri
-			// quattro tipi sotto.
+			// tipi sotto.
 			if (type == 4)
 			{
 				ApplyIconSetToSelection();
@@ -7092,7 +7140,8 @@ void MainWindow::MessageReceived(BMessage* message)
 				else if (type == 3)
 					ApplyDataBarToSelection(*color);
 				else
-					ApplyConditionalFormatToSelection(type, value.String(), *color);
+					ApplyConditionalFormatToSelection(type, value.String(), value2.String(),
+						(int)operatorIdx, rank, percent, bottom, belowAverage, *color);
 			}
 			break;
 		}
