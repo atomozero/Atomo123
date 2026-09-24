@@ -61,11 +61,6 @@ formatting.
 
 Not currently planned (large, self-contained efforts, no library or
 existing code to build on):
-- **Full pivot tables** — multi-level grouping and Sum/Count/Average/
-  Min/Max are done (see below); still no Excel-style "Columns" field
-  (a second pivot axis) or multiple simultaneous measures, both would
-  need a real 2D output layout, not an incremental change to the
-  current flat-list one
 - **Goal Seek / Solver** — needs a new iterative numeric solver
 - **Legacy XLS writing** (BIFF/OLE2) — import only today; writing BIFF8
   from scratch has no library to build on, deliberately excluded (XLSX
@@ -742,9 +737,19 @@ list deliberately deviates from pure effort-sorting:
   the engine, and needs its own dedicated design pass — but it also
   makes every future feature built on top of recalculation cheaper to
   ship well, so it belongs here and not at the bottom
-- **Real 2D pivot tables** (a "Columns" field, multiple simultaneous
-  measures) — already called out as not planned; still the biggest
-  gap in the pivot feature specifically, needs a real 2D output layout
+- ~~**Real 2D pivot tables** (a "Columns" field, multiple simultaneous
+  measures)~~ Fixed — see `CHANGELOG.md`. `PivotTableObject` gained a
+  Columns axis and a list of explicit measure columns (each with its
+  own aggregation), with a real 2D grid output (two header rows), a
+  dynamic Columns-field/measures picker in `PivotWindow`, native
+  `.ascd` persistence, and XLSX round-trip (`<colFields>`/multiple
+  `<dataField>` on export, recognized on import) — additive throughout,
+  every existing 1D pivot (no Columns field, one measure) is
+  byte-for-byte unaffected. Scoped for now to a single row-grouping
+  column when the Columns field or 2+ measures are used (2+ row-grouping
+  columns together with either of those still write correct cells but
+  no XLSX pivot parts, same limit as the pre-existing multi-level-row
+  case)
 - **Goal Seek / Solver** — needs a new iterative numeric solver from
   scratch, no existing code to build on
 - **VBA / macros** — this is v4.0 already (see above), the largest
