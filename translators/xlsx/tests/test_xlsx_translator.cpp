@@ -1375,6 +1375,105 @@ static status_t WriteASCDWithPivotForTest(CContainer* doc, const PivotTableObjec
 	return B_OK;
 }
 
+// Same idea as WriteASCDWithPivotForTest above, but appends the two
+// sections that came after the 1D pivot section (Fase pivot 2D: campo
+// Colonne + misure multiple, la NUOVISSIMA ultima sezione del formato):
+// chart-rowOriented (sempre 0, nessun grafico in questo test) poi i
+// dati 2D veri PER LA STESSA pivot (indice 0) gia' scritta sopra dalla
+// sezione 1D -- "pivot.cachedRows" e' tipicamente vuoto qui (un pivot
+// 2D puro non popola la cache 1D legacy, vedi il commento su
+// PivotTableObject::cachedRows2D in Container.h), ma sourceRange/
+// destAnchor restano condivisi fra le due sezioni per la stessa pivot.
+static status_t WriteASCDWithPivot2DForTest(CContainer* doc, const PivotTableObject& pivot,
+	BPositionIO* dest)
+{
+	status_t err = WriteASCDWithPivotForTest(doc, pivot, dest);
+	if (err != B_OK)
+		return err;
+
+	// Orientamento riga di grafico incorporato: chartRowOrientCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+
+	// Tabelle pivot 2D, ULTIMA sezione del formato: i dati veri, stesso
+	// ordine byte-per-byte del vero WriteASCD/SaveASCD.
+	{
+		int32 pivot2DCount = 1;
+		if (dest->Write(&pivot2DCount, sizeof(pivot2DCount)) != (ssize_t)sizeof(pivot2DCount))
+			return B_IO_ERROR;
+
+		int16 columnFieldCol = pivot.columnFieldCol;
+		if (dest->Write(&columnFieldCol, sizeof(columnFieldCol)) != (ssize_t)sizeof(columnFieldCol))
+			return B_IO_ERROR;
+
+		int32 measureCount = (int32)pivot.measures.size();
+		if (dest->Write(&measureCount, sizeof(measureCount)) != (ssize_t)sizeof(measureCount))
+			return B_IO_ERROR;
+		for (int32 m = 0; m < measureCount; m++)
+		{
+			const PivotMeasure& measure = pivot.measures[m];
+			int32 aggFunc = (int32)measure.aggFunc;
+			int32 labelLen = measure.label.Length();
+			if (dest->Write(&measure.sourceCol, sizeof(measure.sourceCol)) != (ssize_t)sizeof(measure.sourceCol)
+				|| dest->Write(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc)
+				|| dest->Write(&labelLen, sizeof(labelLen)) != (ssize_t)sizeof(labelLen))
+				return B_IO_ERROR;
+			if (labelLen > 0 && dest->Write(measure.label.String(), labelLen) != labelLen)
+				return B_IO_ERROR;
+		}
+
+		int32 columnValueCount = (int32)pivot.columnValues.size();
+		if (dest->Write(&columnValueCount, sizeof(columnValueCount)) != (ssize_t)sizeof(columnValueCount))
+			return B_IO_ERROR;
+		for (int32 c = 0; c < columnValueCount; c++)
+		{
+			int32 len = pivot.columnValues[c].Length();
+			if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+				return B_IO_ERROR;
+			if (len > 0 && dest->Write(pivot.columnValues[c].String(), len) != len)
+				return B_IO_ERROR;
+		}
+
+		int32 rowCount2D = (int32)pivot.cachedRows2D.size();
+		if (dest->Write(&rowCount2D, sizeof(rowCount2D)) != (ssize_t)sizeof(rowCount2D))
+			return B_IO_ERROR;
+		int32 numColSlots = columnValueCount > 0 ? columnValueCount : 1;
+		for (int32 r = 0; r < rowCount2D; r++)
+		{
+			const PivotRow2D& row = pivot.cachedRows2D[r];
+			int32 catCount = (int32)row.categories.size();
+			if (dest->Write(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+				return B_IO_ERROR;
+			for (int32 k = 0; k < catCount; k++)
+			{
+				int32 catLen = row.categories[k].Length();
+				if (dest->Write(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+					return B_IO_ERROR;
+				if (catLen > 0 && dest->Write(row.categories[k].String(), catLen) != catLen)
+					return B_IO_ERROR;
+			}
+			for (int32 c = 0; c < numColSlots; c++)
+			{
+				for (int32 m = 0; m < measureCount; m++)
+				{
+					const PivotCellAgg& agg = row.cells[c][m];
+					int32 count32 = (int32)agg.count;
+					if (dest->Write(&agg.aggregate, sizeof(agg.aggregate)) != (ssize_t)sizeof(agg.aggregate)
+						|| dest->Write(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+						|| dest->Write(&agg.minVal, sizeof(agg.minVal)) != (ssize_t)sizeof(agg.minVal)
+						|| dest->Write(&agg.maxVal, sizeof(agg.maxVal)) != (ssize_t)sizeof(agg.maxVal))
+						return B_IO_ERROR;
+				}
+			}
+		}
+	}
+
+	return B_OK;
+}
+
 // Translate(XLSX -> nativo) produce ora sempre una cartella di lavoro
 // multi-foglio ("ASCB", Fase 9), anche per un file XLSX con un solo
 // foglio come tests/sample.xlsx: salta l'header e il nome del primo
@@ -2695,6 +2794,241 @@ static bool ReadFirstPivotFromAscdForTest(const unsigned char* data, size_t len,
 	return true;
 }
 
+// Same walk as ReadFirstPivotFromAscdForTest above, but continues PAST
+// the 1D pivot section into chart-rowOriented (assumed empty, count 0)
+// and then the pivot 2D section (Fase pivot 2D: campo Colonne + misure
+// multiple), the real new LAST section of the format -- applies the 2D
+// fields to the FIRST entry of "out" by index, same principle as the
+// real ReadASCD (ui/src/AscdIO.cpp/translators/xlsx/XlsxTranslator.cpp).
+static bool ReadFirstPivot2DFromAscdForTest(const unsigned char* data, size_t len, size_t pos,
+	std::vector<PivotTableObject>* out)
+{
+	if (!ReadFirstPivotFromAscdForTest(data, len, pos, out))
+		return false;
+	if (out->empty())
+		return false;
+
+	// Ripete lo stesso walk di ReadFirstPivotFromAscdForTest per
+	// ritrovare "pos" alla fine della sezione pivot 1D -- duplicato
+	// invece di farsela restituire, stesso principio di duplicazione
+	// gia' seguito da questo file per ogni altro walker simile.
+	if (pos + 4 > len) return false;
+	int32 chartCount;
+	memcpy(&chartCount, data + pos, 4); pos += 4;
+	if (chartCount != 0) return false;
+
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 8 > len) return false;
+	pos += 8;
+	for (int s = 0; s < 8; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 1 > len) return false;
+	pos += 1;
+	if (pos + 4 > len) return false;
+	pos += 4;
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	if (pos + 9 > len) return false;
+	pos += 9;
+	for (int s = 0; s < 2; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 n; memcpy(&n, data + pos, 4); pos += 4;
+		if (n != 0) return false;
+	}
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	if (pos + 9 > len) return false;
+	pos += 9;
+	if (pos + 45 > len) return false;
+	pos += 45;
+	if (pos + 1 > len) return false;
+	if (data[pos] != 0) return false;
+	pos += 1;
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+	if (pos + 1 > len) return false;
+	pos += 1;
+
+	if (pos + 4 > len) return false;
+	int32 nameCount;
+	memcpy(&nameCount, data + pos, 4); pos += 4;
+	for (int32 i = 0; i < nameCount; i++)
+	{
+		if (pos + 4 > len) return false;
+		int32 nameLen;
+		memcpy(&nameLen, data + pos, 4); pos += 4;
+		if (nameLen < 0 || pos + (size_t)nameLen > len) return false;
+		pos += nameLen;
+		if (pos + 8 > len) return false;
+		pos += 8;
+	}
+
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+
+	if (pos + 4 > len) return false;
+	int32 pivotCount;
+	memcpy(&pivotCount, data + pos, 4); pos += 4;
+	if (pivotCount < 0) return false;
+
+	for (int32 i = 0; i < pivotCount; i++)
+	{
+		if (pos + 16 > len) return false;
+		pos += 16;
+		if (pos + 4 > len) return false;
+		int32 rowCount;
+		memcpy(&rowCount, data + pos, 4); pos += 4;
+		if (rowCount < 0) return false;
+		for (int32 r = 0; r < rowCount; r++)
+		{
+			if (pos + 4 > len) return false;
+			int32 catCount;
+			memcpy(&catCount, data + pos, 4); pos += 4;
+			if (catCount < 0) return false;
+			for (int32 k = 0; k < catCount; k++)
+			{
+				if (pos + 4 > len) return false;
+				int32 catLen;
+				memcpy(&catLen, data + pos, 4); pos += 4;
+				if (catLen < 0 || pos + (size_t)catLen > len) return false;
+				pos += catLen;
+			}
+			if (pos + 28 > len) return false;
+			pos += 28;
+		}
+	}
+
+	// Orientamento riga di grafico incorporato: assunto vuoto (nessun
+	// grafico in questo test).
+	if (pos + 4 > len) return false;
+	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
+
+	// Tabelle pivot 2D, NUOVA ultima sezione del formato: i dati veri,
+	// stesso schema byte per byte del vero SaveASCD/WriteASCD.
+	if (pos + 4 > len) return false;
+	int32 pivot2DCount;
+	memcpy(&pivot2DCount, data + pos, 4); pos += 4;
+	if (pivot2DCount < 0) return false;
+
+	for (int32 i = 0; i < pivot2DCount; i++)
+	{
+		if (pos + 2 > len) return false;
+		int16 columnFieldCol;
+		memcpy(&columnFieldCol, data + pos, 2); pos += 2;
+
+		if (pos + 4 > len) return false;
+		int32 measureCount;
+		memcpy(&measureCount, data + pos, 4); pos += 4;
+		if (measureCount < 0) return false;
+
+		std::vector<PivotMeasure> measures;
+		for (int32 m = 0; m < measureCount; m++)
+		{
+			if (pos + 10 > len) return false;
+			PivotMeasure measure;
+			memcpy(&measure.sourceCol, data + pos, 2); pos += 2;
+			int32 aggFunc;
+			memcpy(&aggFunc, data + pos, 4); pos += 4;
+			measure.aggFunc = (PivotAggFunc)aggFunc;
+			int32 labelLen;
+			memcpy(&labelLen, data + pos, 4); pos += 4;
+			if (labelLen < 0 || pos + (size_t)labelLen > len) return false;
+			measure.label.SetTo((const char*)data + pos, labelLen);
+			pos += labelLen;
+			measures.push_back(measure);
+		}
+
+		if (pos + 4 > len) return false;
+		int32 columnValueCount;
+		memcpy(&columnValueCount, data + pos, 4); pos += 4;
+		if (columnValueCount < 0) return false;
+
+		std::vector<BString> columnValues;
+		for (int32 c = 0; c < columnValueCount; c++)
+		{
+			if (pos + 4 > len) return false;
+			int32 valLen;
+			memcpy(&valLen, data + pos, 4); pos += 4;
+			if (valLen < 0 || pos + (size_t)valLen > len) return false;
+			columnValues.push_back(BString((const char*)data + pos, valLen));
+			pos += valLen;
+		}
+
+		if (pos + 4 > len) return false;
+		int32 rowCount2D;
+		memcpy(&rowCount2D, data + pos, 4); pos += 4;
+		if (rowCount2D < 0) return false;
+
+		int32 numColSlots = columnValueCount > 0 ? columnValueCount : 1;
+		std::vector<PivotRow2D> rows2D;
+		for (int32 r = 0; r < rowCount2D; r++)
+		{
+			PivotRow2D row;
+			if (pos + 4 > len) return false;
+			int32 catCount;
+			memcpy(&catCount, data + pos, 4); pos += 4;
+			if (catCount < 0) return false;
+			for (int32 k = 0; k < catCount; k++)
+			{
+				if (pos + 4 > len) return false;
+				int32 catLen;
+				memcpy(&catLen, data + pos, 4); pos += 4;
+				if (catLen < 0 || pos + (size_t)catLen > len) return false;
+				row.categories.push_back(BString((const char*)data + pos, catLen));
+				pos += catLen;
+			}
+			row.cells.resize(numColSlots);
+			for (int32 c = 0; c < numColSlots; c++)
+			{
+				row.cells[c].resize(measureCount);
+				for (int32 m = 0; m < measureCount; m++)
+				{
+					if (pos + 28 > len) return false;
+					PivotCellAgg agg;
+					int32 count32;
+					memcpy(&agg.aggregate, data + pos, 8); pos += 8;
+					memcpy(&count32, data + pos, 4); pos += 4;
+					memcpy(&agg.minVal, data + pos, 8); pos += 8;
+					memcpy(&agg.maxVal, data + pos, 8); pos += 8;
+					agg.count = count32;
+					row.cells[c][m] = agg;
+				}
+			}
+			rows2D.push_back(row);
+		}
+
+		if (i < (int32)out->size())
+		{
+			(*out)[i].columnFieldCol = columnFieldCol;
+			(*out)[i].measures = measures;
+			(*out)[i].columnValues = columnValues;
+			(*out)[i].cachedRows2D = rows2D;
+		}
+	}
+
+	return true;
+}
+
 int main()
 {
 	// Serve da Fase 12 (import grassetto/corsivo): gFontSizeTable::
@@ -3348,6 +3682,19 @@ int main()
 							memcpy(&chartRowOrientCount, ascdData + pos, 4); pos += 4;
 							Check(chartRowOrientCount == 0,
 								"nessun grafico in sample.xlsx, il conteggio orientamento riga e' zero");
+						}
+
+						// Tabelle pivot 2D (campo Colonne + misure multiple):
+						// un conteggio, la NUOVISSIMA ultima sezione del
+						// formato -- sample.xlsx non ha nessuna tabella
+						// pivot, quindi il conteggio e' zero e non ci sono
+						// record a seguire.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 pivot2DCount;
+							memcpy(&pivot2DCount, ascdData + pos, 4); pos += 4;
+							Check(pivot2DCount == 0,
+								"nessuna tabella pivot in sample.xlsx, il conteggio pivot 2D e' zero");
 						}
 
 						// sample.xlsx e' un solo foglio: dopo tutte le
@@ -8931,6 +9278,301 @@ int main()
 					"nessun PivotTableObject fasullo ricostruito per una tabella pivot fuori dall'ambito v1 "
 					"(2+ colonne di categoria), coerente con l'assenza di parti pivot in esportazione");
 			}
+		}
+	}
+
+	// Tabelle pivot 2D (campo Colonne + misure multiple): sorgente A
+	// (chiave di riga), B (campo Colonne), C/D (due misure) -- stesso
+	// schema Nord/Sud/Est/Ovest usato per dimostrare la funzione dal
+	// vivo, con una riga ripetuta per gruppo per esercitare davvero
+	// l'aggregazione (non solo il passaggio di un valore singolo).
+	{
+		CContainer& pivot2DDoc = *new CContainer(NULL, NULL);
+		// Sorgente: A1:D6, 6 righe grezze.
+		TryToParseString("Nord", cell(1, 1), &pivot2DDoc, true);  TryToParseString("Est", cell(2, 1), &pivot2DDoc, true);
+		TryToParseString("100", cell(3, 1), &pivot2DDoc, true);   TryToParseString("10", cell(4, 1), &pivot2DDoc, true);
+		TryToParseString("Nord", cell(1, 2), &pivot2DDoc, true);  TryToParseString("Ovest", cell(2, 2), &pivot2DDoc, true);
+		TryToParseString("200", cell(3, 2), &pivot2DDoc, true);   TryToParseString("20", cell(4, 2), &pivot2DDoc, true);
+		TryToParseString("Sud", cell(1, 3), &pivot2DDoc, true);   TryToParseString("Est", cell(2, 3), &pivot2DDoc, true);
+		TryToParseString("50", cell(3, 3), &pivot2DDoc, true);    TryToParseString("5", cell(4, 3), &pivot2DDoc, true);
+		TryToParseString("Sud", cell(1, 4), &pivot2DDoc, true);   TryToParseString("Ovest", cell(2, 4), &pivot2DDoc, true);
+		TryToParseString("80", cell(3, 4), &pivot2DDoc, true);    TryToParseString("8", cell(4, 4), &pivot2DDoc, true);
+		TryToParseString("Nord", cell(1, 5), &pivot2DDoc, true);  TryToParseString("Est", cell(2, 5), &pivot2DDoc, true);
+		TryToParseString("10", cell(3, 5), &pivot2DDoc, true);    TryToParseString("1", cell(4, 5), &pivot2DDoc, true);
+		TryToParseString("Sud", cell(1, 6), &pivot2DDoc, true);   TryToParseString("Ovest", cell(2, 6), &pivot2DDoc, true);
+		TryToParseString("20", cell(3, 6), &pivot2DDoc, true);    TryToParseString("2", cell(4, 6), &pivot2DDoc, true);
+
+		// Destinazione: F1:J4, stesso layout a DUE righe di intestazione
+		// che WritePivotTable2D avrebbe scritto (riga 1 = valore del
+		// campo Colonne ripetuto per misura, riga 2 = etichetta di
+		// categoria/misura), poi una riga per gruppo di riga (Nord/Sud,
+		// ordine lessicografico).
+		TryToParseString("Est", cell(7, 1), &pivot2DDoc, true);   TryToParseString("Est", cell(8, 1), &pivot2DDoc, true);
+		TryToParseString("Ovest", cell(9, 1), &pivot2DDoc, true); TryToParseString("Ovest", cell(10, 1), &pivot2DDoc, true);
+		TryToParseString("Categoria", cell(6, 2), &pivot2DDoc, true);
+		TryToParseString("TotA", cell(7, 2), &pivot2DDoc, true);  TryToParseString("TotB", cell(8, 2), &pivot2DDoc, true);
+		TryToParseString("TotA", cell(9, 2), &pivot2DDoc, true);  TryToParseString("TotB", cell(10, 2), &pivot2DDoc, true);
+		TryToParseString("Nord", cell(6, 3), &pivot2DDoc, true);
+		TryToParseString("110", cell(7, 3), &pivot2DDoc, true);   TryToParseString("11", cell(8, 3), &pivot2DDoc, true);
+		TryToParseString("200", cell(9, 3), &pivot2DDoc, true);   TryToParseString("20", cell(10, 3), &pivot2DDoc, true);
+		TryToParseString("Sud", cell(6, 4), &pivot2DDoc, true);
+		TryToParseString("50", cell(7, 4), &pivot2DDoc, true);    TryToParseString("5", cell(8, 4), &pivot2DDoc, true);
+		TryToParseString("100", cell(9, 4), &pivot2DDoc, true);   TryToParseString("10", cell(10, 4), &pivot2DDoc, true);
+
+		PivotTableObject pivot2D;
+		pivot2D.sourceRange = range(1, 1, 4, 6); // A1:D6
+		pivot2D.destAnchor = cell(6, 1); // F1
+		pivot2D.columnFieldCol = 2; // B
+		{
+			PivotMeasure m;
+			m.sourceCol = 3; m.aggFunc = ePivotSum; m.label = "TotA"; // C
+			pivot2D.measures.push_back(m);
+		}
+		{
+			PivotMeasure m;
+			m.sourceCol = 4; m.aggFunc = ePivotSum; m.label = "TotB"; // D
+			pivot2D.measures.push_back(m);
+		}
+		pivot2D.columnValues.push_back(BString("Est"));
+		pivot2D.columnValues.push_back(BString("Ovest"));
+		{
+			PivotRow2D r;
+			r.categories.push_back(BString("Nord"));
+			r.cells.resize(2);
+			r.cells[0].resize(2); r.cells[1].resize(2);
+			r.cells[0][0].aggregate = 110; r.cells[0][0].count = 2; r.cells[0][0].minVal = 10; r.cells[0][0].maxVal = 100;
+			r.cells[0][1].aggregate = 11;  r.cells[0][1].count = 2; r.cells[0][1].minVal = 1;  r.cells[0][1].maxVal = 10;
+			r.cells[1][0].aggregate = 200; r.cells[1][0].count = 1; r.cells[1][0].minVal = 200; r.cells[1][0].maxVal = 200;
+			r.cells[1][1].aggregate = 20;  r.cells[1][1].count = 1; r.cells[1][1].minVal = 20;  r.cells[1][1].maxVal = 20;
+			pivot2D.cachedRows2D.push_back(r);
+		}
+		{
+			PivotRow2D r;
+			r.categories.push_back(BString("Sud"));
+			r.cells.resize(2);
+			r.cells[0].resize(2); r.cells[1].resize(2);
+			r.cells[0][0].aggregate = 50; r.cells[0][0].count = 1; r.cells[0][0].minVal = 50; r.cells[0][0].maxVal = 50;
+			r.cells[0][1].aggregate = 5;  r.cells[0][1].count = 1; r.cells[0][1].minVal = 5;  r.cells[0][1].maxVal = 5;
+			r.cells[1][0].aggregate = 100; r.cells[1][0].count = 2; r.cells[1][0].minVal = 20; r.cells[1][0].maxVal = 80;
+			r.cells[1][1].aggregate = 10;  r.cells[1][1].count = 2; r.cells[1][1].minVal = 2;  r.cells[1][1].maxVal = 8;
+			pivot2D.cachedRows2D.push_back(r);
+		}
+
+		BMallocIO pivot2DAscdIn;
+		status_t pivot2DSaveErr = WriteASCDWithPivot2DForTest(&pivot2DDoc, pivot2D, &pivot2DAscdIn);
+		Check(pivot2DSaveErr == B_OK, "preparazione dell'ASCD di prova con una tabella pivot 2D riesce");
+		pivot2DDoc.Release();
+
+		pivot2DAscdIn.Seek(0, SEEK_SET);
+		translator_info pivot2DInfo;
+		err = translator->Identify(&pivot2DAscdIn, NULL, NULL, &pivot2DInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && pivot2DInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD di prova con una tabella pivot 2D");
+
+		pivot2DAscdIn.Seek(0, SEEK_SET);
+		BMallocIO pivot2DXlsxOut;
+		err = translator->Translate(&pivot2DAscdIn, &pivot2DInfo, NULL, kAtomoXlsxFormat, &pivot2DXlsxOut);
+		Check(err == B_OK, "Translate ASCD (con una tabella pivot 2D) -> XLSX riesce");
+
+		if (err == B_OK)
+		{
+			pivot2DXlsxOut.Seek(0, SEEK_SET);
+			CZipReader pivot2DZip;
+			Check(pivot2DZip.Open(&pivot2DXlsxOut),
+				"il file XLSX con una tabella pivot 2D e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> pt2DBytes;
+			bool readPt2D = pivot2DZip.ReadEntry("xl/pivotTables/pivotTable1.xml", pt2DBytes);
+			Check(readPt2D, "il file XLSX con una tabella pivot 2D contiene xl/pivotTables/pivotTable1.xml");
+			if (readPt2D)
+			{
+				std::string pt2D((const char*)&pt2DBytes[0], pt2DBytes.size());
+				Check(pt2D.find("<colFields count=\"1\">") != std::string::npos
+						&& pt2D.find("<field x=\"1\"/></colFields>") != std::string::npos,
+					"pivotTable1.xml (2D) scrive un vero <colFields> per il campo Colonne");
+				Check(pt2D.find("<dataFields count=\"2\">") != std::string::npos,
+					"pivotTable1.xml (2D) scrive due <dataField> reali, una per misura");
+				Check(pt2D.find("fld=\"2\"") != std::string::npos && pt2D.find("fld=\"3\"") != std::string::npos,
+					"pivotTable1.xml (2D) referenzia i cache field giusti per le due misure (2 e 3)");
+				Check(pt2D.find("axis=\"axisCol\"") != std::string::npos,
+					"pivotTable1.xml (2D) marca il campo Colonne con axis=\"axisCol\"");
+			}
+
+			std::vector<unsigned char> cd2DBytes;
+			bool readCd2D = pivot2DZip.ReadEntry("xl/pivotCache/pivotCacheDefinition1.xml", cd2DBytes);
+			Check(readCd2D, "il file XLSX con una tabella pivot 2D contiene pivotCacheDefinition1.xml");
+			if (readCd2D)
+			{
+				std::string cd2D((const char*)&cd2DBytes[0], cd2DBytes.size());
+				Check(cd2D.find("<cacheFields count=\"4\">") != std::string::npos,
+					"pivotCacheDefinition1.xml (2D) ha 4 cacheField (chiave riga + campo Colonne + 2 misure)");
+				Check(cd2D.find("Est") != std::string::npos && cd2D.find("Ovest") != std::string::npos,
+					"pivotCacheDefinition1.xml (2D) elenca i valori veri del campo Colonne");
+			}
+
+			std::vector<unsigned char> cr2DBytes;
+			bool readCr2D = pivot2DZip.ReadEntry("xl/pivotCache/pivotCacheRecords1.xml", cr2DBytes);
+			Check(readCr2D, "il file XLSX con una tabella pivot 2D contiene pivotCacheRecords1.xml");
+			if (readCr2D)
+			{
+				std::string cr2D((const char*)&cr2DBytes[0], cr2DBytes.size());
+				Check(cr2D.find("count=\"6\"") != std::string::npos,
+					"pivotCacheRecords1.xml (2D) conta le 6 righe GREZZE della sorgente");
+			}
+
+			// Fase 3 (import): lo stesso file appena esportato si
+			// riimporta, verificando che un vero PivotTableObject 2D
+			// venga ricostruito -- non solo le celle statiche.
+			pivot2DXlsxOut.Seek(0, SEEK_SET);
+			translator_info pivot2DReimportInfo;
+			err = translator->Identify(&pivot2DXlsxOut, NULL, NULL, &pivot2DReimportInfo, 0);
+			Check(err == B_OK && pivot2DReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX con una tabella pivot 2D si riconosce ancora come XLSX valido rileggendolo");
+
+			pivot2DXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO pivot2DReimportAscd;
+			err = translator->Translate(&pivot2DXlsxOut, &pivot2DReimportInfo, NULL,
+				kAtomoNativeFormat, &pivot2DReimportAscd);
+			Check(err == B_OK, "il file XLSX con una tabella pivot 2D si rilegge correttamente (round-trip)");
+
+			const unsigned char* pivot2DReimportData = NULL;
+			size_t pivot2DReimportLen = 0;
+			bool pivot2DReimportUnwrapped = UnwrapFirstSheet(
+				(const unsigned char*)pivot2DReimportAscd.Buffer(), pivot2DReimportAscd.BufferLength(),
+				&pivot2DReimportData, &pivot2DReimportLen);
+			Check(pivot2DReimportUnwrapped,
+				"il round-trip della tabella pivot 2D produce anch'esso una cartella ASCB valida");
+
+			if (pivot2DReimportUnwrapped && pivot2DReimportLen > 12
+				&& memcmp(pivot2DReimportData, "ASCD", 4) == 0)
+			{
+				int32 reimportCellCount;
+				memcpy(&reimportCellCount, pivot2DReimportData + 8, 4);
+
+				size_t pos = 12;
+				for (int32 i = 0; i < reimportCellCount && pos + 9 <= pivot2DReimportLen; i++)
+				{
+					int32 clen;
+					memcpy(&clen, pivot2DReimportData + pos + 4, 4);
+					pos += 9 + clen;
+				}
+
+				std::vector<PivotTableObject> reimportedPivots2D;
+				bool pivot2DSectionRead = ReadFirstPivot2DFromAscdForTest(pivot2DReimportData,
+					pivot2DReimportLen, pos, &reimportedPivots2D);
+				Check(pivot2DSectionRead,
+					"la sezione tabelle pivot 2D in coda all'ASCD riletto si legge correttamente");
+
+				Check(reimportedPivots2D.size() == 1,
+					"il giro completo XLSX -> ASCD ricostruisce un vero PivotTableObject 2D");
+				if (reimportedPivots2D.size() == 1)
+				{
+					const PivotTableObject& p = reimportedPivots2D[0];
+					Check(p.columnFieldCol == 2, "columnFieldCol ricostruito combacia con la colonna vera (B)");
+					Check(p.measures.size() == 2, "measures ricostruite sono due");
+					if (p.measures.size() == 2)
+					{
+						Check(p.measures[0].sourceCol == 3 && p.measures[0].aggFunc == ePivotSum,
+							"la prima misura ricostruita combacia (colonna C, Somma)");
+						Check(p.measures[1].sourceCol == 4 && p.measures[1].aggFunc == ePivotSum,
+							"la seconda misura ricostruita combacia (colonna D, Somma)");
+					}
+					Check(p.columnValues.size() == 2
+							&& BString((const char*)p.columnValues[0]) == "Est"
+							&& BString((const char*)p.columnValues[1]) == "Ovest",
+						"columnValues ricostruiti sono Est/Ovest, ordine lessicografico");
+					Check(p.cachedRows2D.size() == 2,
+						"cachedRows2D ricostruite hanno i due gruppi veri (Nord/Sud)");
+					if (p.cachedRows2D.size() == 2)
+					{
+						const PivotRow2D& nordRow = p.cachedRows2D[0];
+						Check(BString((const char*)nordRow.categories[0]) == "Nord",
+							"il primo gruppo ricostruito e' Nord");
+						Check(nordRow.cells[0][0].aggregate == 110 && nordRow.cells[0][0].count == 2,
+							"Nord/Est/TotA ricostruito e' corretto (somma 110, 2 righe grezze)");
+						Check(nordRow.cells[1][1].aggregate == 20 && nordRow.cells[1][1].count == 1,
+							"Nord/Ovest/TotB ricostruito e' corretto (somma 20, 1 riga grezza)");
+
+						const PivotRow2D& sudRow = p.cachedRows2D[1];
+						Check(BString((const char*)sudRow.categories[0]) == "Sud",
+							"il secondo gruppo ricostruito e' Sud");
+						Check(sudRow.cells[1][0].aggregate == 100 && sudRow.cells[1][0].count == 2,
+							"Sud/Ovest/TotA ricostruito e' corretto (somma 100, 2 righe grezze)");
+					}
+				}
+			}
+		}
+	}
+
+	// Ambito v1 dichiarato (esportazione 2D): una tabella pivot 2D con
+	// 2+ colonne chiave di riga (dopo aver escluso campo Colonne/misure)
+	// NON produce parti OOXML pivot -- stesso principio del caso 1D
+	// analogo sopra, le celle gia' scritte restano comunque corrette.
+	{
+		CContainer& multiRowKeyDoc = *new CContainer(NULL, NULL);
+		TryToParseString("Nord", cell(1, 1), &multiRowKeyDoc, true);  // A1: chiave di riga 1
+		TryToParseString("Rosso", cell(2, 1), &multiRowKeyDoc, true); // B1: chiave di riga 2 (non e' il campo Colonne ne' una misura)
+		TryToParseString("Est", cell(3, 1), &multiRowKeyDoc, true);   // C1: campo Colonne
+		TryToParseString("100", cell(4, 1), &multiRowKeyDoc, true);   // D1: misura
+		TryToParseString("Sud", cell(1, 2), &multiRowKeyDoc, true);
+		TryToParseString("Blu", cell(2, 2), &multiRowKeyDoc, true);
+		TryToParseString("Ovest", cell(3, 2), &multiRowKeyDoc, true);
+		TryToParseString("50", cell(4, 2), &multiRowKeyDoc, true);
+		TryToParseString("Marker", cell(6, 1), &multiRowKeyDoc, true); // F1: marcatore per il controllo sotto
+
+		PivotTableObject multiRowKeyPivot;
+		multiRowKeyPivot.sourceRange = range(1, 1, 4, 2); // A1:D2
+		multiRowKeyPivot.destAnchor = cell(8, 1);
+		multiRowKeyPivot.columnFieldCol = 3; // C
+		{
+			PivotMeasure m;
+			m.sourceCol = 4; m.aggFunc = ePivotSum; m.label = "Tot";
+			multiRowKeyPivot.measures.push_back(m);
+		}
+		// cachedRows2D lasciato vuoto apposta: irrilevante per questo
+		// controllo (si verifica solo che NESSUNA parte pivot venga
+		// scritta, non il contenuto di una eventuale parte).
+
+		BMallocIO multiRowKeyAscdIn;
+		status_t multiRowKeySaveErr = WriteASCDWithPivot2DForTest(&multiRowKeyDoc, multiRowKeyPivot,
+			&multiRowKeyAscdIn);
+		Check(multiRowKeySaveErr == B_OK,
+			"preparazione dell'ASCD di prova con una tabella pivot 2D a 2 colonne chiave di riga riesce");
+		multiRowKeyDoc.Release();
+
+		multiRowKeyAscdIn.Seek(0, SEEK_SET);
+		translator_info multiRowKeyInfo;
+		err = translator->Identify(&multiRowKeyAscdIn, NULL, NULL, &multiRowKeyInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && multiRowKeyInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD di prova con una tabella pivot 2D a 2 colonne chiave di riga");
+
+		multiRowKeyAscdIn.Seek(0, SEEK_SET);
+		BMallocIO multiRowKeyXlsxOut;
+		err = translator->Translate(&multiRowKeyAscdIn, &multiRowKeyInfo, NULL, kAtomoXlsxFormat,
+			&multiRowKeyXlsxOut);
+		Check(err == B_OK,
+			"Translate ASCD (pivot 2D a 2 colonne chiave di riga) -> XLSX riesce comunque (solo celle, ambito v1)");
+
+		if (err == B_OK)
+		{
+			multiRowKeyXlsxOut.Seek(0, SEEK_SET);
+			CZipReader multiRowKeyZip;
+			Check(multiRowKeyZip.Open(&multiRowKeyXlsxOut),
+				"il file XLSX (pivot 2D a 2 colonne chiave di riga) e' un vero archivio ZIP leggibile");
+			Check(!multiRowKeyZip.HasEntry("xl/pivotTables/pivotTable1.xml"),
+				"nessuna parte pivotTable viene scritta per un pivot 2D fuori dall'ambito v1 (2+ colonne chiave di riga)");
+			Check(!multiRowKeyZip.HasEntry("xl/pivotCache/pivotCacheDefinition1.xml"),
+				"nessuna parte pivotCache viene scritta per un pivot 2D fuori dall'ambito v1 (2+ colonne chiave di riga)");
+
+			std::vector<unsigned char> sheetBytes;
+			if (multiRowKeyZip.ReadEntry("xl/worksheets/sheet1.xml", sheetBytes))
+			{
+				std::string sheet((const char*)&sheetBytes[0], sheetBytes.size());
+				Check(sheet.find("Marker") != std::string::npos,
+					"le celle gia' scritte (fuori ambito v1) restano comunque corrette nell'export (pivot 2D)");
+			}
+			else
+				Check(false, "xl/worksheets/sheet1.xml si legge dall'archivio (pivot 2D a 2 colonne chiave di riga)");
 		}
 	}
 

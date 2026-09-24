@@ -1300,6 +1300,87 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Tabelle pivot 2D (campo Colonne + misure multiple), in coda, NUOVA
+	// ultima sezione del formato, stesso formato byte per byte del
+	// gemello in ui/src/AscdIO.cpp (SaveASCD) -- vedi il commento li'
+	// per il motivo (senza questa sezione, l'estensione 2D di un
+	// PivotTableObject sparirebbe al giro XLSX -> ASCD, stesso principio
+	// della sezione pivot 1D piu' sopra).
+	{
+		int32 pivot2DCount = pivotTables ? (int32)pivotTables->size() : 0;
+		if (dest->Write(&pivot2DCount, sizeof(pivot2DCount)) != (ssize_t)sizeof(pivot2DCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < pivot2DCount; i++)
+		{
+			const PivotTableObject& pivot = (*pivotTables)[i];
+			int16 columnFieldCol = pivot.columnFieldCol;
+			if (dest->Write(&columnFieldCol, sizeof(columnFieldCol)) != (ssize_t)sizeof(columnFieldCol))
+				return B_IO_ERROR;
+
+			int32 measureCount = (int32)pivot.measures.size();
+			if (dest->Write(&measureCount, sizeof(measureCount)) != (ssize_t)sizeof(measureCount))
+				return B_IO_ERROR;
+			for (int32 m = 0; m < measureCount; m++)
+			{
+				const PivotMeasure& measure = pivot.measures[m];
+				int32 aggFunc = (int32)measure.aggFunc;
+				int32 labelLen = measure.label.Length();
+				if (dest->Write(&measure.sourceCol, sizeof(measure.sourceCol)) != (ssize_t)sizeof(measure.sourceCol)
+					|| dest->Write(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc)
+					|| dest->Write(&labelLen, sizeof(labelLen)) != (ssize_t)sizeof(labelLen))
+					return B_IO_ERROR;
+				if (labelLen > 0 && dest->Write(measure.label.String(), labelLen) != labelLen)
+					return B_IO_ERROR;
+			}
+
+			int32 columnValueCount = (int32)pivot.columnValues.size();
+			if (dest->Write(&columnValueCount, sizeof(columnValueCount)) != (ssize_t)sizeof(columnValueCount))
+				return B_IO_ERROR;
+			for (int32 c = 0; c < columnValueCount; c++)
+			{
+				int32 len = pivot.columnValues[c].Length();
+				if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_IO_ERROR;
+				if (len > 0 && dest->Write(pivot.columnValues[c].String(), len) != len)
+					return B_IO_ERROR;
+			}
+
+			int32 rowCount2D = (int32)pivot.cachedRows2D.size();
+			if (dest->Write(&rowCount2D, sizeof(rowCount2D)) != (ssize_t)sizeof(rowCount2D))
+				return B_IO_ERROR;
+			int32 numColSlots = columnValueCount > 0 ? columnValueCount : 1;
+			for (int32 r = 0; r < rowCount2D; r++)
+			{
+				const PivotRow2D& row = pivot.cachedRows2D[r];
+				int32 catCount = (int32)row.categories.size();
+				if (dest->Write(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+					return B_IO_ERROR;
+				for (int32 k = 0; k < catCount; k++)
+				{
+					int32 catLen = row.categories[k].Length();
+					if (dest->Write(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+						return B_IO_ERROR;
+					if (catLen > 0 && dest->Write(row.categories[k].String(), catLen) != catLen)
+						return B_IO_ERROR;
+				}
+				for (int32 c = 0; c < numColSlots; c++)
+				{
+					for (int32 m = 0; m < measureCount; m++)
+					{
+						const PivotCellAgg& agg = row.cells[c][m];
+						int32 count32 = (int32)agg.count;
+						if (dest->Write(&agg.aggregate, sizeof(agg.aggregate)) != (ssize_t)sizeof(agg.aggregate)
+							|| dest->Write(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+							|| dest->Write(&agg.minVal, sizeof(agg.minVal)) != (ssize_t)sizeof(agg.minVal)
+							|| dest->Write(&agg.maxVal, sizeof(agg.maxVal)) != (ssize_t)sizeof(agg.maxVal))
+							return B_IO_ERROR;
+					}
+				}
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -2610,6 +2691,141 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Tabelle pivot 2D (campo Colonne + misure multiple), in coda: stesso
+	// schema EOF-tollerante delle sezioni sopra, byte per byte identico
+	// al gemello in ui/src/AscdIO.cpp (LoadASCD) -- vedi il commento li'.
+	// I PivotTableObject sono gia' stati aggiunti a "doc" dalla sezione
+	// pivot 1D piu' sopra (doc->AddPivotTable), qui si applicano solo i
+	// campi 2D per indice, stesso principio della sezione rowOriented
+	// appena sopra.
+	{
+		int32 pivot2DCount = 0;
+		ssize_t got = source->Read(&pivot2DCount, sizeof(pivot2DCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(pivot2DCount))
+				return B_BAD_DATA;
+
+			std::vector<PivotTableObject>& pivots2D = doc->GetPivotTables();
+			for (int32 i = 0; i < pivot2DCount; i++)
+			{
+				int16 columnFieldCol;
+				if (source->Read(&columnFieldCol, sizeof(columnFieldCol)) != (ssize_t)sizeof(columnFieldCol))
+					return B_BAD_DATA;
+
+				int32 measureCount = 0;
+				if (source->Read(&measureCount, sizeof(measureCount)) != (ssize_t)sizeof(measureCount))
+					return B_BAD_DATA;
+				if (measureCount < 0 || measureCount > 256)
+					return B_BAD_DATA;
+
+				std::vector<PivotMeasure> measures(measureCount);
+				for (int32 m = 0; m < measureCount; m++)
+				{
+					int32 aggFunc;
+					int32 labelLen;
+					if (source->Read(&measures[m].sourceCol, sizeof(measures[m].sourceCol)) != (ssize_t)sizeof(measures[m].sourceCol)
+						|| source->Read(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc)
+						|| source->Read(&labelLen, sizeof(labelLen)) != (ssize_t)sizeof(labelLen))
+						return B_BAD_DATA;
+					if (labelLen < 0 || labelLen > 4096)
+						return B_BAD_DATA;
+					measures[m].aggFunc = (PivotAggFunc)aggFunc;
+					if (labelLen > 0)
+					{
+						std::vector<char> buf(labelLen);
+						if (source->Read(&buf[0], labelLen) != labelLen)
+							return B_BAD_DATA;
+						measures[m].label.SetTo(&buf[0], labelLen);
+					}
+				}
+
+				int32 columnValueCount = 0;
+				if (source->Read(&columnValueCount, sizeof(columnValueCount)) != (ssize_t)sizeof(columnValueCount))
+					return B_BAD_DATA;
+				if (columnValueCount < 0 || columnValueCount > 4096)
+					return B_BAD_DATA;
+
+				std::vector<BString> columnValues(columnValueCount);
+				for (int32 c = 0; c < columnValueCount; c++)
+				{
+					int32 len;
+					if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+						return B_BAD_DATA;
+					if (len < 0 || len > 4096)
+						return B_BAD_DATA;
+					if (len > 0)
+					{
+						std::vector<char> buf(len);
+						if (source->Read(&buf[0], len) != len)
+							return B_BAD_DATA;
+						columnValues[c].SetTo(&buf[0], len);
+					}
+				}
+
+				int32 rowCount2D = 0;
+				if (source->Read(&rowCount2D, sizeof(rowCount2D)) != (ssize_t)sizeof(rowCount2D))
+					return B_BAD_DATA;
+				if (rowCount2D < 0 || rowCount2D > 1000000)
+					return B_BAD_DATA;
+
+				int32 numColSlots = columnValueCount > 0 ? columnValueCount : 1;
+				std::vector<PivotRow2D> rows2D(rowCount2D);
+				for (int32 r = 0; r < rowCount2D; r++)
+				{
+					PivotRow2D& row = rows2D[r];
+					int32 catCount = 0;
+					if (source->Read(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+						return B_BAD_DATA;
+					if (catCount < 0 || catCount > 1024)
+						return B_BAD_DATA;
+					for (int32 k = 0; k < catCount; k++)
+					{
+						int32 catLen = 0;
+						if (source->Read(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+							return B_BAD_DATA;
+						if (catLen < 0 || catLen > 4096)
+							return B_BAD_DATA;
+						BString catStr;
+						if (catLen > 0)
+						{
+							std::vector<char> buf(catLen);
+							if (source->Read(&buf[0], catLen) != catLen)
+								return B_BAD_DATA;
+							catStr.SetTo(&buf[0], catLen);
+						}
+						row.categories.push_back(catStr);
+					}
+
+					row.cells.resize(numColSlots);
+					for (int32 c = 0; c < numColSlots; c++)
+					{
+						row.cells[c].resize(measureCount);
+						for (int32 m = 0; m < measureCount; m++)
+						{
+							PivotCellAgg& agg = row.cells[c][m];
+							int32 count32;
+							if (source->Read(&agg.aggregate, sizeof(agg.aggregate)) != (ssize_t)sizeof(agg.aggregate)
+								|| source->Read(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+								|| source->Read(&agg.minVal, sizeof(agg.minVal)) != (ssize_t)sizeof(agg.minVal)
+								|| source->Read(&agg.maxVal, sizeof(agg.maxVal)) != (ssize_t)sizeof(agg.maxVal))
+								return B_BAD_DATA;
+							agg.count = count32;
+						}
+					}
+				}
+
+				if (i < (int32)pivots2D.size())
+				{
+					pivots2D[i].columnFieldCol = columnFieldCol;
+					pivots2D[i].measures = measures;
+					pivots2D[i].columnValues = columnValues;
+					pivots2D[i].cachedRows2D = rows2D;
+				}
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -3832,9 +4048,36 @@ struct PivotXmlParts {
 // numerico tra parti diverse, non risolto tramite alcuna relazione (a
 // differenza del collegamento pivotTable -> pivotCacheDefinition, quello
 // si', tramite pivotTableN.xml.rels).
+static const char* PivotAggFuncToSubtotal(PivotAggFunc fn)
+{
+	switch (fn)
+	{
+		case ePivotCount: return "count";
+		case ePivotAverage: return "average";
+		case ePivotMin: return "min";
+		case ePivotMax: return "max";
+		default: return "sum";
+	}
+}
+
+// Vero quando "pivot" usa il campo Colonne e/o 2+ misure esplicite --
+// stessa condizione di PivotIsMultiDimensional in ui/src/Pivot.h, MAI
+// incluso qui (questo translator dipende solo dall'engine, stesso
+// principio gia' seguito da BuildPivotCachedRowsFromCells sotto).
+static bool PivotIsMultiDimensionalXlsx(const PivotTableObject& pivot)
+{
+	return pivot.columnFieldCol != -1 || pivot.measures.size() > 1;
+}
+
+static bool BuildPivotXmlParts2D(CContainer* doc, const PivotTableObject& pivot,
+	int pivotIndex, PivotXmlParts* out);
+
 static bool BuildPivotXmlParts(CContainer* doc, const PivotTableObject& pivot,
 	int pivotIndex, PivotXmlParts* out)
 {
+	if (PivotIsMultiDimensionalXlsx(pivot))
+		return BuildPivotXmlParts2D(doc, pivot, pivotIndex, out);
+
 	static const char kSheetName[] = "Foglio1";
 
 	// Ambito v1: esattamente una colonna di categoria piu' una di valore.
@@ -4007,6 +4250,346 @@ static bool BuildPivotXmlParts(CContainer* doc, const PivotTableObject& pivot,
 	pt += "\" fld=\"1\" subtotal=\"";
 	pt += subtotal;
 	pt += "\" baseField=\"0\" baseItem=\"0\"/></dataFields>";
+	pt += "<pivotTableStyleInfo name=\"PivotStyleLight16\" showRowHeaders=\"1\" showColHeaders=\"1\" "
+		"showRowStripes=\"0\" showColStripes=\"0\" showLastColumn=\"1\"/>";
+	pt += "</pivotTableDefinition>\n";
+
+	return true;
+}
+
+// Esportazione di un pivot 2D (campo Colonne e/o 2+ misure -- vedi
+// PivotIsMultiDimensionalXlsx sopra). Ripete qui la stessa logica di
+// raggruppamento di BuildPivotTable2D in ui/src/Pivot.cpp (mai incluso
+// qui, stesso motivo di dipendenza spiegato sopra), rileggendo "doc" dal
+// vivo per pivotCacheRecords -- pivot.cachedRows2D/columnValues
+// forniscono solo l'ORDINE di visualizzazione gia' calcolato (lo stesso
+// gia' scritto da WritePivotTable2D come celle statiche), non i dati
+// grezzi.
+//
+// Ambito v1: esattamente UNA colonna chiave di riga -- 2+ dopo aver
+// escluso columnFieldCol/ogni misura richiederebbero <rowItems>
+// annidati (stesso limite gia' dichiarato per il caso 1D sopra) e fanno
+// scartare in silenzio l'intera tabella pivot (return false); le celle
+// gia' scritte da WritePivotTable2D non ne risentono.
+//
+// Nota: la semantica esatta di firstHeaderRow/firstDataRow con DUE righe
+// di intestazione (invece di una) non e' stata verificata contro un
+// file scritto da Excel vero -- il valore usato qui e' stato scelto per
+// coerenza interna con l'importazione di questo stesso translator
+// (PivotShapeSupported2D/il ramo 2D del call chain di importazione), non
+// per fedelta' bit-per-bit a Excel.
+static bool BuildPivotXmlParts2D(CContainer* doc, const PivotTableObject& pivot,
+	int pivotIndex, PivotXmlParts* out)
+{
+	static const char kSheetName[] = "Foglio1";
+
+	if (!doc || pivot.measures.empty() || pivot.cachedRows2D.empty())
+		return false;
+
+	int rowKeyCol = -1;
+	int rowKeyColCount = 0;
+	for (int col = pivot.sourceRange.left; col <= pivot.sourceRange.right; col++)
+	{
+		if (col == pivot.columnFieldCol)
+			continue;
+		bool isMeasureCol = false;
+		for (size_t m = 0; m < pivot.measures.size(); m++)
+		{
+			if (pivot.measures[m].sourceCol == col)
+			{
+				isMeasureCol = true;
+				break;
+			}
+		}
+		if (isMeasureCol)
+			continue;
+		rowKeyColCount++;
+		if (rowKeyColCount == 1)
+			rowKeyCol = col;
+	}
+	if (rowKeyColCount != 1)
+		return false; // ambito v1: una sola colonna chiave di riga
+
+	bool hasColField = pivot.columnFieldCol >= 0;
+	int numColSlots = hasColField ? (int)pivot.columnValues.size() : 1;
+	int measureCount = (int)pivot.measures.size();
+	int numKeyCols = 1; // ambito v1
+
+	std::vector<std::string> categories;
+	std::map<std::string, int> categoryIndex;
+	for (size_t i = 0; i < pivot.cachedRows2D.size(); i++)
+	{
+		std::string catStr((const char*)pivot.cachedRows2D[i].categories[0]);
+		categoryIndex[catStr] = (int)categories.size();
+		categories.push_back(catStr);
+	}
+	std::map<std::string, int> colValueIndex;
+	for (size_t i = 0; i < pivot.columnValues.size(); i++)
+		colValueIndex[std::string((const char*)pivot.columnValues[i])] = (int)i;
+
+	struct RawRow2D {
+		int catIdx;
+		int colIdx;
+		std::vector<bool> hasValue;
+		std::vector<double> values;
+	};
+	std::vector<RawRow2D> rawRows;
+	std::vector<double> measureMin(measureCount, 0), measureMax(measureCount, 0);
+	std::vector<bool> measureHaveMinMax(measureCount, false);
+	for (int row = pivot.sourceRange.top; row <= pivot.sourceRange.bottom; row++)
+	{
+		Value cv;
+		doc->GetValue(cell(rowKeyCol, row), cv);
+		if (cv.fType != eTextData)
+			continue;
+		std::map<std::string, int>::iterator cit = categoryIndex.find((const char*)cv);
+		if (cit == categoryIndex.end())
+			continue; // difensivo, non dovrebbe capitare: stessa sorgente di cachedRows2D
+
+		int colIdx = 0;
+		if (hasColField)
+		{
+			Value fv;
+			doc->GetValue(cell(pivot.columnFieldCol, row), fv);
+			if (fv.fType != eTextData)
+				continue;
+			std::map<std::string, int>::iterator fit = colValueIndex.find((const char*)fv);
+			if (fit == colValueIndex.end())
+				continue;
+			colIdx = fit->second;
+		}
+
+		RawRow2D rr;
+		rr.catIdx = cit->second;
+		rr.colIdx = colIdx;
+		rr.hasValue.resize(measureCount, false);
+		rr.values.resize(measureCount, 0);
+		for (int m = 0; m < measureCount; m++)
+		{
+			Value vv;
+			doc->GetValue(cell(pivot.measures[m].sourceCol, row), vv);
+			if (vv.fType != eNumData)
+				continue; // solo questa misura esclusa per questa riga
+			double v = (double)vv;
+			rr.hasValue[m] = true;
+			rr.values[m] = v;
+			if (!measureHaveMinMax[m]) { measureMin[m] = measureMax[m] = v; measureHaveMinMax[m] = true; }
+			else
+			{
+				if (v < measureMin[m]) measureMin[m] = v;
+				if (v > measureMax[m]) measureMax[m] = v;
+			}
+		}
+		rawRows.push_back(rr);
+	}
+	if (rawRows.empty())
+		return false;
+
+	// Nomi campo: la colonna chiave di riga letta dalla SECONDA riga di
+	// intestazione (destAnchor.v + 1 -- la prima ora contiene il valore
+	// del campo Colonne, non un nome di campo, vedi WritePivotTable2D),
+	// ogni misura letta dalla stessa riga 2 nel blocco del PRIMO valore
+	// di colonna (c=0).
+	std::string rowKeyHeaderText = ChartCellLabel(doc, pivot.destAnchor.h, pivot.destAnchor.v + 1);
+	if (rowKeyHeaderText.empty())
+		rowKeyHeaderText = "Category";
+	// Nessun campo nativo per il NOME del campo Colonne (solo per i suoi
+	// valori, riga 1 di WritePivotTable2D) -- nome generico stabile,
+	// stesso principio di "dataCaption" gia' fisso a "Values" sotto.
+	std::string colFieldHeaderText = "Columns";
+	std::vector<std::string> measureHeaderTexts(measureCount);
+	for (int m = 0; m < measureCount; m++)
+	{
+		int headerCol = pivot.destAnchor.h + numKeyCols + m; // blocco c=0
+		std::string text = ChartCellLabel(doc, headerCol, pivot.destAnchor.v + 1);
+		if (!text.empty())
+			measureHeaderTexts[m] = text;
+		else
+		{
+			char fallback[32];
+			snprintf(fallback, sizeof(fallback), "Value%d", m + 1);
+			measureHeaderTexts[m] = fallback;
+		}
+	}
+
+	int cacheFieldCount = numKeyCols + (hasColField ? 1 : 0) + measureCount;
+	int firstMeasureCacheIdx = numKeyCols + (hasColField ? 1 : 0);
+
+	char buf[640];
+
+	// 1) pivotCacheDefinitionN.xml
+	std::string& cd = out->cacheDefXml;
+	cd = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+	cd += "<pivotCacheDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+		"r:id=\"rId1\" refreshedBy=\"Atomo123\" refreshedDate=\"0\" createdVersion=\"6\" "
+		"refreshedVersion=\"6\" minRefreshableVersion=\"3\" recordCount=\"";
+	snprintf(buf, sizeof(buf), "%zu", rawRows.size());
+	cd += buf;
+	cd += "\"><cacheSource type=\"worksheet\"><worksheetSource ref=\"";
+	cd += AbsRangeRef(kSheetName, pivot.sourceRange);
+	cd += "\" sheet=\"";
+	cd += kSheetName;
+	cd += "\"/></cacheSource><cacheFields count=\"";
+	snprintf(buf, sizeof(buf), "%d", cacheFieldCount);
+	cd += buf;
+	cd += "\"><cacheField name=\"";
+	AppendXmlEscaped(cd, rowKeyHeaderText.c_str());
+	cd += "\" numFmtId=\"0\"><sharedItems>";
+	for (size_t i = 0; i < categories.size(); i++)
+	{
+		cd += "<s v=\"";
+		AppendXmlEscaped(cd, categories[i].c_str());
+		cd += "\"/>";
+	}
+	cd += "</sharedItems></cacheField>";
+	if (hasColField)
+	{
+		cd += "<cacheField name=\"";
+		AppendXmlEscaped(cd, colFieldHeaderText.c_str());
+		cd += "\" numFmtId=\"0\"><sharedItems>";
+		for (size_t i = 0; i < pivot.columnValues.size(); i++)
+		{
+			cd += "<s v=\"";
+			AppendXmlEscaped(cd, std::string((const char*)pivot.columnValues[i]).c_str());
+			cd += "\"/>";
+		}
+		cd += "</sharedItems></cacheField>";
+	}
+	for (int m = 0; m < measureCount; m++)
+	{
+		cd += "<cacheField name=\"";
+		AppendXmlEscaped(cd, measureHeaderTexts[m].c_str());
+		cd += "\" numFmtId=\"0\"><sharedItems containsSemiMixedTypes=\"0\" containsString=\"0\" "
+			"containsNumber=\"1\" minValue=\"";
+		cd += FormatChartNumber(measureHaveMinMax[m] ? measureMin[m] : 0);
+		cd += "\" maxValue=\"";
+		cd += FormatChartNumber(measureHaveMinMax[m] ? measureMax[m] : 0);
+		cd += "\"/></cacheField>";
+	}
+	cd += "</cacheFields></pivotCacheDefinition>\n";
+
+	// 2) pivotCacheRecordsN.xml
+	std::string& cr = out->cacheRecordsXml;
+	cr = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+	cr += "<pivotCacheRecords xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" count=\"";
+	snprintf(buf, sizeof(buf), "%zu", rawRows.size());
+	cr += buf;
+	cr += "\">";
+	for (size_t i = 0; i < rawRows.size(); i++)
+	{
+		cr += "<r>";
+		snprintf(buf, sizeof(buf), "<x v=\"%d\"/>", rawRows[i].catIdx);
+		cr += buf;
+		if (hasColField)
+		{
+			snprintf(buf, sizeof(buf), "<x v=\"%d\"/>", rawRows[i].colIdx);
+			cr += buf;
+		}
+		for (int m = 0; m < measureCount; m++)
+		{
+			if (rawRows[i].hasValue[m])
+				snprintf(buf, sizeof(buf), "<n v=\"%s\"/>", FormatChartNumber(rawRows[i].values[m]).c_str());
+			else
+				snprintf(buf, sizeof(buf), "<m/>");
+			cr += buf;
+		}
+		cr += "</r>";
+	}
+	cr += "</pivotCacheRecords>\n";
+
+	// 3) pivotTableN.xml
+	int width = numKeyCols + numColSlots * measureCount;
+	int height = 2 + (int)pivot.cachedRows2D.size();
+	range destRange(pivot.destAnchor.h, pivot.destAnchor.v,
+		pivot.destAnchor.h + width - 1, pivot.destAnchor.v + height - 1);
+
+	std::string& pt = out->tableXml;
+	pt = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
+	snprintf(buf, sizeof(buf),
+		"<pivotTableDefinition xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+		"name=\"PivotTable%d\" cacheId=\"%d\" applyNumberFormats=\"0\" applyBorderFormats=\"0\" "
+		"applyFontFormats=\"0\" applyPatternFormats=\"0\" applyAlignmentFormats=\"0\" "
+		"applyWidthHeightFormats=\"1\" dataCaption=\"Values\" updatedVersion=\"6\" "
+		"minRefreshableVersion=\"3\" useAutoformatting=\"1\" itemPrintTitles=\"1\" "
+		"createdVersion=\"6\" indent=\"0\" outline=\"1\" outlineData=\"1\" "
+		"multipleFieldFilters=\"0\" rowGrandTotals=\"0\" colGrandTotals=\"0\">",
+		pivotIndex + 1, pivotIndex);
+	pt += buf;
+	pt += "<location ref=\"";
+	pt += PlainRangeRef(destRange);
+	snprintf(buf, sizeof(buf), "\" firstHeaderRow=\"1\" firstDataRow=\"2\" firstDataCol=\"%d\"/>", numKeyCols);
+	pt += buf;
+
+	pt += "<pivotFields count=\"";
+	snprintf(buf, sizeof(buf), "%d", cacheFieldCount);
+	pt += buf;
+	pt += "\"><pivotField axis=\"axisRow\" showAll=\"0\"><items count=\"";
+	snprintf(buf, sizeof(buf), "%zu", categories.size() + 1);
+	pt += buf;
+	pt += "\">";
+	for (size_t i = 0; i < categories.size(); i++)
+	{
+		snprintf(buf, sizeof(buf), "<item x=\"%zu\"/>", i);
+		pt += buf;
+	}
+	pt += "<item t=\"default\"/></items></pivotField>";
+	if (hasColField)
+	{
+		pt += "<pivotField axis=\"axisCol\" showAll=\"0\"><items count=\"";
+		snprintf(buf, sizeof(buf), "%zu", pivot.columnValues.size() + 1);
+		pt += buf;
+		pt += "\">";
+		for (size_t i = 0; i < pivot.columnValues.size(); i++)
+		{
+			snprintf(buf, sizeof(buf), "<item x=\"%zu\"/>", i);
+			pt += buf;
+		}
+		pt += "<item t=\"default\"/></items></pivotField>";
+	}
+	for (int m = 0; m < measureCount; m++)
+		pt += "<pivotField showAll=\"0\"/>";
+	pt += "</pivotFields>";
+
+	pt += "<rowFields count=\"1\"><field x=\"0\"/></rowFields><rowItems count=\"";
+	snprintf(buf, sizeof(buf), "%zu", categories.size());
+	pt += buf;
+	pt += "\">";
+	for (size_t i = 0; i < categories.size(); i++)
+	{
+		snprintf(buf, sizeof(buf), "<i><x v=\"%zu\"/></i>", i);
+		pt += buf;
+	}
+	pt += "</rowItems>";
+
+	if (hasColField)
+	{
+		pt += "<colFields count=\"1\"><field x=\"1\"/></colFields><colItems count=\"";
+		snprintf(buf, sizeof(buf), "%zu", pivot.columnValues.size());
+		pt += buf;
+		pt += "\">";
+		for (size_t i = 0; i < pivot.columnValues.size(); i++)
+		{
+			snprintf(buf, sizeof(buf), "<i><x v=\"%zu\"/></i>", i);
+			pt += buf;
+		}
+		pt += "</colItems>";
+	}
+
+	pt += "<dataFields count=\"";
+	snprintf(buf, sizeof(buf), "%d", measureCount);
+	pt += buf;
+	pt += "\">";
+	for (int m = 0; m < measureCount; m++)
+	{
+		pt += "<dataField name=\"";
+		AppendXmlEscaped(pt, measureHeaderTexts[m].c_str());
+		snprintf(buf, sizeof(buf), "\" fld=\"%d\" subtotal=\"%s\" baseField=\"0\" baseItem=\"0\"/>",
+			firstMeasureCacheIdx + m, PivotAggFuncToSubtotal(pivot.measures[m].aggFunc));
+		pt += buf;
+	}
+	pt += "</dataFields>";
 	pt += "<pivotTableStyleInfo name=\"PivotStyleLight16\" showRowHeaders=\"1\" showColHeaders=\"1\" "
 		"showRowStripes=\"0\" showColStripes=\"0\" showLastColumn=\"1\"/>";
 	pt += "</pivotTableDefinition>\n";
@@ -8562,8 +9145,18 @@ struct PivotTableParseInfo {
 	bool hasColFields;
 	bool hasPageFields;
 	int dataFieldCount;
-	int dataFieldFld; // -1 = non impostato
-	std::string subtotal;
+	int dataFieldFld; // -1 = non impostato; sempre la PRIMA misura, per compatibilita' con PivotShapeSupported sotto
+	std::string subtotal; // idem, sempre la PRIMA misura
+
+	// --- Fase pivot 2D (campo Colonne + misure multiple) ---
+	// fieldParseContext traccia in quale elemento annidato siamo (i
+	// <field x=".."/> di <rowFields> e <colFields> hanno lo stesso nome
+	// di elemento, serve il contesto del genitore per distinguerli --
+	// PivotTableEnd sotto lo azzera in uscita).
+	int fieldParseContext; // 0 = nessuno, 1 = dentro rowFields, 2 = dentro colFields
+	std::vector<int> rowFieldIndexes;
+	std::vector<int> colFieldIndexes;
+	std::vector<std::pair<int, std::string> > dataFields; // (fld, subtotal) per OGNI <dataField>
 };
 
 static void XMLCALL PivotTableStart(void* userData, const char* name, const char** atts)
@@ -8577,14 +9170,29 @@ static void XMLCALL PivotTableStart(void* userData, const char* name, const char
 	}
 	else if (strcmp(name, "rowFields") == 0)
 	{
+		info->fieldParseContext = 1;
 		for (int i = 0; atts[i]; i += 2)
 			if (strcmp(atts[i], "count") == 0)
 				info->rowFieldCount = atoi(atts[i + 1]);
 	}
 	else if (strcmp(name, "colFields") == 0)
+	{
 		info->hasColFields = true;
+		info->fieldParseContext = 2;
+	}
 	else if (strcmp(name, "pageFields") == 0)
 		info->hasPageFields = true;
+	else if (strcmp(name, "field") == 0)
+	{
+		int x = -1;
+		for (int i = 0; atts[i]; i += 2)
+			if (strcmp(atts[i], "x") == 0)
+				x = atoi(atts[i + 1]);
+		if (info->fieldParseContext == 1)
+			info->rowFieldIndexes.push_back(x);
+		else if (info->fieldParseContext == 2)
+			info->colFieldIndexes.push_back(x);
+	}
 	else if (strcmp(name, "dataFields") == 0)
 	{
 		for (int i = 0; atts[i]; i += 2)
@@ -8593,14 +9201,29 @@ static void XMLCALL PivotTableStart(void* userData, const char* name, const char
 	}
 	else if (strcmp(name, "dataField") == 0)
 	{
+		int fld = -1;
+		std::string subtotal;
 		for (int i = 0; atts[i]; i += 2)
 		{
 			if (strcmp(atts[i], "fld") == 0)
-				info->dataFieldFld = atoi(atts[i + 1]);
+				fld = atoi(atts[i + 1]);
 			else if (strcmp(atts[i], "subtotal") == 0)
-				info->subtotal = atts[i + 1];
+				subtotal = atts[i + 1];
+		}
+		info->dataFields.push_back(std::make_pair(fld, subtotal));
+		if (info->dataFieldFld == -1)
+		{
+			info->dataFieldFld = fld;
+			info->subtotal = subtotal;
 		}
 	}
+}
+
+static void XMLCALL PivotTableEnd(void* userData, const char* name)
+{
+	PivotTableParseInfo* info = (PivotTableParseInfo*)userData;
+	if (strcmp(name, "rowFields") == 0 || strcmp(name, "colFields") == 0)
+		info->fieldParseContext = 0;
 }
 
 static bool ParsePivotTableXml(const std::vector<unsigned char>& xml, PivotTableParseInfo* out)
@@ -8612,12 +9235,16 @@ static bool ParsePivotTableXml(const std::vector<unsigned char>& xml, PivotTable
 	out->dataFieldCount = 0;
 	out->dataFieldFld = -1;
 	out->subtotal.clear();
+	out->fieldParseContext = 0;
+	out->rowFieldIndexes.clear();
+	out->colFieldIndexes.clear();
+	out->dataFields.clear();
 	if (xml.empty())
 		return false;
 
 	XML_Parser parser = XML_ParserCreate(NULL);
 	XML_SetUserData(parser, out);
-	XML_SetElementHandler(parser, PivotTableStart, NULL);
+	XML_SetElementHandler(parser, PivotTableStart, PivotTableEnd);
 
 	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
 	XML_ParserFree(parser);
@@ -8644,6 +9271,40 @@ static bool PivotSubtotalToAggFunc(const std::string& subtotal, PivotAggFunc* ou
 	else if (subtotal == "min") *out = ePivotMin;
 	else if (subtotal == "max") *out = ePivotMax;
 	else return false;
+	return true;
+}
+
+// Simmetrico a PivotShapeSupported sopra, per il caso 2D (campo Colonne
+// e/o 2+ misure -- vedi BuildPivotXmlParts2D in esportazione, che
+// produce ESATTAMENTE questa forma: cache field 0 = chiave di riga,
+// cache field 1 = campo Colonne SOLO se presente, i campi successivi in
+// ordine = le misure). Un file con qualunque altra disposizione (2+
+// campi Colonne, il campo riga non sul cache field 0, misure non
+// contigue subito dopo gli assi, un subtotal non riconosciuto) e' fuori
+// ambito v1 -- scartato in silenzio come PivotShapeSupported.
+static bool PivotShapeSupported2D(const PivotTableParseInfo& info)
+{
+	if (info.rowFieldCount != 1 || info.hasPageFields)
+		return false;
+	if (info.rowFieldIndexes.size() != 1 || info.rowFieldIndexes[0] != 0)
+		return false;
+	if (info.colFieldIndexes.size() > 1)
+		return false;
+	bool hasColField = !info.colFieldIndexes.empty();
+	if (hasColField && info.colFieldIndexes[0] != 1)
+		return false;
+	if (info.dataFields.empty())
+		return false;
+
+	int expectedFirstFld = hasColField ? 2 : 1;
+	for (size_t i = 0; i < info.dataFields.size(); i++)
+	{
+		PivotAggFunc dummy;
+		if (!PivotSubtotalToAggFunc(info.dataFields[i].second, &dummy))
+			return false;
+		if (info.dataFields[i].first != expectedFirstFld + (int)i)
+			return false;
+	}
 	return true;
 }
 
@@ -8760,6 +9421,133 @@ static bool BuildPivotCachedRowsFromCells(CContainer* doc, const range& sourceRa
 	for (std::map<std::string, PivotRow>::iterator it = groups.begin(); it != groups.end(); ++it)
 		out->push_back(it->second);
 	return !out->empty();
+}
+
+// Simmetrico a BuildPivotCachedRowsFromCells sopra, per il caso 2D --
+// stessa logica di raggruppamento di BuildPivotTable2D in
+// ui/src/Pivot.cpp (mai incluso qui, stesso motivo di dipendenza gia'
+// spiegato). "columnFieldCol"/"measures" sono gia' risolti a colonne
+// assolute dal chiamante (vedi PivotShapeSupported2D e il call chain di
+// importazione sotto). Ambito v1: una sola colonna chiave di riga, come
+// il resto di questa sezione.
+static bool BuildPivotCachedRows2DFromCells(CContainer* doc, const range& sourceRange,
+	int columnFieldCol, const std::vector<PivotMeasure>& measures,
+	std::vector<BString>* outColumnValues, std::vector<PivotRow2D>* outRows)
+{
+	outColumnValues->clear();
+	outRows->clear();
+	if (!doc || measures.empty())
+		return false;
+
+	int rowKeyCol = -1;
+	int rowKeyColCount = 0;
+	for (int col = sourceRange.left; col <= sourceRange.right; col++)
+	{
+		if (col == columnFieldCol)
+			continue;
+		bool isMeasureCol = false;
+		for (size_t m = 0; m < measures.size(); m++)
+		{
+			if (measures[m].sourceCol == col)
+			{
+				isMeasureCol = true;
+				break;
+			}
+		}
+		if (isMeasureCol)
+			continue;
+		rowKeyColCount++;
+		if (rowKeyColCount == 1)
+			rowKeyCol = col;
+	}
+	if (rowKeyColCount != 1)
+		return false; // ambito v1: una sola colonna chiave di riga
+
+	std::map<std::string, int> columnValueIndex;
+	if (columnFieldCol >= 0)
+	{
+		std::map<std::string, bool> distinctVals;
+		for (int row = sourceRange.top; row <= sourceRange.bottom; row++)
+		{
+			Value cv;
+			doc->GetValue(cell(columnFieldCol, row), cv);
+			if (cv.fType != eTextData)
+				continue;
+			distinctVals[std::string((const char*)cv)] = true;
+		}
+		// std::map ordina gia' da solo per chiave, stesso ordine
+		// lessicografico di BuildPivotTable2D.
+		for (std::map<std::string, bool>::iterator it = distinctVals.begin();
+				it != distinctVals.end(); ++it)
+		{
+			columnValueIndex[it->first] = (int)outColumnValues->size();
+			outColumnValues->push_back(BString(it->first.c_str()));
+		}
+		if (outColumnValues->empty())
+			return false;
+	}
+	int numColSlots = columnFieldCol >= 0 ? (int)outColumnValues->size() : 1;
+
+	std::map<std::string, PivotRow2D> groups;
+	for (int row = sourceRange.top; row <= sourceRange.bottom; row++)
+	{
+		Value cv;
+		doc->GetValue(cell(rowKeyCol, row), cv);
+		if (cv.fType != eTextData)
+			continue;
+
+		int colIndex = 0;
+		if (columnFieldCol >= 0)
+		{
+			Value fv;
+			doc->GetValue(cell(columnFieldCol, row), fv);
+			if (fv.fType != eTextData)
+				continue;
+			std::map<std::string, int>::iterator cit = columnValueIndex.find((const char*)fv);
+			if (cit == columnValueIndex.end())
+				continue;
+			colIndex = cit->second;
+		}
+
+		std::string key((const char*)cv);
+		std::map<std::string, PivotRow2D>::iterator git = groups.find(key);
+		if (git == groups.end())
+		{
+			PivotRow2D r;
+			r.categories.push_back(BString((const char*)cv));
+			r.cells.resize(numColSlots);
+			for (int c = 0; c < numColSlots; c++)
+				r.cells[c].resize(measures.size());
+			git = groups.insert(std::make_pair(key, r)).first;
+		}
+
+		for (size_t m = 0; m < measures.size(); m++)
+		{
+			Value vv;
+			doc->GetValue(cell(measures[m].sourceCol, row), vv);
+			if (vv.fType != eNumData)
+				continue; // solo questa misura esclusa per questa riga
+
+			double v = (double)vv;
+			PivotCellAgg& agg = git->second.cells[colIndex][m];
+			if (agg.count == 0)
+			{
+				agg.minVal = v;
+				agg.maxVal = v;
+			}
+			else
+			{
+				if (v < agg.minVal) agg.minVal = v;
+				if (v > agg.maxVal) agg.maxVal = v;
+			}
+			agg.aggregate += v;
+			agg.count++;
+		}
+	}
+
+	for (std::map<std::string, PivotRow2D>::iterator it = groups.begin(); it != groups.end(); ++it)
+		outRows->push_back(it->second);
+	return !outRows->empty();
 }
 
 // Un foglio gia' analizzato, pronto per essere scritto in formato
@@ -9573,13 +10361,24 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 						std::vector<unsigned char> pivotTableXml;
 						PivotTableParseInfo ptInfo;
 						if (!zip.ReadEntry(pivotTablePath.c_str(), pivotTableXml)
-							|| !ParsePivotTableXml(pivotTableXml, &ptInfo)
-							|| !PivotShapeSupported(ptInfo))
-							continue; // fuori ambito v1 o file malformato:
-									  // le celle sono gia' importate sopra
+							|| !ParsePivotTableXml(pivotTableXml, &ptInfo))
+							continue; // file malformato: le celle sono gia' importate sopra
 
-						PivotAggFunc aggFunc;
-						if (!PivotSubtotalToAggFunc(ptInfo.subtotal, &aggFunc))
+						// Prova prima la forma 1D (v1 storica), poi quella 2D
+						// (campo Colonne/misure multiple) -- mai entrambe vere
+						// insieme per costruzione (PivotShapeSupported richiede
+						// dataFieldCount==1 && !hasColFields, PivotShapeSupported2D
+						// ammette anche quella stessa forma ma solo se la prima
+						// fallisce non cambia nulla: qui si controlla comunque
+						// PivotShapeSupported per primo per non cambiare il
+						// percorso 1D esistente).
+						bool is1D = PivotShapeSupported(ptInfo);
+						bool is2D = !is1D && PivotShapeSupported2D(ptInfo);
+						if (!is1D && !is2D)
+							continue; // fuori ambito v1 (ne' 1D ne' 2D) o file malformato
+
+						PivotAggFunc aggFunc = ePivotSum;
+						if (is1D && !PivotSubtotalToAggFunc(ptInfo.subtotal, &aggFunc))
 							continue; // aggregazione non riconosciuta
 
 						size_t ptSlash = pivotTablePath.find_last_of('/');
@@ -9611,15 +10410,59 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 									  // supportato (stesso principio
 									  // same-sheet-only di HandlePivotRequest)
 
-						std::vector<PivotRow> rows;
-						if (!BuildPivotCachedRowsFromCells(parsed.doc, sourceRange, &rows))
+						if (is1D)
+						{
+							std::vector<PivotRow> rows;
+							if (!BuildPivotCachedRowsFromCells(parsed.doc, sourceRange, &rows))
+								continue;
+
+							PivotTableObject pivot;
+							pivot.sourceRange = sourceRange;
+							pivot.destAnchor = cell(ptInfo.destRange.left, ptInfo.destRange.top);
+							pivot.aggFunc = aggFunc;
+							pivot.cachedRows = rows;
+							parsed.pivotTables.push_back(pivot);
+							continue;
+						}
+
+						// Ramo 2D: colFieldIndexes/dataFields sono indici di
+						// cache field (relativi), risolti a colonne assolute
+						// sommando sourceRange.left -- stessa convenzione
+						// posizionale usata da BuildPivotXmlParts2D in
+						// esportazione (cache field 0 = chiave di riga, 1 =
+						// campo Colonne se presente, il resto = misure in
+						// ordine), garantita da PivotShapeSupported2D sopra.
+						int columnFieldCol = ptInfo.colFieldIndexes.empty() ? -1
+							: sourceRange.left + ptInfo.colFieldIndexes[0];
+						std::vector<PivotMeasure> measures;
+						bool subtotalOk = true;
+						for (size_t d = 0; d < ptInfo.dataFields.size(); d++)
+						{
+							PivotMeasure m;
+							m.sourceCol = (int16)(sourceRange.left + ptInfo.dataFields[d].first);
+							if (!PivotSubtotalToAggFunc(ptInfo.dataFields[d].second, &m.aggFunc))
+							{
+								subtotalOk = false;
+								break;
+							}
+							measures.push_back(m);
+						}
+						if (!subtotalOk)
+							continue;
+
+						std::vector<BString> columnValues;
+						std::vector<PivotRow2D> rows2D;
+						if (!BuildPivotCachedRows2DFromCells(parsed.doc, sourceRange, columnFieldCol,
+								measures, &columnValues, &rows2D))
 							continue;
 
 						PivotTableObject pivot;
 						pivot.sourceRange = sourceRange;
 						pivot.destAnchor = cell(ptInfo.destRange.left, ptInfo.destRange.top);
-						pivot.aggFunc = aggFunc;
-						pivot.cachedRows = rows;
+						pivot.columnFieldCol = (int16)columnFieldCol;
+						pivot.measures = measures;
+						pivot.columnValues = columnValues;
+						pivot.cachedRows2D = rows2D;
 						parsed.pivotTables.push_back(pivot);
 					}
 				}

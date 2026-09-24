@@ -1338,6 +1338,96 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione tabelle pivot 2D, in coda, NUOVA ultima sezione del
+	// formato: estensione additiva di PivotTableObject (campo Colonne +
+	// misure multiple, vedi il commento su columnFieldCol/measures in
+	// Container.h) -- stesso ordine per indice della sezione pivot 1D
+	// piu' sopra, EOF-tollerante come ogni altra sezione in coda. Un
+	// pivot 1D (columnFieldCol==-1, measures vuoto) scrive comunque la
+	// sua voce con measureCount=0/columnValueCount=0/rowCount2D=0, cosi'
+	// un lettore vede sempre esattamente "pivots.size()" voci, stesso
+	// principio "scrivi sempre il conteggio, anche zero" gia' seguito
+	// da ogni sezione facoltativa di questo formato.
+	{
+		const std::vector<PivotTableObject>& pivots2D = doc->GetPivotTables();
+		int32 pivot2DCount = (int32)pivots2D.size();
+		if (dest->Write(&pivot2DCount, sizeof(pivot2DCount)) != (ssize_t)sizeof(pivot2DCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < pivot2DCount; i++)
+		{
+			const PivotTableObject& pivot = pivots2D[i];
+			int16 columnFieldCol = pivot.columnFieldCol;
+			if (dest->Write(&columnFieldCol, sizeof(columnFieldCol)) != (ssize_t)sizeof(columnFieldCol))
+				return B_IO_ERROR;
+
+			int32 measureCount = (int32)pivot.measures.size();
+			if (dest->Write(&measureCount, sizeof(measureCount)) != (ssize_t)sizeof(measureCount))
+				return B_IO_ERROR;
+			for (int32 m = 0; m < measureCount; m++)
+			{
+				const PivotMeasure& measure = pivot.measures[m];
+				int32 aggFunc = (int32)measure.aggFunc;
+				int32 labelLen = measure.label.Length();
+				if (dest->Write(&measure.sourceCol, sizeof(measure.sourceCol)) != (ssize_t)sizeof(measure.sourceCol)
+					|| dest->Write(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc)
+					|| dest->Write(&labelLen, sizeof(labelLen)) != (ssize_t)sizeof(labelLen))
+					return B_IO_ERROR;
+				if (labelLen > 0 && dest->Write(measure.label.String(), labelLen) != labelLen)
+					return B_IO_ERROR;
+			}
+
+			int32 columnValueCount = (int32)pivot.columnValues.size();
+			if (dest->Write(&columnValueCount, sizeof(columnValueCount)) != (ssize_t)sizeof(columnValueCount))
+				return B_IO_ERROR;
+			for (int32 c = 0; c < columnValueCount; c++)
+			{
+				int32 len = pivot.columnValues[c].Length();
+				if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+					return B_IO_ERROR;
+				if (len > 0 && dest->Write(pivot.columnValues[c].String(), len) != len)
+					return B_IO_ERROR;
+			}
+
+			int32 rowCount2D = (int32)pivot.cachedRows2D.size();
+			if (dest->Write(&rowCount2D, sizeof(rowCount2D)) != (ssize_t)sizeof(rowCount2D))
+				return B_IO_ERROR;
+			// Numero di colonne del grigliato per riga: columnValueCount
+			// (o 1 quando non c'e' campo Colonne) per measureCount --
+			// SEMPRE lo stesso per ogni riga della stessa tabella pivot,
+			// per costruzione (vedi BuildPivotTable2D).
+			int32 numColSlots = columnValueCount > 0 ? columnValueCount : 1;
+			for (int32 r = 0; r < rowCount2D; r++)
+			{
+				const PivotRow2D& row = pivot.cachedRows2D[r];
+				int32 catCount = (int32)row.categories.size();
+				if (dest->Write(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+					return B_IO_ERROR;
+				for (int32 k = 0; k < catCount; k++)
+				{
+					int32 catLen = row.categories[k].Length();
+					if (dest->Write(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+						return B_IO_ERROR;
+					if (catLen > 0 && dest->Write(row.categories[k].String(), catLen) != catLen)
+						return B_IO_ERROR;
+				}
+				for (int32 c = 0; c < numColSlots; c++)
+				{
+					for (int32 m = 0; m < measureCount; m++)
+					{
+						const PivotCellAgg& agg = row.cells[c][m];
+						int32 count32 = (int32)agg.count;
+						if (dest->Write(&agg.aggregate, sizeof(agg.aggregate)) != (ssize_t)sizeof(agg.aggregate)
+							|| dest->Write(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+							|| dest->Write(&agg.minVal, sizeof(agg.minVal)) != (ssize_t)sizeof(agg.minVal)
+							|| dest->Write(&agg.maxVal, sizeof(agg.maxVal)) != (ssize_t)sizeof(agg.maxVal))
+							return B_IO_ERROR;
+					}
+				}
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -2999,6 +3089,142 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 				{
 					(*charts)[i].rowOriented = rowOriented != 0;
 					(*charts)[i].valueRows = rows;
+				}
+			}
+		}
+	}
+
+	// Sezione tabelle pivot 2D, in coda: stesso schema EOF-tollerante
+	// delle sezioni sopra (vedi il commento gemello in SaveASCD e
+	// PivotTableObject::columnFieldCol/measures in Container.h). Un
+	// file scritto prima di questa sezione lascia ogni pivot al suo
+	// default 1D (columnFieldCol=-1, measures/cachedRows2D/columnValues
+	// vuoti) -- gia' vero dal costruttore di PivotTableObject usato
+	// dalla sezione pivot 1D piu' sopra, quindi non serve azzerare
+	// nulla qui in caso di stream esaurito.
+	{
+		int32 pivot2DCount = 0;
+		ssize_t got = source->Read(&pivot2DCount, sizeof(pivot2DCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(pivot2DCount))
+				return B_BAD_DATA;
+
+			std::vector<PivotTableObject>& pivots2D = doc->GetPivotTables();
+			for (int32 i = 0; i < pivot2DCount; i++)
+			{
+				int16 columnFieldCol;
+				if (source->Read(&columnFieldCol, sizeof(columnFieldCol)) != (ssize_t)sizeof(columnFieldCol))
+					return B_BAD_DATA;
+
+				int32 measureCount = 0;
+				if (source->Read(&measureCount, sizeof(measureCount)) != (ssize_t)sizeof(measureCount))
+					return B_BAD_DATA;
+				if (measureCount < 0 || measureCount > 256)
+					return B_BAD_DATA;
+
+				std::vector<PivotMeasure> measures(measureCount);
+				for (int32 m = 0; m < measureCount; m++)
+				{
+					int32 aggFunc;
+					int32 labelLen;
+					if (source->Read(&measures[m].sourceCol, sizeof(measures[m].sourceCol)) != (ssize_t)sizeof(measures[m].sourceCol)
+						|| source->Read(&aggFunc, sizeof(aggFunc)) != (ssize_t)sizeof(aggFunc)
+						|| source->Read(&labelLen, sizeof(labelLen)) != (ssize_t)sizeof(labelLen))
+						return B_BAD_DATA;
+					if (labelLen < 0 || labelLen > 4096)
+						return B_BAD_DATA;
+					measures[m].aggFunc = (PivotAggFunc)aggFunc;
+					if (labelLen > 0)
+					{
+						std::vector<char> buf(labelLen);
+						if (source->Read(&buf[0], labelLen) != labelLen)
+							return B_BAD_DATA;
+						measures[m].label.SetTo(&buf[0], labelLen);
+					}
+				}
+
+				int32 columnValueCount = 0;
+				if (source->Read(&columnValueCount, sizeof(columnValueCount)) != (ssize_t)sizeof(columnValueCount))
+					return B_BAD_DATA;
+				if (columnValueCount < 0 || columnValueCount > 4096)
+					return B_BAD_DATA;
+
+				std::vector<BString> columnValues(columnValueCount);
+				for (int32 c = 0; c < columnValueCount; c++)
+				{
+					int32 len;
+					if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+						return B_BAD_DATA;
+					if (len < 0 || len > 4096)
+						return B_BAD_DATA;
+					if (len > 0)
+					{
+						std::vector<char> buf(len);
+						if (source->Read(&buf[0], len) != len)
+							return B_BAD_DATA;
+						columnValues[c].SetTo(&buf[0], len);
+					}
+				}
+
+				int32 rowCount2D = 0;
+				if (source->Read(&rowCount2D, sizeof(rowCount2D)) != (ssize_t)sizeof(rowCount2D))
+					return B_BAD_DATA;
+				if (rowCount2D < 0 || rowCount2D > 1000000)
+					return B_BAD_DATA;
+
+				int32 numColSlots = columnValueCount > 0 ? columnValueCount : 1;
+				std::vector<PivotRow2D> rows2D(rowCount2D);
+				for (int32 r = 0; r < rowCount2D; r++)
+				{
+					PivotRow2D& row = rows2D[r];
+					int32 catCount = 0;
+					if (source->Read(&catCount, sizeof(catCount)) != (ssize_t)sizeof(catCount))
+						return B_BAD_DATA;
+					if (catCount < 0 || catCount > 1024)
+						return B_BAD_DATA;
+					for (int32 k = 0; k < catCount; k++)
+					{
+						int32 catLen;
+						if (source->Read(&catLen, sizeof(catLen)) != (ssize_t)sizeof(catLen))
+							return B_BAD_DATA;
+						if (catLen < 0 || catLen > 4096)
+							return B_BAD_DATA;
+						BString catStr;
+						if (catLen > 0)
+						{
+							std::vector<char> buf(catLen);
+							if (source->Read(&buf[0], catLen) != catLen)
+								return B_BAD_DATA;
+							catStr.SetTo(&buf[0], catLen);
+						}
+						row.categories.push_back(catStr);
+					}
+
+					row.cells.resize(numColSlots);
+					for (int32 c = 0; c < numColSlots; c++)
+					{
+						row.cells[c].resize(measureCount);
+						for (int32 m = 0; m < measureCount; m++)
+						{
+							PivotCellAgg& agg = row.cells[c][m];
+							int32 count32;
+							if (source->Read(&agg.aggregate, sizeof(agg.aggregate)) != (ssize_t)sizeof(agg.aggregate)
+								|| source->Read(&count32, sizeof(count32)) != (ssize_t)sizeof(count32)
+								|| source->Read(&agg.minVal, sizeof(agg.minVal)) != (ssize_t)sizeof(agg.minVal)
+								|| source->Read(&agg.maxVal, sizeof(agg.maxVal)) != (ssize_t)sizeof(agg.maxVal))
+								return B_BAD_DATA;
+							agg.count = count32;
+						}
+					}
+				}
+
+				if (i < (int32)pivots2D.size())
+				{
+					pivots2D[i].columnFieldCol = columnFieldCol;
+					pivots2D[i].measures = measures;
+					pivots2D[i].columnValues = columnValues;
+					pivots2D[i].cachedRows2D = rows2D;
 				}
 			}
 		}

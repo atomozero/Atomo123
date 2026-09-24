@@ -205,6 +205,247 @@ int main()
 		Check(doc.GetPivotTables().empty(), "ClearPivotTables svuota davvero");
 	}
 
+	// --- Pivot 2D (campo Colonne + misure multiple): BuildPivotTable2D/
+	// WritePivotTable2D/PivotTable2DDestRange -- BuildPivotTable/
+	// WritePivotTable sopra restano invariate, questo blocco copia solo
+	// nuove colonne/righe per non interferire con nessun controllo gia'
+	// fatto. ---
+
+	// Caso base: 1 colonna chiave di riga + campo Colonne, 1 misura.
+	// "Nord/Q1" ripetuto due volte per esercitare davvero l'aggregazione.
+	{
+		doc.NewCell(cell(20, 20), Value("Nord"), NULL);
+		doc.NewCell(cell(21, 20), Value("Q1"), NULL);
+		doc.NewCell(cell(22, 20), Value(100.0), NULL);
+		doc.NewCell(cell(20, 21), Value("Nord"), NULL);
+		doc.NewCell(cell(21, 21), Value("Q2"), NULL);
+		doc.NewCell(cell(22, 21), Value(200.0), NULL);
+		doc.NewCell(cell(20, 22), Value("Sud"), NULL);
+		doc.NewCell(cell(21, 22), Value("Q1"), NULL);
+		doc.NewCell(cell(22, 22), Value(50.0), NULL);
+		doc.NewCell(cell(20, 23), Value("Sud"), NULL);
+		doc.NewCell(cell(21, 23), Value("Q2"), NULL);
+		doc.NewCell(cell(22, 23), Value(80.0), NULL);
+		doc.NewCell(cell(20, 24), Value("Nord"), NULL);
+		doc.NewCell(cell(21, 24), Value("Q1"), NULL);
+		doc.NewCell(cell(22, 24), Value(10.0), NULL);
+
+		std::vector<PivotMeasure> measuresA(1);
+		measuresA[0].sourceCol = 22;
+		measuresA[0].aggFunc = ePivotSum;
+
+		std::vector<BString> colValsA;
+		std::vector<PivotRow2D> rowsA;
+		range sourceA(20, 20, 22, 24);
+		bool okA = BuildPivotTable2D(&doc, sourceA, 21, measuresA, &colValsA, &rowsA);
+
+		Check(okA, "BuildPivotTable2D riesce (1 colonna chiave di riga + campo Colonne, 1 misura)");
+		Check(colValsA.size() == 2 && colValsA[0] == "Q1" && colValsA[1] == "Q2",
+			"colValsA sono Q1/Q2, ordine lessicografico");
+		Check(rowsA.size() == 2, "due gruppi di riga (Nord, Sud)");
+		if (rowsA.size() == 2 && colValsA.size() == 2)
+		{
+			Check(rowsA[0].categories[0] == "Nord", "il primo gruppo e' Nord");
+			Check(rowsA[0].cells[0][0].aggregate == 110.0 && rowsA[0].cells[0][0].count == 2
+					&& rowsA[0].cells[0][0].minVal == 10.0 && rowsA[0].cells[0][0].maxVal == 100.0,
+				"Nord/Q1: somma 110 (100+10), conteggio 2 -- aggregazione vera, non solo passaggio");
+			Check(rowsA[0].cells[1][0].aggregate == 200.0 && rowsA[0].cells[1][0].count == 1,
+				"Nord/Q2: somma 200, conteggio 1");
+			Check(rowsA[1].categories[0] == "Sud", "il secondo gruppo e' Sud");
+			Check(rowsA[1].cells[0][0].aggregate == 50.0 && rowsA[1].cells[1][0].aggregate == 80.0,
+				"Sud/Q1=50, Sud/Q2=80");
+		}
+
+		cell destA(25, 20);
+		WritePivotTable2D(&doc, destA, colValsA, measuresA, rowsA);
+
+		Value h1q1, h1q2;
+		doc.GetValue(cell(26, 20), h1q1);
+		doc.GetValue(cell(27, 20), h1q2);
+		Check(BString((const char*)h1q1) == "Q1" && BString((const char*)h1q2) == "Q2",
+			"riga di intestazione 1: valore del campo Colonne (Q1/Q2)");
+
+		Value h2cat, h2m0, h2m1;
+		doc.GetValue(cell(25, 21), h2cat);
+		doc.GetValue(cell(26, 21), h2m0);
+		doc.GetValue(cell(27, 21), h2m1);
+		Check(BString((const char*)h2cat) == "Categoria" && BString((const char*)h2m0) == "Somma"
+				&& BString((const char*)h2m1) == "Somma",
+			"riga di intestazione 2: Categoria + etichetta di misura (Somma, nessuna label esplicita)");
+
+		Value nordCat, nordQ1, nordQ2, sudCat, sudQ1, sudQ2;
+		doc.GetValue(cell(25, 22), nordCat);
+		doc.GetValue(cell(26, 22), nordQ1);
+		doc.GetValue(cell(27, 22), nordQ2);
+		doc.GetValue(cell(25, 23), sudCat);
+		doc.GetValue(cell(26, 23), sudQ1);
+		doc.GetValue(cell(27, 23), sudQ2);
+		Check(BString((const char*)nordCat) == "Nord" && (double)nordQ1 == 110.0 && (double)nordQ2 == 200.0,
+			"riga Nord scritta correttamente (110/200)");
+		Check(BString((const char*)sudCat) == "Sud" && (double)sudQ1 == 50.0 && (double)sudQ2 == 80.0,
+			"riga Sud scritta correttamente (50/80)");
+
+		range destRangeA = PivotTable2DDestRange(destA, 1, colValsA, measuresA, rowsA.size());
+		Check(destRangeA.left == 25 && destRangeA.top == 20 && destRangeA.right == 27
+				&& destRangeA.bottom == 23,
+			"PivotTable2DDestRange combacia con l'estensione vera scritta (F20:H23 -> col 25-27, righe 20-23)");
+	}
+
+	// 2+ misure, NESSUN campo Colonne: la riga di intestazione 1 resta
+	// vuota (nessun valore di campo Colonne da mostrare), la riga 2
+	// elenca le due etichette di misura esplicite.
+	{
+		doc.NewCell(cell(30, 30), Value("Mela"), NULL);
+		doc.NewCell(cell(31, 30), Value(10.0), NULL);
+		doc.NewCell(cell(32, 30), Value(1.0), NULL);
+		doc.NewCell(cell(30, 31), Value("Pera"), NULL);
+		doc.NewCell(cell(31, 31), Value(5.0), NULL);
+		doc.NewCell(cell(32, 31), Value(2.0), NULL);
+		doc.NewCell(cell(30, 32), Value("Mela"), NULL);
+		doc.NewCell(cell(31, 32), Value(20.0), NULL);
+		doc.NewCell(cell(32, 32), Value(3.0), NULL);
+
+		std::vector<PivotMeasure> measuresB(2);
+		measuresB[0].sourceCol = 31; measuresB[0].aggFunc = ePivotSum; measuresB[0].label = "A";
+		measuresB[1].sourceCol = 32; measuresB[1].aggFunc = ePivotSum; measuresB[1].label = "B";
+
+		std::vector<BString> colValsB;
+		std::vector<PivotRow2D> rowsB;
+		range sourceB(30, 30, 32, 32);
+		bool okB = BuildPivotTable2D(&doc, sourceB, -1, measuresB, &colValsB, &rowsB);
+
+		Check(okB, "BuildPivotTable2D riesce (nessun campo Colonne, 2 misure)");
+		Check(colValsB.empty(), "colValsB e' vuoto -- nessun campo Colonne");
+		Check(rowsB.size() == 2, "due gruppi di riga (Mela, Pera)");
+		if (rowsB.size() == 2)
+		{
+			Check(rowsB[0].categories[0] == "Mela" && rowsB[0].cells.size() == 1,
+				"Mela: un solo blocco di colonna (nessun campo Colonne)");
+			Check(rowsB[0].cells[0][0].aggregate == 30.0 && rowsB[0].cells[0][0].count == 2
+					&& rowsB[0].cells[0][1].aggregate == 4.0 && rowsB[0].cells[0][1].count == 2,
+				"Mela: misura A=30 (10+20), misura B=4 (1+3)");
+			Check(rowsB[1].categories[0] == "Pera"
+					&& rowsB[1].cells[0][0].aggregate == 5.0 && rowsB[1].cells[0][1].aggregate == 2.0,
+				"Pera: misura A=5, misura B=2");
+		}
+
+		cell destB(34, 30);
+		WritePivotTable2D(&doc, destB, colValsB, measuresB, rowsB);
+
+		Value h1blankA, h1blankB;
+		doc.GetValue(cell(35, 30), h1blankA);
+		doc.GetValue(cell(36, 30), h1blankB);
+		Check(h1blankA.fType == eNoData && h1blankB.fType == eNoData,
+			"riga di intestazione 1 resta vuota quando non c'e' campo Colonne");
+
+		Value h2catB, h2labelA, h2labelB;
+		doc.GetValue(cell(34, 31), h2catB);
+		doc.GetValue(cell(35, 31), h2labelA);
+		doc.GetValue(cell(36, 31), h2labelB);
+		Check(BString((const char*)h2catB) == "Categoria" && BString((const char*)h2labelA) == "A"
+				&& BString((const char*)h2labelB) == "B",
+			"riga di intestazione 2: Categoria + le due etichette esplicite (A, B)");
+
+		Value melaCatB, melaA, melaB;
+		doc.GetValue(cell(34, 32), melaCatB);
+		doc.GetValue(cell(35, 32), melaA);
+		doc.GetValue(cell(36, 32), melaB);
+		Check(BString((const char*)melaCatB) == "Mela" && (double)melaA == 30.0 && (double)melaB == 4.0,
+			"riga Mela scritta correttamente sulle due misure affiancate");
+	}
+
+	// Campo Colonne E 2+ misure insieme: intestazione a due righe
+	// completa, PivotTable2DDestRange combacia con l'estensione vera.
+	{
+		doc.NewCell(cell(40, 40), Value("Nord"), NULL);
+		doc.NewCell(cell(41, 40), Value("Q1"), NULL);
+		doc.NewCell(cell(42, 40), Value(100.0), NULL);
+		doc.NewCell(cell(43, 40), Value(10.0), NULL);
+		doc.NewCell(cell(40, 41), Value("Nord"), NULL);
+		doc.NewCell(cell(41, 41), Value("Q2"), NULL);
+		doc.NewCell(cell(42, 41), Value(200.0), NULL);
+		doc.NewCell(cell(43, 41), Value(20.0), NULL);
+		doc.NewCell(cell(40, 42), Value("Sud"), NULL);
+		doc.NewCell(cell(41, 42), Value("Q1"), NULL);
+		doc.NewCell(cell(42, 42), Value(50.0), NULL);
+		doc.NewCell(cell(43, 42), Value(5.0), NULL);
+		doc.NewCell(cell(40, 43), Value("Sud"), NULL);
+		doc.NewCell(cell(41, 43), Value("Q2"), NULL);
+		doc.NewCell(cell(42, 43), Value(80.0), NULL);
+		doc.NewCell(cell(43, 43), Value(8.0), NULL);
+
+		std::vector<PivotMeasure> measuresC(2);
+		measuresC[0].sourceCol = 42; measuresC[0].aggFunc = ePivotSum; measuresC[0].label = "Sales";
+		measuresC[1].sourceCol = 43; measuresC[1].aggFunc = ePivotSum; measuresC[1].label = "Cost";
+
+		std::vector<BString> colValsC;
+		std::vector<PivotRow2D> rowsC;
+		range sourceC(40, 40, 43, 43);
+		bool okC = BuildPivotTable2D(&doc, sourceC, 41, measuresC, &colValsC, &rowsC);
+		Check(okC, "BuildPivotTable2D riesce (campo Colonne + 2 misure insieme)");
+		Check(colValsC.size() == 2 && rowsC.size() == 2,
+			"due valori di campo Colonne (Q1/Q2) e due gruppi di riga (Nord/Sud)");
+
+		cell destC(45, 40);
+		WritePivotTable2D(&doc, destC, colValsC, measuresC, rowsC);
+
+		Value h1q1a, h1q1b, h1q2a, h1q2b;
+		doc.GetValue(cell(46, 40), h1q1a); doc.GetValue(cell(47, 40), h1q1b);
+		doc.GetValue(cell(48, 40), h1q2a); doc.GetValue(cell(49, 40), h1q2b);
+		Check(BString((const char*)h1q1a) == "Q1" && BString((const char*)h1q1b) == "Q1"
+				&& BString((const char*)h1q2a) == "Q2" && BString((const char*)h1q2b) == "Q2",
+			"riga di intestazione 1: Q1 ripetuto sulle sue 2 colonne misura, poi Q2");
+
+		Value h2salesQ1, h2costQ1, h2salesQ2, h2costQ2;
+		doc.GetValue(cell(46, 41), h2salesQ1); doc.GetValue(cell(47, 41), h2costQ1);
+		doc.GetValue(cell(48, 41), h2salesQ2); doc.GetValue(cell(49, 41), h2costQ2);
+		Check(BString((const char*)h2salesQ1) == "Sales" && BString((const char*)h2costQ1) == "Cost"
+				&& BString((const char*)h2salesQ2) == "Sales" && BString((const char*)h2costQ2) == "Cost",
+			"riga di intestazione 2: Sales/Cost ripetute per ogni valore di campo Colonne");
+
+		Value nordSalesQ1, nordCostQ1, nordSalesQ2, nordCostQ2;
+		doc.GetValue(cell(46, 42), nordSalesQ1); doc.GetValue(cell(47, 42), nordCostQ1);
+		doc.GetValue(cell(48, 42), nordSalesQ2); doc.GetValue(cell(49, 42), nordCostQ2);
+		Check((double)nordSalesQ1 == 100.0 && (double)nordCostQ1 == 10.0
+				&& (double)nordSalesQ2 == 200.0 && (double)nordCostQ2 == 20.0,
+			"riga Nord scritta correttamente su tutte e 4 le colonne dati");
+
+		range destRangeC = PivotTable2DDestRange(destC, 1, colValsC, measuresC, rowsC.size());
+		Check(destRangeC.left == 45 && destRangeC.top == 40 && destRangeC.right == 49
+				&& destRangeC.bottom == 43,
+			"PivotTable2DDestRange combacia con l'estensione vera scritta (5 colonne x 4 righe)");
+	}
+
+	// Validita' per-misura: un valore non numerico in UNA misura esclude
+	// SOLO quella misura per quella riga sorgente, non l'intera riga (a
+	// differenza di BuildPivotTable, che scarterebbe l'intera riga).
+	{
+		doc.NewCell(cell(50, 50), Value("X"), NULL);
+		doc.NewCell(cell(51, 50), Value(10.0), NULL);
+		doc.NewCell(cell(52, 50), Value("non numerico"), NULL); // misura B non valida SOLO qui
+		doc.NewCell(cell(50, 51), Value("X"), NULL);
+		doc.NewCell(cell(51, 51), Value(20.0), NULL);
+		doc.NewCell(cell(52, 51), Value(5.0), NULL);
+
+		std::vector<PivotMeasure> measuresD(2);
+		measuresD[0].sourceCol = 51; measuresD[0].aggFunc = ePivotSum;
+		measuresD[1].sourceCol = 52; measuresD[1].aggFunc = ePivotSum;
+
+		std::vector<BString> colValsD;
+		std::vector<PivotRow2D> rowsD;
+		range sourceD(50, 50, 52, 51);
+		bool okD = BuildPivotTable2D(&doc, sourceD, -1, measuresD, &colValsD, &rowsD);
+		Check(okD, "BuildPivotTable2D riesce anche con una misura parzialmente non valida");
+		Check(rowsD.size() == 1, "un solo gruppo (X), la riga con misura B non numerica non e' scartata del tutto");
+		if (rowsD.size() == 1)
+		{
+			Check(rowsD[0].cells[0][0].aggregate == 30.0 && rowsD[0].cells[0][0].count == 2,
+				"misura A: entrambe le righe valide, somma 30 (10+20)");
+			Check(rowsD[0].cells[0][1].aggregate == 5.0 && rowsD[0].cells[0][1].count == 1,
+				"misura B: solo la seconda riga valida, somma 5 (la prima, testo, e' esclusa SOLO per B)");
+		}
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 
 	doc.Release();

@@ -397,13 +397,62 @@ struct PivotRow {
 // i dati CORRENTI di sourceRange. Stesso principio del vero "Refresh"
 // di Excel: una pivot table reale non si aggiorna da sola a ogni
 // modifica, resta ferma sulla cache finche' l'utente non lo chiede.
+// Fase pivot 2D: una MISURA esplicita, usata quando il pivot ha un campo
+// Colonne e/o 2+ colonne valore -- "sourceCol" e' la colonna assoluta da
+// cui la misura legge i propri valori numerici, stesso mental model di
+// ChartObject::valueColumns (colonne esplicite, non necessariamente
+// contigue). "label" e' il testo di intestazione scritto/letto nella
+// seconda riga di intestazione di WritePivotTable2D.
+struct PivotMeasure {
+	int16 sourceCol;
+	PivotAggFunc aggFunc;
+	BString label;
+
+	PivotMeasure() : sourceCol(0), aggFunc(ePivotSum) {}
+};
+
+// Risultato aggregato di UNA cella del grigliato 2D (combinazione gruppo
+// di riga + valore del campo Colonne + misura).
+struct PivotCellAgg {
+	double aggregate;
+	long count;
+	double minVal;
+	double maxVal;
+
+	PivotCellAgg() : aggregate(0), count(0), minVal(0), maxVal(0) {}
+};
+
+// Riga del grigliato 2D: stesse "categories" di PivotRow sopra, ma
+// "cells" e' indicizzata per [indice del valore del campo Colonne
+// nell'ordine di PivotTableObject::columnValues][indice della misura in
+// PivotTableObject::measures] -- una combinazione mai vista nei dati
+// sorgente resta un PivotCellAgg() di default (count 0), mai un errore.
+struct PivotRow2D {
+	std::vector<BString> categories;
+	std::vector<std::vector<PivotCellAgg> > cells;
+};
+
 struct PivotTableObject {
 	range sourceRange;
 	cell destAnchor;
 	PivotAggFunc aggFunc;
 	std::vector<PivotRow> cachedRows;
 
-	PivotTableObject() : aggFunc(ePivotSum) {}
+	// Estensione pivot 2D (campo Colonne + misure multiple, vedi
+	// BuildPivotTable2D/WritePivotTable2D in ui/src/Pivot.h/.cpp): TUTTI
+	// i campi sotto restano al loro default per ogni pivot creato prima
+	// di questa estensione, o letto da un .ascd scritto prima -- questo
+	// significa "nessun campo Colonne, una sola misura implicita
+	// (sourceRange.right/aggFunc sopra)", cioe' il vecchio percorso 1D
+	// resta l'UNICO usato in quel caso, zero cambio di comportamento.
+	// Stesso principio di ChartObject::valueColumns/rowOriented in
+	// Chart.h: campo vuoto/-1 = "usa il comportamento di sempre".
+	int16 columnFieldCol; // -1 = nessun campo Colonne
+	std::vector<PivotMeasure> measures; // vuoto = una sola misura implicita
+	std::vector<PivotRow2D> cachedRows2D; // vuoto per un pivot 1D
+	std::vector<BString> columnValues; // valori distinti del campo Colonne, ordine di griglia
+
+	PivotTableObject() : aggFunc(ePivotSum), columnFieldCol(-1) {}
 };
 
 class CContainer : public BLocker {
