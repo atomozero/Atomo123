@@ -77,6 +77,33 @@ $(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a $(EN_CATKEYS)
 	$(CXX) -shared -o $(ADDON) $(SOURCES) $(INCLUDES) $(CXXFLAGS) $(LIBS)
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l en $(EN_CATKEYS)
 
+# Dove installare l'add-on: Haiku mette gli add-on di un'architettura
+# SECONDARIA in una sottocartella che porta il nome di quell'architettura
+# (~/config/non-packaged/add-ons/x86/Translators), mentre quelli
+# dell'architettura primaria stanno nella cartella stessa
+# (~/config/non-packaged/add-ons/Translators). Un'applicazione compilata
+# per l'architettura secondaria cerca SOLO nella prima: installare la',
+# su un sistema ibrido x86_gcc2/x86, e' la differenza fra "Formato file
+# non riconosciuto da nessun translator installato" e un file che si apre.
+#
+# Come si riconosce quale delle due: lo si chiede al compilatore in uso,
+# che e' cio' che determina l'architettura dell'add-on prodotto.
+# "-print-file-name=libbe.so" risponde con .../develop/lib/x86/libbe.so
+# per un toolchain secondario e .../develop/lib/libbe.so per il primario.
+# "-dumpmachine" NON serve: su un ibrido x86_gcc2 entrambi i compilatori
+# rispondono "i586-pc-haiku". L'ultimo componente di quel percorso e'
+# quindi "lib" sull'architettura primaria (x86_64 compreso: nessuna
+# sottocartella, percorso identico a prima) e il nome dell'architettura
+# su una secondaria.
+LIBBE_DIR := $(patsubst %/,%,$(dir $(shell $(CXX) -print-file-name=libbe.so)))
+ARCH_NAME := $(notdir $(LIBBE_DIR))
+ifeq ($(filter-out lib .,$(ARCH_NAME)),)
+ADDONS_DIR := $(HOME)/config/non-packaged/add-ons
+else
+ADDONS_DIR := $(HOME)/config/non-packaged/add-ons/$(ARCH_NAME)
+endif
+TRANSLATORS_DIR := $(ADDONS_DIR)/Translators
+
 # "cp" seguito da "mv" nella stessa cartella, non "cp" diretto sul
 # file gia' installato: un vero crash reale di Tracker (il suo
 # thumbnail worker chiama BTranslatorRoster::Translate() su ogni file
@@ -86,9 +113,9 @@ $(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a $(EN_CATKEYS)
 # vede sempre o il file vecchio intero o quello nuovo intero, mai uno
 # stato intermedio.
 install: $(ADDON)
-	mkdir -p ~/config/non-packaged/add-ons/Translators
-	cp $(ADDON) ~/config/non-packaged/add-ons/Translators/$(ADDON).new
-	mv ~/config/non-packaged/add-ons/Translators/$(ADDON).new ~/config/non-packaged/add-ons/Translators/$(ADDON)
+	mkdir -p $(TRANSLATORS_DIR)
+	cp $(ADDON) $(TRANSLATORS_DIR)/$(ADDON).new
+	mv $(TRANSLATORS_DIR)/$(ADDON).new $(TRANSLATORS_DIR)/$(ADDON)
 
 # Passaggio manuale, non nel giro normale di "make": vedi il commento
 # analogo in translators/csv/Makefile.
