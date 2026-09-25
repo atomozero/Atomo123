@@ -17,6 +17,7 @@
 #ifndef ASCD_IO_H
 #define ASCD_IO_H
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,38 @@
 #include "EmbeddedImage.h"
 
 class CContainer;
+
+// Hash di protezione foglio VERO di Excel (Tier 4, "Path to 100% XLSX
+// standard compatibility"): fino ad ora <sheetProtection .../> veniva
+// letto solo per la sua PRESENZA (protetto si'/no, vedi
+// AscdSheet::isProtected sotto) -- i suoi attributi reali (l'hash della
+// password, non la password in chiaro: Excel stesso non la scrive mai)
+// venivano scartati, quindi riesportare un file con un foglio protetto
+// da password perdeva quella password, sostituita da una protezione
+// senza password che questo stesso programma sa gia' sbloccare
+// liberamente. Due forme ECMA-376 (18.3.1.85): quella LEGACY
+// (`password="83AF"`, un checksum a 16 bit su 4 cifre esadecimali) e
+// quella moderna (`algorithmName="SHA-512" hashValue="..."
+// saltValue="..." spinCount="100000"`, tutti e tre in base64 tranne
+// spinCount). "isModernHash" distingue quale delle due leggere;
+// hasPassword=false (il default) vuol dire "nessun attributo di
+// password nel file originale" (foglio protetto ma senza password,
+// come questo programma stesso lo crea) -- nessun file scritto prima
+// di questo campo ne aveva mai uno. Scope deliberatamente limitato
+// all'hash: questo programma non calcola MAI un nuovo hash da una
+// password in chiaro (non ha modo di chiederne una all'utente, la
+// propria protezione resta un semplice interruttore) -- si limita a
+// preservare byte per byte quello che un vero file XLSX porta gia',
+// per fedelta' del giro di andata/ritorno.
+struct AscdSheetProtection {
+	bool hasPassword = false;
+	bool isModernHash = false;
+	std::string legacyPassword;  // solo se !isModernHash
+	std::string algorithmName;   // solo se isModernHash, es. "SHA-512"
+	std::string hashValue;       // solo se isModernHash, base64
+	std::string saltValue;       // solo se isModernHash, base64
+	int32 spinCount = 0;         // solo se isModernHash
+};
 
 // Margini/scala di "Imposta pagina" (Fase 29), PER FOGLIO -- prima
 // un'unica preferenza globale dell'app (gPrefs, vedi ROADMAP.md),
@@ -210,7 +243,14 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// formato, con un confine di lunghezza esplicito per foglio) passa
 	// false: li' il confine stesso protegge dallo stesso problema per
 	// QUALUNQUE sezione futura, non serve piu' un interruttore dedicato.
-	bool skipVbaAndProtectionSections = false);
+	bool skipVbaAndProtectionSections = false,
+	// Hash di protezione VERO (versione 9), vedi AscdSheetProtection
+	// sopra -- aggiunto in coda, DOPO skipVbaAndProtectionSections
+	// (passato POSIZIONALMENTE da una chiamata reale in AscdIO.cpp),
+	// per lo stesso motivo di vbaProject sopra: ogni parametro nuovo va
+	// dopo l'ultimo gia' usato posizionalmente. NULL = non raccolto (il
+	// comportamento di sempre per ogni chiamante esistente).
+	AscdSheetProtection* protection = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -225,7 +265,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const AscdPrintSettings* printSettings = NULL,
 	// Vedi il commento gemello sopra in LoadASCD.
 	const std::vector<unsigned char>* vbaProject = NULL,
-	const bool* isProtected = NULL);
+	const bool* isProtected = NULL,
+	// Vedi il commento gemello sopra in LoadASCD.
+	const AscdSheetProtection* protection = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -331,6 +373,11 @@ struct AscdSheet {
 	// Excel. false di default: nessun documento scritto prima di questo
 	// campo era mai protetto.
 	bool isProtected = false;
+	// Hash di protezione VERO (versione 9, vedi AscdSheetProtection
+	// sopra): default-costruito (hasPassword=false) per ogni foglio non
+	// importato da un XLSX con una password reale, incluso ogni file
+	// scritto prima di questo campo.
+	AscdSheetProtection protection;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

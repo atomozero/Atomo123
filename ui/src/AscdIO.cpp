@@ -66,8 +66,12 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // gli operatori ECMA-376, containsText/notContainsText/beginsWith/
 // endsWith, containsBlanks/notContainsBlanks/containsErrors/
 // notContainsErrors, top10, aboveAverage -- vedi ConditionalFormatRule
-// in Container.h).
-static const int32 kASCDVersion = 8;
+// in Container.h). Versione 9 (era 8): campi NUOVI subito dopo il
+// byte "protetto si'/no" (non piu' in coda alla sezione formattazione
+// condizionale, una sezione diversa) -- l'hash VERO di protezione
+// foglio di un file XLSX reale (Tier 4, "Path to 100% XLSX standard
+// compatibility", vedi AscdSheetProtection in AscdIO.h).
+static const int32 kASCDVersion = 9;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // "ASCB": formato cartella di lavoro LEGACY, congelato per sempre a
 // questo elenco di sezioni per foglio (fino a "Imposta pagina", Fase
@@ -141,7 +145,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const bool* hasPrintArea, const range* printArea,
 	const AscdPrintSettings* printSettings,
 	const std::vector<unsigned char>* vbaProject,
-	const bool* isProtected)
+	const bool* isProtected,
+	const AscdSheetProtection* protection)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -1209,6 +1214,50 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Hash di protezione VERO (versione 9, vedi il commento su
+	// AscdSheetProtection in AscdIO.h e su kASCDVersion sotto): scritto
+	// SUBITO dopo il byte "protetto si'/no" sopra, PRIMA della sezione
+	// intervalli con nome -- un file scritto prima di questa versione
+	// non ha questi byte affatto, letti solo se version >= 9 in
+	// LoadASCD.
+	{
+		const AscdSheetProtection empty;
+		const AscdSheetProtection& p = protection ? *protection : empty;
+		uint8 hasPassword = p.hasPassword ? 1 : 0;
+		uint8 isModernHash = p.isModernHash ? 1 : 0;
+		if (dest->Write(&hasPassword, sizeof(hasPassword)) != (ssize_t)sizeof(hasPassword)
+			|| dest->Write(&isModernHash, sizeof(isModernHash)) != (ssize_t)sizeof(isModernHash))
+			return B_IO_ERROR;
+
+		int32 legacyLen = (int32)p.legacyPassword.size();
+		if (dest->Write(&legacyLen, sizeof(legacyLen)) != (ssize_t)sizeof(legacyLen))
+			return B_IO_ERROR;
+		if (legacyLen > 0 && dest->Write(p.legacyPassword.data(), legacyLen) != legacyLen)
+			return B_IO_ERROR;
+
+		int32 algoLen = (int32)p.algorithmName.size();
+		if (dest->Write(&algoLen, sizeof(algoLen)) != (ssize_t)sizeof(algoLen))
+			return B_IO_ERROR;
+		if (algoLen > 0 && dest->Write(p.algorithmName.data(), algoLen) != algoLen)
+			return B_IO_ERROR;
+
+		int32 hashLen = (int32)p.hashValue.size();
+		if (dest->Write(&hashLen, sizeof(hashLen)) != (ssize_t)sizeof(hashLen))
+			return B_IO_ERROR;
+		if (hashLen > 0 && dest->Write(p.hashValue.data(), hashLen) != hashLen)
+			return B_IO_ERROR;
+
+		int32 saltLen = (int32)p.saltValue.size();
+		if (dest->Write(&saltLen, sizeof(saltLen)) != (ssize_t)sizeof(saltLen))
+			return B_IO_ERROR;
+		if (saltLen > 0 && dest->Write(p.saltValue.data(), saltLen) != saltLen)
+			return B_IO_ERROR;
+
+		int32 spinCount = p.spinCount;
+		if (dest->Write(&spinCount, sizeof(spinCount)) != (ssize_t)sizeof(spinCount))
+			return B_IO_ERROR;
+	}
+
 	// Sezione intervalli con nome, in coda (non piu la ULTIMA: dopo di lei viene
 	// la sezione di allineamento verticale sotto)
 	// (percorso di compatibilita' XLSX al 100%, Tier 1): CContainer::
@@ -1482,7 +1531,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	bool skipInitialRecalc,
 	std::vector<unsigned char>* vbaProject,
 	bool* isProtected,
-	bool skipVbaAndProtectionSections)
+	bool skipVbaAndProtectionSections,
+	AscdSheetProtection* protection)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1502,13 +1552,14 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// (colore della barra dei dati, vedi il commento su
 	// ConditionalFormatRule::dataBarColor in Container.h), 7 (nome
 	// dello stile dell'icon set, vedi il commento su
-	// ConditionalFormatRule::iconSetStyle in Container.h) e 8 (operatori
-	// cellIs/top10/aboveAverage, vedi il commento su kASCDVersion)
+	// ConditionalFormatRule::iconSetStyle in Container.h), 8 (operatori
+	// cellIs/top10/aboveAverage, vedi il commento su kASCDVersion) e 9
+	// (hash di protezione foglio, vedi AscdSheetProtection in AscdIO.h)
 	// restano TUTTE leggibili -- un file scritto da una versione
 	// precedente di questo formato non deve smettere di aprirsi solo
 	// perche' questo binario e' piu' recente.
 	if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5
-			&& version != 6 && version != 7 && version != kASCDVersion)
+			&& version != 6 && version != 7 && version != 8 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -2972,6 +3023,88 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 			*isProtected = protectedByte != 0;
 	}
 
+	// Hash di protezione VERO: solo un file versione 9+ ha scritto
+	// questi byte (vedi il commento su kASCDVersion e su
+	// AscdSheetProtection in AscdIO.h) -- a differenza del byte
+	// "protetto si'/no" sopra (EOF-tollerante puro, era gia' l'ultimo
+	// campo di questa sezione prima di questa versione), qui serve un
+	// controllo esplicito sulla versione: la sezione intervalli con
+	// nome segue SEMPRE subito dopo in un file completo, quindi un
+	// semplice controllo di EOF non basterebbe a distinguere "file
+	// vecchio senza questi byte" da "file nuovo troncato per errore".
+	if (version >= 9)
+	{
+		uint8 hasPassword = 0, isModernHash = 0;
+		if (source->Read(&hasPassword, sizeof(hasPassword)) != (ssize_t)sizeof(hasPassword)
+			|| source->Read(&isModernHash, sizeof(isModernHash)) != (ssize_t)sizeof(isModernHash))
+			return B_BAD_DATA;
+
+		std::string legacyPassword, algorithmName, hashValue, saltValue;
+		int32 spinCount = 0;
+
+		int32 legacyLen;
+		if (source->Read(&legacyLen, sizeof(legacyLen)) != (ssize_t)sizeof(legacyLen))
+			return B_BAD_DATA;
+		if (legacyLen < 0 || (size_t)legacyLen > 4096)
+			return B_BAD_DATA;
+		if (legacyLen > 0)
+		{
+			legacyPassword.resize(legacyLen);
+			if (source->Read(&legacyPassword[0], legacyLen) != legacyLen)
+				return B_BAD_DATA;
+		}
+
+		int32 algoLen;
+		if (source->Read(&algoLen, sizeof(algoLen)) != (ssize_t)sizeof(algoLen))
+			return B_BAD_DATA;
+		if (algoLen < 0 || (size_t)algoLen > 4096)
+			return B_BAD_DATA;
+		if (algoLen > 0)
+		{
+			algorithmName.resize(algoLen);
+			if (source->Read(&algorithmName[0], algoLen) != algoLen)
+				return B_BAD_DATA;
+		}
+
+		int32 hashLen;
+		if (source->Read(&hashLen, sizeof(hashLen)) != (ssize_t)sizeof(hashLen))
+			return B_BAD_DATA;
+		if (hashLen < 0 || (size_t)hashLen > 4096)
+			return B_BAD_DATA;
+		if (hashLen > 0)
+		{
+			hashValue.resize(hashLen);
+			if (source->Read(&hashValue[0], hashLen) != hashLen)
+				return B_BAD_DATA;
+		}
+
+		int32 saltLen;
+		if (source->Read(&saltLen, sizeof(saltLen)) != (ssize_t)sizeof(saltLen))
+			return B_BAD_DATA;
+		if (saltLen < 0 || (size_t)saltLen > 4096)
+			return B_BAD_DATA;
+		if (saltLen > 0)
+		{
+			saltValue.resize(saltLen);
+			if (source->Read(&saltValue[0], saltLen) != saltLen)
+				return B_BAD_DATA;
+		}
+
+		if (source->Read(&spinCount, sizeof(spinCount)) != (ssize_t)sizeof(spinCount))
+			return B_BAD_DATA;
+
+		if (protection)
+		{
+			protection->hasPassword = hasPassword != 0;
+			protection->isModernHash = isModernHash != 0;
+			protection->legacyPassword = legacyPassword;
+			protection->algorithmName = algorithmName;
+			protection->hashValue = hashValue;
+			protection->saltValue = saltValue;
+			protection->spinCount = spinCount;
+		}
+	}
+
 	// Sezione intervalli con nome, in coda (non piu la ULTIMA: dopo di lei viene
 	// la sezione di allineamento verticale sotto):
 	// stesso schema EOF-tollerante delle sezioni sopra -- vedi il
@@ -3490,7 +3623,7 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
-			&sheet.vbaProject, &sheet.isProtected);
+			&sheet.vbaProject, &sheet.isProtected, &sheet.protection);
 		if (err != B_OK)
 			return err;
 
@@ -3559,7 +3692,7 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 				&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 				&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
 				skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected,
-				true /* skipVbaAndProtectionSections */);
+				true /* skipVbaAndProtectionSections */, &sheet.protection);
 		}
 		else
 		{
@@ -3598,7 +3731,8 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 				&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
 				&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 				&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
-				skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected);
+				skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected,
+				false /* skipVbaAndProtectionSections */, &sheet.protection);
 		}
 		if (err != B_OK)
 		{

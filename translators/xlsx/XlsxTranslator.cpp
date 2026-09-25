@@ -83,8 +83,10 @@ static const char kASCDMagic[4] = { 'A', 'S', 'C', 'D' };
 // (era 7): aggiunge ruleOperator/compareValue2/top10Bottom/
 // top10Percent/top10Rank/belowAverage/equalAverage (Path to full
 // Excel parity, Tier 3), stesso motivo duplicato ancora da
-// ui/src/AscdIO.cpp.
-static const int32 kASCDVersion = 8;
+// ui/src/AscdIO.cpp. Versione 9 (era 8): aggiunge l'hash VERO di
+// protezione foglio (Tier 4, "Path to 100% XLSX standard
+// compatibility"), stesso motivo duplicato ancora da ui/src/AscdIO.cpp.
+static const int32 kASCDVersion = 9;
 enum { kAscdCellFormula = 0, kAscdCellLiteralOther = 1, kAscdCellLiteralText = 2 };
 // Formato "cartella di lavoro" multi-foglio (Fase 9): duplicato da
 // ui/src/AscdIO.h/.cpp (magic "ASCB", conteggio fogli, poi per
@@ -182,7 +184,19 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// CHANGELOG.md): NULL o vuoto = nessuna tabella pivot ricostruita
 	// da questo foglio XLSX (fuori dall'ambito v1, o il file non ne ha
 	// affatto) -- vedi ParsePivotTableXml sopra.
-	const std::vector<PivotTableObject>* pivotTables = NULL)
+	const std::vector<PivotTableObject>* pivotTables = NULL,
+	// Hash di protezione VERO (Tier 4, "Path to 100% XLSX standard
+	// compatibility"): vedi il commento gemello in ui/src/AscdIO.h
+	// (AscdSheetProtection) -- parametri singoli invece di un solo
+	// struct, stesso stile di isProtected/pivotTables sopra (questo
+	// translator non linka contro ui/src/, niente AscdSheetProtection
+	// qui). NULL = non raccolto, il comportamento di sempre.
+	const bool* protectionHasPassword = NULL, const bool* protectionIsModernHash = NULL,
+	const std::string* protectionLegacyPassword = NULL,
+	const std::string* protectionAlgorithmName = NULL,
+	const std::string* protectionHashValue = NULL,
+	const std::string* protectionSaltValue = NULL,
+	const int32* protectionSpinCount = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -1182,6 +1196,50 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			return B_IO_ERROR;
 	}
 
+	// Hash di protezione VERO (versione 9, vedi il commento su
+	// kASCDVersion), stesso ordine byte-per-byte di ui/src/AscdIO.cpp.
+	{
+		uint8 hasPassword = (protectionHasPassword && *protectionHasPassword) ? 1 : 0;
+		uint8 isModernHash = (protectionIsModernHash && *protectionIsModernHash) ? 1 : 0;
+		if (dest->Write(&hasPassword, sizeof(hasPassword)) != (ssize_t)sizeof(hasPassword)
+			|| dest->Write(&isModernHash, sizeof(isModernHash)) != (ssize_t)sizeof(isModernHash))
+			return B_IO_ERROR;
+
+		const std::string emptyStr;
+		const std::string& legacyPassword = protectionLegacyPassword ? *protectionLegacyPassword : emptyStr;
+		const std::string& algorithmName = protectionAlgorithmName ? *protectionAlgorithmName : emptyStr;
+		const std::string& hashValue = protectionHashValue ? *protectionHashValue : emptyStr;
+		const std::string& saltValue = protectionSaltValue ? *protectionSaltValue : emptyStr;
+		int32 spinCount = protectionSpinCount ? *protectionSpinCount : 0;
+
+		int32 legacyLen = (int32)legacyPassword.size();
+		if (dest->Write(&legacyLen, sizeof(legacyLen)) != (ssize_t)sizeof(legacyLen))
+			return B_IO_ERROR;
+		if (legacyLen > 0 && dest->Write(legacyPassword.data(), legacyLen) != legacyLen)
+			return B_IO_ERROR;
+
+		int32 algoLen = (int32)algorithmName.size();
+		if (dest->Write(&algoLen, sizeof(algoLen)) != (ssize_t)sizeof(algoLen))
+			return B_IO_ERROR;
+		if (algoLen > 0 && dest->Write(algorithmName.data(), algoLen) != algoLen)
+			return B_IO_ERROR;
+
+		int32 hashLen = (int32)hashValue.size();
+		if (dest->Write(&hashLen, sizeof(hashLen)) != (ssize_t)sizeof(hashLen))
+			return B_IO_ERROR;
+		if (hashLen > 0 && dest->Write(hashValue.data(), hashLen) != hashLen)
+			return B_IO_ERROR;
+
+		int32 saltLen = (int32)saltValue.size();
+		if (dest->Write(&saltLen, sizeof(saltLen)) != (ssize_t)sizeof(saltLen))
+			return B_IO_ERROR;
+		if (saltLen > 0 && dest->Write(saltValue.data(), saltLen) != saltLen)
+			return B_IO_ERROR;
+
+		if (dest->Write(&spinCount, sizeof(spinCount)) != (ssize_t)sizeof(spinCount))
+			return B_IO_ERROR;
+	}
+
 	// Sezione intervalli con nome, in coda (non piu la ULTIMA: dopo di lei viene
 	// la sezione di allineamento verticale sotto):
 	// stesso schema di ui/src/AscdIO.cpp (SaveASCD), duplicato qui per
@@ -1454,7 +1512,17 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	// Area di stampa (100% XLSX standard compatibility, Tier 2, passo
 	// 4/4): stesso principio, serve all'esportazione ASCD -> XLSX per
 	// scrivere un vero _xlnm.Print_Area (vedi WriteXLSX).
-	bool* outHasPrintArea = NULL, range* outPrintArea = NULL)
+	bool* outHasPrintArea = NULL, range* outPrintArea = NULL,
+	// Hash di protezione VERO (Tier 4, "Path to 100% XLSX standard
+	// compatibility"): stesso principio, servono all'esportazione
+	// ASCD -> XLSX per riscrivere l'hash reale invece di un
+	// <sheetProtection> senza password (vedi WriteXLSX/BuildSheetXml).
+	bool* outProtectionHasPassword = NULL, bool* outProtectionIsModernHash = NULL,
+	std::string* outProtectionLegacyPassword = NULL,
+	std::string* outProtectionAlgorithmName = NULL,
+	std::string* outProtectionHashValue = NULL,
+	std::string* outProtectionSaltValue = NULL,
+	int32* outProtectionSpinCount = NULL)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1468,11 +1536,12 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	// versioni 1, 2 (byte "kind" per cella), 3 (punti di scala di
 	// colori), 4 (riferimento di cella per il confronto), 5 (formula
 	// "expression"), 6 (colore della barra dei dati), 7 (nome dello
-	// stile dell'icon set) e 8 (operatori cellIs/top10/aboveAverage,
-	// vedi WriteASCD sopra e il commento su kASCDVersion) restano tutte
-	// leggibili -- stesso motivo di LoadASCD in ui/src/AscdIO.cpp.
+	// stile dell'icon set), 8 (operatori cellIs/top10/aboveAverage) e 9
+	// (hash di protezione foglio, vedi WriteASCD sopra e il commento su
+	// kASCDVersion) restano tutte leggibili -- stesso motivo di
+	// LoadASCD in ui/src/AscdIO.cpp.
 	if (version != 1 && version != 2 && version != 3 && version != 4 && version != 5
-			&& version != 6 && version != 7 && version != kASCDVersion)
+			&& version != 6 && version != 7 && version != 8 && version != kASCDVersion)
 		return B_MISMATCHED_VALUES;
 
 	int32 count;
@@ -2601,6 +2670,81 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 			*outIsProtected = protectedByte != 0;
 	}
 
+	// Hash di protezione VERO: solo un file versione 9+ ha scritto
+	// questi byte (vedi il commento su kASCDVersion) -- stesso motivo
+	// di LoadASCD in ui/src/AscdIO.cpp, un controllo esplicito sulla
+	// versione perche' la sezione intervalli con nome segue sempre
+	// subito dopo in un file completo.
+	if (version >= 9)
+	{
+		uint8 hasPassword = 0, isModernHash = 0;
+		if (source->Read(&hasPassword, sizeof(hasPassword)) != (ssize_t)sizeof(hasPassword)
+			|| source->Read(&isModernHash, sizeof(isModernHash)) != (ssize_t)sizeof(isModernHash))
+			return B_BAD_DATA;
+
+		std::string legacyPassword, algorithmName, hashValue, saltValue;
+		int32 spinCount = 0;
+
+		int32 legacyLen;
+		if (source->Read(&legacyLen, sizeof(legacyLen)) != (ssize_t)sizeof(legacyLen))
+			return B_BAD_DATA;
+		if (legacyLen < 0 || (size_t)legacyLen > 4096)
+			return B_BAD_DATA;
+		if (legacyLen > 0)
+		{
+			legacyPassword.resize(legacyLen);
+			if (source->Read(&legacyPassword[0], legacyLen) != legacyLen)
+				return B_BAD_DATA;
+		}
+
+		int32 algoLen;
+		if (source->Read(&algoLen, sizeof(algoLen)) != (ssize_t)sizeof(algoLen))
+			return B_BAD_DATA;
+		if (algoLen < 0 || (size_t)algoLen > 4096)
+			return B_BAD_DATA;
+		if (algoLen > 0)
+		{
+			algorithmName.resize(algoLen);
+			if (source->Read(&algorithmName[0], algoLen) != algoLen)
+				return B_BAD_DATA;
+		}
+
+		int32 hashLen;
+		if (source->Read(&hashLen, sizeof(hashLen)) != (ssize_t)sizeof(hashLen))
+			return B_BAD_DATA;
+		if (hashLen < 0 || (size_t)hashLen > 4096)
+			return B_BAD_DATA;
+		if (hashLen > 0)
+		{
+			hashValue.resize(hashLen);
+			if (source->Read(&hashValue[0], hashLen) != hashLen)
+				return B_BAD_DATA;
+		}
+
+		int32 saltLen;
+		if (source->Read(&saltLen, sizeof(saltLen)) != (ssize_t)sizeof(saltLen))
+			return B_BAD_DATA;
+		if (saltLen < 0 || (size_t)saltLen > 4096)
+			return B_BAD_DATA;
+		if (saltLen > 0)
+		{
+			saltValue.resize(saltLen);
+			if (source->Read(&saltValue[0], saltLen) != saltLen)
+				return B_BAD_DATA;
+		}
+
+		if (source->Read(&spinCount, sizeof(spinCount)) != (ssize_t)sizeof(spinCount))
+			return B_BAD_DATA;
+
+		if (outProtectionHasPassword) *outProtectionHasPassword = hasPassword != 0;
+		if (outProtectionIsModernHash) *outProtectionIsModernHash = isModernHash != 0;
+		if (outProtectionLegacyPassword) *outProtectionLegacyPassword = legacyPassword;
+		if (outProtectionAlgorithmName) *outProtectionAlgorithmName = algorithmName;
+		if (outProtectionHashValue) *outProtectionHashValue = hashValue;
+		if (outProtectionSaltValue) *outProtectionSaltValue = saltValue;
+		if (outProtectionSpinCount) *outProtectionSpinCount = spinCount;
+	}
+
 	// Sezione intervalli con nome, in coda (non piu la ULTIMA: dopo di lei viene
 	// la sezione di allineamento verticale sotto):
 	// stesso schema EOF-tollerante delle sezioni sopra -- vedi il
@@ -3526,7 +3670,16 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// blocchi, uno per regola), gia' pronto da BuildConditionalFormattingXml
 	// sopra -- va DOPO <sheetProtection>, PRIMA di <dataValidations>/
 	// <hyperlinks> nell'ordine reale ECMA-376 (CT_Worksheet).
-	const std::string& conditionalFormattingXml = std::string())
+	const std::string& conditionalFormattingXml = std::string(),
+	// Hash di protezione VERO (Tier 4, "Path to 100% XLSX standard
+	// compatibility"): vedi il commento gemello in WriteXLSX sopra e
+	// in ui/src/AscdIO.h (AscdSheetProtection).
+	bool protectionHasPassword = false, bool protectionIsModernHash = false,
+	const std::string& protectionLegacyPassword = std::string(),
+	const std::string& protectionAlgorithmName = std::string(),
+	const std::string& protectionHashValue = std::string(),
+	const std::string& protectionSaltValue = std::string(),
+	int32 protectionSpinCount = 0)
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -3656,11 +3809,33 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	xml += "</sheetData>";
 	// <sheetProtection/> (Fase 32): la sola presenza vuol dire "foglio
 	// protetto" per Excel -- va DOPO </sheetData> e PRIMA di <drawing>
-	// nell'ordine richiesto dallo schema OOXML (CT_Worksheet). Nessun
-	// attributo di password: questo formato non ne ha uno da esportare
-	// (l'app non protegge mai con password, solo on/off).
+	// nell'ordine richiesto dallo schema OOXML (CT_Worksheet).
+	// Attributi di password (Tier 4, "Path to 100% XLSX standard
+	// compatibility"): scritti SOLO quando protectionHasPassword arriva
+	// da un vero file XLSX importato con una password (vedi
+	// ApplyDefinedNames-adjacent import in ParseSheet) -- un foglio
+	// protetto/sbloccato dentro questo programma (l'unico modo per
+	// mettere isProtected=true senza mai importare nulla) non ha mai
+	// una password vera da esportare, resta il bare sheetId="1" di
+	// sempre.
 	if (isProtected)
-		xml += "<sheetProtection sheetId=\"1\"/>";
+	{
+		xml += "<sheetProtection sheetId=\"1\"";
+		if (protectionHasPassword && protectionIsModernHash && !protectionHashValue.empty())
+		{
+			xml += " algorithmName=\""; AppendXmlEscaped(xml, protectionAlgorithmName.c_str());
+			xml += "\" hashValue=\""; AppendXmlEscaped(xml, protectionHashValue.c_str());
+			xml += "\" saltValue=\""; AppendXmlEscaped(xml, protectionSaltValue.c_str());
+			char spinBuf[32];
+			snprintf(spinBuf, sizeof(spinBuf), "\" spinCount=\"%d\"", (int)protectionSpinCount);
+			xml += spinBuf;
+		}
+		else if (protectionHasPassword && !protectionIsModernHash && !protectionLegacyPassword.empty())
+		{
+			xml += " password=\""; AppendXmlEscaped(xml, protectionLegacyPassword.c_str()); xml += "\"";
+		}
+		xml += "/>";
+	}
 	// <conditionalFormatting> (uno o piu' blocchi): DOPO
 	// <sheetProtection>, PRIMA di <dataValidations>/<hyperlinks>
 	// nell'ordine reale ECMA-376 (CT_Worksheet: ... sheetProtection,
@@ -5072,7 +5247,19 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	// Area di stampa (100% XLSX standard compatibility, Tier 2, passo
 	// 4/4): false/range vuoto di default, come ogni altro parametro
 	// opzionale qui sopra.
-	bool hasPrintArea = false, range printArea = range())
+	bool hasPrintArea = false, range printArea = range(),
+	// Hash di protezione VERO (Tier 4, "Path to 100% XLSX standard
+	// compatibility"): vedi il commento gemello in ui/src/AscdIO.h
+	// (AscdSheetProtection). false/vuoto di default: un documento
+	// nativo o protetto/sbloccato dentro questo programma esporta
+	// esattamente come prima (bare <sheetProtection sheetId="1"/>,
+	// vedi BuildSheetXml).
+	bool protectionHasPassword = false, bool protectionIsModernHash = false,
+	const std::string& protectionLegacyPassword = std::string(),
+	const std::string& protectionAlgorithmName = std::string(),
+	const std::string& protectionHashValue = std::string(),
+	const std::string& protectionSaltValue = std::string(),
+	int32 protectionSpinCount = 0)
 {
 	// Presenza di un progetto VBA (XLSM, Fase 31): un file .xlsx puro
 	// non ha mai xl/vbaProject.bin, quindi "hasMacros" e' sempre false
@@ -5437,7 +5624,9 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 
 	std::string sheet = BuildSheetXml(doc, hasDrawing, isProtected,
 		dataValidationXml + hyperlinksXml, sheetViewsXml, sheetPrXml, pageSetupXml,
-		&xfIndexForStyle, conditionalFormattingXml);
+		&xfIndexForStyle, conditionalFormattingXml,
+		protectionHasPassword, protectionIsModernHash, protectionLegacyPassword,
+		protectionAlgorithmName, protectionHashValue, protectionSaltValue, protectionSpinCount);
 
 	// docProps/core.xml e docProps/app.xml (Tier 4 "100% XLSX standard
 	// compatibility", cosmetico -- vedi ROADMAP.md): questo export non
@@ -6962,6 +7151,16 @@ struct SheetContext {
 	bool* hasAutoFilter; // opzionale (NULL = non raccolto)
 	range* autoFilterRange; // valido solo se *hasAutoFilter diventa true
 	bool* isProtected; // opzionale (NULL = non raccolto), da <sheetProtection/> (Fase 32)
+	// Hash di protezione VERO (Tier 4, "Path to 100% XLSX standard
+	// compatibility"): gli attributi REALI di <sheetProtection>, non
+	// solo la sua presenza -- vedi il commento sul gestore piu' sotto.
+	bool* protectionHasPassword; // opzionale (NULL = non raccolto)
+	bool* protectionIsModernHash;
+	std::string* protectionLegacyPassword;
+	std::string* protectionAlgorithmName;
+	std::string* protectionHashValue;
+	std::string* protectionSaltValue;
+	int32* protectionSpinCount;
 	int* frozenRows; // opzionale (NULL = non raccolto), da <pane state="frozen"/> (100% XLSX standard compatibility, Tier 2)
 	int* frozenCols; // idem, colonne bloccate
 	std::vector<HyperlinkRefInfo>* hyperlinkRefs; // opzionale (NULL = non raccolti)
@@ -7311,14 +7510,46 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 		ctx->inValidationFormula1 = true;
 	else if (ctx->inDataValidation && strcmp(name, "formula2") == 0)
 		ctx->inValidationFormula2 = true;
-	// <sheetProtection .../> (Fase 32, "Proteggi foglio"): la sola
-	// PRESENZA dell'elemento vuol dire "foglio protetto" in Excel,
-	// indipendentemente dai suoi attributi (password, quali comandi
-	// restano permessi ecc. -- questo translator non li legge, solo il
-	// blocco/sblocco effettivo delle celle interessa qui).
+	// <sheetProtection .../> (Fase 32, "Proteggi foglio", poi Tier 4
+	// "Path to 100% XLSX standard compatibility"): la sola PRESENZA
+	// dell'elemento vuol dire "foglio protetto" in Excel -- gli
+	// attributi REALI di password (ECMA-376 18.3.1.85, due forme: LEGACY
+	// password="83AF" un checksum a 4 cifre esadecimali, o MODERNA
+	// algorithmName/hashValue/saltValue/spinCount) sono ora catturati
+	// per davvero cosi' che riesportare non li perda piu' -- vedi
+	// BuildSheetXml. I permessi granulari (formatCells, sort, ecc.) NON
+	// sono catturati: fuori scope, questo programma resta un semplice
+	// interruttore on/off per il blocco effettivo delle celle.
 	else if (strcmp(name, "sheetProtection") == 0 && ctx->isProtected)
 	{
 		*ctx->isProtected = true;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "password") == 0)
+			{
+				if (ctx->protectionHasPassword) *ctx->protectionHasPassword = true;
+				if (ctx->protectionIsModernHash) *ctx->protectionIsModernHash = false;
+				if (ctx->protectionLegacyPassword) *ctx->protectionLegacyPassword = atts[i + 1];
+			}
+			else if (strcmp(atts[i], "algorithmName") == 0)
+			{
+				if (ctx->protectionHasPassword) *ctx->protectionHasPassword = true;
+				if (ctx->protectionIsModernHash) *ctx->protectionIsModernHash = true;
+				if (ctx->protectionAlgorithmName) *ctx->protectionAlgorithmName = atts[i + 1];
+			}
+			else if (strcmp(atts[i], "hashValue") == 0)
+			{
+				if (ctx->protectionHashValue) *ctx->protectionHashValue = atts[i + 1];
+			}
+			else if (strcmp(atts[i], "saltValue") == 0)
+			{
+				if (ctx->protectionSaltValue) *ctx->protectionSaltValue = atts[i + 1];
+			}
+			else if (strcmp(atts[i], "spinCount") == 0)
+			{
+				if (ctx->protectionSpinCount) *ctx->protectionSpinCount = atoi(atts[i + 1]);
+			}
+		}
 	}
 	// <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr> (100% XLSX
 	// standard compatibility, Tier 2): <sheetPr> e' sempre PRIMA di
@@ -7980,7 +8211,16 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	bool* hasPrintSettings = NULL,
 	double* marginTopCm = NULL, double* marginBottomCm = NULL,
 	double* marginLeftCm = NULL, double* marginRightCm = NULL,
-	int* scaleMode = NULL, double* scalePercent = NULL)
+	int* scaleMode = NULL, double* scalePercent = NULL,
+	// Hash di protezione VERO (Tier 4, "Path to 100% XLSX standard
+	// compatibility"): vedi il commento sul gestore di <sheetProtection>
+	// in SheetStart.
+	bool* protectionHasPassword = NULL, bool* protectionIsModernHash = NULL,
+	std::string* protectionLegacyPassword = NULL,
+	std::string* protectionAlgorithmName = NULL,
+	std::string* protectionHashValue = NULL,
+	std::string* protectionSaltValue = NULL,
+	int32* protectionSpinCount = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -8005,6 +8245,13 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.marginRightCm = marginRightCm;
 	ctx.scaleMode = scaleMode;
 	ctx.scalePercent = scalePercent;
+	ctx.protectionHasPassword = protectionHasPassword;
+	ctx.protectionIsModernHash = protectionIsModernHash;
+	ctx.protectionLegacyPassword = protectionLegacyPassword;
+	ctx.protectionAlgorithmName = protectionAlgorithmName;
+	ctx.protectionHashValue = protectionHashValue;
+	ctx.protectionSaltValue = protectionSaltValue;
+	ctx.protectionSpinCount = protectionSpinCount;
 	ctx.sheetFitToPage = false;
 	ctx.styles = styles;
 	ctx.condRules = condRules;
@@ -10165,6 +10412,17 @@ struct ParsedSheet {
 	// isProtected in ui/src/AscdIO.h. Il blocco delle singole celle
 	// (CellStyle::fLocked) vive gia' dentro "doc", nessun campo qui.
 	bool isProtected = false;
+	// Hash di protezione VERO (Tier 4, "Path to 100% XLSX standard
+	// compatibility"): gli attributi REALI di <sheetProtection>, vedi
+	// il commento sul gestore in SheetStart e AscdSheetProtection in
+	// ui/src/AscdIO.h.
+	bool protectionHasPassword = false;
+	bool protectionIsModernHash = false;
+	std::string protectionLegacyPassword;
+	std::string protectionAlgorithmName;
+	std::string protectionHashValue;
+	std::string protectionSaltValue;
+	int32 protectionSpinCount = 0;
 	// Blocca riquadri (100% XLSX standard compatibility, Tier 2): da
 	// <pane state="frozen".../> dentro <sheetView> nel foglio XLSX
 	// originale, vedi ParseSheet/SheetStart. 0,0 = nessun riquadro
@@ -10299,7 +10557,11 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			sheets[i].marginLeftCm, sheets[i].marginRightCm,
 			sheets[i].scaleMode, sheets[i].scalePercent,
 			&sheets[i].hasPrintArea, &sheets[i].printArea,
-			&sheets[i].pivotTables);
+			&sheets[i].pivotTables,
+			&sheets[i].protectionHasPassword, &sheets[i].protectionIsModernHash,
+			&sheets[i].protectionLegacyPassword, &sheets[i].protectionAlgorithmName,
+			&sheets[i].protectionHashValue, &sheets[i].protectionSaltValue,
+			&sheets[i].protectionSpinCount);
 		if (err != B_OK)
 			return err;
 
@@ -10406,16 +10668,26 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		double scalePercent = 100.0;
 		bool hasPrintArea = false;
 		range printArea;
+		bool protectionHasPassword = false, protectionIsModernHash = false;
+		std::string protectionLegacyPassword, protectionAlgorithmName;
+		std::string protectionHashValue, protectionSaltValue;
+		int32 protectionSpinCount = 0;
 		status_t err = ReadASCD(source, doc, &charts, &vbaProject, &isProtected,
 			&frozenRows, &frozenCols,
 			&hasPrintSettings, &marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
-			&scaleMode, &scalePercent, &hasPrintArea, &printArea);
+			&scaleMode, &scalePercent, &hasPrintArea, &printArea,
+			&protectionHasPassword, &protectionIsModernHash, &protectionLegacyPassword,
+			&protectionAlgorithmName, &protectionHashValue, &protectionSaltValue,
+			&protectionSpinCount);
 		if (err == B_OK)
 			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
 				: WriteXLSX(doc, charts, destination, vbaProject, isProtected,
 					frozenRows, frozenCols,
 					hasPrintSettings, marginTopCm, marginBottomCm, marginLeftCm, marginRightCm,
-					scaleMode, scalePercent, hasPrintArea, printArea);
+					scaleMode, scalePercent, hasPrintArea, printArea,
+					protectionHasPassword, protectionIsModernHash, protectionLegacyPassword,
+					protectionAlgorithmName, protectionHashValue, protectionSaltValue,
+					protectionSpinCount);
 		doc->Release();
 		return err;
 	}
@@ -10544,7 +10816,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			&parsed.frozenRows, &parsed.frozenCols,
 			&parsed.hasPrintSettings, &parsed.marginTopCm, &parsed.marginBottomCm,
 			&parsed.marginLeftCm, &parsed.marginRightCm,
-			&parsed.scaleMode, &parsed.scalePercent))
+			&parsed.scaleMode, &parsed.scalePercent,
+			&parsed.protectionHasPassword, &parsed.protectionIsModernHash,
+			&parsed.protectionLegacyPassword, &parsed.protectionAlgorithmName,
+			&parsed.protectionHashValue, &parsed.protectionSaltValue,
+			&parsed.protectionSpinCount))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
@@ -11109,7 +11385,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 				sheets[0].hasPrintSettings, sheets[0].marginTopCm, sheets[0].marginBottomCm,
 				sheets[0].marginLeftCm, sheets[0].marginRightCm,
 				sheets[0].scaleMode, sheets[0].scalePercent,
-				sheets[0].hasPrintArea, sheets[0].printArea);
+				sheets[0].hasPrintArea, sheets[0].printArea,
+				sheets[0].protectionHasPassword, sheets[0].protectionIsModernHash,
+				sheets[0].protectionLegacyPassword, sheets[0].protectionAlgorithmName,
+				sheets[0].protectionHashValue, sheets[0].protectionSaltValue,
+				sheets[0].protectionSpinCount);
 	}
 
 	if (err == B_OK && extension != NULL && !unsupportedCharts.empty())
