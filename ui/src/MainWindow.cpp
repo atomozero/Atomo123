@@ -1423,6 +1423,7 @@ void MainWindow::ResetWorkbook(const char* name)
 		else
 			fSheetView->ClearAutoFilter();
 		fSheetView->SetProtected(fSheets[0].isProtected);
+		fSheetView->SetProtectionHash(fSheets[0].protection);
 		// Un foglio nuovo parte dal default "mostra formule" scelto in
 		// Preferenze (stesso principio di showGrid qui sopra) -- i file
 		// aperti mantengono invece il proprio stato in vista.
@@ -1509,6 +1510,7 @@ void MainWindow::SwitchToSheet(int index)
 	fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 	fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
 	fSheets[fActiveSheetIndex].isProtected = fSheetView->IsProtected();
+	fSheets[fActiveSheetIndex].protection = fSheetView->GetProtectionHash();
 	// Posizione di scorrimento (bug reale segnalato dall'utente: uscire
 	// da un foglio scorso e passare a un altro mostrava lo stesso punto
 	// scorso invece dell'angolo in alto a sinistra o di dove l'utente
@@ -1533,6 +1535,7 @@ void MainWindow::SwitchToSheet(int index)
 	fSheetView->SetFreezePanes(fSheets[index].frozenRows, fSheets[index].frozenCols);
 	fSheetView->SetShowGrid(fSheets[index].showGrid);
 	fSheetView->SetProtected(fSheets[index].isProtected);
+	fSheetView->SetProtectionHash(fSheets[index].protection);
 	fSheetView->SetHiddenRows(fSheets[index].hiddenRows);
 	if (fSheets[index].hasAutoFilter)
 		fSheetView->SetAutoFilter(fSheets[index].autoFilterRange);
@@ -2196,6 +2199,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	else
 		fSheetView->ClearAutoFilter();
 	fSheetView->SetProtected(fSheets[0].isProtected);
+	fSheetView->SetProtectionHash(fSheets[0].protection);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	if (fProtectMenuItem)
 		fProtectMenuItem->SetMarked(fSheetView->IsProtected());
@@ -2419,6 +2423,7 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	else
 		fSheetView->ClearAutoFilter();
 	fSheetView->SetProtected(fSheets[0].isProtected);
+	fSheetView->SetProtectionHash(fSheets[0].protection);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	if (fProtectMenuItem)
 		fProtectMenuItem->SetMarked(fSheetView->IsProtected());
@@ -2590,6 +2595,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 		fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
 		fSheets[fActiveSheetIndex].isProtected = fSheetView->IsProtected();
+		fSheets[fActiveSheetIndex].protection = fSheetView->GetProtectionHash();
 
 		status_t err = SaveASCDBook(fSheets, &file);
 		if (err != B_OK)
@@ -2645,13 +2651,14 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	// per fCharts, stavolta per la protezione).
 	const std::vector<unsigned char>* vbaProject = isXlsm ? WorkbookVbaProject() : NULL;
 	bool isProtectedNow = fSheetView->IsProtected();
+	AscdSheetProtection protectionNow = fSheetView->GetProtectionHash();
 	status_t err = SaveASCD(fDoc, &ascd, &fCharts,
 		NULL /* colWidths */, NULL /* rowHeights */,
 		NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
 		NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
 		NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
 		NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
-		vbaProject, &isProtectedNow);
+		vbaProject, &isProtectedNow, &protectionNow);
 	if (err != B_OK)
 	{
 		BAlert* alert = new BAlert(B_TRANSLATE("Errore"), B_TRANSLATE("Serializzazione del documento fallita."), B_TRANSLATE("OK"));
@@ -2784,6 +2791,7 @@ void MainWindow::AutoSaveBackup()
 		fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 		fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
 		fSheets[fActiveSheetIndex].isProtected = fSheetView->IsProtected();
+		fSheets[fActiveSheetIndex].protection = fSheetView->GetProtectionHash();
 		SaveASCDBook(fSheets, &file); // esito ignorato, vedi il commento sopra su file.InitCheck()
 		BNodeInfo nodeInfo(&file);
 		if (nodeInfo.InitCheck() == B_OK)
@@ -2796,13 +2804,14 @@ void MainWindow::AutoSaveBackup()
 	// il commento gemello in SaveToFile sopra.
 	const std::vector<unsigned char>* vbaProject = isXlsm ? WorkbookVbaProject() : NULL;
 	bool isProtectedNow = fSheetView->IsProtected();
+	AscdSheetProtection protectionNow = fSheetView->GetProtectionHash();
 	if (SaveASCD(fDoc, &ascd,
 			NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
 			NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
 			NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
 			NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
 			NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
-			vbaProject, &isProtectedNow) != B_OK)
+			vbaProject, &isProtectedNow, &protectionNow) != B_OK)
 		return;
 
 	translator_id chosenId = 0;

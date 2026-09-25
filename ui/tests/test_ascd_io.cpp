@@ -1093,6 +1093,126 @@ int main()
 		}
 	}
 
+	// Round-trip dell'hash di protezione foglio VERO (versione 9, Tier
+	// 4 "Path to 100% XLSX standard compatibility"): due giri separati,
+	// uno per ciascuna delle due forme ECMA-376 (legacy password="...",
+	// moderna algorithmName/hashValue/saltValue/spinCount) -- vedi
+	// AscdSheetProtection in AscdIO.h. Un argomento per riga, con il
+	// nome del parametro in commento: SaveASCD/LoadASCD hanno troppi
+	// parametri posizionali per fidarsi di contare le virgole a mente.
+	{
+		CContainer& legacySaveDoc = *new CContainer(NULL, NULL);
+		bool isProtectedTrue = true;
+		AscdSheetProtection legacyProtection;
+		legacyProtection.hasPassword = true;
+		legacyProtection.isModernHash = false;
+		legacyProtection.legacyPassword = "83AF";
+
+		BFile legacyFile("tests/roundtrip_protection_legacy.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&legacySaveDoc, &legacyFile,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				NULL /* vbaProject */, &isProtectedTrue, &legacyProtection) == B_OK,
+			"SaveASCD con un hash di protezione LEGACY (password=\"83AF\") riesce");
+		legacySaveDoc.Release();
+
+		BFile legacyReopened("tests/roundtrip_protection_legacy.ascd", B_READ_ONLY);
+		CContainer& legacyReloaded = *new CContainer(NULL, NULL);
+		bool legacyIsProtected = false;
+		AscdSheetProtection legacyReloadedProtection;
+		Check(LoadASCD(&legacyReopened, &legacyReloaded,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				false /* skipInitialRecalc */, NULL /* vbaProject */, &legacyIsProtected,
+				false /* skipVbaAndProtectionSections */, &legacyReloadedProtection) == B_OK,
+			"LoadASCD con un hash di protezione LEGACY riesce");
+		Check(legacyIsProtected, "il flag protetto si'/no sopravvive al giro (LEGACY)");
+		Check(legacyReloadedProtection.hasPassword && !legacyReloadedProtection.isModernHash
+				&& legacyReloadedProtection.legacyPassword == "83AF",
+			"l'hash LEGACY (password=\"83AF\") sopravvive byte per byte al giro salva->ricarica");
+		legacyReloaded.Release();
+	}
+	{
+		CContainer& modernSaveDoc = *new CContainer(NULL, NULL);
+		bool isProtectedTrue = true;
+		AscdSheetProtection modernProtection;
+		modernProtection.hasPassword = true;
+		modernProtection.isModernHash = true;
+		modernProtection.algorithmName = "SHA-512";
+		modernProtection.hashValue = "aGFzaFZhbHVlQmFzZTY0";
+		modernProtection.saltValue = "c2FsdFZhbHVlQmFzZTY0";
+		modernProtection.spinCount = 100000;
+
+		BFile modernFile("tests/roundtrip_protection_modern.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&modernSaveDoc, &modernFile,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				NULL /* vbaProject */, &isProtectedTrue, &modernProtection) == B_OK,
+			"SaveASCD con un hash di protezione MODERNO (SHA-512) riesce");
+		modernSaveDoc.Release();
+
+		BFile modernReopened("tests/roundtrip_protection_modern.ascd", B_READ_ONLY);
+		CContainer& modernReloaded = *new CContainer(NULL, NULL);
+		bool modernIsProtected = false;
+		AscdSheetProtection modernReloadedProtection;
+		Check(LoadASCD(&modernReopened, &modernReloaded,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				false /* skipInitialRecalc */, NULL /* vbaProject */, &modernIsProtected,
+				false /* skipVbaAndProtectionSections */, &modernReloadedProtection) == B_OK,
+			"LoadASCD con un hash di protezione MODERNO riesce");
+		Check(modernReloadedProtection.hasPassword && modernReloadedProtection.isModernHash
+				&& modernReloadedProtection.algorithmName == "SHA-512"
+				&& modernReloadedProtection.hashValue == "aGFzaFZhbHVlQmFzZTY0"
+				&& modernReloadedProtection.saltValue == "c2FsdFZhbHVlQmFzZTY0"
+				&& modernReloadedProtection.spinCount == 100000,
+			"l'hash MODERNO (algorithmName/hashValue/saltValue/spinCount) sopravvive al giro");
+		modernReloaded.Release();
+
+		// Un file scritto PRIMA di questa versione (8, senza i campi
+		// dell'hash) deve restare leggibile con l'hash ai default --
+		// stesso principio "mai rompere un file vecchio" gia' verificato
+		// sopra per ogni altra sezione versionata di questo formato.
+		CContainer& oldSaveDoc = *new CContainer(NULL, NULL);
+		TryToParseString("Ciao", cell(1, 1), &oldSaveDoc, true);
+		BFile oldFile("tests/roundtrip_protection_noversion.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&oldSaveDoc, &oldFile) == B_OK,
+			"SaveASCD senza passare nessun hash di protezione riesce (il caso comune di ogni altro test)");
+		oldSaveDoc.Release();
+
+		BFile oldReopened("tests/roundtrip_protection_noversion.ascd", B_READ_ONLY);
+		CContainer& oldReloaded = *new CContainer(NULL, NULL);
+		AscdSheetProtection oldProtection;
+		oldProtection.hasPassword = true; // valore-sentinella: deve tornare false dopo LoadASCD
+		Check(LoadASCD(&oldReopened, &oldReloaded,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				false /* skipInitialRecalc */, NULL /* vbaProject */, NULL /* isProtected */,
+				false /* skipVbaAndProtectionSections */, &oldProtection) == B_OK,
+			"LoadASCD di un file senza hash di protezione riesce comunque");
+		Check(!oldProtection.hasPassword,
+			"senza l'hash, il campo resta/torna al default (hasPassword=false)");
+		oldReloaded.Release();
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

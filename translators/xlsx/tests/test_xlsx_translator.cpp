@@ -2160,6 +2160,22 @@ static bool ReadFirstChartForTest(const unsigned char* ascdData, size_t ascdLen,
 			pos += 4;
 			if (pos + 1 > ascdLen) return false; // protezione foglio
 			pos += 1;
+			// Hash di protezione VERO (versione 9): due byte "presente"
+			// seguiti da quattro stringhe (conteggio+byte, tutte vuote
+			// in questa prova) e uno spinCount -- vedi il commento
+			// gemello in ApplyNamesFromAscdForTest.
+			if (pos + 2 > ascdLen) return false;
+			pos += 2;
+			for (int s = 0; s < 4; s++)
+			{
+				if (pos + 4 > ascdLen) return false;
+				int32 strLen;
+				memcpy(&strLen, ascdData + pos, 4); pos += 4;
+				if (strLen < 0 || pos + (size_t)strLen > ascdLen) return false;
+				pos += strLen;
+			}
+			if (pos + 4 > ascdLen) return false;
+			pos += 4;
 			if (pos + 4 > ascdLen) return false; // intervalli con nome
 			pos += 4;
 			if (pos + 4 > ascdLen) return false; // allineamento verticale
@@ -2981,6 +2997,22 @@ static bool ApplyNamesFromAscdForTest(const unsigned char* data, size_t len, siz
 	if (pos + 1 > len) return false;
 	pos += 1;
 
+	// Hash di protezione VERO (versione 9): due byte "presente" seguiti
+	// da quattro stringhe (conteggio+byte) e uno spinCount -- scritti
+	// comunque dal vero WriteASCD per OGNI foglio, stesso principio di
+	// ogni altra sezione a lunghezza fissa sopra.
+	if (pos + 2 > len) return false;
+	pos += 2;
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 strLen; memcpy(&strLen, data + pos, 4); pos += 4;
+		if (strLen < 0 || pos + (size_t)strLen > len) return false;
+		pos += strLen;
+	}
+	if (pos + 4 > len) return false;
+	pos += 4;
+
 	// Intervalli con nome, ULTIMA sezione: i dati veri.
 	if (pos + 4 > len) return false;
 	int32 nameCount;
@@ -3074,6 +3106,21 @@ static bool ReadFirstPivotFromAscdForTest(const unsigned char* data, size_t len,
 	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
 	if (pos + 1 > len) return false;
 	pos += 1;
+
+	// Hash di protezione VERO (versione 9): stesso schema a lunghezza
+	// fissa gia' usato sopra per le altre sezioni di questa funzione --
+	// vedi il commento gemello in ApplyNamesFromAscdForTest.
+	if (pos + 2 > len) return false;
+	pos += 2;
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 strLen; memcpy(&strLen, data + pos, 4); pos += 4;
+		if (strLen < 0 || pos + (size_t)strLen > len) return false;
+		pos += strLen;
+	}
+	if (pos + 4 > len) return false;
+	pos += 4;
 
 	// Intervalli con nome: saltati, non serve applicarli qui.
 	if (pos + 4 > len) return false;
@@ -3234,6 +3281,21 @@ static bool ReadFirstPivot2DFromAscdForTest(const unsigned char* data, size_t le
 	{ int32 n; memcpy(&n, data + pos, 4); pos += 4; if (n != 0) return false; }
 	if (pos + 1 > len) return false;
 	pos += 1;
+
+	// Hash di protezione VERO (versione 9): stesso schema a lunghezza
+	// fissa gia' usato sopra, vedi il commento gemello in
+	// ApplyNamesFromAscdForTest/ReadFirstPivotFromAscdForTest.
+	if (pos + 2 > len) return false;
+	pos += 2;
+	for (int s = 0; s < 4; s++)
+	{
+		if (pos + 4 > len) return false;
+		int32 strLen; memcpy(&strLen, data + pos, 4); pos += 4;
+		if (strLen < 0 || pos + (size_t)strLen > len) return false;
+		pos += strLen;
+	}
+	if (pos + 4 > len) return false;
+	pos += 4;
 
 	if (pos + 4 > len) return false;
 	int32 nameCount;
@@ -4176,6 +4238,38 @@ int main()
 							uint8 isProtected = ascdData[pos]; pos += 1;
 							Check(isProtected == 0,
 								"sample.xlsx non e' protetto, il byte e' zero");
+						}
+
+						// Hash di protezione VERO (versione 9, Tier 4 "Path
+						// to 100% XLSX standard compatibility"): due byte
+						// "presente" (qui zero, sample.xlsx non e'
+						// protetto) seguiti da quattro conteggi/stringhe
+						// (qui tutti vuoti) e uno spinCount (qui zero) --
+						// scritti comunque per OGNI foglio, stesso principio
+						// di ogni altra sezione a lunghezza fissa sopra.
+						if (pos + 2 <= ascdLen)
+						{
+							uint8 hasPassword = ascdData[pos]; pos += 1;
+							uint8 isModernHash = ascdData[pos]; pos += 1;
+							Check(hasPassword == 0 && isModernHash == 0,
+								"sample.xlsx non ha nessun hash di protezione, entrambi i byte sono zero");
+						}
+						for (int s = 0; s < 4; s++)
+						{
+							if (pos + 4 > ascdLen)
+								break;
+							int32 strLen;
+							memcpy(&strLen, ascdData + pos, 4); pos += 4;
+							Check(strLen == 0,
+								"sample.xlsx non ha nessun hash di protezione, le quattro stringhe sono vuote");
+							pos += strLen;
+						}
+						if (pos + 4 <= ascdLen)
+						{
+							int32 spinCount;
+							memcpy(&spinCount, ascdData + pos, 4); pos += 4;
+							Check(spinCount == 0,
+								"sample.xlsx non ha nessun hash di protezione, spinCount e' zero");
 						}
 
 						// Intervalli con nome ("100% XLSX standard

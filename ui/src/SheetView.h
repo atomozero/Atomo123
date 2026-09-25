@@ -25,6 +25,7 @@
 #include <NumberFormat.h>
 #include <View.h>
 
+#include "AscdIO.h"
 #include "Cell.h"
 #include "CellStyle.h"
 #include "Chart.h"
@@ -401,6 +402,16 @@ public:
 	// sopra/sotto.
 	void SetProtected(bool protect) { fSheetProtected = protect; }
 	bool IsProtected() const { return fSheetProtected; }
+	// Hash di protezione VERO (Tier 4, "Path to 100% XLSX standard
+	// compatibility"): un contenitore di stato in piu' rispetto a
+	// fSheetProtected sopra, stesso principio -- popolato SOLO quando
+	// il foglio arriva da un vero XLSX protetto da password (vedi
+	// MainWindow::HandleFileLoadResult), vuoto (hasPassword=false) per
+	// ogni foglio nativo o protetto/sbloccato dentro questo programma.
+	// Riletto solo al momento di riesportare in XLSX, per non perdere
+	// una password vera al giro di andata/ritorno.
+	void SetProtectionHash(const AscdSheetProtection& p) { fProtectionHash = p; }
+	const AscdSheetProtection& GetProtectionHash() const { return fProtectionHash; }
 	// Vero se almeno una cella dell'intervallo ha CellStyle::fLocked=
 	// true -- pura interrogazione, nessun avviso mostrato. Pubblico
 	// apposta per essere testabile senza passare da GuardProtectedEdit
@@ -820,6 +831,9 @@ private:
 
 	// Protezione foglio: vedi SetProtected/IsProtected sopra.
 	bool fSheetProtected;
+	// Hash di protezione VERO: vedi SetProtectionHash/GetProtectionHash
+	// sopra. Default-costruito (hasPassword=false).
+	AscdSheetProtection fProtectionHash;
 
 	// Blocca riquadri: vedi ToggleFreezePanes/SetFreezePanes sopra.
 	int fFrozenRows;
