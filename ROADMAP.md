@@ -476,17 +476,19 @@ through `.xlsx`, in either direction, before this work.
 - **Sparklines, embedded OLE objects/form controls, digital
   signatures** — no support and no plan; each would need real design
   work disproportionate to how often a typical file uses them
-- **Password-hash sheet protection** (Excel's actual
-  `<sheetProtection password="..."/>` legacy hash, or the newer
-  `algorithmName`/`hashValue`/`saltValue`/`spinCount` form) is not
-  read or written — this app's own protection (shipped in v0.2.7) is
-  an unauthenticated on/off flag, matching the *behavior* a casual
-  user sees but not the real mechanism: opening a real password-locked
-  sheet imports it as simply protected, with no password required to
-  unprotect it again in this app. **Distinct from** whole-workbook
-  open-password encryption (the file itself is AES-encrypted, can't be
-  opened at all without the password) — that's a separate, larger gap,
-  already called out in "Path to full Excel parity" Tier 4 below
+- ~~**Password-hash sheet protection**~~ Fixed — see `CHANGELOG.md`.
+  The real `<sheetProtection>` attributes (legacy `password="..."`
+  4-hex-digit checksum, or the modern `algorithmName`/`hashValue`/
+  `saltValue`/`spinCount` form) now round-trip byte-for-byte through
+  native persistence and XLSX import/export (`AscdSheetProtection`,
+  ASCD format version 9) — this app's own protection *model* is
+  unchanged (shipped in v0.2.7, still an unauthenticated on/off flag:
+  no password is ever required to unprotect a sheet inside this app),
+  only the fidelity of what gets exported back out. **Distinct from**
+  whole-workbook open-password encryption (the file itself is
+  AES-encrypted, can't be opened at all without the password) — that's
+  a separate, larger gap, still open, see "Path to full Excel parity"
+  Tier 4 below
 - ~~**`docProps/core.xml`/`app.xml`**~~ Fixed — see `CHANGELOG.md`.
   Writes the export's own timestamp (`dcterms:created`/`modified`) and
   `Application`; author/title/company/revision have no equivalent

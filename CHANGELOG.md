@@ -4,6 +4,58 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
+What shipped since v0.3.0 (in progress):
+- Closed the two remaining named gaps in conditional formatting from
+  "Path to full Excel parity" Tier 3: `cellIs` now supports all 8
+  ECMA-376 operators (`notEqual`/`greaterThan`/`lessThan`/
+  `greaterThanOrEqual`/`lessThanOrEqual`/`between`/`notBetween`, not
+  just `equal`), and the rest of the standard rule family now has a
+  real engine representation — `containsText`/`notContainsText`/
+  `beginsWith`/`endsWith`, `containsBlanks`/`notContainsBlanks`/
+  `containsErrors`/`notContainsErrors`, `top10` (rank or percent, top
+  or bottom) and `aboveAverage`/`belowAverage`. `timePeriod` rules are
+  explicitly out of scope (a separate, date-arithmetic-heavy feature,
+  never named as a gap). `CondFormatRuleType` gained 4 new values
+  (`eCondTextRule`/`eCondBlankErrorRule`/`eCondTop10`/
+  `eCondAboveAverage`), `ConditionalFormatRule` gained `ruleOperator`/
+  `compareValue2`/`top10Bottom`/`top10Percent`/`top10Rank`/
+  `belowAverage`/`equalAverage` — the existing `ruleOperator == 0`
+  ("equal") path is byte-for-byte unchanged, so every rule already on
+  disk keeps working exactly as before. Wired through live evaluation
+  (`CContainer::EvaluateConditionalFormatting`), native persistence
+  (`ui/src/AscdIO.cpp`, ASCD format bumped to version 8), XLSX
+  import/export (including the `between`/`notBetween` `<formula2>`
+  shape, the only ECMA-376 `cfRule` variant using two sibling
+  `<formula>` elements), and the native "Formattazione condizionale"
+  window (a new operator menu, a second value field for `between`, and
+  10 new type entries). CSV/XLS/ODS translators were confirmed to
+  never touch conditional formatting on either side today (a
+  pre-existing, consistent format limitation, not the "read-but-
+  discard" bug class fixed three times previously for XLSX
+  specifically) — no changes needed there.
+- Closed the one genuinely addressable Tier 4 gap in "Path to 100%
+  XLSX standard compatibility": real password-hash sheet protection
+  round-trip. A real password-protected `<sheetProtection>` (either
+  the legacy `password="83AF"` 4-hex-digit checksum, or the modern
+  `algorithmName`/`hashValue`/`saltValue`/`spinCount` form) used to
+  import as a plain on/off flag and lose the actual hash on
+  re-export — this app's own protection model stays an unauthenticated
+  flag (no password is ever required to unprotect a sheet inside this
+  app), but the real hash now survives a round-trip so re-exporting a
+  file someone else protected with a real Excel password doesn't quietly
+  strip it. New `AscdSheetProtection` struct (`ui/src/AscdIO.h`,
+  mirrored as loose parameters in the XLSX translator's own internal
+  copy, which doesn't link against `ui/src/`) carries `hasPassword`/
+  `isModernHash`/`legacyPassword`/`algorithmName`/`hashValue`/
+  `saltValue`/`spinCount`; ASCD format bumped to version 9. Found and
+  fixed 5 separate hand-written test byte-walkers in this session's own
+  test suite that read past the sheet-protection byte without knowing
+  about the new fields — the same "insert a field in the middle of an
+  already-long fixed section" hazard this project's `kASCDVersion`
+  history keeps running into, this time surfacing as real test crashes
+  instead of silent corruption, since a raw byte offset shifted for
+  every section after it.
+
 What shipped in v0.3.0, on top of v0.2.9:
 - Completed the systematic XLSX sweep: opened every one of the 15
   sample files in the test folder (agile-kanban-board, confronto
@@ -360,36 +412,6 @@ What shipped in v0.3.0, on top of v0.2.9:
   added alongside the existing `fText` deep-copy discipline in
   `Clear()`/the copy constructor/`operator=`/the destructor) didn't
   regress anything already working.
-
-What shipped since v0.3.0 (in progress):
-- Closed the two remaining named gaps in conditional formatting from
-  "Path to full Excel parity" Tier 3: `cellIs` now supports all 8
-  ECMA-376 operators (`notEqual`/`greaterThan`/`lessThan`/
-  `greaterThanOrEqual`/`lessThanOrEqual`/`between`/`notBetween`, not
-  just `equal`), and the rest of the standard rule family now has a
-  real engine representation — `containsText`/`notContainsText`/
-  `beginsWith`/`endsWith`, `containsBlanks`/`notContainsBlanks`/
-  `containsErrors`/`notContainsErrors`, `top10` (rank or percent, top
-  or bottom) and `aboveAverage`/`belowAverage`. `timePeriod` rules are
-  explicitly out of scope (a separate, date-arithmetic-heavy feature,
-  never named as a gap). `CondFormatRuleType` gained 4 new values
-  (`eCondTextRule`/`eCondBlankErrorRule`/`eCondTop10`/
-  `eCondAboveAverage`), `ConditionalFormatRule` gained `ruleOperator`/
-  `compareValue2`/`top10Bottom`/`top10Percent`/`top10Rank`/
-  `belowAverage`/`equalAverage` — the existing `ruleOperator == 0`
-  ("equal") path is byte-for-byte unchanged, so every rule already on
-  disk keeps working exactly as before. Wired through live evaluation
-  (`CContainer::EvaluateConditionalFormatting`), native persistence
-  (`ui/src/AscdIO.cpp`, ASCD format bumped to version 8), XLSX
-  import/export (including the `between`/`notBetween` `<formula2>`
-  shape, the only ECMA-376 `cfRule` variant using two sibling
-  `<formula>` elements), and the native "Formattazione condizionale"
-  window (a new operator menu, a second value field for `between`, and
-  10 new type entries). CSV/XLS/ODS translators were confirmed to
-  never touch conditional formatting on either side today (a
-  pre-existing, consistent format limitation, not the "read-but-
-  discard" bug class fixed three times previously for XLSX
-  specifically) — no changes needed there.
 
 What shipped in v0.2.0, on top of the v0.1.0 baseline:
 - XLSX/ODS export now writes live formulas for same-sheet references
