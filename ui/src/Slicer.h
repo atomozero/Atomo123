@@ -30,7 +30,17 @@
 #include <String.h>
 
 struct SlicerObject {
-	SlicerObject() : frame(0, 0, 140, 160), columnIndex(0) {}
+	// Origine (60, 50), non (0, 0): SheetView::kHeaderWidth/kHeaderHeight
+	// sono 30/20 -- un frame che comincia a (0, 0) cade DENTRO la zona di
+	// intestazione riga/colonna, che SheetView::MouseDown controlla PRIMA
+	// di qualunque oggetto sul foglio (grafico/immagine/slicer). Un clic
+	// sulla barra del titolo di uno slicer li' non arriva mai al suo
+	// gestore: viene intercettato come clic sull'intestazione (seleziona
+	// l'intera riga/colonna), quindi lo slicer non si puo' mai selezionare
+	// ne' quindi cancellare con Canc -- bug reale segnalato dall'utente
+	// subito dopo aver inserito il primo slicer da menu (MainWindow::
+	// HandleInsertSlicer usa questo stesso costruttore di default).
+	SlicerObject() : frame(60, 50, 200, 210), columnIndex(0) {}
 
 	BRect frame;
 	// Colonna assoluta (1-based, stesso sistema di range::left/right in

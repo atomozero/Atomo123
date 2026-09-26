@@ -66,6 +66,22 @@ int main()
 
 	win->Lock();
 
+	// --- Bug reale segnalato dall'utente subito dopo aver inserito il
+	// primo slicer da menu ("non si elimina con Canc"): un nuovo slicer
+	// con le coordinate di default cadeva DENTRO la zona di intestazione
+	// riga/colonna (SheetView::kHeaderWidth/kHeaderHeight = 30/20), che
+	// MouseDown controlla PRIMA di qualunque oggetto sul foglio -- un
+	// clic sulla sua barra del titolo selezionava l'intera riga/colonna
+	// invece dello slicer, che quindi non si poteva mai selezionare ne'
+	// di conseguenza cancellare. I valori 30/20 sono duplicati qui a
+	// mano (SheetView::kHeaderWidth/kHeaderHeight sono privati). ---
+	{
+		SlicerObject defaultObj;
+		const float kHeaderWidth = 30, kHeaderHeight = 20;
+		Check(defaultObj.frame.left >= kHeaderWidth && defaultObj.frame.top >= kHeaderHeight,
+			"un nuovo slicer (coordinate di default) nasce fuori dalla zona di intestazione riga/colonna");
+	}
+
 	view->SetAutoFilter(range(1, 1, 1, 1)); // A1, colonna 1
 
 	std::vector<SlicerObject> slicers;
