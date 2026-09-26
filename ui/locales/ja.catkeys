@@ -1,0 +1,396 @@
+1	Japanese	application/x-vnd.Atomo-Atomo123	1829224689
+Dividi	PasteSpecialWindow		除算
+Nuovo documento	MainWindow		新規ドキュメント
+Sostituisci con:	FindWindow		置換後の文字列:
+Minimo	PivotWindow		最小
+Moltiplica	PasteSpecialWindow		乗算
+Modifica	MainWindow		編集
+Stampa…	MainWindow		印刷…
+Salva	HyperlinkWindow		保存
+(nessuno)	MainWindow		(なし)
+Minimo	Pivot		最小
+Generale	MainWindow		標準
+Rimuovi collegamento	HyperlinkWindow		リンクの削除
+›	PageSetupWindow		›
+Collegamento ipertestuale…	MainWindow		ハイパーリンク…
+\"%s\" non è uno dei valori ammessi:\n%s	MainWindow		\"%s\" は許可された値ではありません。許可された値:\n%s
+Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		系列の選択を解除すると、グラフ上でその系列の数値ラベルだけが非表示になります。系列自体は表示されたままです。
+Mostra tutto	SheetView		すべて表示
+Conteggio	MainWindow		データの個数
+Il file conteneva un grafico non implementato in Atomo123:\n	MainWindow		このファイルには Atomo123 で未対応のグラフが含まれていました:\n
+Spessore bordo	MainWindow		罫線の太さ
+Separatore delle migliaia:	PreferencesWindow		桁区切り記号:
+Crea	PivotWindow		作成
+Nessun valore positivo da mostrare.	Chart		表示できる正の値がありません。
+‹	PageSetupWindow		‹
+immagine.png	SheetView		image.png
+Pivot	MainWindow		ピボット
+Preferenze…	MainWindow		環境設定…
+Bordo superiore	MainWindow		上罫線
+Elimina riga	MainWindow		行の削除
+Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		このファイルには Atomo123 で未対応のグラフが含まれていました:\n
+Massimo	Pivot		最大
+Incolla	PasteSpecialWindow		貼り付け
+Formato	MainWindow		書式
+Margini	PageSetupWindow		余白
+Informazioni su Atomo123	AboutWindow		Atomo123 について
+Spesso	MainWindow		太線
+Sottrai	PasteSpecialWindow		減算
+Media	PivotWindow		平均
+Tabella pivot	MainWindow		ピボットテーブル
+Aggiorna tabelle pivot	MainWindow		ピボットテーブルの更新
+Collegamento ipertestuale	MainWindow		ハイパーリンク
+Imposta area di stampa	MainWindow		印刷範囲の設定
+Salva	MainWindow		保存
+Incolla speciale…	MainWindow		形式を選択して貼り付け…
+Valori duplicati nella selezione	ConditionalFormatWindow		選択範囲内の重複する値
+URL:	HyperlinkWindow		URL:
+Nuovo	MainWindow		新規
+Scrittura del file fallita.	MainWindow		ファイルの書き込みに失敗しました。
+Trasponi righe e colonne	PasteSpecialWindow		行/列の入れ替え
+Spazio ( )	PreferencesWindow		スペース ( )
+Minimo:	ValidationWindow		最小値:
+Le modifiche non salvate andranno perse. Continuare?	MainWindow		保存されていない変更は失われます。続けますか？
+Grafico non implementato	MainWindow		未対応のグラフ
+Versione %u.%u.%u	AboutWindow		バージョン %u.%u.%u
+Separatore di elenco:	PreferencesWindow		リスト区切り記号:
+Tabella pivot	PivotWindow		ピボットテーブル
+Serie	Chart		系列
+Mostra griglia	PreferencesWindow		枠線を表示
+Applica	PageSetupWindow		適用
+Trova e sostituisci	FindWindow		検索と置換
+Inferiore:	PageSetupWindow		下:
+Informazioni su Atomo123…	MainWindow		Atomo123 について…
+Impossibile aprire il file selezionato.	MainWindow		選択したファイルを開けませんでした。
+Seleziona tutto	MainWindow		すべて選択
+Colore testo…	MainWindow		フォントの色…
+Sinistro	BorderWindow		左
+Ogni quanti minuti:	PreferencesWindow		保存間隔 (分):
+Elimina foglio	MainWindow		シートの削除
+Nessun dato valido nell'intervallo (servono almeno due colonne: una o piu' di categoria testuale, poi il valore numerico).	MainWindow		範囲に有効なデータがありません (1 つ以上のテキストの分類列と、その後に数値の列が必要なため、少なくとも 2 列必要です)。
+Intervallo (due colonne: etichette, valori):	ChartWindow		範囲 (2 列: ラベル、値):
+Applica	ColorWindow		適用
+Colore sfondo	MainWindow		塗りつぶしの色
+Imposta pagina…	MainWindow		ページ設定…
+Riempi a destra	MainWindow		右方向へコピー
+Elimina foglio	SheetTabView		シートの削除
+Cella di destinazione nel foglio:	ChartWindow		挿入先のセル:
+Stampa…	PageSetupWindow		印刷…
+Commento cella…	MainWindow		セルのコメント…
+Cancella area di stampa	MainWindow		印刷範囲のクリア
+Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	編集
+Esci	MainWindow		終了
+Imposta pagina	PageSetupWindow		ページ設定
+Applica	PreferencesWindow		適用
+Esiste già un foglio con questo nome.	MainWindow		同じ名前のシートが既に存在します。
+Rimuovi convalida	ValidationWindow		入力規則の削除
+Modifiche non salvate	MainWindow		保存されていない変更
+Titolo (facoltativo):	ChartWindow		タイトル (省略可):
+Minimo	MainWindow		最小値
+Categoria	Pivot		カテゴリ
+Salva	ValidationWindow		保存
+Ordina Z-A	MainWindow		Z-A で並べ替え
+Applica	BorderWindow		適用
+Spessore:	BorderWindow		太さ:
+Mostra valori per serie	ChartWindow		系列ごとに値を表示
+Destro:	PageSetupWindow		右:
+Inserisci riga	MainWindow		行の挿入
+Percentuale	MainWindow		パーセンテージ
+Conteggio	Pivot		個数
+di Andrea Bernardi	AboutWindow		作者: Andrea Bernardi
+Conteggio numerico	MainWindow		数値の個数
+Larghezza di una pagina	PageSetupWindow		ページの幅に合わせる
+Cella di destinazione:	PivotWindow		出力先のセル:
+Cancella	MainWindow		クリア
+Sviluppato da StudioBernardi.eu	AtomGLView		開発: StudioBernardi.eu
+Convalida dati	ValidationWindow		データの入力規則
+Vai a	GoToWindow		ジャンプ
+Trova successivo	FindWindow		次を検索
+Avvio	PreferencesWindow		起動
+Bordo destro	MainWindow		右罫線
+La cella di destinazione si sovrappone all'intervallo dati: scegline una fuori dai dati sorgente.	MainWindow		出力先のセルがデータ範囲と重なっています。元のデータ範囲外のセルを選択してください。
+Bordo sinistro	MainWindow		左罫線
+%d cella/e sostituita/e.	MainWindow		%d 個のセルを置換しました。
+Annulla	MainWindow		元に戻す
+Intervalli con nome	NameWindow		名前付き範囲
+Errore	MainWindow		エラー
+Bordo cella	BorderWindow		セルの罫線
+Foglio di calcolo nativo per Haiku OS.	AboutWindow		Haiku OS 用のネイティブ スプレッドシート。
+Intervallo dati o cella di destinazione non validi: l'intervallo deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		データ範囲または出力先のセルが正しくありません。範囲は 2 列 (ラベル、値) で、数値の行が 1 行以上必要です (例: A1:B5)。
+Apri	HyperlinkWindow		開く
+Massimo:	ValidationWindow		最大値:
+Rinomina foglio	MainWindow		シート名の変更
+Media	Pivot		平均
+Rimuovi commento	CommentWindow		コメントの削除
+Elimina	NameWindow		削除
+Nessuna anteprima	PageSetupWindow		プレビューなし
+Se il valore e' uguale a	ConditionalFormatWindow		値が次の値に等しい場合
+A capo automatico	MainWindow		折り返して全体を表示する
+Il file non e' piu' disponibile nella posizione registrata.	MainWindow		記録されている場所にファイルが見つかりません。
+Tipo:	ChartWindow		種類:
+Bordo inferiore	MainWindow		下罫線
+Inserisci nel foglio	ChartWindow		シートに挿入
+Elenco di valori	ValidationWindow		リスト
+Annulla	MainWindow	Pulsante di annullamento in una finestra di conferma (\"Cancel\"), non la voce di menu Annulla/Undo	キャンセル
+Inferiore	BorderWindow		下
+Trova e sostituisci…	MainWindow		検索と置換…
+Blocca riquadri	MainWindow		ウィンドウ枠の固定
+Nessun dato da mostrare.	Chart		表示するデータがありません。
+Inserisci colonna	MainWindow		列の挿入
+  ·  per Haiku	AboutWindow		  ·  Haiku 版
+Incolla speciale	PasteSpecialWindow		形式を選択して貼り付け
+Convalida dati…	MainWindow		データの入力規則…
+Immagine PNG	SheetView		PNG 画像
+Commento cella	CommentWindow		セルのコメント
+\"%s\" non è un numero compreso fra %g e %g.	MainWindow		\"%s\" は %g から %g までの数値ではありません。
+Tipo:	ValidationWindow		入力値の種類:
+Ripeti	MainWindow		やり直し
+OK	SheetView		OK
+Apri recenti	MainWindow		最近使ったファイルを開く
+Grassetto	MainWindow		太字
+Nessun translator installato sa esportare in questo formato.	MainWindow		この形式にエクスポートできるトランスレーターがインストールされていません。
+Somma	PivotWindow		合計
+Grafico a barre…	MainWindow		棒グラフ…
+Superiore:	PageSetupWindow		上:
+Ordina crescente	MainWindow		昇順で並べ替え
+Una sola pagina	PageSetupWindow		1 ページに収める
+Scala	PageSetupWindow		拡大縮小
+Cella o intervallo:	GoToWindow		セルまたは範囲:
+Tabella pivot…	MainWindow		ピボットテーブル…
+Rimuovi tutte le regole	ConditionalFormatWindow		すべてのルールをクリア
+Formattazione condizionale…	MainWindow		条件付き書式…
+Medio	BorderWindow		中線
+Formule e funzioni · import/export XLSX/XLSM/ODS/CSV/XLS · grafici e tabelle pivot · piu' fogli	AboutWindow		数式と関数 · XLSX/XLSM/ODS/CSV/XLS のインポート/エクスポート · グラフとピボットテーブル · 複数シート
+Serializzazione del documento fallita.	MainWindow		ドキュメントのシリアル化に失敗しました。
+Nessun bordo	MainWindow		枠なし
+Colore sfondo	ColorWindow		塗りつぶしの色
+Punto e virgola (;)	PreferencesWindow		セミコロン (;)
+Impossibile creare il file.	MainWindow		ファイルを作成できませんでした。
+Allinea al centro	MainWindow		中央揃え
+Percentuale:	PageSetupWindow		倍率 (%):
+Stampa	MainWindow		印刷
+Bordo cella…	MainWindow		セルの罫線…
+Intervalli con nome…	MainWindow		名前付き範囲…
+Rinomina foglio…	SheetTabView		シート名の変更…
+File	PreferencesWindow		ファイル
+Rinomina foglio	RenameSheetWindow		シート名の変更
+Sovrascrivi	PasteSpecialWindow		しない
+Formato nativo (.ascd)	MainWindow		ネイティブ形式 (.ascd)
+Elimina colonna	MainWindow		列の削除
+Somma	MainWindow		合計
+Vai a	NameWindow		ジャンプ
+Colore bordo…	MainWindow		罫線の色…
+OpenDocument (.ods)	MainWindow		OpenDocument (.ods)
+Intervallo dati o cella di destinazione non validi.	MainWindow		データ範囲または出力先のセルが正しくありません。
+Aggregazione:	PivotWindow		集計方法:
+Lati	BorderWindow		罫線の位置
+Codice nuovo su licenza MIT · motore derivato da Sum-It (BSD, Hekkelman Programmatuur).	AboutWindow		新しいコードは MIT ライセンス · エンジンは Sum-It (BSD、Hekkelman Programmatuur) から派生。
+Non è possibile eliminare l'unico foglio della cartella di lavoro.	MainWindow		ブック内の唯一のシートは削除できません。
+Sostituisci	FindWindow		置換
+Intervallo non valido: serve almeno una riga numerica in ogni colonna serie.	MainWindow		範囲が正しくありません。各系列の列に数値の行が 1 行以上必要です。
+Dividi celle	MainWindow		セル結合の解除
+Nessuna	ValidationWindow		すべての値
+Inserisci riga	SheetView		行の挿入
+Intervalli con nome	MainWindow		名前付き範囲
+Punto (.)	PreferencesWindow		ピリオド (.)
+Linee	ChartWindow		折れ線
+Superiore	BorderWindow		上
+Preferenze	PreferencesWindow		環境設定
+Corsivo	MainWindow		斜体
+Numero	MainWindow		数値
+Torta	ChartWindow		円
+Intervallo:	NameWindow		範囲:
+Solo valori	PasteSpecialWindow		値のみ
+OK	AboutWindow		OK
+Disegna	ChartWindow		描画
+Icone della barra strumenti da hvif-store.art — grazie!	AboutWindow		ツールバーアイコン: hvif-store.art — ありがとうございます!
+Elimina	MainWindow		削除
+Inserisci	MainWindow		挿入
+Dati	MainWindow		データ
+Non si puo' ordinare: la selezione contiene una cella unita. Dividi le celle prima di ordinare.	SheetView		並べ替えできません。選択範囲に結合されたセルが含まれています。並べ替える前にセルの結合を解除してください。
+Massimo	MainWindow		最大値
+Il file e' stato tradotto ma i dati risultanti non sono validi.	MainWindow		ファイルは変換されましたが、変換後のデータが正しくありません。
+Somma	PasteSpecialWindow		加算
+Adatta al:	PageSetupWindow		拡大/縮小:
+Sottile	BorderWindow		細線
+Formattazione condizionale	ConditionalFormatWindow		条件付き書式
+Colore sfondo…	MainWindow		塗りつぶしの色…
+Valuta	MainWindow		通貨
+Ordina A-Z	MainWindow		A-Z で並べ替え
+Sottolineato	MainWindow		下線
+Spesso	BorderWindow		太線
+Ordina	SheetView		並べ替え
+Salvataggio automatico	PreferencesWindow		自動保存
+Virgola (,)	PreferencesWindow		カンマ (,)
+Convalida dati	SheetView		データの入力規則
+Sottile	MainWindow		細線
+Media	MainWindow		平均
+Simbolo valuta:	PreferencesWindow		通貨記号:
+di	PageSetupWindow		/
+Applica alla selezione	ConditionalFormatWindow		選択範囲に適用
+Nuovo foglio	MainWindow		新しいシート
+Separatore decimale:	PreferencesWindow		小数点の記号:
+Salva	CommentWindow		保存
+OK	MainWindow		OK
+Apri	MainWindow		開く
+Mostra lo splash screen all'avvio	PreferencesWindow		起動時にスプラッシュ画面を表示
+Intervallo dati (una o piu' colonne di categoria, poi il valore):	PivotWindow		データ範囲 (1 つ以上の分類列、その後に値の列):
+Offrimi un caffe' ☕	AboutWindow		コーヒーをおごる ☕
+Trova	MainWindow		検索
+Cosa incollare:	PasteSpecialWindow		貼り付ける内容:
+Excel (.xlsx)	MainWindow		Excel (.xlsx)
+Generale	PreferencesWindow		一般
+Colore bordo	ColorWindow		罫線の色
+File recenti da ricordare:	PreferencesWindow		記憶する最近使ったファイルの数:
+Grafico	MainWindow		グラフ
+Bordo cella	MainWindow		セルの罫線
+Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.	SheetView		挿入できません。シート下端の一部のセルが上限を超えてしまいます。
+Intervallo numerico	ValidationWindow		数値の範囲
+Continua senza salvare	MainWindow		保存しないで続ける
+Senza titolo	MainWindow		名称未設定
+Collegamento ipertestuale	HyperlinkWindow		ハイパーリンク
+Medio	MainWindow		中線
+Riempi in basso	MainWindow		下方向へコピー
+CSV (.csv)	MainWindow		CSV (.csv)
+Eliminare il foglio \"%s\"? L'operazione non può essere annullata.	MainWindow		シート \"%s\" を削除しますか？この操作は元に戻せません。
+Valori (separati da virgola):	ValidationWindow		元の値 (カンマ区切り):
+File	MainWindow		ファイル
+Allinea a sinistra	MainWindow		左揃え
+Rinomina	RenameSheetWindow		名前の変更
+Vai a	MainWindow		ジャンプ
+Allinea a destra	MainWindow		右揃え
+Conteggio	PivotWindow		個数
+Incolla	MainWindow		貼り付け
+Somma	Pivot		合計
+Colore testo	ColorWindow		フォントの色
+Inserisci colonna	SheetView		列の挿入
+Salva con nome…	MainWindow		名前を付けて保存…
+Unisci celle	MainWindow		セルを結合
+Grafico	ChartWindow		グラフ
+Sostituisci tutto	FindWindow		すべて置換
+Destro	BorderWindow		右
+Commento cella	MainWindow		セルのコメント
+Intervallo non valido: serve esattamente due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		範囲が正しくありません。ちょうど 2 列 (ラベル、値) と、数値の行が 1 行以上必要です (例: A1:B5)。
+Barre	ChartWindow		棒
+Formato file non riconosciuto da nessun translator installato.	MainWindow		インストールされているトランスレーターでは認識できないファイル形式です。
+Versione	AboutWindow		バージョン
+Nome del foglio:	RenameSheetWindow		シート名:
+Massimo	PivotWindow		最大
+Colore testo	MainWindow		フォントの色
+Sostituisci tutto	MainWindow		すべて置換
+Operazione con la cella di destinazione:	PasteSpecialWindow		貼り付け先のセルとの演算:
+Apri…	MainWindow		開く…
+Abilita il salvataggio automatico (backup)	PreferencesWindow		自動保存を有効にする (バックアップ)
+Vai a…	MainWindow		ジャンプ…
+Tipo:	ConditionalFormatWindow		種類:
+Ordina decrescente	MainWindow		降順で並べ替え
+Valore (solo per \"uguale a\"):	ConditionalFormatWindow		値 (\"等しい場合\" のみ):
+Copia	MainWindow		コピー
+Cerca:	FindWindow		検索する文字列:
+Tutto (come Incolla)	PasteSpecialWindow		すべて (貼り付けと同じ)
+Nome:	NameWindow		名前:
+Sinistro:	PageSetupWindow		左:
+Colore	ColorWindow		色
+Valori in centimetri	PageSetupWindow		単位: センチメートル
+Altezza di una pagina	PageSetupWindow		ページの高さに合わせる
+Pronto	MainWindow		準備完了
+Pagina	PageSetupWindow		ページ
+Taglia	MainWindow		切り取り
+Aggiungi/Aggiorna	NameWindow		追加/更新
+Colore scheda…	SheetTabView		シート見出しの色…
+Colore scheda	ColorWindow		シート見出しの色
+Taglia	SheetView		切り取り
+Copia	SheetView		コピー
+Incolla	SheetView		貼り付け
+Cancella	SheetView		クリア
+Elimina riga	SheetView		行の削除
+Elimina colonna	SheetView		列の削除
+Ordina crescente	SheetView		昇順で並べ替え
+Ordina decrescente	SheetView		降順で並べ替え
+Formato celle	SheetView		セルの書式設定
+Grassetto	SheetView		太字
+Corsivo	SheetView		斜体
+Sottolineato	SheetView		下線
+Allinea a sinistra	SheetView		左揃え
+Allinea al centro	SheetView		中央揃え
+Allinea a destra	SheetView		右揃え
+Colore testo…	SheetView		フォントの色…
+Colore sfondo…	SheetView		塗りつぶしの色…
+Bordo cella…	SheetView		セルの罫線…
+Commento cella…	SheetView		セルのコメント…
+Modifica commento…	SheetView		コメントの編集…
+Rimuovi commento	SheetView		コメントの削除
+Aggiungi alla finestra di controllo	MainWindow		ウォッチ ウィンドウに追加
+Apertura del file in corso...	MainWindow		ファイルを開いています...
+Area	ChartWindow		面
+Blocca celle selezionate	MainWindow		選択したセルをロック
+Combinato (barre+linee)	ChartWindow		組み合わせ (棒+折れ線)
+Dispersione (XY)	ChartWindow		散布図 (XY)
+Finestra di controllo	WatchWindow		ウォッチ ウィンドウ
+Finestra di controllo…	MainWindow		ウォッチ ウィンドウ…
+Foglio protetto	SheetView		保護されたシート
+Formule	MainWindow		数式
+Impossibile avviare il caricamento del file.	MainWindow		ファイルの読み込みを開始できませんでした。
+Intervallo non valido: un grafico a dispersione richiede esattamente due colonne NUMERICHE (X, Y) con almeno una riga valida, es. A1:B5.	MainWindow		範囲が正しくありません。散布図には、ちょうど 2 つの数値の列 (X、Y) と、有効な行が 1 行以上必要です (例: A1:B5)。
+La cella che stai cercando di modificare e' protetta. Per modificarla, sblocca prima la cella (Dati > Sblocca celle selezionate) oppure disattiva la protezione del foglio (Dati > Proteggi foglio).	SheetView		変更しようとしているセルは保護されています。変更するには、まずセルのロックを解除する (データ > 選択したセルのロックを解除) か、シートの保護を解除してください (データ > シートの保護)。
+Lettura del file...	MainWindow		ファイルを読み込んでいます...
+Mostra formule	MainWindow		数式の表示
+Proteggi foglio	MainWindow		シートの保護
+Ricalcolo in corso...	MainWindow		再計算しています...
+Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		再計算しています: シート %d/%d (パス %d) - %s
+Rimuovi	WatchWindow		削除
+Rimuovi frecce	MainWindow		トレース矢印の削除
+Sblocca celle selezionate	MainWindow		選択したセルのロックを解除
+Scala di colori (minimo -> massimo)	ConditionalFormatWindow		カラースケール (最小値 -> 最大値)
+Barra dei dati (minimo -> massimo)	ConditionalFormatWindow		データバー (最小値 -> 最大値)
+Icon set (3 livelli)	ConditionalFormatWindow		アイコンセット (3 段階)
+Traccia dipendenti	MainWindow		参照先のトレース
+Traccia precedenti	MainWindow		参照元のトレース
+Traduzione del file in corso...	MainWindow		ファイルを変換しています...
+Allinea in alto	MainWindow		上揃え
+Centra verticalmente	MainWindow		上下中央揃え
+Allinea in basso	MainWindow		下揃え
+Allinea in alto	SheetView		上揃え
+Centra verticalmente	SheetView		上下中央揃え
+Allinea in basso	SheetView		下揃え
+Apri file di esempio	MainWindow		サンプルファイルを開く
+Il file di esempio non e' installato su questo sistema.	MainWindow		このシステムにはサンプルファイルがインストールされていません。
+Stampa intestazioni righe/colonne	PageSetupWindow		行列番号を印刷
+Stampa griglia	PageSetupWindow		枠線を印刷
+Stampa	PageSetupWindow		印刷
+Pagine:	PageSetupWindow		次のページ数に合わせて印刷:
+Larghe:	PageSetupWindow		横:
+Alte:	PageSetupWindow		縦:
+Centratura	PageSetupWindow		ページ中央
+Orizzontale	PageSetupWindow		水平
+Verticale	PageSetupWindow		垂直
+Intestazione/piè di pagina	PageSetupWindow		ヘッダー/フッター
+Intestazione:	PageSetupWindow		ヘッダー:
+Piè di pagina:	PageSetupWindow		フッター:
+&P pagina, &N totale pagine, &D data	PageSetupWindow		&P ページ番号、&N 総ページ数、&D 日付
+Ordine pagine	PageSetupWindow		ページの方向
+Prima giù, poi a destra	PageSetupWindow		上から下
+Prima a destra, poi giù	PageSetupWindow		左から右
+Titoli da ripetere	PageSetupWindow		印刷タイトル
+Righe:	PageSetupWindow		タイトル行:
+Colonne:	PageSetupWindow		タイトル列:
+Righe come 1:3, colonne come A:C (vuoto = nessuno)	PageSetupWindow		行は 1:3、列は A:C の形式 (空欄 = なし)
+Intestazioni	PageSetupWindow		ヘッダー/フッター
+Somma automatica	MainWindow		オート SUM
+Sostituisci	MainWindow		置換
+Convalida dati	MainWindow		入力規則
+Formattazione condizionale	MainWindow		条件付き書式
+Vista	PreferencesWindow		表示
+Mostra formule nei fogli nuovi	PreferencesWindow		新しいシートで数式を表示
+Media	PreferencesWindow		平均
+Conteggio	PreferencesWindow		データの個数
+Conteggio numerico	PreferencesWindow		数値の個数
+Minimo	PreferencesWindow		最小値
+Massimo	PreferencesWindow		最大値
+Somma	PreferencesWindow		合計
+Cartella backup (vuota = accanto al file):	PreferencesWindow		バックアップフォルダー (空欄 = ファイルと同じ場所):
+Sistema	PreferencesWindow		システム
+Italiano	PreferencesWindow		イタリア語
+English	PreferencesWindow		英語
+Lingua (al prossimo avvio):	PreferencesWindow		言語 (次回起動時に適用):
+Riapri i file recenti all'avvio	PreferencesWindow		起動時に最近使ったファイルを再度開く
