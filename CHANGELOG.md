@@ -5,6 +5,29 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.3.0 (in progress):
+- Slicers (Tier 4, third item of the same low-priority batch, built on
+  AutoFilter persistence below): a new floating on-sheet object
+  (`ui/src/SlicerObject`, see `ui/src/Slicer.h`) — a button list that
+  toggles which values of one AutoFilter column are visible with a
+  click, instead of opening the header dropdown. Drag (grab the title
+  bar only, the body below is all buttons)/resize (bottom-right handle)/
+  delete/undo reuse the exact same on-sheet-object machinery already
+  built for charts and embedded images (SheetView's
+  fDragging/fResizing/fSelected index triples and UndoSnapshot variant
+  fields) — a fourth kind of draggable object, not a new mechanism.
+  A button click calls the same `SetColumnValueHidden` the AutoFilter
+  dropdown itself uses, so a slicer and the dropdown always agree and
+  neither needs its own separate state; a click is intentionally NOT
+  undoable, matching the dropdown's own existing behavior. New "Insert >
+  Slicer" menu command creates one for the AutoFilter column under the
+  current selection (or the AutoFilter's first column as a fallback).
+  Persists through native `.ascd` round-trip only for v1 (new trailing
+  section in `ui/src/AscdIO.cpp`/`.h`, `AscdSheet::slicers`); real XLSX
+  slicer XML (`slicerCache*.xml`) does not exist in this app, a
+  separate, larger, pre-existing gap mirroring every other Tier 4 XLSX
+  export limitation in this batch, not silently dropped. New
+  `ui/tests/test_slicer.cpp` covers drag/resize/delete+undo and the
+  functional button-click-hides-rows behavior headlessly.
 - AutoFilter persistence (Tier 4, second item of the same low-priority
   batch, prerequisite for real Slicer state): which values are excluded
   per column (`SheetView::fFilterHiddenValues`) now survives a native

@@ -801,17 +801,27 @@ list deliberately deviates from pure effort-sorting:
   legacy 2007-2010 "Standard Encryption" binary format is out of scope);
   read-only (re-exporting drops the encryption, a plain "Salva" on such
   a document warns before silently overwriting the encrypted original)
-- Slicers (for pivot tables and structured tables) — depends on the
-  Tier 3 2D-pivot-table gap for the pivot case anyway. ~~**AutoFilter
-  persistence**~~, the prerequisite for real Slicer state, is Fixed —
-  see `CHANGELOG.md`: which values are excluded per column now survives
-  a native `.ascd` save/reload (not just the resulting hidden rows), and
-  XLSX import now reads a real `<filterColumn><filters>` when present
-  (the discrete-list form only — comparison/top-N/dynamic/color/icon
-  filters have no equivalent in this engine's model and are skipped,
-  declared not silent). XLSX **export** of `<autoFilter>` does not exist
-  in this app at all (a separate, larger, pre-existing gap, same
-  shape as the structured-table export gap above)
+- ~~**AutoFilter persistence**~~ Fixed — see `CHANGELOG.md`, the
+  prerequisite for real Slicer state: which values are excluded per
+  column now survives a native `.ascd` save/reload (not just the
+  resulting hidden rows), and XLSX import now reads a real
+  `<filterColumn><filters>` when present (the discrete-list form only —
+  comparison/top-N/dynamic/color/icon filters have no equivalent in this
+  engine's model and are skipped, declared not silent). XLSX **export**
+  of `<autoFilter>` does not exist in this app at all (a separate,
+  larger, pre-existing gap, same shape as the structured-table export
+  gap above).
+- ~~**Slicers**~~ Fixed (native `.ascd` only) — see `CHANGELOG.md`. A
+  slicer is a floating button-list (`ui/src/Slicer.h`) that toggles
+  values of one column of the sheet's active AutoFilter — drag/resize/
+  delete/undo reuse the exact same on-sheet-object machinery as charts/
+  images, and a button click is exactly `SetColumnValueHidden` under the
+  hood, so it stays in sync with the AutoFilter dropdown automatically.
+  Scoped to pivot-table-less structured/AutoFilter data for v1 (a sheet
+  has only one AutoFilter at a time in this app already); real XLSX
+  slicer XML (`slicerCache*.xml`) does not exist — declared out of
+  scope, not silently dropped, same shape as every other Tier 4 XLSX
+  export gap in this batch
 
 ### Explicitly out of scope, not just "not yet"
 
