@@ -1290,11 +1290,13 @@ int main()
 	chartLanguages.type = eBarChart;
 	chartLanguages.title = "Approximate native speakers by language (millions)";
 	chartLanguages.dataRange = range(4, langDataFirstRow, 5, langDataLastRow);
-	int langChartRowStart = langDataLastRow + 1;
-	// Stessa formula di "riga N inizia a 10 + (N-1)*20 pixel" gia'
-	// documentata sopra per il foglio "Board Meeting" (riga 1 alta 30px
-	// invece di 20, vedi rowHeights sotto per questo stesso foglio).
-	float langChartTop = 10 + (langChartRowStart - 1) * 20;
+	// STESSA identica formula di "chartTop"/"lastRankRow" sul foglio
+	// "Board Meeting" sopra (mai "10 + (N-1)*20" da solo: quella versione
+	// e' stata provata qui e produceva un grafico che iniziava DENTRO
+	// l'ultima riga dati invece che sotto -- bug reale, screenshot
+	// dell'utente, 2026-09-26 -- il -10 mancava del margine di
+	// sicurezza che la versione "Board Meeting" include apposta).
+	float langChartTop = 20 + (langDataLastRow + 1) * 20;
 	float langChartBottom = langChartTop + 220;
 	// left=40, non 20: vedi il commento su SheetView::kHeaderWidth
 	// (30px) accanto al primo grafico del foglio "Pivot".
