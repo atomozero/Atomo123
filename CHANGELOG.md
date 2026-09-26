@@ -5,6 +5,17 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.3.0 (in progress):
+- Two community contributions from rainygirl, merged directly into
+  `master` (see the PR threads for why not through GitHub's merge
+  button): translators now install into the correct per-architecture
+  add-ons directory on a 32-bit Haiku x86_gcc2/x86 hybrid — the app
+  previously couldn't open any file at all there, including its own
+  native format, since Haiku keeps a secondary architecture's add-ons
+  in a subdirectory named after that architecture, and `make install`
+  always used the primary path; and Korean and Japanese UI catalogs
+  for the app and all four translators' About views, using Excel/
+  Numbers' own terminology, embedded the same way the existing English
+  catalog is (`linkcatkeys -tr`).
 - Closed the two remaining named gaps in conditional formatting from
   "Path to full Excel parity" Tier 3: `cellIs` now supports all 8
   ECMA-376 operators (`notEqual`/`greaterThan`/`lessThan`/
