@@ -1,0 +1,396 @@
+1	Korean	application/x-vnd.Atomo-Atomo123	1829224689
+Dividi	PasteSpecialWindow		나누기
+Nuovo documento	MainWindow		새 문서
+Sostituisci con:	FindWindow		바꿀 내용:
+Minimo	PivotWindow		최소
+Moltiplica	PasteSpecialWindow		곱하기
+Modifica	MainWindow		편집
+Stampa…	MainWindow		인쇄…
+Salva	HyperlinkWindow		저장
+(nessuno)	MainWindow		(없음)
+Minimo	Pivot		최소
+Generale	MainWindow		일반
+Rimuovi collegamento	HyperlinkWindow		링크 제거
+›	PageSetupWindow		›
+Collegamento ipertestuale…	MainWindow		하이퍼링크…
+\"%s\" non è uno dei valori ammessi:\n%s	MainWindow		\"%s\"은(는) 허용된 값이 아닙니다. 허용된 값:\n%s
+Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		계열을 선택 해제하면 차트에서 해당 계열의 값 레이블만 숨겨지며, 계열 자체는 계속 표시됩니다.
+Mostra tutto	SheetView		모두 표시
+Conteggio	MainWindow		개수
+Il file conteneva un grafico non implementato in Atomo123:\n	MainWindow		파일에 Atomo123에서 지원하지 않는 차트가 포함되어 있었습니다:\n
+Spessore bordo	MainWindow		테두리 두께
+Separatore delle migliaia:	PreferencesWindow		천 단위 구분 기호:
+Crea	PivotWindow		만들기
+Nessun valore positivo da mostrare.	Chart		표시할 양수 값이 없습니다.
+‹	PageSetupWindow		‹
+immagine.png	SheetView		image.png
+Pivot	MainWindow		피벗
+Preferenze…	MainWindow		환경설정…
+Bordo superiore	MainWindow		위쪽 테두리
+Elimina riga	MainWindow		행 삭제
+Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		파일에 Atomo123에서 지원하지 않는 차트가 포함되어 있었습니다:\n
+Massimo	Pivot		최대
+Incolla	PasteSpecialWindow		붙여넣기
+Formato	MainWindow		서식
+Margini	PageSetupWindow		여백
+Informazioni su Atomo123	AboutWindow		Atomo123 정보
+Spesso	MainWindow		굵은 선
+Sottrai	PasteSpecialWindow		빼기
+Media	PivotWindow		평균
+Tabella pivot	MainWindow		피벗 테이블
+Aggiorna tabelle pivot	MainWindow		피벗 테이블 새로 고침
+Collegamento ipertestuale	MainWindow		하이퍼링크
+Imposta area di stampa	MainWindow		인쇄 영역 설정
+Salva	MainWindow		저장
+Incolla speciale…	MainWindow		선택하여 붙여넣기…
+Valori duplicati nella selezione	ConditionalFormatWindow		선택 영역의 중복 값
+URL:	HyperlinkWindow		URL:
+Nuovo	MainWindow		새로 만들기
+Scrittura del file fallita.	MainWindow		파일을 쓰지 못했습니다.
+Trasponi righe e colonne	PasteSpecialWindow		행/열 바꿈
+Spazio ( )	PreferencesWindow		공백 ( )
+Minimo:	ValidationWindow		최소값:
+Le modifiche non salvate andranno perse. Continuare?	MainWindow		저장하지 않은 변경 사항은 사라집니다. 계속하시겠습니까?
+Grafico non implementato	MainWindow		지원하지 않는 차트
+Versione %u.%u.%u	AboutWindow		버전 %u.%u.%u
+Separatore di elenco:	PreferencesWindow		목록 구분 기호:
+Tabella pivot	PivotWindow		피벗 테이블
+Serie	Chart		계열
+Mostra griglia	PreferencesWindow		눈금선 표시
+Applica	PageSetupWindow		적용
+Trova e sostituisci	FindWindow		찾기 및 바꾸기
+Inferiore:	PageSetupWindow		아래쪽:
+Informazioni su Atomo123…	MainWindow		Atomo123 정보…
+Impossibile aprire il file selezionato.	MainWindow		선택한 파일을 열 수 없습니다.
+Seleziona tutto	MainWindow		모두 선택
+Colore testo…	MainWindow		글꼴 색…
+Sinistro	BorderWindow		왼쪽
+Ogni quanti minuti:	PreferencesWindow		저장 간격(분):
+Elimina foglio	MainWindow		시트 삭제
+Nessun dato valido nell'intervallo (servono almeno due colonne: una o piu' di categoria testuale, poi il valore numerico).	MainWindow		범위에 유효한 데이터가 없습니다(텍스트 범주 열이 하나 이상, 그다음에 숫자 값 열이 있어야 하므로 최소 두 열이 필요합니다).
+Intervallo (due colonne: etichette, valori):	ChartWindow		범위(두 열: 레이블, 값):
+Applica	ColorWindow		적용
+Colore sfondo	MainWindow		채우기 색
+Imposta pagina…	MainWindow		페이지 설정…
+Riempi a destra	MainWindow		오른쪽으로 채우기
+Elimina foglio	SheetTabView		시트 삭제
+Cella di destinazione nel foglio:	ChartWindow		시트에 삽입할 셀:
+Stampa…	PageSetupWindow		인쇄…
+Commento cella…	MainWindow		셀 메모…
+Cancella area di stampa	MainWindow		인쇄 영역 해제
+Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	편집
+Esci	MainWindow		종료
+Imposta pagina	PageSetupWindow		페이지 설정
+Applica	PreferencesWindow		적용
+Esiste già un foglio con questo nome.	MainWindow		같은 이름의 시트가 이미 있습니다.
+Rimuovi convalida	ValidationWindow		유효성 검사 제거
+Modifiche non salvate	MainWindow		저장하지 않은 변경 사항
+Titolo (facoltativo):	ChartWindow		제목(선택 사항):
+Minimo	MainWindow		최소값
+Categoria	Pivot		범주
+Salva	ValidationWindow		저장
+Ordina Z-A	MainWindow		Z-A 정렬
+Applica	BorderWindow		적용
+Spessore:	BorderWindow		두께:
+Mostra valori per serie	ChartWindow		계열별 값 표시
+Destro:	PageSetupWindow		오른쪽:
+Inserisci riga	MainWindow		행 삽입
+Percentuale	MainWindow		백분율
+Conteggio	Pivot		개수
+di Andrea Bernardi	AboutWindow		개발: Andrea Bernardi
+Conteggio numerico	MainWindow		숫자 셀 수
+Larghezza di una pagina	PageSetupWindow		페이지 너비에 맞추기
+Cella di destinazione:	PivotWindow		대상 셀:
+Cancella	MainWindow		지우기
+Sviluppato da StudioBernardi.eu	AtomGLView		개발: StudioBernardi.eu
+Convalida dati	ValidationWindow		데이터 유효성 검사
+Vai a	GoToWindow		이동
+Trova successivo	FindWindow		다음 찾기
+Avvio	PreferencesWindow		시작
+Bordo destro	MainWindow		오른쪽 테두리
+La cella di destinazione si sovrappone all'intervallo dati: scegline una fuori dai dati sorgente.	MainWindow		대상 셀이 데이터 범위와 겹칩니다. 원본 데이터 밖의 셀을 선택하세요.
+Bordo sinistro	MainWindow		왼쪽 테두리
+%d cella/e sostituita/e.	MainWindow		셀 %d개를 바꿨습니다.
+Annulla	MainWindow		실행 취소
+Intervalli con nome	NameWindow		명명된 범위
+Errore	MainWindow		오류
+Bordo cella	BorderWindow		셀 테두리
+Foglio di calcolo nativo per Haiku OS.	AboutWindow		Haiku OS용 네이티브 스프레드시트.
+Intervallo dati o cella di destinazione non validi: l'intervallo deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		데이터 범위 또는 대상 셀이 올바르지 않습니다. 범위는 두 열(레이블, 값)이어야 하며 숫자 행이 하나 이상 있어야 합니다(예: A1:B5).
+Apri	HyperlinkWindow		열기
+Massimo:	ValidationWindow		최대값:
+Rinomina foglio	MainWindow		시트 이름 바꾸기
+Media	Pivot		평균
+Rimuovi commento	CommentWindow		메모 삭제
+Elimina	NameWindow		삭제
+Nessuna anteprima	PageSetupWindow		미리 보기 없음
+Se il valore e' uguale a	ConditionalFormatWindow		값이 다음과 같을 때
+A capo automatico	MainWindow		텍스트 줄 바꿈
+Il file non e' piu' disponibile nella posizione registrata.	MainWindow		기록된 위치에 파일이 더 이상 없습니다.
+Tipo:	ChartWindow		종류:
+Bordo inferiore	MainWindow		아래쪽 테두리
+Inserisci nel foglio	ChartWindow		시트에 삽입
+Elenco di valori	ValidationWindow		목록
+Annulla	MainWindow	Pulsante di annullamento in una finestra di conferma (\"Cancel\"), non la voce di menu Annulla/Undo	취소
+Inferiore	BorderWindow		아래쪽
+Trova e sostituisci…	MainWindow		찾기 및 바꾸기…
+Blocca riquadri	MainWindow		틀 고정
+Nessun dato da mostrare.	Chart		표시할 데이터가 없습니다.
+Inserisci colonna	MainWindow		열 삽입
+  ·  per Haiku	AboutWindow		  ·  Haiku용
+Incolla speciale	PasteSpecialWindow		선택하여 붙여넣기
+Convalida dati…	MainWindow		데이터 유효성 검사…
+Immagine PNG	SheetView		PNG 이미지
+Commento cella	CommentWindow		셀 메모
+\"%s\" non è un numero compreso fra %g e %g.	MainWindow		\"%s\"은(는) %g에서 %g 사이의 숫자가 아닙니다.
+Tipo:	ValidationWindow		제한 대상:
+Ripeti	MainWindow		다시 실행
+OK	SheetView		확인
+Apri recenti	MainWindow		최근 파일 열기
+Grassetto	MainWindow		굵게
+Nessun translator installato sa esportare in questo formato.	MainWindow		이 형식으로 내보낼 수 있는 변환기가 설치되어 있지 않습니다.
+Somma	PivotWindow		합계
+Grafico a barre…	MainWindow		막대형 차트…
+Superiore:	PageSetupWindow		위쪽:
+Ordina crescente	MainWindow		오름차순 정렬
+Una sola pagina	PageSetupWindow		한 페이지에 맞추기
+Scala	PageSetupWindow		배율
+Cella o intervallo:	GoToWindow		셀 또는 범위:
+Tabella pivot…	MainWindow		피벗 테이블…
+Rimuovi tutte le regole	ConditionalFormatWindow		모든 규칙 지우기
+Formattazione condizionale…	MainWindow		조건부 서식…
+Medio	BorderWindow		보통 선
+Formule e funzioni · import/export XLSX/XLSM/ODS/CSV/XLS · grafici e tabelle pivot · piu' fogli	AboutWindow		수식 및 함수 · XLSX/XLSM/ODS/CSV/XLS 가져오기/내보내기 · 차트 및 피벗 테이블 · 여러 시트
+Serializzazione del documento fallita.	MainWindow		문서를 직렬화하지 못했습니다.
+Nessun bordo	MainWindow		테두리 없음
+Colore sfondo	ColorWindow		채우기 색
+Punto e virgola (;)	PreferencesWindow		세미콜론 (;)
+Impossibile creare il file.	MainWindow		파일을 만들 수 없습니다.
+Allinea al centro	MainWindow		가운데 맞춤
+Percentuale:	PageSetupWindow		배율(%):
+Stampa	MainWindow		인쇄
+Bordo cella…	MainWindow		셀 테두리…
+Intervalli con nome…	MainWindow		명명된 범위…
+Rinomina foglio…	SheetTabView		시트 이름 바꾸기…
+File	PreferencesWindow		파일
+Rinomina foglio	RenameSheetWindow		시트 이름 바꾸기
+Sovrascrivi	PasteSpecialWindow		없음
+Formato nativo (.ascd)	MainWindow		기본 형식(.ascd)
+Elimina colonna	MainWindow		열 삭제
+Somma	MainWindow		합계
+Vai a	NameWindow		이동
+Colore bordo…	MainWindow		테두리 색…
+OpenDocument (.ods)	MainWindow		OpenDocument (.ods)
+Intervallo dati o cella di destinazione non validi.	MainWindow		데이터 범위 또는 대상 셀이 올바르지 않습니다.
+Aggregazione:	PivotWindow		요약 방법:
+Lati	BorderWindow		테두리 위치
+Codice nuovo su licenza MIT · motore derivato da Sum-It (BSD, Hekkelman Programmatuur).	AboutWindow		새 코드는 MIT 라이선스 · 엔진은 Sum-It(BSD, Hekkelman Programmatuur)에서 파생.
+Non è possibile eliminare l'unico foglio della cartella di lavoro.	MainWindow		통합 문서의 유일한 시트는 삭제할 수 없습니다.
+Sostituisci	FindWindow		바꾸기
+Intervallo non valido: serve almeno una riga numerica in ogni colonna serie.	MainWindow		범위가 올바르지 않습니다. 각 계열 열에 숫자 행이 하나 이상 있어야 합니다.
+Dividi celle	MainWindow		셀 분할
+Nessuna	ValidationWindow		모든 값
+Inserisci riga	SheetView		행 삽입
+Intervalli con nome	MainWindow		명명된 범위
+Punto (.)	PreferencesWindow		마침표 (.)
+Linee	ChartWindow		꺾은선형
+Superiore	BorderWindow		위쪽
+Preferenze	PreferencesWindow		환경설정
+Corsivo	MainWindow		기울임꼴
+Numero	MainWindow		숫자
+Torta	ChartWindow		원형
+Intervallo:	NameWindow		범위:
+Solo valori	PasteSpecialWindow		값만
+OK	AboutWindow		확인
+Disegna	ChartWindow		그리기
+Icone della barra strumenti da hvif-store.art — grazie!	AboutWindow		도구 막대 아이콘 제공: hvif-store.art — 감사합니다!
+Elimina	MainWindow		삭제
+Inserisci	MainWindow		삽입
+Dati	MainWindow		데이터
+Non si puo' ordinare: la selezione contiene una cella unita. Dividi le celle prima di ordinare.	SheetView		정렬할 수 없습니다. 선택 영역에 병합된 셀이 있습니다. 정렬하기 전에 셀을 분할하세요.
+Massimo	MainWindow		최대값
+Il file e' stato tradotto ma i dati risultanti non sono validi.	MainWindow		파일을 변환했지만 결과 데이터가 올바르지 않습니다.
+Somma	PasteSpecialWindow		더하기
+Adatta al:	PageSetupWindow		확대/축소 배율:
+Sottile	BorderWindow		가는 선
+Formattazione condizionale	ConditionalFormatWindow		조건부 서식
+Colore sfondo…	MainWindow		채우기 색…
+Valuta	MainWindow		통화
+Ordina A-Z	MainWindow		A-Z 정렬
+Sottolineato	MainWindow		밑줄
+Spesso	BorderWindow		굵은 선
+Ordina	SheetView		정렬
+Salvataggio automatico	PreferencesWindow		자동 저장
+Virgola (,)	PreferencesWindow		쉼표 (,)
+Convalida dati	SheetView		데이터 유효성 검사
+Sottile	MainWindow		가는 선
+Media	MainWindow		평균
+Simbolo valuta:	PreferencesWindow		통화 기호:
+di	PageSetupWindow		/
+Applica alla selezione	ConditionalFormatWindow		선택 영역에 적용
+Nuovo foglio	MainWindow		새 시트
+Separatore decimale:	PreferencesWindow		소수점 기호:
+Salva	CommentWindow		저장
+OK	MainWindow		확인
+Apri	MainWindow		열기
+Mostra lo splash screen all'avvio	PreferencesWindow		시작 시 스플래시 화면 표시
+Intervallo dati (una o piu' colonne di categoria, poi il valore):	PivotWindow		데이터 범위(범주 열 하나 이상, 그다음 값 열):
+Offrimi un caffe' ☕	AboutWindow		커피 한 잔 사주기 ☕
+Trova	MainWindow		찾기
+Cosa incollare:	PasteSpecialWindow		붙여넣을 항목:
+Excel (.xlsx)	MainWindow		Excel (.xlsx)
+Generale	PreferencesWindow		일반
+Colore bordo	ColorWindow		테두리 색
+File recenti da ricordare:	PreferencesWindow		기억할 최근 파일 수:
+Grafico	MainWindow		차트
+Bordo cella	MainWindow		셀 테두리
+Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.	SheetView		삽입할 수 없습니다. 시트 아래쪽의 일부 셀이 한계를 벗어납니다.
+Intervallo numerico	ValidationWindow		숫자 범위
+Continua senza salvare	MainWindow		저장하지 않고 계속
+Senza titolo	MainWindow		제목 없음
+Collegamento ipertestuale	HyperlinkWindow		하이퍼링크
+Medio	MainWindow		보통 선
+Riempi in basso	MainWindow		아래로 채우기
+CSV (.csv)	MainWindow		CSV (.csv)
+Eliminare il foglio \"%s\"? L'operazione non può essere annullata.	MainWindow		\"%s\" 시트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+Valori (separati da virgola):	ValidationWindow		원본(쉼표로 구분):
+File	MainWindow		파일
+Allinea a sinistra	MainWindow		왼쪽 맞춤
+Rinomina	RenameSheetWindow		이름 바꾸기
+Vai a	MainWindow		이동
+Allinea a destra	MainWindow		오른쪽 맞춤
+Conteggio	PivotWindow		개수
+Incolla	MainWindow		붙여넣기
+Somma	Pivot		합계
+Colore testo	ColorWindow		글꼴 색
+Inserisci colonna	SheetView		열 삽입
+Salva con nome…	MainWindow		다른 이름으로 저장…
+Unisci celle	MainWindow		셀 병합
+Grafico	ChartWindow		차트
+Sostituisci tutto	FindWindow		모두 바꾸기
+Destro	BorderWindow		오른쪽
+Commento cella	MainWindow		셀 메모
+Intervallo non valido: serve esattamente due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		범위가 올바르지 않습니다. 정확히 두 열(레이블, 값)과 숫자 행이 하나 이상 필요합니다(예: A1:B5).
+Barre	ChartWindow		막대형
+Formato file non riconosciuto da nessun translator installato.	MainWindow		설치된 변환기 중 이 파일 형식을 인식하는 것이 없습니다.
+Versione	AboutWindow		버전
+Nome del foglio:	RenameSheetWindow		시트 이름:
+Massimo	PivotWindow		최대
+Colore testo	MainWindow		글꼴 색
+Sostituisci tutto	MainWindow		모두 바꾸기
+Operazione con la cella di destinazione:	PasteSpecialWindow		대상 셀과의 연산:
+Apri…	MainWindow		열기…
+Abilita il salvataggio automatico (backup)	PreferencesWindow		자동 저장 사용(백업)
+Vai a…	MainWindow		이동…
+Tipo:	ConditionalFormatWindow		유형:
+Ordina decrescente	MainWindow		내림차순 정렬
+Valore (solo per \"uguale a\"):	ConditionalFormatWindow		값(\"같을 때\"에만 해당):
+Copia	MainWindow		복사
+Cerca:	FindWindow		찾을 내용:
+Tutto (come Incolla)	PasteSpecialWindow		모두(붙여넣기와 동일)
+Nome:	NameWindow		이름:
+Sinistro:	PageSetupWindow		왼쪽:
+Colore	ColorWindow		색
+Valori in centimetri	PageSetupWindow		센티미터 단위
+Altezza di una pagina	PageSetupWindow		페이지 높이에 맞추기
+Pronto	MainWindow		준비
+Pagina	PageSetupWindow		페이지
+Taglia	MainWindow		잘라내기
+Aggiungi/Aggiorna	NameWindow		추가/업데이트
+Colore scheda…	SheetTabView		시트 탭 색…
+Colore scheda	ColorWindow		시트 탭 색
+Taglia	SheetView		잘라내기
+Copia	SheetView		복사
+Incolla	SheetView		붙여넣기
+Cancella	SheetView		지우기
+Elimina riga	SheetView		행 삭제
+Elimina colonna	SheetView		열 삭제
+Ordina crescente	SheetView		오름차순 정렬
+Ordina decrescente	SheetView		내림차순 정렬
+Formato celle	SheetView		셀 서식
+Grassetto	SheetView		굵게
+Corsivo	SheetView		기울임꼴
+Sottolineato	SheetView		밑줄
+Allinea a sinistra	SheetView		왼쪽 맞춤
+Allinea al centro	SheetView		가운데 맞춤
+Allinea a destra	SheetView		오른쪽 맞춤
+Colore testo…	SheetView		글꼴 색…
+Colore sfondo…	SheetView		채우기 색…
+Bordo cella…	SheetView		셀 테두리…
+Commento cella…	SheetView		셀 메모…
+Modifica commento…	SheetView		메모 편집…
+Rimuovi commento	SheetView		메모 삭제
+Aggiungi alla finestra di controllo	MainWindow		조사식 창에 추가
+Apertura del file in corso...	MainWindow		파일을 여는 중...
+Area	ChartWindow		영역형
+Blocca celle selezionate	MainWindow		선택한 셀 잠금
+Combinato (barre+linee)	ChartWindow		콤보(막대형+꺾은선형)
+Dispersione (XY)	ChartWindow		분산형(XY)
+Finestra di controllo	WatchWindow		조사식 창
+Finestra di controllo…	MainWindow		조사식 창…
+Foglio protetto	SheetView		보호된 시트
+Formule	MainWindow		수식
+Impossibile avviare il caricamento del file.	MainWindow		파일 불러오기를 시작할 수 없습니다.
+Intervallo non valido: un grafico a dispersione richiede esattamente due colonne NUMERICHE (X, Y) con almeno una riga valida, es. A1:B5.	MainWindow		범위가 올바르지 않습니다. 분산형 차트에는 정확히 두 개의 숫자 열(X, Y)과 유효한 행이 하나 이상 필요합니다(예: A1:B5).
+La cella che stai cercando di modificare e' protetta. Per modificarla, sblocca prima la cella (Dati > Sblocca celle selezionate) oppure disattiva la protezione del foglio (Dati > Proteggi foglio).	SheetView		편집하려는 셀은 보호되어 있습니다. 편집하려면 먼저 셀 잠금을 해제하거나(데이터 > 선택한 셀 잠금 해제) 시트 보호를 해제하세요(데이터 > 시트 보호).
+Lettura del file...	MainWindow		파일을 읽는 중...
+Mostra formule	MainWindow		수식 표시
+Proteggi foglio	MainWindow		시트 보호
+Ricalcolo in corso...	MainWindow		다시 계산하는 중...
+Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		다시 계산하는 중: 시트 %d/%d(%d번째 패스) - %s
+Rimuovi	WatchWindow		제거
+Rimuovi frecce	MainWindow		연결선 제거
+Sblocca celle selezionate	MainWindow		선택한 셀 잠금 해제
+Scala di colori (minimo -> massimo)	ConditionalFormatWindow		색조(최소값 -> 최대값)
+Barra dei dati (minimo -> massimo)	ConditionalFormatWindow		데이터 막대(최소값 -> 최대값)
+Icon set (3 livelli)	ConditionalFormatWindow		아이콘 집합(3단계)
+Traccia dipendenti	MainWindow		참조하는 셀 추적
+Traccia precedenti	MainWindow		참조되는 셀 추적
+Traduzione del file in corso...	MainWindow		파일을 변환하는 중...
+Allinea in alto	MainWindow		위쪽 맞춤
+Centra verticalmente	MainWindow		세로 가운데 맞춤
+Allinea in basso	MainWindow		아래쪽 맞춤
+Allinea in alto	SheetView		위쪽 맞춤
+Centra verticalmente	SheetView		세로 가운데 맞춤
+Allinea in basso	SheetView		아래쪽 맞춤
+Apri file di esempio	MainWindow		샘플 파일 열기
+Il file di esempio non e' installato su questo sistema.	MainWindow		이 시스템에 샘플 파일이 설치되어 있지 않습니다.
+Stampa intestazioni righe/colonne	PageSetupWindow		행/열 머리글 인쇄
+Stampa griglia	PageSetupWindow		눈금선 인쇄
+Stampa	PageSetupWindow		인쇄
+Pagine:	PageSetupWindow		자동 맞춤:
+Larghe:	PageSetupWindow		용지 너비:
+Alte:	PageSetupWindow		용지 높이:
+Centratura	PageSetupWindow		페이지 가운데 맞춤
+Orizzontale	PageSetupWindow		가로
+Verticale	PageSetupWindow		세로
+Intestazione/piè di pagina	PageSetupWindow		머리글/바닥글
+Intestazione:	PageSetupWindow		머리글:
+Piè di pagina:	PageSetupWindow		바닥글:
+&P pagina, &N totale pagine, &D data	PageSetupWindow		&P 페이지 번호, &N 전체 페이지 수, &D 날짜
+Ordine pagine	PageSetupWindow		페이지 순서
+Prima giù, poi a destra	PageSetupWindow		열 우선
+Prima a destra, poi giù	PageSetupWindow		행 우선
+Titoli da ripetere	PageSetupWindow		인쇄 제목
+Righe:	PageSetupWindow		반복할 행:
+Colonne:	PageSetupWindow		반복할 열:
+Righe come 1:3, colonne come A:C (vuoto = nessuno)	PageSetupWindow		행은 1:3, 열은 A:C 형식(비워 두면 없음)
+Intestazioni	PageSetupWindow		머리글/바닥글
+Somma automatica	MainWindow		자동 합계
+Sostituisci	MainWindow		바꾸기
+Convalida dati	MainWindow		유효성 검사
+Formattazione condizionale	MainWindow		조건부 서식
+Vista	PreferencesWindow		보기
+Mostra formule nei fogli nuovi	PreferencesWindow		새 시트에서 수식 표시
+Media	PreferencesWindow		평균
+Conteggio	PreferencesWindow		개수
+Conteggio numerico	PreferencesWindow		숫자 셀 수
+Minimo	PreferencesWindow		최소값
+Massimo	PreferencesWindow		최대값
+Somma	PreferencesWindow		합계
+Cartella backup (vuota = accanto al file):	PreferencesWindow		백업 폴더(비워 두면 파일과 같은 위치):
+Sistema	PreferencesWindow		시스템
+Italiano	PreferencesWindow		이탈리아어
+English	PreferencesWindow		영어
+Lingua (al prossimo avvio):	PreferencesWindow		언어(다음 실행 시 적용):
+Riapri i file recenti all'avvio	PreferencesWindow		시작 시 최근 파일 다시 열기
