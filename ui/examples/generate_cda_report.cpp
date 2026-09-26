@@ -644,11 +644,23 @@ int main()
 	// linee sopra, riuso deliberato -- il tipo Area e' pensato proprio
 	// per lo stesso caso d'uso (un andamento nel tempo), la differenza
 	// e' solo visiva (area riempita sotto la linea).
+	// top=340 (non 230 come chartSeg/chartCountry sulla stessa riga di
+	// grafici): a differenza di quei due blocchi (5 righe dati, finiscono
+	// entro la riga 8), il blocco "Per mese" qui accanto (colonne 10-11)
+	// ha 12 righe dati (fino alla riga 15, dicembre) -- un top=230
+	// (giusto per le tabelle piu' corte) copriva davvero Settembre-
+	// Dicembre. Bug reale, pre-esistente (mai toccato in questa sessione
+	// prima d'ora), screenshot dell'utente, 2026-09-26. bottom=440 (non
+	// 430) per restare dentro lo spazio libero fra la riga 15 (fine
+	// tabella, y=310) e la riga di grafici sotto (chartProduct/chartMonth/
+	// ecc., y=450) -- un'altezza piu' bassa degli altri grafici (100px
+	// invece di 200), ma l'unico spazio davvero libero senza spostare
+	// anche tutto il resto della griglia di grafici qui sotto.
 	ChartObject chartMonthArea;
 	chartMonthArea.type = eAreaChart;
 	chartMonthArea.title = "Sales trend by month (area)";
 	chartMonthArea.dataRange = chartMonth.dataRange;
-	chartMonthArea.frame = BRect(920, 230, 1300, 430);
+	chartMonthArea.frame = BRect(920, 340, 1300, 440);
 
 	// Grafico COMBINATO (Fase 35): Vendite come barre, Profitto come
 	// linea, stessa scala e stesso asse categorie (vedi il commento su
