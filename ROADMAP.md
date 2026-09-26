@@ -488,8 +488,8 @@ through `.xlsx`, in either direction, before this work.
   cryptography dependency — OpenSSL), verified before unprotecting.
   **Distinct from** whole-workbook open-password encryption (the file
   itself is AES-encrypted, can't be opened at all without the
-  password) — that's a separate, larger gap, still open, see "Path to
-  full Excel parity" Tier 4 below
+  password) — that gap is now ALSO closed, read-only, see the Tier 4
+  entry below and `CHANGELOG.md`
 - ~~**`docProps/core.xml`/`app.xml`**~~ Fixed — see `CHANGELOG.md`.
   Writes the export's own timestamp (`dcterms:created`/`modified`) and
   `Application`; author/title/company/revision have no equivalent
@@ -783,9 +783,14 @@ list deliberately deviates from pure effort-sorting:
 - Secondary axis, trendlines, error bars on existing chart types
 - Named table styles (banded rows are the only styling today) —
   cosmetic
-- Password-protected / encrypted workbooks — real gap (a locked file
-  can't be opened at all today) but likely a small fraction of actual
-  users hit it day to day; no design started
+- ~~**Password-protected / encrypted workbooks**~~ Fixed (read-only) —
+  see `CHANGELOG.md`. A real `.xlsx` protected with a workbook
+  open-password (Agile Encryption, Excel 2010+) now opens: prompts for
+  the password, decrypts the real ZIP/OOXML in memory, feeds it into the
+  normal import pipeline unchanged. Scoped to Agile Encryption only (the
+  legacy 2007-2010 "Standard Encryption" binary format is out of scope);
+  read-only (re-exporting drops the encryption, a plain "Salva" on such
+  a document warns before silently overwriting the encrypted original)
 - Slicers (for pivot tables and structured tables) — depends on the
   Tier 3 2D-pivot-table gap for the pivot case anyway
 
