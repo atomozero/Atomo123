@@ -1513,6 +1513,38 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione stile tabella (nome + banda), in coda DOPO tutto il resto
+	// (Tier 4 "named table styles", vedi engine/src/Cell/TableStyles.h):
+	// stessa lista di Container::GetTables() nello stesso ordine della
+	// sezione tabelle piu' sopra (l'ordine di iterazione di una std::map
+	// e' deterministico), ma tenuta SEPARATA invece che infilata dentro
+	// quella sezione -- quella e' letta anche da file .ascd nativi gia'
+	// esistenti scritti prima di questo campo, e un campo in mezzo a una
+	// sezione gia' esistente romperebbe l'allineamento byte per byte di
+	// quei file vecchi. Una sezione tutta nuova IN CODA invece si
+	// comporta come ogni altra sezione opzionale di questo formato:
+	// assente = nessuno stile (comportamento identico a prima di questo
+	// campo), vedi il pattern EOF-tollerante in LoadASCD.
+	{
+		const std::map<std::string, CTableDef>& tables = doc->GetTables();
+		int32 styleCount = (int32)tables.size();
+		if (dest->Write(&styleCount, sizeof(styleCount)) != (ssize_t)sizeof(styleCount))
+			return B_IO_ERROR;
+		for (std::map<std::string, CTableDef>::const_iterator it = tables.begin();
+			it != tables.end(); ++it)
+		{
+			const CTableDef& def = it->second;
+			int32 styleNameLen = (int32)def.tableStyleName.size();
+			if (dest->Write(&styleNameLen, sizeof(styleNameLen)) != (ssize_t)sizeof(styleNameLen))
+				return B_IO_ERROR;
+			if (styleNameLen > 0 && dest->Write(def.tableStyleName.data(), styleNameLen) != styleNameLen)
+				return B_IO_ERROR;
+			int8 showBandedRows = def.showBandedRows ? 1 : 0;
+			if (dest->Write(&showBandedRows, sizeof(showBandedRows)) != (ssize_t)sizeof(showBandedRows))
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -3441,6 +3473,60 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					pivots2D[i].measures = measures;
 					pivots2D[i].columnValues = columnValues;
 					pivots2D[i].cachedRows2D = rows2D;
+				}
+			}
+		}
+	}
+
+	// Sezione stile tabella (nome + banda), scritta da SaveASCD in coda
+	// DOPO tutto il resto (Tier 4 "named table styles", vedi
+	// engine/src/Cell/TableStyles.h): le tabelle sono gia' tutte
+	// registrate a questo punto (sezione tabelle piu' sopra, via
+	// AddTable), nello stesso ordine (una std::map<std::string,...> e'
+	// sempre ordinata per chiave) di quando SaveASCD ha scritto questa
+	// sezione -- percio' l'i-esimo nome nell'ordine di GetTables() di
+	// ORA e' garantito essere l'i-esimo nome scritto ALLORA, anche se il
+	// nome non e' ripetuto qui nel file. File .ascd piu' vecchi di
+	// questo campo non hanno questa sezione: Read() che ritorna 0 byte
+	// (vera fine flusso) e' il segnale, non un numero di versione,
+	// stesso principio EOF-tollerante di sopra.
+	{
+		int32 styleCount = 0;
+		ssize_t got = source->Read(&styleCount, sizeof(styleCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(styleCount) || styleCount < 0 || styleCount > 100000)
+				return B_BAD_DATA;
+
+			std::vector<std::string> tableNames;
+			for (std::map<std::string, CTableDef>::const_iterator it = doc->GetTables().begin();
+				it != doc->GetTables().end(); ++it)
+				tableNames.push_back(it->first);
+
+			for (int32 i = 0; i < styleCount; i++)
+			{
+				int32 styleNameLen = 0;
+				if (source->Read(&styleNameLen, sizeof(styleNameLen)) != (ssize_t)sizeof(styleNameLen))
+					return B_BAD_DATA;
+				if (styleNameLen < 0 || styleNameLen > 4096)
+					return B_BAD_DATA;
+				std::string styleName;
+				if (styleNameLen > 0)
+				{
+					styleName.resize(styleNameLen);
+					if (source->Read(&styleName[0], styleNameLen) != styleNameLen)
+						return B_BAD_DATA;
+				}
+				int8 showBandedRows;
+				if (source->Read(&showBandedRows, sizeof(showBandedRows)) != (ssize_t)sizeof(showBandedRows))
+					return B_BAD_DATA;
+
+				if (i < (int32)tableNames.size())
+				{
+					CTableDef def = doc->GetTables().at(tableNames[i]);
+					def.tableStyleName = styleName;
+					def.showBandedRows = (showBandedRows != 0);
+					doc->AddTable(tableNames[i], def);
 				}
 			}
 		}

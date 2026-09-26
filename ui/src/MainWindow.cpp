@@ -96,6 +96,7 @@
 #include "CellParser.h"
 #include "Formatter.h"
 #include "Range.h"
+#include "TableStyles.h"
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "MainWindow"
@@ -167,6 +168,10 @@ static const uint32 kMsgShowCommentWindow = 'shcw';
 static const uint32 kMsgShowHyperlinkWindow = 'shlw';
 static const uint32 kMsgShowValidationWindow = 'shvw';
 static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
+// Tier 4 "named table styles": "style" (int32) e' l'indice in
+// kTableStyles (TableStyles.h), oppure -1 per "Nessuno" (banda grigia
+// neutra di sempre, tableStyleName vuoto).
+static const uint32 kMsgSetTableStyle = 'stbs';
 static const uint32 kMsgUnmergeCells = 'umrg';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgSetVerticalAlignment = 'valg';
@@ -956,6 +961,28 @@ MainWindow::MainWindow()
 	// attiva -- vedi MainWindow::ApplyValidationToSelection.
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Convalida dati" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowValidationWindow)));
+	dataMenu->AddSeparatorItem();
+	// Stile tabella con nome (Tier 4 "named table styles", vedi
+	// TableStyles.h): si applica alla tabella strutturata che contiene la
+	// cella attiva (MainWindow::ApplyTableStyleToSelection cerca in
+	// CContainer::GetTables()), non serve selezionare l'intero
+	// intervallo dati come per Colore sfondo/Convalida dati sopra --
+	// coerente con come Excel applica uno stile tabella dalla scheda
+	// "Progettazione tabella" cliccando ovunque dentro la tabella.
+	{
+		BMenu* tableStyleMenu = new BMenu(B_TRANSLATE("Stile tabella"));
+		BMessage* noneMsg = new BMessage(kMsgSetTableStyle);
+		noneMsg->AddInt32("style", -1);
+		tableStyleMenu->AddItem(new BMenuItem(B_TRANSLATE("Nessuno"), noneMsg));
+		tableStyleMenu->AddSeparatorItem();
+		for (int i = 0; i < kTableStyleCount; i++)
+		{
+			BMessage* styleMsg = new BMessage(kMsgSetTableStyle);
+			styleMsg->AddInt32("style", i);
+			tableStyleMenu->AddItem(new BMenuItem(kTableStyles[i].name, styleMsg));
+		}
+		dataMenu->AddItem(tableStyleMenu);
+	}
 	dataMenu->AddSeparatorItem();
 	// Il numero di righe/colonne e il punto vengono dalla selezione
 	// corrente (SheetView::SelectionRange()), non da una selezione di
@@ -4832,6 +4859,90 @@ void MainWindow::RemoveValidationFromSelection()
 	MarkModified();
 }
 
+// Tier 4 "named table styles": "styleIndex" e' l'indice in kTableStyles
+// (TableStyles.h), o -1 per "Nessuno". Cerca la tabella strutturata che
+// contiene la cella attiva della selezione corrente (non serve
+// selezionare tutto l'intervallo dati, coerente col menu). "tableRange"
+// ricostruita come intestazione (dataRange.top - 1) + dati
+// (CTableDef::dataRange gia' esclude sia l'intestazione sia un'eventuale
+// riga totali, vedi RegisterTable in XlsxTranslator.cpp) e' passata ad
+// ApplyTableStyleBanding con totalsRowCount=0 -- CTableDef non memorizza
+// separatamente quante righe totali aveva il file originale, ma non
+// serve: dataRange.bottom e' gia' l'ultima riga dati vera.
+void MainWindow::ApplyTableStyleToSelection(int styleIndex)
+{
+	if (!fDoc)
+		return;
+
+	range sel = fSheetView->SelectionRange();
+	cell anchor(sel.left, sel.top);
+
+	const std::map<std::string, CTableDef>& tables = fDoc->GetTables();
+	std::string foundName;
+	for (std::map<std::string, CTableDef>::const_iterator it = tables.begin();
+		it != tables.end(); ++it)
+	{
+		const range& d = it->second.dataRange;
+		if (anchor.h >= d.left && anchor.h <= d.right
+			&& anchor.v >= d.top - 1 && anchor.v <= d.bottom)
+		{
+			foundName = it->first;
+			break;
+		}
+	}
+
+	if (foundName.empty())
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Seleziona una cella dentro una tabella strutturata."),
+			B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	CTableDef def = tables.at(foundName);
+	range tableRange(def.dataRange.left, def.dataRange.top - 1,
+		def.dataRange.right, def.dataRange.bottom);
+
+	fSheetView->SaveUndoState(tableRange);
+
+	// Azzera prima la banda ESISTENTE (qualunque colore fosse, vecchio
+	// stile con nome o grigio neutro di sempre): ApplyTableStyleBanding
+	// sotto salta di proposito le celle che non sono al colore
+	// predefinito (per non coprire un colore scelto a mano dall'utente),
+	// quindi senza questo passo cambiare stile non avrebbe alcun effetto
+	// visibile su una tabella gia' bandata in precedenza. Stessa
+	// approssimazione gia' accettata per l'importazione XLSX: non esiste
+	// un modo per distinguere "questo e' il colore della banda" da "questo
+	// e' un colore scelto apposta dall'utente", quindi cambiare stile da
+	// questo menu sovrascrive sempre il pattern a bande, per design.
+	CellStyle defaultStyle;
+	for (int row = tableRange.top + 1; row <= tableRange.bottom; row++)
+	{
+		if ((row - tableRange.top - 1) % 2 != 0)
+			continue;
+		for (int col = tableRange.left; col <= tableRange.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fLowColor = defaultStyle.fLowColor;
+			fDoc->SetCellStyle(c, cs);
+		}
+	}
+
+	std::string newStyleName = (styleIndex >= 0 && styleIndex < kTableStyleCount)
+		? kTableStyles[styleIndex].name : "";
+	def.tableStyleName = newStyleName;
+	def.showBandedRows = true;
+	fDoc->AddTable(foundName, def);
+
+	ApplyTableStyleBanding(fDoc, tableRange, 0, newStyleName);
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 // "type" e' l'indice posizionale del menu di ConditionalFormatWindow
 // (vedi il commento li' per la tabella completa), NON lo stesso ordine
 // di CondFormatRuleType -- questa funzione ospita ogni tipo "per
@@ -7404,6 +7515,14 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgValidationRemove:
 			RemoveValidationFromSelection();
 			break;
+
+		case kMsgSetTableStyle:
+		{
+			int32 styleIndex = -1;
+			message->FindInt32("style", &styleIndex);
+			ApplyTableStyleToSelection((int)styleIndex);
+			break;
+		}
 
 		case kMsgShowConditionalFormatWindow:
 		{

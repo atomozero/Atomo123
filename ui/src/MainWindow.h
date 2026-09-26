@@ -485,6 +485,7 @@ public:
 	// kMsgValidationRemove.
 	void ApplyValidationToSelection(int type, const char* list, double min, double max);
 	void RemoveValidationFromSelection();
+	void ApplyTableStyleToSelection(int styleIndex);
 
 	// Formattazione condizionale VIVA (Fase 13): a differenza di
 	// SetCellValidation sopra (un primitivo per singola cella), qui
