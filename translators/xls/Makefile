@@ -25,16 +25,20 @@ ADDON := XlsTranslator
 CATALOG_SIG := application/x-vnd.Atomo-XlsTranslator
 CATKEYS_DIR := locales
 EN_CATKEYS := $(CATKEYS_DIR)/en.catkeys
+KO_CATKEYS := $(CATKEYS_DIR)/ko.catkeys
+JA_CATKEYS := $(CATKEYS_DIR)/ja.catkeys
 
 all: $(ADDON)
 
 $(ENGINE_DIR)/libengine.a:
 	$(MAKE) -C $(ENGINE_DIR)
 
-$(ADDON): XlsTranslator.cpp $(ENGINE_DIR)/libengine.a $(EN_CATKEYS)
+$(ADDON): XlsTranslator.cpp $(ENGINE_DIR)/libengine.a $(EN_CATKEYS) $(KO_CATKEYS) $(JA_CATKEYS)
 	$(CXX) -shared -o $(ADDON) XlsTranslator.cpp $(INCLUDES) $(CXXFLAGS) \
 		-L$(ENGINE_DIR) -lengine -lbe -ltranslation
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l en $(EN_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ko $(KO_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ja $(JA_CATKEYS)
 
 # Dove installare l'add-on: Haiku mette gli add-on di un'architettura
 # SECONDARIA in una sottocartella che porta il nome di quell'architettura

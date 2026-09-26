@@ -1,0 +1,5 @@
+1	Korean	application/x-vnd.Atomo-XlsxTranslator	373166805
+Versione %d.%d.%d	XlsxConfigView		버전 %d.%d.%d
+Importa/esporta fogli di calcolo dal/al formato\nExcel 2007+ (XLSX), incluse le formule vive sullo\nstesso foglio (un riferimento a un altro foglio\nesporta solo il valore calcolato).	XlsxConfigView		Excel 2007 이상(XLSX) 형식의 스프레드시트를\n가져오고 내보냅니다. 같은 시트 안의 수식도\n그대로 유지됩니다(다른 시트를 참조하는 수식은\n계산된 값만 내보냅니다).
+Copyright (c) 2026 Andrea Bernardi · Licenza MIT	XlsxConfigView		Copyright (c) 2026 Andrea Bernardi · MIT 라이선스
+Offrimi un caffe' ☕	XlsxConfigView		커피 한 잔 사주기 ☕

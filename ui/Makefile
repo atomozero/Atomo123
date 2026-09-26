@@ -100,6 +100,8 @@ FUNC_RESOURCES := ../engine/resources
 APP_MIME_SIG := application/x-vnd.Atomo-Atomo123
 CATKEYS_DIR := locales
 EN_CATKEYS := $(CATKEYS_DIR)/en.catkeys
+KO_CATKEYS := $(CATKEYS_DIR)/ko.catkeys
+JA_CATKEYS := $(CATKEYS_DIR)/ja.catkeys
 
 all: $(APP)
 
@@ -158,10 +160,12 @@ $(RSRC): $(RDEF) $(REZ) $(BSL) $(FUNC_RESOURCES)/funcs_by_nr.r \
 # convertita in HVIF con Icon-O-Matic, incorporata in Atomo123.rdef)
 # va allegata al binario con xres DOPO il link, non prima: xres opera
 # sul file eseguibile finito.
-$(APP): $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC) $(EN_CATKEYS)
+$(APP): $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC) $(EN_CATKEYS) $(KO_CATKEYS) $(JA_CATKEYS)
 	$(CXX) -o $(APP) $(OBJECTS) $(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o $(APP) $(RSRC)
 	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l en $(EN_CATKEYS)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l ko $(KO_CATKEYS)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l ja $(JA_CATKEYS)
 
 run: $(APP)
 	./$(APP)
