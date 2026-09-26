@@ -486,6 +486,7 @@ public:
 	void ApplyValidationToSelection(int type, const char* list, double min, double max);
 	void RemoveValidationFromSelection();
 	void ApplyTableStyleToSelection(int styleIndex);
+	void HandleInsertSlicer();
 
 	// Formattazione condizionale VIVA (Fase 13): a differenza di
 	// SetCellValidation sopra (un primitivo per singola cella), qui
@@ -726,6 +727,11 @@ private:
 	PageSetupWindow* fPageSetupWindow;
 	std::vector<ChartObject> fCharts;
 	std::vector<EmbeddedImage> fImages;
+	// Slicer (Tier 4, vedi Slicer.h): stesso principio esatto di
+	// fCharts/fImages sopra -- copia di lavoro del foglio attivo,
+	// risincronizzata con fSheets[fActiveSheetIndex].slicers agli stessi
+	// punti (apertura/cambio foglio/salvataggio).
+	std::vector<SlicerObject> fSlicers;
 
 	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
 	// AscdSheet (nome + documento + grafici) per ogni foglio, in

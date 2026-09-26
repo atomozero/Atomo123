@@ -112,6 +112,7 @@
 #include "TableStyles.h"
 #include "Chart.h"
 #include "EmbeddedImage.h"
+#include "Slicer.h"
 #include "FontMetrics.h"
 #include "Formatter.h"
 #include "FunctionUtils.h"
@@ -379,6 +380,18 @@ int main()
 	// il menu a tendina dell'AutoFilter che "ricorda" quale valore era
 	// escluso, esattamente come farebbe Excel.
 	imported[0].filterHiddenValues[4].push_back(BString("None"));
+	// Slicer (Tier 4): un pulsante-lista per la stessa colonna Discount
+	// Band appena filtrata sopra -- posizionato ben oltre l'ultima
+	// colonna dati (P, indice 16) per non sovrapporsi alla tabella, un
+	// margine ampio essendo qui solo dimostrativo (non serve l'esattezza
+	// pixel per pixel gia' necessaria per i grafici sulle altre schede).
+	{
+		SlicerObject discountSlicer;
+		discountSlicer.columnIndex = 4;
+		discountSlicer.title = "Discount Band";
+		discountSlicer.frame = BRect(1400, 40, 1560, 200);
+		imported[0].slicers.push_back(discountSlicer);
+	}
 	imported[0].hasTabColor = true;
 	imported[0].tabColor = kDarkGray;
 

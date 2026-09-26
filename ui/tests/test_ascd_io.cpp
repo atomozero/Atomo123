@@ -964,17 +964,17 @@ int main()
 		// cachedRows2D tutti vuoti), la sezione pivot 2D e' sempre
 		// ESATTAMENTE 18 byte (int32 count=1, poi int16+int32+int32+int32
 		// tutti "vuoti" per quell'unico pivot). Da quando esistono la
-		// sezione stile tabella e quella dei valori esclusi dell'AutoFilter
-		// (entrambe Tier 4, sempre in coda DOPO pivot 2D, quella
-		// dell'AutoFilter per ultima), pivot 2D non e' piu' l'ultima cosa
-		// scritta: per un documento SENZA tabelle strutturate ne' colonne
-		// filtrate, ciascuna delle due e' a sua volta sempre ESATTAMENTE 4
-		// byte (un solo int32 count=0) -- troncare 18+4+4=26 byte equivale
-		// quindi a un file scritto prima che TUTTE E TRE le sezioni
-		// esistessero (il caso "prima di pivot 2D" incontrato davvero da
-		// un file scritto in quella finestra di tempo aveva comunque, per
-		// definizione, anche zero tabelle stile-nominate e zero colonne
-		// filtrate, arrivate molto dopo).
+		// sezione stile tabella, quella dei valori esclusi dell'AutoFilter
+		// e quella degli slicer (tutte e tre Tier 4, sempre in coda DOPO
+		// pivot 2D, gli slicer per ultimi), pivot 2D non e' piu' l'ultima
+		// cosa scritta: per un documento SENZA tabelle strutturate, ne'
+		// colonne filtrate, ne' slicer, ciascuna delle tre e' a sua volta
+		// sempre ESATTAMENTE 4 byte (un solo int32 count=0) -- troncare
+		// 18+4+4+4=30 byte equivale quindi a un file scritto prima che
+		// TUTTE E QUATTRO le sezioni esistessero (il caso "prima di pivot
+		// 2D" incontrato davvero da un file scritto in quella finestra di
+		// tempo aveva comunque, per definizione, anche zero di ciascuna,
+		// arrivate molto dopo).
 		{
 			CContainer& legacyDoc = *new CContainer(NULL, NULL);
 			PivotTableObject legacyPivot;
@@ -991,8 +991,9 @@ int main()
 			const size_t kPivot2DSectionLen = 18;
 			const size_t kEmptyTableStyleSectionLen = 4; // int32 styleCount=0, nessuna tabella
 			const size_t kEmptyFilterHiddenValuesSectionLen = 4; // int32 columnCount=0, nessuna colonna filtrata
+			const size_t kEmptySlicerSectionLen = 4; // int32 slicerCount=0, nessuno slicer
 			const size_t kTrailerLen = kPivot2DSectionLen + kEmptyTableStyleSectionLen
-				+ kEmptyFilterHiddenValuesSectionLen;
+				+ kEmptyFilterHiddenValuesSectionLen + kEmptySlicerSectionLen;
 
 			size_t legacyFullLen = legacyBuf.BufferLength();
 			Check(legacyFullLen > kTrailerLen,
@@ -1020,10 +1021,10 @@ int main()
 					"(columnFieldCol=-1, measures/columnValues/cachedRows2D vuoti)");
 				legacyReloaded.Release();
 
-				// Le due sezioni stile tabella e valori esclusi AutoFilter
-				// (4+4 byte, entrambe vuote per questo documento) PIU' un
-				// solo byte del pivot 2D in meno: l'intero record del
-				// pivot (pivot2DCount, columnFieldCol, measureCount,
+				// Le tre sezioni stile tabella, valori esclusi AutoFilter e
+				// slicer (4+4+4 byte, tutte vuote per questo documento)
+				// PIU' un solo byte del pivot 2D in meno: l'intero record
+				// del pivot (pivot2DCount, columnFieldCol, measureCount,
 				// columnValueCount) si legge per intero, ma l'ultimo byte
 				// di rowCount2D manca -- deve fallire con B_BAD_DATA, non
 				// leggere oltre i limiti del buffer (e non scambiare
@@ -1032,7 +1033,7 @@ int main()
 				BFile shortFile("tests/roundtrip_pivot2d_short.ascd",
 					B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 				shortFile.Write(legacyBuf.Buffer(), legacyFullLen - kEmptyTableStyleSectionLen
-					- kEmptyFilterHiddenValuesSectionLen - 1);
+					- kEmptyFilterHiddenValuesSectionLen - kEmptySlicerSectionLen - 1);
 				shortFile.Unset();
 
 				BFile shortReopened("tests/roundtrip_pivot2d_short.ascd", B_READ_ONLY);
@@ -1174,6 +1175,84 @@ int main()
 				&noFilters) == B_OK && noFilters.empty(),
 			"un file senza sezione valori esclusi AutoFilter si rilegge senza errori e senza colonne filtrate");
 		oldDoc7.Release();
+	}
+
+	// Round-trip degli slicer (Tier 4, vedi Slicer.h): sezione NUOVISSIMA,
+	// scritta in coda DOPO la sezione valori esclusi AutoFilter sopra --
+	// verifica che frame/colonna/titolo sopravvivano al giro salva->
+	// ricarica per due slicer diversi.
+	{
+		std::vector<SlicerObject> savedSlicers;
+		SlicerObject s1;
+		s1.frame = BRect(10, 20, 150, 180);
+		s1.columnIndex = 2;
+		s1.title = "Colore";
+		savedSlicers.push_back(s1);
+		SlicerObject s2;
+		s2.frame = BRect(200, 20, 340, 180);
+		s2.columnIndex = 5;
+		s2.title = "Regione";
+		savedSlicers.push_back(s2);
+
+		CContainer& slicerSaveDoc = *new CContainer(NULL, NULL);
+		BFile slicerFile("tests/roundtrip_slicers.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&slicerSaveDoc, &slicerFile,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				NULL /* vbaProject */, NULL /* isProtected */, NULL /* protection */,
+				NULL /* filterHiddenValues */, &savedSlicers) == B_OK,
+			"SaveASCD con due slicer riesce");
+		slicerSaveDoc.Release();
+
+		BFile slicerReopened("tests/roundtrip_slicers.ascd", B_READ_ONLY);
+		CContainer& slicerReloaded = *new CContainer(NULL, NULL);
+		std::vector<SlicerObject> reloadedSlicers;
+		Check(LoadASCD(&slicerReopened, &slicerReloaded,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				false /* skipInitialRecalc */, NULL /* vbaProject */, NULL /* isProtected */,
+				false /* skipVbaAndProtectionSections */, NULL /* protection */,
+				NULL /* filterHiddenValues */, &reloadedSlicers) == B_OK,
+			"LoadASCD con due slicer riesce");
+
+		Check(reloadedSlicers.size() == 2, "entrambi gli slicer sopravvivono al giro salva->ricarica");
+		if (reloadedSlicers.size() == 2)
+		{
+			Check(reloadedSlicers[0].frame == BRect(10, 20, 150, 180)
+					&& reloadedSlicers[0].columnIndex == 2
+					&& reloadedSlicers[0].title == "Colore",
+				"il primo slicer (frame/colonna/titolo) sopravvive intatto");
+			Check(reloadedSlicers[1].frame == BRect(200, 20, 340, 180)
+					&& reloadedSlicers[1].columnIndex == 5
+					&& reloadedSlicers[1].title == "Regione",
+				"il secondo slicer (frame/colonna/titolo) sopravvive intatto, allineato al giusto");
+		}
+		slicerReloaded.Release();
+
+		// Un file scritto PRIMA di questa sezione (tests/roundtrip.ascd)
+		// deve restare leggibile con un vettore vuoto -- stesso principio
+		// EOF-tollerante di ogni altra sezione opzionale sopra.
+		BFile oldFormat8("tests/roundtrip.ascd", B_READ_ONLY);
+		CContainer& oldDoc8 = *new CContainer(NULL, NULL);
+		std::vector<SlicerObject> noSlicers;
+		Check(LoadASCD(&oldFormat8, &oldDoc8,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				false /* skipInitialRecalc */, NULL /* vbaProject */, NULL /* isProtected */,
+				false /* skipVbaAndProtectionSections */, NULL /* protection */,
+				NULL /* filterHiddenValues */, &noSlicers) == B_OK && noSlicers.empty(),
+			"un file senza sezione slicer si rilegge senza errori e senza slicer");
+		oldDoc8.Release();
 	}
 
 	// --- Un file .ascd con la colonna di un commento manomessa (fuori

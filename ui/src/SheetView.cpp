@@ -216,6 +216,10 @@ SheetView::SheetView(CContainer* doc)
 	fDraggingChartIndex(-1),
 	fResizingChartIndex(-1),
 	fSelectedChartIndex(-1),
+	fSlicers(NULL),
+	fDraggingSlicerIndex(-1),
+	fResizingSlicerIndex(-1),
+	fSelectedSlicerIndex(-1),
 	fImages(NULL),
 	fDraggingImageIndex(-1),
 	fResizingImageIndex(-1),
@@ -1230,6 +1234,14 @@ void SheetView::SetSelection(cell c)
 			Invalidate((*fCharts)[fSelectedChartIndex].frame);
 		fSelectedChartIndex = -1;
 	}
+	// Stesso principio esatto dei due blocchi sopra, ma per uno slicer
+	// selezionato (Tier 4).
+	if (fSelectedSlicerIndex >= 0)
+	{
+		if (fSlicers && fSelectedSlicerIndex < (int)fSlicers->size())
+			Invalidate((*fSlicers)[fSelectedSlicerIndex].frame);
+		fSelectedSlicerIndex = -1;
+	}
 
 	range oldRange = SelectionRange();
 	if (c == fSelection && c == fAnchor)
@@ -1277,6 +1289,12 @@ void SheetView::ExtendSelection(cell c)
 		if (fCharts && fSelectedChartIndex < (int)fCharts->size())
 			Invalidate((*fCharts)[fSelectedChartIndex].frame);
 		fSelectedChartIndex = -1;
+	}
+	if (fSelectedSlicerIndex >= 0)
+	{
+		if (fSlicers && fSelectedSlicerIndex < (int)fSlicers->size())
+			Invalidate((*fSlicers)[fSelectedSlicerIndex].frame);
+		fSelectedSlicerIndex = -1;
 	}
 
 	if (c == fSelection)
@@ -1919,6 +1937,8 @@ void SheetView::SelectImage(int index)
 	// un grafico), rendendo ambiguo cosa cancellerebbe Canc.
 	if (index >= 0 && fSelectedChartIndex >= 0)
 		SelectChart(-1);
+	if (index >= 0 && fSelectedSlicerIndex >= 0)
+		SelectSlicer(-1);
 
 	if (index == fSelectedImageIndex)
 		return;
@@ -1958,13 +1978,36 @@ SheetView::UndoSnapshot SheetView::CaptureChartDeleteSnapshot(int chartIndex) co
 	return snap;
 }
 
+// Stesso principio esatto di CaptureChartSnapshot (Tier 4, slicer).
+SheetView::UndoSnapshot SheetView::CaptureSlicerSnapshot(int slicerIndex) const
+{
+	UndoSnapshot snap;
+	snap.slicerIndex = slicerIndex;
+	if (fSlicers && slicerIndex >= 0 && slicerIndex < (int)fSlicers->size())
+		snap.slicerFrameBefore = (*fSlicers)[slicerIndex].frame;
+	return snap;
+}
+
+// Stesso principio esatto di CaptureChartDeleteSnapshot sopra.
+SheetView::UndoSnapshot SheetView::CaptureSlicerDeleteSnapshot(int slicerIndex) const
+{
+	UndoSnapshot snap;
+	snap.isSlicerDeleteSnapshot = true;
+	snap.deletedSlicerIndex = slicerIndex;
+	if (fSlicers && slicerIndex >= 0 && slicerIndex < (int)fSlicers->size())
+		snap.deletedSlicer = (*fSlicers)[slicerIndex];
+	return snap;
+}
+
 // Stesso principio esatto di SelectImage sopra, simmetrico: selezionare
 // un grafico deseleziona un'eventuale immagine selezionata (vedi il
-// commento gemello li').
+// commento gemello li'), e ora anche uno slicer selezionato (Tier 4).
 void SheetView::SelectChart(int index)
 {
 	if (index >= 0 && fSelectedImageIndex >= 0)
 		SelectImage(-1);
+	if (index >= 0 && fSelectedSlicerIndex >= 0)
+		SelectSlicer(-1);
 
 	if (index == fSelectedChartIndex)
 		return;
@@ -1990,6 +2033,44 @@ void SheetView::DeleteSelectedChart()
 	BRect dirty = (*fCharts)[fSelectedChartIndex].frame;
 	fCharts->erase(fCharts->begin() + fSelectedChartIndex);
 	fSelectedChartIndex = -1;
+
+	Invalidate(dirty);
+	NotifyDocumentChanged();
+}
+
+// Stesso principio esatto di SelectImage/SelectChart sopra, simmetrico
+// in entrambe le direzioni (Tier 4).
+void SheetView::SelectSlicer(int index)
+{
+	if (index >= 0 && fSelectedImageIndex >= 0)
+		SelectImage(-1);
+	if (index >= 0 && fSelectedChartIndex >= 0)
+		SelectChart(-1);
+
+	if (index == fSelectedSlicerIndex)
+		return;
+
+	if (fSelectedSlicerIndex >= 0 && fSlicers && fSelectedSlicerIndex < (int)fSlicers->size())
+		Invalidate((*fSlicers)[fSelectedSlicerIndex].frame);
+
+	fSelectedSlicerIndex = index;
+
+	if (fSelectedSlicerIndex >= 0 && fSlicers && fSelectedSlicerIndex < (int)fSlicers->size())
+		Invalidate((*fSlicers)[fSelectedSlicerIndex].frame);
+}
+
+// Stesso principio esatto di DeleteSelectedChart sopra.
+void SheetView::DeleteSelectedSlicer()
+{
+	if (!fSlicers || fSelectedSlicerIndex < 0 || fSelectedSlicerIndex >= (int)fSlicers->size())
+		return;
+
+	fUndoStack.push_back(CaptureSlicerDeleteSnapshot(fSelectedSlicerIndex));
+	fRedoStack.clear();
+
+	BRect dirty = (*fSlicers)[fSelectedSlicerIndex].frame;
+	fSlicers->erase(fSlicers->begin() + fSelectedSlicerIndex);
+	fSelectedSlicerIndex = -1;
 
 	Invalidate(dirty);
 	NotifyDocumentChanged();
@@ -2050,6 +2131,15 @@ void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 	{
 		if (fCharts && snap.chartIndex < (int)fCharts->size())
 			(*fCharts)[snap.chartIndex].frame = snap.chartFrameBefore;
+		return;
+	}
+
+	// Istantanea di uno slicer (vedi SaveSlicerUndoState): stesso
+	// principio esatto della sezione grafici sopra (Tier 4).
+	if (snap.slicerIndex >= 0)
+	{
+		if (fSlicers && snap.slicerIndex < (int)fSlicers->size())
+			(*fSlicers)[snap.slicerIndex].frame = snap.slicerFrameBefore;
 		return;
 	}
 
@@ -2199,6 +2289,17 @@ void SheetView::Undo()
 		return;
 	}
 
+	// Istantanea di uno slicer: stesso scambio simmetrico dei rami sopra
+	// (Tier 4).
+	if (toRestore.slicerIndex >= 0)
+	{
+		fRedoStack.push_back(CaptureSlicerSnapshot(toRestore.slicerIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
 	// Cancellazione di un'immagine incorporata (DeleteSelectedImage):
 	// a differenza del ramo gemello sopra (imageIndex, per un'immagine
 	// che esiste ancora), qui l'immagine e' stata RIMOSSA dal vettore
@@ -2238,6 +2339,25 @@ void SheetView::Undo()
 		UndoSnapshot forRedo;
 		forRedo.isChartDeleteSnapshot = true;
 		forRedo.deletedChartIndex = toRestore.deletedChartIndex;
+		fRedoStack.push_back(forRedo);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
+	// Cancellazione di uno slicer (DeleteSelectedSlicer): stesso
+	// principio esatto del ramo grafico sopra (Tier 4).
+	if (toRestore.isSlicerDeleteSnapshot)
+	{
+		if (fSlicers && toRestore.deletedSlicerIndex >= 0
+			&& toRestore.deletedSlicerIndex <= (int)fSlicers->size())
+		{
+			fSlicers->insert(fSlicers->begin() + toRestore.deletedSlicerIndex, toRestore.deletedSlicer);
+			fSelectedSlicerIndex = toRestore.deletedSlicerIndex;
+		}
+		UndoSnapshot forRedo;
+		forRedo.isSlicerDeleteSnapshot = true;
+		forRedo.deletedSlicerIndex = toRestore.deletedSlicerIndex;
 		fRedoStack.push_back(forRedo);
 		Invalidate();
 		NotifyDocumentChanged();
@@ -2310,6 +2430,15 @@ void SheetView::Redo()
 		NotifyDocumentChanged();
 		return;
 	}
+	// Vedi il commento nel ramo equivalente di Undo() sopra (Tier 4).
+	if (toRestore.slicerIndex >= 0)
+	{
+		fUndoStack.push_back(CaptureSlicerSnapshot(toRestore.slicerIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
 	// Vedi il commento nel ramo equivalente di Undo() sopra: qui
 	// l'immagine e' stata REINSERITA da quell'Undo, quindi ricancellarla
 	// e' identica alla cancellazione originale -- si cattura di nuovo
@@ -2339,6 +2468,21 @@ void SheetView::Redo()
 			fCharts->erase(fCharts->begin() + idx);
 		}
 		fSelectedChartIndex = -1;
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+	// Vedi il commento nel ramo equivalente di Undo() sopra, stesso
+	// principio del ramo grafico appena sopra ma per uno slicer (Tier 4).
+	if (toRestore.isSlicerDeleteSnapshot)
+	{
+		int idx = toRestore.deletedSlicerIndex;
+		if (fSlicers && idx >= 0 && idx < (int)fSlicers->size())
+		{
+			fUndoStack.push_back(CaptureSlicerDeleteSnapshot(idx));
+			fSlicers->erase(fSlicers->begin() + idx);
+		}
+		fSelectedSlicerIndex = -1;
 		Invalidate();
 		NotifyDocumentChanged();
 		return;
@@ -2413,6 +2557,19 @@ void SheetView::SaveChartUndoState(int chartIndex, BRect beforeFrame)
 	UndoSnapshot snap;
 	snap.chartIndex = chartIndex;
 	snap.chartFrameBefore = beforeFrame;
+	fUndoStack.push_back(snap);
+	fRedoStack.clear();
+}
+
+// Stesso principio esatto di SaveChartUndoState sopra (Tier 4, slicer).
+void SheetView::SaveSlicerUndoState(int slicerIndex, BRect beforeFrame)
+{
+	if (!fSlicers || slicerIndex < 0 || slicerIndex >= (int)fSlicers->size())
+		return;
+
+	UndoSnapshot snap;
+	snap.slicerIndex = slicerIndex;
+	snap.slicerFrameBefore = beforeFrame;
 	fUndoStack.push_back(snap);
 	fRedoStack.clear();
 }
@@ -3515,6 +3672,44 @@ BRect SheetView::ChartResizeHandle(const ChartObject& obj) const
 		obj.frame.right, obj.frame.bottom);
 }
 
+// Stesso principio esatto di ChartResizeHandle sopra (Tier 4, slicer).
+BRect SheetView::SlicerResizeHandle(const SlicerObject& obj) const
+{
+	const float kHandleSize = 8;
+	return BRect(obj.frame.right - kHandleSize, obj.frame.bottom - kHandleSize,
+		obj.frame.right, obj.frame.bottom);
+}
+
+// Striscia superiore del riquadro, altezza fissa: afferrarla trascina
+// l'intero slicer (vedi MouseDown), il corpo sotto e' tutto pulsanti.
+BRect SheetView::SlicerTitleBarRect(const SlicerObject& obj) const
+{
+	const float kTitleHeight = 22;
+	return BRect(obj.frame.left, obj.frame.top,
+		obj.frame.right, obj.frame.top + kTitleHeight);
+}
+
+// Un rettangolo per ogni valore distinto della colonna filtrata,
+// impilati verticalmente sotto SlicerTitleBarRect -- vedi il commento
+// piu' lungo nella dichiarazione in SheetView.h.
+void SheetView::SlicerButtonRects(const SlicerObject& obj, std::vector<BRect>* outRects,
+	std::vector<BString>* outValues) const
+{
+	outRects->clear();
+	outValues->clear();
+
+	std::vector<BString> values = UniqueColumnValues(obj.columnIndex);
+	const float kButtonHeight = 20;
+	float top = SlicerTitleBarRect(obj).bottom;
+	for (size_t i = 0; i < values.size(); i++)
+	{
+		BRect r(obj.frame.left, top, obj.frame.right, top + kButtonHeight);
+		outRects->push_back(r);
+		outValues->push_back(values[i]);
+		top += kButtonHeight;
+	}
+}
+
 // Stesso principio esatto di ImageResizeHandle/ChartResizeHandle sopra,
 // ma sull'angolo in basso a destra della selezione corrente (lo stesso
 // "selOuter" gia' calcolato da Draw() per il riquadro blu di selezione,
@@ -4000,6 +4195,57 @@ void SheetView::Draw(BRect updateRect)
 		}
 	}
 
+	// Slicer (Tier 4, vedi Slicer.h): un riquadro con una barra titolo
+	// (trascinabile) e un elenco di pulsanti, uno per valore distinto
+	// della colonna AutoFilter che controllano -- letti dal vivo
+	// (UniqueColumnValues/IsColumnValueVisible) a ogni ridisegno, stesso
+	// principio "sempre aggiornato" dei grafici sopra.
+	if (fSlicers && fDoc)
+	{
+		for (size_t i = 0; i < fSlicers->size(); i++)
+		{
+			const SlicerObject& obj = (*fSlicers)[i];
+			if (!obj.frame.Intersects(updateRect))
+				continue;
+
+			SetHighColor(255, 255, 255);
+			FillRect(obj.frame);
+			SetHighColor(120, 120, 120);
+			StrokeRect(obj.frame);
+
+			BRect titleBar = SlicerTitleBarRect(obj);
+			SetHighColor(210, 210, 210);
+			FillRect(titleBar);
+			SetHighColor(0, 0, 0);
+			SetFont(be_bold_font);
+			DrawString(obj.title.String(), BPoint(titleBar.left + 4, titleBar.bottom - 6));
+			SetFont(be_plain_font);
+
+			std::vector<BRect> buttonRects;
+			std::vector<BString> buttonValues;
+			SlicerButtonRects(obj, &buttonRects, &buttonValues);
+			for (size_t b = 0; b < buttonRects.size(); b++)
+			{
+				bool visible = IsColumnValueVisible(obj.columnIndex, buttonValues[b]);
+				SetHighColor(visible ? 225 : 245, visible ? 235 : 220, visible ? 250 : 220);
+				FillRect(buttonRects[b]);
+				SetHighColor(160, 160, 160);
+				StrokeRect(buttonRects[b]);
+				SetHighColor(0, 0, 0);
+				DrawString(buttonValues[b].String(),
+					BPoint(buttonRects[b].left + 4, buttonRects[b].bottom - 5));
+			}
+
+			SetHighColor(80, 80, 80);
+			FillRect(SlicerResizeHandle(obj));
+			if ((int)i == fSelectedSlicerIndex)
+			{
+				SetHighColor(30, 100, 200);
+				StrokeRect(obj.frame);
+			}
+		}
+	}
+
 	// Immagini incorporate (Fase 12): stesso principio dei grafici
 	// sopra ma ancorate a una cella (anchor+scarto in pixel, come
 	// l'anchor XLSX originale) invece di un BRect assoluto -- cosi'
@@ -4385,6 +4631,75 @@ void SheetView::MouseDown(BPoint where)
 		}
 	}
 
+	// Ridimensionamento di uno slicer (Tier 4): stesso principio esatto
+	// del ridimensionamento grafico sopra, controllato PRIMA sia del
+	// clic sul pulsante sia del trascinamento (la maniglia e' un
+	// bersaglio piu' piccolo e specifico).
+	if (fSlicers)
+	{
+		for (int i = (int)fSlicers->size() - 1; i >= 0; i--)
+		{
+			if (SlicerResizeHandle((*fSlicers)[i]).Contains(where))
+			{
+				fResizingSlicerIndex = i;
+				fResizeSlicerStart = where;
+				fResizeSlicerStartFrame = (*fSlicers)[i].frame;
+				SelectSlicer(i);
+				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+				return;
+			}
+		}
+	}
+
+	// Clic su un pulsante dello slicer (Tier 4): esattamente lo stesso
+	// cambio di stato di un clic su una voce del menu a tendina
+	// dell'AutoFilter (ShowAutoFilterMenu sopra) -- un valore sempre
+	// visibile diventa escluso e viceversa. NON annullabile (Undo),
+	// stessa scelta gia' fatta per il menu a tendina: e' un cambio di
+	// filtro interattivo, non una modifica al documento nel senso di
+	// Annulla/Ripeti. Controllato PRIMA del trascinamento sotto: il
+	// corpo dello slicer e' tutto pulsanti, solo la barra del titolo
+	// trascina.
+	if (fSlicers)
+	{
+		for (int i = (int)fSlicers->size() - 1; i >= 0; i--)
+		{
+			const SlicerObject& obj = (*fSlicers)[i];
+			std::vector<BRect> buttonRects;
+			std::vector<BString> buttonValues;
+			SlicerButtonRects(obj, &buttonRects, &buttonValues);
+			for (size_t b = 0; b < buttonRects.size(); b++)
+			{
+				if (buttonRects[b].Contains(where))
+				{
+					bool wasVisible = IsColumnValueVisible(obj.columnIndex, buttonValues[b]);
+					SetColumnValueHidden(obj.columnIndex, buttonValues[b], wasVisible);
+					SelectSlicer(i);
+					return;
+				}
+			}
+		}
+	}
+
+	// Trascinamento di uno slicer: solo la barra del titolo (vedi il
+	// commento sopra su SlicerTitleBarRect/perche' il corpo non
+	// trascina), stesso principio esatto del trascinamento grafico sopra.
+	if (fSlicers)
+	{
+		for (int i = (int)fSlicers->size() - 1; i >= 0; i--)
+		{
+			if (SlicerTitleBarRect((*fSlicers)[i]).Contains(where))
+			{
+				fDraggingSlicerIndex = i;
+				fDragSlicerStart = where;
+				fDragSlicerStartFrame = (*fSlicers)[i].frame;
+				SelectSlicer(i);
+				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+				return;
+			}
+		}
+	}
+
 	// Ridimensionamento di un'immagine incorporata: la maniglia
 	// (ImageResizeHandle, angolo in basso a destra) e' un bersaglio piu'
 	// piccolo e piu' specifico del corpo dell'immagine, quindi va
@@ -4591,6 +4906,30 @@ void SheetView::MouseUp(BPoint where)
 		NotifyDocumentChanged();
 	}
 	fResizingChartIndex = -1;
+	// Stesso principio esatto dei due blocchi grafico sopra (Tier 4,
+	// slicer).
+	if (fDraggingSlicerIndex >= 0)
+	{
+		if (fSlicers && fDraggingSlicerIndex < (int)fSlicers->size())
+		{
+			const SlicerObject& obj = (*fSlicers)[fDraggingSlicerIndex];
+			if (obj.frame != fDragSlicerStartFrame)
+				SaveSlicerUndoState(fDraggingSlicerIndex, fDragSlicerStartFrame);
+		}
+		NotifyDocumentChanged();
+	}
+	fDraggingSlicerIndex = -1;
+	if (fResizingSlicerIndex >= 0)
+	{
+		if (fSlicers && fResizingSlicerIndex < (int)fSlicers->size())
+		{
+			const SlicerObject& obj = (*fSlicers)[fResizingSlicerIndex];
+			if (obj.frame != fResizeSlicerStartFrame)
+				SaveSlicerUndoState(fResizingSlicerIndex, fResizeSlicerStartFrame);
+		}
+		NotifyDocumentChanged();
+	}
+	fResizingSlicerIndex = -1;
 	// Un clic destro su un'immagine SENZA superare la soglia di
 	// trascinamento (vedi MouseMoved) non ha mai chiamato DragMessage():
 	// resta solo da azzerare l'armamento, l'immagine resta selezionata
@@ -4809,6 +5148,35 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 		ChartObject& obj = (*fCharts)[fDraggingChartIndex];
 		obj.frame = fDragChartStartFrame;
 		obj.frame.OffsetBy(where.x - fDragChartStart.x, where.y - fDragChartStart.y);
+		ScrollToShowRect(obj.frame);
+		Invalidate();
+		return;
+	}
+
+	// Ridimensionamento di uno slicer in corso (Tier 4): stesso principio
+	// esatto del ridimensionamento grafico sopra.
+	if (fResizingSlicerIndex >= 0 && fSlicers
+		&& fResizingSlicerIndex < (int)fSlicers->size())
+	{
+		const float kMinSlicerSize = 60;
+		SlicerObject& obj = (*fSlicers)[fResizingSlicerIndex];
+		float newRight = fResizeSlicerStartFrame.right + (where.x - fResizeSlicerStart.x);
+		float newBottom = fResizeSlicerStartFrame.bottom + (where.y - fResizeSlicerStart.y);
+		obj.frame.right = std::max(fResizeSlicerStartFrame.left + kMinSlicerSize, newRight);
+		obj.frame.bottom = std::max(fResizeSlicerStartFrame.top + kMinSlicerSize, newBottom);
+		ScrollToShowRect(obj.frame);
+		Invalidate();
+		return;
+	}
+
+	// Trascinamento di uno slicer in corso (Tier 4): stesso principio
+	// esatto del trascinamento grafico sopra.
+	if (fDraggingSlicerIndex >= 0 && fSlicers
+		&& fDraggingSlicerIndex < (int)fSlicers->size())
+	{
+		SlicerObject& obj = (*fSlicers)[fDraggingSlicerIndex];
+		obj.frame = fDragSlicerStartFrame;
+		obj.frame.OffsetBy(where.x - fDragSlicerStart.x, where.y - fDragSlicerStart.y);
 		ScrollToShowRect(obj.frame);
 		Invalidate();
 		return;
@@ -5134,6 +5502,8 @@ bool SheetView::HandleKey(char key, bool ctrl, bool shift)
 				DeleteSelectedImage();
 			else if (fSelectedChartIndex >= 0)
 				DeleteSelectedChart();
+			else if (fSelectedSlicerIndex >= 0)
+				DeleteSelectedSlicer();
 			else
 				ClearSelection();
 			return true;

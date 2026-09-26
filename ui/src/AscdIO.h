@@ -30,6 +30,7 @@
 
 #include "Chart.h"
 #include "EmbeddedImage.h"
+#include "Slicer.h"
 
 class CContainer;
 
@@ -257,7 +258,12 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// stesso motivo di ogni altro campo aggiunto in coda qui. NULL =
 	// non raccolto (il comportamento di sempre per ogni chiamante
 	// esistente).
-	std::map<int, std::vector<BString> >* filterHiddenValues = NULL);
+	std::map<int, std::vector<BString> >* filterHiddenValues = NULL,
+	// Slicer (Tier 4, vedi Slicer.h): ultimo parametro per lo stesso
+	// motivo di ogni altro campo aggiunto in coda qui. NULL/non raccolto
+	// = nessuno slicer, il comportamento di sempre per ogni chiamante
+	// esistente.
+	std::vector<SlicerObject>* slicers = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -276,7 +282,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	// Vedi il commento gemello sopra in LoadASCD.
 	const AscdSheetProtection* protection = NULL,
 	// Vedi il commento gemello sopra in LoadASCD.
-	const std::map<int, std::vector<BString> >* filterHiddenValues = NULL);
+	const std::map<int, std::vector<BString> >* filterHiddenValues = NULL,
+	// Vedi il commento gemello sopra in LoadASCD.
+	const std::vector<SlicerObject>* slicers = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -342,6 +350,9 @@ struct AscdSheet {
 	// solo il menu a tendina non "ricordava" quali valori esatti le
 	// avevano escluse -- vedi il commento in SheetView.h).
 	std::map<int, std::vector<BString> > filterHiddenValues;
+	// Slicer (Tier 4, vedi Slicer.h): vuoto di default, nessun documento
+	// scritto prima di questo campo ne aveva mai uno.
+	std::vector<SlicerObject> slicers;
 	// Posizione di scorrimento (Fase 17, richiesta esplicita
 	// dell'utente: "se mi sposto su un foglio non vorrei che anche gli
 	// altri fogli si spostassero"): un solo SheetView e' condiviso da
