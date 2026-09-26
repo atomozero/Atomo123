@@ -5,6 +5,22 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.3.0 (in progress):
+- Seven more UI languages on top of the Korean/Japanese pair below:
+  Spanish, French, German, Portuguese, Chinese (Simplified), Russian,
+  and Arabic — same mechanism (`linkcatkeys -tr` embedding one catkeys
+  file per language into the app and all four translators' About
+  views), using Excel/Numbers' own terminology per language where
+  known. AI-assisted translation, not reviewed by native speakers for
+  any of the 7 (same disclosed caveat as Korean/Japanese). Verified
+  for all 7: line counts and source/context columns byte-identical to
+  the English catalog, header fingerprints unchanged, a full rebuild
+  of the app and all four translators links every catalog with no
+  errors, and a runtime probe confirms a real translated string
+  resolves correctly for each language via `BCatalog`. Along the way,
+  fixed 6 UI strings that had been left untranslated in `en.catkeys`
+  itself (still literal Italian text in the English column) — found
+  independently while producing 5 of the 7 new catalogs, since each
+  used `en.catkeys` as its reference.
 - Two community contributions from rainygirl, merged directly into
   `master` (see the PR threads for why not through GitHub's merge
   button): translators now install into the correct per-architecture
