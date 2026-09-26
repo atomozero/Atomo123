@@ -1,0 +1,396 @@
+1	Chinese (Simplified)	application/x-vnd.Atomo-Atomo123	1829224689
+Dividi	PasteSpecialWindow		除
+Nuovo documento	MainWindow		新建文档
+Sostituisci con:	FindWindow		替换为:
+Minimo	PivotWindow		最小值
+Moltiplica	PasteSpecialWindow		乘
+Modifica	MainWindow		编辑
+Stampa…	MainWindow		打印…
+Salva	HyperlinkWindow		保存
+(nessuno)	MainWindow		(无)
+Minimo	Pivot		最小值
+Generale	MainWindow		常规
+Rimuovi collegamento	HyperlinkWindow		删除链接
+›	PageSetupWindow		›
+Collegamento ipertestuale…	MainWindow		超链接…
+\"%s\" non è uno dei valori ammessi:\n%s	MainWindow		\"%s\" 不是允许的值之一：\n%s
+Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		取消选择某个系列可仅隐藏其在图表中的数值标签；该系列本身仍然可见。
+Mostra tutto	SheetView		全部显示
+Conteggio	MainWindow		计数
+Il file conteneva un grafico non implementato in Atomo123:\n	MainWindow		文件中包含一个 Atomo123 未实现的图表：\n
+Spessore bordo	MainWindow		边框粗细
+Separatore delle migliaia:	PreferencesWindow		千位分隔符：
+Crea	PivotWindow		创建
+Nessun valore positivo da mostrare.	Chart		没有可显示的正值。
+‹	PageSetupWindow		‹
+immagine.png	SheetView		图片.png
+Pivot	MainWindow		数据透视
+Preferenze…	MainWindow		首选项…
+Bordo superiore	MainWindow		上边框
+Elimina riga	MainWindow		删除行
+Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		文件中包含多个 Atomo123 未实现的图表：\n
+Massimo	Pivot		最大值
+Incolla	PasteSpecialWindow		粘贴
+Formato	MainWindow		格式
+Margini	PageSetupWindow		页边距
+Informazioni su Atomo123	AboutWindow		关于 Atomo123
+Spesso	MainWindow		粗
+Sottrai	PasteSpecialWindow		减
+Media	PivotWindow		平均值
+Tabella pivot	MainWindow		数据透视表
+Aggiorna tabelle pivot	MainWindow		刷新数据透视表
+Collegamento ipertestuale	MainWindow		超链接
+Imposta area di stampa	MainWindow		设置打印区域
+Salva	MainWindow		保存
+Incolla speciale…	MainWindow		选择性粘贴…
+Valori duplicati nella selezione	ConditionalFormatWindow		所选内容中的重复值
+URL:	HyperlinkWindow		URL：
+Nuovo	MainWindow		新建
+Scrittura del file fallita.	MainWindow		写入文件失败。
+Trasponi righe e colonne	PasteSpecialWindow		转置行和列
+Spazio ( )	PreferencesWindow		空格 ( )
+Minimo:	ValidationWindow		最小值：
+Le modifiche non salvate andranno perse. Continuare?	MainWindow		未保存的更改将丢失。是否继续？
+Grafico non implementato	MainWindow		未实现的图表
+Versione %u.%u.%u	AboutWindow		版本 %u.%u.%u
+Separatore di elenco:	PreferencesWindow		列表分隔符：
+Tabella pivot	PivotWindow		数据透视表
+Serie	Chart		系列
+Mostra griglia	PreferencesWindow		显示网格线
+Applica	PageSetupWindow		应用
+Trova e sostituisci	FindWindow		查找和替换
+Inferiore:	PageSetupWindow		下：
+Informazioni su Atomo123…	MainWindow		关于 Atomo123…
+Impossibile aprire il file selezionato.	MainWindow		无法打开所选文件。
+Seleziona tutto	MainWindow		全选
+Colore testo…	MainWindow		字体颜色…
+Sinistro	BorderWindow		左
+Ogni quanti minuti:	PreferencesWindow		间隔分钟数：
+Elimina foglio	MainWindow		删除工作表
+Nessun dato valido nell'intervallo (servono almeno due colonne: una o piu' di categoria testuale, poi il valore numerico).	MainWindow		区域内没有有效数据（至少需要两列：一列或多列文本类别，后跟数值列）。
+Intervallo (due colonne: etichette, valori):	ChartWindow		区域（两列：标签、数值）：
+Applica	ColorWindow		应用
+Colore sfondo	MainWindow		背景颜色
+Imposta pagina…	MainWindow		页面设置…
+Riempi a destra	MainWindow		向右填充
+Elimina foglio	SheetTabView		删除工作表
+Cella di destinazione nel foglio:	ChartWindow		工作表中的目标单元格：
+Stampa…	PageSetupWindow		打印…
+Commento cella…	MainWindow		单元格批注…
+Cancella area di stampa	MainWindow		清除打印区域
+Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	编辑中
+Esci	MainWindow		退出
+Imposta pagina	PageSetupWindow		页面设置
+Applica	PreferencesWindow		应用
+Esiste già un foglio con questo nome.	MainWindow		已存在同名工作表。
+Rimuovi convalida	ValidationWindow		删除验证
+Modifiche non salvate	MainWindow		未保存的更改
+Titolo (facoltativo):	ChartWindow		标题（可选）：
+Minimo	MainWindow		最小值
+Categoria	Pivot		类别
+Salva	ValidationWindow		保存
+Ordina Z-A	MainWindow		按 Z 到 A 排序
+Applica	BorderWindow		应用
+Spessore:	BorderWindow		粗细：
+Mostra valori per serie	ChartWindow		显示每个系列的数值
+Destro:	PageSetupWindow		右：
+Inserisci riga	MainWindow		插入行
+Percentuale	MainWindow		百分比
+Conteggio	Pivot		计数
+di Andrea Bernardi	AboutWindow		作者：Andrea Bernardi
+Conteggio numerico	MainWindow		数值计数
+Larghezza di una pagina	PageSetupWindow		调整为页宽
+Cella di destinazione:	PivotWindow		目标单元格：
+Cancella	MainWindow		清除
+Sviluppato da StudioBernardi.eu	AtomGLView		由 StudioBernardi.eu 开发
+Convalida dati	ValidationWindow		数据验证
+Vai a	GoToWindow		定位
+Trova successivo	FindWindow		查找下一个
+Avvio	PreferencesWindow		启动
+Bordo destro	MainWindow		右边框
+La cella di destinazione si sovrappone all'intervallo dati: scegline una fuori dai dati sorgente.	MainWindow		目标单元格与数据区域重叠：请选择源数据之外的单元格。
+Bordo sinistro	MainWindow		左边框
+%d cella/e sostituita/e.	MainWindow		已替换 %d 个单元格。
+Annulla	MainWindow		撤销
+Intervalli con nome	NameWindow		命名区域
+Errore	MainWindow		错误
+Bordo cella	BorderWindow		单元格边框
+Foglio di calcolo nativo per Haiku OS.	AboutWindow		适用于 Haiku OS 的原生电子表格。
+Intervallo dati o cella di destinazione non validi: l'intervallo deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		数据区域或目标单元格无效：区域必须有两列（标签、数值），且至少有一行数值，例如 A1:B5。
+Apri	HyperlinkWindow		打开
+Massimo:	ValidationWindow		最大值：
+Rinomina foglio	MainWindow		重命名工作表
+Media	Pivot		平均值
+Rimuovi commento	CommentWindow		删除批注
+Elimina	NameWindow		删除
+Nessuna anteprima	PageSetupWindow		无预览
+Se il valore e' uguale a	ConditionalFormatWindow		如果值等于
+A capo automatico	MainWindow		自动换行
+Il file non e' piu' disponibile nella posizione registrata.	MainWindow		文件在记录的位置已不可用。
+Tipo:	ChartWindow		类型：
+Bordo inferiore	MainWindow		下边框
+Inserisci nel foglio	ChartWindow		插入到工作表
+Elenco di valori	ValidationWindow		值列表
+Annulla	MainWindow	Pulsante di annullamento in una finestra di conferma (\"Cancel\"), non la voce di menu Annulla/Undo	取消
+Inferiore	BorderWindow		下
+Trova e sostituisci…	MainWindow		查找和替换…
+Blocca riquadri	MainWindow		冻结窗格
+Nessun dato da mostrare.	Chart		没有可显示的数据。
+Inserisci colonna	MainWindow		插入列
+  ·  per Haiku	AboutWindow		  ·  面向 Haiku
+Incolla speciale	PasteSpecialWindow		选择性粘贴
+Convalida dati…	MainWindow		数据验证…
+Immagine PNG	SheetView		PNG 图片
+Commento cella	CommentWindow		单元格批注
+\"%s\" non è un numero compreso fra %g e %g.	MainWindow		\"%s\" 不是介于 %g 和 %g 之间的数字。
+Tipo:	ValidationWindow		类型：
+Ripeti	MainWindow		重做
+OK	SheetView		确定
+Apri recenti	MainWindow		打开最近使用的文件
+Grassetto	MainWindow		加粗
+Nessun translator installato sa esportare in questo formato.	MainWindow		没有已安装的转换器可以导出为此格式。
+Somma	PivotWindow		求和
+Grafico a barre…	MainWindow		柱形图…
+Superiore:	PageSetupWindow		上：
+Ordina crescente	MainWindow		升序排序
+Una sola pagina	PageSetupWindow		缩至一页
+Scala	PageSetupWindow		缩放
+Cella o intervallo:	GoToWindow		单元格或区域：
+Tabella pivot…	MainWindow		数据透视表…
+Rimuovi tutte le regole	ConditionalFormatWindow		删除所有规则
+Formattazione condizionale…	MainWindow		条件格式…
+Medio	BorderWindow		中等
+Formule e funzioni · import/export XLSX/XLSM/ODS/CSV/XLS · grafici e tabelle pivot · piu' fogli	AboutWindow		公式和函数 · XLSX/XLSM/ODS/CSV/XLS 导入/导出 · 图表和数据透视表 · 多工作表
+Serializzazione del documento fallita.	MainWindow		文档序列化失败。
+Nessun bordo	MainWindow		无边框
+Colore sfondo	ColorWindow		背景颜色
+Punto e virgola (;)	PreferencesWindow		分号 (;)
+Impossibile creare il file.	MainWindow		无法创建文件。
+Allinea al centro	MainWindow		居中对齐
+Percentuale:	PageSetupWindow		百分比：
+Stampa	MainWindow		打印
+Bordo cella…	MainWindow		单元格边框…
+Intervalli con nome…	MainWindow		命名区域…
+Rinomina foglio…	SheetTabView		重命名工作表…
+File	PreferencesWindow		文件
+Rinomina foglio	RenameSheetWindow		重命名工作表
+Sovrascrivi	PasteSpecialWindow		覆盖
+Formato nativo (.ascd)	MainWindow		原生格式 (.ascd)
+Elimina colonna	MainWindow		删除列
+Somma	MainWindow		求和
+Vai a	NameWindow		定位
+Colore bordo…	MainWindow		边框颜色…
+OpenDocument (.ods)	MainWindow		OpenDocument (.ods)
+Intervallo dati o cella di destinazione non validi.	MainWindow		数据区域或目标单元格无效。
+Aggregazione:	PivotWindow		汇总方式：
+Lati	BorderWindow		边
+Codice nuovo su licenza MIT · motore derivato da Sum-It (BSD, Hekkelman Programmatuur).	AboutWindow		新代码采用 MIT 许可 · 引擎衍生自 Sum-It（BSD，Hekkelman Programmatuur）。
+Non è possibile eliminare l'unico foglio della cartella di lavoro.	MainWindow		无法删除工作簿中唯一的工作表。
+Sostituisci	FindWindow		替换
+Intervallo non valido: serve almeno una riga numerica in ogni colonna serie.	MainWindow		区域无效：每个系列列中至少需要一行数值。
+Dividi celle	MainWindow		取消合并单元格
+Nessuna	ValidationWindow		无
+Inserisci riga	SheetView		插入行
+Intervalli con nome	MainWindow		命名区域
+Punto (.)	PreferencesWindow		句点 (.)
+Linee	ChartWindow		折线图
+Superiore	BorderWindow		上
+Preferenze	PreferencesWindow		首选项
+Corsivo	MainWindow		斜体
+Numero	MainWindow		数字
+Torta	ChartWindow		饼图
+Intervallo:	NameWindow		区域：
+Solo valori	PasteSpecialWindow		仅数值
+OK	AboutWindow		确定
+Disegna	ChartWindow		绘制
+Icone della barra strumenti da hvif-store.art — grazie!	AboutWindow		工具栏图标来自 hvif-store.art —— 谢谢！
+Elimina	MainWindow		删除
+Inserisci	MainWindow		插入
+Dati	MainWindow		数据
+Non si puo' ordinare: la selezione contiene una cella unita. Dividi le celle prima di ordinare.	SheetView		无法排序：所选内容包含合并单元格。请先取消合并单元格再排序。
+Massimo	MainWindow		最大值
+Il file e' stato tradotto ma i dati risultanti non sono validi.	MainWindow		文件已转换，但生成的数据无效。
+Somma	PasteSpecialWindow		求和
+Adatta al:	PageSetupWindow		调整为：
+Sottile	BorderWindow		细
+Formattazione condizionale	ConditionalFormatWindow		条件格式
+Colore sfondo…	MainWindow		背景颜色…
+Valuta	MainWindow		货币
+Ordina A-Z	MainWindow		按 A 到 Z 排序
+Sottolineato	MainWindow		下划线
+Spesso	BorderWindow		粗
+Ordina	SheetView		排序
+Salvataggio automatico	PreferencesWindow		自动保存
+Virgola (,)	PreferencesWindow		逗号 (,)
+Convalida dati	SheetView		数据验证
+Sottile	MainWindow		细
+Media	MainWindow		平均值
+Simbolo valuta:	PreferencesWindow		货币符号：
+di	PageSetupWindow		共
+Applica alla selezione	ConditionalFormatWindow		应用于所选内容
+Nuovo foglio	MainWindow		新工作表
+Separatore decimale:	PreferencesWindow		小数点符号：
+Salva	CommentWindow		保存
+OK	MainWindow		确定
+Apri	MainWindow		打开
+Mostra lo splash screen all'avvio	PreferencesWindow		启动时显示启动画面
+Intervallo dati (una o piu' colonne di categoria, poi il valore):	PivotWindow		数据区域（一列或多列类别，后跟数值）：
+Offrimi un caffe' ☕	AboutWindow		请我喝杯咖啡 ☕
+Trova	MainWindow		查找
+Cosa incollare:	PasteSpecialWindow		粘贴内容：
+Excel (.xlsx)	MainWindow		Excel (.xlsx)
+Generale	PreferencesWindow		常规
+Colore bordo	ColorWindow		边框颜色
+File recenti da ricordare:	PreferencesWindow		要记住的最近文件数：
+Grafico	MainWindow		图表
+Bordo cella	MainWindow		单元格边框
+Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.	SheetView		无法插入：工作表底部的部分单元格将超出限制。
+Intervallo numerico	ValidationWindow		数字范围
+Continua senza salvare	MainWindow		继续但不保存
+Senza titolo	MainWindow		未命名
+Collegamento ipertestuale	HyperlinkWindow		超链接
+Medio	MainWindow		中等
+Riempi in basso	MainWindow		向下填充
+CSV (.csv)	MainWindow		CSV (.csv)
+Eliminare il foglio \"%s\"? L'operazione non può essere annullata.	MainWindow		是否删除工作表 \"%s\"？此操作无法撤销。
+Valori (separati da virgola):	ValidationWindow		值（以逗号分隔）：
+File	MainWindow		文件
+Allinea a sinistra	MainWindow		左对齐
+Rinomina	RenameSheetWindow		重命名
+Vai a	MainWindow		定位
+Allinea a destra	MainWindow		右对齐
+Conteggio	PivotWindow		计数
+Incolla	MainWindow		粘贴
+Somma	Pivot		求和
+Colore testo	ColorWindow		字体颜色
+Inserisci colonna	SheetView		插入列
+Salva con nome…	MainWindow		另存为…
+Unisci celle	MainWindow		合并单元格
+Grafico	ChartWindow		图表
+Sostituisci tutto	FindWindow		全部替换
+Destro	BorderWindow		右
+Commento cella	MainWindow		单元格批注
+Intervallo non valido: serve esattamente due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		区域无效：需要正好两列（标签、数值），且至少有一行数值，例如 A1:B5。
+Barre	ChartWindow		柱形图
+Formato file non riconosciuto da nessun translator installato.	MainWindow		没有已安装的转换器能识别此文件格式。
+Versione	AboutWindow		版本
+Nome del foglio:	RenameSheetWindow		工作表名称：
+Massimo	PivotWindow		最大值
+Colore testo	MainWindow		字体颜色
+Sostituisci tutto	MainWindow		全部替换
+Operazione con la cella di destinazione:	PasteSpecialWindow		与目标单元格的运算：
+Apri…	MainWindow		打开…
+Abilita il salvataggio automatico (backup)	PreferencesWindow		启用自动保存（备份）
+Vai a…	MainWindow		定位…
+Tipo:	ConditionalFormatWindow		类型：
+Ordina decrescente	MainWindow		降序排序
+Valore (solo per \"uguale a\"):	ConditionalFormatWindow		值（仅用于\"等于\"）：
+Copia	MainWindow		复制
+Cerca:	FindWindow		查找内容：
+Tutto (come Incolla)	PasteSpecialWindow		全部（等同于粘贴）
+Nome:	NameWindow		名称：
+Sinistro:	PageSetupWindow		左：
+Colore	ColorWindow		颜色
+Valori in centimetri	PageSetupWindow		数值以厘米为单位
+Altezza di una pagina	PageSetupWindow		调整为页高
+Pronto	MainWindow		就绪
+Pagina	PageSetupWindow		页
+Taglia	MainWindow		剪切
+Aggiungi/Aggiorna	NameWindow		添加/更新
+Colore scheda…	SheetTabView		工作表标签颜色…
+Colore scheda	ColorWindow		工作表标签颜色
+Taglia	SheetView		剪切
+Copia	SheetView		复制
+Incolla	SheetView		粘贴
+Cancella	SheetView		清除
+Elimina riga	SheetView		删除行
+Elimina colonna	SheetView		删除列
+Ordina crescente	SheetView		升序排序
+Ordina decrescente	SheetView		降序排序
+Formato celle	SheetView		设置单元格格式
+Grassetto	SheetView		加粗
+Corsivo	SheetView		斜体
+Sottolineato	SheetView		下划线
+Allinea a sinistra	SheetView		左对齐
+Allinea al centro	SheetView		居中对齐
+Allinea a destra	SheetView		右对齐
+Colore testo…	SheetView		字体颜色…
+Colore sfondo…	SheetView		背景颜色…
+Bordo cella…	SheetView		单元格边框…
+Commento cella…	SheetView		单元格批注…
+Modifica commento…	SheetView		编辑批注…
+Rimuovi commento	SheetView		删除批注
+Aggiungi alla finestra di controllo	MainWindow		添加到监视窗口
+Apertura del file in corso...	MainWindow		正在打开文件…
+Area	ChartWindow		面积图
+Blocca celle selezionate	MainWindow		锁定选定单元格
+Combinato (barre+linee)	ChartWindow		组合图（柱形图+折线图）
+Dispersione (XY)	ChartWindow		散点图 (XY)
+Finestra di controllo	WatchWindow		监视窗口
+Finestra di controllo…	MainWindow		监视窗口…
+Foglio protetto	SheetView		受保护的工作表
+Formule	MainWindow		公式
+Impossibile avviare il caricamento del file.	MainWindow		无法开始加载文件。
+Intervallo non valido: un grafico a dispersione richiede esattamente due colonne NUMERICHE (X, Y) con almeno una riga valida, es. A1:B5.	MainWindow		区域无效：散点图需要正好两列数值（X、Y），且至少有一行有效数据，例如 A1:B5。
+La cella che stai cercando di modificare e' protetta. Per modificarla, sblocca prima la cella (Dati > Sblocca celle selezionate) oppure disattiva la protezione del foglio (Dati > Proteggi foglio).	SheetView		您尝试编辑的单元格受保护。要编辑它，请先解除单元格锁定（数据 > 解除锁定选定单元格），或取消工作表保护（数据 > 保护工作表）。
+Lettura del file...	MainWindow		正在读取文件…
+Mostra formule	MainWindow		显示公式
+Proteggi foglio	MainWindow		保护工作表
+Ricalcolo in corso...	MainWindow		正在重新计算…
+Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		正在重新计算：第 %d 个工作表，共 %d 个（第 %d 轮）- %s
+Rimuovi	WatchWindow		删除
+Rimuovi frecce	MainWindow		删除箭头
+Sblocca celle selezionate	MainWindow		解除锁定选定单元格
+Scala di colori (minimo -> massimo)	ConditionalFormatWindow		色阶（最小值 -> 最大值）
+Barra dei dati (minimo -> massimo)	ConditionalFormatWindow		数据条（最小值 -> 最大值）
+Icon set (3 livelli)	ConditionalFormatWindow		图标集（3 个等级）
+Traccia dipendenti	MainWindow		追踪从属单元格
+Traccia precedenti	MainWindow		追踪引用单元格
+Traduzione del file in corso...	MainWindow		正在转换文件…
+Allinea in alto	MainWindow		顶端对齐
+Centra verticalmente	MainWindow		垂直居中
+Allinea in basso	MainWindow		底端对齐
+Allinea in alto	SheetView		顶端对齐
+Centra verticalmente	SheetView		垂直居中
+Allinea in basso	SheetView		底端对齐
+Apri file di esempio	MainWindow		打开示例文件
+Il file di esempio non e' installato su questo sistema.	MainWindow		此系统未安装示例文件。
+Stampa intestazioni righe/colonne	PageSetupWindow		打印行/列标题
+Stampa griglia	PageSetupWindow		打印网格线
+Stampa	PageSetupWindow		打印
+Pagine:	PageSetupWindow		页数：
+Larghe:	PageSetupWindow		宽：
+Alte:	PageSetupWindow		高：
+Centratura	PageSetupWindow		居中方式
+Orizzontale	PageSetupWindow		水平
+Verticale	PageSetupWindow		垂直
+Intestazione/piè di pagina	PageSetupWindow		页眉/页脚
+Intestazione:	PageSetupWindow		页眉：
+Piè di pagina:	PageSetupWindow		页脚：
+&P pagina, &N totale pagine, &D data	PageSetupWindow		第 &P 页，共 &N 页，&D 日期
+Ordine pagine	PageSetupWindow		打印顺序
+Prima giù, poi a destra	PageSetupWindow		先行后列
+Prima a destra, poi giù	PageSetupWindow		先列后行
+Titoli da ripetere	PageSetupWindow		打印标题
+Righe:	PageSetupWindow		行：
+Colonne:	PageSetupWindow		列：
+Righe come 1:3, colonne come A:C (vuoto = nessuno)	PageSetupWindow		行如 1:3，列如 A:C（留空表示无）
+Intestazioni	PageSetupWindow		标题
+Somma automatica	MainWindow		自动求和
+Sostituisci	MainWindow		替换
+Convalida dati	MainWindow		验证
+Formattazione condizionale	MainWindow		条件格式
+Vista	PreferencesWindow		视图
+Mostra formule nei fogli nuovi	PreferencesWindow		在新工作表中显示公式
+Media	PreferencesWindow		平均值
+Conteggio	PreferencesWindow		计数
+Conteggio numerico	PreferencesWindow		数值计数
+Minimo	PreferencesWindow		最小值
+Massimo	PreferencesWindow		最大值
+Somma	PreferencesWindow		求和
+Cartella backup (vuota = accanto al file):	PreferencesWindow		备份文件夹（留空表示与文件相同位置）：
+Sistema	PreferencesWindow		系统
+Italiano	PreferencesWindow		意大利语
+English	PreferencesWindow		英语
+Lingua (al prossimo avvio):	PreferencesWindow		语言（下次启动时生效）：
+Riapri i file recenti all'avvio	PreferencesWindow		启动时重新打开最近的文件

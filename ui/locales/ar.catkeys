@@ -1,0 +1,396 @@
+1	Arabic	application/x-vnd.Atomo-Atomo123	1829224689
+Dividi	PasteSpecialWindow		قسمة
+Nuovo documento	MainWindow		مستند جديد
+Sostituisci con:	FindWindow		استبدال بـ:
+Minimo	PivotWindow		الحد الأدنى
+Moltiplica	PasteSpecialWindow		ضرب
+Modifica	MainWindow		تحرير
+Stampa…	MainWindow		طباعة…
+Salva	HyperlinkWindow		حفظ
+(nessuno)	MainWindow		(بلا)
+Minimo	Pivot		الحد الأدنى
+Generale	MainWindow		عام
+Rimuovi collegamento	HyperlinkWindow		إزالة الارتباط
+›	PageSetupWindow		›
+Collegamento ipertestuale…	MainWindow		ارتباط تشعبي…
+\"%s\" non è uno dei valori ammessi:\n%s	MainWindow		\"%s\" ليست إحدى القيم المسموح بها:\n%s
+Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		قم بإلغاء تحديد سلسلة لإخفاء تسمياتها الرقمية فقط في المخطط؛ تظل السلسلة نفسها مرئية.
+Mostra tutto	SheetView		إظهار الكل
+Conteggio	MainWindow		العدد
+Il file conteneva un grafico non implementato in Atomo123:\n	MainWindow		الملف يحتوي على مخطط غير مدعوم في Atomo123:\n
+Spessore bordo	MainWindow		سماكة الحدود
+Separatore delle migliaia:	PreferencesWindow		فاصل الآلاف:
+Crea	PivotWindow		إنشاء
+Nessun valore positivo da mostrare.	Chart		لا توجد قيمة موجبة لعرضها.
+‹	PageSetupWindow		‹
+immagine.png	SheetView		صورة.png
+Pivot	MainWindow		محوري
+Preferenze…	MainWindow		التفضيلات…
+Bordo superiore	MainWindow		الحد العلوي
+Elimina riga	MainWindow		حذف صف
+Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		الملف يحتوي على مخططات غير مدعومة في Atomo123:\n
+Massimo	Pivot		الحد الأقصى
+Incolla	PasteSpecialWindow		لصق
+Formato	MainWindow		تنسيق
+Margini	PageSetupWindow		الهوامش
+Informazioni su Atomo123	AboutWindow		حول Atomo123
+Spesso	MainWindow		سميك
+Sottrai	PasteSpecialWindow		طرح
+Media	PivotWindow		المتوسط
+Tabella pivot	MainWindow		جدول محوري
+Aggiorna tabelle pivot	MainWindow		تحديث الجداول المحورية
+Collegamento ipertestuale	MainWindow		ارتباط تشعبي
+Imposta area di stampa	MainWindow		تعيين منطقة الطباعة
+Salva	MainWindow		حفظ
+Incolla speciale…	MainWindow		لصق خاص…
+Valori duplicati nella selezione	ConditionalFormatWindow		القيم المكررة في التحديد
+URL:	HyperlinkWindow		URL:
+Nuovo	MainWindow		جديد
+Scrittura del file fallita.	MainWindow		فشلت كتابة الملف.
+Trasponi righe e colonne	PasteSpecialWindow		نقل الصفوف والأعمدة
+Spazio ( )	PreferencesWindow		مسافة ( )
+Minimo:	ValidationWindow		الحد الأدنى:
+Le modifiche non salvate andranno perse. Continuare?	MainWindow		ستُفقد التغييرات غير المحفوظة. هل تريد المتابعة؟
+Grafico non implementato	MainWindow		مخطط غير مدعوم
+Versione %u.%u.%u	AboutWindow		الإصدار %u.%u.%u
+Separatore di elenco:	PreferencesWindow		فاصل القائمة:
+Tabella pivot	PivotWindow		جدول محوري
+Serie	Chart		السلسلة
+Mostra griglia	PreferencesWindow		إظهار خطوط الشبكة
+Applica	PageSetupWindow		تطبيق
+Trova e sostituisci	FindWindow		بحث واستبدال
+Inferiore:	PageSetupWindow		سفلي:
+Informazioni su Atomo123…	MainWindow		حول Atomo123…
+Impossibile aprire il file selezionato.	MainWindow		تعذر فتح الملف المحدد.
+Seleziona tutto	MainWindow		تحديد الكل
+Colore testo…	MainWindow		لون الخط…
+Sinistro	BorderWindow		يسار
+Ogni quanti minuti:	PreferencesWindow		كل عدد الدقائق:
+Elimina foglio	MainWindow		حذف الورقة
+Nessun dato valido nell'intervallo (servono almeno due colonne: una o piu' di categoria testuale, poi il valore numerico).	MainWindow		لا توجد بيانات صالحة في النطاق (يلزم عمودان على الأقل: عمود أو أكثر للفئة النصية، ثم القيمة الرقمية).
+Intervallo (due colonne: etichette, valori):	ChartWindow		النطاق (عمودان: التسميات، القيم):
+Applica	ColorWindow		تطبيق
+Colore sfondo	MainWindow		لون التعبئة
+Imposta pagina…	MainWindow		إعداد الصفحة…
+Riempi a destra	MainWindow		تعبئة لليمين
+Elimina foglio	SheetTabView		حذف الورقة
+Cella di destinazione nel foglio:	ChartWindow		خلية الوجهة في الورقة:
+Stampa…	PageSetupWindow		طباعة…
+Commento cella…	MainWindow		تعليق الخلية…
+Cancella area di stampa	MainWindow		مسح منطقة الطباعة
+Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	تحرير
+Esci	MainWindow		إنهاء
+Imposta pagina	PageSetupWindow		إعداد الصفحة
+Applica	PreferencesWindow		تطبيق
+Esiste già un foglio con questo nome.	MainWindow		توجد ورقة بهذا الاسم بالفعل.
+Rimuovi convalida	ValidationWindow		إزالة التحقق من الصحة
+Modifiche non salvate	MainWindow		تغييرات غير محفوظة
+Titolo (facoltativo):	ChartWindow		العنوان (اختياري):
+Minimo	MainWindow		الحد الأدنى
+Categoria	Pivot		الفئة
+Salva	ValidationWindow		حفظ
+Ordina Z-A	MainWindow		فرز من ي إلى أ
+Applica	BorderWindow		تطبيق
+Spessore:	BorderWindow		السماكة:
+Mostra valori per serie	ChartWindow		إظهار القيم لكل سلسلة
+Destro:	PageSetupWindow		يمين:
+Inserisci riga	MainWindow		إدراج صف
+Percentuale	MainWindow		نسبة مئوية
+Conteggio	Pivot		العدد
+di Andrea Bernardi	AboutWindow		بواسطة Andrea Bernardi
+Conteggio numerico	MainWindow		العدد الرقمي
+Larghezza di una pagina	PageSetupWindow		عرض صفحة واحدة
+Cella di destinazione:	PivotWindow		خلية الوجهة:
+Cancella	MainWindow		مسح
+Sviluppato da StudioBernardi.eu	AtomGLView		تم التطوير بواسطة StudioBernardi.eu
+Convalida dati	ValidationWindow		التحقق من صحة البيانات
+Vai a	GoToWindow		الانتقال إلى
+Trova successivo	FindWindow		بحث عن التالي
+Avvio	PreferencesWindow		بدء التشغيل
+Bordo destro	MainWindow		الحد الأيمن
+La cella di destinazione si sovrappone all'intervallo dati: scegline una fuori dai dati sorgente.	MainWindow		تتداخل خلية الوجهة مع نطاق البيانات: اختر خلية خارج بيانات المصدر.
+Bordo sinistro	MainWindow		الحد الأيسر
+%d cella/e sostituita/e.	MainWindow		تم استبدال %d خلية.
+Annulla	MainWindow		تراجع
+Intervalli con nome	NameWindow		النطاقات المسماة
+Errore	MainWindow		خطأ
+Bordo cella	BorderWindow		حد الخلية
+Foglio di calcolo nativo per Haiku OS.	AboutWindow		جدول بيانات أصلي لنظام Haiku.
+Intervallo dati o cella di destinazione non validi: l'intervallo deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		نطاق البيانات أو خلية الوجهة غير صالحة: يجب أن يحتوي النطاق على عمودين (تسميات، قيم) بصف رقمي واحد على الأقل، مثل A1:B5.
+Apri	HyperlinkWindow		فتح
+Massimo:	ValidationWindow		الحد الأقصى:
+Rinomina foglio	MainWindow		إعادة تسمية الورقة
+Media	Pivot		المتوسط
+Rimuovi commento	CommentWindow		إزالة التعليق
+Elimina	NameWindow		حذف
+Nessuna anteprima	PageSetupWindow		لا توجد معاينة
+Se il valore e' uguale a	ConditionalFormatWindow		إذا كانت القيمة تساوي
+A capo automatico	MainWindow		التفاف النص
+Il file non e' piu' disponibile nella posizione registrata.	MainWindow		الملف لم يعد متوفرًا في الموقع المسجل.
+Tipo:	ChartWindow		النوع:
+Bordo inferiore	MainWindow		الحد السفلي
+Inserisci nel foglio	ChartWindow		إدراج في الورقة
+Elenco di valori	ValidationWindow		قائمة القيم
+Annulla	MainWindow	Pulsante di annullamento in una finestra di conferma (\"Cancel\"), non la voce di menu Annulla/Undo	إلغاء
+Inferiore	BorderWindow		سفلي
+Trova e sostituisci…	MainWindow		بحث واستبدال…
+Blocca riquadri	MainWindow		تجميد الأجزاء
+Nessun dato da mostrare.	Chart		لا توجد بيانات لعرضها.
+Inserisci colonna	MainWindow		إدراج عمود
+  ·  per Haiku	AboutWindow		  ·  لنظام Haiku
+Incolla speciale	PasteSpecialWindow		لصق خاص
+Convalida dati…	MainWindow		التحقق من صحة البيانات…
+Immagine PNG	SheetView		صورة PNG
+Commento cella	CommentWindow		تعليق الخلية
+\"%s\" non è un numero compreso fra %g e %g.	MainWindow		\"%s\" ليس رقمًا بين %g و %g.
+Tipo:	ValidationWindow		النوع:
+Ripeti	MainWindow		إعادة
+OK	SheetView		موافق
+Apri recenti	MainWindow		فتح الملفات الأخيرة
+Grassetto	MainWindow		غامق
+Nessun translator installato sa esportare in questo formato.	MainWindow		لا يوجد محوّل مثبت يمكنه التصدير بهذا التنسيق.
+Somma	PivotWindow		المجموع
+Grafico a barre…	MainWindow		مخطط أعمدة…
+Superiore:	PageSetupWindow		علوي:
+Ordina crescente	MainWindow		فرز تصاعدي
+Una sola pagina	PageSetupWindow		ملاءمة في صفحة واحدة
+Scala	PageSetupWindow		المقياس
+Cella o intervallo:	GoToWindow		الخلية أو النطاق:
+Tabella pivot…	MainWindow		جدول محوري…
+Rimuovi tutte le regole	ConditionalFormatWindow		إزالة كل القواعد
+Formattazione condizionale…	MainWindow		التنسيق الشرطي…
+Medio	BorderWindow		متوسط
+Formule e funzioni · import/export XLSX/XLSM/ODS/CSV/XLS · grafici e tabelle pivot · piu' fogli	AboutWindow		الصيغ والدوال · استيراد/تصدير XLSX/XLSM/ODS/CSV/XLS · المخططات والجداول المحورية · أوراق متعددة
+Serializzazione del documento fallita.	MainWindow		فشل تسلسل المستند.
+Nessun bordo	MainWindow		بلا حدود
+Colore sfondo	ColorWindow		لون التعبئة
+Punto e virgola (;)	PreferencesWindow		فاصلة منقوطة (;)
+Impossibile creare il file.	MainWindow		تعذر إنشاء الملف.
+Allinea al centro	MainWindow		محاذاة للوسط
+Percentuale:	PageSetupWindow		النسبة المئوية:
+Stampa	MainWindow		طباعة
+Bordo cella…	MainWindow		حد الخلية…
+Intervalli con nome…	MainWindow		النطاقات المسماة…
+Rinomina foglio…	SheetTabView		إعادة تسمية الورقة…
+File	PreferencesWindow		ملف
+Rinomina foglio	RenameSheetWindow		إعادة تسمية الورقة
+Sovrascrivi	PasteSpecialWindow		استبدال
+Formato nativo (.ascd)	MainWindow		التنسيق الأصلي (.ascd)
+Elimina colonna	MainWindow		حذف عمود
+Somma	MainWindow		المجموع
+Vai a	NameWindow		الانتقال إلى
+Colore bordo…	MainWindow		لون الحدود…
+OpenDocument (.ods)	MainWindow		OpenDocument (.ods)
+Intervallo dati o cella di destinazione non validi.	MainWindow		نطاق البيانات أو خلية الوجهة غير صالحة.
+Aggregazione:	PivotWindow		التجميع:
+Lati	BorderWindow		الجوانب
+Codice nuovo su licenza MIT · motore derivato da Sum-It (BSD, Hekkelman Programmatuur).	AboutWindow		شيفرة جديدة بترخيص MIT · محرك مشتق من Sum-It (BSD، Hekkelman Programmatuur).
+Non è possibile eliminare l'unico foglio della cartella di lavoro.	MainWindow		لا يمكن حذف الورقة الوحيدة في المصنف.
+Sostituisci	FindWindow		استبدال
+Intervallo non valido: serve almeno una riga numerica in ogni colonna serie.	MainWindow		نطاق غير صالح: يلزم صف رقمي واحد على الأقل في كل عمود سلسلة.
+Dividi celle	MainWindow		إلغاء دمج الخلايا
+Nessuna	ValidationWindow		بلا
+Inserisci riga	SheetView		إدراج صف
+Intervalli con nome	MainWindow		النطاقات المسماة
+Punto (.)	PreferencesWindow		نقطة (.)
+Linee	ChartWindow		خطوط
+Superiore	BorderWindow		علوي
+Preferenze	PreferencesWindow		التفضيلات
+Corsivo	MainWindow		مائل
+Numero	MainWindow		رقم
+Torta	ChartWindow		دائري
+Intervallo:	NameWindow		النطاق:
+Solo valori	PasteSpecialWindow		القيم فقط
+OK	AboutWindow		موافق
+Disegna	ChartWindow		رسم
+Icone della barra strumenti da hvif-store.art — grazie!	AboutWindow		أيقونات شريط الأدوات من hvif-store.art — شكرًا!
+Elimina	MainWindow		حذف
+Inserisci	MainWindow		إدراج
+Dati	MainWindow		البيانات
+Non si puo' ordinare: la selezione contiene una cella unita. Dividi le celle prima di ordinare.	SheetView		لا يمكن الفرز: يحتوي التحديد على خلية مدمجة. قم بإلغاء دمج الخلايا قبل الفرز.
+Massimo	MainWindow		الحد الأقصى
+Il file e' stato tradotto ma i dati risultanti non sono validi.	MainWindow		تمت ترجمة الملف، لكن البيانات الناتجة غير صالحة.
+Somma	PasteSpecialWindow		المجموع
+Adatta al:	PageSetupWindow		الملاءمة مع:
+Sottile	BorderWindow		رفيع
+Formattazione condizionale	ConditionalFormatWindow		التنسيق الشرطي
+Colore sfondo…	MainWindow		لون التعبئة…
+Valuta	MainWindow		عملة
+Ordina A-Z	MainWindow		فرز من أ إلى ي
+Sottolineato	MainWindow		تسطير
+Spesso	BorderWindow		سميك
+Ordina	SheetView		فرز
+Salvataggio automatico	PreferencesWindow		الحفظ التلقائي
+Virgola (,)	PreferencesWindow		فاصلة (,)
+Convalida dati	SheetView		التحقق من صحة البيانات
+Sottile	MainWindow		رفيع
+Media	MainWindow		المتوسط
+Simbolo valuta:	PreferencesWindow		رمز العملة:
+di	PageSetupWindow		من
+Applica alla selezione	ConditionalFormatWindow		تطبيق على التحديد
+Nuovo foglio	MainWindow		ورقة جديدة
+Separatore decimale:	PreferencesWindow		الفاصلة العشرية:
+Salva	CommentWindow		حفظ
+OK	MainWindow		موافق
+Apri	MainWindow		فتح
+Mostra lo splash screen all'avvio	PreferencesWindow		إظهار شاشة البدء عند التشغيل
+Intervallo dati (una o piu' colonne di categoria, poi il valore):	PivotWindow		نطاق البيانات (عمود فئة واحد أو أكثر، ثم القيمة):
+Offrimi un caffe' ☕	AboutWindow		اشترِ لي قهوة ☕
+Trova	MainWindow		بحث
+Cosa incollare:	PasteSpecialWindow		ماذا تريد لصقه:
+Excel (.xlsx)	MainWindow		Excel (.xlsx)
+Generale	PreferencesWindow		عام
+Colore bordo	ColorWindow		لون الحدود
+File recenti da ricordare:	PreferencesWindow		عدد الملفات الأخيرة المراد تذكرها:
+Grafico	MainWindow		مخطط
+Bordo cella	MainWindow		حد الخلية
+Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.	SheetView		لا يمكن الإدراج: بعض الخلايا في أسفل الورقة ستتجاوز الحد.
+Intervallo numerico	ValidationWindow		نطاق رقمي
+Continua senza salvare	MainWindow		المتابعة دون حفظ
+Senza titolo	MainWindow		بلا عنوان
+Collegamento ipertestuale	HyperlinkWindow		ارتباط تشعبي
+Medio	MainWindow		متوسط
+Riempi in basso	MainWindow		تعبئة لأسفل
+CSV (.csv)	MainWindow		CSV (.csv)
+Eliminare il foglio \"%s\"? L'operazione non può essere annullata.	MainWindow		هل تريد حذف الورقة \"%s\"؟ لا يمكن التراجع عن هذا الإجراء.
+Valori (separati da virgola):	ValidationWindow		القيم (مفصولة بفواصل):
+File	MainWindow		ملف
+Allinea a sinistra	MainWindow		محاذاة لليسار
+Rinomina	RenameSheetWindow		إعادة تسمية
+Vai a	MainWindow		الانتقال إلى
+Allinea a destra	MainWindow		محاذاة لليمين
+Conteggio	PivotWindow		العدد
+Incolla	MainWindow		لصق
+Somma	Pivot		المجموع
+Colore testo	ColorWindow		لون الخط
+Inserisci colonna	SheetView		إدراج عمود
+Salva con nome…	MainWindow		حفظ باسم…
+Unisci celle	MainWindow		دمج الخلايا
+Grafico	ChartWindow		مخطط
+Sostituisci tutto	FindWindow		استبدال الكل
+Destro	BorderWindow		يمين
+Commento cella	MainWindow		تعليق الخلية
+Intervallo non valido: serve esattamente due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		نطاق غير صالح: يلزم عمودان بالضبط (تسميات، قيم) بصف رقمي واحد على الأقل، مثل A1:B5.
+Barre	ChartWindow		أعمدة
+Formato file non riconosciuto da nessun translator installato.	MainWindow		تنسيق الملف غير معروف لدى أي محوّل مثبت.
+Versione	AboutWindow		الإصدار
+Nome del foglio:	RenameSheetWindow		اسم الورقة:
+Massimo	PivotWindow		الحد الأقصى
+Colore testo	MainWindow		لون الخط
+Sostituisci tutto	MainWindow		استبدال الكل
+Operazione con la cella di destinazione:	PasteSpecialWindow		العملية مع خلية الوجهة:
+Apri…	MainWindow		فتح…
+Abilita il salvataggio automatico (backup)	PreferencesWindow		تفعيل الحفظ التلقائي (نسخة احتياطية)
+Vai a…	MainWindow		الانتقال إلى…
+Tipo:	ConditionalFormatWindow		النوع:
+Ordina decrescente	MainWindow		فرز تنازلي
+Valore (solo per \"uguale a\"):	ConditionalFormatWindow		القيمة (فقط لـ \"يساوي\"):
+Copia	MainWindow		نسخ
+Cerca:	FindWindow		بحث عن:
+Tutto (come Incolla)	PasteSpecialWindow		الكل (مثل اللصق)
+Nome:	NameWindow		الاسم:
+Sinistro:	PageSetupWindow		يسار:
+Colore	ColorWindow		اللون
+Valori in centimetri	PageSetupWindow		القيم بالسنتيمتر
+Altezza di una pagina	PageSetupWindow		ارتفاع صفحة واحدة
+Pronto	MainWindow		جاهز
+Pagina	PageSetupWindow		صفحة
+Taglia	MainWindow		قص
+Aggiungi/Aggiorna	NameWindow		إضافة/تحديث
+Colore scheda…	SheetTabView		لون علامة التبويب…
+Colore scheda	ColorWindow		لون علامة التبويب
+Taglia	SheetView		قص
+Copia	SheetView		نسخ
+Incolla	SheetView		لصق
+Cancella	SheetView		مسح
+Elimina riga	SheetView		حذف صف
+Elimina colonna	SheetView		حذف عمود
+Ordina crescente	SheetView		فرز تصاعدي
+Ordina decrescente	SheetView		فرز تنازلي
+Formato celle	SheetView		تنسيق الخلايا
+Grassetto	SheetView		غامق
+Corsivo	SheetView		مائل
+Sottolineato	SheetView		تسطير
+Allinea a sinistra	SheetView		محاذاة لليسار
+Allinea al centro	SheetView		محاذاة للوسط
+Allinea a destra	SheetView		محاذاة لليمين
+Colore testo…	SheetView		لون الخط…
+Colore sfondo…	SheetView		لون التعبئة…
+Bordo cella…	SheetView		حد الخلية…
+Commento cella…	SheetView		تعليق الخلية…
+Modifica commento…	SheetView		تحرير التعليق…
+Rimuovi commento	SheetView		إزالة التعليق
+Aggiungi alla finestra di controllo	MainWindow		إضافة إلى نافذة المراقبة
+Apertura del file in corso...	MainWindow		جارٍ فتح الملف...
+Area	ChartWindow		منطقة
+Blocca celle selezionate	MainWindow		تأمين الخلايا المحددة
+Combinato (barre+linee)	ChartWindow		مختلط (أعمدة+خطوط)
+Dispersione (XY)	ChartWindow		تبعثر (XY)
+Finestra di controllo	WatchWindow		نافذة المراقبة
+Finestra di controllo…	MainWindow		نافذة المراقبة…
+Foglio protetto	SheetView		ورقة محمية
+Formule	MainWindow		الصيغ
+Impossibile avviare il caricamento del file.	MainWindow		تعذر بدء تحميل الملف.
+Intervallo non valido: un grafico a dispersione richiede esattamente due colonne NUMERICHE (X, Y) con almeno una riga valida, es. A1:B5.	MainWindow		نطاق غير صالح: يتطلب مخطط التبعثر عمودين رقميين بالضبط (X، Y) بصف صالح واحد على الأقل، مثل A1:B5.
+La cella che stai cercando di modificare e' protetta. Per modificarla, sblocca prima la cella (Dati > Sblocca celle selezionate) oppure disattiva la protezione del foglio (Dati > Proteggi foglio).	SheetView		الخلية التي تحاول تعديلها محمية. لتعديلها، قم أولًا بإلغاء تأمين الخلية (البيانات > إلغاء تأمين الخلايا المحددة) أو قم بإلغاء حماية الورقة (البيانات > حماية الورقة).
+Lettura del file...	MainWindow		جارٍ قراءة الملف...
+Mostra formule	MainWindow		إظهار الصيغ
+Proteggi foglio	MainWindow		حماية الورقة
+Ricalcolo in corso...	MainWindow		جارٍ إعادة الحساب...
+Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		إعادة الحساب: الورقة %d من %d (المرور %d) - %s
+Rimuovi	WatchWindow		إزالة
+Rimuovi frecce	MainWindow		إزالة الأسهم
+Sblocca celle selezionate	MainWindow		إلغاء تأمين الخلايا المحددة
+Scala di colori (minimo -> massimo)	ConditionalFormatWindow		مقياس لوني (الحد الأدنى -> الحد الأقصى)
+Barra dei dati (minimo -> massimo)	ConditionalFormatWindow		شريط البيانات (الحد الأدنى -> الحد الأقصى)
+Icon set (3 livelli)	ConditionalFormatWindow		مجموعة الأيقونات (3 مستويات)
+Traccia dipendenti	MainWindow		تتبع التابعات
+Traccia precedenti	MainWindow		تتبع السوابق
+Traduzione del file in corso...	MainWindow		جارٍ تحويل الملف...
+Allinea in alto	MainWindow		محاذاة للأعلى
+Centra verticalmente	MainWindow		محاذاة للوسط رأسيًا
+Allinea in basso	MainWindow		محاذاة للأسفل
+Allinea in alto	SheetView		محاذاة للأعلى
+Centra verticalmente	SheetView		محاذاة للوسط رأسيًا
+Allinea in basso	SheetView		محاذاة للأسفل
+Apri file di esempio	MainWindow		فتح ملف نموذجي
+Il file di esempio non e' installato su questo sistema.	MainWindow		الملف النموذجي غير مثبت على هذا النظام.
+Stampa intestazioni righe/colonne	PageSetupWindow		طباعة عناوين الصفوف/الأعمدة
+Stampa griglia	PageSetupWindow		طباعة خطوط الشبكة
+Stampa	PageSetupWindow		طباعة
+Pagine:	PageSetupWindow		الصفحات:
+Larghe:	PageSetupWindow		عرضًا:
+Alte:	PageSetupWindow		ارتفاعًا:
+Centratura	PageSetupWindow		التوسيط
+Orizzontale	PageSetupWindow		أفقي
+Verticale	PageSetupWindow		رأسي
+Intestazione/piè di pagina	PageSetupWindow		الرأس/التذييل
+Intestazione:	PageSetupWindow		الرأس:
+Piè di pagina:	PageSetupWindow		التذييل:
+&P pagina, &N totale pagine, &D data	PageSetupWindow		&P صفحة، &N إجمالي الصفحات، &D التاريخ
+Ordine pagine	PageSetupWindow		ترتيب الصفحات
+Prima giù, poi a destra	PageSetupWindow		لأسفل ثم لليمين
+Prima a destra, poi giù	PageSetupWindow		لليمين ثم لأسفل
+Titoli da ripetere	PageSetupWindow		العناوين المتكررة
+Righe:	PageSetupWindow		الصفوف:
+Colonne:	PageSetupWindow		الأعمدة:
+Righe come 1:3, colonne come A:C (vuoto = nessuno)	PageSetupWindow		الصفوف مثل 1:3، الأعمدة مثل A:C (فارغ = بلا)
+Intestazioni	PageSetupWindow		العناوين
+Somma automatica	MainWindow		جمع تلقائي
+Sostituisci	MainWindow		استبدال
+Convalida dati	MainWindow		تحقق
+Formattazione condizionale	MainWindow		التنسيق الشرطي
+Vista	PreferencesWindow		عرض
+Mostra formule nei fogli nuovi	PreferencesWindow		إظهار الصيغ في الأوراق الجديدة
+Media	PreferencesWindow		المتوسط
+Conteggio	PreferencesWindow		العدد
+Conteggio numerico	PreferencesWindow		العدد الرقمي
+Minimo	PreferencesWindow		الحد الأدنى
+Massimo	PreferencesWindow		الحد الأقصى
+Somma	PreferencesWindow		المجموع
+Cartella backup (vuota = accanto al file):	PreferencesWindow		مجلد النسخ الاحتياطي (فارغ = بجانب الملف):
+Sistema	PreferencesWindow		النظام
+Italiano	PreferencesWindow		الإيطالية
+English	PreferencesWindow		الإنجليزية
+Lingua (al prossimo avvio):	PreferencesWindow		اللغة (عند التشغيل التالي):
+Riapri i file recenti all'avvio	PreferencesWindow		إعادة فتح الملفات الأخيرة عند التشغيل

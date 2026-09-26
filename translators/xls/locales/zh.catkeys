@@ -1,0 +1,5 @@
+1	Chinese (Simplified)	application/x-vnd.Atomo-XlsTranslator	336968922
+Versione %d.%d.%d	XlsConfigView		版本 %d.%d.%d
+Copyright (c) 2026 Andrea Bernardi · Licenza MIT	XlsConfigView		Copyright (c) 2026 Andrea Bernardi · MIT 许可证
+Offrimi un caffe' ☕	XlsConfigView		请我喝杯咖啡 ☕
+Importa fogli di calcolo dal formato binario\nExcel 97-2003 (XLS). Solo import: l'export verso\nl'ecosistema Excel passa dal translator XLSX.	XlsConfigView		从旧版二进制 Excel 97-2003 格式（XLS）\n导入电子表格。仅支持导入：导出到\nExcel 生态系统请使用 XLSX 转换器。

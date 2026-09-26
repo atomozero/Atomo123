@@ -102,6 +102,13 @@ CATKEYS_DIR := locales
 EN_CATKEYS := $(CATKEYS_DIR)/en.catkeys
 KO_CATKEYS := $(CATKEYS_DIR)/ko.catkeys
 JA_CATKEYS := $(CATKEYS_DIR)/ja.catkeys
+ES_CATKEYS := $(CATKEYS_DIR)/es.catkeys
+FR_CATKEYS := $(CATKEYS_DIR)/fr.catkeys
+DE_CATKEYS := $(CATKEYS_DIR)/de.catkeys
+PT_CATKEYS := $(CATKEYS_DIR)/pt.catkeys
+ZH_CATKEYS := $(CATKEYS_DIR)/zh.catkeys
+RU_CATKEYS := $(CATKEYS_DIR)/ru.catkeys
+AR_CATKEYS := $(CATKEYS_DIR)/ar.catkeys
 
 all: $(APP)
 
@@ -160,12 +167,20 @@ $(RSRC): $(RDEF) $(REZ) $(BSL) $(FUNC_RESOURCES)/funcs_by_nr.r \
 # convertita in HVIF con Icon-O-Matic, incorporata in Atomo123.rdef)
 # va allegata al binario con xres DOPO il link, non prima: xres opera
 # sul file eseguibile finito.
-$(APP): $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC) $(EN_CATKEYS) $(KO_CATKEYS) $(JA_CATKEYS)
+$(APP): $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC) $(EN_CATKEYS) $(KO_CATKEYS) $(JA_CATKEYS) \
+		$(ES_CATKEYS) $(FR_CATKEYS) $(DE_CATKEYS) $(PT_CATKEYS) $(ZH_CATKEYS) $(RU_CATKEYS) $(AR_CATKEYS)
 	$(CXX) -o $(APP) $(OBJECTS) $(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o $(APP) $(RSRC)
 	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l en $(EN_CATKEYS)
 	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l ko $(KO_CATKEYS)
 	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l ja $(JA_CATKEYS)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l es $(ES_CATKEYS)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l fr $(FR_CATKEYS)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l de $(DE_CATKEYS)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l pt $(PT_CATKEYS)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l zh $(ZH_CATKEYS)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l ru $(RU_CATKEYS)
+	linkcatkeys -o $(APP) -s $(APP_MIME_SIG) -tr -l ar $(AR_CATKEYS)
 
 run: $(APP)
 	./$(APP)
