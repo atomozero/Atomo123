@@ -5,6 +5,22 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.3.0 (in progress):
+- Named table styles ("Path to full Excel parity" Tier 4, first item of
+  a low-priority cosmetic batch): XLSX import now reads the real
+  `<tableStyleInfo name="...">` from a `<table>` and colors the banded
+  rows from a small built-in list of ~8 recognized Excel style names
+  (`engine/src/Cell/TableStyles.h`) instead of always the same neutral
+  gray; unrecognized or custom style names keep that gray fallback,
+  unchanged from before. A new "Stile tabella" submenu (Data menu)
+  lets the style be changed directly in the app, on whichever
+  structured table contains the active cell. Persists through native
+  `.ascd` save/reload (`CTableDef::tableStyleName`/`showBandedRows`,
+  new trailing section in both `ui/src/AscdIO.cpp` and the XLSX
+  translator's own internal ASCD reader/writer). Real XLSX *export* of
+  structured tables does not exist in this app yet at all (tables have
+  only ever round-tripped through the native format, a separate,
+  larger pre-existing gap outside this item's scope) — the style name
+  does not yet get written back into a re-exported `.xlsx`.
 - Seven more UI languages on top of the Korean/Japanese pair below:
   Spanish, French, German, Portuguese, Chinese (Simplified), Russian,
   and Arabic — same mechanism (`linkcatkeys -tr` embedding one catkeys

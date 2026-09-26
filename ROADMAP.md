@@ -781,8 +781,18 @@ list deliberately deviates from pure effort-sorting:
   theme system is a real usability nicety, not a blocker for any file
   opening or calculating correctly
 - Secondary axis, trendlines, error bars on existing chart types
-- Named table styles (banded rows are the only styling today) —
-  cosmetic
+- ~~**Named table styles**~~ Fixed — see `CHANGELOG.md`. XLSX import now
+  reads the real `<tableStyleInfo name="...">` and colors the banding
+  from a small built-in list of ~8 recognized Excel style names
+  (`engine/src/Cell/TableStyles.h`); unrecognized/custom names keep the
+  neutral gray of before. A "Stile tabella" submenu (Data menu) lets the
+  user change a registered table's style directly in the app. Persists
+  through native `.ascd` round-trip; real XLSX **export** of structured
+  tables (`<table>`/`tableN.xml`) does not exist in this app at all yet
+  (tables only ever round-tripped through native `.ascd`, a separate
+  pre-existing gap, not part of this item's scope) — so the style name
+  survives import + native save/reload, but re-exporting to `.xlsx`
+  does not yet write it back out
 - ~~**Password-protected / encrypted workbooks**~~ Fixed (read-only) —
   see `CHANGELOG.md`. A real `.xlsx` protected with a workbook
   open-password (Agile Encryption, Excel 2010+) now opens: prompts for
