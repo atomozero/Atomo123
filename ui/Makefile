@@ -43,8 +43,10 @@ INCLUDES := $(addprefix -I, $(ENGINE_SRCDIRS)) -Isrc
 # progetto): serve a ExcelPasswordHash.cpp nel motore (hash di
 # protezione VERO, vedi engine/src/Utils/ExcelPasswordHash.h) -- una
 # libreria statica non porta con se' le proprie dipendenze di link,
-# ogni binario finale che la usa deve aggiungerla anche qui.
-LIBS := -L$(ENGINE_DIR) -lengine -lbe -llocalestub -ltranslation -ltracker -lGL -lGLU -lcrypto
+# ogni binario finale che la usa deve aggiungerla anche qui. -lexpat in
+# piu' (Fase "gestione completa delle password", parte 2): OfficeCrypto.cpp
+# analizza l'XML di EncryptionInfo di un workbook cifrato.
+LIBS := -L$(ENGINE_DIR) -lengine -lbe -llocalestub -ltranslation -ltracker -lGL -lGLU -lcrypto -lexpat
 
 APP := Atomo123
 SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/SheetTabView.cpp \
@@ -839,6 +841,24 @@ test-locale-catalog: $(APP)
 	$(CXX) -o tests/test_locale_catalog tests/test_locale_catalog.o \
 		$(INCLUDES) $(CXXFLAGS) -lbe -llocalestub
 	./tests/test_locale_catalog
+
+# Test dell'apertura di un vero workbook open-password (Agile Encryption,
+# seconda meta' di "gestione completa delle password" -- Path to full
+# Excel parity): vedi il commento in cima a test_open_encrypted.cpp.
+# Richiede il vero XlsxTranslator installato (BTranslatorRoster), stesso
+# motivo di test-xlsx-named-functions-dynamic sotto.
+test-open-encrypted: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
+	$(CXX) -c tests/test_open_encrypted.cpp -o tests/test_open_encrypted.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_open_encrypted tests/test_open_encrypted.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	xres -o tests/test_open_encrypted $(RSRC)
+	./tests/test_open_encrypted
 
 test-xlsx-named-functions-dynamic: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 	$(CXX) -c tests/test_xlsx_named_functions_dynamic.cpp -o tests/test_xlsx_named_functions_dynamic.o \
