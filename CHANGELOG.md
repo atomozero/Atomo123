@@ -55,6 +55,27 @@ What shipped since v0.3.0 (in progress):
   history keeps running into, this time surfacing as real test crashes
   instead of silent corruption, since a raw byte offset shifted for
   every section after it.
+- Real sheet-protection passwords: "Proteggi foglio" was an
+  unauthenticated on/off flag with no way to ever set a real password
+  (the `AscdSheetProtection` hash from the previous entry only preserved
+  one already present in an imported file). Protecting a sheet now
+  offers an optional password (empty = the old behavior, no password);
+  unprotecting a password-protected sheet demands it back and rejects a
+  wrong one, leaving the sheet protected. New `ExcelPasswordHash`
+  (`engine/src/Utils/`) implements the real ECMA-376 §18.3.1.85
+  algorithm (iterated SHA-512, 100000 rounds by default) — this
+  project's first cryptography dependency (OpenSSL, confirmed installed
+  and linkable on this system: `-lcrypto`). The core hash was verified
+  byte-for-byte against an independent Python (`hashlib`) reimplementation
+  of the same published algorithm, not just checked against itself. New
+  `PasswordWindow` dialog (masked input via `HideTyping`). Found and fixed
+  a real cross-thread bug while testing this: showing a reused `BWindow`
+  a second time and writing into its `BTextControl`s from the caller's
+  thread without locking it first is a genuine race — worked by luck the
+  first time (the window's own thread had nothing queued yet) and hung
+  the second. A password that unprotects a sheet is forgotten afterward
+  (matching real Excel: re-protecting needs a new one, the old one isn't
+  reusable).
 
 What shipped in v0.3.0, on top of v0.2.9:
 - Completed the systematic XLSX sweep: opened every one of the 15

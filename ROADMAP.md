@@ -479,16 +479,17 @@ through `.xlsx`, in either direction, before this work.
 - ~~**Password-hash sheet protection**~~ Fixed — see `CHANGELOG.md`.
   The real `<sheetProtection>` attributes (legacy `password="..."`
   4-hex-digit checksum, or the modern `algorithmName`/`hashValue`/
-  `saltValue`/`spinCount` form) now round-trip byte-for-byte through
-  native persistence and XLSX import/export (`AscdSheetProtection`,
-  ASCD format version 9) — this app's own protection *model* is
-  unchanged (shipped in v0.2.7, still an unauthenticated on/off flag:
-  no password is ever required to unprotect a sheet inside this app),
-  only the fidelity of what gets exported back out. **Distinct from**
-  whole-workbook open-password encryption (the file itself is
-  AES-encrypted, can't be opened at all without the password) — that's
-  a separate, larger gap, still open, see "Path to full Excel parity"
-  Tier 4 below
+  `saltValue`/`spinCount` form) round-trip byte-for-byte through native
+  persistence and XLSX import/export (`AscdSheetProtection`, ASCD format
+  version 9), AND (a real step further, done in the same effort) this
+  app's own protection is no longer an unauthenticated flag: "Proteggi
+  foglio" now offers a real, optional password (ECMA-376 §18.3.1.85,
+  `engine/src/Utils/ExcelPasswordHash`, this project's first
+  cryptography dependency — OpenSSL), verified before unprotecting.
+  **Distinct from** whole-workbook open-password encryption (the file
+  itself is AES-encrypted, can't be opened at all without the
+  password) — that's a separate, larger gap, still open, see "Path to
+  full Excel parity" Tier 4 below
 - ~~**`docProps/core.xml`/`app.xml`**~~ Fixed — see `CHANGELOG.md`.
   Writes the export's own timestamp (`dcterms:created`/`modified`) and
   `Application`; author/title/company/revision have no equivalent
