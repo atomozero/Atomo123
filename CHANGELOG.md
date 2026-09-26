@@ -5,6 +5,24 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.3.0 (in progress):
+- AutoFilter persistence (Tier 4, second item of the same low-priority
+  batch, prerequisite for real Slicer state): which values are excluded
+  per column (`SheetView::fFilterHiddenValues`) now survives a native
+  `.ascd` save/reload, not just the resulting hidden rows — new trailing
+  section in both `ui/src/AscdIO.cpp`/`AscdIO.h` (`AscdSheet::
+  filterHiddenValues`) and the XLSX translator's own internal ASCD
+  reader/writer, same pattern as the table-style section above. XLSX
+  *import* now also reads a real `<filterColumn><filters><filter
+  val="..."/></filters></filterColumn>` when present, converting Excel's
+  "these values stay visible" list into this engine's "these values are
+  excluded" model by diffing against every distinct value actually
+  present in the filtered data — only the plain discrete-list form is
+  supported; `<customFilters>`/`<top10>`/`<dynamicFilter>`/
+  `<colorFilter>`/`<iconFilter>` have no equivalent here and are skipped
+  for that column, not silently misrepresented. XLSX *export* of
+  `<autoFilter>` does not exist in this app at all yet (a separate,
+  larger, pre-existing gap, not part of this item's scope, mirroring the
+  structured-table export gap above).
 - Named table styles ("Path to full Excel parity" Tier 4, first item of
   a low-priority cosmetic batch): XLSX import now reads the real
   `<tableStyleInfo name="...">` from a `<table>` and colors the banded
