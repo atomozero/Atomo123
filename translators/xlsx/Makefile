@@ -57,6 +57,8 @@ FUNC_TEST_RSRC := tests/named_functions.rsrc
 CATALOG_SIG := application/x-vnd.Atomo-XlsxTranslator
 CATKEYS_DIR := locales
 EN_CATKEYS := $(CATKEYS_DIR)/en.catkeys
+KO_CATKEYS := $(CATKEYS_DIR)/ko.catkeys
+JA_CATKEYS := $(CATKEYS_DIR)/ja.catkeys
 
 all: $(ADDON)
 
@@ -73,9 +75,11 @@ $(FUNC_TEST_RSRC): $(REZ) $(BSL) $(ENGINE_DIR)/resources/funcs_by_nr.r
 	rm -f $(FUNC_TEST_RSRC)
 	$(REZ) -o $(FUNC_TEST_RSRC) $(ENGINE_DIR)/resources/funcs_by_nr.r
 
-$(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a $(EN_CATKEYS)
+$(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a $(EN_CATKEYS) $(KO_CATKEYS) $(JA_CATKEYS)
 	$(CXX) -shared -o $(ADDON) $(SOURCES) $(INCLUDES) $(CXXFLAGS) $(LIBS)
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l en $(EN_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ko $(KO_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ja $(JA_CATKEYS)
 
 # "cp" seguito da "mv" nella stessa cartella, non "cp" diretto sul
 # file gia' installato: un vero crash reale di Tracker (il suo
