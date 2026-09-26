@@ -29,6 +29,8 @@
 #include "ConditionalFormatWindow.h"
 #include "PasswordWindow.h"
 #include "ExcelPasswordHash.h"
+#include "CompoundFileReader.h"
+#include "OfficeCrypto.h"
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
 #include "BorderWindow.h"
@@ -1226,6 +1228,7 @@ MainWindow::MainWindow()
 	fConditionalFormatWindow = NULL;
 	fPasswordWindow = NULL;
 	fPasswordTargetSheetIndex = -1;
+	fFileWasEncrypted = false;
 	fColorWindow = NULL;
 	fColorTargetSheetIndex = -1;
 	fPreferencesWindow = NULL;
@@ -1897,6 +1900,14 @@ public:
 struct OpenFileJob {
 	entry_ref ref;
 	BMessenger target; // la MainWindow che ha avviato l'apertura
+	// Workbook open-password (Agile Encryption): NULL nel caso comune
+	// (file non cifrato, letto da "ref" come sempre). Non-NULL quando
+	// MainWindow ha gia' verificato la password e decifrato il vero
+	// pacchetto ZIP/OOXML in memoria PRIMA di avviare questo thread --
+	// "ref" resta comunque il file cifrato originale (mai riscritto su
+	// disco in chiaro), solo la sorgente byte per BTranslatorRoster
+	// cambia. Proprieta' di questo job: liberato da OpenFileThreadEntry.
+	BMallocIO* preDecryptedZip;
 };
 
 // Avanzamento dell'apertura file nel footer (Fase 33, richiesta
@@ -1967,7 +1978,46 @@ static int32 OpenFileThreadEntry(void* data)
 	// 0 = dati non validi dopo la lettura, 1 = nessun translator adatto.
 	int32 errorKind = 0;
 	BMessage translateExtension;
+	bool wasEncrypted = (job->preDecryptedZip != NULL);
 
+	if (wasEncrypted)
+	{
+		// Workbook open-password gia' verificata e decifrata da
+		// MainWindow prima di avviare questo thread (vedi
+		// kMsgPasswordCommit, ramo file-open): il vero pacchetto
+		// ZIP/OOXML e' gia' in memoria, MAI un documento ASCD nativo
+		// (Atomo123 non sa ancora scrivere un .ascd cifrato, solo
+		// leggere un .xlsx cifrato) -- si passa dritti al Translation
+		// Kit, saltando i controlli IsASCDBookFile/IsASCDFile che non si
+		// applicano mai qui.
+		SendFooterProgress(job->target, 0.15f, B_TRANSLATE("Traduzione del file in corso..."));
+		job->preDecryptedZip->Seek(0, SEEK_SET);
+		BMallocIO ascd;
+		status_t translateErr = BTranslatorRoster::Default()->Translate(job->preDecryptedZip, NULL,
+			&translateExtension, &ascd, kAtomoNativeFormat);
+		if (translateErr != B_OK)
+		{
+			ok = false;
+			errorKind = 1;
+		}
+		else
+		{
+			ascd.Seek(0, SEEK_SET);
+			if (IsASCDBookFile(&ascd))
+				ok = LoadASCDBook(&ascd, newSheets, true) == B_OK;
+			else
+			{
+				AscdSheet sheet;
+				ok = ReadSingleSheetASCD(&ascd, &sheet);
+				if (ok)
+					newSheets->push_back(sheet);
+			}
+		}
+		delete job->preDecryptedZip;
+		job->preDecryptedZip = NULL;
+	}
+	else
+	{
 	BFile file(&job->ref, B_READ_ONLY);
 	if (file.InitCheck() != B_OK)
 	{
@@ -2034,6 +2084,7 @@ static int32 OpenFileThreadEntry(void* data)
 			}
 		}
 	}
+	}
 
 	OpenFileLocalResolver* resolver = NULL;
 	if (ok && !newSheets->empty())
@@ -2070,6 +2121,7 @@ static int32 OpenFileThreadEntry(void* data)
 	result.AddPointer("resolver", resolver);
 	result.AddMessage("extension", &translateExtension);
 	result.AddRef("ref", &job->ref);
+	result.AddBool("wasEncrypted", wasEncrypted);
 	job->target.SendMessage(&result);
 
 	delete job;
@@ -2290,6 +2342,20 @@ void MainWindow::OpenFile(const entry_ref& ref)
 // XlsxTranslator.cpp non linka contro ui/src/): tenere il thread di
 // lavoro autosufficiente, senza toccare mai lo stato di "this" finche'
 // il risultato non torna sul thread giusto.
+// Dimensione massima di un file su cui vale la pena leggere l'intero
+// contenuto in memoria solo per controllare se e' un vero workbook
+// cifrato (EncryptionInfo dentro un contenitore OLE2/CFB, vedi
+// OfficeCrypto.h): un file cosi' grande non e' mai un vero workbook
+// protetto da password (quelli restano quasi sempre di pochi KB/MB) --
+// oltre questa soglia si salta il controllo, il file prosegue nel
+// percorso normale (che comunque fallirebbe pulito piu' avanti se
+// fosse davvero cifrato, solo senza il prompt della password: nessuna
+// vera funzionalita' persa, solo un limite pratico su un caso che non
+// si presenta mai nella pratica).
+static const off_t kMaxEncryptedProbeSize = 64 * 1024 * 1024;
+
+const int kPasswordPurposeFileOpen = -2;
+
 void MainWindow::OpenFileAsync(const entry_ref& ref)
 {
 	if (fOpeningFile)
@@ -2309,8 +2375,51 @@ void MainWindow::OpenFileAsync(const entry_ref& ref)
 		alert->Go();
 		return;
 	}
+
+	// Workbook open-password (Agile Encryption, seconda meta' di
+	// "gestione completa delle password" -- Path to full Excel parity):
+	// un XLSX cifrato non e' affatto uno ZIP, e' un contenitore OLE2/CFB
+	// con uno stream "EncryptionInfo" (vedi CompoundFileReader.h/
+	// OfficeCrypto.h). Un vero .xls (BIFF8) e' ANCH'ESSO OLE2/CFB (stream
+	// "Workbook"/"Book" invece, gia' gestito da Excel.OLE2.cpp attraverso
+	// il percorso normale sotto) -- la sola firma non basta a distinguerli,
+	// serve verificare che lo stream "EncryptionInfo" esista davvero
+	// prima di deviare dal percorso normale.
+	off_t size = 0;
+	if (checkFile.GetSize(&size) == B_OK && size >= 8 && size <= kMaxEncryptedProbeSize)
+	{
+		std::vector<uint8> fileData((size_t)size);
+		checkFile.Seek(0, SEEK_SET);
+		if (checkFile.Read(&fileData[0], (size_t)size) == size
+			&& IsCompoundFile(&fileData[0], fileData.size()))
+		{
+			CompoundFileReader reader;
+			std::vector<uint8> probe;
+			if (reader.Open(&fileData[0], fileData.size())
+				&& reader.ReadStream("EncryptionInfo", &probe))
+			{
+				checkFile.Unset();
+				fPendingEncryptedRef = ref;
+				fPasswordTargetSheetIndex = kPasswordPurposeFileOpen;
+				if (!fPasswordWindow)
+					fPasswordWindow = new PasswordWindow(BMessenger(this));
+				fPasswordWindow->Lock();
+				fPasswordWindow->PrepareForVerify();
+				if (fPasswordWindow->IsHidden())
+					fPasswordWindow->Show();
+				fPasswordWindow->Activate();
+				fPasswordWindow->Unlock();
+				return;
+			}
+		}
+	}
 	checkFile.Unset();
 
+	SpawnOpenFileJob(ref, NULL);
+}
+
+void MainWindow::SpawnOpenFileJob(const entry_ref& ref, BMallocIO* preDecryptedZip)
+{
 	fOpeningFile = true;
 	// Nel footer, al posto di fCellMode/fSelectionStats (vedi il
 	// commento su fFooterProgressLabel/fFooterProgressBar in
@@ -2335,6 +2444,7 @@ void MainWindow::OpenFileAsync(const entry_ref& ref)
 	OpenFileJob* job = new OpenFileJob();
 	job->ref = ref;
 	job->target = BMessenger(this);
+	job->preDecryptedZip = preDecryptedZip;
 
 	thread_id workerThread = spawn_thread(OpenFileThreadEntry, "Atomo123 file loader",
 		B_NORMAL_PRIORITY, job);
@@ -2347,6 +2457,7 @@ void MainWindow::OpenFileAsync(const entry_ref& ref)
 		fSelectionStats->Show();
 		delete fFooterProgressPulseRunner;
 		fFooterProgressPulseRunner = NULL;
+		delete job->preDecryptedZip;
 		delete job;
 		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
 			B_TRANSLATE("Impossibile avviare il caricamento del file."), B_TRANSLATE("OK"));
@@ -2381,6 +2492,8 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	message->FindRef("ref", &ref);
 	BMessage translateExtension;
 	message->FindMessage("extension", &translateExtension);
+	bool wasEncrypted = false;
+	message->FindBool("wasEncrypted", &wasEncrypted);
 
 	if (!ok)
 	{
@@ -2449,6 +2562,7 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 		if (openedEntry.GetParent(&parentEntry) == B_OK)
 			parentEntry.GetRef(&fFileDirRef);
 	}
+	fFileWasEncrypted = wasEncrypted;
 	fModified = false;
 	UpdateTitle();
 	StartOrUpdateAutoSaveRunner();
@@ -2517,7 +2631,30 @@ static BString BaseNameWithoutExtension(const BString& name)
 void MainWindow::Save()
 {
 	if (fDocumentName.Length() > 0)
+	{
+		// Workbook open-password (Agile Encryption, solo LETTURA -- Path
+		// to full Excel parity): questo programma non sa ricifrare in
+		// scrittura, quindi riscrivere qui sovrascriverebbe in silenzio
+		// l'originale cifrato con una copia in chiaro, senza che
+		// l'utente se ne accorga fino alla prossima volta che prova ad
+		// aprirlo (o lo manda a qualcuno che si aspettava una password).
+		// "Salva con nome" resta sempre disponibile per chi vuole
+		// comunque una copia in chiaro altrove, senza toccare
+		// l'originale.
+		if (fFileWasEncrypted)
+		{
+			BAlert* alert = new BAlert(B_TRANSLATE("Password"),
+				B_TRANSLATE("Questo file era protetto da una password di apertura. "
+					"Salvarlo con \"Salva\" rimuove la protezione: il file diventa "
+					"leggibile senza password. Usa \"Salva con nome\" per mantenere "
+					"l'originale cifrato intatto."),
+				B_TRANSLATE("Annulla"), B_TRANSLATE("Continua comunque"));
+			alert->SetShortcut(0, B_ESCAPE);
+			if (alert->Go() == 0)
+				return;
+		}
 		SaveToFile(fFileDirRef, fDocumentName.String());
+	}
 	else
 		fSavePanel->Show();
 }
@@ -2621,6 +2758,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 
 		fDocumentName = name;
 		fFileDirRef = dir;
+		fFileWasEncrypted = false;
 		fModified = false;
 		UpdateTitle();
 		StartOrUpdateAutoSaveRunner();
@@ -2722,6 +2860,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 
 	fDocumentName = name;
 	fFileDirRef = dir;
+	fFileWasEncrypted = false;
 	fModified = false;
 	UpdateTitle();
 	StartOrUpdateAutoSaveRunner();
@@ -7005,6 +7144,51 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindBool("setMode", &setMode);
 			message->FindString("password", &password);
 			int index = fPasswordTargetSheetIndex;
+
+			if (index == kPasswordPurposeFileOpen)
+			{
+				// Workbook open-password (Agile Encryption): rilegge il
+				// file da zero invece di tenere in giro i byte dal primo
+				// controllo in OpenFileAsync (gia' uscito dallo scope da
+				// un pezzo quando questo messaggio arriva) -- un file
+				// cosi' piccolo (vedi kMaxEncryptedProbeSize) non rende
+				// questa doppia lettura un vero costo.
+				BFile file(&fPendingEncryptedRef, B_READ_ONLY);
+				off_t size = 0;
+				if (file.InitCheck() != B_OK || file.GetSize(&size) != B_OK || size < 8)
+					break;
+				std::vector<uint8> fileData((size_t)size);
+				if (file.Read(&fileData[0], (size_t)size) != size)
+					break;
+
+				std::vector<uint8> plainZip;
+				bool decryptOk = DecryptAgileEncryptedXlsx(&fileData[0], fileData.size(),
+					password.String(), &plainZip);
+				if (!decryptOk)
+				{
+					BAlert* alert = new BAlert(B_TRANSLATE("Password"),
+						B_TRANSLATE("Password errata: impossibile aprire il file."),
+						B_TRANSLATE("Annulla"), B_TRANSLATE("Riprova"));
+					alert->SetShortcut(0, B_ESCAPE);
+					if (alert->Go() == 1)
+					{
+						fPasswordWindow->Lock();
+						fPasswordWindow->PrepareForVerify();
+						if (fPasswordWindow->IsHidden())
+							fPasswordWindow->Show();
+						fPasswordWindow->Activate();
+						fPasswordWindow->Unlock();
+					}
+					break;
+				}
+
+				BMallocIO* preDecrypted = new BMallocIO();
+				preDecrypted->Write(&plainZip[0], plainZip.size());
+				preDecrypted->Seek(0, SEEK_SET);
+				SpawnOpenFileJob(fPendingEncryptedRef, preDecrypted);
+				break;
+			}
+
 			if (index < 0 || index >= (int)fSheets.size())
 				break;
 

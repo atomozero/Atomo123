@@ -28,6 +28,7 @@
 #include "PrintLayout.h"
 
 class BBitmap;
+class BMallocIO;
 class BFilePanel;
 class BMessageRunner;
 class BScrollBar;
@@ -700,6 +701,24 @@ private:
 	// in teoria, cambiare foglio mentre la finestra resta aperta).
 	PasswordWindow* fPasswordWindow;
 	int fPasswordTargetSheetIndex;
+	// Workbook open-password (Agile Encryption, seconda meta' di
+	// "gestione completa delle password", solo lettura): riusa
+	// fPasswordWindow/fPasswordTargetSheetIndex sopra con un valore
+	// sentinella dedicato (kPasswordPurposeFileOpen in MainWindow.cpp,
+	// -2 -- mai un indice di foglio valido) invece di aggiungere una
+	// seconda finestra quasi identica solo per distinguere il motivo
+	// della richiesta. fPendingEncryptedRef e' il file ancora da aprire,
+	// valido solo mentre fPasswordTargetSheetIndex == quel sentinella.
+	entry_ref fPendingEncryptedRef;
+	// Vero solo se il documento CORRENTE e' stato aperto decifrando un
+	// vero workbook open-password: "Salva" (riscrittura senza pannello,
+	// vedi MainWindow::Save) altrimenti sovrascriverebbe in silenzio
+	// l'originale cifrato con una copia in chiaro, dato che questo
+	// progetto non sa (ancora) RIcifrare in scrittura -- vedi il
+	// commento su Save() per l'avviso mostrato in quel caso. Azzerato da
+	// qualunque salvataggio riuscito (il file scritto a quel punto non
+	// e' mai cifrato).
+	bool fFileWasEncrypted;
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
 	BorderWindow* fBorderWindow;
@@ -752,6 +771,19 @@ private:
 	// OpenFile (Fase 31, kMsgFileLoadResult) e applica i nuovi fogli
 	// esattamente come faceva la vecchia OpenFile sincrona.
 	void HandleFileLoadResult(BMessage* message);
+
+	// Avvia davvero il thread di caricamento (vedi OpenFileThreadEntry in
+	// MainWindow.cpp) con la finestra di avanzamento nel footer -- il
+	// corpo di OpenFileAsync di prima di questo metodo, isolato perche'
+	// ora ha DUE punti di chiamata: subito (file non cifrato, il caso
+	// comune) o dopo aver verificato una password di apertura file
+	// corretta (vedi kMsgPasswordCommit, ramo file-open). "ref" resta
+	// SEMPRE il file originale (per titolo/"Apri recenti"/fFileDirRef),
+	// anche quando "preDecryptedZip" non e' NULL -- solo la SORGENTE
+	// byte per la traduzione cambia, non l'identita' del file agli occhi
+	// dell'utente. "preDecryptedZip" passa di proprieta' a
+	// OpenFileThreadEntry (lo libera lui), NULL nel caso comune.
+	void SpawnOpenFileJob(const entry_ref& ref, BMallocIO* preDecryptedZip);
 
 	// Nome del file corrente (solo il nome, non il percorso completo:
 	// basta per il titolo -- vedi UpdateTitle) e se il documento ha

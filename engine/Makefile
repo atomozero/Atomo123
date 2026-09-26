@@ -135,6 +135,16 @@ test-tables: $(LIB)
 	$(CXX) -o tests/table_refs_test $(OBJDIR)/table_refs_test.o -L. -lengine -lbe
 	./tests/table_refs_test
 
+# Test della decifratura Agile Encryption (MS-OFFCRYPTO, workbook
+# open-password -- Path to full Excel parity, seconda meta' di "gestione
+# completa delle password" dopo test-password-hash sopra): vedi il
+# commento in cima a office_crypto_test.cpp. -lexpat in piu' di
+# test-password-hash: OfficeCrypto.cpp analizza l'XML di EncryptionInfo.
+test-office-crypto: $(LIB)
+	$(CXX) -c tests/office_crypto_test.cpp -o $(OBJDIR)/office_crypto_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/office_crypto_test $(OBJDIR)/office_crypto_test.o -L. -lengine -lbe -lcrypto -lexpat
+	./tests/office_crypto_test
+
 # Test degli intervalli dinamici (Fase 36, "OFFSET(...):OFFSET(...)"):
 # valRefRange/opRangeOp, il primo argomento di OFFSET come vero
 # riferimento, il collasso all'intersezione implicita in CalcCell,

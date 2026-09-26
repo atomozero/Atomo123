@@ -75,6 +75,11 @@ static std::string Sha512(const std::string& data)
 	return Sha512((const uint8*)data.data(), data.size());
 }
 
+std::string Sha512Raw(const std::string& data)
+{
+	return Sha512(data);
+}
+
 // Algoritmo ECMA-376 18.3.1.85 (vedi il commento in ExcelPasswordHash.h):
 // H0 = SHA512(salt || password UTF-16LE), poi spinCount iterazioni di
 // Hi = SHA512(H(i-1) || i a 4 byte little-endian). Restituisce l'hash

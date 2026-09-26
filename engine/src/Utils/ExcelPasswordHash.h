@@ -56,6 +56,17 @@ bool VerifyModernPasswordHash(const std::string& password,
 std::string IteratedSha512(const std::string& salt, const std::string& password,
 	int32 spinCount);
 
+// SHA-512 puro su byte grezzi, SENZA la conversione UTF-8->UTF-16LE che
+// IteratedSha512 applica al suo secondo argomento (li' corretto, visto
+// che quell'argomento e' sempre una password testuale vera) -- Agile
+// Encryption (OfficeCrypto.h) lo usa per derivare le tre chiavi di
+// blocco e gli IV per segmento da dati che sono GIA' byte grezzi
+// (Hfinal concatenato a una costante, o un sale concatenato a un
+// contatore), non testo: passarli per sbaglio attraverso la conversione
+// UTF-8 li corromperebbe silenziosamente (byte non validi come UTF-8
+// interpretati comunque da mcharlen/municode).
+std::string Sha512Raw(const std::string& data);
+
 // spinCount di default per una password generata da QUESTO programma
 // (non quando se ne importa una gia' scritta da un vero Excel, che porta
 // gia' il proprio spinCount) -- lo stesso valore che Excel stesso usa di
