@@ -50,6 +50,7 @@ class CommentWindow;
 class HyperlinkWindow;
 class ValidationWindow;
 class ConditionalFormatWindow;
+class PasswordWindow;
 class ColorWindow;
 class PreferencesWindow;
 class BorderWindow;
@@ -691,6 +692,14 @@ private:
 	HyperlinkWindow* fHyperlinkWindow;
 	ValidationWindow* fValidationWindow;
 	ConditionalFormatWindow* fConditionalFormatWindow;
+	// Password VERA di protezione foglio (Path to full Excel parity):
+	// fPasswordTargetSheetIndex cattura QUALE foglio era attivo quando la
+	// finestra e' stata mostrata, non riletto da fActiveSheetIndex al
+	// momento della risposta -- stesso principio gia' seguito da
+	// RenameSheetWindow::fIndex, per lo stesso motivo (l'utente potrebbe,
+	// in teoria, cambiare foglio mentre la finestra resta aperta).
+	PasswordWindow* fPasswordWindow;
+	int fPasswordTargetSheetIndex;
 	ColorWindow* fColorWindow;
 	PreferencesWindow* fPreferencesWindow;
 	BorderWindow* fBorderWindow;
