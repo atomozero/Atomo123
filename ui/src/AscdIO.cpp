@@ -147,7 +147,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<unsigned char>* vbaProject,
 	const bool* isProtected,
 	const AscdSheetProtection* protection,
-	const std::map<int, std::vector<BString> >* filterHiddenValues)
+	const std::map<int, std::vector<BString> >* filterHiddenValues,
+	const std::vector<SlicerObject>* slicers)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -1579,6 +1580,29 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione slicer, in coda DOPO tutto il resto (Tier 4, vedi
+	// Slicer.h): stesso principio EOF-tollerante di sopra. Un conteggio,
+	// poi per ciascuno il frame (quattro float, gia' assoluto come
+	// ChartObject::frame), la colonna assoluta controllata e il titolo.
+	{
+		int32 slicerCount = slicers ? (int32)slicers->size() : 0;
+		if (dest->Write(&slicerCount, sizeof(slicerCount)) != (ssize_t)sizeof(slicerCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < slicerCount; i++)
+		{
+			const SlicerObject& obj = (*slicers)[i];
+			float frame[4] = { obj.frame.left, obj.frame.top, obj.frame.right, obj.frame.bottom };
+			int16 col = (int16)obj.columnIndex;
+			int32 titleLen = obj.title.Length();
+			if (dest->Write(frame, sizeof(frame)) != (ssize_t)sizeof(frame)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&titleLen, sizeof(titleLen)) != (ssize_t)sizeof(titleLen))
+				return B_IO_ERROR;
+			if (titleLen > 0 && dest->Write(obj.title.String(), titleLen) != titleLen)
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1599,7 +1623,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	bool* isProtected,
 	bool skipVbaAndProtectionSections,
 	AscdSheetProtection* protection,
-	std::map<int, std::vector<BString> >* filterHiddenValues)
+	std::map<int, std::vector<BString> >* filterHiddenValues,
+	std::vector<SlicerObject>* slicers)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -3614,6 +3639,46 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione slicer, scritta da SaveASCD in coda DOPO tutto il resto
+	// (Tier 4, vedi Slicer.h): stesso principio EOF-tollerante di sopra.
+	{
+		int32 slicerCount = 0;
+		ssize_t got = source->Read(&slicerCount, sizeof(slicerCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(slicerCount) || slicerCount < 0 || slicerCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < slicerCount; i++)
+			{
+				float frame[4];
+				int16 col;
+				int32 titleLen;
+				if (source->Read(frame, sizeof(frame)) != (ssize_t)sizeof(frame)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&titleLen, sizeof(titleLen)) != (ssize_t)sizeof(titleLen))
+					return B_BAD_DATA;
+				if (titleLen < 0 || titleLen > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				BString title;
+				if (titleLen > 0)
+				{
+					std::vector<char> buf(titleLen);
+					if (source->Read(&buf[0], titleLen) != titleLen)
+						return B_BAD_DATA;
+					title.SetTo(&buf[0], titleLen);
+				}
+				if (slicers)
+				{
+					SlicerObject obj;
+					obj.frame = BRect(frame[0], frame[1], frame[2], frame[3]);
+					obj.columnIndex = col;
+					obj.title = title;
+					slicers->push_back(obj);
+				}
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -3792,7 +3857,7 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
 			&sheet.vbaProject, &sheet.isProtected, &sheet.protection,
-			&sheet.filterHiddenValues);
+			&sheet.filterHiddenValues, &sheet.slicers);
 		if (err != B_OK)
 			return err;
 
@@ -3902,7 +3967,7 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 				&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
 				skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected,
 				false /* skipVbaAndProtectionSections */, &sheet.protection,
-				&sheet.filterHiddenValues);
+				&sheet.filterHiddenValues, &sheet.slicers);
 		}
 		if (err != B_OK)
 		{

@@ -172,6 +172,8 @@ static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 // kTableStyles (TableStyles.h), oppure -1 per "Nessuno" (banda grigia
 // neutra di sempre, tableStyleName vuoto).
 static const uint32 kMsgSetTableStyle = 'stbs';
+// Tier 4, prerequisito gia' chiuso: SheetView::fFilterHiddenValues.
+static const uint32 kMsgInsertSlicer = 'inSl';
 static const uint32 kMsgUnmergeCells = 'umrg';
 static const uint32 kMsgSetAlignment = 'algn';
 static const uint32 kMsgSetVerticalAlignment = 'valg';
@@ -1092,6 +1094,13 @@ MainWindow::MainWindow()
 	// Container.h e MainWindow::RefreshAllPivotTables).
 	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Aggiorna tabelle pivot"),
 		new BMessage(kMsgRefreshPivotTables)));
+	// Slicer (Tier 4, vedi Slicer.h): crea uno slicer per la colonna
+	// dell'AutoFilter attivo del foglio contenente la cella selezionata
+	// -- vedi MainWindow::HandleInsertSlicer. Raggruppato con grafico/
+	// pivot sopra: sono i tre "oggetti" che si aggiungono sopra la
+	// griglia, non un comando puntuale su una cella come commento/
+	// collegamento sotto.
+	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Slicer"), new BMessage(kMsgInsertSlicer)));
 	insertMenu->AddSeparatorItem();
 	// Commento cella/Collegamento ipertestuale (Fase 13, spostate qui
 	// da Formato -- vedi il commento li'): entrambe operano sempre
@@ -1135,6 +1144,7 @@ MainWindow::MainWindow()
 	fSheetView = new SheetView(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetImages(&fImages);
+	fSheetView->SetSlicers(&fSlicers);
 
 	// horizontal=false, vertical=false: NON le barre automatiche di
 	// BScrollView (usata qui solo per il bordo e il ritaglio). Le due
@@ -1442,6 +1452,7 @@ void MainWindow::ResetWorkbook(const char* name)
 		fSheetView->SetDocument(fDoc);
 		fSheetView->SetCharts(&fCharts);
 		fSheetView->SetImages(&fImages);
+		fSheetView->SetSlicers(&fSlicers);
 		fSheetView->SetColumnWidths(fSheets[0].colWidths);
 		fSheetView->SetRowHeights(fSheets[0].rowHeights);
 		// Un foglio nuovo (fSheets[0] appena creato da ResetWorkbook)
@@ -1536,6 +1547,7 @@ void MainWindow::SwitchToSheet(int index)
 	// risincronizzati esplicitamente in entrambe le direzioni.
 	fSheets[fActiveSheetIndex].charts = fCharts;
 	fSheets[fActiveSheetIndex].images = fImages;
+	fSheets[fActiveSheetIndex].slicers = fSlicers;
 	fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 	fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 	fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
@@ -1559,6 +1571,7 @@ void MainWindow::SwitchToSheet(int index)
 	fDoc = fSheets[index].doc;
 	fCharts = fSheets[index].charts;
 	fImages = fSheets[index].images;
+	fSlicers = fSheets[index].slicers;
 
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetColumnWidths(fSheets[index].colWidths);
@@ -1888,7 +1901,7 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 		&outSheet->hasPrintArea, &outSheet->printArea, &outSheet->printSettings,
 		true, NULL /* vbaProject */, NULL /* isProtected */,
 		false /* skipVbaAndProtectionSections */, NULL /* protection */,
-		&outSheet->filterHiddenValues);
+		&outSheet->filterHiddenValues, &outSheet->slicers);
 	if (err != B_OK)
 	{
 		outSheet->doc->Release();
@@ -2268,9 +2281,11 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
 	fImages = fSheets[0].images;
+	fSlicers = fSheets[0].slicers;
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetImages(&fImages);
+	fSheetView->SetSlicers(&fSlicers);
 	fSheetView->SetColumnWidths(fSheets[0].colWidths);
 	fSheetView->SetRowHeights(fSheets[0].rowHeights);
 	// Testo a capo (Fase 12): copre sia i documenti nativi (fWrapText
@@ -2554,9 +2569,11 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
 	fImages = fSheets[0].images;
+	fSlicers = fSheets[0].slicers;
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetImages(&fImages);
+	fSheetView->SetSlicers(&fSlicers);
 	fSheetView->SetColumnWidths(fSheets[0].colWidths);
 	fSheetView->SetRowHeights(fSheets[0].rowHeights);
 	// Testo a capo (Fase 12): copre sia i documenti nativi (fWrapText
@@ -2761,6 +2778,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		// larghezze di colonna del foglio attivo non verrebbe salvata.
 		fSheets[fActiveSheetIndex].charts = fCharts;
 		fSheets[fActiveSheetIndex].images = fImages;
+		fSheets[fActiveSheetIndex].slicers = fSlicers;
 		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
@@ -2960,6 +2978,7 @@ void MainWindow::AutoSaveBackup()
 	{
 		fSheets[fActiveSheetIndex].charts = fCharts;
 		fSheets[fActiveSheetIndex].images = fImages;
+		fSheets[fActiveSheetIndex].slicers = fSlicers;
 		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
@@ -4948,6 +4967,50 @@ void MainWindow::ApplyTableStyleToSelection(int styleIndex)
 
 	ApplyTableStyleBanding(fDoc, tableRange, 0, newStyleName);
 
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+// Tier 4: crea un nuovo SlicerObject per la colonna dell'AutoFilter
+// attivo del foglio che contiene la cella attiva della selezione
+// corrente (o la prima colonna dell'AutoFilter se la selezione cade
+// fuori dal suo intervallo di colonne -- un fallback comodo invece di
+// rifiutare, dato che un AutoFilter attivo ha comunque almeno una
+// colonna valida). Il titolo di default e' il testo dell'intestazione
+// di quella colonna (riga fAutoFilterRange.top).
+void MainWindow::HandleInsertSlicer()
+{
+	if (!fDoc)
+		return;
+
+	if (!fSheetView->HasAutoFilter())
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Serve un AutoFilter attivo per inserire uno slicer."),
+			B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	range afRange = fSheetView->AutoFilterRange();
+	range sel = fSheetView->SelectionRange();
+	int col = sel.left;
+	if (col < afRange.left || col > afRange.right)
+		col = afRange.left;
+
+	char text[4096];
+	fDoc->GetCellResult(cell(col, afRange.top), text, sizeof(text), true);
+
+	SlicerObject obj;
+	obj.columnIndex = col;
+	obj.title = text;
+	// Scaglionati in diagonale (offset per slicer gia' presenti) cosi'
+	// inserirne piu' di uno di seguito non li impila esattamente uno
+	// sopra l'altro, rendendo impossibile afferrare quelli sotto.
+	float offset = 20.0f * (fSlicers.size() % 6);
+	obj.frame.OffsetBy(offset, offset);
+
+	fSlicers.push_back(obj);
 	fSheetView->Invalidate();
 	MarkModified();
 }
@@ -7532,6 +7595,10 @@ void MainWindow::MessageReceived(BMessage* message)
 			ApplyTableStyleToSelection((int)styleIndex);
 			break;
 		}
+
+		case kMsgInsertSlicer:
+			HandleInsertSlicer();
+			break;
 
 		case kMsgShowConditionalFormatWindow:
 		{

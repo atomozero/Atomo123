@@ -32,6 +32,7 @@
 #include "Container.h"
 #include "EmbeddedImage.h"
 #include "Range.h"
+#include "Slicer.h"
 
 class BTextControl;
 class CContainer;
@@ -191,6 +192,9 @@ public:
 	// dell'utente): un solo BRect invece di due coppie di float, dato
 	// che ChartObject::frame e' gia' assoluto.
 	void SaveChartUndoState(int chartIndex, BRect beforeFrame);
+	// Stesso principio esatto di SaveChartUndoState sopra, per il
+	// trascinamento/ridimensionamento di uno slicer (Tier 4).
+	void SaveSlicerUndoState(int slicerIndex, BRect beforeFrame);
 	// Stesso principio di SaveImageUndoState sopra, per convalida dati
 	// e formattazione condizionale (Fase 15, bug reale: erano gli
 	// unici comandi mutanti mai annullabili -- vedi il commento su
@@ -526,6 +530,18 @@ public:
 	bool HasSelectedImage() const { return fSelectedImageIndex >= 0; }
 	int SelectedImageIndex() const { return fSelectedImageIndex; }
 
+	// Elenco degli slicer (Tier 4, vedi Slicer.h) da disegnare sopra la
+	// griglia -- stesso principio esatto di SetCharts sopra (di proprieta'
+	// di MainWindow, mai una copia): trascinare/ridimensionare uno slicer
+	// scrive direttamente SlicerObject::frame sull'elemento del vettore.
+	void SetSlicers(std::vector<SlicerObject>* slicers) { fSlicers = slicers; fSelectedSlicerIndex = -1; }
+
+	// Cancella lo slicer attualmente selezionato, stesso principio esatto
+	// di DeleteSelectedChart/DeleteSelectedImage sopra -- annullabile.
+	void DeleteSelectedSlicer();
+	bool HasSelectedSlicer() const { return fSelectedSlicerIndex >= 0; }
+	int SelectedSlicerIndex() const { return fSelectedSlicerIndex; }
+
 	// AutoFilter (import XLSX, <autoFilter ref="...">): l'intervallo
 	// (riga di intestazione + colonne) su cui disegnare le frecce a
 	// tendina nell'intestazione e su cui rispondono i clic. Un solo
@@ -628,6 +644,26 @@ public:
 	// usato sia da Draw() per disegnarla sia da MouseDown per
 	// riconoscere il clic.
 	BRect ChartResizeHandle(const ChartObject& obj) const;
+	// Maniglia di ridimensionamento di uno slicer (Tier 4): stesso
+	// principio esatto di ChartResizeHandle sopra.
+	BRect SlicerResizeHandle(const SlicerObject& obj) const;
+	// Barra superiore del riquadro dello slicer -- afferrarla trascina
+	// l'intero slicer (vedi MouseDown), a differenza del corpo sotto
+	// (SlicerButtonRects), tutto occupato da pulsanti cliccabili.
+	BRect SlicerTitleBarRect(const SlicerObject& obj) const;
+	// Un rettangolo per ogni valore distinto della colonna filtrata (vedi
+	// UniqueColumnValues), impilati verticalmente sotto SlicerTitleBarRect
+	// -- un solo posto per la formula, usato sia da Draw() per disegnare
+	// i pulsanti sia da MouseDown per riconoscere il clic su uno di essi.
+	// "outValues" e' nello STESSO ordine di "outRects" (stesso indice ==
+	// stesso pulsante): niente struct combinato, coerente con come
+	// ShowAutoFilterMenu gia' tiene separati "values"/"valueItems" sopra.
+	// Nessuno scorrimento in v1: se i valori distinti superano quanti ne
+	// entrano nell'altezza del riquadro, quelli in eccesso restano
+	// disegnati/cliccabili OLTRE il bordo inferiore -- limite dichiarato,
+	// coerente con "riquadro semplice a lista verticale" del piano.
+	void SlicerButtonRects(const SlicerObject& obj, std::vector<BRect>* outRects,
+		std::vector<BString>* outValues) const;
 	// Maniglia di riempimento automatico (Fase 29, richiesta esplicita
 	// dell'utente: "molti utenti mi chiedono il completamento
 	// automatico della celle come su excel"): stesso principio esatto
@@ -1022,6 +1058,16 @@ private:
 		bool isChartDeleteSnapshot = false;
 		int deletedChartIndex = -1;
 		ChartObject deletedChart;
+		// Trascinamento/ridimensionamento di uno slicer (Tier 4, vedi
+		// SaveSlicerUndoState): stesso principio esatto di chartIndex/
+		// chartFrameBefore sopra.
+		int slicerIndex = -1;
+		BRect slicerFrameBefore;
+		// Cancellazione di uno slicer (DeleteSelectedSlicer): stesso
+		// principio esatto di isChartDeleteSnapshot sopra.
+		bool isSlicerDeleteSnapshot = false;
+		int deletedSlicerIndex = -1;
+		SlicerObject deletedSlicer;
 	};
 	std::vector<UndoSnapshot> fUndoStack;
 	std::vector<UndoSnapshot> fRedoStack;
@@ -1030,6 +1076,8 @@ private:
 	UndoSnapshot CaptureChartSnapshot(int chartIndex) const;
 	UndoSnapshot CaptureImageDeleteSnapshot(int imageIndex) const;
 	UndoSnapshot CaptureChartDeleteSnapshot(int chartIndex) const;
+	UndoSnapshot CaptureSlicerSnapshot(int slicerIndex) const;
+	UndoSnapshot CaptureSlicerDeleteSnapshot(int slicerIndex) const;
 	UndoSnapshot CaptureMergeSnapshot() const;
 	// Imposta fSelectedImageIndex e invalida sia il vecchio che il
 	// nuovo riquadro di selezione (se diversi da -1) -- un solo posto
@@ -1039,6 +1087,9 @@ private:
 	void SelectImage(int index);
 	// Stesso principio esatto di SelectImage sopra, ma su fSelectedChartIndex.
 	void SelectChart(int index);
+	// Stesso principio esatto di SelectImage/SelectChart sopra, ma su
+	// fSelectedSlicerIndex.
+	void SelectSlicer(int index);
 	UndoSnapshot CaptureValidationSnapshot(range r) const;
 	UndoSnapshot CaptureCondFormatSnapshot() const;
 	void ApplySnapshot(const UndoSnapshot& snap);
@@ -1070,6 +1121,17 @@ private:
 	// impostato dopo il rilascio del mouse, cosi' Canc/Backspace sanno
 	// quale grafico cancellare senza dover tenere il mouse premuto.
 	int fSelectedChartIndex;
+	std::vector<SlicerObject>* fSlicers;
+	// Trascinamento/ridimensionamento/selezione di uno slicer (Tier 4):
+	// stesso schema esatto di fDraggingChartIndex/fResizingChartIndex/
+	// fSelectedChartIndex sopra (SlicerObject::frame e' gia' assoluto).
+	int fDraggingSlicerIndex;
+	BPoint fDragSlicerStart;
+	BRect fDragSlicerStartFrame;
+	int fResizingSlicerIndex;
+	BPoint fResizeSlicerStart;
+	BRect fResizeSlicerStartFrame;
+	int fSelectedSlicerIndex;
 	std::vector<EmbeddedImage>* fImages;
 	// Trascinamento di un'immagine incorporata (MouseDown/MouseMoved/
 	// MouseUp): stesso schema di fResizingColumn/fResizingRow sopra
