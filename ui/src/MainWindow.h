@@ -50,6 +50,7 @@ class RenameSheetWindow;
 class CommentWindow;
 class HyperlinkWindow;
 class ValidationWindow;
+class WhatIfWindow;
 class ConditionalFormatWindow;
 class PasswordWindow;
 class ColorWindow;
@@ -487,6 +488,7 @@ public:
 	void RemoveValidationFromSelection();
 	void ApplyTableStyleToSelection(int styleIndex);
 	void HandleInsertSlicer();
+	void ApplyWhatIfDataTable(const char* rowInputText, const char* colInputText);
 
 	// Formattazione condizionale VIVA (Fase 13): a differenza di
 	// SetCellValidation sopra (un primitivo per singola cella), qui
@@ -695,6 +697,7 @@ private:
 	HyperlinkWindow* fHyperlinkWindow;
 	ValidationWindow* fValidationWindow;
 	ConditionalFormatWindow* fConditionalFormatWindow;
+	WhatIfWindow* fWhatIfWindow;
 	// Password VERA di protezione foglio (Path to full Excel parity):
 	// fPasswordTargetSheetIndex cattura QUALE foglio era attivo quando la
 	// finestra e' stata mostrata, non riletto da fActiveSheetIndex al

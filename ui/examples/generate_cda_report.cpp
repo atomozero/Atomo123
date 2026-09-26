@@ -1415,6 +1415,28 @@ int main()
 	pivotSheet.hasTabColor = true;
 	pivotSheet.tabColor = kOrange;
 
+	// Tier 4 "What-if Data Tables" demo, riga 300 e oltre -- ben lontano
+	// da qualunque altro contenuto di questo foglio (il catalogo formule
+	// resta entro poche decine di righe), niente rischio di
+	// sovrapposizione. Cella input VERA A310 (tasso di crescita annuo,
+	// valore "a riposo" 5%); A302 = formula "Ricavo a un anno" =
+	// 1.000.000 * (1+A310); B302:D302 = tassi sostitutivi 3%/5%/8%;
+	// B303:D303 = risultati gia' calcolati a mano (la stessa cosa che
+	// Dati > Tabella dati produrrebbe aprendo il file e rilanciandolo,
+	// dato che questo generatore non ha una vera SheetView interattiva
+	// da cui invocarlo).
+	WriteLabel(funcs, cell(1, 299), "What-if Data Table demo (Tier 4)");
+	TryToParseString("=1000000*(1+A310)", cell(1, 302), funcs, true);
+	TryToParseString("0.03", cell(2, 302), funcs, true);
+	TryToParseString("0.05", cell(3, 302), funcs, true);
+	TryToParseString("0.08", cell(4, 302), funcs, true);
+	TryToParseString("0.05", cell(1, 310), funcs, true); // A310: tasso "a riposo"
+	TryToParseString("1030000", cell(2, 303), funcs, true);
+	TryToParseString("1050000", cell(3, 303), funcs, true);
+	TryToParseString("1080000", cell(4, 303), funcs, true);
+	WriteLabel(funcs, cell(1, 311), "(A310, sopra: tasso usato dalla formula A302 -- "
+		"seleziona A302:D303 e Dati > Tabella dati, input riga A310, per ricalcolare)");
+
 	AscdSheet funcsSheet;
 	funcsSheet.name = "Functions";
 	funcsSheet.doc = funcs;

@@ -26,6 +26,7 @@
 #include "CommentWindow.h"
 #include "HyperlinkWindow.h"
 #include "ValidationWindow.h"
+#include "WhatIfWindow.h"
 #include "ConditionalFormatWindow.h"
 #include "PasswordWindow.h"
 #include "ExcelPasswordHash.h"
@@ -167,6 +168,7 @@ static const uint32 kMsgAutoSum = 'asum';
 static const uint32 kMsgShowCommentWindow = 'shcw';
 static const uint32 kMsgShowHyperlinkWindow = 'shlw';
 static const uint32 kMsgShowValidationWindow = 'shvw';
+static const uint32 kMsgShowWhatIfWindow = 'shwi';
 static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 // Tier 4 "named table styles": "style" (int32) e' l'indice in
 // kTableStyles (TableStyles.h), oppure -1 per "Nessuno" (banda grigia
@@ -963,6 +965,12 @@ MainWindow::MainWindow()
 	// attiva -- vedi MainWindow::ApplyValidationToSelection.
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Convalida dati" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowValidationWindow)));
+	// Tabella dati (Tier 4, What-if Data Tables a una/due variabili):
+	// stesso posto della scheda "Dati" di Excel ("Analisi di
+	// simulazione > Tabella dati") -- vedi MainWindow::
+	// ApplyWhatIfDataTable.
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Tabella dati" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgShowWhatIfWindow)));
 	dataMenu->AddSeparatorItem();
 	// Stile tabella con nome (Tier 4 "named table styles", vedi
 	// TableStyles.h): si applica alla tabella strutturata che contiene la
@@ -1262,6 +1270,7 @@ MainWindow::MainWindow()
 	fCommentWindow = NULL;
 	fHyperlinkWindow = NULL;
 	fValidationWindow = NULL;
+	fWhatIfWindow = NULL;
 	fConditionalFormatWindow = NULL;
 	fPasswordWindow = NULL;
 	fPasswordTargetSheetIndex = -1;
@@ -5015,6 +5024,173 @@ void MainWindow::HandleInsertSlicer()
 	MarkModified();
 }
 
+// Tier 4, What-if Data Tables a una/due variabili: vedi il commento
+// piu' lungo in WhatIfWindow.h sulla convenzione di posizionamento di
+// questa app (cella formula SEMPRE in alto a sinistra dell'intervallo
+// selezionato, in tutti e tre i casi -- diversa dalla convenzione reale
+// di Excel, che usa un angolo diverso per ciascun caso: una
+// semplificazione dichiarata, non un tentativo di riprodurre byte per
+// byte l'idiosincrasia di Excel, dato che questa funzionalita' non
+// importa/esporta nulla da/verso XLSX). Quale fra rowInputText/
+// colInputText e' compilato decide da solo quale dei tre casi si
+// applica -- non si deduce dalla sola forma dell'intervallo, che da
+// sola sarebbe ambigua (vedi il commento su questa stessa ambiguita'
+// nel vero Excel).
+void MainWindow::ApplyWhatIfDataTable(const char* rowInputText, const char* colInputText)
+{
+	if (!fDoc)
+		return;
+
+	bool hasRowInput = rowInputText && rowInputText[0] != '\0';
+	bool hasColInput = colInputText && colInputText[0] != '\0';
+	if (!hasRowInput && !hasColInput)
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Specifica almeno una cella input (riga o colonna)."),
+			B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	range rowInputRange, colInputRange;
+	if (hasRowInput && !ParseRangeRef(rowInputText, rowInputRange))
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Riferimento della cella input riga non valido."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+	if (hasColInput && !ParseRangeRef(colInputText, colInputRange))
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Riferimento della cella input colonna non valido."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+	cell rowInputCell = rowInputRange.TopLeft(); // valida solo se hasRowInput
+	cell colInputCell = colInputRange.TopLeft(); // valida solo se hasColInput
+
+	range sel = fSheetView->SelectionRange();
+	bool hasRowValues = sel.right > sel.left;
+	bool hasColValues = sel.bottom > sel.top;
+
+	const char* shapeError = NULL;
+	if (hasRowInput && hasColInput)
+	{
+		if (!hasRowValues || !hasColValues)
+			shapeError = "Per una tabella a due variabili l'intervallo selezionato deve avere "
+				"piu' di una colonna e piu' di una riga.";
+	}
+	else if (hasRowInput)
+	{
+		if (!hasRowValues || sel.bottom != sel.top + 1)
+			shapeError = "Per una tabella a una variabile (input riga) l'intervallo selezionato "
+				"deve avere piu' di una colonna ed esattamente due righe.";
+	}
+	else
+	{
+		if (!hasColValues || sel.right != sel.left + 1)
+			shapeError = "Per una tabella a una variabile (input colonna) l'intervallo selezionato "
+				"deve avere piu' di una riga ed esattamente due colonne.";
+	}
+	if (shapeError)
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"), B_TRANSLATE(shapeError), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	cell formulaCell(sel.left, sel.top);
+
+	// Salva il contenuto ORIGINALE (testo/formula, non solo il valore
+	// corrente) delle celle input per ripristinarlo alla fine -- non e'
+	// un annulla utente (Undo qui sotto copre SOLO l'intervallo dei
+	// risultati): dal punto di vista dell'utente, la cella input deve
+	// restare esattamente com'era prima di aver lanciato il comando,
+	// il calcolo del what-if e' un dettaglio interno, non una modifica
+	// visibile da annullare a parte.
+	char origRowInputText[4096] = "";
+	char origColInputText[4096] = "";
+	if (hasRowInput)
+		fDoc->GetCellFormula(rowInputCell, origRowInputText, sizeof(origRowInputText), false);
+	if (hasColInput)
+		fDoc->GetCellFormula(colInputCell, origColInputText, sizeof(origColInputText), false);
+
+	range resultRange;
+	if (hasRowInput && hasColInput)
+		resultRange = range(sel.left + 1, sel.top + 1, sel.right, sel.bottom);
+	else if (hasRowInput)
+		resultRange = range(sel.left + 1, sel.top + 1, sel.right, sel.top + 1);
+	else
+		resultRange = range(sel.left + 1, sel.top + 1, sel.left + 1, sel.bottom);
+	fSheetView->SaveUndoState(resultRange);
+
+	char valueText[4096];
+	if (hasRowInput && hasColInput)
+	{
+		for (int col = sel.left + 1; col <= sel.right; col++)
+		{
+			fDoc->GetCellFormula(cell(col, sel.top), valueText, sizeof(valueText), false);
+			TryToParseString(valueText, rowInputCell, fDoc, false);
+			for (int row = sel.top + 1; row <= sel.bottom; row++)
+			{
+				fDoc->GetCellFormula(cell(sel.left, row), valueText, sizeof(valueText), false);
+				TryToParseString(valueText, colInputCell, fDoc, false);
+				RecalculateActiveWorkbook();
+				Value result;
+				fDoc->GetValue(formulaCell, result);
+				fDoc->SetValue(cell(col, row), result);
+			}
+		}
+	}
+	else if (hasRowInput)
+	{
+		for (int col = sel.left + 1; col <= sel.right; col++)
+		{
+			fDoc->GetCellFormula(cell(col, sel.top), valueText, sizeof(valueText), false);
+			TryToParseString(valueText, rowInputCell, fDoc, false);
+			RecalculateActiveWorkbook();
+			Value result;
+			fDoc->GetValue(formulaCell, result);
+			fDoc->SetValue(cell(col, sel.top + 1), result);
+		}
+	}
+	else
+	{
+		for (int row = sel.top + 1; row <= sel.bottom; row++)
+		{
+			fDoc->GetCellFormula(cell(sel.left, row), valueText, sizeof(valueText), false);
+			TryToParseString(valueText, colInputCell, fDoc, false);
+			RecalculateActiveWorkbook();
+			Value result;
+			fDoc->GetValue(formulaCell, result);
+			fDoc->SetValue(cell(sel.left + 1, row), result);
+		}
+	}
+
+	// Ripristina le celle input al contenuto originale -- una cella
+	// originariamente vuota torna vuota (DisposeCell), non resta
+	// all'ultimo valore sostitutivo provato dal ciclo sopra.
+	if (hasRowInput)
+	{
+		if (origRowInputText[0] != '\0')
+			TryToParseString(origRowInputText, rowInputCell, fDoc, false);
+		else
+			fDoc->DisposeCell(rowInputCell);
+	}
+	if (hasColInput)
+	{
+		if (origColInputText[0] != '\0')
+			TryToParseString(origColInputText, colInputCell, fDoc, false);
+		else
+			fDoc->DisposeCell(colInputCell);
+	}
+	RecalculateActiveWorkbook();
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
 // "type" e' l'indice posizionale del menu di ConditionalFormatWindow
 // (vedi il commento li' per la tabella completa), NON lo stesso ordine
 // di CondFormatRuleType -- questa funzione ospita ogni tipo "per
@@ -7599,6 +7775,23 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgInsertSlicer:
 			HandleInsertSlicer();
 			break;
+
+		case kMsgShowWhatIfWindow:
+			if (!fWhatIfWindow)
+				fWhatIfWindow = new WhatIfWindow(BMessenger(this));
+			if (fWhatIfWindow->IsHidden())
+				fWhatIfWindow->Show();
+			fWhatIfWindow->Activate();
+			break;
+
+		case kMsgWhatIfCommit:
+		{
+			BString rowInput, colInput;
+			message->FindString("rowInput", &rowInput);
+			message->FindString("colInput", &colInput);
+			ApplyWhatIfDataTable(rowInput.String(), colInput.String());
+			break;
+		}
 
 		case kMsgShowConditionalFormatWindow:
 		{
