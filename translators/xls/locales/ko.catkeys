@@ -1,0 +1,5 @@
+1	Korean	application/x-vnd.Atomo-XlsTranslator	336968922
+Versione %d.%d.%d	XlsConfigView		버전 %d.%d.%d
+Copyright (c) 2026 Andrea Bernardi · Licenza MIT	XlsConfigView		Copyright (c) 2026 Andrea Bernardi · MIT 라이선스
+Offrimi un caffe' ☕	XlsConfigView		커피 한 잔 사주기 ☕
+Importa fogli di calcolo dal formato binario\nExcel 97-2003 (XLS). Solo import: l'export verso\nl'ecosistema Excel passa dal translator XLSX.	XlsConfigView		이전 바이너리 형식인 Excel 97-2003(XLS)의\n스프레드시트를 가져옵니다. 가져오기 전용이며,\nExcel 형식으로 내보내려면 XLSX 변환기를 사용하세요.

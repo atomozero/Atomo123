@@ -1,0 +1,5 @@
+1	Japanese	application/x-vnd.Atomo-XlsTranslator	336968922
+Versione %d.%d.%d	XlsConfigView		バージョン %d.%d.%d
+Copyright (c) 2026 Andrea Bernardi · Licenza MIT	XlsConfigView		Copyright (c) 2026 Andrea Bernardi · MIT ライセンス
+Offrimi un caffe' ☕	XlsConfigView		コーヒーをおごる ☕
+Importa fogli di calcolo dal formato binario\nExcel 97-2003 (XLS). Solo import: l'export verso\nl'ecosistema Excel passa dal translator XLSX.	XlsConfigView		旧バイナリ形式の Excel 97-2003 (XLS) の\nスプレッドシートをインポートします。インポート専用です。\nExcel 形式へのエクスポートには XLSX トランスレーターを使用します。
