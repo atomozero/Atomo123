@@ -4358,6 +4358,21 @@ int main()
 								"nessuna tabella strutturata in sample.xlsx, il conteggio stile tabella e' zero");
 						}
 
+						// Valori esclusi dell'AutoFilter (Tier 4): un
+						// conteggio, la NUOVISSIMA ultima sezione del
+						// formato -- sample.xlsx ha un AutoFilter (A1:D1)
+						// ma nessuna colonna con un <filterColumn> (nessun
+						// criterio gia' applicato nel file originale),
+						// quindi il conteggio e' zero e non ci sono record
+						// a seguire.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 filterHiddenCount;
+							memcpy(&filterHiddenCount, ascdData + pos, 4); pos += 4;
+							Check(filterHiddenCount == 0,
+								"nessuna colonna filtrata in sample.xlsx, il conteggio valori esclusi e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
@@ -4371,6 +4386,296 @@ int main()
 		}
 
 		doc.Release();
+	}
+
+	// Valori esclusi dell'AutoFilter, contenuto VERO (Tier 4, prerequisito
+	// per gli Slicer): tests/sample_autofilter_hidden.xlsx ha una colonna
+	// A con intestazione "Colore" e quattro valori (Rosso/Verde/Blu/Rosso,
+	// righe 2-5), <autoFilter ref="A1:A5"><filterColumn colId="0">
+	// <filters><filter val="Rosso"/></filters></filterColumn></autoFilter>
+	// -- "Rosso" e' l'unico valore VISIBILE dichiarato da Excel (le righe
+	// 3/4, Verde/Blu, sono anche marcate hidden="1" su <row>, come farebbe
+	// un vero file salvato con questo filtro attivo). Il valore atteso di
+	// filterHiddenValues[1] (colonna A) e' quindi ["Verde", "Blu"] --
+	// tutti i valori distinti dei dati filtrati TRANNE quelli visibili,
+	// non un semplice specchio dei "val" dell'XML (che elencano l'opposto,
+	// i visibili).
+	{
+		BFile afFile("tests/sample_autofilter_hidden.xlsx", B_READ_ONLY);
+		Check(afFile.InitCheck() == B_OK, "apertura di tests/sample_autofilter_hidden.xlsx riuscita");
+
+		translator_info afInfo;
+		status_t afErr = translator->Identify(&afFile, NULL, NULL, &afInfo, 0);
+		Check(afErr == B_OK, "Identify riconosce sample_autofilter_hidden.xlsx");
+
+		afFile.Seek(0, SEEK_SET);
+		BMallocIO afAscdOut;
+		afErr = translator->Translate(&afFile, &afInfo, NULL, kAtomoNativeFormat, &afAscdOut);
+		Check(afErr == B_OK, "Translate di sample_autofilter_hidden.xlsx riesce");
+
+		const unsigned char *afData = NULL;
+		size_t afLen = 0;
+		bool afUnwrapped = UnwrapFirstSheet((const unsigned char *)afAscdOut.Buffer(),
+			afAscdOut.BufferLength(), &afData, &afLen);
+		Check(afUnwrapped, "l'output di Translate di sample_autofilter_hidden.xlsx e' un ASCD valido");
+
+		if (afUnwrapped)
+		{
+			int32 count = 0;
+			if (afLen > 12)
+				memcpy(&count, afData + 8, 4);
+			Check(count == 5, "l'ASCD contiene le 5 celle di sample_autofilter_hidden.xlsx");
+
+			size_t pos = 12;
+			for (int32 i = 0; i < count && pos + 8 <= afLen; i++)
+			{
+				int16 row, col;
+				int32 len;
+				memcpy(&row, afData + pos, 2); pos += 2;
+				memcpy(&col, afData + pos, 2); pos += 2;
+				memcpy(&len, afData + pos, 4); pos += 4;
+				pos += 1; // "kind" per cella
+				if (pos + (size_t)len > afLen)
+					break;
+				pos += len;
+			}
+
+			// Sezioni sempre vuote per questo fixture (nessuno stile,
+			// nessuna larghezza/altezza personalizzata, nessun colore,
+			// nessun grafico/immagine): charts, colWidths, cellColors,
+			// columnColors, rowHeights, poi Blocca riquadri (8 byte
+			// fissi), poi font/allineamento/bordi/formato numero/
+			// sottolineato/testo a capo/celle unite/immagini (8 contatori
+			// a zero).
+			bool sectionsOk = true;
+			if (pos + 4 <= afLen) { int32 n; memcpy(&n, afData + pos, 4); pos += 4; sectionsOk = (n == 0); }
+			else sectionsOk = false;
+			for (int s = 0; sectionsOk && s < 4 && pos + 4 <= afLen; s++)
+			{
+				int32 n;
+				memcpy(&n, afData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			if (sectionsOk && pos + 8 <= afLen)
+				pos += 8; // Blocca riquadri
+			else
+				sectionsOk = false;
+			for (int s = 0; sectionsOk && s < 8 && pos + 4 <= afLen; s++)
+			{
+				int32 n;
+				memcpy(&n, afData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			Check(sectionsOk,
+				"le sezioni fra le celle e la visibilita' griglia restano allineate "
+				"in sample_autofilter_hidden.xlsx");
+
+			// Visibilita' griglia: nessun showGridLines esplicito -> vero
+			// (un solo byte).
+			if (sectionsOk && pos + 1 <= afLen)
+			{
+				uint8 showGrid = afData[pos]; pos += 1;
+				Check(showGrid == 1, "nessun showGridLines esplicito, la griglia resta visibile di default");
+			}
+			else
+				sectionsOk = false;
+
+			// Colore della linguetta: nessuno (4 byte fissi).
+			if (sectionsOk && pos + 4 <= afLen)
+				pos += 4;
+			else
+				sectionsOk = false;
+
+			// Righe nascoste: <row r="3" hidden="1"/> e <row r="4"
+			// hidden="1"/>, aggiunte apposta nel fixture per imitare cosa
+			// scriverebbe un vero Excel con questo filtro applicato.
+			bool foundRow3Hidden = false, foundRow4Hidden = false;
+			if (sectionsOk && pos + 4 <= afLen)
+			{
+				int32 hiddenCount;
+				memcpy(&hiddenCount, afData + pos, 4); pos += 4;
+				Check(hiddenCount == 2, "due righe nascoste (3 e 4, Verde/Blu) in sample_autofilter_hidden.xlsx");
+				for (int32 i = 0; i < hiddenCount && pos + 2 <= afLen; i++)
+				{
+					int16 row;
+					memcpy(&row, afData + pos, 2); pos += 2;
+					if (row == 3) foundRow3Hidden = true;
+					if (row == 4) foundRow4Hidden = true;
+				}
+				Check(foundRow3Hidden && foundRow4Hidden,
+					"le righe nascoste sono proprio la 3 e la 4, come nel file originale");
+			}
+			else
+				sectionsOk = false;
+
+			// AutoFilter: ref="A1:A5".
+			if (sectionsOk && pos + 9 <= afLen)
+			{
+				uint8 hasAf = afData[pos]; pos += 1;
+				int16 top, left, bottom, right;
+				memcpy(&top, afData + pos, 2); pos += 2;
+				memcpy(&left, afData + pos, 2); pos += 2;
+				memcpy(&bottom, afData + pos, 2); pos += 2;
+				memcpy(&right, afData + pos, 2); pos += 2;
+				Check(hasAf == 1 && top == 1 && left == 1 && bottom == 5 && right == 1,
+					"l'intervallo dell'AutoFilter (A1:A5) e' importato correttamente");
+			}
+			else
+				sectionsOk = false;
+
+			// Sezioni sempre vuote per questo fixture, fino a poco prima
+			// della fine: commenti, collegamenti, tipo di grafico, colore
+			// di bordo, convalida dati, formattazione condizionale,
+			// tabelle strutturate, titolo di grafico, colonne valore di
+			// grafico (9 contatori a zero).
+			for (int s = 0; sectionsOk && s < 9 && pos + 4 <= afLen; s++)
+			{
+				int32 n;
+				memcpy(&n, afData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			Check(sectionsOk,
+				"le sezioni fra l'AutoFilter e l'area di stampa restano allineate "
+				"in sample_autofilter_hidden.xlsx");
+
+			// Area di stampa: assente (9 byte fissi: 1 presenza + 4 int16).
+			if (sectionsOk && pos + 9 <= afLen)
+				pos += 9;
+			else
+				sectionsOk = false;
+
+			// Impostazioni di stampa: assenti (45 byte fissi: 1 presenza +
+			// 4 margini double + modalita' scala int32 + percentuale
+			// double).
+			if (sectionsOk && pos + 45 <= afLen)
+				pos += 45;
+			else
+				sectionsOk = false;
+
+			// Progetto VBA: assente (1 byte).
+			if (sectionsOk && pos + 1 <= afLen)
+				pos += 1;
+			else
+				sectionsOk = false;
+
+			// Celle sbloccate: nessuna (1 contatore a zero).
+			if (sectionsOk && pos + 4 <= afLen)
+			{
+				int32 n;
+				memcpy(&n, afData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			else
+				sectionsOk = false;
+
+			// Protezione foglio: non protetto (1 byte), nessun hash (2
+			// byte "presente" + 4 stringhe vuote + uno spinCount).
+			if (sectionsOk && pos + 1 <= afLen)
+				pos += 1;
+			else
+				sectionsOk = false;
+			if (sectionsOk && pos + 2 <= afLen)
+				pos += 2;
+			else
+				sectionsOk = false;
+			for (int s = 0; sectionsOk && s < 4 && pos + 4 <= afLen; s++)
+			{
+				int32 strLen;
+				memcpy(&strLen, afData + pos, 4); pos += 4;
+				sectionsOk = (strLen == 0);
+			}
+			if (sectionsOk && pos + 4 <= afLen)
+				pos += 4; // spinCount
+			else
+				sectionsOk = false;
+
+			// Intervalli con nome: nessuno (1 contatore a zero).
+			if (sectionsOk && pos + 4 <= afLen)
+			{
+				int32 n;
+				memcpy(&n, afData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			else
+				sectionsOk = false;
+
+			// Allineamento verticale non predefinito: nessuna cella di
+			// questo fixture ha uno stile risolto (nessun s="..." nel
+			// file originale), quindi il conteggio e' zero -- a
+			// differenza di sample.xlsx sopra, che invece ne ha.
+			if (sectionsOk && pos + 4 <= afLen)
+			{
+				int32 valignCount;
+				memcpy(&valignCount, afData + pos, 4); pos += 4;
+				Check(valignCount == 0,
+					"nessuna cella con stile in sample_autofilter_hidden.xlsx, il conteggio "
+					"allineamento verticale e' zero");
+			}
+			else
+				sectionsOk = false;
+
+			// Tabelle pivot 1D/2D, poi orientamento riga di grafico, poi
+			// stile tabella: tutti assenti (4 contatori a zero).
+			for (int s = 0; sectionsOk && s < 4 && pos + 4 <= afLen; s++)
+			{
+				int32 n;
+				memcpy(&n, afData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			Check(sectionsOk,
+				"le sezioni fra le impostazioni di stampa e lo stile tabella restano allineate "
+				"in sample_autofilter_hidden.xlsx");
+
+			// LA sezione che questo test vuole davvero verificare: valori
+			// esclusi dell'AutoFilter, ULTIMA sezione del formato. Una
+			// sola colonna (A, indice assoluto 1), con "Verde" e "Blu"
+			// esclusi -- "Rosso" (l'unico valore VISIBILE dichiarato
+			// dall'XML originale) non deve comparire.
+			if (sectionsOk && pos + 4 <= afLen)
+			{
+				int32 filterColCount;
+				memcpy(&filterColCount, afData + pos, 4); pos += 4;
+				Check(filterColCount == 1,
+					"una colonna filtrata (A) registrata da sample_autofilter_hidden.xlsx");
+
+				if (filterColCount == 1 && pos + 6 <= afLen)
+				{
+					int16 col;
+					memcpy(&col, afData + pos, 2); pos += 2;
+					Check(col == 1, "la colonna filtrata e' proprio la A (indice assoluto 1)");
+
+					int32 valueCount;
+					memcpy(&valueCount, afData + pos, 4); pos += 4;
+					Check(valueCount == 2,
+						"due valori esclusi (\"Verde\" e \"Blu\", non \"Rosso\" che resta visibile)");
+
+					bool foundVerde = false, foundBlu = false, foundRossoWrongly = false;
+					for (int32 v = 0; v < valueCount && pos + 4 <= afLen; v++)
+					{
+						int32 len;
+						memcpy(&len, afData + pos, 4); pos += 4;
+						std::string value;
+						if (len > 0 && pos + (size_t)len <= afLen)
+						{
+							value.assign((const char *)(afData + pos), len);
+							pos += len;
+						}
+						if (value == "Verde") foundVerde = true;
+						if (value == "Blu") foundBlu = true;
+						if (value == "Rosso") foundRossoWrongly = true;
+					}
+					Check(foundVerde && foundBlu && !foundRossoWrongly,
+						"i valori esclusi sono esattamente \"Verde\" e \"Blu\", "
+						"MAI \"Rosso\" (l'unico dichiarato visibile nell'XML originale)");
+				}
+			}
+			else
+				sectionsOk = false;
+
+			Check(pos == afLen,
+				"dopo tutte le sezioni lo stream ASCD del foglio finisce esattamente alla fine "
+				"del buffer in sample_autofilter_hidden.xlsx, nessun byte mancante o avanzato");
+		}
 	}
 
 	// Formati numero (Fase 12): tests/sample_numfmt.xlsx ha cinque

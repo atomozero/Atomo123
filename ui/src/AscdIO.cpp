@@ -146,7 +146,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const AscdPrintSettings* printSettings,
 	const std::vector<unsigned char>* vbaProject,
 	const bool* isProtected,
-	const AscdSheetProtection* protection)
+	const AscdSheetProtection* protection,
+	const std::map<int, std::vector<BString> >* filterHiddenValues)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -1545,6 +1546,39 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione valori esclusi dell'AutoFilter, in coda DOPO tutto il resto
+	// (Tier 4, prerequisito per gli Slicer -- vedi SheetView::
+	// fFilterHiddenValues e AscdSheet::filterHiddenValues in AscdIO.h):
+	// stesso principio EOF-tollerante di ogni altra sezione opzionale
+	// sopra. Un conteggio di colonne, poi per ciascuna l'indice di
+	// colonna seguito dal proprio elenco di valori nascosti.
+	{
+		int32 columnCount = filterHiddenValues ? (int32)filterHiddenValues->size() : 0;
+		if (dest->Write(&columnCount, sizeof(columnCount)) != (ssize_t)sizeof(columnCount))
+			return B_IO_ERROR;
+		if (filterHiddenValues)
+		{
+			for (std::map<int, std::vector<BString> >::const_iterator it = filterHiddenValues->begin();
+				it != filterHiddenValues->end(); ++it)
+			{
+				int16 col = (int16)it->first;
+				if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_IO_ERROR;
+				int32 valueCount = (int32)it->second.size();
+				if (dest->Write(&valueCount, sizeof(valueCount)) != (ssize_t)sizeof(valueCount))
+					return B_IO_ERROR;
+				for (int32 v = 0; v < valueCount; v++)
+				{
+					int32 len = it->second[v].Length();
+					if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+						return B_IO_ERROR;
+					if (len > 0 && dest->Write(it->second[v].String(), len) != len)
+						return B_IO_ERROR;
+				}
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1564,7 +1598,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<unsigned char>* vbaProject,
 	bool* isProtected,
 	bool skipVbaAndProtectionSections,
-	AscdSheetProtection* protection)
+	AscdSheetProtection* protection,
+	std::map<int, std::vector<BString> >* filterHiddenValues)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -3532,6 +3567,53 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione valori esclusi dell'AutoFilter, scritta da SaveASCD in coda
+	// DOPO tutto il resto (Tier 4, prerequisito per gli Slicer): stesso
+	// principio EOF-tollerante di sopra. File .ascd piu' vecchi di questo
+	// campo non hanno questa sezione -- "filterHiddenValues" resta vuoto,
+	// esattamente come prima che esistesse (le righe nascoste RISULTANTI
+	// restano comunque corrette, vedi "hiddenRows" sopra).
+	{
+		int32 columnCount = 0;
+		ssize_t got = source->Read(&columnCount, sizeof(columnCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(columnCount) || columnCount < 0 || columnCount > kColCount)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < columnCount; i++)
+			{
+				int16 col;
+				if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_BAD_DATA;
+				int32 valueCount;
+				if (source->Read(&valueCount, sizeof(valueCount)) != (ssize_t)sizeof(valueCount))
+					return B_BAD_DATA;
+				if (valueCount < 0 || valueCount > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				std::vector<BString> values;
+				for (int32 v = 0; v < valueCount; v++)
+				{
+					int32 len;
+					if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+						return B_BAD_DATA;
+					if (len < 0 || len > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+					BString value;
+					if (len > 0)
+					{
+						std::vector<char> buf(len);
+						if (source->Read(&buf[0], len) != len)
+							return B_BAD_DATA;
+						value.SetTo(&buf[0], len);
+					}
+					values.push_back(value);
+				}
+				if (filterHiddenValues)
+					(*filterHiddenValues)[col] = values;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -3709,7 +3791,8 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			&sheet.showGrid, &sheet.hasTabColor, &sheet.tabColor,
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
-			&sheet.vbaProject, &sheet.isProtected, &sheet.protection);
+			&sheet.vbaProject, &sheet.isProtected, &sheet.protection,
+			&sheet.filterHiddenValues);
 		if (err != B_OK)
 			return err;
 
@@ -3818,7 +3901,8 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 				&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 				&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
 				skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected,
-				false /* skipVbaAndProtectionSections */, &sheet.protection);
+				false /* skipVbaAndProtectionSections */, &sheet.protection,
+				&sheet.filterHiddenValues);
 		}
 		if (err != B_OK)
 		{

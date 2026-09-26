@@ -372,6 +372,13 @@ int main()
 	imported[0].frozenRows = 1; // intestazione (riga 1) sempre visibile
 	imported[0].hasAutoFilter = true;
 	imported[0].autoFilterRange = range(1, 1, 16, 701); // A1:P701
+	// Tier 4 "AutoFilter persistence" (prerequisito per gli Slicer):
+	// esclude "None" dalla colonna D (Discount Band, indice 4) -- riaprire
+	// questo file mostra solo le righe con uno sconto REALE gia' applicato
+	// (Low/Medium/High), non solo il risultato (righe nascoste), ma anche
+	// il menu a tendina dell'AutoFilter che "ricorda" quale valore era
+	// escluso, esattamente come farebbe Excel.
+	imported[0].filterHiddenValues[4].push_back(BString("None"));
 	imported[0].hasTabColor = true;
 	imported[0].tabColor = kDarkGray;
 

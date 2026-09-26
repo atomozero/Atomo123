@@ -568,6 +568,22 @@ public:
 	// menu a tendina.
 	void ClearColumnFilters();
 
+	// Tier 4, prerequisito per gli Slicer: fFilterHiddenValues non era
+	// mai persistito (vedi il commento sul campo sotto) -- questi due
+	// metodi lo espongono a MainWindow per il giro salva/ricarica
+	// (AscdSheet::filterHiddenValues in AscdIO.h), stesso principio di
+	// SetHiddenRows sopra per le righe RISULTANTI. SetFilterHiddenValues
+	// SOSTITUISCE l'intera mappa (usata da MainWindow dopo Apri/cambio
+	// foglio) e ricalcola subito le righe nascoste, esattamente come
+	// SetColumnValueHidden gia' fa per una singola colonna.
+	const std::map<int, std::vector<BString> >& FilterHiddenValues() const
+		{ return fFilterHiddenValues; }
+	void SetFilterHiddenValues(const std::map<int, std::vector<BString> >& values)
+	{
+		fFilterHiddenValues = values;
+		RecomputeAutoFilterVisibility();
+	}
+
 	// Righe nascoste (AutoFilter, o import XLSX da <row hidden="1">
 	// indipendentemente dal motivo originale -- un nascondimento manuale
 	// dell'utente in Excel usa lo stesso attributo, questo progetto non
