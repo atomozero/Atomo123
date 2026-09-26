@@ -47,6 +47,7 @@
 #include "AscdIO.h"
 #include "SheetView.h"
 #include "MainWindow.h"
+#include "PasswordWindow.h"
 #include "MiniZip.h"
 
 static int gFailures = 0;
@@ -71,6 +72,28 @@ static void Send(MainWindow* win, uint32 what)
 {
 	BMessage msg(what);
 	win->MessageReceived(&msg);
+}
+
+// Password VERA di protezione foglio (Path to full Excel parity):
+// "Proteggi foglio" ('prsh') non protegge piu' all'istante quando si
+// STA proteggendo (mostra prima PasswordWindow) -- questo simula
+// l'utente che preme OK sul dialogo, esattamente come kMsgPasswordCommit
+// arriverebbe da PasswordWindow::MessageReceived. Una password vuota
+// riproduce il comportamento di sempre (nessuna password).
+static void CompletePasswordDialog(MainWindow* win, bool setMode, const char* password)
+{
+	BMessage msg(kMsgPasswordCommit);
+	msg.AddBool("setMode", setMode);
+	msg.AddString("password", password);
+	win->MessageReceived(&msg);
+}
+
+// Proteggi senza password: 'prsh' apre il dialogo (set mode, dato che il
+// foglio non e' ancora protetto), poi lo si "chiude" con un campo vuoto.
+static void ProtectWithoutPassword(MainWindow* win)
+{
+	Send(win, 'prsh');
+	CompletePasswordDialog(win, true, "");
 }
 
 static bool FileContains(const char* path, const char* needle)
@@ -190,7 +213,7 @@ int main()
 	Check(!cs.fLocked, "\"Sblocca celle selezionate\" toglie il blocco dalla cella attiva (A1)");
 
 	TryToParseString("7", cell(2, 1), doc, true); // B1, resta bloccata
-	Send(win, 'prsh'); // kMsgToggleProtectSheet
+	ProtectWithoutPassword(win); // kMsgToggleProtectSheet + kMsgPasswordCommit (vuota)
 	Check(win->GetSheetView()->IsProtected(), "\"Proteggi foglio\" attiva la protezione");
 
 	// 3) Precondizione della guardia (vedi il commento in cima al file
@@ -224,7 +247,7 @@ int main()
 	// 4) Round-trip nativo ASCD/ASCB.
 	{
 		win->Lock();
-		Send(win, 'prsh'); // riprotegge, cosi' il round-trip verifica anche isProtected
+		ProtectWithoutPassword(win); // riprotegge, cosi' il round-trip verifica anche isProtected
 		win->Unlock();
 
 		std::vector<AscdSheet> sheets(1);
@@ -295,6 +318,45 @@ int main()
 	// voce di stile.
 	Check(FileContains("/tmp/test_protection_roundtrip.xlsx", "r=\"B1\" s=\"1\""),
 		"risalvando come .xlsx, B1 referenzia davvero la voce di stile sbloccata (s=\"1\")");
+
+	// 6) Password VERA (Path to full Excel parity): proteggere con una
+	// password reale, poi sbloccare con quella giusta (si sblocca e
+	// l'hash viene dimenticato). Il caso "password sbagliata" NON viene
+	// esercitato attraverso kMsgPasswordCommit qui apposta: quel ramo
+	// mostra un vero BAlert bloccante (MainWindow::MessageReceived,
+	// "Password errata: il foglio resta protetto"), stesso identico
+	// motivo gia' documentato in cima a questo file per il ramo NEGATO
+	// di GuardProtectedEdit -- un processo headless che lo raggiunge
+	// resta appeso (verificato: questo test si e' davvero bloccato la
+	// prima volta che ci ho provato). Il rifiuto di una password
+	// sbagliata e' comunque verificato per davvero, a livello di
+	// algoritmo puro (nessun BAlert coinvolto), dal test dedicato di
+	// ExcelPasswordHash. Finestra nuova apposta, stesso motivo di win2
+	// sopra (win/win2 hanno gia' modifiche non salvate).
+	{
+		MainWindow* win3 = new MainWindow();
+		win3->Show();
+		win3->Lock();
+
+		Send(win3, 'prsh'); // apre PasswordWindow in modo "set"
+		CompletePasswordDialog(win3, true, "Segreto123");
+		Check(win3->GetSheetView()->IsProtected(),
+			"proteggere con una password vera attiva comunque la protezione");
+		Check(win3->GetSheetView()->GetProtectionHash().hasPassword,
+			"la protezione porta un hash vero, non solo il flag on/off");
+		Check(win3->GetSheetView()->GetProtectionHash().isModernHash
+				&& win3->GetSheetView()->GetProtectionHash().algorithmName == "SHA512",
+			"l'hash e' nella forma moderna ECMA-376 (SHA-512), la stessa che un vero Excel scrive");
+
+		Send(win3, 'prsh'); // sbloccare un foglio con password NON e' istantaneo: apre PasswordWindow in modo "verify"
+		CompletePasswordDialog(win3, false, "Segreto123");
+		Check(!win3->GetSheetView()->IsProtected(),
+			"la password corretta sblocca il foglio");
+		Check(!win3->GetSheetView()->GetProtectionHash().hasPassword,
+			"dopo lo sblocco l'hash viene dimenticato (riproteggere richiede una password nuova, come in Excel)");
+
+		win3->Unlock();
+	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;

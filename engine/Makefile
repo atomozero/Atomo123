@@ -117,6 +117,16 @@ test-newcell: $(LIB)
 	$(CXX) -o tests/newcell_test $(OBJDIR)/newcell_test.o -L. -lengine -lbe
 	./tests/newcell_test
 
+# Test dell'hash VERO di protezione foglio (ECMA-376 18.3.1.85, Path to
+# full Excel parity -- gestione completa delle password): vedi il
+# commento in cima a password_hash_test.cpp. -lcrypto (OpenSSL): prima
+# vera dipendenza di crittografia di questo progetto, vedi
+# src/Utils/ExcelPasswordHash.h.
+test-password-hash: $(LIB)
+	$(CXX) -c tests/password_hash_test.cpp -o $(OBJDIR)/password_hash_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/password_hash_test $(OBJDIR)/password_hash_test.o -L. -lengine -lbe -lcrypto
+	./tests/password_hash_test
+
 # Test dei riferimenti a tabella strutturata di Excel (Fase 14,
 # "Tabella12[Codice]"): CContainer::AddTable/ResolveName -- vedi il
 # commento in cima a table_refs_test.cpp.

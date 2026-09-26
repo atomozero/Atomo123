@@ -27,6 +27,8 @@
 #include "HyperlinkWindow.h"
 #include "ValidationWindow.h"
 #include "ConditionalFormatWindow.h"
+#include "PasswordWindow.h"
+#include "ExcelPasswordHash.h"
 #include "ColorWindow.h"
 #include "PreferencesWindow.h"
 #include "BorderWindow.h"
@@ -1222,6 +1224,8 @@ MainWindow::MainWindow()
 	fHyperlinkWindow = NULL;
 	fValidationWindow = NULL;
 	fConditionalFormatWindow = NULL;
+	fPasswordWindow = NULL;
+	fPasswordTargetSheetIndex = -1;
 	fColorWindow = NULL;
 	fColorTargetSheetIndex = -1;
 	fPreferencesWindow = NULL;
@@ -6936,16 +6940,131 @@ void MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
-		// Protezione foglio (Fase 32): vedi il commento nel costruttore
-		// (dove i tre comandi vengono aggiunti al menu Dati).
+		// Protezione foglio (Fase 32, poi password VERA -- Path to full
+		// Excel parity): vedi il commento nel costruttore (dove i tre
+		// comandi vengono aggiunti al menu Dati). Sbloccare un foglio
+		// protetto DA PASSWORD (AscdSheetProtection::hasPassword) non e'
+		// piu' istantaneo: serve prima verificarla, vedi
+		// kMsgPasswordCommit sotto. Proteggere offre sempre una password
+		// facoltativa (campo vuoto = comportamento di sempre, nessuna
+		// password). Un foglio protetto SENZA password (il solo modo
+		// possibile prima di questa fase) resta istantaneo in entrambe le
+		// direzioni, pienamente compatibile con ogni foglio gia' protetto
+		// cosi'.
 		case kMsgToggleProtectSheet:
 		{
 			bool nowProtected = !fSheetView->IsProtected();
-			fSheetView->SetProtected(nowProtected);
-			fSheets[fActiveSheetIndex].isProtected = nowProtected;
+			if (nowProtected)
+			{
+				fPasswordTargetSheetIndex = fActiveSheetIndex;
+				if (!fPasswordWindow)
+					fPasswordWindow = new PasswordWindow(BMessenger(this));
+				// Blocca PRIMA di toccare i suoi campi (PrepareForSet
+				// scrive nelle BTextControl): fPasswordWindow vive gia'
+				// sul proprio thread/looper fin dalla costruzione, come
+				// ogni BWindow -- toccarne le view da QUESTO thread senza
+				// bloccarlo prima e' la stessa classe di bug di corsa gia'
+				// vista altrove in questo programma (vedi ChartWindow),
+				// qui scoperta da un vero blocco riproducibile la seconda
+				// volta che la finestra veniva mostrata (mai la prima:
+				// appena costruita, il suo thread non aveva ancora nulla
+				// da elaborare in concorrenza).
+				fPasswordWindow->Lock();
+				fPasswordWindow->PrepareForSet();
+				if (fPasswordWindow->IsHidden())
+					fPasswordWindow->Show();
+				fPasswordWindow->Activate();
+				fPasswordWindow->Unlock();
+				break;
+			}
+			if (fSheetView->GetProtectionHash().hasPassword)
+			{
+				fPasswordTargetSheetIndex = fActiveSheetIndex;
+				if (!fPasswordWindow)
+					fPasswordWindow = new PasswordWindow(BMessenger(this));
+				fPasswordWindow->Lock();
+				fPasswordWindow->PrepareForVerify();
+				if (fPasswordWindow->IsHidden())
+					fPasswordWindow->Show();
+				fPasswordWindow->Activate();
+				fPasswordWindow->Unlock();
+				break;
+			}
+			fSheetView->SetProtected(false);
+			fSheets[fActiveSheetIndex].isProtected = false;
 			if (fProtectMenuItem)
-				fProtectMenuItem->SetMarked(nowProtected);
+				fProtectMenuItem->SetMarked(false);
 			MarkModified();
+			break;
+		}
+
+		case kMsgPasswordCommit:
+		{
+			bool setMode = false;
+			BString password;
+			message->FindBool("setMode", &setMode);
+			message->FindString("password", &password);
+			int index = fPasswordTargetSheetIndex;
+			if (index < 0 || index >= (int)fSheets.size())
+				break;
+
+			if (setMode)
+			{
+				AscdSheetProtection protection;
+				if (password.Length() > 0)
+				{
+					uint8 salt[16];
+					GenerateExcelPasswordSalt(salt);
+					std::string saltBase64 = Base64Encode(salt, 16);
+					protection.hasPassword = true;
+					protection.isModernHash = true;
+					protection.algorithmName = "SHA512";
+					protection.saltValue = saltBase64;
+					protection.spinCount = kDefaultPasswordSpinCount;
+					protection.hashValue = ComputeModernPasswordHash(
+						password.String(), saltBase64, kDefaultPasswordSpinCount);
+				}
+				if (index == fActiveSheetIndex)
+				{
+					fSheetView->SetProtected(true);
+					fSheetView->SetProtectionHash(protection);
+				}
+				fSheets[index].isProtected = true;
+				fSheets[index].protection = protection;
+				if (index == fActiveSheetIndex && fProtectMenuItem)
+					fProtectMenuItem->SetMarked(true);
+				MarkModified();
+			}
+			else
+			{
+				const AscdSheetProtection& stored = (index == fActiveSheetIndex)
+					? fSheetView->GetProtectionHash() : fSheets[index].protection;
+				bool ok = stored.isModernHash
+					&& VerifyModernPasswordHash(password.String(), stored.saltValue,
+						stored.spinCount, stored.hashValue);
+				if (!ok)
+				{
+					BAlert* alert = new BAlert(B_TRANSLATE("Password"),
+						B_TRANSLATE("Password errata: il foglio resta protetto."),
+						B_TRANSLATE("OK"));
+					alert->Go();
+					break;
+				}
+				// Password corretta: sblocca e dimentica l'hash -- come in
+				// Excel, riproteggere in seguito richiede impostarne una
+				// nuova, quella vecchia non resta valida per sempre.
+				AscdSheetProtection cleared;
+				if (index == fActiveSheetIndex)
+				{
+					fSheetView->SetProtected(false);
+					fSheetView->SetProtectionHash(cleared);
+					if (fProtectMenuItem)
+						fProtectMenuItem->SetMarked(false);
+				}
+				fSheets[index].isProtected = false;
+				fSheets[index].protection = cleared;
+				MarkModified();
+			}
 			break;
 		}
 
