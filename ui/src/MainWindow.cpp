@@ -1456,6 +1456,7 @@ void MainWindow::ResetWorkbook(const char* name)
 			fSheetView->SetAutoFilter(fSheets[0].autoFilterRange);
 		else
 			fSheetView->ClearAutoFilter();
+		fSheetView->SetFilterHiddenValues(fSheets[0].filterHiddenValues);
 		fSheetView->SetProtected(fSheets[0].isProtected);
 		fSheetView->SetProtectionHash(fSheets[0].protection);
 		// Un foglio nuovo parte dal default "mostra formule" scelto in
@@ -1543,6 +1544,7 @@ void MainWindow::SwitchToSheet(int index)
 	fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
 	fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 	fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
+	fSheets[fActiveSheetIndex].filterHiddenValues = fSheetView->FilterHiddenValues();
 	fSheets[fActiveSheetIndex].isProtected = fSheetView->IsProtected();
 	fSheets[fActiveSheetIndex].protection = fSheetView->GetProtectionHash();
 	// Posizione di scorrimento (bug reale segnalato dall'utente: uscire
@@ -1575,6 +1577,7 @@ void MainWindow::SwitchToSheet(int index)
 		fSheetView->SetAutoFilter(fSheets[index].autoFilterRange);
 	else
 		fSheetView->ClearAutoFilter();
+	fSheetView->SetFilterHiddenValues(fSheets[index].filterHiddenValues);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
 	if (fProtectMenuItem)
 		fProtectMenuItem->SetMarked(fSheetView->IsProtected());
@@ -1883,7 +1886,9 @@ static bool ReadSingleSheetASCD(BPositionIO* source, AscdSheet* outSheet)
 		&outSheet->showGrid, &outSheet->hasTabColor, &outSheet->tabColor,
 		&outSheet->hiddenRows, &outSheet->hasAutoFilter, &outSheet->autoFilterRange,
 		&outSheet->hasPrintArea, &outSheet->printArea, &outSheet->printSettings,
-		true);
+		true, NULL /* vbaProject */, NULL /* isProtected */,
+		false /* skipVbaAndProtectionSections */, NULL /* protection */,
+		&outSheet->filterHiddenValues);
 	if (err != B_OK)
 	{
 		outSheet->doc->Release();
@@ -2281,6 +2286,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 		fSheetView->SetAutoFilter(fSheets[0].autoFilterRange);
 	else
 		fSheetView->ClearAutoFilter();
+	fSheetView->SetFilterHiddenValues(fSheets[0].filterHiddenValues);
 	fSheetView->SetProtected(fSheets[0].isProtected);
 	fSheetView->SetProtectionHash(fSheets[0].protection);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
@@ -2566,6 +2572,7 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 		fSheetView->SetAutoFilter(fSheets[0].autoFilterRange);
 	else
 		fSheetView->ClearAutoFilter();
+	fSheetView->SetFilterHiddenValues(fSheets[0].filterHiddenValues);
 	fSheetView->SetProtected(fSheets[0].isProtected);
 	fSheetView->SetProtectionHash(fSheets[0].protection);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
@@ -2762,6 +2769,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
 		fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 		fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
+		fSheets[fActiveSheetIndex].filterHiddenValues = fSheetView->FilterHiddenValues();
 		fSheets[fActiveSheetIndex].isProtected = fSheetView->IsProtected();
 		fSheets[fActiveSheetIndex].protection = fSheetView->GetProtectionHash();
 
@@ -2960,6 +2968,7 @@ void MainWindow::AutoSaveBackup()
 		fSheets[fActiveSheetIndex].hiddenRows = fSheetView->HiddenRows();
 		fSheets[fActiveSheetIndex].hasAutoFilter = fSheetView->HasAutoFilter();
 		fSheets[fActiveSheetIndex].autoFilterRange = fSheetView->AutoFilterRange();
+		fSheets[fActiveSheetIndex].filterHiddenValues = fSheetView->FilterHiddenValues();
 		fSheets[fActiveSheetIndex].isProtected = fSheetView->IsProtected();
 		fSheets[fActiveSheetIndex].protection = fSheetView->GetProtectionHash();
 		SaveASCDBook(fSheets, &file); // esito ignorato, vedi il commento sopra su file.InitCheck()

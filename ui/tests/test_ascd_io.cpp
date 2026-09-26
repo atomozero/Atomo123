@@ -963,16 +963,18 @@ int main()
 		// pivot interamente 1D (columnFieldCol=-1, measures/columnValues/
 		// cachedRows2D tutti vuoti), la sezione pivot 2D e' sempre
 		// ESATTAMENTE 18 byte (int32 count=1, poi int16+int32+int32+int32
-		// tutti "vuoti" per quell'unico pivot). Da quando esiste la
-		// sezione stile tabella (Tier 4, sempre in coda DOPO pivot 2D),
-		// pivot 2D non e' piu' l'ultima cosa scritta: per un documento
-		// SENZA tabelle strutturate quella sezione e' a sua volta sempre
-		// ESATTAMENTE 4 byte (int32 styleCount=0) -- troncare 18+4=22
-		// byte equivale quindi a un file scritto prima che ENTRAMBE le
-		// sezioni esistessero (il caso "prima di pivot 2D" incontrato
-		// davvero da un file scritto in quella finestra di tempo aveva
-		// comunque, per definizione, anche zero tabelle stile-nominate,
-		// che sono arrivate molto dopo).
+		// tutti "vuoti" per quell'unico pivot). Da quando esistono la
+		// sezione stile tabella e quella dei valori esclusi dell'AutoFilter
+		// (entrambe Tier 4, sempre in coda DOPO pivot 2D, quella
+		// dell'AutoFilter per ultima), pivot 2D non e' piu' l'ultima cosa
+		// scritta: per un documento SENZA tabelle strutturate ne' colonne
+		// filtrate, ciascuna delle due e' a sua volta sempre ESATTAMENTE 4
+		// byte (un solo int32 count=0) -- troncare 18+4+4=26 byte equivale
+		// quindi a un file scritto prima che TUTTE E TRE le sezioni
+		// esistessero (il caso "prima di pivot 2D" incontrato davvero da
+		// un file scritto in quella finestra di tempo aveva comunque, per
+		// definizione, anche zero tabelle stile-nominate e zero colonne
+		// filtrate, arrivate molto dopo).
 		{
 			CContainer& legacyDoc = *new CContainer(NULL, NULL);
 			PivotTableObject legacyPivot;
@@ -988,7 +990,9 @@ int main()
 
 			const size_t kPivot2DSectionLen = 18;
 			const size_t kEmptyTableStyleSectionLen = 4; // int32 styleCount=0, nessuna tabella
-			const size_t kTrailerLen = kPivot2DSectionLen + kEmptyTableStyleSectionLen;
+			const size_t kEmptyFilterHiddenValuesSectionLen = 4; // int32 columnCount=0, nessuna colonna filtrata
+			const size_t kTrailerLen = kPivot2DSectionLen + kEmptyTableStyleSectionLen
+				+ kEmptyFilterHiddenValuesSectionLen;
 
 			size_t legacyFullLen = legacyBuf.BufferLength();
 			Check(legacyFullLen > kTrailerLen,
@@ -1016,17 +1020,19 @@ int main()
 					"(columnFieldCol=-1, measures/columnValues/cachedRows2D vuoti)");
 				legacyReloaded.Release();
 
-				// L'intera sezione stile tabella (4 byte, vuota per questo
-				// documento) PIU' un solo byte del pivot 2D in meno: l'intero
-				// record del pivot (pivot2DCount, columnFieldCol,
-				// measureCount, columnValueCount) si legge per intero, ma
-				// l'ultimo byte di rowCount2D manca -- deve fallire con
-				// B_BAD_DATA, non leggere oltre i limiti del buffer (e non
-				// scambiare l'inizio della sezione stile tabella, assente
-				// qui, per un rowCount2D valido).
+				// Le due sezioni stile tabella e valori esclusi AutoFilter
+				// (4+4 byte, entrambe vuote per questo documento) PIU' un
+				// solo byte del pivot 2D in meno: l'intero record del
+				// pivot (pivot2DCount, columnFieldCol, measureCount,
+				// columnValueCount) si legge per intero, ma l'ultimo byte
+				// di rowCount2D manca -- deve fallire con B_BAD_DATA, non
+				// leggere oltre i limiti del buffer (e non scambiare
+				// l'inizio delle sezioni successive, assenti qui, per un
+				// rowCount2D valido).
 				BFile shortFile("tests/roundtrip_pivot2d_short.ascd",
 					B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-				shortFile.Write(legacyBuf.Buffer(), legacyFullLen - kEmptyTableStyleSectionLen - 1);
+				shortFile.Write(legacyBuf.Buffer(), legacyFullLen - kEmptyTableStyleSectionLen
+					- kEmptyFilterHiddenValuesSectionLen - 1);
 				shortFile.Unset();
 
 				BFile shortReopened("tests/roundtrip_pivot2d_short.ascd", B_READ_ONLY);
@@ -1094,6 +1100,80 @@ int main()
 		Check(LoadASCD(&oldFormat6, &oldDoc6) == B_OK,
 			"un file senza sezione stile tabella (scritto prima che esistesse) si rilegge senza errori");
 		oldDoc6.Release();
+	}
+
+	// Round-trip dei valori esclusi dell'AutoFilter (Tier 4, prerequisito
+	// per gli Slicer -- vedi SheetView::fFilterHiddenValues e
+	// AscdSheet::filterHiddenValues in AscdIO.h): sezione NUOVISSIMA,
+	// scritta in coda DOPO la sezione stile tabella sopra. Verifica che i
+	// valori esclusi per colonna sopravvivano al giro salva->ricarica --
+	// non solo le righe nascoste RISULTANTI, gia' verificate altrove: il
+	// menu a tendina dell'AutoFilter deve poter mostrare di nuovo lo
+	// stato spuntato/non spuntato corretto dopo aver riaperto il file.
+	{
+		std::map<int, std::vector<BString> > savedFilters;
+		std::vector<BString> col2Hidden;
+		col2Hidden.push_back(BString("Nord"));
+		col2Hidden.push_back(BString("Sud"));
+		savedFilters[2] = col2Hidden;
+		std::vector<BString> col5Hidden;
+		col5Hidden.push_back(BString("X"));
+		savedFilters[5] = col5Hidden;
+
+		CContainer& filterSaveDoc = *new CContainer(NULL, NULL);
+		BFile filterFile("tests/roundtrip_autofilter_hidden.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&filterSaveDoc, &filterFile,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				NULL /* vbaProject */, NULL /* isProtected */, NULL /* protection */,
+				&savedFilters) == B_OK,
+			"SaveASCD con valori esclusi AutoFilter su due colonne riesce");
+		filterSaveDoc.Release();
+
+		BFile filterReopened("tests/roundtrip_autofilter_hidden.ascd", B_READ_ONLY);
+		CContainer& filterReloaded = *new CContainer(NULL, NULL);
+		std::map<int, std::vector<BString> > reloadedFilters;
+		Check(LoadASCD(&filterReopened, &filterReloaded,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				false /* skipInitialRecalc */, NULL /* vbaProject */, NULL /* isProtected */,
+				false /* skipVbaAndProtectionSections */, NULL /* protection */,
+				&reloadedFilters) == B_OK,
+			"LoadASCD con valori esclusi AutoFilter riesce");
+
+		Check(reloadedFilters.size() == 2,
+			"entrambe le colonne filtrate sopravvivono al giro salva->ricarica");
+		Check(reloadedFilters[2].size() == 2 && reloadedFilters[2][0] == "Nord"
+				&& reloadedFilters[2][1] == "Sud",
+			"i due valori esclusi della colonna 2 sopravvivono, nello stesso ordine");
+		Check(reloadedFilters[5].size() == 1 && reloadedFilters[5][0] == "X",
+			"il valore escluso della colonna 5 sopravvive");
+		filterReloaded.Release();
+
+		// Un file scritto PRIMA di questa sezione (tests/roundtrip.ascd)
+		// deve restare leggibile con una mappa vuota -- stesso principio
+		// EOF-tollerante di ogni altra sezione opzionale sopra.
+		BFile oldFormat7("tests/roundtrip.ascd", B_READ_ONLY);
+		CContainer& oldDoc7 = *new CContainer(NULL, NULL);
+		std::map<int, std::vector<BString> > noFilters;
+		Check(LoadASCD(&oldFormat7, &oldDoc7,
+				NULL /* charts */, NULL /* colWidths */, NULL /* rowHeights */,
+				NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
+				NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
+				NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,
+				NULL /* hasPrintArea */, NULL /* printArea */, NULL /* printSettings */,
+				false /* skipInitialRecalc */, NULL /* vbaProject */, NULL /* isProtected */,
+				false /* skipVbaAndProtectionSections */, NULL /* protection */,
+				&noFilters) == B_OK && noFilters.empty(),
+			"un file senza sezione valori esclusi AutoFilter si rilegge senza errori e senza colonne filtrate");
+		oldDoc7.Release();
 	}
 
 	// --- Un file .ascd con la colonna di un commento manomessa (fuori

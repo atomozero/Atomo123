@@ -197,7 +197,12 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	const std::string* protectionAlgorithmName = NULL,
 	const std::string* protectionHashValue = NULL,
 	const std::string* protectionSaltValue = NULL,
-	const int32* protectionSpinCount = NULL)
+	const int32* protectionSpinCount = NULL,
+	// Tier 4, prerequisito per gli Slicer: vedi ParsedSheet::
+	// filterHiddenValues e il commento gemello in ui/src/AscdIO.h.
+	// Ultimo parametro per lo stesso motivo di ogni altro campo aggiunto
+	// in coda a questa funzione.
+	const std::map<int, std::vector<BString> >* filterHiddenValues = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -1500,6 +1505,40 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			int8 showBandedRows = def.showBandedRows ? 1 : 0;
 			if (dest->Write(&showBandedRows, sizeof(showBandedRows)) != (ssize_t)sizeof(showBandedRows))
 				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione valori esclusi dell'AutoFilter, in coda DOPO tutto il resto
+	// (Tier 4, prerequisito per gli Slicer -- vedi ParsedSheet::
+	// filterHiddenValues e il commento gemello in ui/src/AscdIO.cpp):
+	// stesso schema EOF-tollerante di sopra, questo translator estrae
+	// davvero <filterColumn><filters> dal file XLSX originale (ParseSheet)
+	// quando la forma e' quella letterale supportata -- va quindi scritta
+	// con i valori reali.
+	{
+		int32 columnCount = filterHiddenValues ? (int32)filterHiddenValues->size() : 0;
+		if (dest->Write(&columnCount, sizeof(columnCount)) != (ssize_t)sizeof(columnCount))
+			return B_IO_ERROR;
+		if (filterHiddenValues)
+		{
+			for (std::map<int, std::vector<BString> >::const_iterator it = filterHiddenValues->begin();
+				it != filterHiddenValues->end(); ++it)
+			{
+				int16 col = (int16)it->first;
+				if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_IO_ERROR;
+				int32 valueCount = (int32)it->second.size();
+				if (dest->Write(&valueCount, sizeof(valueCount)) != (ssize_t)sizeof(valueCount))
+					return B_IO_ERROR;
+				for (int32 v = 0; v < valueCount; v++)
+				{
+					int32 len = it->second[v].Length();
+					if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
+						return B_IO_ERROR;
+					if (len > 0 && dest->Write(it->second[v].String(), len) != len)
+						return B_IO_ERROR;
+				}
+			}
 		}
 	}
 
@@ -3155,6 +3194,50 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				int8 showBandedRows;
 				if (source->Read(&showBandedRows, sizeof(showBandedRows)) != (ssize_t)sizeof(showBandedRows))
 					return B_BAD_DATA;
+			}
+		}
+	}
+
+	// Sezione valori esclusi dell'AutoFilter, scritta da WriteASCD sopra
+	// in coda DOPO la sezione stile tabella (Tier 4, prerequisito per gli
+	// Slicer): stesso principio "consumata ma non ancora esportata verso
+	// XLSX" del commento sopra -- questo translator non scrive affatto
+	// <filterColumn><filters> in esportazione oggi (e non scrive nemmeno
+	// <autoFilter> in generale, vedi ROADMAP.md: un gap piu' grande e
+	// preesistente, non specifico di questo campo). File .ascd piu'
+	// vecchi di questo campo non hanno questa sezione, stesso schema
+	// EOF-tollerante di sopra.
+	{
+		int32 columnCount = 0;
+		ssize_t got = source->Read(&columnCount, sizeof(columnCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(columnCount) || columnCount < 0 || columnCount > kColCount)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < columnCount; i++)
+			{
+				int16 col;
+				if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
+					return B_BAD_DATA;
+				int32 valueCount;
+				if (source->Read(&valueCount, sizeof(valueCount)) != (ssize_t)sizeof(valueCount))
+					return B_BAD_DATA;
+				if (valueCount < 0 || valueCount > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				for (int32 v = 0; v < valueCount; v++)
+				{
+					int32 len;
+					if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
+						return B_BAD_DATA;
+					if (len < 0 || len > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+					if (len > 0)
+					{
+						std::vector<char> buf(len);
+						if (source->Read(&buf[0], len) != len)
+							return B_BAD_DATA;
+					}
+				}
 			}
 		}
 	}
@@ -7222,6 +7305,26 @@ struct SheetContext {
 	std::vector<int>* hiddenRows; // opzionale (NULL = non raccolte)
 	bool* hasAutoFilter; // opzionale (NULL = non raccolto)
 	range* autoFilterRange; // valido solo se *hasAutoFilter diventa true
+	// Tier 4, prerequisito per gli Slicer: valori "visibili" grezzi
+	// raccolti da <filterColumn colId="N"><filters><filter val="..."/>,
+	// indicizzati per colId (offset 0-based da autoFilterRange->left, NON
+	// un indice di colonna assoluto -- la conversione in colonna assoluta
+	// e nell'elenco ESCLUSO che questo motore vuole avviene DOPO, a fine
+	// parsing, in ParseSheet -- vedi il commento li'). Sempre raccolto
+	// internamente (costo trascurabile), a differenza degli altri campi
+	// di questo struct non e' un puntatore opzionale: chi non lo vuole
+	// semplicemente non guarda ctx.filterColumnVisibleValues dopo.
+	std::map<int, std::vector<std::string> > filterColumnVisibleValues;
+	// -1 = non dentro un <filterColumn>, o dentro uno il cui tipo di
+	// filtro non e' il semplice elenco letterale <filters> (vedi
+	// currentFilterColSkip sotto).
+	int currentFilterColId;
+	// Vero se il <filterColumn> corrente usa <customFilters>/<top10>/
+	// <dynamicFilter>/<colorFilter>/<iconFilter> invece del semplice
+	// <filters> letterale -- in quel caso i "val" incontrati (se mai ce
+	// ne fossero, non dovrebbero essercene per queste forme) vanno
+	// ignorati, non fatti passare per un elenco valido.
+	bool currentFilterColSkip;
 	bool* isProtected; // opzionale (NULL = non raccolto), da <sheetProtection/> (Fase 32)
 	// Hash di protezione VERO (Tier 4, "Path to 100% XLSX standard
 	// compatibility"): gli attributi REALI di <sheetProtection>, non
@@ -7500,17 +7603,59 @@ static void XMLCALL SheetStart(void* userData, const char* name, const char** at
 	// scritto il file): la riga di intestazione + intervallo di
 	// colonne su cui Excel disegna le frecce a discesa -- riusa
 	// ParseMergeCellRef (definita sopra per <mergeCell ref="...">),
-	// stesso formato "A1:B2". Le eventuali condizioni gia' applicate
-	// (<filterColumn><filters>...) non si leggono qui: il risultato
-	// (quali righe sono nascoste) arriva gia' da "hidden" su <row>
-	// sopra, che basta per mostrare il foglio come in Excel -- limite
-	// dichiarato, vedi ROADMAP.md.
+	// stesso formato "A1:B2". Le condizioni gia' applicate per colonna
+	// (<filterColumn><filters>...) si leggono nei tre gestori subito
+	// sotto (Tier 4, prerequisito per gli Slicer) -- il risultato (quali
+	// righe sono nascoste) arriva comunque anche da "hidden" su <row>
+	// sopra, indipendentemente da questo: quello resta la fonte usata per
+	// mostrare il foglio come in Excel, questo serve solo a far
+	// "ricordare" al menu a tendina quali valori esatti erano esclusi.
 	else if (strcmp(name, "autoFilter") == 0 && ctx->hasAutoFilter)
 	{
 		for (int i = 0; atts[i]; i += 2)
 		{
 			if (strcmp(atts[i], "ref") == 0 && ParseMergeCellRef(atts[i + 1], ctx->autoFilterRange))
 				*ctx->hasAutoFilter = true;
+		}
+	}
+	// <filterColumn colId="N">, dentro <autoFilter>: "colId" e' un
+	// offset 0-based dalla colonna sinistra di autoFilterRange, NON un
+	// indice di colonna assoluto (es. autoFilter su C1:F1, colId="1" ->
+	// colonna D) -- la conversione avviene dopo, a fine parsing (vedi
+	// ParseSheet), quando autoFilterRange e' garantito gia' completo.
+	else if (strcmp(name, "filterColumn") == 0)
+	{
+		ctx->currentFilterColId = -1;
+		ctx->currentFilterColSkip = false;
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "colId") == 0)
+				ctx->currentFilterColId = atoi(atts[i + 1]);
+		}
+	}
+	// Forme di filtro SENZA equivalente nel modello di questo motore
+	// (confronto, ultimi/primi N, filtro dinamico tipo "sopra la media",
+	// colore/icona): la colonna corrente va scartata per intero invece
+	// di rischiare un elenco parziale/errato -- vedi il commento su
+	// ParsedSheet::filterHiddenValues.
+	else if (strcmp(name, "customFilters") == 0 || strcmp(name, "top10") == 0
+		|| strcmp(name, "dynamicFilter") == 0 || strcmp(name, "colorFilter") == 0
+		|| strcmp(name, "iconFilter") == 0)
+	{
+		ctx->currentFilterColSkip = true;
+	}
+	// <filter val="..."/>, dentro <filters>, dentro <filterColumn>: UN
+	// valore fra quelli che Excel lascia VISIBILI (l'opposto del modello
+	// di questo motore, che registra invece i valori ESCLUSI) -- raccolti
+	// grezzi qui, la sottrazione "tutti i valori distinti meno questi
+	// visibili" avviene dopo, a fine parsing (vedi ParseSheet), quando
+	// tutte le celle del foglio sono gia' state lette da "doc".
+	else if (strcmp(name, "filter") == 0 && ctx->currentFilterColId >= 0 && !ctx->currentFilterColSkip)
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "val") == 0)
+				ctx->filterColumnVisibleValues[ctx->currentFilterColId].push_back(atts[i + 1]);
 		}
 	}
 	// <hyperlink ref="A1" r:id="rIdX"/> (o location="..." per un
@@ -7962,6 +8107,11 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 
 	if (strcmp(name, "v") == 0)
 		ctx->inValue = false;
+	else if (strcmp(name, "filterColumn") == 0)
+	{
+		ctx->currentFilterColId = -1;
+		ctx->currentFilterColSkip = false;
+	}
 	else if (strcmp(name, "formula1") == 0 && ctx->inDataValidation)
 		ctx->inValidationFormula1 = false;
 	else if (strcmp(name, "formula2") == 0 && ctx->inDataValidation)
@@ -8292,7 +8442,11 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	std::string* protectionAlgorithmName = NULL,
 	std::string* protectionHashValue = NULL,
 	std::string* protectionSaltValue = NULL,
-	int32* protectionSpinCount = NULL)
+	int32* protectionSpinCount = NULL,
+	// Tier 4, prerequisito per gli Slicer: vedi ParsedSheet::
+	// filterHiddenValues. Ultimo parametro per lo stesso motivo di ogni
+	// altro campo aggiunto in coda a questa funzione.
+	std::map<int, std::vector<BString> >* filterHiddenValues = NULL)
 {
 	SheetContext ctx;
 	ctx.doc = doc;
@@ -8305,6 +8459,8 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 	ctx.hiddenRows = hiddenRows;
 	ctx.hasAutoFilter = hasAutoFilter;
 	ctx.autoFilterRange = autoFilterRange;
+	ctx.currentFilterColId = -1;
+	ctx.currentFilterColSkip = false;
 	ctx.isProtected = isProtected;
 	ctx.hyperlinkRefs = hyperlinkRefs;
 	ctx.dataValidationRefs = dataValidationRefs;
@@ -8346,6 +8502,73 @@ static bool ParseSheet(const std::vector<unsigned char>& xml, CContainer* doc,
 
 	XML_Status status = XML_Parse(parser, (const char*)xml.data(), xml.size(), 1);
 	XML_ParserFree(parser);
+
+	// Tier 4, prerequisito per gli Slicer: converte i valori "visibili"
+	// grezzi raccolti da <filterColumn> (ctx.filterColumnVisibleValues,
+	// per colId) nell'elenco di valori ESCLUSI per colonna assoluta che
+	// SheetView::fFilterHiddenValues si aspetta -- "tutti i valori
+	// distinti presenti nei dati filtrati meno quelli visibili", stessa
+	// identica logica di SheetView::UniqueColumnValues (riprodotta qui
+	// perche' questo translator non ha un SheetView, gira sempre fuori
+	// dall'app grafica). Fatto DOPO il parsing completo, non dentro
+	// SheetStart: serve sia autoFilterRange gia' risolto per intero
+	// (colId -> colonna assoluta) sia OGNI cella del foglio gia' letta in
+	// "doc" per contare i valori distinti.
+	if (filterHiddenValues && hasAutoFilter && *hasAutoFilter && autoFilterRange
+		&& !ctx.filterColumnVisibleValues.empty())
+	{
+		range dataBounds;
+		doc->GetBounds(dataBounds);
+		int dataBottom = dataBounds.bottom;
+		if (dataBottom < autoFilterRange->top)
+			dataBottom = autoFilterRange->top;
+
+		for (std::map<int, std::vector<std::string> >::const_iterator it
+				= ctx.filterColumnVisibleValues.begin();
+			it != ctx.filterColumnVisibleValues.end(); ++it)
+		{
+			int col = autoFilterRange->left + it->first;
+			if (col < autoFilterRange->left || col > autoFilterRange->right)
+				continue;
+
+			std::vector<BString> distinctValues;
+			for (int row = autoFilterRange->top + 1; row <= dataBottom; row++)
+			{
+				char text[4096];
+				doc->GetCellResult(cell(col, row), text, sizeof(text), true);
+				BString value(text);
+				bool found = false;
+				for (size_t k = 0; k < distinctValues.size(); k++)
+				{
+					if (distinctValues[k] == value)
+					{
+						found = true;
+						break;
+					}
+				}
+				if (!found)
+					distinctValues.push_back(value);
+			}
+
+			std::vector<BString> hiddenValues;
+			for (size_t v = 0; v < distinctValues.size(); v++)
+			{
+				bool visible = false;
+				for (size_t k = 0; k < it->second.size(); k++)
+				{
+					if (distinctValues[v] == it->second[k].c_str())
+					{
+						visible = true;
+						break;
+					}
+				}
+				if (!visible)
+					hiddenValues.push_back(distinctValues[v]);
+			}
+			if (!hiddenValues.empty())
+				(*filterHiddenValues)[col] = hiddenValues;
+		}
+	}
 
 	return status == XML_STATUS_OK;
 }
@@ -10442,6 +10665,18 @@ struct ParsedSheet {
 	std::vector<int> hiddenRows;
 	bool hasAutoFilter = false;
 	range autoFilterRange;
+	// Valori esclusi per colonna dell'AutoFilter (Tier 4, prerequisito
+	// per gli Slicer): da <autoFilter><filterColumn><filters><filter
+	// val="..."/></filters></filterColumn>, vedi ParseSheet/SheetStart
+	// piu' sotto. Solo la forma letterale <filters> si traduce qui --
+	// <customFilters>/<top10>/<dynamicFilter>/<colorFilter>/<iconFilter>
+	// (confronto, ultimi/primi N, filtro dinamico, colore/icona) non
+	// hanno un equivalente nel modello di SheetView::fFilterHiddenValues
+	// di questo motore, quella colonna resta semplicemente assente qui
+	// (limite dichiarato, non un bug -- le righe RISULTANTI restano
+	// comunque corrette tramite "hidden" su <row>, vedi il commento in
+	// SheetStart su <autoFilter>).
+	std::map<int, std::vector<BString> > filterHiddenValues;
 	std::vector<XlsxChartInfo> charts;
 	// Tabelle pivot (Fase 3 delle tabelle pivot -- vedi ROADMAP.md/
 	// CHANGELOG.md): ricostruite SOLO quando la forma combacia col
@@ -10609,7 +10844,7 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			&sheets[i].protectionHasPassword, &sheets[i].protectionIsModernHash,
 			&sheets[i].protectionLegacyPassword, &sheets[i].protectionAlgorithmName,
 			&sheets[i].protectionHashValue, &sheets[i].protectionSaltValue,
-			&sheets[i].protectionSpinCount);
+			&sheets[i].protectionSpinCount, &sheets[i].filterHiddenValues);
 		if (err != B_OK)
 			return err;
 
@@ -10868,7 +11103,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			&parsed.protectionHasPassword, &parsed.protectionIsModernHash,
 			&parsed.protectionLegacyPassword, &parsed.protectionAlgorithmName,
 			&parsed.protectionHashValue, &parsed.protectionSaltValue,
-			&parsed.protectionSpinCount))
+			&parsed.protectionSpinCount, &parsed.filterHiddenValues))
 		{
 			parsed.doc->Release();
 			err = B_BAD_DATA;
