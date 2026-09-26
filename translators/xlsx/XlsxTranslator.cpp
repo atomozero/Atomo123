@@ -39,6 +39,7 @@
 #include "Cell.h"
 #include "Value.h"
 #include "Container.h"
+#include "TableStyles.h"
 #include "CellIterator.h"
 #include "CellParser.h"
 #include "CellStyle.h"
@@ -1467,6 +1468,38 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 					}
 				}
 			}
+		}
+	}
+
+	// Sezione stile tabella (nome + banda), in coda DOPO tutto il resto
+	// (Tier 4 "named table styles", vedi engine/src/Cell/TableStyles.h):
+	// stessa lista di Container::GetTables() nello stesso ordine della
+	// sezione tabelle piu' sopra (l'ordine di iterazione di una std::map
+	// e' deterministico), ma tenuta SEPARATA invece che infilata dentro
+	// quella sezione -- quella e' letta anche da file .ascd nativi gia'
+	// esistenti scritti prima di questo campo, e un campo in mezzo a una
+	// sezione gia' esistente romperebbe l'allineamento byte per byte di
+	// quei file vecchi. Una sezione tutta nuova IN CODA invece si
+	// comporta come ogni altra sezione opzionale di questo formato:
+	// assente = nessuno stile (comportamento identico a prima di questo
+	// campo), vedi il pattern EOF-tollerante in ReadASCD/LoadASCD.
+	{
+		const std::map<std::string, CTableDef>& tables = doc->GetTables();
+		int32 styleCount = (int32)tables.size();
+		if (dest->Write(&styleCount, sizeof(styleCount)) != (ssize_t)sizeof(styleCount))
+			return B_IO_ERROR;
+		for (std::map<std::string, CTableDef>::const_iterator it = tables.begin();
+			it != tables.end(); ++it)
+		{
+			const CTableDef& def = it->second;
+			int32 styleNameLen = (int32)def.tableStyleName.size();
+			if (dest->Write(&styleNameLen, sizeof(styleNameLen)) != (ssize_t)sizeof(styleNameLen))
+				return B_IO_ERROR;
+			if (styleNameLen > 0 && dest->Write(def.tableStyleName.data(), styleNameLen) != styleNameLen)
+				return B_IO_ERROR;
+			int8 showBandedRows = def.showBandedRows ? 1 : 0;
+			if (dest->Write(&showBandedRows, sizeof(showBandedRows)) != (ssize_t)sizeof(showBandedRows))
+				return B_IO_ERROR;
 		}
 	}
 
@@ -3083,6 +3116,45 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 					pivots2D[i].columnValues = columnValues;
 					pivots2D[i].cachedRows2D = rows2D;
 				}
+			}
+		}
+	}
+
+	// Sezione stile tabella (nome + banda), scritta da WriteASCD sopra
+	// DOPO la sezione tabelle (Tier 4 "named table styles"): come ogni
+	// altra sezione "non ancora esportata verso XLSX" precedente in
+	// questa funzione, viene consumata byte per byte per restare
+	// allineata ma il suo contenuto non e' ancora scritto in un vero
+	// <tableStyleInfo> XLSX (questo translator non scrive affatto
+	// <table> XML in esportazione oggi -- le tabelle strutturate
+	// esistono solo lato importazione XLSX->ASCD, round-trip completo
+	// solo tramite il formato nativo .ascd, vedi AscdIO.cpp). File .ascd
+	// piu' vecchi di questo campo non hanno questa sezione: un Read()
+	// che ritorna 0 byte (vera fine flusso) e' il segnale, non un
+	// numero di versione, stesso principio EOF-tollerante di sopra.
+	{
+		int32 styleCount = 0;
+		ssize_t got = source->Read(&styleCount, sizeof(styleCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(styleCount) || styleCount < 0 || styleCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < styleCount; i++)
+			{
+				int32 styleNameLen = 0;
+				if (source->Read(&styleNameLen, sizeof(styleNameLen)) != (ssize_t)sizeof(styleNameLen))
+					return B_BAD_DATA;
+				if (styleNameLen < 0 || styleNameLen > 4096)
+					return B_BAD_DATA;
+				if (styleNameLen > 0)
+				{
+					std::vector<char> buf(styleNameLen);
+					if (source->Read(&buf[0], styleNameLen) != styleNameLen)
+						return B_BAD_DATA;
+				}
+				int8 showBandedRows;
+				if (source->Read(&showBandedRows, sizeof(showBandedRows)) != (ssize_t)sizeof(showBandedRows))
+					return B_BAD_DATA;
 			}
 		}
 	}
@@ -8648,6 +8720,13 @@ struct TableInfo {
 	// letto: nei file reali generati da Excel la riga totali e' sempre
 	// segnalata da totalsRowCount, mai da totalsRowShown da solo.
 	int totalsRowCount;
+	// Nome dello stile con nome (attributo "name" di <tableStyleInfo>,
+	// es. "TableStyleMedium2") -- prima di "named table styles" (Path to
+	// full Excel parity Tier 4) veniva letto solo per scartarlo subito.
+	// Ora persistito in CTableDef::tableStyleName per il round-trip e per
+	// scegliere il vero colore di banda quando riconosciuto, vedi
+	// TableStyles.h.
+	std::string styleName;
 };
 
 static void XMLCALL TableStart(void* userData, const char* name, const char** atts)
@@ -8674,8 +8753,12 @@ static void XMLCALL TableStart(void* userData, const char* name, const char** at
 	else if (strcmp(name, "tableStyleInfo") == 0)
 	{
 		for (int i = 0; atts[i]; i += 2)
+		{
 			if (strcmp(atts[i], "showRowStripes") == 0)
 				info->showStripes = XlsxAttrIsTrue(atts[i + 1]);
+			else if (strcmp(atts[i], "name") == 0)
+				info->styleName = atts[i + 1];
+		}
 	}
 }
 
@@ -8686,6 +8769,7 @@ static bool ParseTableInfo(const std::vector<unsigned char>& xml, TableInfo* out
 	out->name.clear();
 	out->columnNames.clear();
 	out->totalsRowCount = 0;
+	out->styleName.clear();
 	if (xml.empty())
 		return false;
 
@@ -8697,44 +8781,6 @@ static bool ParseTableInfo(const std::vector<unsigned char>& xml, TableInfo* out
 	XML_ParserFree(parser);
 
 	return status == XML_STATUS_OK && out->hasRange;
-}
-
-// Applica la banda grigio chiaro alle righe dati dispari (la prima
-// riga del range e' l'intestazione, esclusa dalla banda, e le
-// eventuali "totalsRowCount" righe finali sono anch'esse escluse --
-// Excel non le banda mai, essendo visivamente distinte dai dati) --
-// solo alle celle che non hanno gia' un colore di sfondo esplicito
-// dall'importazione dei colori sopra (ParseSheet/SheetEnd), per non
-// coprire uno sfondo scelto apposta dall'utente nel file originale.
-static void ApplyTableBanding(CContainer* doc, const range& tableRange, int totalsRowCount)
-{
-	const rgb_color kBandColor = { 242, 242, 242, 255 };
-	CellStyle defaultStyle;
-
-	int lastDataRow = tableRange.bottom - (totalsRowCount > 0 ? totalsRowCount : 0);
-	for (int row = tableRange.top + 1; row <= lastDataRow; row++)
-	{
-		// "row - (tableRange.top + 1)" e' l'indice 0-based della riga
-		// dati (0 = la prima subito sotto l'intestazione): banda le
-		// righe dati dispari in ordine (1a, 3a, 5a...), cioe' indice
-		// pari. Contare da tableRange.top (l'intestazione) invece che
-		// dalla prima riga dati sfaserebbe la banda di una riga (bug
-		// reale scoperto scrivendo il test: bandava la 2a/4a riga dati
-		// invece della 1a/3a).
-		if ((row - tableRange.top - 1) % 2 != 0)
-			continue;
-
-		for (int col = tableRange.left; col <= tableRange.right; col++)
-		{
-			cell c(col, row);
-			CellStyle cs;
-			doc->GetCellStyle(c, cs);
-			if (!ColorsEqual(cs.fLowColor, defaultStyle.fLowColor))
-				continue;
-			cs.fLowColor = kBandColor;
-			doc->SetCellStyle(c, cs);
-		}
-	}
 }
 
 // Registra una tabella strutturata per i riferimenti nelle formule
@@ -8768,6 +8814,8 @@ static void RegisterTable(CContainer* doc, const TableInfo& info)
 	def.dataRange.top += 1; // esclude la riga di intestazione
 	def.dataRange.bottom = dataBottom; // esclude la riga totali, se presente
 	def.columnNames = info.columnNames;
+	def.tableStyleName = info.styleName;
+	def.showBandedRows = info.showStripes;
 	doc->AddTable(info.name, def);
 }
 
@@ -10920,7 +10968,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							&& ParseTableInfo(tableXml, &info))
 						{
 							if (info.showStripes)
-								ApplyTableBanding(parsed.doc, info.tableRange, info.totalsRowCount);
+								ApplyTableStyleBanding(parsed.doc, info.tableRange, info.totalsRowCount, info.styleName);
 							RegisterTable(parsed.doc, info);
 						}
 					}

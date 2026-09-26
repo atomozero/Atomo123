@@ -4346,6 +4346,18 @@ int main()
 								"nessuna tabella pivot in sample.xlsx, il conteggio pivot 2D e' zero");
 						}
 
+						// Stile tabella con nome (Tier 4): un conteggio, la
+						// NUOVISSIMA ultima sezione del formato -- sample.xlsx
+						// non ha nessuna tabella strutturata, quindi il
+						// conteggio e' zero e non ci sono record a seguire.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 tableStyleCount;
+							memcpy(&tableStyleCount, ascdData + pos, 4); pos += 4;
+							Check(tableStyleCount == 0,
+								"nessuna tabella strutturata in sample.xlsx, il conteggio stile tabella e' zero");
+						}
+
 						// sample.xlsx e' un solo foglio: dopo tutte le
 						// sezioni lo stream deve finire ESATTAMENTE qui,
 						// non prima (sezione mancante) ne' dopo (byte
@@ -5505,7 +5517,12 @@ int main()
 				memcpy(&bg, ascdData + pos, 4); pos += 4;
 				pos += 4; // fg, non verificato qui
 
-				bool isBand = bg.red == 242 && bg.green == 242 && bg.blue == 242;
+				// sample_table.xlsx dichiara <tableStyleInfo
+				// name="TableStyleMedium2">, uno degli stili riconosciuti
+				// da TableStyles.h (Tier 4 "named table styles") -- la
+				// banda usa quindi il suo colore approssimato (blu), non
+				// piu' il grigio neutro di prima di questa fase.
+				bool isBand = bg.red == 197 && bg.green == 217 && bg.blue == 241;
 				if (row == 2 && col == 1) { foundA2 = true; colorsCorrect &= isBand; }
 				if (row == 2 && col == 2) { foundB2 = true; colorsCorrect &= isBand; }
 				if (row == 4 && col == 1) { foundA4 = true; colorsCorrect &= isBand; }
@@ -5515,7 +5532,7 @@ int main()
 			}
 
 			Check(foundA2 && foundB2 && foundA4 && foundB4 && colorsCorrect,
-				"A2/B2 (prima riga dati) e A4/B4 (terza) hanno il colore di banda grigio chiaro");
+				"A2/B2 (prima riga dati) e A4/B4 (terza) hanno il colore di banda di TableStyleMedium2 (blu)");
 
 			// Tutte le sezioni "in coda" successive fino ad AutoFilter
 			// (colori di colonna, altezze di riga, font/allineamento/

@@ -425,6 +425,23 @@ struct ValidationRule {
 struct CTableDef {
 	range dataRange;
 	std::vector<std::string> columnNames;
+	// Nome dello stile tabella con nome di Excel (es. "TableStyleMedium2",
+	// da <tableStyleInfo name="...">), solo per round-trip -- vedi
+	// engine/src/Cell/TableStyles.h per l'elenco degli stili
+	// effettivamente riconosciuti (un piccolo sottoinsieme rappresentativo
+	// dei ~60 reali di Excel, non tutti: gli altri restano con la banda
+	// grigio chiaro neutra di sempre). Stringa vuota = nessuno stile con
+	// nome (banda grigia di default, comportamento identico a prima di
+	// questo campo).
+	std::string tableStyleName;
+	// Bande alternate sì/no -- corrisponde a <tableStyleInfo
+	// showRowStripes="...">. Vero di default: ogni tabella importata da
+	// un vero file Excel prima di questo campo aveva comunque la banda
+	// (quando showStripes era vero), quindi "vero" e' il valore che
+	// preserva il comportamento gia' esistente per i file gia' scritti.
+	bool showBandedRows;
+
+	CTableDef() : showBandedRows(true) {}
 };
 
 // Tabella pivot (raggruppa un intervallo per una o piu' colonne di

@@ -109,6 +109,7 @@
 #include "Container.h"
 #include "CellParser.h"
 #include "CellStyle.h"
+#include "TableStyles.h"
 #include "Chart.h"
 #include "EmbeddedImage.h"
 #include "FontMetrics.h"
@@ -435,7 +436,15 @@ int main()
 		};
 		for (size_t i = 0; i < sizeof(columnNames) / sizeof(columnNames[0]); i++)
 			table.columnNames.push_back(columnNames[i]);
+		// Tier 4 "named table styles": stesso stile che una vera
+		// <tableStyleInfo name="TableStyleMedium2"> produrrebbe
+		// all'importazione XLSX -- ApplyTableStyleBanding chiamata a
+		// mano qui per lo stesso motivo di AddTable sopra (questo file
+		// nasce da un generatore, non da un vero import).
+		table.tableStyleName = "TableStyleMedium2";
+		table.showBandedRows = true;
 		dati->AddTable("SalesTable", table);
+		ApplyTableStyleBanding(dati, range(1, 1, 16, 701), 0, table.tableStyleName);
 	}
 
 	// Formattazione condizionale VIVA (Fase 13) sul foglio "Data": ogni

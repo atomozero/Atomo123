@@ -963,9 +963,16 @@ int main()
 		// pivot interamente 1D (columnFieldCol=-1, measures/columnValues/
 		// cachedRows2D tutti vuoti), la sezione pivot 2D e' sempre
 		// ESATTAMENTE 18 byte (int32 count=1, poi int16+int32+int32+int32
-		// tutti "vuoti" per quell'unico pivot) -- troncare quei 18 byte
-		// equivale esattamente a un file scritto prima che questa
-		// sezione esistesse.
+		// tutti "vuoti" per quell'unico pivot). Da quando esiste la
+		// sezione stile tabella (Tier 4, sempre in coda DOPO pivot 2D),
+		// pivot 2D non e' piu' l'ultima cosa scritta: per un documento
+		// SENZA tabelle strutturate quella sezione e' a sua volta sempre
+		// ESATTAMENTE 4 byte (int32 styleCount=0) -- troncare 18+4=22
+		// byte equivale quindi a un file scritto prima che ENTRAMBE le
+		// sezioni esistessero (il caso "prima di pivot 2D" incontrato
+		// davvero da un file scritto in quella finestra di tempo aveva
+		// comunque, per definizione, anche zero tabelle stile-nominate,
+		// che sono arrivate molto dopo).
 		{
 			CContainer& legacyDoc = *new CContainer(NULL, NULL);
 			PivotTableObject legacyPivot;
@@ -979,13 +986,18 @@ int main()
 				"SaveASCD con un pivot puramente 1D (per il test di compatibilita') riesce");
 			legacyDoc.Release();
 
+			const size_t kPivot2DSectionLen = 18;
+			const size_t kEmptyTableStyleSectionLen = 4; // int32 styleCount=0, nessuna tabella
+			const size_t kTrailerLen = kPivot2DSectionLen + kEmptyTableStyleSectionLen;
+
 			size_t legacyFullLen = legacyBuf.BufferLength();
-			Check(legacyFullLen > 18, "il buffer di riferimento e' abbastanza lungo da poter troncare 18 byte");
-			if (legacyFullLen > 18)
+			Check(legacyFullLen > kTrailerLen,
+				"il buffer di riferimento e' abbastanza lungo da poter troncare pivot 2D + stile tabella");
+			if (legacyFullLen > kTrailerLen)
 			{
 				BFile legacyFile("tests/roundtrip_pivot2d_legacy.ascd",
 					B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-				legacyFile.Write(legacyBuf.Buffer(), legacyFullLen - 18);
+				legacyFile.Write(legacyBuf.Buffer(), legacyFullLen - kTrailerLen);
 				legacyFile.Unset();
 
 				BFile legacyReopened("tests/roundtrip_pivot2d_legacy.ascd", B_READ_ONLY);
@@ -1004,14 +1016,17 @@ int main()
 					"(columnFieldCol=-1, measures/columnValues/cachedRows2D vuoti)");
 				legacyReloaded.Release();
 
-				// Un solo byte in meno (17 troncati invece di 18): l'intero
+				// L'intera sezione stile tabella (4 byte, vuota per questo
+				// documento) PIU' un solo byte del pivot 2D in meno: l'intero
 				// record del pivot (pivot2DCount, columnFieldCol,
 				// measureCount, columnValueCount) si legge per intero, ma
 				// l'ultimo byte di rowCount2D manca -- deve fallire con
-				// B_BAD_DATA, non leggere oltre i limiti del buffer.
+				// B_BAD_DATA, non leggere oltre i limiti del buffer (e non
+				// scambiare l'inizio della sezione stile tabella, assente
+				// qui, per un rowCount2D valido).
 				BFile shortFile("tests/roundtrip_pivot2d_short.ascd",
 					B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
-				shortFile.Write(legacyBuf.Buffer(), legacyFullLen - 1);
+				shortFile.Write(legacyBuf.Buffer(), legacyFullLen - kEmptyTableStyleSectionLen - 1);
 				shortFile.Unset();
 
 				BFile shortReopened("tests/roundtrip_pivot2d_short.ascd", B_READ_ONLY);
@@ -1022,6 +1037,63 @@ int main()
 				shortReloaded.Release();
 			}
 		}
+	}
+
+	// Round-trip dello stile tabella con nome (Tier 4, "named table
+	// styles", vedi engine/src/Cell/TableStyles.h): sezione NUOVISSIMA,
+	// scritta in coda DOPO il pivot 2D sopra -- verifica sia il nome
+	// dello stile riconosciuto (banda colorata) sia showBandedRows, su
+	// due tabelle diverse per coprire anche il caso "nessuno stile con
+	// nome" (tableStyleName vuoto, banda grigia di sempre).
+	{
+		CContainer& tableStyleSaveDoc = *new CContainer(NULL, NULL);
+		CTableDef def1;
+		def1.dataRange = range(1, 2, 2, 4);
+		def1.columnNames.push_back("Codice");
+		def1.columnNames.push_back("Descrizione");
+		def1.tableStyleName = "TableStyleMedium2";
+		def1.showBandedRows = true;
+		tableStyleSaveDoc.AddTable("Tabella1", def1);
+
+		CTableDef def2;
+		def2.dataRange = range(4, 2, 5, 4);
+		def2.columnNames.push_back("Prezzo");
+		def2.tableStyleName = ""; // nessuno stile con nome
+		def2.showBandedRows = false;
+		tableStyleSaveDoc.AddTable("Tabella2", def2);
+
+		BFile tableStyleFile("tests/roundtrip_table_style.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		Check(SaveASCD(&tableStyleSaveDoc, &tableStyleFile) == B_OK,
+			"SaveASCD con due tabelle (una con stile con nome, una senza) riesce");
+		tableStyleSaveDoc.Release();
+
+		BFile tableStyleReopened("tests/roundtrip_table_style.ascd", B_READ_ONLY);
+		CContainer& tableStyleReloaded = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&tableStyleReopened, &tableStyleReloaded) == B_OK,
+			"LoadASCD con due tabelle (stile con nome) riesce");
+
+		const std::map<std::string, CTableDef>& reloadedTables = tableStyleReloaded.GetTables();
+		Check(reloadedTables.size() == 2, "entrambe le tabelle sopravvivono al giro salva->ricarica");
+		std::map<std::string, CTableDef>::const_iterator it1 = reloadedTables.find("Tabella1");
+		Check(it1 != reloadedTables.end() && it1->second.tableStyleName == "TableStyleMedium2"
+				&& it1->second.showBandedRows,
+			"Tabella1 mantiene il nome dello stile (\"TableStyleMedium2\") e showBandedRows=true dopo il giro");
+		std::map<std::string, CTableDef>::const_iterator it2 = reloadedTables.find("Tabella2");
+		Check(it2 != reloadedTables.end() && it2->second.tableStyleName.empty()
+				&& !it2->second.showBandedRows,
+			"Tabella2 (nessuno stile con nome) mantiene tableStyleName vuoto e showBandedRows=false dopo il giro");
+		tableStyleReloaded.Release();
+
+		// Un file scritto PRIMA di questa sezione (qualunque file di
+		// questo stesso test senza tabelle strutturate, es.
+		// tests/roundtrip.ascd) deve restare leggibile -- stesso
+		// principio EOF-tollerante di ogni altra sezione opzionale sopra.
+		BFile oldFormat6("tests/roundtrip.ascd", B_READ_ONLY);
+		CContainer& oldDoc6 = *new CContainer(NULL, NULL);
+		Check(LoadASCD(&oldFormat6, &oldDoc6) == B_OK,
+			"un file senza sezione stile tabella (scritto prima che esistesse) si rilegge senza errori");
+		oldDoc6.Release();
 	}
 
 	// --- Un file .ascd con la colonna di un commento manomessa (fuori
