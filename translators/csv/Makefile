@@ -35,18 +35,32 @@ CATKEYS_DIR := locales
 EN_CATKEYS := $(CATKEYS_DIR)/en.catkeys
 KO_CATKEYS := $(CATKEYS_DIR)/ko.catkeys
 JA_CATKEYS := $(CATKEYS_DIR)/ja.catkeys
+ES_CATKEYS := $(CATKEYS_DIR)/es.catkeys
+FR_CATKEYS := $(CATKEYS_DIR)/fr.catkeys
+DE_CATKEYS := $(CATKEYS_DIR)/de.catkeys
+PT_CATKEYS := $(CATKEYS_DIR)/pt.catkeys
+ZH_CATKEYS := $(CATKEYS_DIR)/zh.catkeys
+RU_CATKEYS := $(CATKEYS_DIR)/ru.catkeys
+AR_CATKEYS := $(CATKEYS_DIR)/ar.catkeys
 
 all: $(ADDON)
 
 $(ENGINE_DIR)/libengine.a:
 	$(MAKE) -C $(ENGINE_DIR)
 
-$(ADDON): CsvTranslator.cpp $(ENGINE_DIR)/libengine.a $(EN_CATKEYS) $(KO_CATKEYS) $(JA_CATKEYS)
+$(ADDON): CsvTranslator.cpp $(ENGINE_DIR)/libengine.a $(EN_CATKEYS) $(KO_CATKEYS) $(JA_CATKEYS) $(ES_CATKEYS) $(FR_CATKEYS) $(DE_CATKEYS) $(PT_CATKEYS) $(ZH_CATKEYS) $(RU_CATKEYS) $(AR_CATKEYS)
 	$(CXX) -shared -o $(ADDON) CsvTranslator.cpp $(INCLUDES) $(CXXFLAGS) \
 		-L$(ENGINE_DIR) -lengine -lbe -ltranslation
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l en $(EN_CATKEYS)
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ko $(KO_CATKEYS)
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ja $(JA_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l es $(ES_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l fr $(FR_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l de $(DE_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l pt $(PT_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l zh $(ZH_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ru $(RU_CATKEYS)
+	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ar $(AR_CATKEYS)
 
 # Dove installare l'add-on: Haiku mette gli add-on di un'architettura
 # SECONDARIA in una sottocartella che porta il nome di quell'architettura

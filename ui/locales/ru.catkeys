@@ -1,0 +1,396 @@
+1	Russian	application/x-vnd.Atomo-Atomo123	1829224689
+Dividi	PasteSpecialWindow		Разделить
+Nuovo documento	MainWindow		Новый документ
+Sostituisci con:	FindWindow		Заменить на:
+Minimo	PivotWindow		Минимум
+Moltiplica	PasteSpecialWindow		Умножить
+Modifica	MainWindow		Правка
+Stampa…	MainWindow		Печать…
+Salva	HyperlinkWindow		Сохранить
+(nessuno)	MainWindow		(нет)
+Minimo	Pivot		Минимум
+Generale	MainWindow		Общий
+Rimuovi collegamento	HyperlinkWindow		Удалить ссылку
+›	PageSetupWindow		›
+Collegamento ipertestuale…	MainWindow		Гиперссылка…
+\"%s\" non è uno dei valori ammessi:\n%s	MainWindow		«%s» не входит в число допустимых значений:\n%s
+Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		Снимите выделение с ряда, чтобы скрыть только его числовые подписи на диаграмме; сам ряд останется видимым.
+Mostra tutto	SheetView		Показать всё
+Conteggio	MainWindow		Счёт
+Il file conteneva un grafico non implementato in Atomo123:\n	MainWindow		Файл содержал диаграмму, не реализованную в Atomo123:\n
+Spessore bordo	MainWindow		Толщина границы
+Separatore delle migliaia:	PreferencesWindow		Разделитель разрядов:
+Crea	PivotWindow		Создать
+Nessun valore positivo da mostrare.	Chart		Нет положительных значений для отображения.
+‹	PageSetupWindow		‹
+immagine.png	SheetView		изображение.png
+Pivot	MainWindow		Сводная
+Preferenze…	MainWindow		Параметры…
+Bordo superiore	MainWindow		Верхняя граница
+Elimina riga	MainWindow		Удалить строку
+Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		Файл содержал диаграммы, не реализованные в Atomo123:\n
+Massimo	Pivot		Максимум
+Incolla	PasteSpecialWindow		Вставить
+Formato	MainWindow		Формат
+Margini	PageSetupWindow		Поля
+Informazioni su Atomo123	AboutWindow		Об Atomo123
+Spesso	MainWindow		Толстая
+Sottrai	PasteSpecialWindow		Вычесть
+Media	PivotWindow		Среднее
+Tabella pivot	MainWindow		Сводная таблица
+Aggiorna tabelle pivot	MainWindow		Обновить сводные таблицы
+Collegamento ipertestuale	MainWindow		Гиперссылка
+Imposta area di stampa	MainWindow		Задать область печати
+Salva	MainWindow		Сохранить
+Incolla speciale…	MainWindow		Специальная вставка…
+Valori duplicati nella selezione	ConditionalFormatWindow		Повторяющиеся значения в выделении
+URL:	HyperlinkWindow		URL:
+Nuovo	MainWindow		Создать
+Scrittura del file fallita.	MainWindow		Не удалось записать файл.
+Trasponi righe e colonne	PasteSpecialWindow		Транспонировать строки и столбцы
+Spazio ( )	PreferencesWindow		Пробел ( )
+Minimo:	ValidationWindow		Минимум:
+Le modifiche non salvate andranno perse. Continuare?	MainWindow		Несохранённые изменения будут потеряны. Продолжить?
+Grafico non implementato	MainWindow		Диаграмма не реализована
+Versione %u.%u.%u	AboutWindow		Версия %u.%u.%u
+Separatore di elenco:	PreferencesWindow		Разделитель списка:
+Tabella pivot	PivotWindow		Сводная таблица
+Serie	Chart		Ряд
+Mostra griglia	PreferencesWindow		Показывать сетку
+Applica	PageSetupWindow		Применить
+Trova e sostituisci	FindWindow		Найти и заменить
+Inferiore:	PageSetupWindow		Нижнее:
+Informazioni su Atomo123…	MainWindow		Об Atomo123…
+Impossibile aprire il file selezionato.	MainWindow		Не удалось открыть выбранный файл.
+Seleziona tutto	MainWindow		Выделить всё
+Colore testo…	MainWindow		Цвет текста…
+Sinistro	BorderWindow		Левая
+Ogni quanti minuti:	PreferencesWindow		Интервал в минутах:
+Elimina foglio	MainWindow		Удалить лист
+Nessun dato valido nell'intervallo (servono almeno due colonne: una o piu' di categoria testuale, poi il valore numerico).	MainWindow		Нет допустимых данных в диапазоне (нужно как минимум два столбца: один или более текстовых столбцов категории, затем числовое значение).
+Intervallo (due colonne: etichette, valori):	ChartWindow		Диапазон (два столбца: подписи, значения):
+Applica	ColorWindow		Применить
+Colore sfondo	MainWindow		Цвет фона
+Imposta pagina…	MainWindow		Параметры страницы…
+Riempi a destra	MainWindow		Заполнить вправо
+Elimina foglio	SheetTabView		Удалить лист
+Cella di destinazione nel foglio:	ChartWindow		Целевая ячейка на листе:
+Stampa…	PageSetupWindow		Печать…
+Commento cella…	MainWindow		Примечание к ячейке…
+Cancella area di stampa	MainWindow		Очистить область печати
+Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	Редактирование
+Esci	MainWindow		Выход
+Imposta pagina	PageSetupWindow		Параметры страницы
+Applica	PreferencesWindow		Применить
+Esiste già un foglio con questo nome.	MainWindow		Лист с таким именем уже существует.
+Rimuovi convalida	ValidationWindow		Удалить проверку данных
+Modifiche non salvate	MainWindow		Несохранённые изменения
+Titolo (facoltativo):	ChartWindow		Заголовок (необязательно):
+Minimo	MainWindow		Минимум
+Categoria	Pivot		Категория
+Salva	ValidationWindow		Сохранить
+Ordina Z-A	MainWindow		Сортировка от Я до А
+Applica	BorderWindow		Применить
+Spessore:	BorderWindow		Толщина:
+Mostra valori per serie	ChartWindow		Показывать значения по рядам
+Destro:	PageSetupWindow		Правое:
+Inserisci riga	MainWindow		Вставить строку
+Percentuale	MainWindow		Процент
+Conteggio	Pivot		Счёт
+di Andrea Bernardi	AboutWindow		Автор: Andrea Bernardi
+Conteggio numerico	MainWindow		Количество чисел
+Larghezza di una pagina	PageSetupWindow		По ширине страницы
+Cella di destinazione:	PivotWindow		Целевая ячейка:
+Cancella	MainWindow		Очистить
+Sviluppato da StudioBernardi.eu	AtomGLView		Разработано StudioBernardi.eu
+Convalida dati	ValidationWindow		Проверка данных
+Vai a	GoToWindow		Перейти
+Trova successivo	FindWindow		Найти далее
+Avvio	PreferencesWindow		Запуск
+Bordo destro	MainWindow		Правая граница
+La cella di destinazione si sovrappone all'intervallo dati: scegline una fuori dai dati sorgente.	MainWindow		Целевая ячейка пересекается с диапазоном данных: выберите ячейку вне исходных данных.
+Bordo sinistro	MainWindow		Левая граница
+%d cella/e sostituita/e.	MainWindow		Заменено ячеек: %d.
+Annulla	MainWindow		Отменить
+Intervalli con nome	NameWindow		Именованные диапазоны
+Errore	MainWindow		Ошибка
+Bordo cella	BorderWindow		Граница ячейки
+Foglio di calcolo nativo per Haiku OS.	AboutWindow		Нативная электронная таблица для Haiku OS.
+Intervallo dati o cella di destinazione non validi: l'intervallo deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Неверный диапазон данных или целевая ячейка: диапазон должен содержать два столбца (подписи, значения) как минимум с одной числовой строкой, например A1:B5.
+Apri	HyperlinkWindow		Открыть
+Massimo:	ValidationWindow		Максимум:
+Rinomina foglio	MainWindow		Переименовать лист
+Media	Pivot		Среднее
+Rimuovi commento	CommentWindow		Удалить примечание
+Elimina	NameWindow		Удалить
+Nessuna anteprima	PageSetupWindow		Нет предпросмотра
+Se il valore e' uguale a	ConditionalFormatWindow		Если значение равно
+A capo automatico	MainWindow		Переносить текст
+Il file non e' piu' disponibile nella posizione registrata.	MainWindow		Файл больше недоступен по сохранённому расположению.
+Tipo:	ChartWindow		Тип:
+Bordo inferiore	MainWindow		Нижняя граница
+Inserisci nel foglio	ChartWindow		Вставить на лист
+Elenco di valori	ValidationWindow		Список значений
+Annulla	MainWindow	Pulsante di annullamento in una finestra di conferma (\"Cancel\"), non la voce di menu Annulla/Undo	Отмена
+Inferiore	BorderWindow		Нижняя
+Trova e sostituisci…	MainWindow		Найти и заменить…
+Blocca riquadri	MainWindow		Закрепить области
+Nessun dato da mostrare.	Chart		Нет данных для отображения.
+Inserisci colonna	MainWindow		Вставить столбец
+  ·  per Haiku	AboutWindow		  ·  для Haiku
+Incolla speciale	PasteSpecialWindow		Специальная вставка
+Convalida dati…	MainWindow		Проверка данных…
+Immagine PNG	SheetView		Изображение PNG
+Commento cella	CommentWindow		Примечание к ячейке
+\"%s\" non è un numero compreso fra %g e %g.	MainWindow		«%s» — не число в диапазоне от %g до %g.
+Tipo:	ValidationWindow		Тип:
+Ripeti	MainWindow		Повторить
+OK	SheetView		ОК
+Apri recenti	MainWindow		Последние файлы
+Grassetto	MainWindow		Полужирный
+Nessun translator installato sa esportare in questo formato.	MainWindow		Ни один установленный транслятор не может экспортировать в этот формат.
+Somma	PivotWindow		Сумма
+Grafico a barre…	MainWindow		Гистограмма…
+Superiore:	PageSetupWindow		Верхнее:
+Ordina crescente	MainWindow		Сортировка по возрастанию
+Una sola pagina	PageSetupWindow		На одну страницу
+Scala	PageSetupWindow		Масштаб
+Cella o intervallo:	GoToWindow		Ячейка или диапазон:
+Tabella pivot…	MainWindow		Сводная таблица…
+Rimuovi tutte le regole	ConditionalFormatWindow		Удалить все правила
+Formattazione condizionale…	MainWindow		Условное форматирование…
+Medio	BorderWindow		Средняя
+Formule e funzioni · import/export XLSX/XLSM/ODS/CSV/XLS · grafici e tabelle pivot · piu' fogli	AboutWindow		Формулы и функции · импорт/экспорт XLSX/XLSM/ODS/CSV/XLS · диаграммы и сводные таблицы · несколько листов
+Serializzazione del documento fallita.	MainWindow		Не удалось сериализовать документ.
+Nessun bordo	MainWindow		Без границы
+Colore sfondo	ColorWindow		Цвет фона
+Punto e virgola (;)	PreferencesWindow		Точка с запятой (;)
+Impossibile creare il file.	MainWindow		Не удалось создать файл.
+Allinea al centro	MainWindow		По центру
+Percentuale:	PageSetupWindow		Процент:
+Stampa	MainWindow		Печать
+Bordo cella…	MainWindow		Граница ячейки…
+Intervalli con nome…	MainWindow		Именованные диапазоны…
+Rinomina foglio…	SheetTabView		Переименовать лист…
+File	PreferencesWindow		Файл
+Rinomina foglio	RenameSheetWindow		Переименовать лист
+Sovrascrivi	PasteSpecialWindow		Заменить
+Formato nativo (.ascd)	MainWindow		Родной формат (.ascd)
+Elimina colonna	MainWindow		Удалить столбец
+Somma	MainWindow		Сумма
+Vai a	NameWindow		Перейти
+Colore bordo…	MainWindow		Цвет границы…
+OpenDocument (.ods)	MainWindow		OpenDocument (.ods)
+Intervallo dati o cella di destinazione non validi.	MainWindow		Неверный диапазон данных или целевая ячейка.
+Aggregazione:	PivotWindow		Агрегирование:
+Lati	BorderWindow		Стороны
+Codice nuovo su licenza MIT · motore derivato da Sum-It (BSD, Hekkelman Programmatuur).	AboutWindow		Новый код под лицензией MIT · движок основан на Sum-It (BSD, Hekkelman Programmatuur).
+Non è possibile eliminare l'unico foglio della cartella di lavoro.	MainWindow		Нельзя удалить единственный лист книги.
+Sostituisci	FindWindow		Заменить
+Intervallo non valido: serve almeno una riga numerica in ogni colonna serie.	MainWindow		Неверный диапазон: в каждом столбце ряда нужна как минимум одна числовая строка.
+Dividi celle	MainWindow		Разделить ячейки
+Nessuna	ValidationWindow		Нет
+Inserisci riga	SheetView		Вставить строку
+Intervalli con nome	MainWindow		Именованные диапазоны
+Punto (.)	PreferencesWindow		Точка (.)
+Linee	ChartWindow		Линии
+Superiore	BorderWindow		Верхняя
+Preferenze	PreferencesWindow		Параметры
+Corsivo	MainWindow		Курсив
+Numero	MainWindow		Число
+Torta	ChartWindow		Круговая
+Intervallo:	NameWindow		Диапазон:
+Solo valori	PasteSpecialWindow		Только значения
+OK	AboutWindow		ОК
+Disegna	ChartWindow		Нарисовать
+Icone della barra strumenti da hvif-store.art — grazie!	AboutWindow		Значки панели инструментов с hvif-store.art — спасибо!
+Elimina	MainWindow		Удалить
+Inserisci	MainWindow		Вставка
+Dati	MainWindow		Данные
+Non si puo' ordinare: la selezione contiene una cella unita. Dividi le celle prima di ordinare.	SheetView		Невозможно выполнить сортировку: в выделении есть объединённая ячейка. Перед сортировкой разделите ячейки.
+Massimo	MainWindow		Максимум
+Il file e' stato tradotto ma i dati risultanti non sono validi.	MainWindow		Файл был преобразован, но полученные данные недействительны.
+Somma	PasteSpecialWindow		Сумма
+Adatta al:	PageSetupWindow		Масштаб:
+Sottile	BorderWindow		Тонкая
+Formattazione condizionale	ConditionalFormatWindow		Условное форматирование
+Colore sfondo…	MainWindow		Цвет фона…
+Valuta	MainWindow		Денежный
+Ordina A-Z	MainWindow		Сортировка от А до Я
+Sottolineato	MainWindow		Подчёркнутый
+Spesso	BorderWindow		Толстая
+Ordina	SheetView		Сортировка
+Salvataggio automatico	PreferencesWindow		Автосохранение
+Virgola (,)	PreferencesWindow		Запятая (,)
+Convalida dati	SheetView		Проверка данных
+Sottile	MainWindow		Тонкий
+Media	MainWindow		Среднее
+Simbolo valuta:	PreferencesWindow		Символ валюты:
+di	PageSetupWindow		из
+Applica alla selezione	ConditionalFormatWindow		Применить к выделению
+Nuovo foglio	MainWindow		Новый лист
+Separatore decimale:	PreferencesWindow		Разделитель дробной части:
+Salva	CommentWindow		Сохранить
+OK	MainWindow		ОК
+Apri	MainWindow		Открыть
+Mostra lo splash screen all'avvio	PreferencesWindow		Показывать заставку при запуске
+Intervallo dati (una o piu' colonne di categoria, poi il valore):	PivotWindow		Диапазон данных (один или более столбцов категории, затем значение):
+Offrimi un caffe' ☕	AboutWindow		Угостить меня кофе ☕
+Trova	MainWindow		Найти
+Cosa incollare:	PasteSpecialWindow		Что вставить:
+Excel (.xlsx)	MainWindow		Excel (.xlsx)
+Generale	PreferencesWindow		Общие
+Colore bordo	ColorWindow		Цвет границы
+File recenti da ricordare:	PreferencesWindow		Запоминать последних файлов:
+Grafico	MainWindow		Диаграмма
+Bordo cella	MainWindow		Граница ячейки
+Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.	SheetView		Невозможно вставить: некоторые ячейки в конце листа выйдут за предел.
+Intervallo numerico	ValidationWindow		Числовой диапазон
+Continua senza salvare	MainWindow		Продолжить без сохранения
+Senza titolo	MainWindow		Без имени
+Collegamento ipertestuale	HyperlinkWindow		Гиперссылка
+Medio	MainWindow		Средний
+Riempi in basso	MainWindow		Заполнить вниз
+CSV (.csv)	MainWindow		CSV (.csv)
+Eliminare il foglio \"%s\"? L'operazione non può essere annullata.	MainWindow		Удалить лист «%s»? Это действие нельзя отменить.
+Valori (separati da virgola):	ValidationWindow		Значения (через запятую):
+File	MainWindow		Файл
+Allinea a sinistra	MainWindow		По левому краю
+Rinomina	RenameSheetWindow		Переименовать
+Vai a	MainWindow		Перейти
+Allinea a destra	MainWindow		По правому краю
+Conteggio	PivotWindow		Счёт
+Incolla	MainWindow		Вставить
+Somma	Pivot		Сумма
+Colore testo	ColorWindow		Цвет текста
+Inserisci colonna	SheetView		Вставить столбец
+Salva con nome…	MainWindow		Сохранить как…
+Unisci celle	MainWindow		Объединить ячейки
+Grafico	ChartWindow		Диаграмма
+Sostituisci tutto	FindWindow		Заменить все
+Destro	BorderWindow		Правая
+Commento cella	MainWindow		Примечание к ячейке
+Intervallo non valido: serve esattamente due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Неверный диапазон: нужно ровно два столбца (подписи, значения) как минимум с одной числовой строкой, например A1:B5.
+Barre	ChartWindow		Гистограмма
+Formato file non riconosciuto da nessun translator installato.	MainWindow		Формат файла не распознан ни одним установленным транслятором.
+Versione	AboutWindow		Версия
+Nome del foglio:	RenameSheetWindow		Имя листа:
+Massimo	PivotWindow		Максимум
+Colore testo	MainWindow		Цвет текста
+Sostituisci tutto	MainWindow		Заменить все
+Operazione con la cella di destinazione:	PasteSpecialWindow		Операция с целевой ячейкой:
+Apri…	MainWindow		Открыть…
+Abilita il salvataggio automatico (backup)	PreferencesWindow		Включить автосохранение (резервную копию)
+Vai a…	MainWindow		Перейти…
+Tipo:	ConditionalFormatWindow		Тип:
+Ordina decrescente	MainWindow		Сортировка по убыванию
+Valore (solo per \"uguale a\"):	ConditionalFormatWindow		Значение (только для «равно»):
+Copia	MainWindow		Копировать
+Cerca:	FindWindow		Поиск:
+Tutto (come Incolla)	PasteSpecialWindow		Всё (как обычная вставка)
+Nome:	NameWindow		Имя:
+Sinistro:	PageSetupWindow		Левое:
+Colore	ColorWindow		Цвет
+Valori in centimetri	PageSetupWindow		Значения в сантиметрах
+Altezza di una pagina	PageSetupWindow		По высоте страницы
+Pronto	MainWindow		Готово
+Pagina	PageSetupWindow		Страница
+Taglia	MainWindow		Вырезать
+Aggiungi/Aggiorna	NameWindow		Добавить/Обновить
+Colore scheda…	SheetTabView		Цвет ярлычка…
+Colore scheda	ColorWindow		Цвет ярлычка
+Taglia	SheetView		Вырезать
+Copia	SheetView		Копировать
+Incolla	SheetView		Вставить
+Cancella	SheetView		Очистить
+Elimina riga	SheetView		Удалить строку
+Elimina colonna	SheetView		Удалить столбец
+Ordina crescente	SheetView		Сортировка по возрастанию
+Ordina decrescente	SheetView		Сортировка по убыванию
+Formato celle	SheetView		Формат ячеек
+Grassetto	SheetView		Полужирный
+Corsivo	SheetView		Курсив
+Sottolineato	SheetView		Подчёркнутый
+Allinea a sinistra	SheetView		По левому краю
+Allinea al centro	SheetView		По центру
+Allinea a destra	SheetView		По правому краю
+Colore testo…	SheetView		Цвет текста…
+Colore sfondo…	SheetView		Цвет фона…
+Bordo cella…	SheetView		Граница ячейки…
+Commento cella…	SheetView		Примечание к ячейке…
+Modifica commento…	SheetView		Изменить примечание…
+Rimuovi commento	SheetView		Удалить примечание
+Aggiungi alla finestra di controllo	MainWindow		Добавить в окно контрольных значений
+Apertura del file in corso...	MainWindow		Открытие файла...
+Area	ChartWindow		С областями
+Blocca celle selezionate	MainWindow		Заблокировать выделенные ячейки
+Combinato (barre+linee)	ChartWindow		Комбинированная (гистограмма+график)
+Dispersione (XY)	ChartWindow		Точечная (XY)
+Finestra di controllo	WatchWindow		Окно контрольных значений
+Finestra di controllo…	MainWindow		Окно контрольных значений…
+Foglio protetto	SheetView		Защищённый лист
+Formule	MainWindow		Формулы
+Impossibile avviare il caricamento del file.	MainWindow		Не удалось начать загрузку файла.
+Intervallo non valido: un grafico a dispersione richiede esattamente due colonne NUMERICHE (X, Y) con almeno una riga valida, es. A1:B5.	MainWindow		Неверный диапазон: точечной диаграмме нужно ровно два ЧИСЛОВЫХ столбца (X, Y) как минимум с одной допустимой строкой, например A1:B5.
+La cella che stai cercando di modificare e' protetta. Per modificarla, sblocca prima la cella (Dati > Sblocca celle selezionate) oppure disattiva la protezione del foglio (Dati > Proteggi foglio).	SheetView		Ячейка, которую вы пытаетесь изменить, защищена. Чтобы изменить её, сначала снимите защиту с ячейки (Данные > Снять защиту с выделенных ячеек) или отключите защиту листа (Данные > Защитить лист).
+Lettura del file...	MainWindow		Чтение файла...
+Mostra formule	MainWindow		Показать формулы
+Proteggi foglio	MainWindow		Защитить лист
+Ricalcolo in corso...	MainWindow		Пересчёт...
+Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		Пересчёт: лист %d из %d (проход %d) - %s
+Rimuovi	WatchWindow		Удалить
+Rimuovi frecce	MainWindow		Удалить стрелки
+Sblocca celle selezionate	MainWindow		Снять защиту с выделенных ячеек
+Scala di colori (minimo -> massimo)	ConditionalFormatWindow		Цветовая шкала (минимум -> максимум)
+Barra dei dati (minimo -> massimo)	ConditionalFormatWindow		Гистограмма данных (минимум -> максимум)
+Icon set (3 livelli)	ConditionalFormatWindow		Набор значков (3 уровня)
+Traccia dipendenti	MainWindow		Отследить зависимые ячейки
+Traccia precedenti	MainWindow		Отследить влияющие ячейки
+Traduzione del file in corso...	MainWindow		Преобразование файла...
+Allinea in alto	MainWindow		По верхнему краю
+Centra verticalmente	MainWindow		По центру
+Allinea in basso	MainWindow		По нижнему краю
+Allinea in alto	SheetView		По верхнему краю
+Centra verticalmente	SheetView		По центру
+Allinea in basso	SheetView		По нижнему краю
+Apri file di esempio	MainWindow		Открыть образец файла
+Il file di esempio non e' installato su questo sistema.	MainWindow		Образец файла не установлен в этой системе.
+Stampa intestazioni righe/colonne	PageSetupWindow		Печатать заголовки строк/столбцов
+Stampa griglia	PageSetupWindow		Печатать сетку
+Stampa	PageSetupWindow		Печать
+Pagine:	PageSetupWindow		Страницы:
+Larghe:	PageSetupWindow		По ширине:
+Alte:	PageSetupWindow		По высоте:
+Centratura	PageSetupWindow		Центрирование
+Orizzontale	PageSetupWindow		Горизонтально
+Verticale	PageSetupWindow		Вертикально
+Intestazione/piè di pagina	PageSetupWindow		Верхний/нижний колонтитул
+Intestazione:	PageSetupWindow		Верхний колонтитул:
+Piè di pagina:	PageSetupWindow		Нижний колонтитул:
+&P pagina, &N totale pagine, &D data	PageSetupWindow		&P страница, &N всего страниц, &D дата
+Ordine pagine	PageSetupWindow		Порядок страниц
+Prima giù, poi a destra	PageSetupWindow		Сверху вниз, затем поперёк
+Prima a destra, poi giù	PageSetupWindow		Поперёк, затем сверху вниз
+Titoli da ripetere	PageSetupWindow		Сквозные строки/столбцы
+Righe:	PageSetupWindow		Строки:
+Colonne:	PageSetupWindow		Столбцы:
+Righe come 1:3, colonne come A:C (vuoto = nessuno)	PageSetupWindow		Строки как 1:3, столбцы как A:C (пусто = нет)
+Intestazioni	PageSetupWindow		Заголовки
+Somma automatica	MainWindow		Автосумма
+Sostituisci	MainWindow		Заменить
+Convalida dati	MainWindow		Проверить
+Formattazione condizionale	MainWindow		Условное форматирование
+Vista	PreferencesWindow		Вид
+Mostra formule nei fogli nuovi	PreferencesWindow		Показывать формулы в новых листах
+Media	PreferencesWindow		Среднее
+Conteggio	PreferencesWindow		Счёт
+Conteggio numerico	PreferencesWindow		Количество чисел
+Minimo	PreferencesWindow		Минимум
+Massimo	PreferencesWindow		Максимум
+Somma	PreferencesWindow		Сумма
+Cartella backup (vuota = accanto al file):	PreferencesWindow		Папка для резервных копий (пусто = рядом с файлом):
+Sistema	PreferencesWindow		Системный
+Italiano	PreferencesWindow		Итальянский
+English	PreferencesWindow		Английский
+Lingua (al prossimo avvio):	PreferencesWindow		Язык (после следующего запуска):
+Riapri i file recenti all'avvio	PreferencesWindow		Открывать последние файлы при запуске

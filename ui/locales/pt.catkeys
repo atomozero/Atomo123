@@ -1,0 +1,396 @@
+1	Portuguese	application/x-vnd.Atomo-Atomo123	1829224689
+Dividi	PasteSpecialWindow		Dividir
+Nuovo documento	MainWindow		Novo documento
+Sostituisci con:	FindWindow		Substituir por:
+Minimo	PivotWindow		Mínimo
+Moltiplica	PasteSpecialWindow		Multiplicar
+Modifica	MainWindow		Editar
+Stampa…	MainWindow		Imprimir…
+Salva	HyperlinkWindow		Guardar
+(nessuno)	MainWindow		(nenhum)
+Minimo	Pivot		Mínimo
+Generale	MainWindow		Geral
+Rimuovi collegamento	HyperlinkWindow		Remover ligação
+›	PageSetupWindow		›
+Collegamento ipertestuale…	MainWindow		Hiperligação…
+\"%s\" non è uno dei valori ammessi:\n%s	MainWindow		\"%s\" não é um dos valores permitidos:\n%s
+Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		Anule a seleção de uma série para ocultar apenas as suas etiquetas numéricas no gráfico; a série continua visível.
+Mostra tutto	SheetView		Mostrar tudo
+Conteggio	MainWindow		Contagem
+Il file conteneva un grafico non implementato in Atomo123:\n	MainWindow		O ficheiro continha um gráfico não implementado no Atomo123:\n
+Spessore bordo	MainWindow		Espessura do contorno
+Separatore delle migliaia:	PreferencesWindow		Separador de milhares:
+Crea	PivotWindow		Criar
+Nessun valore positivo da mostrare.	Chart		Nenhum valor positivo para mostrar.
+‹	PageSetupWindow		‹
+immagine.png	SheetView		imagem.png
+Pivot	MainWindow		Tabela dinâmica
+Preferenze…	MainWindow		Preferências…
+Bordo superiore	MainWindow		Contorno superior
+Elimina riga	MainWindow		Eliminar linha
+Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		O ficheiro continha gráficos não implementados no Atomo123:\n
+Massimo	Pivot		Máximo
+Incolla	PasteSpecialWindow		Colar
+Formato	MainWindow		Formato
+Margini	PageSetupWindow		Margens
+Informazioni su Atomo123	AboutWindow		Sobre o Atomo123
+Spesso	MainWindow		Grosso
+Sottrai	PasteSpecialWindow		Subtrair
+Media	PivotWindow		Média
+Tabella pivot	MainWindow		Tabela dinâmica
+Aggiorna tabelle pivot	MainWindow		Atualizar tabelas dinâmicas
+Collegamento ipertestuale	MainWindow		Hiperligação
+Imposta area di stampa	MainWindow		Definir área de impressão
+Salva	MainWindow		Guardar
+Incolla speciale…	MainWindow		Colar especial…
+Valori duplicati nella selezione	ConditionalFormatWindow		Valores duplicados na seleção
+URL:	HyperlinkWindow		URL:
+Nuovo	MainWindow		Novo
+Scrittura del file fallita.	MainWindow		Falha ao escrever o ficheiro.
+Trasponi righe e colonne	PasteSpecialWindow		Transpor linhas e colunas
+Spazio ( )	PreferencesWindow		Espaço ( )
+Minimo:	ValidationWindow		Mínimo:
+Le modifiche non salvate andranno perse. Continuare?	MainWindow		As alterações não guardadas serão perdidas. Continuar?
+Grafico non implementato	MainWindow		Gráfico não implementado
+Versione %u.%u.%u	AboutWindow		Versão %u.%u.%u
+Separatore di elenco:	PreferencesWindow		Separador de lista:
+Tabella pivot	PivotWindow		Tabela dinâmica
+Serie	Chart		Série
+Mostra griglia	PreferencesWindow		Mostrar grelha
+Applica	PageSetupWindow		Aplicar
+Trova e sostituisci	FindWindow		Localizar e substituir
+Inferiore:	PageSetupWindow		Inferior:
+Informazioni su Atomo123…	MainWindow		Sobre o Atomo123…
+Impossibile aprire il file selezionato.	MainWindow		Não foi possível abrir o ficheiro selecionado.
+Seleziona tutto	MainWindow		Selecionar tudo
+Colore testo…	MainWindow		Cor do texto…
+Sinistro	BorderWindow		Esquerdo
+Ogni quanti minuti:	PreferencesWindow		De quantos em quantos minutos:
+Elimina foglio	MainWindow		Eliminar folha
+Nessun dato valido nell'intervallo (servono almeno due colonne: una o piu' di categoria testuale, poi il valore numerico).	MainWindow		Não há dados válidos no intervalo (são necessárias pelo menos duas colunas: uma ou mais de categoria de texto e depois o valor numérico).
+Intervallo (due colonne: etichette, valori):	ChartWindow		Intervalo (duas colunas: etiquetas, valores):
+Applica	ColorWindow		Aplicar
+Colore sfondo	MainWindow		Cor de fundo
+Imposta pagina…	MainWindow		Configurar página…
+Riempi a destra	MainWindow		Preencher à direita
+Elimina foglio	SheetTabView		Eliminar folha
+Cella di destinazione nel foglio:	ChartWindow		Célula de destino na folha:
+Stampa…	PageSetupWindow		Imprimir…
+Commento cella…	MainWindow		Comentário da célula…
+Cancella area di stampa	MainWindow		Limpar área de impressão
+Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	A editar
+Esci	MainWindow		Sair
+Imposta pagina	PageSetupWindow		Configurar página
+Applica	PreferencesWindow		Aplicar
+Esiste già un foglio con questo nome.	MainWindow		Já existe uma folha com este nome.
+Rimuovi convalida	ValidationWindow		Remover validação
+Modifiche non salvate	MainWindow		Alterações não guardadas
+Titolo (facoltativo):	ChartWindow		Título (opcional):
+Minimo	MainWindow		Mínimo
+Categoria	Pivot		Categoria
+Salva	ValidationWindow		Guardar
+Ordina Z-A	MainWindow		Ordenar Z-A
+Applica	BorderWindow		Aplicar
+Spessore:	BorderWindow		Espessura:
+Mostra valori per serie	ChartWindow		Mostrar valores por série
+Destro:	PageSetupWindow		Direito:
+Inserisci riga	MainWindow		Inserir linha
+Percentuale	MainWindow		Percentagem
+Conteggio	Pivot		Contagem
+di Andrea Bernardi	AboutWindow		por Andrea Bernardi
+Conteggio numerico	MainWindow		Contagem numérica
+Larghezza di una pagina	PageSetupWindow		Ajustar à largura da página
+Cella di destinazione:	PivotWindow		Célula de destino:
+Cancella	MainWindow		Limpar
+Sviluppato da StudioBernardi.eu	AtomGLView		Desenvolvido por StudioBernardi.eu
+Convalida dati	ValidationWindow		Validação de dados
+Vai a	GoToWindow		Ir para
+Trova successivo	FindWindow		Localizar seguinte
+Avvio	PreferencesWindow		Arranque
+Bordo destro	MainWindow		Contorno direito
+La cella di destinazione si sovrappone all'intervallo dati: scegline una fuori dai dati sorgente.	MainWindow		A célula de destino sobrepõe-se ao intervalo de dados: escolha uma fora dos dados de origem.
+Bordo sinistro	MainWindow		Contorno esquerdo
+%d cella/e sostituita/e.	MainWindow		%d célula(s) substituída(s).
+Annulla	MainWindow		Desfazer
+Intervalli con nome	NameWindow		Intervalos com nome
+Errore	MainWindow		Erro
+Bordo cella	BorderWindow		Contorno da célula
+Foglio di calcolo nativo per Haiku OS.	AboutWindow		Folha de cálculo nativa para o Haiku OS.
+Intervallo dati o cella di destinazione non validi: l'intervallo deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Intervalo de dados ou célula de destino inválidos: o intervalo deve ter duas colunas (etiquetas, valores) com pelo menos uma linha numérica, por ex. A1:B5.
+Apri	HyperlinkWindow		Abrir
+Massimo:	ValidationWindow		Máximo:
+Rinomina foglio	MainWindow		Mudar o nome da folha
+Media	Pivot		Média
+Rimuovi commento	CommentWindow		Remover comentário
+Elimina	NameWindow		Eliminar
+Nessuna anteprima	PageSetupWindow		Sem pré-visualização
+Se il valore e' uguale a	ConditionalFormatWindow		Se o valor for igual a
+A capo automatico	MainWindow		Ajustar texto
+Il file non e' piu' disponibile nella posizione registrata.	MainWindow		O ficheiro já não está disponível na localização registada.
+Tipo:	ChartWindow		Tipo:
+Bordo inferiore	MainWindow		Contorno inferior
+Inserisci nel foglio	ChartWindow		Inserir na folha
+Elenco di valori	ValidationWindow		Lista de valores
+Annulla	MainWindow	Pulsante di annullamento in una finestra di conferma (\"Cancel\"), non la voce di menu Annulla/Undo	Cancelar
+Inferiore	BorderWindow		Inferior
+Trova e sostituisci…	MainWindow		Localizar e substituir…
+Blocca riquadri	MainWindow		Congelar painéis
+Nessun dato da mostrare.	Chart		Não há dados para mostrar.
+Inserisci colonna	MainWindow		Inserir coluna
+  ·  per Haiku	AboutWindow		  ·  para o Haiku
+Incolla speciale	PasteSpecialWindow		Colar especial
+Convalida dati…	MainWindow		Validação de dados…
+Immagine PNG	SheetView		Imagem PNG
+Commento cella	CommentWindow		Comentário da célula
+\"%s\" non è un numero compreso fra %g e %g.	MainWindow		\"%s\" não é um número entre %g e %g.
+Tipo:	ValidationWindow		Tipo:
+Ripeti	MainWindow		Refazer
+OK	SheetView		OK
+Apri recenti	MainWindow		Abrir recentes
+Grassetto	MainWindow		Negrito
+Nessun translator installato sa esportare in questo formato.	MainWindow		Nenhum tradutor instalado sabe exportar para este formato.
+Somma	PivotWindow		Soma
+Grafico a barre…	MainWindow		Gráfico de barras…
+Superiore:	PageSetupWindow		Superior:
+Ordina crescente	MainWindow		Ordenar de forma crescente
+Una sola pagina	PageSetupWindow		Ajustar a uma página
+Scala	PageSetupWindow		Escala
+Cella o intervallo:	GoToWindow		Célula ou intervalo:
+Tabella pivot…	MainWindow		Tabela dinâmica…
+Rimuovi tutte le regole	ConditionalFormatWindow		Remover todas as regras
+Formattazione condizionale…	MainWindow		Formatação condicional…
+Medio	BorderWindow		Médio
+Formule e funzioni · import/export XLSX/XLSM/ODS/CSV/XLS · grafici e tabelle pivot · piu' fogli	AboutWindow		Fórmulas e funções · importação/exportação XLSX/XLSM/ODS/CSV/XLS · gráficos e tabelas dinâmicas · várias folhas
+Serializzazione del documento fallita.	MainWindow		Falha ao serializar o documento.
+Nessun bordo	MainWindow		Sem contorno
+Colore sfondo	ColorWindow		Cor de fundo
+Punto e virgola (;)	PreferencesWindow		Ponto e vírgula (;)
+Impossibile creare il file.	MainWindow		Não foi possível criar o ficheiro.
+Allinea al centro	MainWindow		Alinhar ao centro
+Percentuale:	PageSetupWindow		Percentagem:
+Stampa	MainWindow		Imprimir
+Bordo cella…	MainWindow		Contorno da célula…
+Intervalli con nome…	MainWindow		Intervalos com nome…
+Rinomina foglio…	SheetTabView		Mudar o nome da folha…
+File	PreferencesWindow		Ficheiro
+Rinomina foglio	RenameSheetWindow		Mudar o nome da folha
+Sovrascrivi	PasteSpecialWindow		Substituir
+Formato nativo (.ascd)	MainWindow		Formato nativo (.ascd)
+Elimina colonna	MainWindow		Eliminar coluna
+Somma	MainWindow		Soma
+Vai a	NameWindow		Ir para
+Colore bordo…	MainWindow		Cor do contorno…
+OpenDocument (.ods)	MainWindow		OpenDocument (.ods)
+Intervallo dati o cella di destinazione non validi.	MainWindow		Intervalo de dados ou célula de destino inválidos.
+Aggregazione:	PivotWindow		Agregação:
+Lati	BorderWindow		Lados
+Codice nuovo su licenza MIT · motore derivato da Sum-It (BSD, Hekkelman Programmatuur).	AboutWindow		Código novo sob licença MIT · motor derivado do Sum-It (BSD, Hekkelman Programmatuur).
+Non è possibile eliminare l'unico foglio della cartella di lavoro.	MainWindow		Não é possível eliminar a única folha da pasta de trabalho.
+Sostituisci	FindWindow		Substituir
+Intervallo non valido: serve almeno una riga numerica in ogni colonna serie.	MainWindow		Intervalo inválido: é necessária pelo menos uma linha numérica em cada coluna de série.
+Dividi celle	MainWindow		Dividir células
+Nessuna	ValidationWindow		Nenhuma
+Inserisci riga	SheetView		Inserir linha
+Intervalli con nome	MainWindow		Intervalos com nome
+Punto (.)	PreferencesWindow		Ponto (.)
+Linee	ChartWindow		Linhas
+Superiore	BorderWindow		Superior
+Preferenze	PreferencesWindow		Preferências
+Corsivo	MainWindow		Itálico
+Numero	MainWindow		Número
+Torta	ChartWindow		Circular
+Intervallo:	NameWindow		Intervalo:
+Solo valori	PasteSpecialWindow		Apenas valores
+OK	AboutWindow		OK
+Disegna	ChartWindow		Desenhar
+Icone della barra strumenti da hvif-store.art — grazie!	AboutWindow		Ícones da barra de ferramentas de hvif-store.art — obrigado!
+Elimina	MainWindow		Eliminar
+Inserisci	MainWindow		Inserir
+Dati	MainWindow		Dados
+Non si puo' ordinare: la selezione contiene una cella unita. Dividi le celle prima di ordinare.	SheetView		Não é possível ordenar: a seleção contém uma célula combinada. Divida as células antes de ordenar.
+Massimo	MainWindow		Máximo
+Il file e' stato tradotto ma i dati risultanti non sono validi.	MainWindow		O ficheiro foi convertido, mas os dados resultantes não são válidos.
+Somma	PasteSpecialWindow		Soma
+Adatta al:	PageSetupWindow		Ajustar a:
+Sottile	BorderWindow		Fino
+Formattazione condizionale	ConditionalFormatWindow		Formatação condicional
+Colore sfondo…	MainWindow		Cor de fundo…
+Valuta	MainWindow		Moeda
+Ordina A-Z	MainWindow		Ordenar A-Z
+Sottolineato	MainWindow		Sublinhado
+Spesso	BorderWindow		Grosso
+Ordina	SheetView		Ordenar
+Salvataggio automatico	PreferencesWindow		Guardar automaticamente
+Virgola (,)	PreferencesWindow		Vírgula (,)
+Convalida dati	SheetView		Validação de dados
+Sottile	MainWindow		Fino
+Media	MainWindow		Média
+Simbolo valuta:	PreferencesWindow		Símbolo da moeda:
+di	PageSetupWindow		de
+Applica alla selezione	ConditionalFormatWindow		Aplicar à seleção
+Nuovo foglio	MainWindow		Nova folha
+Separatore decimale:	PreferencesWindow		Separador decimal:
+Salva	CommentWindow		Guardar
+OK	MainWindow		OK
+Apri	MainWindow		Abrir
+Mostra lo splash screen all'avvio	PreferencesWindow		Mostrar o ecrã inicial ao arrancar
+Intervallo dati (una o piu' colonne di categoria, poi il valore):	PivotWindow		Intervalo de dados (uma ou mais colunas de categoria e depois o valor):
+Offrimi un caffe' ☕	AboutWindow		Ofereça-me um café ☕
+Trova	MainWindow		Localizar
+Cosa incollare:	PasteSpecialWindow		O que colar:
+Excel (.xlsx)	MainWindow		Excel (.xlsx)
+Generale	PreferencesWindow		Geral
+Colore bordo	ColorWindow		Cor do contorno
+File recenti da ricordare:	PreferencesWindow		Ficheiros recentes a memorizar:
+Grafico	MainWindow		Gráfico
+Bordo cella	MainWindow		Contorno da célula
+Non si puo' inserire: alcune celle in fondo al foglio uscirebbero dal limite.	SheetView		Não é possível inserir: algumas células no final da folha ultrapassariam o limite.
+Intervallo numerico	ValidationWindow		Intervalo numérico
+Continua senza salvare	MainWindow		Continuar sem guardar
+Senza titolo	MainWindow		Sem título
+Collegamento ipertestuale	HyperlinkWindow		Hiperligação
+Medio	MainWindow		Médio
+Riempi in basso	MainWindow		Preencher para baixo
+CSV (.csv)	MainWindow		CSV (.csv)
+Eliminare il foglio \"%s\"? L'operazione non può essere annullata.	MainWindow		Eliminar a folha \"%s\"? Esta operação não pode ser anulada.
+Valori (separati da virgola):	ValidationWindow		Valores (separados por vírgula):
+File	MainWindow		Ficheiro
+Allinea a sinistra	MainWindow		Alinhar à esquerda
+Rinomina	RenameSheetWindow		Mudar o nome
+Vai a	MainWindow		Ir para
+Allinea a destra	MainWindow		Alinhar à direita
+Conteggio	PivotWindow		Contagem
+Incolla	MainWindow		Colar
+Somma	Pivot		Soma
+Colore testo	ColorWindow		Cor do texto
+Inserisci colonna	SheetView		Inserir coluna
+Salva con nome…	MainWindow		Guardar como…
+Unisci celle	MainWindow		Combinar células
+Grafico	ChartWindow		Gráfico
+Sostituisci tutto	FindWindow		Substituir tudo
+Destro	BorderWindow		Direito
+Commento cella	MainWindow		Comentário da célula
+Intervallo non valido: serve esattamente due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Intervalo inválido: são necessárias exatamente duas colunas (etiquetas, valores) com pelo menos uma linha numérica, por ex. A1:B5.
+Barre	ChartWindow		Barras
+Formato file non riconosciuto da nessun translator installato.	MainWindow		Formato de ficheiro não reconhecido por nenhum tradutor instalado.
+Versione	AboutWindow		Versão
+Nome del foglio:	RenameSheetWindow		Nome da folha:
+Massimo	PivotWindow		Máximo
+Colore testo	MainWindow		Cor do texto
+Sostituisci tutto	MainWindow		Substituir tudo
+Operazione con la cella di destinazione:	PasteSpecialWindow		Operação com a célula de destino:
+Apri…	MainWindow		Abrir…
+Abilita il salvataggio automatico (backup)	PreferencesWindow		Ativar a gravação automática (cópia de segurança)
+Vai a…	MainWindow		Ir para…
+Tipo:	ConditionalFormatWindow		Tipo:
+Ordina decrescente	MainWindow		Ordenar de forma decrescente
+Valore (solo per \"uguale a\"):	ConditionalFormatWindow		Valor (apenas para \"igual a\"):
+Copia	MainWindow		Copiar
+Cerca:	FindWindow		Procurar:
+Tutto (come Incolla)	PasteSpecialWindow		Tudo (como Colar)
+Nome:	NameWindow		Nome:
+Sinistro:	PageSetupWindow		Esquerdo:
+Colore	ColorWindow		Cor
+Valori in centimetri	PageSetupWindow		Valores em centímetros
+Altezza di una pagina	PageSetupWindow		Ajustar à altura da página
+Pronto	MainWindow		Pronto
+Pagina	PageSetupWindow		Página
+Taglia	MainWindow		Cortar
+Aggiungi/Aggiorna	NameWindow		Adicionar/Atualizar
+Colore scheda…	SheetTabView		Cor do separador…
+Colore scheda	ColorWindow		Cor do separador
+Taglia	SheetView		Cortar
+Copia	SheetView		Copiar
+Incolla	SheetView		Colar
+Cancella	SheetView		Limpar
+Elimina riga	SheetView		Eliminar linha
+Elimina colonna	SheetView		Eliminar coluna
+Ordina crescente	SheetView		Ordenar de forma crescente
+Ordina decrescente	SheetView		Ordenar de forma decrescente
+Formato celle	SheetView		Formato de células
+Grassetto	SheetView		Negrito
+Corsivo	SheetView		Itálico
+Sottolineato	SheetView		Sublinhado
+Allinea a sinistra	SheetView		Alinhar à esquerda
+Allinea al centro	SheetView		Alinhar ao centro
+Allinea a destra	SheetView		Alinhar à direita
+Colore testo…	SheetView		Cor do texto…
+Colore sfondo…	SheetView		Cor de fundo…
+Bordo cella…	SheetView		Contorno da célula…
+Commento cella…	SheetView		Comentário da célula…
+Modifica commento…	SheetView		Editar comentário…
+Rimuovi commento	SheetView		Remover comentário
+Aggiungi alla finestra di controllo	MainWindow		Adicionar à janela de observação
+Apertura del file in corso...	MainWindow		A abrir o ficheiro...
+Area	ChartWindow		Área
+Blocca celle selezionate	MainWindow		Bloquear células selecionadas
+Combinato (barre+linee)	ChartWindow		Combinado (barras+linhas)
+Dispersione (XY)	ChartWindow		Dispersão (XY)
+Finestra di controllo	WatchWindow		Janela de observação
+Finestra di controllo…	MainWindow		Janela de observação…
+Foglio protetto	SheetView		Folha protegida
+Formule	MainWindow		Fórmulas
+Impossibile avviare il caricamento del file.	MainWindow		Não foi possível iniciar o carregamento do ficheiro.
+Intervallo non valido: un grafico a dispersione richiede esattamente due colonne NUMERICHE (X, Y) con almeno una riga valida, es. A1:B5.	MainWindow		Intervalo inválido: um gráfico de dispersão requer exatamente duas colunas NUMÉRICAS (X, Y) com pelo menos uma linha válida, por ex. A1:B5.
+La cella che stai cercando di modificare e' protetta. Per modificarla, sblocca prima la cella (Dati > Sblocca celle selezionate) oppure disattiva la protezione del foglio (Dati > Proteggi foglio).	SheetView		A célula que está a tentar editar está protegida. Para a editar, desbloqueie primeiro a célula (Dados > Desbloquear células selecionadas) ou desative a proteção da folha (Dados > Proteger folha).
+Lettura del file...	MainWindow		A ler o ficheiro...
+Mostra formule	MainWindow		Mostrar fórmulas
+Proteggi foglio	MainWindow		Proteger folha
+Ricalcolo in corso...	MainWindow		A recalcular...
+Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		A recalcular: folha %d de %d (passagem %d) - %s
+Rimuovi	WatchWindow		Remover
+Rimuovi frecce	MainWindow		Remover setas
+Sblocca celle selezionate	MainWindow		Desbloquear células selecionadas
+Scala di colori (minimo -> massimo)	ConditionalFormatWindow		Escala de cores (mínimo -> máximo)
+Barra dei dati (minimo -> massimo)	ConditionalFormatWindow		Barra de dados (mínimo -> máximo)
+Icon set (3 livelli)	ConditionalFormatWindow		Conjunto de ícones (3 níveis)
+Traccia dipendenti	MainWindow		Rastrear dependentes
+Traccia precedenti	MainWindow		Rastrear precedentes
+Traduzione del file in corso...	MainWindow		A converter o ficheiro...
+Allinea in alto	MainWindow		Alinhar ao topo
+Centra verticalmente	MainWindow		Centrar verticalmente
+Allinea in basso	MainWindow		Alinhar à base
+Allinea in alto	SheetView		Alinhar ao topo
+Centra verticalmente	SheetView		Centrar verticalmente
+Allinea in basso	SheetView		Alinhar à base
+Apri file di esempio	MainWindow		Abrir ficheiro de exemplo
+Il file di esempio non e' installato su questo sistema.	MainWindow		O ficheiro de exemplo não está instalado neste sistema.
+Stampa intestazioni righe/colonne	PageSetupWindow		Imprimir cabeçalhos de linhas/colunas
+Stampa griglia	PageSetupWindow		Imprimir grelha
+Stampa	PageSetupWindow		Imprimir
+Pagine:	PageSetupWindow		Páginas:
+Larghe:	PageSetupWindow		Largura:
+Alte:	PageSetupWindow		Altura:
+Centratura	PageSetupWindow		Centragem
+Orizzontale	PageSetupWindow		Horizontal
+Verticale	PageSetupWindow		Vertical
+Intestazione/piè di pagina	PageSetupWindow		Cabeçalho/rodapé
+Intestazione:	PageSetupWindow		Cabeçalho:
+Piè di pagina:	PageSetupWindow		Rodapé:
+&P pagina, &N totale pagine, &D data	PageSetupWindow		&P página, &N total de páginas, &D data
+Ordine pagine	PageSetupWindow		Ordem das páginas
+Prima giù, poi a destra	PageSetupWindow		Primeiro para baixo, depois para a direita
+Prima a destra, poi giù	PageSetupWindow		Primeiro para a direita, depois para baixo
+Titoli da ripetere	PageSetupWindow		Títulos a repetir
+Righe:	PageSetupWindow		Linhas:
+Colonne:	PageSetupWindow		Colunas:
+Righe come 1:3, colonne come A:C (vuoto = nessuno)	PageSetupWindow		Linhas como 1:3, colunas como A:C (vazio = nenhum)
+Intestazioni	PageSetupWindow		Cabeçalhos
+Somma automatica	MainWindow		Soma automática
+Sostituisci	MainWindow		Substituir
+Convalida dati	MainWindow		Validar
+Formattazione condizionale	MainWindow		Formatação condicional
+Vista	PreferencesWindow		Vista
+Mostra formule nei fogli nuovi	PreferencesWindow		Mostrar fórmulas em folhas novas
+Media	PreferencesWindow		Média
+Conteggio	PreferencesWindow		Contagem
+Conteggio numerico	PreferencesWindow		Contagem numérica
+Minimo	PreferencesWindow		Mínimo
+Massimo	PreferencesWindow		Máximo
+Somma	PreferencesWindow		Soma
+Cartella backup (vuota = accanto al file):	PreferencesWindow		Pasta de cópia de segurança (vazia = junto ao ficheiro):
+Sistema	PreferencesWindow		Sistema
+Italiano	PreferencesWindow		Italiano
+English	PreferencesWindow		English
+Lingua (al prossimo avvio):	PreferencesWindow		Idioma (no próximo arranque):
+Riapri i file recenti all'avvio	PreferencesWindow		Reabrir os ficheiros recentes ao arrancar
