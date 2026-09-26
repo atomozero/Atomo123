@@ -17,7 +17,7 @@ Collegamento ipertestuale…	MainWindow		Hyperlink…
 Deseleziona una serie per nascondere solo le sue etichette numeriche nel grafico; la serie resta comunque visibile.	ChartWindow		Deselect a series to hide only its numeric labels on the chart; the series itself stays visible.
 Mostra tutto	SheetView		Show all
 Conteggio	MainWindow		Count
-Il file conteneva un grafico non implementato in Atomo123:\n	MainWindow		Il file conteneva un grafico non implementato in Atomo123:\n
+Il file conteneva un grafico non implementato in Atomo123:\n	MainWindow		The file contained a chart type not implemented in Atomo123:\n
 Spessore bordo	MainWindow		Border thickness
 Separatore delle migliaia:	PreferencesWindow		Thousands separator:
 Crea	PivotWindow		Create
@@ -28,7 +28,7 @@ Pivot	MainWindow		Pivot
 Preferenze…	MainWindow		Preferences…
 Bordo superiore	MainWindow		Top border
 Elimina riga	MainWindow		Delete row
-Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		Il file conteneva grafici non implementati in Atomo123:\n
+Il file conteneva grafici non implementati in Atomo123:\n	MainWindow		The file contained chart types not implemented in Atomo123:\n
 Massimo	Pivot		Maximum
 Incolla	PasteSpecialWindow		Paste
 Formato	MainWindow		Format
@@ -40,7 +40,7 @@ Media	PivotWindow		Average
 Tabella pivot	MainWindow		Pivot table
 Aggiorna tabelle pivot	MainWindow		Refresh pivot tables
 Collegamento ipertestuale	MainWindow		Hyperlink
-Imposta area di stampa	MainWindow		Imposta area di stampa
+Imposta area di stampa	MainWindow		Set print area
 Salva	MainWindow		Save
 Incolla speciale…	MainWindow		Paste special…
 Valori duplicati nella selezione	ConditionalFormatWindow		Duplicate values in selection
@@ -51,7 +51,7 @@ Trasponi righe e colonne	PasteSpecialWindow		Transpose rows and columns
 Spazio ( )	PreferencesWindow		Space ( )
 Minimo:	ValidationWindow		Minimum:
 Le modifiche non salvate andranno perse. Continuare?	MainWindow		Unsaved changes will be lost. Continue?
-Grafico non implementato	MainWindow		Grafico non implementato
+Grafico non implementato	MainWindow		Chart not implemented
 Versione %u.%u.%u	AboutWindow		Version %u.%u.%u
 Separatore di elenco:	PreferencesWindow		List separator:
 Tabella pivot	PivotWindow		Pivot table
@@ -71,13 +71,13 @@ Nessun dato valido nell'intervallo (servono almeno due colonne: una o piu' di ca
 Intervallo (due colonne: etichette, valori):	ChartWindow		Range (two columns: labels, values):
 Applica	ColorWindow		Apply
 Colore sfondo	MainWindow		Background color
-Imposta pagina…	MainWindow		Imposta pagina…
+Imposta pagina…	MainWindow		Page setup…
 Riempi a destra	MainWindow		Fill right
 Elimina foglio	SheetTabView		Delete sheet
 Cella di destinazione nel foglio:	ChartWindow		Destination cell in the sheet:
 Stampa…	PageSetupWindow		Print…
 Commento cella…	MainWindow		Cell comment…
-Cancella area di stampa	MainWindow		Cancella area di stampa
+Cancella area di stampa	MainWindow		Clear print area
 Modifica	MainWindow	Indicatore di modalita' nel footer: modifica di una cella in corso, non la voce di menu \"Modifica\"	Editing
 Esci	MainWindow		Quit
 Imposta pagina	PageSetupWindow		Page setup
