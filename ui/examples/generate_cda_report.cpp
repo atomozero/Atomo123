@@ -1,15 +1,19 @@
 /*
 	generate_cda_report.cpp
 
-	Genera una cartella di lavoro Atomo123 a QUATTRO fogli a partire da
+	Genera una cartella di lavoro Atomo123 a CINQUE fogli a partire da
 	un vero file XLSX (il dataset pubblico "Financial Sample" di
 	Microsoft, 700 righe reali) -- pensata come dimostrazione pratica
 	di QUASI OGNI feature reale di Atomo123, su dati veri, non un
 	elenco astratto di funzionalita'. Aggiornata a ogni nuova feature
 	rilevante (vedi la memoria di progetto "feedback_showcase_file_
-	update"), non solo alla creazione iniziale:
+	update"), non solo alla creazione iniziale. Tutto il contenuto
+	VISIBILE (nomi foglio, intestazioni, titoli grafico, commenti nel
+	file generato) e' in INGLESE (richiesta esplicita dell'utente,
+	2026-09-26) -- solo i commenti di QUESTO sorgente C++ restano in
+	italiano, come da convenzione del progetto:
 
-	- "Riunione CdA": KPI e classifica dal vivo (con un bordo colorato
+	- "Board Meeting": KPI e classifica dal vivo (con un bordo colorato
 	  sul primo classificato), grafico, area di stampa/margini/scala
 	  per davvero (Fase 29, salvati per foglio) e adattati a una
 	  pagina sola, un collegamento ipertestuale reale (al repository
@@ -25,21 +29,29 @@
 	  BuildPivotTable2D/WritePivotTable2D: campo Colonne + due misure
 	  con aggregazioni diverse, Somma e Media, sullo stesso intervallo
 	  sorgente del pivot 1D appena sopra).
-	- "Funzioni": un catalogo di circa 50 funzioni con nome (RATE
+	- "Functions": un catalogo di circa 50 funzioni con nome (RATE
 	  compresa) applicate ai dati reali, una formula a blocco
-	  (SEQUENCE), una tabella strutturata ("Vendite[Colonna]"), una
+	  (SEQUENCE), una tabella strutturata ("SalesTable[Column]"), una
 	  ricerca interattiva con un INTERVALLO CON NOME al posto di un
 	  indirizzo grezzo (Convalida dati a elenco + SUMIF), una seconda
 	  convalida dati a intervallo numerico, un piccolo esempio di
 	  formattazione condizionale a valori duplicati, e l'intero foglio
 	  PROTETTO tranne le due celle interattive (Fase 32, "Proteggi
 	  foglio").
-	- "Dati": le 700 righe importate integralmente, blocca riquadri
+	- "Data": le 700 righe importate integralmente, blocca riquadri
 	  per riga E per colonna, con quattro regole di formattazione
 	  condizionale dal vivo (Discount Band = "High", scala di colori
 	  a due punti sulla colonna Profit, primi 10% per Sales e sopra
 	  la media per Units Sold -- questi ultimi due dal completamento
 	  di "Path to full Excel parity" Tier 3).
+	- "Languages": nuovo (richiesta esplicita dell'utente, 2026-09-26),
+	  una tabella con nome/saluto/frase campione/numero di parlanti
+	  nativi (approssimato) in otto lingue non inglesi (giapponese,
+	  coreano, cinese, arabo, greco, russo, indonesiano, friulano) piu'
+	  un grafico a barre sulla stessa tabella -- verifica pratica che
+	  il motore/il renderer gestiscano davvero testo Unicode non-Latino
+	  (CJK, arabo RTL, cirillico, greco) in celle E in un grafico, non
+	  solo negli accenti latini gia' usati altrove in questo file.
 
 	Deliberatamente NON rappresentate in questo file: le tre "Formula
 	auditing views" (Mostra formule, Traccia precedenti/dipendenti,
@@ -53,7 +65,7 @@
 
 	A differenza di una prima versione di questo generatore, QUI TUTTO
 	(tabelle raggruppate comprese, non solo i KPI) e' scritto come
-	FORMULA dal vivo sul foglio "Dati", non come valore gia' calcolato:
+	FORMULA dal vivo sul foglio "Data", non come valore gia' calcolato:
 	l'utente ha chiesto esplicitamente un file che si aggiorni da solo
 	se cambia qualcosa nei 700 record importati. Le tabelle pivot vere
 	dell'app (Inserisci -> Tabella Pivot, vedi Pivot.h) sono invece
@@ -211,7 +223,7 @@ static bool MakeLogoPng(std::vector<uint8>& out)
 	bitmap->AddChild(view);
 
 	bitmap->Lock();
-	view->SetHighColor(0, 120, 215, 255); // stesso blu del titolo "Riunione CdA"
+	view->SetHighColor(0, 120, 215, 255); // stesso blu del titolo "Board Meeting"
 	view->FillRoundRect(bounds, 10, 10);
 	view->SetHighColor(255, 255, 255, 255);
 	view->SetFontSize(22);
@@ -241,7 +253,7 @@ static bool MakeLogoPng(std::vector<uint8>& out)
 // nuda corrispondente per caso al nome di una funzione ("TODAY",
 // "CONCAT"...) venisse silenziosamente CALCOLATA invece di restare
 // testo -- gia' corretto alla radice, ma un'etichetta che contiene
-// operatori veri ("INDEX+MATCH", "Tabella[Col] + SUM") resta comunque
+// operatori veri ("INDEX+MATCH", "Table[Col] + SUM") resta comunque
 // un'espressione valida per il parser, per design (non un bug: "+" e
 // "[" hanno un significato reale in una formula). Passare sempre da
 // qui, mai da TryToParseString, elimina l'ambiguita' alla radice per
@@ -252,8 +264,8 @@ static void WriteLabel(CContainer* doc, cell c, const char* text)
 	doc->NewCell(c, Value(text), NULL);
 }
 
-// Scrive una tabella "Categoria/Somma" a partire da (destCol, 3) con
-// una riga di formula SUMIF per categoria (dal vivo sul foglio "Dati",
+// Scrive una tabella "Category/Sum" a partire da (destCol, 3) con
+// una riga di formula SUMIF per categoria (dal vivo sul foglio "Data",
 // mai un valore congelato) -- stesso principio di SUMIF(A1:A10;
 // "Roma";B1:B10) gia' documentato in docs/USER_GUIDE.md, qui applicato
 // a un elenco di categorie note invece che a un raggruppamento
@@ -261,8 +273,8 @@ static void WriteLabel(CContainer* doc, cell c, const char* text)
 static void WriteLiveCategoryTable(CContainer* doc, int destCol,
 	const std::vector<BString>& categories, char critCol, char valCol, bool currency, bool integer)
 {
-	WriteLabel(doc, cell(destCol, 3), "Categoria");
-	WriteLabel(doc, cell(destCol + 1, 3), "Somma");
+	WriteLabel(doc, cell(destCol, 3), "Category");
+	WriteLabel(doc, cell(destCol + 1, 3), "Sum");
 	Style(doc, cell(destCol, 3), [](CellStyle& cs) { cs.fLowColor = (rgb_color){ 217, 217, 217, 255 }; });
 	Style(doc, cell(destCol + 1, 3), [](CellStyle& cs) { cs.fLowColor = (rgb_color){ 217, 217, 217, 255 }; });
 	Border(doc, cell(destCol, 3));
@@ -274,7 +286,7 @@ static void WriteLiveCategoryTable(CContainer* doc, int destCol,
 		WriteLabel(doc, cell(destCol, row), categories[i].String());
 
 		char formula[128];
-		snprintf(formula, sizeof(formula), "=SUMIF(Dati!%c2:%c701;\"%s\";Dati!%c2:%c701)",
+		snprintf(formula, sizeof(formula), "=SUMIF(Data!%c2:%c701;\"%s\";Data!%c2:%c701)",
 			critCol, critCol, categories[i].String(), valCol, valCol);
 		TryToParseString(formula, cell(destCol + 1, row), doc, true);
 
@@ -355,7 +367,7 @@ int main()
 	}
 
 	CContainer* dati = imported[0].doc;
-	imported[0].name = "Dati";
+	imported[0].name = "Data";
 	imported[0].frozenRows = 1; // intestazione (riga 1) sempre visibile
 	imported[0].hasAutoFilter = true;
 	imported[0].autoFilterRange = range(1, 1, 16, 701); // A1:P701
@@ -404,10 +416,10 @@ int main()
 	months.push_back("July"); months.push_back("August"); months.push_back("September");
 	months.push_back("October"); months.push_back("November"); months.push_back("December");
 
-	// Tabella strutturata "Vendite" (Fase 14, "Tabella12[Colonna]"):
+	// Tabella strutturata "SalesTable" (Fase 14, "Tabella12[Colonna]"):
 	// registrata sull'intero intervallo importato, cosi' il foglio
-	// "Funzioni" piu' sotto puo' scrivere formule come "Vendite[Sales]"
-	// invece di "Dati!J2:J701" -- stessa identica sintassi che un vero
+	// "Functions" piu' sotto puo' scrivere formule come "SalesTable[Sales]"
+	// invece di "Data!J2:J701" -- stessa identica sintassi che un vero
 	// file XLSX con una Tabella Excel produce all'importazione (vedi
 	// Excel.cpp), qui costruita a mano perche' questo file nasce da un
 	// generatore, non da un vero file con una Tabella gia' definita.
@@ -423,10 +435,10 @@ int main()
 		};
 		for (size_t i = 0; i < sizeof(columnNames) / sizeof(columnNames[0]); i++)
 			table.columnNames.push_back(columnNames[i]);
-		dati->AddTable("Vendite", table);
+		dati->AddTable("SalesTable", table);
 	}
 
-	// Formattazione condizionale VIVA (Fase 13) sul foglio "Dati": ogni
+	// Formattazione condizionale VIVA (Fase 13) sul foglio "Data": ogni
 	// riga con Discount Band = "High" prende uno sfondo evidenziato --
 	// un vero rischio di margine, utile da vedere a colpo d'occhio
 	// scorrendo 700 righe. eCondCellIsEqual confronta con un valore
@@ -499,7 +511,7 @@ int main()
 	// ==================== Foglio "Pivot" ====================
 	CContainer* pivot = new CContainer(NULL, NULL);
 
-	WriteLabel(pivot, cell(1, 1), "Analisi per categoria - Financial Sample (700 record, formule dal vivo)");
+	WriteLabel(pivot, cell(1, 1), "Category analysis - Financial Sample (700 records, live formulas)");
 	pivot->AddMergedRange(range(1, 1, 11, 1));
 	Style(pivot, cell(1, 1), [&](CellStyle& cs) {
 		cs.fLowColor = kBlue; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter;
@@ -511,14 +523,14 @@ int main()
 		char critCol, valCol; bool currency, integer;
 	};
 	CategoryBlock blocks[] = {
-		{ "Per segmento (somma vendite)", 1, &segments, 'A', 'J', true, false },
-		{ "Per paese (somma profitto)", 4, &countries, 'B', 'L', true, false },
-		{ "Per prodotto (somma unita' vendute)", 7, &products, 'C', 'E', false, true },
+		{ "By segment (sum of sales)", 1, &segments, 'A', 'J', true, false },
+		{ "By country (sum of profit)", 4, &countries, 'B', 'L', true, false },
+		{ "By product (sum of units sold)", 7, &products, 'C', 'E', false, true },
 		// Per mese (colonna O, "Month Name"): in ordine calendario, non
 		// alfabetico (vedi il vettore "months" sopra) -- serve al
 		// grafico a LINEE piu' sotto, l'unico tipo di grafico ancora
 		// mai usato in questo file (barre e torta gia' presenti).
-		{ "Per mese (somma vendite)", 10, &months, 'O', 'J', true, false },
+		{ "By month (sum of sales)", 10, &months, 'O', 'J', true, false },
 	};
 
 	for (int b = 0; b < 4; b++)
@@ -535,7 +547,7 @@ int main()
 	}
 
 	// Dati per il grafico COMBINATO (Fase 35): stesse categorie del
-	// blocco "Per segmento" sopra (colonna 1-2), ma con una SECONDA
+	// blocco "By segment" sopra (colonna 1-2), ma con una SECONDA
 	// colonna serie (Profitto) accanto -- serve una tabella con due
 	// colonne di valori NUMERICHE oltre alle etichette per un grafico
 	// combinato barre+linee, che WriteLiveCategoryTable (una sola
@@ -543,22 +555,22 @@ int main()
 	// tutte le tabelle sopra apposta per non serve nessuna colonna di
 	// margine extra.
 	int comboLabelRow = 3;
-	WriteLabel(pivot, cell(13, comboLabelRow), "Segmento");
-	WriteLabel(pivot, cell(14, comboLabelRow), "Vendite");
-	WriteLabel(pivot, cell(15, comboLabelRow), "Profitto");
+	WriteLabel(pivot, cell(13, comboLabelRow), "Segment");
+	WriteLabel(pivot, cell(14, comboLabelRow), "Sales");
+	WriteLabel(pivot, cell(15, comboLabelRow), "Profit");
 	for (size_t i = 0; i < segments.size(); i++)
 	{
 		int row = comboLabelRow + 1 + (int)i;
 		WriteLabel(pivot, cell(13, row), segments[i].String());
 
 		char salesFormula[128];
-		snprintf(salesFormula, sizeof(salesFormula), "=SUMIF(Dati!A2:A701;\"%s\";Dati!J2:J701)",
+		snprintf(salesFormula, sizeof(salesFormula), "=SUMIF(Data!A2:A701;\"%s\";Data!J2:J701)",
 			segments[i].String());
 		TryToParseString(salesFormula, cell(14, row), pivot, true);
 		Currency(pivot, cell(14, row));
 
 		char profitFormula[128];
-		snprintf(profitFormula, sizeof(profitFormula), "=SUMIF(Dati!A2:A701;\"%s\";Dati!L2:L701)",
+		snprintf(profitFormula, sizeof(profitFormula), "=SUMIF(Data!A2:A701;\"%s\";Data!L2:L701)",
 			segments[i].String());
 		TryToParseString(profitFormula, cell(15, row), pivot, true);
 		Currency(pivot, cell(15, row));
@@ -576,13 +588,13 @@ int main()
 		int row = scatterFirstRow + (int)i;
 
 		char unitsFormula[128];
-		snprintf(unitsFormula, sizeof(unitsFormula), "=SUMIF(Dati!C2:C701;\"%s\";Dati!E2:E701)",
+		snprintf(unitsFormula, sizeof(unitsFormula), "=SUMIF(Data!C2:C701;\"%s\";Data!E2:E701)",
 			products[i].String());
 		TryToParseString(unitsFormula, cell(17, row), pivot, true);
 		Integer(pivot, cell(17, row));
 
 		char profitFormula[128];
-		snprintf(profitFormula, sizeof(profitFormula), "=SUMIF(Dati!C2:C701;\"%s\";Dati!L2:L701)",
+		snprintf(profitFormula, sizeof(profitFormula), "=SUMIF(Data!C2:C701;\"%s\";Data!L2:L701)",
 			products[i].String());
 		TryToParseString(profitFormula, cell(18, row), pivot, true);
 		Currency(pivot, cell(18, row));
@@ -595,19 +607,19 @@ int main()
 	// non serve rigenerare il file.
 	ChartObject chartSeg;
 	chartSeg.type = eBarChart;
-	chartSeg.title = "Vendite per segmento";
+	chartSeg.title = "Sales by segment";
 	chartSeg.dataRange = range(1, 4, 2, 3 + (int)segments.size());
 	chartSeg.frame = BRect(20, 230, 380, 430);
 
 	ChartObject chartCountry;
 	chartCountry.type = ePieChart;
-	chartCountry.title = "Profitto per paese";
+	chartCountry.title = "Profit by country";
 	chartCountry.dataRange = range(4, 4, 5, 3 + (int)countries.size());
 	chartCountry.frame = BRect(400, 230, 700, 430);
 
 	ChartObject chartProduct;
 	chartProduct.type = eBarChart;
-	chartProduct.title = "Unita' vendute per prodotto";
+	chartProduct.title = "Units sold by product";
 	chartProduct.dataRange = range(7, 4, 8, 3 + (int)products.size());
 	chartProduct.frame = BRect(20, 450, 500, 650);
 
@@ -617,7 +629,7 @@ int main()
 	// sceglierebbe in Excel per un trend nel tempo.
 	ChartObject chartMonth;
 	chartMonth.type = eLineChart;
-	chartMonth.title = "Andamento vendite per mese";
+	chartMonth.title = "Sales trend by month";
 	chartMonth.dataRange = range(10, 4, 11, 3 + (int)months.size());
 	chartMonth.frame = BRect(520, 450, 900, 650);
 
@@ -627,7 +639,7 @@ int main()
 	// e' solo visiva (area riempita sotto la linea).
 	ChartObject chartMonthArea;
 	chartMonthArea.type = eAreaChart;
-	chartMonthArea.title = "Andamento vendite per mese (area)";
+	chartMonthArea.title = "Sales trend by month (area)";
 	chartMonthArea.dataRange = chartMonth.dataRange;
 	chartMonthArea.frame = BRect(920, 230, 1300, 430);
 
@@ -638,7 +650,7 @@ int main()
 	// segmento puo' vendere molto ma avere un profitto basso).
 	ChartObject chartSegCombo;
 	chartSegCombo.type = eComboChart;
-	chartSegCombo.title = "Vendite (barre) e profitto (linea) per segmento";
+	chartSegCombo.title = "Sales (bars) and profit (line) by segment";
 	chartSegCombo.dataRange = range(13, comboLabelRow, 15, comboLabelRow + (int)segments.size());
 	chartSegCombo.frame = BRect(1320, 230, 1700, 430);
 
@@ -650,7 +662,7 @@ int main()
 	// categoria.
 	ChartObject chartProductScatter;
 	chartProductScatter.type = eScatterChart;
-	chartProductScatter.title = "Unita' vendute vs profitto per prodotto";
+	chartProductScatter.title = "Units sold vs profit by product";
 	chartProductScatter.dataRange = range(17, scatterFirstRow, 18, scatterFirstRow + (int)products.size() - 1);
 	chartProductScatter.frame = BRect(920, 450, 1300, 650);
 
@@ -661,7 +673,7 @@ int main()
 	// differenza di "Column" (eBarChart).
 	ChartObject chartProductHBar;
 	chartProductHBar.type = eHBarChart;
-	chartProductHBar.title = "Unita' vendute per prodotto (barre orizzontali)";
+	chartProductHBar.title = "Units sold by product (horizontal bars)";
 	chartProductHBar.dataRange = chartProduct.dataRange;
 	chartProductHBar.frame = BRect(1320, 450, 1700, 650);
 
@@ -676,8 +688,8 @@ int main()
 	// un intervallo unico senza dover prima riordinare le colonne.
 	int realPivotLabelRow = 36;
 	WriteLabel(pivot, cell(1, realPivotLabelRow),
-		"Tabella pivot VERA (Inserisci -> Tabella Pivot): istantanea statica, non dal vivo "
-		"come le tabelle sopra -- raggruppamento a due livelli, Prodotto poi Fascia sconto");
+		"REAL pivot table (Insert -> Pivot Table): a static snapshot, not live "
+		"like the tables above -- two-level grouping, Product then Discount Band");
 	pivot->AddMergedRange(range(1, realPivotLabelRow, 11, realPivotLabelRow));
 	Style(pivot, cell(1, realPivotLabelRow), [&](CellStyle& cs) {
 		cs.fLowColor = kOrange; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter; cs.fWrapText = true;
@@ -702,8 +714,8 @@ int main()
 	// col pivot 1D appena sopra.
 	int realPivot2DLabelRow = realPivotLabelRow + 40;
 	WriteLabel(pivot, cell(1, realPivot2DLabelRow),
-		"Tabella pivot 2D VERA (v0.3.0): campo Colonne (Fascia sconto) + due misure "
-		"(Somma unita', Media prezzo di produzione), righe per Prodotto");
+		"REAL 2D pivot table (v0.3.0): Columns field (Discount Band) + two measures "
+		"(Sum of units, Average manufacturing price), rows by Product");
 	pivot->AddMergedRange(range(1, realPivot2DLabelRow, 11, realPivot2DLabelRow));
 	Style(pivot, cell(1, realPivot2DLabelRow), [&](CellStyle& cs) {
 		cs.fLowColor = kOrange; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter; cs.fWrapText = true;
@@ -713,8 +725,8 @@ int main()
 	int realPivot2DDataRow = realPivot2DLabelRow + 1;
 	{
 		std::vector<PivotMeasure> measures(2);
-		measures[0].sourceCol = 5; measures[0].aggFunc = ePivotSum; measures[0].label = "Unita'";
-		measures[1].sourceCol = 6; measures[1].aggFunc = ePivotAverage; measures[1].label = "Prezzo medio";
+		measures[0].sourceCol = 5; measures[0].aggFunc = ePivotSum; measures[0].label = "Units";
+		measures[1].sourceCol = 6; measures[1].aggFunc = ePivotAverage; measures[1].label = "Average price";
 
 		std::vector<BString> columnValues;
 		std::vector<PivotRow2D> rows2D;
@@ -723,10 +735,10 @@ int main()
 			WritePivotTable2D(pivot, cell(1, realPivot2DDataRow), columnValues, measures, rows2D);
 	}
 
-	// ==================== Foglio "Riunione CdA" ====================
+	// ==================== Foglio "Board Meeting" ====================
 	CContainer* cda = new CContainer(NULL, NULL);
 
-	WriteLabel(cda, cell(1, 1), "Riunione CdA - Sintesi Vendite");
+	WriteLabel(cda, cell(1, 1), "Board Meeting - Sales Summary");
 	cda->AddMergedRange(range(1, 1, 4, 1));
 	Style(cda, cell(1, 1), [&](CellStyle& cs) {
 		cs.fLowColor = kGreen; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter;
@@ -734,7 +746,7 @@ int main()
 	Bold(cda, cell(1, 1));
 
 	WriteLabel(cda, cell(1, 2),
-		"Dati: Financial Sample - 700 record, tutte le formule si aggiornano da sole");
+		"Data: Financial Sample - 700 records, every formula updates itself");
 	cda->AddMergedRange(range(1, 2, 4, 2));
 	Style(cda, cell(1, 2), [&](CellStyle& cs) {
 		cs.fHighColor = kDarkGray; cs.fAlignment = eAlignCenter;
@@ -744,7 +756,7 @@ int main()
 	// compatibility Tier 2): un vero URL esterno, verificato -- lo
 	// stesso repository che ha ricevuto ogni commit di questa sessione,
 	// non un indirizzo inventato per l'occasione.
-	WriteLabel(cda, cell(1, 3), "Codice sorgente di Atomo123 su GitHub");
+	WriteLabel(cda, cell(1, 3), "Atomo123 source code on GitHub");
 	cda->AddMergedRange(range(1, 3, 4, 3));
 	Style(cda, cell(1, 3), [&](CellStyle& cs) {
 		cs.fHighColor = kBlue; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
@@ -752,12 +764,12 @@ int main()
 	cda->SetHyperlink(cell(1, 3), "https://github.com/atomozero/Atomo123");
 
 	// Riga KPI: intestazioni (riga 4) + formule dal vivo sul foglio
-	// "Dati" (riga 5) -- lasciate deliberatamente NON calcolate qui,
+	// "Data" (riga 5) -- lasciate deliberatamente NON calcolate qui,
 	// stesso principio di generate_demo.cpp: senza un vero
 	// ISheetResolver (nessuna MainWindow in questo generatore
 	// headless) restano "vive" ma non risolvibili, si calcolano da
 	// sole alla riapertura in Atomo123.
-	const char* kpiHeaders[] = { "Vendite Totali", "Profitto Totale", "Margine %", "Unita' Vendute" };
+	const char* kpiHeaders[] = { "Total Sales", "Total Profit", "Margin %", "Units Sold" };
 	for (int col = 1; col <= 4; col++)
 	{
 		WriteLabel(cda, cell(col, 4), kpiHeaders[col - 1]);
@@ -767,10 +779,10 @@ int main()
 		Border(cda, cell(col, 4));
 	}
 
-	TryToParseString("=SUM(Dati!J2:J701)", cell(1, 5), cda, true);
-	TryToParseString("=SUM(Dati!L2:L701)", cell(2, 5), cda, true);
+	TryToParseString("=SUM(Data!J2:J701)", cell(1, 5), cda, true);
+	TryToParseString("=SUM(Data!L2:L701)", cell(2, 5), cda, true);
 	TryToParseString("=B5/A5", cell(3, 5), cda, true);
-	TryToParseString("=SUM(Dati!E2:E701)", cell(4, 5), cda, true);
+	TryToParseString("=SUM(Data!E2:E701)", cell(4, 5), cda, true);
 	Currency(cda, cell(1, 5));
 	Currency(cda, cell(2, 5));
 	Percent(cda, cell(3, 5));
@@ -781,8 +793,8 @@ int main()
 		Style(cda, cell(col, 5), [&](CellStyle& cs) { cs.fLowColor = kYellow; });
 	}
 	cda->SetComment(cell(1, 5),
-		"Formula dal vivo (somma della colonna Sales del foglio Dati): si aggiorna da sola "
-		"se i dati importati cambiano, non un numero congelato.");
+		"Live formula (sum of the Sales column on the Data sheet): updates itself "
+		"if the imported data changes, not a frozen number.");
 
 	// Sezione "vendite per segmento", classificata per valore
 	// decrescente SENZA congelare nessun numero: LARGE(...) prende il
@@ -791,13 +803,13 @@ int main()
 	// del segmento -- esattamente come si farebbe in Excel per una
 	// "classifica" che si aggiorna da sola quando i dati sorgente
 	// cambiano.
-	WriteLabel(cda, cell(1, 7), "Vendite per segmento (classifica, formule dal vivo)");
+	WriteLabel(cda, cell(1, 7), "Sales by segment (ranking, live formulas)");
 	cda->AddMergedRange(range(1, 7, 3, 7));
 	Style(cda, cell(1, 7), [&](CellStyle& cs) {
 		cs.fLowColor = kLightGray; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
 	});
 
-	const char* rankHeaders[] = { "Segmento", "Vendite", "Quota %" };
+	const char* rankHeaders[] = { "Segment", "Sales", "Share %" };
 	for (int col = 1; col <= 3; col++)
 	{
 		WriteLabel(cda, cell(col, 8), rankHeaders[col - 1]);
@@ -846,7 +858,7 @@ int main()
 
 	ChartObject chartRank;
 	chartRank.type = eBarChart;
-	chartRank.title = "Vendite per segmento";
+	chartRank.title = "Sales by segment";
 	chartRank.dataRange = range(1, 9, 2, lastRankRow);
 	chartRank.frame = BRect(20, chartTop, 460, chartBottom);
 
@@ -857,13 +869,13 @@ int main()
 	// 10 + (N-1)*20 pixel, non semplicemente N*20.
 	int noteRow = (int)((chartBottom - 10) / 20) + 2;
 	WriteLabel(cda, cell(1, noteRow),
-		"Generato automaticamente da Atomo123 a partire da Financial Sample.xlsx (dataset "
-		"dimostrativo pubblico Microsoft). Ogni numero di questo file e' una formula dal vivo: "
-		"modificando i dati nel foglio Dati, tutto il resto si aggiorna da solo al ricalcolo.");
+		"Automatically generated by Atomo123 from Financial Sample.xlsx (Microsoft's public "
+		"demo dataset). Every number in this file is a live formula: change the data on the "
+		"Data sheet, and everything else updates itself on recalculation.");
 	cda->AddMergedRange(range(1, noteRow, 4, noteRow));
 	Style(cda, cell(1, noteRow), [&](CellStyle& cs) { cs.fHighColor = kDarkGray; cs.fWrapText = true; });
 
-	// ==================== Foglio "Funzioni" ====================
+	// ==================== Foglio "Functions" ====================
 	// Catalogo dal vivo: una riga per funzione, con la formula vera
 	// (colonna "Formula", testo letterale per poterla leggere) e il
 	// suo risultato calcolato (colonna "Risultato", la STESSA formula
@@ -878,17 +890,17 @@ int main()
 	// che un utente userebbe davvero, non un test esaustivo.
 	CContainer* funcs = new CContainer(NULL, NULL);
 
-	WriteLabel(funcs, cell(1, 1), "Catalogo delle funzioni - applicate ai dati reali");
+	WriteLabel(funcs, cell(1, 1), "Function catalog - applied to real data");
 	funcs->AddMergedRange(range(1, 1, 4, 1));
 	Style(funcs, cell(1, 1), [&](CellStyle& cs) {
 		cs.fLowColor = kBlue; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter;
 	});
 	WriteLabel(funcs, cell(1, 2),
-		"Ogni riga sotto e' una formula VIVA (colonna Risultato): filtra con AutoFilter per categoria.");
+		"Every row below is a LIVE formula (Result column): filter with AutoFilter by category.");
 	funcs->AddMergedRange(range(1, 2, 4, 2));
 	Style(funcs, cell(1, 2), [&](CellStyle& cs) { cs.fHighColor = kDarkGray; cs.fAlignment = eAlignCenter; });
 
-	const char* catalogHeaders[] = { "Categoria", "Funzione", "Formula", "Risultato" };
+	const char* catalogHeaders[] = { "Category", "Function", "Formula", "Result" };
 	for (int col = 1; col <= 4; col++)
 	{
 		WriteLabel(funcs, cell(col, 4), catalogHeaders[col - 1]);
@@ -900,64 +912,64 @@ int main()
 
 	struct FuncDemo { const char* category; const char* name; const char* formula; };
 	const FuncDemo demos[] = {
-		// -- Testo --
-		{ "Testo", "UPPER", "=UPPER(\"maiuscolo\")" },
-		{ "Testo", "LOWER", "=LOWER(\"MINUSCOLO\")" },
-		{ "Testo", "PROPER", "=PROPER(\"nome cognome\")" },
-		{ "Testo", "TRIM", "=TRIM(\"  spazi di troppo  \")" },
-		{ "Testo", "CONCAT", "=CONCAT(Dati!A2;\" / \";Dati!B2)" },
-		{ "Testo", "TEXTJOIN", "=TEXTJOIN(\", \";TRUE;Dati!A2;Dati!B2;Dati!C2)" },
-		{ "Testo", "SUBSTITUTE", "=SUBSTITUTE(\"Small Business\";\"Business\";\"Biz\")" },
-		{ "Testo", "REPLACE", "=REPLACE(\"Atomo123\";1;5;\"Nuovo\")" },
-		{ "Testo", "REPT", "=REPT(\"=\";10)" },
-		{ "Testo", "EXACT", "=EXACT(Dati!A2;Dati!A3)" },
-		{ "Testo", "VALUE", "=VALUE(\"1234.5\")" },
-		{ "Testo", "TEXT", "=TEXT(Dati!J2;\"0.00\")" },
-		// -- Data --
-		{ "Data", "TODAY", "=TODAY()" },
-		{ "Data", "YEAR", "=YEAR(Dati!M2)" },
-		{ "Data", "MONTH", "=MONTH(Dati!M2)" },
-		{ "Data", "DAY", "=DAY(Dati!M2)" },
-		{ "Data", "EDATE", "=EDATE(Dati!M2;3)" },
-		{ "Data", "EOMONTH", "=EOMONTH(Dati!M2;0)" },
-		{ "Data", "NETWORKDAYS", "=NETWORKDAYS(DATE(2013;1;1);DATE(2013;12;31))" },
-		{ "Data", "WORKDAY", "=WORKDAY(DATE(2026;1;1);10)" },
-		{ "Data", "DATEDIF", "=DATEDIF(Dati!M2;TODAY();\"Y\")" },
-		// -- Logica --
-		{ "Logica", "IF", "=IF(Dati!J2>100000;\"Alta\";\"Bassa\")" },
-		{ "Logica", "AND", "=AND(Dati!E2>0;Dati!J2>0)" },
-		{ "Logica", "OR", "=OR(Dati!D2=\"High\";Dati!D2=\"Low\")" },
-		{ "Logica", "NOT", "=NOT(Dati!D2=\"None\")" },
-		{ "Logica", "XOR", "=XOR(Dati!E2>1000;Dati!J2>500000)" },
-		{ "Logica", "SWITCH", "=SWITCH(Dati!D2;\"None\";\"N\";\"Low\";\"L\";\"Medium\";\"M\";\"High\";\"H\")" },
-		{ "Logica", "IFERROR", "=IFERROR(1/0;\"Errore evitato\")" },
-		{ "Logica", "IFNA", "=IFNA(XMATCH(\"NonEsiste\";Dati!A2:A10);\"Non trovato\")" },
-		{ "Logica", "ISBLANK", "=ISBLANK(Q1)" },
-		{ "Logica", "ISFORMULA", "=ISFORMULA(Dati!J2:J3)" }, // intervallo di ALMENO due celle: vedi il limite noto in Functions.logical.cpp
-		// -- Ricerca --
-		{ "Ricerca", "VLOOKUP", "=VLOOKUP(\"Government\";Dati!A2:J701;10;0)" },
-		{ "Ricerca", "INDEX+MATCH", "=INDEX(Dati!J2:J701;MATCH(\"Government\";Dati!A2:A701;0))" },
-		{ "Ricerca", "XLOOKUP", "=XLOOKUP(\"Government\";Dati!A2:A701;Dati!J2:J701)" },
-		{ "Ricerca", "XMATCH", "=XMATCH(\"Government\";Dati!A2:A701)" },
-		{ "Ricerca", "INDIRECT", "=INDIRECT(\"Dati!J2\")" },
-		{ "Ricerca", "ADDRESS", "=ADDRESS(2;10)" },
-		{ "Ricerca", "Tabella[Col] + SUM", "=SUM(Vendite[Sales])" },
-		{ "Ricerca", "Tabella[Col] + INDEX/MATCH", "=INDEX(Vendite[Profit];MATCH(\"Government\";Vendite[Segment];0))" },
-		// -- Matematica e statistica --
-		{ "Matematica", "SUMPRODUCT", "=SUMPRODUCT(Dati!E2:E11;Dati!G2:G11)" },
-		{ "Matematica", "AVERAGEIFS", "=AVERAGEIFS(Dati!J2:J701;Dati!A2:A701;\"Government\";Dati!B2:B701;\"Canada\")" },
-		{ "Matematica", "MAXIFS", "=MAXIFS(Dati!J2:J701;Dati!A2:A701;\"Government\")" },
-		{ "Matematica", "MINIFS", "=MINIFS(Dati!J2:J701;Dati!A2:A701;\"Government\")" },
-		{ "Matematica", "RANK", "=RANK(Dati!J2;Dati!J2:J701)" },
-		{ "Matematica", "LARGE", "=LARGE(Dati!J2:J701;1)" },
-		{ "Matematica", "SMALL", "=SMALL(Dati!J2:J701;1)" },
-		{ "Matematica", "SUBTOTAL", "=SUBTOTAL(9;Dati!J2:J701)" },
-		{ "Matematica", "MEDIAN", "=MEDIAN(Dati!J2:J701)" },
-		{ "Matematica", "STDDEV", "=STDDEV(Dati!J2:J701)" },
-		{ "Matematica", "ROUND", "=ROUND(Dati!J2;0)" },
-		{ "Matematica", "COUNTIF", "=COUNTIF(Dati!A2:A701;\"Government\")" },
-		// -- Finanza --
-		{ "Finanza", "RATE", "=RATE(8;-150;1000)" }, // tasso periodico di un prestito di 1000 restituito in 8 rate da 150
+		// -- Text --
+		{ "Text", "UPPER", "=UPPER(\"lowercase\")" },
+		{ "Text", "LOWER", "=LOWER(\"UPPERCASE\")" },
+		{ "Text", "PROPER", "=PROPER(\"first last\")" },
+		{ "Text", "TRIM", "=TRIM(\"  too many spaces  \")" },
+		{ "Text", "CONCAT", "=CONCAT(Data!A2;\" / \";Data!B2)" },
+		{ "Text", "TEXTJOIN", "=TEXTJOIN(\", \";TRUE;Data!A2;Data!B2;Data!C2)" },
+		{ "Text", "SUBSTITUTE", "=SUBSTITUTE(\"Small Business\";\"Business\";\"Biz\")" },
+		{ "Text", "REPLACE", "=REPLACE(\"Atomo123\";1;5;\"New\")" },
+		{ "Text", "REPT", "=REPT(\"=\";10)" },
+		{ "Text", "EXACT", "=EXACT(Data!A2;Data!A3)" },
+		{ "Text", "VALUE", "=VALUE(\"1234.5\")" },
+		{ "Text", "TEXT", "=TEXT(Data!J2;\"0.00\")" },
+		// -- Date --
+		{ "Date", "TODAY", "=TODAY()" },
+		{ "Date", "YEAR", "=YEAR(Data!M2)" },
+		{ "Date", "MONTH", "=MONTH(Data!M2)" },
+		{ "Date", "DAY", "=DAY(Data!M2)" },
+		{ "Date", "EDATE", "=EDATE(Data!M2;3)" },
+		{ "Date", "EOMONTH", "=EOMONTH(Data!M2;0)" },
+		{ "Date", "NETWORKDAYS", "=NETWORKDAYS(DATE(2013;1;1);DATE(2013;12;31))" },
+		{ "Date", "WORKDAY", "=WORKDAY(DATE(2026;1;1);10)" },
+		{ "Date", "DATEDIF", "=DATEDIF(Data!M2;TODAY();\"Y\")" },
+		// -- Logic --
+		{ "Logic", "IF", "=IF(Data!J2>100000;\"High\";\"Low\")" },
+		{ "Logic", "AND", "=AND(Data!E2>0;Data!J2>0)" },
+		{ "Logic", "OR", "=OR(Data!D2=\"High\";Data!D2=\"Low\")" },
+		{ "Logic", "NOT", "=NOT(Data!D2=\"None\")" },
+		{ "Logic", "XOR", "=XOR(Data!E2>1000;Data!J2>500000)" },
+		{ "Logic", "SWITCH", "=SWITCH(Data!D2;\"None\";\"N\";\"Low\";\"L\";\"Medium\";\"M\";\"High\";\"H\")" },
+		{ "Logic", "IFERROR", "=IFERROR(1/0;\"Error avoided\")" },
+		{ "Logic", "IFNA", "=IFNA(XMATCH(\"DoesNotExist\";Data!A2:A10);\"Not found\")" },
+		{ "Logic", "ISBLANK", "=ISBLANK(Q1)" },
+		{ "Logic", "ISFORMULA", "=ISFORMULA(Data!J2:J3)" }, // intervallo di ALMENO due celle: vedi il limite noto in Functions.logical.cpp
+		// -- Lookup --
+		{ "Lookup", "VLOOKUP", "=VLOOKUP(\"Government\";Data!A2:J701;10;0)" },
+		{ "Lookup", "INDEX+MATCH", "=INDEX(Data!J2:J701;MATCH(\"Government\";Data!A2:A701;0))" },
+		{ "Lookup", "XLOOKUP", "=XLOOKUP(\"Government\";Data!A2:A701;Data!J2:J701)" },
+		{ "Lookup", "XMATCH", "=XMATCH(\"Government\";Data!A2:A701)" },
+		{ "Lookup", "INDIRECT", "=INDIRECT(\"Data!J2\")" },
+		{ "Lookup", "ADDRESS", "=ADDRESS(2;10)" },
+		{ "Lookup", "Table[Col] + SUM", "=SUM(SalesTable[Sales])" },
+		{ "Lookup", "Table[Col] + INDEX/MATCH", "=INDEX(SalesTable[Profit];MATCH(\"Government\";SalesTable[Segment];0))" },
+		// -- Math and statistics --
+		{ "Math", "SUMPRODUCT", "=SUMPRODUCT(Data!E2:E11;Data!G2:G11)" },
+		{ "Math", "AVERAGEIFS", "=AVERAGEIFS(Data!J2:J701;Data!A2:A701;\"Government\";Data!B2:B701;\"Canada\")" },
+		{ "Math", "MAXIFS", "=MAXIFS(Data!J2:J701;Data!A2:A701;\"Government\")" },
+		{ "Math", "MINIFS", "=MINIFS(Data!J2:J701;Data!A2:A701;\"Government\")" },
+		{ "Math", "RANK", "=RANK(Data!J2;Data!J2:J701)" },
+		{ "Math", "LARGE", "=LARGE(Data!J2:J701;1)" },
+		{ "Math", "SMALL", "=SMALL(Data!J2:J701;1)" },
+		{ "Math", "SUBTOTAL", "=SUBTOTAL(9;Data!J2:J701)" },
+		{ "Math", "MEDIAN", "=MEDIAN(Data!J2:J701)" },
+		{ "Math", "STDDEV", "=STDDEV(Data!J2:J701)" },
+		{ "Math", "ROUND", "=ROUND(Data!J2;0)" },
+		{ "Math", "COUNTIF", "=COUNTIF(Data!A2:A701;\"Government\")" },
+		// -- Finance --
+		{ "Finance", "RATE", "=RATE(8;-150;1000)" }, // tasso periodico di un prestito di 1000 restituito in 8 rate da 150
 	};
 	const int demoCount = sizeof(demos) / sizeof(demos[0]);
 
@@ -985,7 +997,7 @@ int main()
 	// "P-EL-a" gia' corretto altrove), che qui fallisce e lancia una
 	// CParseErr invece di ricadere silenziosamente su testo letterale
 	// -- bug reale scoperto generando proprio questo file.
-	funcs->NewCell(cell(1, sequenceLabelRow), Value("SEQUENCE (formula a blocco/\"spill\")"), NULL);
+	funcs->NewCell(cell(1, sequenceLabelRow), Value("SEQUENCE (block/\"spill\" formula)"), NULL);
 	funcs->AddMergedRange(range(1, sequenceLabelRow, 4, sequenceLabelRow));
 	Style(funcs, cell(1, sequenceLabelRow), [&](CellStyle& cs) {
 		cs.fLowColor = kLightGray; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
@@ -999,14 +1011,14 @@ int main()
 	// stessa combinazione che un utente reale userebbe per un piccolo
 	// "pannello di controllo" del foglio.
 	int interactiveLabelRow = sequenceDataRow + 7; // sotto al blocco SEQUENCE (5 righe) piu' margine
-	WriteLabel(funcs, cell(1, interactiveLabelRow), "Ricerca interattiva (Convalida dati + SUMIF)");
+	WriteLabel(funcs, cell(1, interactiveLabelRow), "Interactive lookup (Data validation + SUMIF)");
 	funcs->AddMergedRange(range(1, interactiveLabelRow, 4, interactiveLabelRow));
 	Style(funcs, cell(1, interactiveLabelRow), [&](CellStyle& cs) {
 		cs.fLowColor = kLightGray; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
 	});
 
 	int pickerRow = interactiveLabelRow + 1;
-	WriteLabel(funcs, cell(1, pickerRow), "Scegli un segmento:");
+	WriteLabel(funcs, cell(1, pickerRow), "Choose a segment:");
 	WriteLabel(funcs, cell(2, pickerRow), "Government"); // valore iniziale della cella con l'elenco
 	Style(funcs, cell(2, pickerRow), [&](CellStyle& cs) { cs.fLowColor = kYellow; });
 	Border(funcs, cell(2, pickerRow));
@@ -1025,25 +1037,25 @@ int main()
 	// generatore). I nomi in questo motore sono per FOGLIO (vedi
 	// CContainer::GetOrCreateNameTable), non per l'intera cartella:
 	// valido solo dentro "funcs", esattamente come qui sotto.
-	(*funcs->GetOrCreateNameTable())["SegmentoScelto"] = range(2, pickerRow, 2, pickerRow);
+	(*funcs->GetOrCreateNameTable())["SelectedSegment"] = range(2, pickerRow, 2, pickerRow);
 
 	int resultRow = pickerRow + 1;
-	WriteLabel(funcs, cell(1, resultRow), "Vendite di quel segmento:");
-	TryToParseString("=SUMIF(Dati!A2:A701;SegmentoScelto;Dati!J2:J701)", cell(2, resultRow), funcs, true);
+	WriteLabel(funcs, cell(1, resultRow), "Sales for that segment:");
+	TryToParseString("=SUMIF(Data!A2:A701;SelectedSegment;Data!J2:J701)", cell(2, resultRow), funcs, true);
 	Currency(funcs, cell(2, resultRow));
 	Border(funcs, cell(2, resultRow));
 	funcs->SetComment(cell(2, pickerRow),
-		"Convalida dati: clic con il tasto destro sulla cella per vedere l'elenco a discesa "
-		"(Small Business/Midmarket/Enterprise/Government/Channel Partners). Cambiando la scelta, "
-		"la formula sotto (che usa il nome \"SegmentoScelto\", non l'indirizzo B12) si ricalcola "
-		"da sola.");
+		"Data validation: right-click the cell to see the dropdown list "
+		"(Small Business/Midmarket/Enterprise/Government/Channel Partners). Changing the choice "
+		"makes the formula below (which uses the name \"SelectedSegment\", not the address B12) "
+		"recalculate itself.");
 
 	// Convalida dati a intervallo numerico (Fase 13, il secondo dei due
 	// tipi che questo motore modella, l'altro e' l'elenco sopra): un
 	// valore fuori da [0, 100] viene rifiutato dalla UI al momento
 	// dell'inserimento, non solo segnalato dopo.
 	int rangeValidationRow = resultRow + 2;
-	WriteLabel(funcs, cell(1, rangeValidationRow), "Sconto ipotetico (0-100):");
+	WriteLabel(funcs, cell(1, rangeValidationRow), "Hypothetical discount (0-100):");
 	TryToParseString("15", cell(2, rangeValidationRow), funcs, true);
 	Style(funcs, cell(2, rangeValidationRow), [&](CellStyle& cs) { cs.fLowColor = kYellow; });
 	Border(funcs, cell(2, rangeValidationRow));
@@ -1055,18 +1067,18 @@ int main()
 		funcs->SetValidation(cell(2, rangeValidationRow), rule);
 	}
 	funcs->SetComment(cell(2, rangeValidationRow),
-		"Convalida dati a intervallo numerico (0-100): un valore fuori da questo intervallo "
-		"viene rifiutato subito, non solo segnalato dopo.");
+		"Numeric range data validation (0-100): a value outside this range is rejected "
+		"immediately, not just flagged afterward.");
 
 	// Formattazione condizionale: valori duplicati (Fase 13, il tipo
 	// che manca ancora in questo file -- "Discount Band = High" sul
-	// foglio Dati usa eCondCellIsEqual, la scala di colori sulla
+	// foglio Data usa eCondCellIsEqual, la scala di colori sulla
 	// colonna Profit usa eCondColorScale). Un piccolo elenco costruito
 	// apposta (non i 700 record reali, dove quasi ogni valore
 	// categoriale si ripete comunque) rende il confronto leggibile a
 	// colpo d'occhio: due codici identici, quattro diversi.
 	int dupLabelRow = rangeValidationRow + 3;
-	WriteLabel(funcs, cell(1, dupLabelRow), "Formattazione condizionale: valori duplicati (esempio)");
+	WriteLabel(funcs, cell(1, dupLabelRow), "Conditional formatting: duplicate values (example)");
 	funcs->AddMergedRange(range(1, dupLabelRow, 4, dupLabelRow));
 	Style(funcs, cell(1, dupLabelRow), [&](CellStyle& cs) {
 		cs.fLowColor = kLightGray; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
@@ -1095,33 +1107,33 @@ int main()
 	// righe spillerebbe altrettante righe nel foglio, inutile da
 	// mostrare qui, stesso principio dell'esempio duplicati sopra).
 	int arrayLabelRow = dupLastRow + 3;
-	WriteLabel(funcs, cell(1, arrayLabelRow), "Array dinamici (UNIQUE, SORT, SORTBY, FILTER)");
+	WriteLabel(funcs, cell(1, arrayLabelRow), "Dynamic arrays (UNIQUE, SORT, SORTBY, FILTER)");
 	funcs->AddMergedRange(range(1, arrayLabelRow, 4, arrayLabelRow));
 	Style(funcs, cell(1, arrayLabelRow), [&](CellStyle& cs) {
 		cs.fLowColor = kLightGray; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
 	});
 
 	int uniqueRow = arrayLabelRow + 1;
-	WriteLabel(funcs, cell(1, uniqueRow), "=UNIQUE(Dati!A2:A701)");
-	TryToParseString("=UNIQUE(Dati!A2:A701)", cell(2, uniqueRow), funcs, true);
+	WriteLabel(funcs, cell(1, uniqueRow), "=UNIQUE(Data!A2:A701)");
+	TryToParseString("=UNIQUE(Data!A2:A701)", cell(2, uniqueRow), funcs, true);
 	funcs->SetComment(cell(2, uniqueRow),
-		"UNIQUE sui 700 record reali (colonna Segment): spilla i 5 segmenti distinti, "
-		"si aggiorna da solo se il dataset importato cambia.");
+		"UNIQUE on the 700 real records (Segment column): spills the 5 distinct segments, "
+		"updates itself if the imported dataset changes.");
 
 	int arrayTableLabelRow = uniqueRow + 7; // sotto ai 5 segmenti spillati, piu' margine
 	WriteLabel(funcs, cell(1, arrayTableLabelRow),
-		"SORT/SORTBY/FILTER su una piccola tabella di esempio (Nome, Regione, Vendite)");
+		"SORT/SORTBY/FILTER on a small sample table (Name, Region, Sales)");
 	funcs->AddMergedRange(range(1, arrayTableLabelRow, 4, arrayTableLabelRow));
 	Style(funcs, cell(1, arrayTableLabelRow), [&](CellStyle& cs) { cs.fHighColor = kDarkGray; });
 
 	int sampleFirstRow = arrayTableLabelRow + 1;
 	struct SampleRow { const char* name; const char* region; double sales; };
 	const SampleRow sampleRows[] = {
-		{ "Anna", "Nord", 300 },
-		{ "Bruno", "Sud", 100 },
-		{ "Carla", "Nord", 200 },
-		{ "Dario", "Centro", 400 },
-		{ "Elena", "Sud", 150 },
+		{ "Anna", "North", 300 },
+		{ "Bruce", "South", 100 },
+		{ "Clara", "North", 200 },
+		{ "David", "Central", 400 },
+		{ "Ellen", "South", 150 },
 	};
 	for (size_t i = 0; i < sizeof(sampleRows) / sizeof(sampleRows[0]); i++)
 	{
@@ -1137,27 +1149,157 @@ int main()
 
 	char sortFormula[64];
 	snprintf(sortFormula, sizeof(sortFormula), "=SORT(A%d:C%d;3;-1)", sampleFirstRow, sampleLastRow);
-	WriteLabel(funcs, cell(5, sampleFirstRow - 1), "SORT (per Vendite, decrescente)");
+	WriteLabel(funcs, cell(5, sampleFirstRow - 1), "SORT (by Sales, descending)");
 	TryToParseString(sortFormula, cell(5, sampleFirstRow), funcs, true);
 
 	char sortByFormula[64];
 	snprintf(sortByFormula, sizeof(sortByFormula), "=SORTBY(A%d:A%d;C%d:C%d;-1)",
 		sampleFirstRow, sampleLastRow, sampleFirstRow, sampleLastRow);
-	WriteLabel(funcs, cell(8, sampleFirstRow - 1), "SORTBY (nomi per Vendite)");
+	WriteLabel(funcs, cell(8, sampleFirstRow - 1), "SORTBY (names by Sales)");
 	TryToParseString(sortByFormula, cell(8, sampleFirstRow), funcs, true);
 
 	char filterFormula[80];
-	snprintf(filterFormula, sizeof(filterFormula), "=FILTER(A%d:C%d;B%d:B%d=\"Nord\";\"nessuno\")",
+	snprintf(filterFormula, sizeof(filterFormula), "=FILTER(A%d:C%d;B%d:B%d=\"North\";\"none\")",
 		sampleFirstRow, sampleLastRow, sampleFirstRow, sampleLastRow);
-	WriteLabel(funcs, cell(10, sampleFirstRow - 1), "FILTER (solo Regione=\"Nord\")");
+	WriteLabel(funcs, cell(10, sampleFirstRow - 1), "FILTER (only Region=\"North\")");
 	TryToParseString(filterFormula, cell(10, sampleFirstRow), funcs, true);
 	funcs->SetComment(cell(10, sampleFirstRow),
-		"FILTER con una condizione calcolata dal vivo (B:B=\"Nord\"), il caso reale piu' comune: "
-		"cambiando la Regione di una riga sopra, il risultato filtrato si aggiorna da solo.");
+		"FILTER with a live-calculated condition (B:B=\"North\"), the most common real case: "
+		"change the Region of a row above, and the filtered result updates itself.");
+
+	// ==================== Foglio "Languages" ====================
+	// Nuovo (richiesta esplicita dell'utente, 2026-09-26): una tabella +
+	// un grafico in otto lingue non inglesi (giapponese, coreano,
+	// cinese, arabo, greco, russo, indonesiano, friulano) -- verifica
+	// pratica che celle E grafici gestiscano davvero testo Unicode non
+	// latino (CJK, arabo RTL, cirillico, greco), non solo gli accenti
+	// latini gia' usati altrove in questo file (es. "e'" scritto per
+	// esteso invece di un apostrofo, per compatibilita' con vecchi
+	// strumenti -- qui invece testo Unicode vero, un carattere per
+	// codepoint, dato che il motore/il Translation Kit di Haiku
+	// lavorano in UTF-8 nativamente). NewCell/WriteLabel diretto (mai
+	// TryToParseString), stesso motivo di ogni altra etichetta di solo
+	// testo in questo file.
+	CContainer* languages = new CContainer(NULL, NULL);
+
+	WriteLabel(languages, cell(1, 1), "Multilingual showcase - text and charts in non-English languages");
+	languages->AddMergedRange(range(1, 1, 5, 1));
+	Style(languages, cell(1, 1), [&](CellStyle& cs) {
+		cs.fLowColor = kBlue; cs.fHighColor = kWhite; cs.fAlignment = eAlignCenter;
+	});
+	Bold(languages, cell(1, 1));
+
+	WriteLabel(languages, cell(1, 2),
+		"Native name, greeting, and welcome message in 8 languages (speakers = approximate, millions)");
+	languages->AddMergedRange(range(1, 2, 5, 2));
+	Style(languages, cell(1, 2), [&](CellStyle& cs) { cs.fHighColor = kDarkGray; cs.fAlignment = eAlignCenter; });
+
+	// Colonne 4-5 (Nome nativo, Parlanti) ADIACENTI apposta: un grafico
+	// vuole etichetta+valore in due colonne una accanto all'altra,
+	// stesso principio di ogni altro ChartObject::dataRange in questo
+	// file -- Nome nativo qui, non Language (colonna 1, sempre inglese),
+	// e' la scelta deliberata: e' l'asse categorie del grafico piu'
+	// sotto che deve mostrare i veri glifi non latini, non una comoda
+	// traslitterazione.
+	const char* langHeaders[] = { "Language", "Greeting", "Welcome message", "Native name", "Speakers (M)" };
+	int langHeaderRow = 4;
+	for (int col = 1; col <= 5; col++)
+	{
+		WriteLabel(languages, cell(col, langHeaderRow), langHeaders[col - 1]);
+		Style(languages, cell(col, langHeaderRow), [&](CellStyle& cs) {
+			cs.fLowColor = kGray; cs.fAlignment = eAlignCenter; cs.fUnderline = true;
+		});
+		Border(languages, cell(col, langHeaderRow));
+	}
+
+	// Saluto = "hello"/"hi", messaggio di benvenuto = "Welcome to
+	// Atomo123" tradotto -- traduzioni di buon senso per una frase
+	// standard, non verificate da un madrelingua per ognuna delle otto
+	// lingue: corrette quanto basta per una dimostrazione, non un testo
+	// destinato alla pubblicazione. Parlanti nativi: stime approssimate
+	// arrotondate, solo per dare al grafico piu' sotto numeri reali (non
+	// inventati) invece che valori a caso -- non una cifra rigorosamente
+	// documentata (vedi la nota nel foglio stesso).
+	struct LanguageRow {
+		const char* language; const char* greeting; const char* welcome;
+		const char* nativeName; double speakersMillions;
+	};
+	const LanguageRow langRows[] = {
+		{ "Japanese", "\xe3\x81\x93\xe3\x82\x93\xe3\x81\xab\xe3\x81\xa1\xe3\x81\xaf",
+			"Atomo123\xe3\x81\xb8\xe3\x82\x88\xe3\x81\x86\xe3\x81\x93\xe3\x81\x9d",
+			"\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e", 123 },
+		{ "Korean", "\xec\x95\x88\xeb\x85\x95\xed\x95\x98\xec\x84\xb8\xec\x9a\x94",
+			"Atomo123\xec\x97\x90 \xec\x98\xa4\xec\x8b\xa0 \xea\xb2\x83\xec\x9d\x84 "
+			"\xed\x99\x98\xec\x98\x81\xed\x95\xa9\xeb\x8b\x88\xeb\x8b\xa4",
+			"\xed\x95\x9c\xea\xb5\xad\xec\x96\xb4", 82 },
+		{ "Chinese", "\xe4\xbd\xa0\xe5\xa5\xbd", "\xe6\xac\xa2\xe8\xbf\x8e\xe4\xbd\xbf\xe7\x94\xa8 Atomo123",
+			"\xe4\xb8\xad\xe6\x96\x87", 920 },
+		{ "Arabic", "\xd9\x85\xd8\xb1\xd8\xad\xd8\xa8\xd8\xa7",
+			"\xd9\x85\xd8\xb1\xd8\xad\xd8\xa8\xd9\x8b\xd8\xa7 \xd8\xa8\xd9\x83 \xd9\x81\xd9\x8a Atomo123",
+			"\xd8\xa7\xd9\x84\xd8\xb9\xd8\xb1\xd8\xa8\xd9\x8a\xd8\xa9", 274 },
+		{ "Greek", "\xce\x93\xce\xb5\xce\xb9\xce\xac \xcf\x83\xce\xbf\xcf\x85",
+			"\xce\x9a\xce\xb1\xce\xbb\xcf\x8e\xcf\x82 \xce\xae\xcf\x81\xce\xb8\xce\xb1\xcf\x84\xce\xb5 "
+			"\xcf\x83\xcf\x84\xce\xbf Atomo123",
+			"\xce\x95\xce\xbb\xce\xbb\xce\xb7\xce\xbd\xce\xb9\xce\xba\xce\xac", 13 },
+		{ "Russian", "\xd0\x97\xd0\xb4\xd1\x80\xd0\xb0\xd0\xb2\xd1\x81\xd1\x82\xd0\xb2\xd1\x83\xd0\xb9\xd1\x82\xd0\xb5",
+			"\xd0\x94\xd0\xbe\xd0\xb1\xd1\x80\xd0\xbe \xd0\xbf\xd0\xbe\xd0\xb6\xd0\xb0\xd0\xbb\xd0\xbe\xd0\xb2\xd0\xb0\xd1\x82\xd1\x8c "
+			"\xd0\xb2 Atomo123",
+			"\xd0\xa0\xd1\x83\xd1\x81\xd1\x81\xd0\xba\xd0\xb8\xd0\xb9", 150 },
+		{ "Indonesian", "Halo", "Selamat datang di Atomo123", "Bahasa Indonesia", 43 },
+		{ "Friulian", "Mandi", "Benvign\xc3\xbbts in Atomo123", "Furlan", 0.6 },
+	};
+	int langDataFirstRow = langHeaderRow + 1;
+	for (size_t i = 0; i < sizeof(langRows) / sizeof(langRows[0]); i++)
+	{
+		int row = langDataFirstRow + (int)i;
+		WriteLabel(languages, cell(1, row), langRows[i].language);
+		WriteLabel(languages, cell(2, row), langRows[i].greeting);
+		WriteLabel(languages, cell(3, row), langRows[i].welcome);
+		WriteLabel(languages, cell(4, row), langRows[i].nativeName);
+		TryToParseString(BString() << langRows[i].speakersMillions, cell(5, row), languages, true);
+		for (int col = 1; col <= 5; col++)
+			Border(languages, cell(col, row));
+	}
+	int langDataLastRow = langDataFirstRow + (int)(sizeof(langRows) / sizeof(langRows[0])) - 1;
+
+	// Nota RTL sulla riga araba (Fase "Languages"): l'arabo si scrive da
+	// destra a sinistra -- se questa cella viene VISUALIZZATA davvero
+	// da destra a sinistra dipende dal supporto RTL del Locale/testo di
+	// Haiku sottostante, non da questo generatore (che scrive solo byte
+	// UTF-8 in ordine logico, come qualunque altra stringa di questo
+	// file).
+	{
+		int arabicRow = langDataFirstRow + 3; // quarta lingua nell'elenco sopra
+		languages->SetComment(cell(4, arabicRow),
+			"Arabic is written right-to-left. Whether this cell actually DISPLAYS "
+			"right-to-left depends on the underlying Haiku locale/text-rendering support, "
+			"not on this generator (which only writes UTF-8 bytes in logical order, like "
+			"every other string in this file).");
+	}
+
+	ChartObject chartLanguages;
+	chartLanguages.type = eBarChart;
+	chartLanguages.title = "Approximate native speakers by language (millions)";
+	chartLanguages.dataRange = range(4, langDataFirstRow, 5, langDataLastRow);
+	int langChartRowStart = langDataLastRow + 1;
+	// Stessa formula di "riga N inizia a 10 + (N-1)*20 pixel" gia'
+	// documentata sopra per il foglio "Board Meeting" (riga 1 alta 30px
+	// invece di 20, vedi rowHeights sotto per questo stesso foglio).
+	float langChartTop = 10 + (langChartRowStart - 1) * 20;
+	float langChartBottom = langChartTop + 220;
+	chartLanguages.frame = BRect(20, langChartTop, 500, langChartBottom);
+
+	int langNoteRow = (int)((langChartBottom - 10) / 20) + 2;
+	WriteLabel(languages, cell(1, langNoteRow),
+		"Native-speaker counts are rough, rounded estimates for demonstration purposes only -- "
+		"not a rigorously sourced figure. Greetings/welcome messages are best-effort standard "
+		"phrases, not reviewed by a native speaker for each of the 8 languages.");
+	languages->AddMergedRange(range(1, langNoteRow, 5, langNoteRow));
+	Style(languages, cell(1, langNoteRow), [&](CellStyle& cs) { cs.fHighColor = kDarkGray; cs.fWrapText = true; });
 
 	// ==================== Cartella di lavoro ====================
 	AscdSheet cdaSheet;
-	cdaSheet.name = "Riunione CdA";
+	cdaSheet.name = "Board Meeting";
 	cdaSheet.doc = cda;
 	cdaSheet.charts.push_back(chartRank);
 	cdaSheet.colWidths.push_back(std::make_pair(1, 140.0f));
@@ -1220,7 +1362,7 @@ int main()
 	pivotSheet.tabColor = kOrange;
 
 	AscdSheet funcsSheet;
-	funcsSheet.name = "Funzioni";
+	funcsSheet.name = "Functions";
 	funcsSheet.doc = funcs;
 	funcsSheet.colWidths.push_back(std::make_pair(1, 110.0f));
 	funcsSheet.colWidths.push_back(std::make_pair(2, 130.0f));
@@ -1243,17 +1385,31 @@ int main()
 	Style(funcs, cell(2, pickerRow), [](CellStyle& cs) { cs.fLocked = false; });
 	Style(funcs, cell(2, rangeValidationRow), [](CellStyle& cs) { cs.fLocked = false; });
 
-	// Blocca riquadri per RIGA (Funzioni, sopra) e per COLONNA (Dati,
+	// Blocca riquadri per RIGA (Functions, sopra) e per COLONNA (Data,
 	// qui): la prima colonna (Segment) resta visibile scorrendo verso
 	// destra fra le 16 colonne del dataset reale, non solo l'intestazione
 	// scorrendo verso il basso.
 	imported[0].frozenCols = 1;
 
+	AscdSheet languagesSheet;
+	languagesSheet.name = "Languages";
+	languagesSheet.doc = languages;
+	languagesSheet.charts.push_back(chartLanguages);
+	languagesSheet.colWidths.push_back(std::make_pair(1, 100.0f));
+	languagesSheet.colWidths.push_back(std::make_pair(2, 160.0f));
+	languagesSheet.colWidths.push_back(std::make_pair(3, 260.0f));
+	languagesSheet.colWidths.push_back(std::make_pair(4, 130.0f));
+	languagesSheet.colWidths.push_back(std::make_pair(5, 100.0f));
+	languagesSheet.rowHeights.push_back(std::make_pair(1, 30.0f));
+	languagesSheet.hasTabColor = true;
+	languagesSheet.tabColor = (rgb_color){ 0, 150, 150, 255 };
+
 	std::vector<AscdSheet> sheets;
 	sheets.push_back(cdaSheet);   // foglio attivo all'apertura
 	sheets.push_back(pivotSheet);
 	sheets.push_back(funcsSheet);
-	sheets.push_back(imported[0]); // "Dati", con i dati reali importati
+	sheets.push_back(imported[0]); // "Data", con i dati reali importati
+	sheets.push_back(languagesSheet);
 
 	const char* outPath = "/boot/home/Desktop/Financial_Sample_CdA.ascd";
 	BFile outFile(outPath, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
@@ -1281,6 +1437,7 @@ int main()
 	pivot->Release();
 	funcs->Release();
 	dati->Release();
+	languages->Release();
 
 	if (err != B_OK)
 	{
