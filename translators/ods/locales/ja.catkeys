@@ -1,0 +1,5 @@
+1	Japanese	application/x-vnd.Atomo-OdsTranslator	3542083588
+Versione %d.%d.%d	OdsConfigView		バージョン %d.%d.%d
+Copyright (c) 2026 Andrea Bernardi · Licenza MIT	OdsConfigView		Copyright (c) 2026 Andrea Bernardi · MIT ライセンス
+Importa/esporta fogli di calcolo dal/al formato\nOpenDocument (ODS), incluse le formule vive sullo\nstesso foglio (un riferimento a un altro foglio\nesporta solo il valore calcolato).	OdsConfigView		OpenDocument (ODS) 形式のスプレッドシートを\nインポート/エクスポートします。同じシート内の数式も\nそのまま保持されます (別のシートを参照する数式は\n計算結果の値のみエクスポートされます)。
+Offrimi un caffe' ☕	OdsConfigView		コーヒーをおごる ☕
