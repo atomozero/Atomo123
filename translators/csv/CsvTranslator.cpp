@@ -153,23 +153,26 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc)
 	int32 version;
 	if (source->Read(&version, sizeof(version)) != (ssize_t)sizeof(version))
 		return B_BAD_DATA;
-	// ui/src/AscdIO.cpp scrive ormai sempre versione 4 (kASCDVersion li',
-	// il riferimento di cella per la formattazione condizionale -- vedi
-	// il commento su kASCDVersion in quel file), ma un file .ascd piu'
-	// vecchio (versione 1 genuina, o 2 col solo byte "kind" per cella)
-	// resta comunque leggibile: kASCDMaxReadableVersion e' un limite
-	// SEPARATO da kASCDVersion apposta, non lo stesso valore (confonderli,
-	// come nel primo tentativo di questo fix, "version != 1 && version !=
+	// ui/src/AscdIO.cpp scrive ormai sempre versione 9 (kASCDVersion li',
+	// l'hash VERO di protezione foglio -- vedi il commento su
+	// kASCDVersion in quel file), ma un file .ascd piu' vecchio resta
+	// comunque leggibile: kASCDMaxReadableVersion e' un limite SEPARATO
+	// da kASCDVersion apposta, non lo stesso valore (confonderli, come
+	// nel primo tentativo di questo fix, "version != 1 && version !=
 	// kASCDVersion" con kASCDVersion=1 equivalente a "version != 1",
 	// avrebbe accettato SOLO la versione 1, facendo fallire l'export
 	// verso questo formato con B_MISMATCHED_VALUES per qualunque
 	// documento reale scritto dalla nuova WriteASCD). Questa ReadASCD non
-	// legge MAI la sezione formattazione condizionale (si ferma subito
-	// dopo le celle, vedi sotto), quindi ogni nuovo campo per-regola
-	// introdotto in una versione successiva (3: punti di scala di colori;
-	// 4: riferimento di cella per il confronto) non serve saltarlo qui:
-	// basta accettare la versione, non serve altro.
-	static const int32 kASCDMaxReadableVersion = 5;
+	// legge MAI nessuna sezione oltre le celle (formattazione
+	// condizionale, protezione foglio, ecc. -- si ferma subito dopo le
+	// celle, vedi sotto), quindi ogni nuovo campo introdotto da una
+	// versione successiva non serve saltarlo qui: basta accettare la
+	// versione, non serve altro. Bug reale (2026-09-26): rimasto a 5
+	// dopo che kASCDVersion e' salito a 9 per l'hash di protezione,
+	// stessa classe di bug del commento sopra ma non applicata a QUESTO
+	// bump -- scoperto da test-export-formats (CSV/ODS scritti vuoti,
+	// 0 byte).
+	static const int32 kASCDMaxReadableVersion = 9;
 	if (version < 1 || version > kASCDMaxReadableVersion)
 		return B_MISMATCHED_VALUES;
 
