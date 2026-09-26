@@ -604,12 +604,19 @@ int main()
 	// combinato, dispersione -- tutti i tipi disponibili): dati letti
 	// dal vivo dalle formule appena scritte sopra -- il grafico si
 	// aggiorna da solo ogni volta che il documento viene ricalcolato,
-	// non serve rigenerare il file.
+	// non serve rigenerare il file. ChartObject::frame condivide lo
+	// STESSO spazio di coordinate delle celle (SheetView::DrawCharts lo
+	// disegna senza nessun offset in piu'), quindi "left" DEVE essere
+	// >= SheetView::kHeaderWidth (30px, la larghezza della colonna dei
+	// numeri di riga) -- un frame con left < 30 finisce visivamente
+	// sopra quella colonna invece che a fianco. Bug reale (2026-09-26,
+	// segnalato dall'utente aprendo il file vero): ogni grafico qui
+	// sotto partiva da left=20, dentro la colonna dei numeri di riga.
 	ChartObject chartSeg;
 	chartSeg.type = eBarChart;
 	chartSeg.title = "Sales by segment";
 	chartSeg.dataRange = range(1, 4, 2, 3 + (int)segments.size());
-	chartSeg.frame = BRect(20, 230, 380, 430);
+	chartSeg.frame = BRect(40, 230, 380, 430);
 
 	ChartObject chartCountry;
 	chartCountry.type = ePieChart;
@@ -621,7 +628,7 @@ int main()
 	chartProduct.type = eBarChart;
 	chartProduct.title = "Units sold by product";
 	chartProduct.dataRange = range(7, 4, 8, 3 + (int)products.size());
-	chartProduct.frame = BRect(20, 450, 500, 650);
+	chartProduct.frame = BRect(40, 450, 500, 650);
 
 	// Grafico a LINEE (eLineChart, l'unico dei tre tipi di grafico
 	// ancora mai usato in questo file): l'andamento mensile si presta
@@ -860,7 +867,9 @@ int main()
 	chartRank.type = eBarChart;
 	chartRank.title = "Sales by segment";
 	chartRank.dataRange = range(1, 9, 2, lastRankRow);
-	chartRank.frame = BRect(20, chartTop, 460, chartBottom);
+	// left=40, non 20: vedi il commento su SheetView::kHeaderWidth
+	// (30px) accanto al primo grafico del foglio "Pivot".
+	chartRank.frame = BRect(40, chartTop, 460, chartBottom);
 
 	// Riga di nota sotto al grafico, con un margine di sicurezza (20px,
 	// una riga) per non sovrapporsi al bordo inferiore del grafico:
@@ -1287,7 +1296,9 @@ int main()
 	// invece di 20, vedi rowHeights sotto per questo stesso foglio).
 	float langChartTop = 10 + (langChartRowStart - 1) * 20;
 	float langChartBottom = langChartTop + 220;
-	chartLanguages.frame = BRect(20, langChartTop, 500, langChartBottom);
+	// left=40, non 20: vedi il commento su SheetView::kHeaderWidth
+	// (30px) accanto al primo grafico del foglio "Pivot".
+	chartLanguages.frame = BRect(40, langChartTop, 500, langChartBottom);
 
 	int langNoteRow = (int)((langChartBottom - 10) / 20) + 2;
 	WriteLabel(languages, cell(1, langNoteRow),
