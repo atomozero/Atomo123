@@ -5,6 +5,29 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.3.0 (in progress):
+- What-if Data Tables, one and two variable (Tier 4, fourth item of the
+  same low-priority batch): new "Tabella dati…" command (Data menu,
+  `ui/src/WhatIfWindow.h`/`.cpp`) fills a grid of computed results for a
+  formula under varying substitute inputs. Reuses `CContainer::SetValue`
+  and the existing `RecalculateActiveWorkbook()` recalculation entry
+  point — no dependency graph needed, since a what-if table only ever
+  touches a handful of cells: for each substitute value (or each
+  row/column combination for the two-variable case), the input cell is
+  swapped, the sheet recalculated, the formula cell's result read back,
+  and written as a plain literal value into the grid; the input cell(s)
+  are restored to their original content (formula or literal, not just
+  their last computed value) once the loop finishes, so the sheet looks
+  untouched apart from the newly-filled results. Uses one uniform
+  convention for all three shapes (formula cell always at the
+  selection's top-left corner, disambiguated by which of "Cella input
+  riga"/"Cella input colonna" is filled in, not by geometry alone) —
+  deliberately simpler than Excel's own real convention, which places
+  the formula at a different corner per case; a reasonable simplification
+  since this feature has no XLSX `{=TABLE(...)}` import/export
+  counterpart, native `.ascd` only (the filled grid is just plain
+  values, nothing new to persist for the format itself). New
+  `ui/tests/test_whatif.cpp` verifies all three shapes against
+  hand-computed results and confirms input-cell restoration.
 - Slicers (Tier 4, third item of the same low-priority batch, built on
   AutoFilter persistence below): a new floating on-sheet object
   (`ui/src/SlicerObject`, see `ui/src/Slicer.h`) — a button list that
