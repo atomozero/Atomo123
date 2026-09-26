@@ -802,7 +802,16 @@ list deliberately deviates from pure effort-sorting:
   read-only (re-exporting drops the encryption, a plain "Salva" on such
   a document warns before silently overwriting the encrypted original)
 - Slicers (for pivot tables and structured tables) — depends on the
-  Tier 3 2D-pivot-table gap for the pivot case anyway
+  Tier 3 2D-pivot-table gap for the pivot case anyway. ~~**AutoFilter
+  persistence**~~, the prerequisite for real Slicer state, is Fixed —
+  see `CHANGELOG.md`: which values are excluded per column now survives
+  a native `.ascd` save/reload (not just the resulting hidden rows), and
+  XLSX import now reads a real `<filterColumn><filters>` when present
+  (the discrete-list form only — comparison/top-N/dynamic/color/icon
+  filters have no equivalent in this engine's model and are skipped,
+  declared not silent). XLSX **export** of `<autoFilter>` does not exist
+  in this app at all (a separate, larger, pre-existing gap, same
+  shape as the structured-table export gap above)
 
 ### Explicitly out of scope, not just "not yet"
 
