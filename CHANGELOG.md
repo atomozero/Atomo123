@@ -4,7 +4,53 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
-What shipped since v0.3.0 (in progress):
+What shipped in v0.4.0, on top of v0.3.0:
+- Replaced the bundled "Open Sample File" demo: `Financial_Sample_CdA
+  .ascd` (the CdA showcase kept up to date after every feature — pivot
+  tables, charts, conditional formatting, 8 languages) instead of the
+  old, much smaller `Welcome.xlsx` introductory tour. Updated the
+  runtime lookup (`MainWindow::kMsgOpenSample`), both packaging paths
+  (`packaging/build-hpkg.sh` and the real haikuporter recipe), and the
+  `.PackageInfo` description. Verified with a real local package
+  install: the file mounts at the expected path and loads correctly
+  and stays stable through `MainWindow::OpenFileAsync` (confirmed via
+  the command-line `ArgvReceived` path, which calls the exact same
+  function as the menu item).
+- Added a Deskbar Applications menu entry to the hpkg package
+  (`data/deskbar/menu/Applications/Atomo123`, a symlink to the
+  installed binary): the app installed and could be launched from
+  Tracker, but unlike every other installed Haiku app it never showed
+  up in the Deskbar menu, since the local `build-hpkg.sh` test script
+  (unlike the real haikuporter recipe, which already called the
+  `addAppDeskbarSymlink` helper) never created that symlink. Verified
+  with a real local install/uninstall cycle.
+- Menu audit and reorganization: added a "Filtro automatico" toggle to
+  the Dati menu (there was previously no way to turn AutoFilter on for
+  a native/new sheet — only XLSX import could set it, which also
+  silently blocked Slicers there), consolidated the 6-item border
+  cluster in Formato into a "Bordo" submenu, fixed a display-order
+  artifact in the alignment items (sinistra/centro/destra was split by
+  the vertical-alignment items), and corrected the Insert chart menu
+  label ("Grafico…", not "Grafico a barre…" — the dialog it opens has
+  always supported all 7 chart types, not just bar charts).
+- Redrew the 5 toolbar buttons that had no matching HVIF icon in the
+  authorized catalog (Percentuale, the 3 vertical alignments, and
+  Sostituisci, which used to reuse Trova's icon) as hand-coded vector
+  pictograms instead of plain text glyphs. Found and worked around a
+  real rendering limitation of this app's target environment along the
+  way: shapes drawn live through a `BView` are hard pixel-snapped, with
+  no antialiasing, and several closed-shape primitives
+  (`StrokeRect`/`StrokeEllipse`) silently render as a solid fill
+  instead of just an outline at higher `BView::SetScale` factors.
+  `MainWindow.cpp`'s `RenderCustomIcon` now draws each icon at 4x
+  resolution and box-filters it back down to 16x16 with alpha-weighted
+  averaging — real anti-aliasing independent of what the live renderer
+  does — and every closed shape uses `FillRect`/`FillPolygon`/a
+  polygon-wedge ring approximation instead of the unreliable `Stroke*`
+  primitives. Sostituisci's icon was redesigned as a magnifying glass
+  (matching the real look of Excel/Word's own Replace icon) with a
+  small swap-arrow badge, rather than an isolated pair of arrows with
+  no visual link to search.
 - What-if Data Tables, one and two variable (Tier 4, fourth item of the
   same low-priority batch): new "Tabella dati…" command (Data menu,
   `ui/src/WhatIfWindow.h`/`.cpp`) fills a grid of computed results for a

@@ -5,11 +5,12 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.3.0 released** on GitHub (real 2D pivot tables — a
-Columns field plus multiple measures — and real per-cell XLSX style
-export, on top of everything shipped since v0.2.9: real Excel pivot
-table round-trip, conditional formatting color scales/data bars/icon
-sets, range-vs-scalar comparison, horizontal bar charts, and a
+**Status: v0.4.0 released** on GitHub (closes all four "Path to full
+Excel parity" Tier 4 items — named table styles, AutoFilter
+persistence, Slicers, What-if Data Tables — plus real sheet-protection
+passwords, workbook open-password decryption, 9 more UI languages, and
+a menu/icon/packaging polish pass, on top of everything shipped in
+v0.3.0: real 2D pivot tables, per-cell XLSX style export, and a
 systematic sweep of real-world sample XLSX files — see CHANGELOG.md
 for the full detail). All planned phases through "closing the
 gap with Excel" are done or in good shape; a handful of large,
