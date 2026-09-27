@@ -108,9 +108,12 @@ static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
 static const uint32 kMsgOpenRecent = 'aorc';
 // File dimostrativo installato con il pacchetto (packaging/
-// build-hpkg.sh / atomo123-0.2.8.recipe copiano Welcome.xlsx in
-// documentation/Atomo123/ dell'albero del pacchetto) -- vedi il
-// gestore sotto per dove viene cercato a runtime.
+// build-hpkg.sh / atomo123-0.3.0.recipe copiano Financial_Sample_CdA.ascd
+// in documentation/Atomo123/ dell'albero del pacchetto) -- vedi il
+// gestore sotto per dove viene cercato a runtime. Sostituisce
+// Welcome.xlsx: lo showcase CdA (generate_cda_report.cpp) copre molte
+// piu' funzionalita' del progetto (pivot, grafici, formattazione
+// condizionale, 8 lingue) di quel semplice tour introduttivo.
 static const uint32 kMsgOpenSample = 'aosm';
 static const uint32 kMsgSave = 'asve';
 static const uint32 kMsgSaveAs = 'asva';
@@ -7419,7 +7422,7 @@ void MainWindow::MessageReceived(BMessage* message)
 			BPath path;
 			status_t err = find_directory(B_SYSTEM_DOCUMENTATION_DIRECTORY, &path);
 			if (err == B_OK)
-				err = path.Append("Atomo123/Welcome.xlsx");
+				err = path.Append("Atomo123/Financial_Sample_CdA.ascd");
 
 			BEntry entry;
 			entry_ref ref;

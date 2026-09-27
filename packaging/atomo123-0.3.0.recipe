@@ -99,6 +99,10 @@ INSTALL()
 	# vera recipe), cercato a runtime da MainWindow::kMsgOpenSample
 	# (File -> "Apri file di esempio") in
 	# find_directory(B_SYSTEM_DOCUMENTATION_DIRECTORY) + "Atomo123/".
+	# Financial_Sample_CdA.ascd (lo showcase CdA generato da
+	# ui/examples/generate_cda_report.cpp) sostituisce il vecchio
+	# Welcome.xlsx: copre pivot/grafici/formattazione condizionale/8
+	# lingue invece di un semplice tour introduttivo.
 	mkdir -p $documentationDir/Atomo123
-	cp packaging/Welcome.xlsx $documentationDir/Atomo123/Welcome.xlsx
+	cp packaging/Financial_Sample_CdA.ascd $documentationDir/Atomo123/Financial_Sample_CdA.ascd
 }
