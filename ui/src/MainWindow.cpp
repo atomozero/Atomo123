@@ -174,6 +174,10 @@ static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 // kTableStyles (TableStyles.h), oppure -1 per "Nessuno" (banda grigia
 // neutra di sempre, tableStyleName vuoto).
 static const uint32 kMsgSetTableStyle = 'stbs';
+// Filtro automatico (menu Dati): prima non esisteva nessun comando per
+// attivarlo su un foglio nativo/nuovo, solo l'importazione XLSX poteva
+// popolare SheetView::fHasAutoFilter -- vedi fAutoFilterMenuItem.
+static const uint32 kMsgToggleAutoFilter = 'tgaf';
 // Tier 4, prerequisito gia' chiuso: SheetView::fFilterHiddenValues.
 static const uint32 kMsgInsertSlicer = 'inSl';
 static const uint32 kMsgUnmergeCells = 'umrg';
@@ -323,7 +327,7 @@ static const char* kAtomoNativeMimeType = "application/x-vnd.atomo-sheet-data";
 // gruppo di modifiche, quando l'unica fonte di icone erano gli otto
 // glifi disegnati a codice in ToolbarIcons.h/.cpp -- rimossi ora che
 // il sito autorizzato per le icone del progetto, www.hvif-store.art,
-// e' finalmente popolato, vedi Atomo123_icons/ATOMO123.md per la
+// e' finalmente popolato, vedi docs/ICONS.md per la
 // selezione ragionata e IconCatalog.h/IconData.cpp per i byte HVIF
 // incorporati). Un gruppo per voce di menu principale a cui i pulsanti
 // corrispondono (File/Modifica/Dati/Inserisci/Formato), con un
@@ -360,7 +364,7 @@ struct ToolbarButtonDef {
 	// Testo breve mostrato sul pulsante al posto dell'icona (NULL =
 	// pulsante a icona come tutti gli altri). Serve per le funzioni che
 	// esistono ma non hanno ancora un'HVIF nel catalogo (vedi
-	// Atomo123_icons/ATOMO123.md, "Lacune"): in attesa del disegno a
+	// docs/ICONS.md, "Lacune"): in attesa del disegno a
 	// mano in Icon-O-Matic, una lettera/simbolo fa da segnaposto --
 	// tooltip e messaggio restano quelli veri. Simboli non traducibili
 	// (letterali puri, mai B_TRANSLATE_MARK): niente nuove chiavi nei
@@ -397,9 +401,6 @@ static const ToolbarButtonDef kEditToolbarButtons[] = {
 	{ "toolPaste", B_TRANSLATE_MARK("Incolla"), kMsgPaste, &kIconPaste },
 	{ "toolDelete", B_TRANSLATE_MARK("Elimina"), kMsgClear, &kIconDelete },
 	{ "toolFind", B_TRANSLATE_MARK("Trova"), kMsgFind, &kIconFind },
-	// Sostituisci apre la stessa finestra di Trova (che ha gia' i campi
-	// di sostituzione): stessa icona lente, tooltip diverso.
-	{ "toolReplace", B_TRANSLATE_MARK("Sostituisci"), kMsgFind, &kIconFind },
 };
 
 static const ToolbarButtonDef kDataToolbarButtons[] = {
@@ -485,11 +486,20 @@ static const ToolbarButtonDef kFormatToolbarButtons[] = {
 };
 
 // Provvisori testuali: stessi messaggi dei menu, ma senza HVIF nel
-// catalogo (lacune vere, vedi Atomo123_icons/ATOMO123.md) -- in attesa
+// catalogo (lacune vere, vedi docs/ICONS.md) -- in attesa
 // del disegno a mano mostrano una lettera/simbolo invece dell'icona.
 // Gruppo separato in coda apposta: quando arrivano le HVIF vere basta
 // spostare le voci nei gruppi tematici e cancellare questo.
 static const ToolbarButtonDef kProvisionalToolbarButtons[] = {
+	// Sostituisci (revisione icone: prima riusava kIconFind, la stessa
+	// lente di ricerca di "Trova" -- due comandi diversi con la stessa
+	// icona, un'inconsistenza reale segnalata durante un audit. Il
+	// catalogo autorizzato (vedi docs/ICONS.md) non ha
+	// nessuna icona "sostituisci"/"scambia" pronta, solo lenti di
+	// ricerca -- spostata qui fra i segnaposto testuali onesti, stesso
+	// trattamento gia' riservato a Percentuale/allineamenti sotto,
+	// invece di continuare a mostrare l'icona sbagliata.
+	{ "toolReplace", B_TRANSLATE_MARK("Sostituisci"), kMsgFind, NULL, NULL, 0, "⇄" },
 	{ "toolPercent", B_TRANSLATE_MARK("Percentuale"), kMsgSetFormat, NULL, "format", ePercent, "%" },
 	{ "toolAlignTop", B_TRANSLATE_MARK("Allinea in alto"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignTop, "A↑" },
 	{ "toolAlignMiddle", B_TRANSLATE_MARK("Centra verticalmente"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignMiddle, "A↕" },
@@ -702,6 +712,7 @@ MainWindow::MainWindow()
 	fSheetView = NULL;
 	fSheetTabView = NULL;
 	fFreezeMenuItem = NULL; // stesso motivo di fSheetView/fSheetTabView sopra
+	fAutoFilterMenuItem = NULL;
 	fProtectMenuItem = NULL;
 	fShowFormulasMenuItem = NULL;
 	fTracePrecedentsMenuItem = NULL;
@@ -854,7 +865,12 @@ MainWindow::MainWindow()
 	BMessage* alignCenterMsg = new BMessage(kMsgSetAlignment);
 	alignCenterMsg->AddInt32("alignment", eAlignCenter);
 	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea al centro"), alignCenterMsg));
+	// "destra" aggiunta SUBITO qui, non dopo i tre verticali sotto
+	// (revisione dei menu: prima lo era, spezzando visivamente il
+	// gruppo orizzontale sinistra/centro/destra in due meta').
 	BMessage* alignRightMsg = new BMessage(kMsgSetAlignment);
+	alignRightMsg->AddInt32("alignment", eAlignRight);
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea a destra"), alignRightMsg));
 	BMessage* alignTopMsg = new BMessage(kMsgSetVerticalAlignment);
 	alignTopMsg->AddInt32("verticalAlignment", eVAlignTop);
 	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea in alto"), alignTopMsg));
@@ -864,8 +880,6 @@ MainWindow::MainWindow()
 	BMessage* alignBottomMsg = new BMessage(kMsgSetVerticalAlignment);
 	alignBottomMsg->AddInt32("verticalAlignment", eVAlignBottom);
 	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea in basso"), alignBottomMsg));
-	alignRightMsg->AddInt32("alignment", eAlignRight);
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Allinea a destra"), alignRightMsg));
 	// A capo automatico (Fase 12): CellStyle::fWrapText, stesso
 	// principio di ToggleBold/ToggleUnderline sopra (stato letto dalla
 	// cella attiva, applicato a tutta la selezione) ma con un effetto
@@ -877,50 +891,62 @@ MainWindow::MainWindow()
 		new BMessage(kMsgShowTextColor)));
 	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Colore sfondo" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowBgColor)));
-	// Colore del bordo (Fase 13): condiviso da tutti e quattro i lati
-	// di una cella (CellStyle::fBorderColor), stesso principio di
-	// scope gia' scelto per i grafici -- vedi ROADMAP.md.
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Colore bordo" B_UTF8_ELLIPSIS),
-		new BMessage(kMsgShowBorderColor)));
 	formatMenu->AddSeparatorItem();
-	// Bordo cella (Fase 13): lati/spessore/colore insieme, con
-	// anteprima -- vedi BorderWindow.h. Le voci sotto (un lato/aspetto
-	// alla volta) restano come scorciatoie rapide, non sostituite.
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo cella" B_UTF8_ELLIPSIS),
-		new BMessage(kMsgShowBorderWindow)));
-	formatMenu->AddSeparatorItem();
-	// Bordi di cella (Fase 11): un lato alla volta, come Grassetto/
-	// Corsivo sopra -- vedi MainWindow::ToggleBorder ("side" nello
-	// stesso ordine di CellStyle::fTBorderColor/fLBorderColor/
-	// fBBorderColor/fRBorderColor).
-	BMessage* topBorderMsg = new BMessage(kMsgToggleBorder);
-	topBorderMsg->AddInt32("side", 0);
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo superiore"), topBorderMsg));
-	BMessage* leftBorderMsg = new BMessage(kMsgToggleBorder);
-	leftBorderMsg->AddInt32("side", 1);
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo sinistro"), leftBorderMsg));
-	BMessage* bottomBorderMsg = new BMessage(kMsgToggleBorder);
-	bottomBorderMsg->AddInt32("side", 2);
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo inferiore"), bottomBorderMsg));
-	BMessage* rightBorderMsg = new BMessage(kMsgToggleBorder);
-	rightBorderMsg->AddInt32("side", 3);
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo destro"), rightBorderMsg));
-	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Nessun bordo"), new BMessage(kMsgClearBorders)));
-	// Spessore del bordo (Fase 13): cambia lo spessore dei lati GIA'
-	// presenti sulla selezione, non ne attiva di nuovi -- vedi
-	// MainWindow::SetBorderThickness. Corrispondenza posizionale con
-	// CellStyle::fTBorderColor ecc: 1/2/3 = sottile/medio/spesso.
-	BMenu* borderThicknessMenu = new BMenu(B_TRANSLATE("Spessore bordo"));
-	BMessage* thinMsg = new BMessage(kMsgSetBorderThickness);
-	thinMsg->AddInt32("thickness", 1);
-	borderThicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Sottile"), thinMsg));
-	BMessage* mediumMsg = new BMessage(kMsgSetBorderThickness);
-	mediumMsg->AddInt32("thickness", 2);
-	borderThicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Medio"), mediumMsg));
-	BMessage* thickMsg = new BMessage(kMsgSetBorderThickness);
-	thickMsg->AddInt32("thickness", 3);
-	borderThicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Spesso"), thickMsg));
-	formatMenu->AddItem(borderThicknessMenu);
+	// Bordo (revisione dei menu: prima queste otto voci -- colore,
+	// dialogo completo, quattro lati singoli, nessun bordo, sottomenu
+	// spessore -- stavano tutte piatte dentro Formato, che aveva finito
+	// per crescere a 27 voci di primo livello. Raggruppate qui in un
+	// solo sottomenu, tutte sul bordo e nient'altro, esattamente come
+	// "Bordo cella..." (BorderWindow) gia' le presenta insieme in
+	// un'unica finestra con anteprima.
+	{
+		BMenu* borderMenu = new BMenu(B_TRANSLATE("Bordo"));
+		// Colore del bordo (Fase 13): condiviso da tutti e quattro i lati
+		// di una cella (CellStyle::fBorderColor), stesso principio di
+		// scope gia' scelto per i grafici -- vedi ROADMAP.md.
+		borderMenu->AddItem(new BMenuItem(B_TRANSLATE("Colore bordo" B_UTF8_ELLIPSIS),
+			new BMessage(kMsgShowBorderColor)));
+		borderMenu->AddSeparatorItem();
+		// Bordo cella (Fase 13): lati/spessore/colore insieme, con
+		// anteprima -- vedi BorderWindow.h. Le voci sotto (un lato/aspetto
+		// alla volta) restano come scorciatoie rapide, non sostituite.
+		borderMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo cella" B_UTF8_ELLIPSIS),
+			new BMessage(kMsgShowBorderWindow)));
+		borderMenu->AddSeparatorItem();
+		// Bordi di cella (Fase 11): un lato alla volta, come Grassetto/
+		// Corsivo sopra -- vedi MainWindow::ToggleBorder ("side" nello
+		// stesso ordine di CellStyle::fTBorderColor/fLBorderColor/
+		// fBBorderColor/fRBorderColor).
+		BMessage* topBorderMsg = new BMessage(kMsgToggleBorder);
+		topBorderMsg->AddInt32("side", 0);
+		borderMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo superiore"), topBorderMsg));
+		BMessage* leftBorderMsg = new BMessage(kMsgToggleBorder);
+		leftBorderMsg->AddInt32("side", 1);
+		borderMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo sinistro"), leftBorderMsg));
+		BMessage* bottomBorderMsg = new BMessage(kMsgToggleBorder);
+		bottomBorderMsg->AddInt32("side", 2);
+		borderMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo inferiore"), bottomBorderMsg));
+		BMessage* rightBorderMsg = new BMessage(kMsgToggleBorder);
+		rightBorderMsg->AddInt32("side", 3);
+		borderMenu->AddItem(new BMenuItem(B_TRANSLATE("Bordo destro"), rightBorderMsg));
+		borderMenu->AddItem(new BMenuItem(B_TRANSLATE("Nessun bordo"), new BMessage(kMsgClearBorders)));
+		// Spessore del bordo (Fase 13): cambia lo spessore dei lati GIA'
+		// presenti sulla selezione, non ne attiva di nuovi -- vedi
+		// MainWindow::SetBorderThickness. Corrispondenza posizionale con
+		// CellStyle::fTBorderColor ecc: 1/2/3 = sottile/medio/spesso.
+		BMenu* borderThicknessMenu = new BMenu(B_TRANSLATE("Spessore bordo"));
+		BMessage* thinMsg = new BMessage(kMsgSetBorderThickness);
+		thinMsg->AddInt32("thickness", 1);
+		borderThicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Sottile"), thinMsg));
+		BMessage* mediumMsg = new BMessage(kMsgSetBorderThickness);
+		mediumMsg->AddInt32("thickness", 2);
+		borderThicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Medio"), mediumMsg));
+		BMessage* thickMsg = new BMessage(kMsgSetBorderThickness);
+		thickMsg->AddInt32("thickness", 3);
+		borderThicknessMenu->AddItem(new BMenuItem(B_TRANSLATE("Spesso"), thickMsg));
+		borderMenu->AddItem(borderThicknessMenu);
+		formatMenu->AddItem(borderMenu);
+	}
 	formatMenu->AddSeparatorItem();
 	// Celle unite (Fase 12): un rettangolo per foglio (CContainer::
 	// AddMergedRange), non un campo per cella -- vedi MainWindow::
@@ -971,6 +997,19 @@ MainWindow::MainWindow()
 	// ApplyWhatIfDataTable.
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Tabella dati" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowWhatIfWindow)));
+	dataMenu->AddSeparatorItem();
+	// Filtro automatico (revisione dei menu: prima non esisteva NESSUN
+	// comando per attivarlo su un foglio nativo/nuovo -- SetAutoFilter
+	// veniva chiamato solo dall'importazione XLSX, vedi ParseSheet in
+	// XlsxTranslator.cpp. Bloccava anche gli Slicer su un foglio non
+	// importato, dato che uno slicer richiede un AutoFilter gia' attivo
+	// sul foglio -- vedi HandleInsertSlicer). Si applica alla riga in
+	// cima alla selezione corrente (l'intestazione), stesso principio di
+	// "Blocca riquadri"/fFreezeMenuItem sopra: un interruttore con segno
+	// di spunta, sincronizzato a ogni cambio di foglio.
+	fAutoFilterMenuItem = new BMenuItem(B_TRANSLATE("Filtro automatico"),
+		new BMessage(kMsgToggleAutoFilter));
+	dataMenu->AddItem(fAutoFilterMenuItem);
 	dataMenu->AddSeparatorItem();
 	// Stile tabella con nome (Tier 4 "named table styles", vedi
 	// TableStyles.h): si applica alla tabella strutturata che contiene la
@@ -1091,7 +1130,14 @@ MainWindow::MainWindow()
 	// dove Excel lo mette e dove l'utente lo ha cercato per primo.
 	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Nuovo foglio"), new BMessage(kMsgNewSheet)));
 	insertMenu->AddSeparatorItem();
-	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Grafico a barre" B_UTF8_ELLIPSIS),
+	// "Grafico..." non "Grafico a barre...": la finestra che questo
+	// comando apre (ChartWindow) ha gia' un selettore che copre tutti e
+	// sette i tipi (barre/linee/torta/area/dispersione/combinato/barre
+	// orizzontali), non solo le barre -- l'etichetta precedente era
+	// rimasta ferma al primissimo tipo implementato, ben prima che gli
+	// altri sei arrivassero, e non rifletteva piu' cosa fa davvero il
+	// comando.
+	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Grafico" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowChart)));
 	insertMenu->AddItem(new BMenuItem(B_TRANSLATE("Tabella pivot" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowPivot)));
@@ -1601,6 +1647,8 @@ void MainWindow::SwitchToSheet(int index)
 		fSheetView->ClearAutoFilter();
 	fSheetView->SetFilterHiddenValues(fSheets[index].filterHiddenValues);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
+	if (fAutoFilterMenuItem)
+		fAutoFilterMenuItem->SetMarked(fSheetView->HasAutoFilter());
 	if (fProtectMenuItem)
 		fProtectMenuItem->SetMarked(fSheetView->IsProtected());
 	fFormulaBar->SetText("");
@@ -2314,6 +2362,8 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fSheetView->SetProtected(fSheets[0].isProtected);
 	fSheetView->SetProtectionHash(fSheets[0].protection);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
+	if (fAutoFilterMenuItem)
+		fAutoFilterMenuItem->SetMarked(fSheetView->HasAutoFilter());
 	if (fProtectMenuItem)
 		fProtectMenuItem->SetMarked(fSheetView->IsProtected());
 	RebuildSheetTabs();
@@ -2602,6 +2652,8 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	fSheetView->SetProtected(fSheets[0].isProtected);
 	fSheetView->SetProtectionHash(fSheets[0].protection);
 	fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
+	if (fAutoFilterMenuItem)
+		fAutoFilterMenuItem->SetMarked(fSheetView->HasAutoFilter());
 	if (fProtectMenuItem)
 		fProtectMenuItem->SetMarked(fSheetView->IsProtected());
 	RebuildSheetTabs();
@@ -7395,6 +7447,22 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgToggleFreeze:
 			fSheetView->ToggleFreezePanes();
 			fFreezeMenuItem->SetMarked(fSheetView->HasFreezePanes());
+			break;
+
+		case kMsgToggleAutoFilter:
+			if (fSheetView->HasAutoFilter())
+				fSheetView->ClearAutoFilter();
+			else
+			{
+				// Solo la riga in cima alla selezione corrente (vedi il
+				// commento su SetAutoFilter in SheetView.h: l'intestazione
+				// e' sempre una riga sola) -- una selezione multi-riga
+				// usa solo la sua prima riga, non tutto l'intervallo.
+				range sel = fSheetView->SelectionRange();
+				fSheetView->SetAutoFilter(range(sel.left, sel.top, sel.right, sel.top));
+			}
+			fAutoFilterMenuItem->SetMarked(fSheetView->HasAutoFilter());
+			MarkModified();
 			break;
 
 		case kMsgToggleShowFormulas:

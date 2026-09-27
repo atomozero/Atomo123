@@ -283,7 +283,7 @@ public:
 	// Allineamento verticale (in alto/al centro/in basso): stesso principio
 	// di SetAlignment sopra -- si applica a tutto SelectionRange(). La
 	// toolbar non ha ancora questi tre pulsanti (manca un'icona HVIF
-	// dedicata nel catalogo, vedi Atomo123_icons/ATOMO123.md): per ora
+	// dedicata nel catalogo, vedi docs/ICONS.md): per ora
 	// solo voci del menu Formato e del menu contestuale della griglia.
 	void SetVerticalAlignment(char alignment);
 	void SetTextColor(rgb_color color);
@@ -629,6 +629,11 @@ private:
 	BMenuItem* fFreezeMenuItem;
 	// Protezione foglio (Fase 32): vedi il commento nel costruttore.
 	BMenuItem* fProtectMenuItem;
+	// Filtro automatico (menu Dati, richiesta di riorganizzazione menu):
+	// stesso principio esatto di fFreezeMenuItem sopra -- prima non
+	// esisteva alcun modo di attivare l'AutoFilter su un foglio nativo/
+	// nuovo, SetAutoFilter veniva chiamato solo dall'importazione XLSX.
+	BMenuItem* fAutoFilterMenuItem;
 	// "Mostra formule" (Formula auditing views): vedi il commento nel
 	// costruttore, menu "Formule".
 	BMenuItem* fShowFormulasMenuItem;
