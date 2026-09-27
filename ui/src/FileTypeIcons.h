@@ -10,7 +10,7 @@
 	MIME, non per l'app stessa (quella resta l'unica in Atomo123.rdef).
 
 	Byte grezzi presi dal catalogo scaricato da www.hvif-store.art (sito
-	autorizzato per questo progetto -- vedi Atomo123_icons/LICENSES.md),
+	autorizzato per questo progetto -- vedi docs/ICON_LICENSES.md),
 	tutte MIT, "Haiku, Inc." (il set ufficiale di icone FileTypes di
 	Haiku stesso). Stesso principio di incorporamento come array C gia'
 	scelto per le icone della toolbar (vedi IconCatalog.h/IconData.cpp):
