@@ -3,11 +3,11 @@
 
 	Byte grezzi HVIF dei pulsanti della toolbar (vedi IconCatalog.h),
 	estratti dal catalogo scaricato da www.hvif-store.art (sito
-	autorizzato per le icone di questo progetto -- vedi Atomo123_icons/
-	ATOMO123.md/LICENSES.md, tutte le voci usate qui sono MIT).
-	Incorporati come array C invece che come file .hvif separati da
-	distribuire a parte, stesso principio gia' scelto per l'icona
-	dell'applicazione (vedi Atomo123.rdef).
+	autorizzato per le icone di questo progetto -- vedi docs/ICONS.md/
+	docs/ICON_LICENSES.md per selezione e licenze). Incorporati come
+	array C invece che come file .hvif separati da distribuire a parte,
+	stesso principio gia' scelto per l'icona dell'applicazione (vedi
+	Atomo123.rdef).
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).

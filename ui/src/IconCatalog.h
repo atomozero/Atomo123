@@ -4,11 +4,14 @@
 	Icone HVIF vere (non piu' disegnate a codice, vedi ToolbarIcons.h/
 	.cpp) per i pulsanti della toolbar, ora che il sito autorizzato
 	(www.hvif-store.art) risulta finalmente popolato -- vedi
-	Atomo123_icons/ATOMO123.md per la selezione ragionata e
-	LICENSES.md per le licenze (tutte MIT). I byte grezzi vivono in
-	IconData.cpp (generati dai file .hvif del catalogo, incorporati
-	come array C invece che come file separati da distribuire a parte,
-	stesso principio gia' scelto per l'icona dell'applicazione).
+	docs/ICONS.md per la selezione ragionata e docs/ICON_LICENSES.md
+	per le licenze (MIT o DSL a seconda dell'icona, mai copyleft). I
+	byte grezzi vivono in IconData.cpp (generati dai file .hvif del
+	catalogo scaricato, incorporati come array C invece che come file
+	separati da distribuire a parte, stesso principio gia' scelto per
+	l'icona dell'applicazione) -- il catalogo scaricato stesso (~1281
+	icone, materiale di sola selezione) non e' piu' nel repository, solo
+	le ~35 icone davvero usate qui e la documentazione in docs/.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).

@@ -57,3 +57,13 @@ legacy/opensumit/sum-it/OpenSum-It
 .DS_Store
 *.swp
 .claude/
+
+# Icon staging area (HVIF scrape from hvif-store.art used to pick
+# toolbar icons by hand): pure research/selection material, never
+# opened at build or runtime (see ui/src/IconCatalog.h) -- the actual
+# icons in use are embedded as C arrays in ui/src/IconData.cpp, and the
+# reasoning/attribution worth keeping already lives in docs/ICONS.md
+# and docs/ICON_LICENSES.md. ~23MB of scraped .hvif/.svg files with no
+# ongoing value once an icon has been picked and copied into IconData.cpp.
+Atomo123_icons/
+Atomo123_icons.zip
