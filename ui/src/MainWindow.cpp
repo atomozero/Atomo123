@@ -9,6 +9,8 @@
 
 #include "MainWindow.h"
 
+#include <math.h>
+
 #include <InterfaceDefs.h>
 
 #include "SheetView.h"
@@ -391,11 +393,12 @@ struct ToolbarGroupDef {
 // (dichiarazione soltanto) perche' le tabelle di pulsanti li usano per
 // nome prima del loro corpo, definito piu' sotto vicino a
 // RenderCustomIcon.
+static void FillRing(BView* view, BPoint center, float outerR, float innerR);
 static void DrawPercentIcon(BView* view);
 static void DrawAlignTopIcon(BView* view);
 static void DrawAlignMiddleIcon(BView* view);
 static void DrawAlignBottomIcon(BView* view);
-static void DrawSwapIcon(BView* view);
+static void DrawReplaceIcon(BView* view);
 
 // Le etichette qui sotto sono marcate con B_TRANSLATE_MARK (identita' a
 // tempo di compilazione, vedi Catalog.h) invece che tradotte sul posto
@@ -517,11 +520,12 @@ static const ToolbarButtonDef kProvisionalToolbarButtons[] = {
 	// nessuna icona "sostituisci"/"scambia" pronta, solo lenti di
 	// ricerca -- spostata qui fra i segnaposto testuali onesti, stesso
 	// trattamento gia' riservato a Percentuale/allineamenti sotto,
-	// invece di continuare a mostrare l'icona sbagliata. Secondo giro
-	// di rifinitura (l'utente ha trovato la prima versione ancora
-	// migliorabile): frecce vettoriali invece del glifo Unicode "⇄",
-	// vedi DrawSwapIcon piu' sotto.
-	{ "toolReplace", B_TRANSLATE_MARK("Sostituisci"), kMsgFind, NULL, NULL, 0, NULL, DrawSwapIcon },
+	// invece di continuare a mostrare l'icona sbagliata. Terzo giro di
+	// rifinitura: lente d'ingrandimento (come Trova) + doppia freccia,
+	// come l'icona "Replace" vera di Excel/Word -- le due frecce isolate
+	// del tentativo precedente non facevano capire il legame con la
+	// ricerca (segnalato dall'utente). Vedi DrawReplaceIcon piu' sotto.
+	{ "toolReplace", B_TRANSLATE_MARK("Sostituisci"), kMsgFind, NULL, NULL, 0, NULL, DrawReplaceIcon },
 	// I quattro pulsanti sotto usavano un glifo di testo ("%", "A↑"...)
 	// disegnato con DrawString a 9pt: illeggibile/sproporzionato a
 	// 16x16, segnalato dall'utente come "terribile". Ora un vero
@@ -719,20 +723,21 @@ static BBitmap* RenderCustomIcon(void (*draw)(BView*))
 	return bitmap;
 }
 
-// Simbolo di percentuale a due cerchi vuoti piu' una diagonale. Quinto
-// giro di rifinitura: i tentativi precedenti (StrokeEllipse semplice,
-// poi un buco scavato ad alpha 0) fallivano perche' l'app_server dal
-// vivo non sfuma i bordi -- ora che RenderCustomIcon disegna a 4x e
-// ricampiona con la media (vedi il commento li'), un cerchio vero
-// torna ad essere affidabile: i bordi vengono morbidi e il centro resta
-// visibilmente vuoto invece di riempirsi.
+// Simbolo di percentuale a due cerchi vuoti piu' una diagonale. Sesto
+// giro di rifinitura: sia StrokeEllipse sia il "buco scavato" ad alpha
+// 0 (SetHighColor con alpha 0 in B_OP_COPY) si sono rivelati inaffi-
+// dabili -- verificato scaricando su disco la bitmap 4x grezza prima
+// del ricampionamento (vedi FillRing piu' sotto): l'alpha restava 255
+// dappertutto, il buco non veniva mai scavato davvero. FillRing
+// costruisce l'anello sommando tanti piccoli spicchi con FillPolygon,
+// l'unica primitiva rimasta di cui ci si possa fidare a questa scala.
 static void DrawPercentIcon(BView* view)
 {
 	view->SetDrawingMode(B_OP_COPY);
 	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	FillRing(view, BPoint(4.25f, 4.25f), 2.6f, 1.1f);
+	FillRing(view, BPoint(11.75f, 11.75f), 2.6f, 1.1f);
 	view->SetPenSize(1.6f);
-	view->StrokeEllipse(BRect(2, 2, 6.5f, 6.5f));
-	view->StrokeEllipse(BRect(9.5f, 9.5f, 14, 14));
 	view->StrokeLine(BPoint(2.5f, 13.5f), BPoint(13.5f, 2.5f));
 }
 
@@ -766,28 +771,57 @@ static void DrawAlignTopIcon(BView* view) { DrawAlignmentIcon(view, 3, 6, 9); }
 static void DrawAlignMiddleIcon(BView* view) { DrawAlignmentIcon(view, 4, 7, 10); }
 static void DrawAlignBottomIcon(BView* view) { DrawAlignmentIcon(view, 6, 9, 12); }
 
-// Sostituisci: due frecce contrapposte che si scambiano, tracciate a
-// vettori (asta + punta triangolare) al posto del glifo Unicode "⇄"
-// del font di sistema -- la cui resa dipende dalla copertura del font
-// e stonava rispetto agli altri pittogrammi disegnati qui sopra.
-static void DrawSwapIcon(BView* view)
+// Anello vuoto costruito come una somma di piccoli spicchi (FillPolygon
+// fra il raggio esterno e quello interno, a intervalli angolari
+// regolari) invece che con StrokeEllipse (riempie l'intera forma di
+// pieno alla scala 4x di RenderCustomIcon, stesso problema di
+// StrokeRect visto sopra) o un "buco scavato" ad alpha 0 in B_OP_COPY
+// (verificato scaricando su disco la bitmap 4x grezza: l'alpha
+// restava 255 dappertutto, il buco non si apriva mai davvero).
+// FillPolygon e' l'unica primitiva per forme chiuse gia' provata
+// affidabile a questa scala.
+static void FillRing(BView* view, BPoint center, float outerR, float innerR)
+{
+	const int kSegments = 16;
+	for (int i = 0; i < kSegments; i++)
+	{
+		float a0 = i * 2.0f * (float)M_PI / kSegments;
+		float a1 = (i + 1) * 2.0f * (float)M_PI / kSegments;
+		BPoint quad[4] = {
+			BPoint(center.x + outerR * cosf(a0), center.y + outerR * sinf(a0)),
+			BPoint(center.x + outerR * cosf(a1), center.y + outerR * sinf(a1)),
+			BPoint(center.x + innerR * cosf(a1), center.y + innerR * sinf(a1)),
+			BPoint(center.x + innerR * cosf(a0), center.y + innerR * sinf(a0)),
+		};
+		view->FillPolygon(quad, 4);
+	}
+}
+
+// Sostituisci: una lente d'ingrandimento (come Trova, per segnalare
+// che e' un comando della stessa famiglia) piu' una piccola freccia a
+// due punte che indica la sostituzione -- lo stesso linguaggio visivo
+// dell'icona "Replace" vera di Excel/Word (lente + doppia freccia),
+// non le due frecce contrapposte isolate del tentativo precedente:
+// l'utente le ha segnalate come poco comprensibili perche' da sole
+// non facevano capire che il comando ha a che fare con la ricerca.
+static void DrawReplaceIcon(BView* view)
 {
 	view->SetDrawingMode(B_OP_COPY);
 	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
-	// Aste a coordinate intere e piu' spesse (2 righe di FillRect,
-	// non StrokeLine): stesso motivo del rifacimento delle barre
-	// sopra, coordinate frazionarie su un renderer senza antialiasing
-	// producevano un risultato inconsistente fra una riga e l'altra.
-	view->FillRect(BRect(3, 4, 10, 5));
-	BPoint headTop[3] = {
-		BPoint(9, 3), BPoint(13, 4.5f), BPoint(9, 6)
+	FillRing(view, BPoint(4, 4), 3, 1.4f);
+	view->SetPenSize(1.6f);
+	view->StrokeLine(BPoint(6.5f, 6.5f), BPoint(10, 10));
+	// Freccia a due punte (sostituzione), piccola e in basso a destra
+	// per non sovrapporsi alla lente/asta sopra.
+	view->FillRect(BRect(9, 12, 15, 13));
+	BPoint headLeft[3] = {
+		BPoint(9, 11), BPoint(7, 12.5f), BPoint(9, 14)
 	};
-	view->FillPolygon(headTop, 3);
-	view->FillRect(BRect(5, 10, 12, 11));
-	BPoint headBottom[3] = {
-		BPoint(6, 9), BPoint(2, 10.5f), BPoint(6, 12)
+	view->FillPolygon(headLeft, 3);
+	BPoint headRight[3] = {
+		BPoint(15, 11), BPoint(15.5f, 12.5f), BPoint(15, 14)
 	};
-	view->FillPolygon(headBottom, 3);
+	view->FillPolygon(headRight, 3);
 }
 
 // Costruisce l'intera toolbar dalla tabella sopra: un BButton per voce,
