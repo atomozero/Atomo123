@@ -371,12 +371,30 @@ struct ToolbarButtonDef {
 	// cataloghi. Ultimo campo apposta: le voci esistenti lo lasciano
 	// a NULL per inizializzazione automatica degli aggregati.
 	const char* text;
+	// Disegno vettoriale provvisorio (vedi DrawPercentIcon e affini,
+	// piu' sotto): quando non-NULL ha priorita' su "text" perche'
+	// produce un vero pittogramma invece di un carattere di font letto
+	// come illeggibile/sproporzionato a 16x16 (segnalato dall'utente
+	// come "terribile" per Percentuale e i tre allineamenti verticali).
+	// Resta comunque un segnaposto in attesa dell'HVIF disegnata a mano
+	// in Icon-O-Matic, non una vera icona del catalogo autorizzato.
+	void (*customDraw)(BView* view);
 };
 
 struct ToolbarGroupDef {
 	const ToolbarButtonDef* buttons;
 	size_t count;
 };
+
+// Pittogrammi disegnati a vettori per le voci provvisorie qui sotto,
+// al posto dei precedenti glifi di testo ("%", "A↑"...): definiti qui
+// (dichiarazione soltanto) perche' le tabelle di pulsanti li usano per
+// nome prima del loro corpo, definito piu' sotto vicino a
+// RenderCustomIcon.
+static void DrawPercentIcon(BView* view);
+static void DrawAlignTopIcon(BView* view);
+static void DrawAlignMiddleIcon(BView* view);
+static void DrawAlignBottomIcon(BView* view);
 
 // Le etichette qui sotto sono marcate con B_TRANSLATE_MARK (identita' a
 // tempo di compilazione, vedi Catalog.h) invece che tradotte sul posto
@@ -500,10 +518,15 @@ static const ToolbarButtonDef kProvisionalToolbarButtons[] = {
 	// trattamento gia' riservato a Percentuale/allineamenti sotto,
 	// invece di continuare a mostrare l'icona sbagliata.
 	{ "toolReplace", B_TRANSLATE_MARK("Sostituisci"), kMsgFind, NULL, NULL, 0, "⇄" },
-	{ "toolPercent", B_TRANSLATE_MARK("Percentuale"), kMsgSetFormat, NULL, "format", ePercent, "%" },
-	{ "toolAlignTop", B_TRANSLATE_MARK("Allinea in alto"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignTop, "A↑" },
-	{ "toolAlignMiddle", B_TRANSLATE_MARK("Centra verticalmente"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignMiddle, "A↕" },
-	{ "toolAlignBottom", B_TRANSLATE_MARK("Allinea in basso"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignBottom, "A↓" },
+	// I quattro pulsanti sotto usavano un glifo di testo ("%", "A↑"...)
+	// disegnato con DrawString a 9pt: illeggibile/sproporzionato a
+	// 16x16, segnalato dall'utente come "terribile". Ora un vero
+	// pittogramma vettoriale (vedi DrawPercentIcon e affini piu' sotto)
+	// -- "text" resta NULL, "customDraw" ha priorita' su di esso.
+	{ "toolPercent", B_TRANSLATE_MARK("Percentuale"), kMsgSetFormat, NULL, "format", ePercent, NULL, DrawPercentIcon },
+	{ "toolAlignTop", B_TRANSLATE_MARK("Allinea in alto"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignTop, NULL, DrawAlignTopIcon },
+	{ "toolAlignMiddle", B_TRANSLATE_MARK("Centra verticalmente"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignMiddle, NULL, DrawAlignMiddleIcon },
+	{ "toolAlignBottom", B_TRANSLATE_MARK("Allinea in basso"), kMsgSetVerticalAlignment, NULL, "verticalAlignment", eVAlignBottom, NULL, DrawAlignBottomIcon },
 };
 // (Niente voce "Bordi": apre gia' la finestra completa dal pulsante a
 // icona qui sopra. "Formato numero" non ha un'azione singola a menu --
@@ -586,6 +609,72 @@ static BBitmap* RenderTextIcon(const char* text)
 	return bitmap;
 }
 
+// Come RenderTextIcon sopra ma disegna con un callback vettoriale
+// invece di una stringa: stessa bitmap 16x16 RGBA trasparente, stesso
+// ciclo lock/Sync/unlock -- usata per i pittogrammi di
+// Percentuale/allineamento verticale sotto, al posto del glifo di
+// testo che l'utente ha segnalato come illeggibile a questa dimensione.
+static BBitmap* RenderCustomIcon(void (*draw)(BView*))
+{
+	BBitmap* bitmap = new BBitmap(BRect(0, 0, 15, 15), B_RGBA32, true);
+	if (!bitmap || bitmap->InitCheck() != B_OK) {
+		delete bitmap;
+		return NULL;
+	}
+	uint8* bits = (uint8*)bitmap->Bits();
+	if (!bits) {
+		delete bitmap;
+		return NULL;
+	}
+	memset(bits, 0, bitmap->BitsLength());
+
+	BView* painter = new BView(bitmap->Bounds(), "customIcon",
+		B_FOLLOW_NONE, 0);
+	if (!painter) {
+		delete bitmap;
+		return NULL;
+	}
+	bitmap->AddChild(painter);
+	if (bitmap->Lock()) {
+		draw(painter);
+		painter->Sync();
+		bitmap->Unlock();
+	}
+	bitmap->RemoveChild(painter);
+	delete painter;
+	return bitmap;
+}
+
+// Simbolo di percentuale tracciato a forme (due cerchi vuoti piu' una
+// diagonale) invece che col glifo del font, che a 9pt risultava un
+// puntino illeggibile sui 16x16 della toolbar.
+static void DrawPercentIcon(BView* view)
+{
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	view->SetPenSize(1.4f);
+	view->StrokeEllipse(BRect(2, 2, 6, 6));
+	view->StrokeEllipse(BRect(10, 10, 14, 14));
+	view->SetPenSize(1.6f);
+	view->StrokeLine(BPoint(3, 13), BPoint(13, 3));
+}
+
+// Pittogramma comune ai tre allineamenti verticali sotto: un riquadro
+// sottile (la "cella") con una barra piena che segna dove il contenuto
+// si appoggia -- stesso principio grafico delle icone equivalenti di
+// LibreOffice/Excel, molto piu' leggibile di una lettera con una
+// freccia accanto (il vecchio placeholder "A↑"/"A↕"/"A↓").
+static void DrawAlignmentIcon(BView* view, float barTop)
+{
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	view->SetPenSize(1.0f);
+	view->StrokeRect(BRect(1, 1, 14, 14));
+	view->FillRect(BRect(3, barTop, 12, barTop + 2));
+}
+
+static void DrawAlignTopIcon(BView* view) { DrawAlignmentIcon(view, 3); }
+static void DrawAlignMiddleIcon(BView* view) { DrawAlignmentIcon(view, 6.5f); }
+static void DrawAlignBottomIcon(BView* view) { DrawAlignmentIcon(view, 10); }
+
 // Costruisce l'intera toolbar dalla tabella sopra: un BButton per voce,
 // con la sua icona HVIF (IconCatalog::Render -- SetIcon ne copia i bit
 // al suo interno, quindi il BBitmap temporaneo va eliminato subito
@@ -650,6 +739,17 @@ static BView* BuildToolbar(BHandler* target)
 					button->SetIcon(icon);
 					delete icon;
 				}
+			}
+			else if (def.customDraw != NULL)
+			{
+				BBitmap* glyph = RenderCustomIcon(def.customDraw);
+				if (glyph)
+				{
+					button->SetIcon(glyph);
+					delete glyph;
+				}
+				else if (def.text != NULL)
+					button->SetLabel(def.text); // ultima spiaggia: mai vuoto
 			}
 			else if (def.text != NULL)
 			{
