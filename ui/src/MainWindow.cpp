@@ -614,58 +614,126 @@ static BBitmap* RenderTextIcon(const char* text)
 }
 
 // Come RenderTextIcon sopra ma disegna con un callback vettoriale
-// invece di una stringa: stessa bitmap 16x16 RGBA trasparente, stesso
-// ciclo lock/Sync/unlock -- usata per i pittogrammi di
-// Percentuale/allineamento verticale sotto, al posto del glifo di
-// testo che l'utente ha segnalato come illeggibile a questa dimensione.
+// invece di una stringa -- usata per i pittogrammi di Sostituisci/
+// Percentuale/allineamento verticale sotto, al posto dei vecchi glifi
+// di testo che l'utente ha segnalato come illeggibili a questa
+// dimensione. Disegna pero' a una risoluzione 4x piu' grande (stesse
+// coordinate logiche 16x16 usate da DrawPercentIcon e affini, rimappate
+// da BView::SetScale) e poi ricampiona con la media dei blocchi 4x4:
+// un antialiasing fatto a mano, perche' questo app_server disegna le
+// forme dal vivo senza sfumare i bordi alla griglia dei pixel (persino
+// con B_SUBPIXEL_PRECISE) -- un cerchio piccolo con una penna spessa
+// risultava un disco pieno invece di un anello, e barre con un distacco
+// frazionario si fondevano in un blocco unico. Disegnando a 4x e poi
+// mediando i pixel si ottengono bordi morbidi indipendentemente da
+// come l'app_server tratta le forme a 1x: e' concettualmente lo stesso
+// lavoro che il rasterizzatore vettoriale delle vere icone HVIF del
+// catalogo (IconCatalog::Render) fa gia' per conto suo internamente.
 static BBitmap* RenderCustomIcon(void (*draw)(BView*))
 {
-	BBitmap* bitmap = new BBitmap(BRect(0, 0, 15, 15), B_RGBA32, true);
+	const int kSize = 16;
+	const int kSuper = 4;
+	const int kBigSize = kSize * kSuper;
+
+	BBitmap* big = new BBitmap(BRect(0, 0, kBigSize - 1, kBigSize - 1),
+		B_RGBA32, true);
+	if (!big || big->InitCheck() != B_OK) {
+		delete big;
+		return NULL;
+	}
+	uint8* bigBits = (uint8*)big->Bits();
+	if (!bigBits) {
+		delete big;
+		return NULL;
+	}
+	memset(bigBits, 0, big->BitsLength());
+
+	BView* painter = new BView(big->Bounds(), "customIconBig",
+		B_FOLLOW_NONE, B_SUBPIXEL_PRECISE);
+	if (!painter) {
+		delete big;
+		return NULL;
+	}
+	big->AddChild(painter);
+	if (big->Lock()) {
+		painter->SetScale(kSuper);
+		draw(painter);
+		painter->Sync();
+		big->Unlock();
+	}
+	big->RemoveChild(painter);
+	delete painter;
+
+	BBitmap* bitmap = new BBitmap(BRect(0, 0, kSize - 1, kSize - 1),
+		B_RGBA32, true);
 	if (!bitmap || bitmap->InitCheck() != B_OK) {
+		delete big;
 		delete bitmap;
 		return NULL;
 	}
 	uint8* bits = (uint8*)bitmap->Bits();
 	if (!bits) {
+		delete big;
 		delete bitmap;
 		return NULL;
 	}
-	memset(bits, 0, bitmap->BitsLength());
-
-	BView* painter = new BView(bitmap->Bounds(), "customIcon",
-		B_FOLLOW_NONE, 0);
-	if (!painter) {
-		delete bitmap;
-		return NULL;
+	int32 bigStride = big->BytesPerRow();
+	int32 stride = bitmap->BytesPerRow();
+	// Media pesata sull'alpha (non una semplice media RGB): un pixel
+	// completamente trasparente nel blocco 4x4 non deve schiarire il
+	// colore del pittogramma, solo abbassarne la copertura (l'alpha
+	// del pixel risultante) -- altrimenti i bordi vengono grigiastri
+	// invece che di un nero pieno che sfuma verso il trasparente.
+	for (int y = 0; y < kSize; y++)
+	{
+		for (int x = 0; x < kSize; x++)
+		{
+			uint32 sumB = 0, sumG = 0, sumR = 0, sumA = 0;
+			for (int sy = 0; sy < kSuper; sy++)
+			{
+				const uint8* row = bigBits
+					+ (y * kSuper + sy) * bigStride + (x * kSuper) * 4;
+				for (int sx = 0; sx < kSuper; sx++)
+				{
+					const uint8* p = row + sx * 4;
+					uint8 a = p[3];
+					sumB += p[0] * a;
+					sumG += p[1] * a;
+					sumR += p[2] * a;
+					sumA += a;
+				}
+			}
+			uint8* out = bits + y * stride + x * 4;
+			if (sumA > 0)
+			{
+				out[0] = (uint8)(sumB / sumA);
+				out[1] = (uint8)(sumG / sumA);
+				out[2] = (uint8)(sumR / sumA);
+			}
+			else
+				out[0] = out[1] = out[2] = 0;
+			out[3] = (uint8)(sumA / (kSuper * kSuper));
+		}
 	}
-	bitmap->AddChild(painter);
-	if (bitmap->Lock()) {
-		draw(painter);
-		painter->Sync();
-		bitmap->Unlock();
-	}
-	bitmap->RemoveChild(painter);
-	delete painter;
+	delete big;
 	return bitmap;
 }
 
-// Simbolo di percentuale a due riquadri vuoti piu' una diagonale.
-// Quarto giro di rifinitura: anche il "buco scavato" a alpha 0 nei
-// cerchi (tentativo precedente) non bastava -- un'ellisse cosi'
-// piccola su questo renderer senza antialiasing si arrotonda quasi a
-// un disco pieno indipendentemente dal buco al centro. Riquadri
-// (StrokeRect) invece sono lo stesso identico meccanismo gia'
-// verificato affidabile per il bordo dei pittogrammi di allineamento
-// qui sopra: un quadrato vuoto e' garantito, non approssimato.
+// Simbolo di percentuale a due cerchi vuoti piu' una diagonale. Quinto
+// giro di rifinitura: i tentativi precedenti (StrokeEllipse semplice,
+// poi un buco scavato ad alpha 0) fallivano perche' l'app_server dal
+// vivo non sfuma i bordi -- ora che RenderCustomIcon disegna a 4x e
+// ricampiona con la media (vedi il commento li'), un cerchio vero
+// torna ad essere affidabile: i bordi vengono morbidi e il centro resta
+// visibilmente vuoto invece di riempirsi.
 static void DrawPercentIcon(BView* view)
 {
 	view->SetDrawingMode(B_OP_COPY);
 	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
-	view->SetPenSize(1.0f);
-	view->StrokeRect(BRect(2, 2, 6, 6));
-	view->StrokeRect(BRect(9, 9, 13, 13));
-	view->SetPenSize(1.5f);
-	view->StrokeLine(BPoint(2, 13), BPoint(13, 2));
+	view->SetPenSize(1.6f);
+	view->StrokeEllipse(BRect(2, 2, 6.5f, 6.5f));
+	view->StrokeEllipse(BRect(9.5f, 9.5f, 14, 14));
+	view->StrokeLine(BPoint(2.5f, 13.5f), BPoint(13.5f, 2.5f));
 }
 
 // Pittogramma comune ai tre allineamenti verticali sotto: un riquadro
@@ -680,8 +748,15 @@ static void DrawAlignmentIcon(BView* view, float y1, float y2, float y3)
 {
 	view->SetDrawingMode(B_OP_COPY);
 	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
-	view->SetPenSize(1.0f);
-	view->StrokeRect(BRect(1, 1, 14, 14));
+	// Bordo disegnato come quattro FillRect (non StrokeRect): a scala
+	// 4x (vedi RenderCustomIcon) StrokeRect riempiva l'intero riquadro
+	// di nero pieno invece di tracciarne solo il contorno -- FillRect
+	// e' lo stesso identico meccanismo gia' verificato affidabile per
+	// le barre sotto, che a questa stessa scala hanno sempre reso bene.
+	view->FillRect(BRect(1, 1, 14, 2));
+	view->FillRect(BRect(1, 13, 14, 14));
+	view->FillRect(BRect(1, 1, 2, 14));
+	view->FillRect(BRect(13, 1, 14, 14));
 	view->FillRect(BRect(3, y1, 12, y1 + 1));
 	view->FillRect(BRect(3, y2, 9, y2 + 1));
 	view->FillRect(BRect(3, y3, 11, y3 + 1));
