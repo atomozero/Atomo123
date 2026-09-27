@@ -70,6 +70,15 @@ cp translators/csv/CsvTranslator "$WORKDIR/add-ons/Translators/"
 cp translators/xls/XlsTranslator "$WORKDIR/add-ons/Translators/"
 cp translators/xlsx/XlsxTranslator "$WORKDIR/add-ons/Translators/"
 cp translators/ods/OdsTranslator "$WORKDIR/add-ons/Translators/"
+# Voce nel menu Applicazioni della Deskbar: senza questo link
+# simbolico l'app si installa ed e' lanciabile (es. da Tracker), ma
+# non compare nel menu Deskbar come ogni altra app di sistema -- vedi
+# /boot/system/data/deskbar/menu/Applications/ per il pattern reale
+# gia' usato da BePDF/Firefox/eccetera, stesso schema di percorso
+# relativo qui.
+mkdir -p "$WORKDIR/data/deskbar/menu/Applications"
+ln -s "../../../../apps/Atomo123/Atomo123" \
+	"$WORKDIR/data/deskbar/menu/Applications/Atomo123"
 # File dimostrativo (vedi CHANGELOG.md): "documentation/" e' la
 # cartella standard di packagefs per contenuti non eseguibili come
 # questo, montata da ogni pacchetto in /boot/system/documentation/.
