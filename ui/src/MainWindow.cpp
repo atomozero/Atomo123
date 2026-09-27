@@ -108,7 +108,7 @@ static const uint32 kMsgNew = 'anew';
 static const uint32 kMsgOpen = 'aopn';
 static const uint32 kMsgOpenRecent = 'aorc';
 // File dimostrativo installato con il pacchetto (packaging/
-// build-hpkg.sh / atomo123-0.3.0.recipe copiano Financial_Sample_CdA.ascd
+// build-hpkg.sh / atomo123-0.4.0.recipe copiano Financial_Sample_CdA.ascd
 // in documentation/Atomo123/ dell'albero del pacchetto) -- vedi il
 // gestore sotto per dove viene cercato a runtime. Sostituisce
 // Welcome.xlsx: lo showcase CdA (generate_cda_report.cpp) copre molte
