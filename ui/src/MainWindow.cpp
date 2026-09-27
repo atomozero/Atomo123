@@ -395,6 +395,7 @@ static void DrawPercentIcon(BView* view);
 static void DrawAlignTopIcon(BView* view);
 static void DrawAlignMiddleIcon(BView* view);
 static void DrawAlignBottomIcon(BView* view);
+static void DrawSwapIcon(BView* view);
 
 // Le etichette qui sotto sono marcate con B_TRANSLATE_MARK (identita' a
 // tempo di compilazione, vedi Catalog.h) invece che tradotte sul posto
@@ -516,8 +517,11 @@ static const ToolbarButtonDef kProvisionalToolbarButtons[] = {
 	// nessuna icona "sostituisci"/"scambia" pronta, solo lenti di
 	// ricerca -- spostata qui fra i segnaposto testuali onesti, stesso
 	// trattamento gia' riservato a Percentuale/allineamenti sotto,
-	// invece di continuare a mostrare l'icona sbagliata.
-	{ "toolReplace", B_TRANSLATE_MARK("Sostituisci"), kMsgFind, NULL, NULL, 0, "⇄" },
+	// invece di continuare a mostrare l'icona sbagliata. Secondo giro
+	// di rifinitura (l'utente ha trovato la prima versione ancora
+	// migliorabile): frecce vettoriali invece del glifo Unicode "⇄",
+	// vedi DrawSwapIcon piu' sotto.
+	{ "toolReplace", B_TRANSLATE_MARK("Sostituisci"), kMsgFind, NULL, NULL, 0, NULL, DrawSwapIcon },
 	// I quattro pulsanti sotto usavano un glifo di testo ("%", "A↑"...)
 	// disegnato con DrawString a 9pt: illeggibile/sproporzionato a
 	// 16x16, segnalato dall'utente come "terribile". Ora un vero
@@ -645,35 +649,71 @@ static BBitmap* RenderCustomIcon(void (*draw)(BView*))
 	return bitmap;
 }
 
-// Simbolo di percentuale tracciato a forme (due cerchi vuoti piu' una
-// diagonale) invece che col glifo del font, che a 9pt risultava un
-// puntino illeggibile sui 16x16 della toolbar.
+// Simbolo di percentuale a due riquadri vuoti piu' una diagonale.
+// Quarto giro di rifinitura: anche il "buco scavato" a alpha 0 nei
+// cerchi (tentativo precedente) non bastava -- un'ellisse cosi'
+// piccola su questo renderer senza antialiasing si arrotonda quasi a
+// un disco pieno indipendentemente dal buco al centro. Riquadri
+// (StrokeRect) invece sono lo stesso identico meccanismo gia'
+// verificato affidabile per il bordo dei pittogrammi di allineamento
+// qui sopra: un quadrato vuoto e' garantito, non approssimato.
 static void DrawPercentIcon(BView* view)
 {
+	view->SetDrawingMode(B_OP_COPY);
 	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
-	view->SetPenSize(1.4f);
-	view->StrokeEllipse(BRect(2, 2, 6, 6));
-	view->StrokeEllipse(BRect(10, 10, 14, 14));
-	view->SetPenSize(1.6f);
-	view->StrokeLine(BPoint(3, 13), BPoint(13, 3));
+	view->SetPenSize(1.0f);
+	view->StrokeRect(BRect(2, 2, 6, 6));
+	view->StrokeRect(BRect(9, 9, 13, 13));
+	view->SetPenSize(1.5f);
+	view->StrokeLine(BPoint(2, 13), BPoint(13, 2));
 }
 
 // Pittogramma comune ai tre allineamenti verticali sotto: un riquadro
-// sottile (la "cella") con una barra piena che segna dove il contenuto
-// si appoggia -- stesso principio grafico delle icone equivalenti di
-// LibreOffice/Excel, molto piu' leggibile di una lettera con una
-// freccia accanto (il vecchio placeholder "A↑"/"A↕"/"A↓").
-static void DrawAlignmentIcon(BView* view, float barTop)
+// sottile (la "cella") con tre barre (le righe di un paragrafo)
+// raggruppate in alto/al centro/in basso -- stesso linguaggio visivo
+// delle icone equivalenti di LibreOffice/Excel. Terzo giro di
+// rifinitura: coordinate intere e un pieno pixel di distacco fra le
+// barre invece di scarti frazionari, che sullo stesso renderer senza
+// antialiasing di sopra si arrotondavano a zero e fondevano le tre
+// barre in un unico blocco pieno indistinguibile.
+static void DrawAlignmentIcon(BView* view, float y1, float y2, float y3)
 {
+	view->SetDrawingMode(B_OP_COPY);
 	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
 	view->SetPenSize(1.0f);
 	view->StrokeRect(BRect(1, 1, 14, 14));
-	view->FillRect(BRect(3, barTop, 12, barTop + 2));
+	view->FillRect(BRect(3, y1, 12, y1 + 1));
+	view->FillRect(BRect(3, y2, 9, y2 + 1));
+	view->FillRect(BRect(3, y3, 11, y3 + 1));
 }
 
-static void DrawAlignTopIcon(BView* view) { DrawAlignmentIcon(view, 3); }
-static void DrawAlignMiddleIcon(BView* view) { DrawAlignmentIcon(view, 6.5f); }
-static void DrawAlignBottomIcon(BView* view) { DrawAlignmentIcon(view, 10); }
+static void DrawAlignTopIcon(BView* view) { DrawAlignmentIcon(view, 3, 6, 9); }
+static void DrawAlignMiddleIcon(BView* view) { DrawAlignmentIcon(view, 4, 7, 10); }
+static void DrawAlignBottomIcon(BView* view) { DrawAlignmentIcon(view, 6, 9, 12); }
+
+// Sostituisci: due frecce contrapposte che si scambiano, tracciate a
+// vettori (asta + punta triangolare) al posto del glifo Unicode "⇄"
+// del font di sistema -- la cui resa dipende dalla copertura del font
+// e stonava rispetto agli altri pittogrammi disegnati qui sopra.
+static void DrawSwapIcon(BView* view)
+{
+	view->SetDrawingMode(B_OP_COPY);
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	// Aste a coordinate intere e piu' spesse (2 righe di FillRect,
+	// non StrokeLine): stesso motivo del rifacimento delle barre
+	// sopra, coordinate frazionarie su un renderer senza antialiasing
+	// producevano un risultato inconsistente fra una riga e l'altra.
+	view->FillRect(BRect(3, 4, 10, 5));
+	BPoint headTop[3] = {
+		BPoint(9, 3), BPoint(13, 4.5f), BPoint(9, 6)
+	};
+	view->FillPolygon(headTop, 3);
+	view->FillRect(BRect(5, 10, 12, 11));
+	BPoint headBottom[3] = {
+		BPoint(6, 9), BPoint(2, 10.5f), BPoint(6, 12)
+	};
+	view->FillPolygon(headBottom, 3);
+}
 
 // Costruisce l'intera toolbar dalla tabella sopra: un BButton per voce,
 // con la sua icona HVIF (IconCatalog::Render -- SetIcon ne copia i bit
