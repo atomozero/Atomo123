@@ -4,6 +4,22 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
+What shipped since v0.4.2 (in progress):
+- Chart visual polish, first step of a broader "make charts more
+  professional" pass: the chart frame's outline changed from a heavy
+  black `StrokeRect` to a light gray one (new `DrawChartFrame` helper
+  in `Chart.cpp`, reused at every chart type's border/plot-area border
+  site), so the container reads as a container instead of competing
+  visually with the grid/bars/text inside it. Bar fills (single-series
+  bar and hbar, grouped bar and hbar, and the bar half of combo charts)
+  changed from one flat color to a subtle vertical gradient (lighter at
+  top, full color at bottom, via the real `BGradientLinear`/
+  `BView::FillRect(rect, gradient)` API), giving bars a bit of depth
+  instead of looking completely flat. Pie/area/scatter/line fills are
+  unchanged for now. Verified against the existing `test_chart*` suite
+  (pure layout/geometry, unaffected by fill color) and visually in the
+  real app against the CdA showcase file's "Sales by segment" chart.
+
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
   `(` or `,` plus at least one letter typed, a popup list shows
