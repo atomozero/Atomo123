@@ -725,6 +725,53 @@ int main()
 	chartProductHBar.dataRange = chartProduct.dataRange;
 	chartProductHBar.frame = BRect(1320, 450, 1700, 650);
 
+	// Stessa Vendite/Profitto per segmento del grafico combinato sopra
+	// (colonne 13-15), ma scritta TRASPOSTA (segmenti in colonne, non in
+	// righe) apposta per dimostrare l'interruttore "Scambia righe/colonne"
+	// dell'editor dei grafici (v0.4.3): stessi numeri, layout diverso,
+	// esattamente il caso d'uso reale della funzione (uno stesso dataset
+	// che arriva gia' orientato per riga, es. da un file Excel esterno).
+	// Colonne 19-24: 19 e' la colonna etichetta di serie (letta da
+	// BuildMultiChartSeriesRows su r.left), 20-24 una per segmento.
+	int rowOrientedLabelCol = 19;
+	int rowOrientedHeaderRow = 3;
+	for (size_t i = 0; i < segments.size(); i++)
+		WriteLabel(pivot, cell(rowOrientedLabelCol + 1 + (int)i, rowOrientedHeaderRow), segments[i].String());
+
+	WriteLabel(pivot, cell(rowOrientedLabelCol, rowOrientedHeaderRow + 1), "Sales");
+	WriteLabel(pivot, cell(rowOrientedLabelCol, rowOrientedHeaderRow + 2), "Profit");
+	for (size_t i = 0; i < segments.size(); i++)
+	{
+		int col = rowOrientedLabelCol + 1 + (int)i;
+
+		char salesFormula[128];
+		snprintf(salesFormula, sizeof(salesFormula), "=SUMIF(Data!A2:A701;\"%s\";Data!J2:J701)",
+			segments[i].String());
+		TryToParseString(salesFormula, cell(col, rowOrientedHeaderRow + 1), pivot, true);
+		Currency(pivot, cell(col, rowOrientedHeaderRow + 1));
+
+		char profitFormula[128];
+		snprintf(profitFormula, sizeof(profitFormula), "=SUMIF(Data!A2:A701;\"%s\";Data!L2:L701)",
+			segments[i].String());
+		TryToParseString(profitFormula, cell(col, rowOrientedHeaderRow + 2), pivot, true);
+		Currency(pivot, cell(col, rowOrientedHeaderRow + 2));
+	}
+
+	// seriesColors (v0.4.3): due colori scelti a mano invece della
+	// tavolozza predefinita -- indice 0 = Sales (arancione), indice 1 =
+	// Profit (verde), stesso ordine di valueRows sotto.
+	ChartObject chartSegRowOriented;
+	chartSegRowOriented.type = eBarChart;
+	chartSegRowOriented.title = "Sales & profit by segment (row-oriented, custom colors)";
+	chartSegRowOriented.dataRange = range(rowOrientedLabelCol, rowOrientedHeaderRow,
+		rowOrientedLabelCol + (int)segments.size(), rowOrientedHeaderRow + 2);
+	chartSegRowOriented.rowOriented = true;
+	chartSegRowOriented.valueRows.push_back((int16)(rowOrientedHeaderRow + 1));
+	chartSegRowOriented.valueRows.push_back((int16)(rowOrientedHeaderRow + 2));
+	chartSegRowOriented.seriesColors.push_back(rgb_color{ 230, 126, 34, 255 });
+	chartSegRowOriented.seriesColors.push_back(rgb_color{ 39, 174, 96, 255 });
+	chartSegRowOriented.frame = BRect(40, 670, 500, 870);
+
 	// Tabella pivot VERA (Inserisci -> Tabella Pivot, Fase 29 per il
 	// raggruppamento a piu' livelli): a differenza dei quattro blocchi
 	// SUMIF sopra (dal vivo, MAI congelati), questa e' deliberatamente
@@ -1407,6 +1454,7 @@ int main()
 	pivotSheet.charts.push_back(chartSegCombo);
 	pivotSheet.charts.push_back(chartProductScatter);
 	pivotSheet.charts.push_back(chartProductHBar);
+	pivotSheet.charts.push_back(chartSegRowOriented);
 	pivotSheet.colWidths.push_back(std::make_pair(1, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(4, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(7, 130.0f));
