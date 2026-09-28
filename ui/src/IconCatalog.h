@@ -23,6 +23,7 @@
 #include <SupportDefs.h>
 
 class BBitmap;
+class BView;
 
 struct IconData {
 	const uint8* bytes;
@@ -80,6 +81,22 @@ namespace IconCatalog {
 	// corrotti/incompatibili) -- il chiamante deve gestire questo caso
 	// senza chiamare SetIcon su NULL.
 	BBitmap* Render(const IconData& icon);
+
+	// Disegna un pittogramma 16x16 a codice invece che da un vero file
+	// HVIF -- per le lacune del catalogo (vedi docs/ICONS.md "icone da
+	// disegnare", es. i tipi di grafico) dove nessuna icona del sito
+	// autorizzato e' un candidato adatto. Disegna a una risoluzione 4x
+	// piu' grande (BView::SetScale) e ricampiona con una media pesata
+	// sull'alpha: un antialiasing fatto a mano, perche' questo app_server
+	// disegna le forme dal vivo senza sfumare i bordi alla griglia dei
+	// pixel (persino con B_SUBPIXEL_PRECISE). Stessa convenzione di
+	// proprieta' di Render sopra: il chiamante cancella il BBitmap subito
+	// dopo BButton::SetIcon/BMenuItem::SetIcon, che ne copiano i bit al
+	// loro interno. "draw" e' un puntatore a funzione semplice (non
+	// std::function) perche' i disegni sono sempre funzioni libere senza
+	// stato catturato, stesso principio dei pittogrammi della toolbar
+	// gia' esistenti prima di questa estrazione.
+	BBitmap* RenderCustom(void (*draw)(BView*));
 }
 
 #endif

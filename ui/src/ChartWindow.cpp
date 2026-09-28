@@ -10,10 +10,12 @@
 #include "ChartWindow.h"
 #include "ChartView.h"
 #include "Chart.h"
+#include "IconCatalog.h"
 
 #include <map>
 #include <string>
 
+#include <Bitmap.h>
 #include <Box.h>
 #include <Button.h>
 #include <Catalog.h>
@@ -26,6 +28,7 @@
 #include <String.h>
 #include <StringView.h>
 #include <TextControl.h>
+#include <View.h>
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "ChartWindow"
@@ -37,6 +40,165 @@ static const uint32 kMsgTypeChangedLocal = 'tpcl';
 // condividono lo stesso "what", l'indice della serie viaggia nel
 // campo "index" del BMessage di ognuna (vedi RebuildSeriesCheckboxes).
 static const uint32 kMsgSeriesToggleLocal = 'stvl';
+
+// Pittogrammi 16x16 per le voci del menu Tipo (docs/ICONS.md li elenca
+// come lacuna: nessuna icona del catalogo HVIF autorizzato e' un
+// candidato adatto per un tipo di grafico specifico) -- disegnati a
+// codice con la stessa tecnica di supersampling 4x gia' usata per i
+// pittogrammi provvisori della toolbar, estratta in
+// IconCatalog::RenderCustom apposta per essere riusabile qui. Corrispondenza
+// posizionale con l'ordine dei BMenuItem costruiti sotto (0=Barre,
+// 1=Linee, 2=Torta, 3=Area, 4=Dispersione, 5=Combinato, 6=Barre
+// orizzontali), stessa convenzione di SelectedType()/LoadForEdit().
+static void DrawBarChartTypeIcon(BView* view)
+{
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	view->FillRect(BRect(2, 9, 4, 14));
+	view->FillRect(BRect(6, 6, 8, 14));
+	view->FillRect(BRect(10, 3, 12, 14));
+}
+
+static void DrawLineChartTypeIcon(BView* view)
+{
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	view->SetPenSize(1.4f);
+	BPoint p1(2, 11), p2(6, 5), p3(10, 9), p4(14, 3);
+	view->StrokeLine(p1, p2);
+	view->StrokeLine(p2, p3);
+	view->StrokeLine(p3, p4);
+	BPoint verts[4] = { p1, p2, p3, p4 };
+	for (int i = 0; i < 4; i++)
+		view->FillEllipse(verts[i], 1, 1);
+}
+
+static void DrawPieChartTypeIcon(BView* view)
+{
+	// Un disco pieno con due raggi disegnati nel colore di sfondo
+	// (non un secondo colore in piu': i pittogrammi di questa toolbar
+	// restano tutti monocromatici) suggerisce le divisioni fra le
+	// fette senza bisogno di una vera tavolozza multicolore per
+	// un'icona di 16px.
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	view->FillEllipse(BPoint(8, 8), 6, 6);
+	view->SetHighColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+	view->SetPenSize(1.2f);
+	view->StrokeLine(BPoint(8, 8), BPoint(8, 2));
+	view->StrokeLine(BPoint(8, 8), BPoint(13, 11));
+}
+
+static void DrawAreaChartTypeIcon(BView* view)
+{
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	BPoint poly[6] = {
+		BPoint(2, 11), BPoint(6, 5), BPoint(10, 9), BPoint(14, 3),
+		BPoint(14, 14), BPoint(2, 14)
+	};
+	view->FillPolygon(poly, 6);
+}
+
+static void DrawScatterChartTypeIcon(BView* view)
+{
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	BPoint dots[6] = {
+		BPoint(3, 12), BPoint(6, 6), BPoint(9, 11),
+		BPoint(12, 4), BPoint(13, 13), BPoint(5, 3)
+	};
+	for (int i = 0; i < 6; i++)
+		view->FillEllipse(dots[i], 1.2f, 1.2f);
+}
+
+static void DrawComboChartTypeIcon(BView* view)
+{
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	view->FillRect(BRect(3, 8, 6, 14));
+	view->FillRect(BRect(9, 5, 12, 14));
+	view->SetPenSize(1.4f);
+	BPoint p1(2, 9), p2(8, 4), p3(14, 7);
+	view->StrokeLine(p1, p2);
+	view->StrokeLine(p2, p3);
+	view->FillEllipse(p1, 1, 1);
+	view->FillEllipse(p2, 1, 1);
+	view->FillEllipse(p3, 1, 1);
+}
+
+static void DrawHBarChartTypeIcon(BView* view)
+{
+	view->SetHighColor(ui_color(B_PANEL_TEXT_COLOR));
+	view->FillRect(BRect(2, 3, 8, 5));
+	view->FillRect(BRect(2, 7, 11, 9));
+	view->FillRect(BRect(2, 11, 14, 13));
+}
+
+// BMenuItem in questa versione di Haiku non ha un equivalente di
+// BButton::SetIcon (nessuna classe "BBitmapMenuItem" nei suoi header) --
+// l'unico modo reale di aggiungere un'icona a una voce di menu e'
+// sottoclassare BMenuItem e ridefinire GetContentSize/DrawContent,
+// esattamente il punto di estensione per cui questi due metodi sono
+// protected virtual. fIcon e' di proprieta' di questa classe (copiato
+// nel costruttore, cosi' il chiamante puo' cancellare il proprio BBitmap
+// subito dopo come fa ovunque altrove in questo file).
+class ChartTypeMenuItem : public BMenuItem {
+public:
+	ChartTypeMenuItem(const char* label, BMessage* message, const BBitmap* icon)
+		:
+		BMenuItem(label, message),
+		fIcon(icon ? new BBitmap(icon) : NULL),
+		fContentHeight(0)
+	{
+	}
+
+	virtual ~ChartTypeMenuItem()
+	{
+		delete fIcon;
+	}
+
+protected:
+	virtual void GetContentSize(float* width, float* height)
+	{
+		BMenuItem::GetContentSize(width, height);
+		if (fIcon)
+		{
+			float iconWidth = fIcon->Bounds().Width() + 1;
+			float iconHeight = fIcon->Bounds().Height() + 1;
+			if (width)
+				*width += iconWidth + kIconTextGap;
+			if (height && *height < iconHeight)
+				*height = iconHeight;
+		}
+		fContentHeight = height ? *height : 0;
+	}
+
+	virtual void DrawContent()
+	{
+		BMenu* menu = Menu();
+		if (!menu)
+			return;
+
+		BPoint loc = ContentLocation();
+		if (fIcon)
+		{
+			// Centrato verticalmente sull'altezza di contenuto calcolata
+			// da GetContentSize sopra (cache in fContentHeight), non
+			// sulla base del testo -- l'icona e' quasi sempre piu' alta
+			// di una riga di testo a questa dimensione di menu.
+			BRect itemFrame = Frame();
+			float iconHeight = fIcon->Bounds().Height() + 1;
+			BPoint iconPos(loc.x, itemFrame.top + (itemFrame.Height() - iconHeight) / 2.0f);
+			menu->SetDrawingMode(B_OP_ALPHA);
+			menu->DrawBitmap(fIcon, iconPos);
+			menu->SetDrawingMode(B_OP_COPY);
+			loc.x += fIcon->Bounds().Width() + 1 + kIconTextGap;
+		}
+		menu->MovePenTo(loc);
+		menu->DrawString(Label());
+	}
+
+private:
+	static const float kIconTextGap;
+	BBitmap* fIcon;
+	float fContentHeight;
+};
+const float ChartTypeMenuItem::kIconTextGap = 6.0f;
 
 ChartWindow::ChartWindow(BMessenger target)
 	:
@@ -63,15 +225,30 @@ ChartWindow::ChartWindow(BMessenger target)
 
 	// Barre come voce predefinita (indice 0), stesso ordine dei valori
 	// dell'enum ChartType in Chart.h -- SelectedType() sotto si basa
-	// su questa corrispondenza posizionale.
+	// su questa corrispondenza posizionale. ChartTypeMenuItem (sopra)
+	// invece del semplice BMenuItem di prima: aggiunge un pittogramma
+	// a ogni voce, piu' immediato da riconoscere al volo di un nome
+	// testuale, come nella galleria grafici di Excel.
 	BPopUpMenu* typeMenu = new BPopUpMenu("typeMenu");
-	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Barre"), new BMessage(kMsgTypeChangedLocal)));
-	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Linee"), new BMessage(kMsgTypeChangedLocal)));
-	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Torta"), new BMessage(kMsgTypeChangedLocal)));
-	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Area"), new BMessage(kMsgTypeChangedLocal)));
-	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Dispersione (XY)"), new BMessage(kMsgTypeChangedLocal)));
-	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Combinato (barre+linee)"), new BMessage(kMsgTypeChangedLocal)));
-	typeMenu->AddItem(new BMenuItem(B_TRANSLATE("Barre orizzontali"), new BMessage(kMsgTypeChangedLocal)));
+	{
+		const char* labels[7] = {
+			B_TRANSLATE("Barre"), B_TRANSLATE("Linee"), B_TRANSLATE("Torta"),
+			B_TRANSLATE("Area"), B_TRANSLATE("Dispersione (XY)"),
+			B_TRANSLATE("Combinato (barre+linee)"), B_TRANSLATE("Barre orizzontali")
+		};
+		void (*drawIcon[7])(BView*) = {
+			DrawBarChartTypeIcon, DrawLineChartTypeIcon, DrawPieChartTypeIcon,
+			DrawAreaChartTypeIcon, DrawScatterChartTypeIcon, DrawComboChartTypeIcon,
+			DrawHBarChartTypeIcon
+		};
+		for (int i = 0; i < 7; i++)
+		{
+			BBitmap* icon = IconCatalog::RenderCustom(drawIcon[i]);
+			typeMenu->AddItem(new ChartTypeMenuItem(labels[i],
+				new BMessage(kMsgTypeChangedLocal), icon));
+			delete icon; // ChartTypeMenuItem ne fa una copia propria
+		}
+	}
 	typeMenu->ItemAt(0)->SetMarked(true);
 	fTypeField = new BMenuField("type", B_TRANSLATE("Tipo:"), typeMenu);
 	fTypeField->Menu()->SetTargetForItems(this);
@@ -137,6 +314,11 @@ ChartWindow::ChartWindow(BMessenger target)
 			.AddGlue()
 			.Add(fInsertButton)
 		.End();
+}
+
+BMenu* ChartWindow::TypeMenu() const
+{
+	return fTypeField->Menu();
 }
 
 ChartType ChartWindow::SelectedType() const

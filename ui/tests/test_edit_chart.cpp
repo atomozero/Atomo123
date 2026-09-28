@@ -28,12 +28,14 @@
 #include <cstring>
 
 #include <Application.h>
+#include <Menu.h>
 
 #include "Cell.h"
 #include "Container.h"
 #include "CellParser.h"
 #include "SheetView.h"
 #include "MainWindow.h"
+#include "ChartWindow.h"
 #include "Chart.h"
 
 static int gFailures = 0;
@@ -124,6 +126,19 @@ int main()
 	Check(true, "EditChart su un indice valido non va in crash");
 	win->EditChart(99);
 	Check(true, "EditChart su un indice fuori dai limiti non va in crash (nessun effetto)");
+
+	// Le 7 voci del menu Tipo esistono davvero (icone comprese: ognuna
+	// e' un ChartTypeMenuItem costruito con un'icona renderizzata da
+	// IconCatalog::RenderCustom) -- non verifica i pixel dell'icona, ma
+	// esercita l'intero percorso di costruzione senza crash.
+	BMenu* typeMenu = win->GetChartWindow() ? win->GetChartWindow()->TypeMenu() : NULL;
+	Check(typeMenu != NULL, "ChartWindow espone un menu Tipo dopo EditChart");
+	if (typeMenu)
+	{
+		Check(typeMenu->CountItems() == 7, "il menu Tipo ha le 7 voci previste");
+		for (int32 i = 0; i < typeMenu->CountItems(); i++)
+			Check(typeMenu->ItemAt(i) != NULL, "ogni voce del menu Tipo esiste (icona compresa)");
+	}
 
 	win->Unlock();
 
