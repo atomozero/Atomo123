@@ -75,13 +75,17 @@ void ChartView::Draw(BRect updateRect)
 		// Percorso completamente a parte (fScatterData, mai fData/
 		// fMultiData): niente serie multiple ne' torta per un grafico a
 		// dispersione, vedi il commento su ScatterPoint in Chart.h.
-		DrawScatterChart(this, Bounds(), fScatterData, fTitle);
+		DrawChartAntialiased(this, Bounds(), [&](BView* v, BRect f) {
+			DrawScatterChart(v, f, fScatterData, fTitle);
+		});
 		return;
 	}
 
 	if (!fIsMulti)
 	{
-		DrawChart(this, Bounds(), fData, fType, fTitle);
+		DrawChartAntialiased(this, Bounds(), [&](BView* v, BRect f) {
+			DrawChart(v, f, fData, fType, fTitle);
+		});
 		return;
 	}
 
@@ -104,18 +108,22 @@ void ChartView::Draw(BRect updateRect)
 				single.push_back(s);
 			}
 		}
-		DrawPieChart(this, Bounds(), single, fTitle);
+		DrawChartAntialiased(this, Bounds(), [&](BView* v, BRect f) {
+			DrawPieChart(v, f, single, fTitle);
+		});
 		return;
 	}
 
-	if (fType == eLineChart)
-		DrawMultiLineChart(this, Bounds(), fMultiData, fTitle);
-	else if (fType == eAreaChart)
-		DrawMultiAreaChart(this, Bounds(), fMultiData, fTitle);
-	else if (fType == eComboChart)
-		DrawComboChart(this, Bounds(), fMultiData, fTitle);
-	else if (fType == eHBarChart)
-		DrawGroupedHBarChart(this, Bounds(), fMultiData, fTitle);
-	else
-		DrawGroupedBarChart(this, Bounds(), fMultiData, fTitle);
+	DrawChartAntialiased(this, Bounds(), [&](BView* v, BRect f) {
+		if (fType == eLineChart)
+			DrawMultiLineChart(v, f, fMultiData, fTitle);
+		else if (fType == eAreaChart)
+			DrawMultiAreaChart(v, f, fMultiData, fTitle);
+		else if (fType == eComboChart)
+			DrawComboChart(v, f, fMultiData, fTitle);
+		else if (fType == eHBarChart)
+			DrawGroupedHBarChart(v, f, fMultiData, fTitle);
+		else
+			DrawGroupedBarChart(v, f, fMultiData, fTitle);
+	});
 }

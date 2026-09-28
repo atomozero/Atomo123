@@ -14,6 +14,7 @@
 #ifndef CHART_H
 #define CHART_H
 
+#include <functional>
 #include <vector>
 
 #include <Rect.h>
@@ -274,6 +275,25 @@ void DrawScatterChart(BView* view, BRect frame, const std::vector<ScatterPoint>&
 // tipo di grafico tocca un solo punto di dispatch.
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
 	ChartType type, const BString& title = BString());
+
+// Antialiasing manuale via supersampling per un intero disegno di
+// grafico (qualunque tipo: single o multi-serie, lo stesso principio
+// usato per le icone della toolbar, vedi
+// MainWindow::RenderCustomIcon). "drawFunc" viene chiamata UNA VOLTA su
+// una vista offscreen "factor" volte piu' grande con BView::SetScale
+// gia' attivo, con un rettangolo delle stesse dimensioni di "frame" ma
+// posizionato a (0,0) (la posizione reale non conta per un disegno
+// isolato su una bitmap a parte) -- il risultato viene poi ricampionato
+// con una media pesata sull'alpha e composto su "view" alla posizione
+// VERA di "frame". "factor" 2 di default (non 4 come le icone, minuscole
+// 16x16): un grafico tipico e' molto piu' grande, un fattore piu' alto
+// costerebbe piu' memoria/tempo senza un beneficio visivo proporzionale.
+// Nessuna cache qui: il chiamante decide se e quando richiamarla di
+// nuovo (vedi il commento su SheetView::Draw per la scelta di NON
+// mettere una cache lato grafico incorporato, almeno per questa prima
+// versione).
+void DrawChartAntialiased(BView* view, BRect frame,
+	const std::function<void(BView*, BRect)>& drawFunc, int factor = 2);
 
 // Dati di un grafico a PIU' serie (Fase 17): a differenza di
 // ChartSeries/BuildChartSeries sopra (un solo valore per categoria),

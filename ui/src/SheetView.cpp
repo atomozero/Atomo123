@@ -4234,7 +4234,9 @@ void SheetView::Draw(BRect updateRect)
 			{
 				std::vector<ScatterPoint> points;
 				BuildScatterSeries(fDoc, obj.dataRange, points);
-				DrawScatterChart(this, obj.frame, points, obj.title);
+				DrawChartAntialiased(this, obj.frame, [&](BView* v, BRect f) {
+					DrawScatterChart(v, f, points, obj.title);
+				});
 
 				SetHighColor(80, 80, 80);
 				FillRect(ChartResizeHandle(obj));
@@ -4276,16 +4278,18 @@ void SheetView::Draw(BRect updateRect)
 					: BuildMultiChartSeries(fDoc, obj.dataRange, multi, obj.valueColumns);
 				if (built)
 				{
-					if (obj.type == eLineChart)
-						DrawMultiLineChart(this, obj.frame, multi, obj.title);
-					else if (obj.type == eAreaChart)
-						DrawMultiAreaChart(this, obj.frame, multi, obj.title);
-					else if (obj.type == eComboChart)
-						DrawComboChart(this, obj.frame, multi, obj.title);
-					else if (obj.type == eHBarChart)
-						DrawGroupedHBarChart(this, obj.frame, multi, obj.title);
-					else
-						DrawGroupedBarChart(this, obj.frame, multi, obj.title);
+					DrawChartAntialiased(this, obj.frame, [&](BView* v, BRect f) {
+						if (obj.type == eLineChart)
+							DrawMultiLineChart(v, f, multi, obj.title);
+						else if (obj.type == eAreaChart)
+							DrawMultiAreaChart(v, f, multi, obj.title);
+						else if (obj.type == eComboChart)
+							DrawComboChart(v, f, multi, obj.title);
+						else if (obj.type == eHBarChart)
+							DrawGroupedHBarChart(v, f, multi, obj.title);
+						else
+							DrawGroupedBarChart(v, f, multi, obj.title);
+					});
 				}
 				// Maniglia di ridimensionamento (Fase 20): sempre
 				// visibile, stesso motivo gia' scritto per quella
@@ -4309,7 +4313,9 @@ void SheetView::Draw(BRect updateRect)
 
 			std::vector<ChartSeries> series;
 			BuildChartSeries(fDoc, obj.dataRange, series);
-			DrawChart(this, obj.frame, series, obj.type, obj.title);
+			DrawChartAntialiased(this, obj.frame, [&](BView* v, BRect f) {
+				DrawChart(v, f, series, obj.type, obj.title);
+			});
 
 			SetHighColor(80, 80, 80);
 			FillRect(ChartResizeHandle(obj));
