@@ -12,6 +12,7 @@
 #include "AutoFill.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -27,6 +28,7 @@
 #include <Directory.h>
 #include <Entry.h>
 #include <File.h>
+#include <ListView.h>
 #include <Menu.h>
 #include <MenuItem.h>
 #include <NodeInfo.h>
@@ -36,6 +38,7 @@
 #include <Region.h>
 #include <ScrollBar.h>
 #include <String.h>
+#include <StringItem.h>
 #include <TextControl.h>
 #include <TextView.h>
 #include <TranslatorRoster.h>
@@ -48,6 +51,7 @@
 #include "Constants.h"
 #include "Formatter.h"
 #include "FontMetrics.h"
+#include "FunctionUtils.h"
 #include "Preferences.h"
 
 #include "AscdIO.h"
@@ -66,6 +70,17 @@ static const uint32 kMsgCellEditCancel = 'cedc';
 // per Tab/Maiusc+Tab quando non si sta editando.
 static const uint32 kMsgCellEditCommitTabRight = 'cetr';
 static const uint32 kMsgCellEditCommitTabLeft = 'cetl';
+// Autocompletamento delle funzioni (vedi UpdateAutocomplete): inviato
+// da fEditor stesso (BTextControl::SetModificationMessage) dopo OGNI
+// modifica del testo -- inserimento o cancellazione, mai il puro
+// spostamento del cursore -- cosi' l'elenco resta sincronizzato anche
+// con Backspace o con un inserimento fatto da HandlePointModeArrow,
+// non solo con la digitazione diretta.
+static const uint32 kMsgCellEditTextChanged = 'cetc';
+// Inviato da AutocompleteAcceptListView sotto quando l'utente clicca
+// (non solo seleziona) una voce dell'elenco -- un click, non un
+// doppio click, accetta subito il suggerimento come in Excel.
+static const uint32 kMsgAutocompleteAccept = 'cead';
 
 // Definita piu' sotto (vicino a IsDefaultBg), usata sia da
 // RecalculateWrappedRowHeights che da Draw() -- dichiarata qui perche'
@@ -121,6 +136,26 @@ static std::string WrapCommentTip(const std::string& in, size_t width = 60)
 	return out;
 }
 
+// BListView dell'elenco di autocompletamento (vedi UpdateAutocomplete):
+// una BListView "nuda" cambia solo la selezione al clic, non la
+// accetta -- qui invece un click DEVE accettare subito il suggerimento
+// sotto al puntatore, come in Excel (non serve un doppio click). Invoke()
+// dopo la selezione normale della classe base manda il messaggio di
+// invocazione (impostato da ShowAutocomplete) al bersaglio.
+class AutocompleteAcceptListView : public BListView {
+public:
+	AutocompleteAcceptListView(BRect frame, const char* name)
+		: BListView(frame, name, B_SINGLE_SELECTION_LIST, B_FOLLOW_NONE)
+	{
+	}
+
+	virtual void MouseDown(BPoint where)
+	{
+		BListView::MouseDown(where);
+		Invoke();
+	}
+};
+
 // Filtro applicato alla BTextView interna del BTextControl usato per
 // l'editing in-cella: la BTextView interna e' quella che riceve
 // davvero il fuoco tastiera (BTextControl::MakeFocus lo inoltra a
@@ -148,6 +183,23 @@ public:
 		int32 rawChar;
 		if (message->FindInt32("raw_char", &rawChar) != B_OK)
 			return B_DISPATCH_MESSAGE;
+
+		// Autocompletamento delle funzioni (Excel/LibreOffice Calc): se
+		// l'elenco e' visibile, questi tasti lo riguardano PRIMA di
+		// qualunque altro significato (commit/annulla/modalita' punta).
+		// Su/Giu'/Invio/Tab/Escape vengono CONSUMATI qui (tornano true);
+		// Sinistra/Destra tornano sempre false (l'elenco diventerebbe
+		// comunque non piu' valido appena il cursore si sposta altrove
+		// nel testo, quindi si chiude come effetto collaterale) ma
+		// lasciano proseguire il tasto verso la modalita' punta/lo
+		// spostamento del cursore sotto, comportamento invariato.
+		if (rawChar == B_ESCAPE || rawChar == B_RETURN || rawChar == B_TAB
+			|| rawChar == B_UP_ARROW || rawChar == B_DOWN_ARROW
+			|| rawChar == B_LEFT_ARROW || rawChar == B_RIGHT_ARROW)
+		{
+			if (fTarget->HandleAutocompleteKey((char)rawChar))
+				return B_SKIP_MESSAGE;
+		}
 
 		if (rawChar == B_ESCAPE)
 		{
@@ -270,7 +322,10 @@ SheetView::SheetView(CContainer* doc)
 	fPointRefStart(0),
 	fPointRefEnd(0),
 	fPointIsRange(false),
-	fPointRangeAnchor(1, 1)
+	fPointRangeAnchor(1, 1),
+	fAutocompleteList(NULL),
+	fAutocompleteStart(0),
+	fAutocompleteEnd(0)
 {
 	SetViewColor(255, 255, 255);
 
@@ -5617,6 +5672,12 @@ void SheetView::MessageReceived(BMessage* message)
 		case kMsgCellEditCommitTabLeft:
 			CommitEditing(false, -1, 0);
 			break;
+		case kMsgCellEditTextChanged:
+			UpdateAutocomplete();
+			break;
+		case kMsgAutocompleteAccept:
+			AcceptAutocompleteSelection();
+			break;
 		case B_COPY_TARGET:
 		{
 			// Risposta di Tracker/di un'altra applicazione al
@@ -5730,12 +5791,22 @@ void SheetView::StartEditing(cell c, const char* initialText)
 
 	fEditingCell = c;
 	fPointMode = false;
+	// fAutocompleteList e' gia' NULL qui: se un editing precedente era
+	// in corso, "if (fEditor) CommitEditing(false);" appena sopra l'ha
+	// gia' chiuso (vedi HideAutocomplete li' dentro) prima di questo
+	// punto.
 
 	BRect r = CellRect(c);
 	fEditor = new BTextControl(r, "celledit", NULL, "",
 		new BMessage(kMsgCellEditCommit), B_FOLLOW_NONE, B_WILL_DRAW | B_NAVIGABLE);
 	fEditor->SetDivider(0);
 	fEditor->SetTarget(this);
+	// Autocompletamento delle funzioni (vedi UpdateAutocomplete): un
+	// messaggio dopo OGNI modifica del testo, non solo alla conferma --
+	// stesso meccanismo gia' usato da MainWindow::fFormulaBar
+	// (kMsgFormulaModified) per un motivo diverso (solo il footer "*"),
+	// qui per ricalcolare l'elenco a ogni tasto.
+	fEditor->SetModificationMessage(new BMessage(kMsgCellEditTextChanged));
 	AddChild(fEditor);
 
 	if (initialText)
@@ -5880,6 +5951,249 @@ bool SheetView::HandlePointModeArrow(char key, bool shift)
 	return true;
 }
 
+// Al massimo questo numero di corrispondenze mostrate insieme (Excel
+// stesso non mostra mai l'intero elenco delle centinaia di funzioni
+// esistenti in una volta sola) -- ricerca lineare su gFuncArrayByName:
+// anche con qualche centinaio di funzioni, il costo resta trascurabile
+// a ogni tasto premuto durante l'editing, non serve la ricerca binaria
+// che l'ordinamento alfabetico di quell'array permetterebbe.
+static const int kMaxAutocompleteMatches = 8;
+
+// Righe "NOME  descrizione" (una stringa sola per voce: BStringItem
+// non supporta due font/stili diversi nella stessa riga, una
+// semplificazione accettata rispetto al vero elenco a due colonne di
+// Excel) per ogni funzione il cui nome inizia con "prefix"
+// (case-insensitive: l'utente puo' scrivere "sum" o "SUM" allo stesso
+// modo). Vuoto se gFuncArrayByName non e' ancora pronto (nessuna
+// funzione con nome caricata in questo eseguibile) o "prefix" e' vuoto.
+static void FindMatchingFunctions(const char* prefix, std::vector<BString>* outLabels)
+{
+	outLabels->clear();
+	if (!prefix || !prefix[0] || !gFuncArrayByName)
+		return;
+
+	size_t prefixLen = strlen(prefix);
+	for (long i = 0; i < gFuncCount && (int)outLabels->size() < kMaxAutocompleteMatches; i++)
+	{
+		if (strncasecmp(gFuncArrayByName[i].funcName, prefix, prefixLen) != 0)
+			continue;
+
+		BString label(gFuncArrayByName[i].funcName);
+		const char* desc = gFuncDescriptions ? gFuncDescriptions[gFuncArrayByName[i].funcNr] : NULL;
+		if (desc && desc[0])
+			label << "  " << desc;
+		outLabels->push_back(label);
+	}
+}
+
+// Richiamata dopo ogni modifica del testo dell'editor in-cella (vedi
+// il messaggio di modifica impostato in StartEditing): ricalcola quale
+// identificatore precede il cursore e mostra/aggiorna/nasconde
+// l'elenco di conseguenza. Stesso principio di "posizione che si
+// aspetta un operando" gia' usato da HandlePointModeArrow sopra, ma
+// applicato all'ALTRO lato del confine: li' serve che l'ultimo
+// carattere SIA un operatore (per puntare), qui che il carattere
+// PRIMA dell'identificatore in corso lo sia (l'identificatore stesso
+// e' fatto di lettere/cifre/'.', mai di operatori).
+void SheetView::UpdateAutocomplete()
+{
+	if (!fEditor || !fEditor->TextView())
+	{
+		HideAutocomplete();
+		return;
+	}
+
+	BTextView* tv = fEditor->TextView();
+	int32 selStart, selEnd;
+	tv->GetSelection(&selStart, &selEnd);
+	if (selStart != selEnd)
+	{
+		HideAutocomplete();
+		return;
+	}
+
+	const char* text = tv->Text();
+	int32 len = tv->TextLength();
+
+	// Ha senso completare nomi di funzione solo dentro una vera formula.
+	if (len == 0 || text[0] != '=')
+	{
+		HideAutocomplete();
+		return;
+	}
+
+	// Torna indietro dal cursore raccogliendo un identificatore valido
+	// (lettere, cifre, '.' -- come "NORM.DIST"): il prefisso da
+	// completare.
+	int32 idStart = selStart;
+	while (idStart > 0
+		&& (isalnum((unsigned char)text[idStart - 1]) || text[idStart - 1] == '.'))
+		idStart--;
+
+	if (idStart == selStart)
+	{
+		HideAutocomplete(); // niente identificatore in corso
+		return;
+	}
+
+	// Il carattere PRIMA dell'identificatore deve aspettarsi un
+	// operando (o essere l'inizio della formula, subito dopo "="):
+	// altrimenti l'identificatore trovato e' in realta' la coda di un
+	// riferimento di cella gia' completo (es. "A1" dopo aver scritto
+	// "=A1"), non l'inizio di un nome di funzione.
+	int32 j = idStart - 1;
+	while (j >= 0 && (text[j] == ' ' || text[j] == '\t'))
+		j--;
+	bool operandPosition = (j < 0) || strchr("=+-*/^(,:<>&", text[j]) != NULL;
+	if (!operandPosition)
+	{
+		HideAutocomplete();
+		return;
+	}
+
+	BString prefix;
+	prefix.SetTo(text + idStart, selStart - idStart);
+
+	std::vector<BString> labels;
+	FindMatchingFunctions(prefix.String(), &labels);
+
+	if (labels.empty())
+	{
+		HideAutocomplete();
+		return;
+	}
+
+	fAutocompleteStart = idStart;
+	fAutocompleteEnd = selStart;
+	ShowAutocomplete(labels);
+}
+
+void SheetView::ShowAutocomplete(const std::vector<BString>& labels)
+{
+	if (!fAutocompleteList)
+	{
+		fAutocompleteList = new AutocompleteAcceptListView(BRect(0, 0, 1, 1), "autocomplete");
+		fAutocompleteList->SetInvocationMessage(new BMessage(kMsgAutocompleteAccept));
+		fAutocompleteList->SetTarget(this);
+		AddChild(fAutocompleteList);
+	}
+
+	fAutocompleteList->MakeEmpty();
+	for (size_t i = 0; i < labels.size(); i++)
+		fAutocompleteList->AddItem(new BStringItem(labels[i].String()));
+	fAutocompleteList->Select(0);
+
+	// Posizionato subito sotto la cella in editing -- stessa idea di
+	// FillHandleRect/altre piccole geometrie derivate dal rettangolo
+	// della cella in questo file. Larghezza/altezza fisse per questa
+	// prima versione (nessun adattamento al contenuto piu' lungo o
+	// evitamento del bordo della viewport, un limite dichiarato, non
+	// un bug): un elenco di massimo 8 righe resta comunque leggibile
+	// anche se qualche descrizione lunga viene tagliata dalla vista.
+	BRect cellRect = CellRect(fEditingCell);
+	float itemHeight = fAutocompleteList->ItemAt(0)->Height();
+	fAutocompleteList->MoveTo(cellRect.left, cellRect.bottom + 1);
+	fAutocompleteList->ResizeTo(260, itemHeight * labels.size());
+	fAutocompleteList->Invalidate();
+}
+
+void SheetView::HideAutocomplete()
+{
+	if (fAutocompleteList)
+	{
+		fAutocompleteList->RemoveSelf();
+		delete fAutocompleteList;
+		fAutocompleteList = NULL;
+	}
+}
+
+void SheetView::AcceptAutocompleteSelection()
+{
+	if (!fAutocompleteList || !fEditor || !fEditor->TextView())
+	{
+		HideAutocomplete();
+		return;
+	}
+
+	int32 sel = fAutocompleteList->CurrentSelection();
+	if (sel < 0)
+	{
+		HideAutocomplete();
+		return;
+	}
+
+	// L'etichetta e' "NOME  descrizione" (vedi FindMatchingFunctions):
+	// il nome vero finisce al primo doppio spazio, o alla fine
+	// dell'etichetta se la funzione non ha una descrizione.
+	BStringItem* item = (BStringItem*)fAutocompleteList->ItemAt(sel);
+	BString label(item->Text());
+	int32 sep = label.FindFirst("  ");
+	BString funcName;
+	if (sep >= 0)
+		label.CopyInto(funcName, 0, sep);
+	else
+		funcName = label;
+
+	BTextView* tv = fEditor->TextView();
+	tv->Delete(fAutocompleteStart, fAutocompleteEnd);
+	// "(" subito dopo il nome, come Excel: l'utente e' quasi sempre
+	// pronto a scrivere il primo argomento, non ha senso fargli
+	// digitare anche la parentesi a mano.
+	BString insertText(funcName);
+	insertText << "(";
+	tv->Insert(fAutocompleteStart, insertText.String(), insertText.Length());
+	int32 caretPos = fAutocompleteStart + insertText.Length();
+	tv->Select(caretPos, caretPos);
+
+	HideAutocomplete();
+}
+
+// Richiamata da CellEditKeyFilter PRIMA di qualunque altro significato
+// per Escape/Invio/Tab/Su/Giu'/Sinistra/Destra -- vedi il commento li'.
+bool SheetView::HandleAutocompleteKey(char key)
+{
+	if (!fAutocompleteList)
+		return false;
+
+	switch (key)
+	{
+		case B_UP_ARROW:
+		{
+			int32 sel = fAutocompleteList->CurrentSelection();
+			if (sel > 0)
+				fAutocompleteList->Select(sel - 1);
+			return true;
+		}
+		case B_DOWN_ARROW:
+		{
+			int32 sel = fAutocompleteList->CurrentSelection();
+			if (sel < fAutocompleteList->CountItems() - 1)
+				fAutocompleteList->Select(sel + 1);
+			return true;
+		}
+		case B_RETURN:
+		case B_TAB:
+			AcceptAutocompleteSelection();
+			return true;
+		case B_ESCAPE:
+			HideAutocomplete();
+			return true;
+		case B_LEFT_ARROW:
+		case B_RIGHT_ARROW:
+			// Il cursore si sta per spostare fuori dall'identificatore
+			// appena completato: l'elenco corrente non sarebbe piu'
+			// valido, ma il tasto deve comunque proseguire il suo
+			// percorso normale (spostamento del cursore/modalita'
+			// punta) -- non e' "consumato" qui, solo l'occasione per
+			// chiudere un elenco che altrimenti resterebbe visibile ma
+			// non piu' sincronizzato con la posizione del cursore.
+			HideAutocomplete();
+			return false;
+		default:
+			return false;
+	}
+}
+
 // Protezione foglio (Fase 32): vedi il commento in SheetView.h. Un
 // intervallo con "left"/"right"/"top"/"bottom" fuori dai limiti del
 // foglio (es. una selezione a riga/colonna intera, non ancora
@@ -5936,6 +6250,12 @@ void SheetView::CommitEditing(bool cancel, int moveH, int moveV)
 	// nessun resto visivo fuori da quel singolo rettangolo dopo la
 	// conferma/l'annullamento.
 	ExitPointMode();
+	// L'elenco di autocompletamento e' un child view vero (vedi
+	// ShowAutocomplete): va rimosso esplicitamente qui, altrimenti
+	// resterebbe agganciato a SheetView per sempre (un vero leak di
+	// view, non solo un residuo visivo) se una modifica viene
+	// confermata/annullata mentre l'elenco e' ancora visibile.
+	HideAutocomplete();
 
 	// "Pronto" nel footer (Fase 17): sia che il valore venga scritto
 	// sia che l'editing venga annullato, l'editor in-cella e' comunque
