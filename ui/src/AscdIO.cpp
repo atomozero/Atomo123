@@ -1604,6 +1604,41 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione colori personalizzati per serie di grafico incorporato, in
+	// coda (Fase colori): stesso schema esatto della sezione colonne
+	// valore piu' sopra (un conteggio+elenco per grafico), ma con un
+	// colore invece di un int16. A DIFFERENZA del colore di scheda
+	// foglio (che scrive solo RGB, alpha sempre 255 in lettura), qui
+	// l'alpha e' significativo e va scritto per intero: alpha 0 e' il
+	// segnaposto "nessun colore scelto per questa posizione" (vedi
+	// SeriesColor() in Chart.h) -- scrivere solo RGB e ricostruire
+	// sempre alpha 255 in lettura trasformerebbe silenziosamente un
+	// segnaposto "non impostato" in un vero nero opaco dopo un giro
+	// salva/ricarica. VUOTO per la stragrande maggioranza dei grafici
+	// (nessun colore personalizzato scelto, il comportamento di
+	// sempre). Un file scritto prima di questo campo (o senza questa
+	// sezione) lascia ogni seriesColors vuoto, cioe' la tavolozza
+	// predefinita di sempre.
+	{
+		int32 chartSeriesColorCount = charts ? (int32)charts->size() : 0;
+		if (dest->Write(&chartSeriesColorCount, sizeof(chartSeriesColorCount))
+				!= (ssize_t)sizeof(chartSeriesColorCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < chartSeriesColorCount; i++)
+		{
+			const std::vector<rgb_color>& colors = (*charts)[i].seriesColors;
+			int32 colorCount = (int32)colors.size();
+			if (dest->Write(&colorCount, sizeof(colorCount)) != (ssize_t)sizeof(colorCount))
+				return B_IO_ERROR;
+			for (int32 c = 0; c < colorCount; c++)
+			{
+				uint8 rgba[4] = { colors[c].red, colors[c].green, colors[c].blue, colors[c].alpha };
+				if (dest->Write(rgba, sizeof(rgba)) != (ssize_t)sizeof(rgba))
+					return B_IO_ERROR;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -3676,6 +3711,44 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					obj.title = title;
 					slicers->push_back(obj);
 				}
+			}
+		}
+	}
+
+	// Sezione colori personalizzati per serie di grafico incorporato,
+	// scritta da SaveASCD in coda DOPO tutto il resto (Fase colori):
+	// stesso principio EOF-tollerante di sopra. RGBA per intero (non
+	// solo RGB): vedi il commento gemello in SaveASCD sul perche'
+	// l'alpha e' significativo qui (0 = "nessun colore scelto per
+	// questa posizione", non un vero colore trasparente).
+	{
+		int32 chartSeriesColorCount = 0;
+		ssize_t got = source->Read(&chartSeriesColorCount, sizeof(chartSeriesColorCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartSeriesColorCount) || chartSeriesColorCount < 0
+					|| chartSeriesColorCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < chartSeriesColorCount; i++)
+			{
+				int32 colorCount;
+				if (source->Read(&colorCount, sizeof(colorCount)) != (ssize_t)sizeof(colorCount))
+					return B_BAD_DATA;
+				if (colorCount < 0 || colorCount > 4096)
+					return B_BAD_DATA;
+				std::vector<rgb_color> colors(colorCount);
+				for (int32 c = 0; c < colorCount; c++)
+				{
+					uint8 rgba[4];
+					if (source->Read(rgba, sizeof(rgba)) != (ssize_t)sizeof(rgba))
+						return B_BAD_DATA;
+					colors[c].red = rgba[0];
+					colors[c].green = rgba[1];
+					colors[c].blue = rgba[2];
+					colors[c].alpha = rgba[3];
+				}
+				if (charts && i < (int32)charts->size())
+					(*charts)[i].seriesColors = colors;
 			}
 		}
 	}

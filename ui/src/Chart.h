@@ -17,6 +17,7 @@
 #include <functional>
 #include <vector>
 
+#include <GraphicsDefs.h>
 #include <Rect.h>
 #include <String.h>
 
@@ -117,7 +118,31 @@ struct ChartObject {
 	// questo campo): resta per colonna, zero cambio di comportamento.
 	bool rowOriented;
 	std::vector<int16> valueRows;
+	// Colori personalizzati per serie (opzionale): VUOTO significa "usa
+	// la tavolozza predefinita" (kPieColors in Chart.cpp), il
+	// comportamento di sempre -- zero cambio per ogni grafico esistente.
+	// Per un grafico a SINGOLA serie (barre/linee/area/barre
+	// orizzontali/dispersione), solo l'indice 0 e' significativo (il
+	// "colore" unico del grafico) -- stesso vettore, non un campo
+	// separato. La torta resta esclusa apposta (mantiene sempre la
+	// tavolozza per fetta, gia' multicolore di suo). Vedi la sezione
+	// dedicata, EOF-tollerante, in AscdIO.cpp, e SeriesColor() sotto per
+	// la logica di fallback.
+	std::vector<rgb_color> seriesColors;
 };
+
+// Colore della serie "index": l'override in "overrides" se presente a
+// quell'indice CON alpha > 0, altrimenti la tavolozza predefinita
+// (kPieColors in Chart.cpp, file-locale). alpha 0 e' il segnaposto
+// "nessun colore scelto qui" (un colore vero scelto in ColorWindow e'
+// sempre opaco) -- necessario perche' ridimensionare il vettore per
+// fare posto a un indice alto crea slot intermedi a zero che altrimenti
+// verrebbero letti come "nero trasparente" invece di ricadere sulla
+// tavolozza. Unico punto che ogni Draw*Chart consulta per un colore di
+// serie, cosi' un grafico senza nessun colore personalizzato (il caso
+// comune, "overrides" vuoto) si comporta esattamente come prima
+// dell'introduzione di questo campo.
+rgb_color SeriesColor(const std::vector<rgb_color>& overrides, size_t index);
 
 // L'intervallo deve avere esattamente due colonne: la prima con le
 // etichette (categoria), la seconda con i valori numerici -- una
@@ -168,8 +193,13 @@ void ComputeBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 // letti dal vivo sul proprio thread, che possiede il documento).
 // "title" e' opzionale (vedi ChartObject::title): una stringa vuota non
 // disegna nulla e non riserva spazio in piu' rispetto a prima.
+// "seriesColors" opzionale (Fase colori, vedi ChartObject::seriesColors):
+// solo l'indice 0 conta per un grafico a singola serie, il "colore" unico
+// del grafico -- VUOTO (il comportamento di sempre) usa la tavolozza
+// predefinita via SeriesColor().
 void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	const BString& title = BString());
+	const BString& title = BString(),
+	const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>());
 
 struct HBarLayout {
 	BRect bar;
@@ -188,8 +218,10 @@ void ComputeHBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 // plotArea, invece di griglia orizzontale + etichette a sinistra.
 void DrawXAxisGrid(BView* view, BRect plotArea, double minValue, double maxValue);
 
+// "seriesColors" opzionale: vedi il commento su DrawBarChart sopra.
 void DrawHBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	const BString& title = BString());
+	const BString& title = BString(),
+	const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>());
 
 struct LinePoint {
 	BPoint point;
@@ -201,8 +233,10 @@ struct LinePoint {
 void ComputeLineLayout(const std::vector<ChartSeries>& data, BRect bounds,
 	std::vector<LinePoint>& out);
 
+// "seriesColors" opzionale: vedi il commento su DrawBarChart sopra.
 void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	const BString& title = BString());
+	const BString& title = BString(),
+	const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>());
 
 struct PieSlice {
 	float startAngle;	// gradi, 0 = ore 3, senso antiorario (convenzione BView::FillArc)
@@ -226,8 +260,10 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 // colore -- stesso asse Y/stessa scala di barre e linee. Un valore
 // negativo riempie sotto lo zero fino al punto, mai sopra: coerente con
 // come ComputeLineLayout gia' posiziona un punto negativo.
+// "seriesColors" opzionale: vedi il commento su DrawBarChart sopra.
 void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	const BString& title = BString());
+	const BString& title = BString(),
+	const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>());
 
 // Grafico a dispersione/XY (Fase 35): a differenza di TUTTI i tipi
 // sopra (una categoria testuale + un valore), qui ENTRAMBE le colonne
@@ -266,15 +302,23 @@ void ComputeScatterLayout(const std::vector<ScatterPoint>& data, BRect bounds,
 // qui apposta (non tramite ComputeYAxisTicks/DrawYAxisGrid, condivisi
 // con barre/linee/aree e pensati per una scala che include sempre lo
 // zero).
+// "seriesColors" opzionale: vedi il commento su DrawBarChart sopra
+// (qui il colore riguarda i pallini, non essendoci ChartSeries).
 void DrawScatterChart(BView* view, BRect frame, const std::vector<ScatterPoint>& data,
-	const BString& title = BString());
+	const BString& title = BString(),
+	const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>());
 
 // Smista verso DrawBarChart/DrawLineChart/DrawPieChart secondo "type"
 // -- unico punto di ingresso condiviso da ChartView e SheetView (vedi
 // i commenti su DrawBarChart sopra), cosi' aggiungere un futuro nuovo
 // tipo di grafico tocca un solo punto di dispatch.
+// "seriesColors" opzionale: inoltrato a DrawBarChart/DrawLineChart/
+// DrawAreaChart/DrawHBarChart secondo "type" -- ignorato per ePieChart
+// (vedi il commento su ChartObject::seriesColors, la torta resta
+// esclusa apposta).
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	ChartType type, const BString& title = BString());
+	ChartType type, const BString& title = BString(),
+	const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>());
 
 // Antialiasing manuale via supersampling per un intero disegno di
 // grafico (qualunque tipo: single o multi-serie, lo stesso principio
@@ -327,6 +371,15 @@ struct MultiChartData {
 	// piu' corto di seriesNames) e' trattato come "visibile", stesso
 	// principio permissivo del resto dell'app.
 	std::vector<bool> showValues;
+	// Stesso principio di ChartObject::seriesColors (Fase colori): VUOTO
+	// significa "usa la tavolozza predefinita". A differenza di
+	// showValues sopra (SOLO anteprima di ChartWindow, mai persistito),
+	// questo campo viene copiato da ChartObject::seriesColors PRIMA di
+	// ogni chiamata a Draw*Chart per un grafico incorporato -- vedi
+	// SheetView::Draw/MainWindow::GeneratePrintPreviewPages -- cosi' un
+	// colore personalizzato e salvato si vede anche nel grafico vero sul
+	// foglio, non solo nell'anteprima della finestra Grafico.
+	std::vector<rgb_color> seriesColors;
 };
 
 // L'intervallo deve avere almeno due colonne: la prima con le

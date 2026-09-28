@@ -4298,7 +4298,7 @@ void SheetView::Draw(BRect updateRect)
 				std::vector<ScatterPoint> points;
 				BuildScatterSeries(fDoc, obj.dataRange, points);
 				DrawChartAntialiased(this, obj.frame, [&](BView* v, BRect f) {
-					DrawScatterChart(v, f, points, obj.title);
+					DrawScatterChart(v, f, points, obj.title, obj.seriesColors);
 				});
 
 				SetHighColor(80, 80, 80);
@@ -4339,6 +4339,7 @@ void SheetView::Draw(BRect updateRect)
 				bool built = obj.rowOriented
 					? BuildMultiChartSeriesRows(fDoc, obj.dataRange, multi, obj.valueRows)
 					: BuildMultiChartSeries(fDoc, obj.dataRange, multi, obj.valueColumns);
+				multi.seriesColors = obj.seriesColors;
 				if (built)
 				{
 					DrawChartAntialiased(this, obj.frame, [&](BView* v, BRect f) {
@@ -4377,7 +4378,7 @@ void SheetView::Draw(BRect updateRect)
 			std::vector<ChartSeries> series;
 			BuildChartSeries(fDoc, obj.dataRange, series);
 			DrawChartAntialiased(this, obj.frame, [&](BView* v, BRect f) {
-				DrawChart(v, f, series, obj.type, obj.title);
+				DrawChart(v, f, series, obj.type, obj.title, obj.seriesColors);
 			});
 
 			SetHighColor(80, 80, 80);

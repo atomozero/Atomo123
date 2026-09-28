@@ -53,6 +53,8 @@ class BMenu;
 class BMenuField;
 class BTextControl;
 class ChartView;
+class ChartColorSwatch;
+class ColorWindow;
 
 class ChartWindow : public BWindow {
 public:
@@ -77,7 +79,7 @@ public:
 	// invece di kMsgChartInsert -- vedi MainWindow::EditChart/
 	// HandleChartUpdate.
 	void LoadForEdit(int chartIndex, const char* rangeText, const char* title, ChartType type,
-		bool rowOriented);
+		bool rowOriented, const std::vector<rgb_color>& seriesColors);
 
 	// Usata da MainWindow::ShowChartWindow PRIMA di ogni altra cosa,
 	// incondizionatamente: senza multi-selezione attiva LoadRange sopra
@@ -131,6 +133,33 @@ private:
 	BBox* fSeriesCheckboxBox;
 	BView* fSeriesCheckboxRow;
 	std::vector<BCheckBox*> fSeriesCheckboxes;
+	// Riquadretti di colore, uno per serie, affiancati alle checkbox
+	// sopra nella stessa riga -- stesso ciclo di vita esatto
+	// (ricostruiti da RebuildSeriesCheckboxes/svuotati da
+	// ClearSeriesCheckboxes insieme alle checkbox). Un clic su uno apre
+	// fSeriesColorWindow per quella sola serie.
+	std::vector<ChartColorSwatch*> fSeriesColorSwatches;
+	// Colori scelti dall'utente per serie (Fase colori): indicizzato
+	// come fSeriesCheckboxes/fMultiData.seriesNames, preservato fra una
+	// richiesta e l'altra per NOME di serie in RebuildSeriesCheckboxes
+	// (stesso principio dello stato spuntata/non spuntata delle
+	// checkbox). alpha 0 = "non ancora scelto per questa serie", vedi
+	// SeriesColor() in Chart.h.
+	std::vector<rgb_color> fSeriesColorOverrides;
+	// Riquadretto di colore per un grafico a SINGOLA serie (barre/linee/
+	// area/barre orizzontali/dispersione): un solo colore per l'intero
+	// grafico, mostrato vicino al campo Tipo invece che nella riga serie
+	// (che per un grafico a singola serie resta nascosta). alpha 0 =
+	// "non scelto", stesso principio di fSeriesColorOverrides sopra.
+	ChartColorSwatch* fChartColorSwatch;
+	rgb_color fChartColor;
+	// Finestra Colore di PROPRIETA' di questa finestra (non quella
+	// condivisa di MainWindow, sempre puntata a se stessa via
+	// BMessenger(this)) -- creata al volo al primo clic su uno
+	// swatch, riusata per ogni scelta successiva. Vedi
+	// ColorWindow::SetTarget/SetSeriesIndex per il perche' serve
+	// un'istanza propria invece di condividere quella di MainWindow.
+	ColorWindow* fSeriesColorWindow;
 
 	ChartType SelectedType() const;
 	// Corpo comune di kMsgDrawLocal e LoadRange sopra: applica il
@@ -147,6 +176,10 @@ private:
 	void RebuildSeriesCheckboxes(MultiChartData* data);
 	// Nessuna checkbox da mostrare per un grafico a singola serie.
 	void ClearSeriesCheckboxes();
+	// Apre (creando fSeriesColorWindow al volo se serve) il selettore di
+	// colore per la serie "index", o per l'intero grafico se index < 0
+	// (vedi il commento su kMsgChartColorButtonLocal in ChartWindow.cpp).
+	void ShowSeriesColorPicker(int index);
 };
 
 #endif

@@ -51,6 +51,26 @@ void ChartView::SetSeriesShowValues(int index, bool show)
 	Invalidate();
 }
 
+void ChartView::SetSeriesColor(int index, rgb_color color)
+{
+	if (index < 0)
+		return;
+	// Slot intermedi creati da resize restano alpha 0 ("non impostato",
+	// vedi SeriesColor() in Chart.cpp) finche' l'utente non li tocca a
+	// loro volta -- solo l'indice richiesto qui diventa un vero override.
+	if (index >= (int)fMultiData.seriesColors.size())
+		fMultiData.seriesColors.resize(index + 1, rgb_color{0, 0, 0, 0});
+	fMultiData.seriesColors[index] = color;
+	Invalidate();
+}
+
+void ChartView::SetChartColor(rgb_color color)
+{
+	fSingleColors.resize(1);
+	fSingleColors[0] = color;
+	Invalidate();
+}
+
 void ChartView::SetChartType(ChartType type)
 {
 	fType = type;
@@ -76,7 +96,7 @@ void ChartView::Draw(BRect updateRect)
 		// fMultiData): niente serie multiple ne' torta per un grafico a
 		// dispersione, vedi il commento su ScatterPoint in Chart.h.
 		DrawChartAntialiased(this, Bounds(), [&](BView* v, BRect f) {
-			DrawScatterChart(v, f, fScatterData, fTitle);
+			DrawScatterChart(v, f, fScatterData, fTitle, fSingleColors);
 		});
 		return;
 	}
@@ -84,7 +104,7 @@ void ChartView::Draw(BRect updateRect)
 	if (!fIsMulti)
 	{
 		DrawChartAntialiased(this, Bounds(), [&](BView* v, BRect f) {
-			DrawChart(v, f, fData, fType, fTitle);
+			DrawChart(v, f, fData, fType, fTitle, fSingleColors);
 		});
 		return;
 	}

@@ -26,7 +26,8 @@ ColorWindow::ColorWindow(BMessenger target)
 		B_NOT_ZOOMABLE | B_NOT_RESIZABLE | B_AUTO_UPDATE_SIZE_LIMITS
 			| B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target),
-	fColorTarget(eTextColor)
+	fColorTarget(eTextColor),
+	fSeriesIndex(-1)
 {
 	fColorControl = new BColorControl(BPoint(0, 0), B_CELLS_32x8, 8, "colorControl");
 
@@ -51,6 +52,7 @@ void ColorWindow::SetMode(ColorTarget target, rgb_color initial)
 		case eBackgroundColor: SetTitle(B_TRANSLATE("Colore sfondo")); break;
 		case eBorderColor: SetTitle(B_TRANSLATE("Colore bordo")); break;
 		case eTabColor: SetTitle(B_TRANSLATE("Colore scheda")); break;
+		case eSeriesColor: SetTitle(B_TRANSLATE("Colore serie")); break;
 		default: SetTitle(B_TRANSLATE("Colore testo")); break;
 	}
 	fColorControl->SetValue(initial);
@@ -64,6 +66,9 @@ void ColorWindow::MessageReceived(BMessage* message)
 		BMessage request(kMsgColorRequest);
 		request.AddData("color", B_RGB_COLOR_TYPE, &color, sizeof(rgb_color));
 		request.AddInt32("target", (int32)fColorTarget);
+		// Innocuo/mai letto dai quattro bersagli storici (MainWindow non
+		// cerca mai questo campo nel suo gestore di kMsgColorRequest).
+		request.AddInt32("seriesIndex", fSeriesIndex);
 		fTarget.SendMessage(&request);
 		return;
 	}
