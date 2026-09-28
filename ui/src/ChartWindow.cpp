@@ -223,6 +223,15 @@ ChartWindow::ChartWindow(BMessenger target)
 	BButton* drawButton = new BButton("draw", B_TRANSLATE("Disegna"), new BMessage(kMsgDrawLocal));
 	drawButton->SetTarget(this);
 
+	// "Scambia righe/colonne" (vedi il commento su fRowOrientedCheckbox
+	// in ChartWindow.h): spento di default, stesso comportamento di
+	// sempre (rowOriented=false) finche' non lo si tocca. Stesso
+	// messaggio kMsgDrawLocal di fRangeField/fTitleField: toccarlo
+	// ridisegna subito l'anteprima con l'orientamento scelto.
+	fRowOrientedCheckbox = new BCheckBox("rowOriented",
+		B_TRANSLATE("Scambia righe/colonne"), new BMessage(kMsgDrawLocal));
+	fRowOrientedCheckbox->SetTarget(this);
+
 	// Barre come voce predefinita (indice 0), stesso ordine dei valori
 	// dell'enum ChartType in Chart.h -- SelectedType() sotto si basa
 	// su questa corrispondenza posizionale. ChartTypeMenuItem (sopra)
@@ -307,6 +316,7 @@ ChartWindow::ChartWindow(BMessenger target)
 			.Add(fTypeField)
 			.Add(drawButton)
 		.End()
+		.Add(fRowOrientedCheckbox)
 		.Add(fSeriesCheckboxBox)
 		.Add(fChartView)
 		.AddGroup(B_HORIZONTAL)
@@ -344,15 +354,17 @@ void ChartWindow::LoadRange(const char* rangeText)
 {
 	SetEditingChartIndex(-1);
 	fRangeField->SetText(rangeText);
+	fRowOrientedCheckbox->SetValue(B_CONTROL_OFF);
 	RequestDraw();
 }
 
 void ChartWindow::LoadForEdit(int chartIndex, const char* rangeText, const char* title,
-	ChartType type)
+	ChartType type, bool rowOriented)
 {
 	SetEditingChartIndex(chartIndex);
 	fRangeField->SetText(rangeText);
 	fTitleField->SetText(title);
+	fRowOrientedCheckbox->SetValue(rowOriented ? B_CONTROL_ON : B_CONTROL_OFF);
 
 	// Corrispondenza inversa di SelectedType() sopra: stessa
 	// corrispondenza posizionale (0=Barre, 1=Linee, 2=Torta, 3=Area,
@@ -407,6 +419,11 @@ void ChartWindow::RequestDraw()
 	// avrebbe modo di saperlo dalla sola forma dell'intervallo (due
 	// colonne e' anche la forma normale di un grafico a barre/linee).
 	request.AddInt32("type", (int32)SelectedType());
+	// Scambia righe/colonne (semplice, contigue -- vedi il commento su
+	// fRowOrientedCheckbox in ChartWindow.h): MainWindow::HandleChartRequest
+	// deve saperlo PRIMA di leggere l'intervallo, stesso motivo del tipo
+	// sopra.
+	request.AddBool("rowOriented", fRowOrientedCheckbox->Value() == B_CONTROL_ON);
 	fTarget.SendMessage(&request);
 }
 
@@ -479,6 +496,7 @@ void ChartWindow::MessageReceived(BMessage* message)
 
 		case kMsgInsertLocal:
 		{
+			bool rowOriented = fRowOrientedCheckbox->Value() == B_CONTROL_ON;
 			if (fEditingChartIndex >= 0)
 			{
 				BMessage request(kMsgChartUpdate);
@@ -486,6 +504,7 @@ void ChartWindow::MessageReceived(BMessage* message)
 				request.AddString("range", fRangeField->Text());
 				request.AddInt32("type", (int32)SelectedType());
 				request.AddString("title", fTitleField->Text());
+				request.AddBool("rowOriented", rowOriented);
 				fTarget.SendMessage(&request);
 				return;
 			}
@@ -494,6 +513,7 @@ void ChartWindow::MessageReceived(BMessage* message)
 			request.AddString("dest", fDestField->Text());
 			request.AddInt32("type", (int32)SelectedType());
 			request.AddString("title", fTitleField->Text());
+			request.AddBool("rowOriented", rowOriented);
 			fTarget.SendMessage(&request);
 			return;
 		}
