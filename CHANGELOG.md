@@ -33,7 +33,12 @@ What shipped since v0.4.0 (in progress):
   in-cell: after typing `=`, an operator, `(` or `,`, the arrow keys now
   insert a cell reference instead of moving the text cursor (Shift+
   arrow extends it to a range), exactly like pressing an arrow key in
-  Excel's formula bar. Implemented in `SheetView::HandlePointModeArrow`,
+  Excel's formula bar. The cell/range currently being pointed at also
+  gets a bold orange dashed outline on the grid itself (tuned brighter
+  after the first pass looked too faint) — distinct from both the
+  selection's blue border and the fill-preview's own blue dashed one,
+  since all three can be on screen together. Implemented in
+  `SheetView::HandlePointModeArrow`,
   hooked into the existing `CellEditKeyFilter` (the same `BMessageFilter`
   already intercepting Escape/Return/Tab during in-cell editing).
   Pressing the same arrow again *replaces* the just-inserted reference
