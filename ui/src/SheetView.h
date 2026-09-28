@@ -1220,6 +1220,27 @@ private:
 
 	BTextControl* fEditor;
 	cell fEditingCell;
+	// "Modalita' punta" (come Excel/LibreOffice Calc): dopo "=", un
+	// operatore, "(" o "," dentro l'editor in-cella, le frecce inseriscono
+	// un riferimento invece di spostare il cursore di testo -- vedi
+	// HandlePointModeArrow piu' sotto. fPointMode e' vero solo per la
+	// sessione corrente (dall'ultima freccia digitata a qualunque altro
+	// tasto): la freccia successiva SOSTITUISCE il riferimento appena
+	// inserito invece di accumularne un altro, esattamente come in Excel
+	// (freccia, freccia, freccia sposta lo stesso riferimento, non ne
+	// scrive tre in fila).
+	bool fPointMode;
+	cell fPointAnchor;
+	int32 fPointRefStart;
+	int32 fPointRefEnd;
+	// Maiusc+Freccia durante la modalita' punta estende a un intervallo
+	// invece che a una singola cella (es. dentro "=SUM(", freccia poi
+	// Maiusc+Freccia costruisce "B1:C2"): fPointRangeAnchor e' l'angolo
+	// FISSO dell'intervallo, fissato alla prima Maiusc+Freccia della
+	// sessione corrente, non piu' spostato dalle frecce successive finche'
+	// la sessione resta la stessa.
+	bool fPointIsRange;
+	cell fPointRangeAnchor;
 
 	static const int kColWidth = 80;
 	static const int kRowHeight = 20;
@@ -1277,6 +1298,28 @@ private:
 	// (+1, 0)/(-1, 0), stesso spostamento gia' usato da HandleKey
 	// quando Tab e' premuto FUORI dall'editing.
 	void CommitEditing(bool cancel, int moveH = 0, int moveV = 1);
+
+	// Le due funzioni sotto sono l'unica eccezione "pubblica" in questa
+	// sezione altrimenti privata (vedi il "private:" in cima al file):
+	// CellEditKeyFilter (SheetView.cpp) e' una classe a parte, non un
+	// metodo di SheetView ne' una sua friend, e ha bisogno di chiamarle
+	// come vere funzioni C++ dirette (non tramite BMessage/BMessenger
+	// come gia' fa per Escape/Invio/Tab sopra) per poter decidere subito,
+	// in modo sincrono, se saltare o no l'evento tastiera -- un
+	// messaggio asincrono non potrebbe restituire quella risposta in
+	// tempo.
+public:
+	// Chiamata da CellEditKeyFilter (SheetView.cpp) quando una freccia
+	// viene premuta durante l'editing in-cella: vero se il tasto e' stato
+	// consumato come "modalita' punta" (riferimento inserito/aggiornato),
+	// falso se non era un punto valido per puntare (allora la BTextView
+	// muove il cursore di testo come al solito, comportamento invariato).
+	bool HandlePointModeArrow(char key, bool shift);
+	// Chiude la sessione di modalita' punta corrente (vedi il commento
+	// sui campi fPoint* sopra) senza toccare il testo dell'editor: la
+	// prossima freccia digitata ne aprira' una nuova, ancorata di nuovo
+	// alla cella in editing.
+	void ExitPointMode()	{ fPointMode = false; }
 };
 
 #endif
