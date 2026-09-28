@@ -29,6 +29,11 @@ What shipped since v0.4.2 (in progress):
   Applies to every value label across single- and multi-series bar/
   line/area/hbar/combo charts. Axis tick labels are unchanged (a
   synthetic numeric scale, no single source cell to format from).
+- Legend swatches (pie chart, and the shared legend used by grouped
+  bar/hbar, multi-line, multi-area and combo charts) now have a thin
+  gray outline instead of a plain color fill, so a light series color
+  no longer blends into the white background. New `DrawLegendSwatch`
+  helper, same outline technique already used for the chart frame.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
