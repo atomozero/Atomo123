@@ -77,6 +77,22 @@ What shipped since v0.4.2 (in progress):
   import can produce stays an import-only field, never exposed here.
   Needed no new undo code: the whole-`ChartObject` undo snapshot added
   earlier this session for the chart editor already covers it.
+- Chart editor: each series (and, for single-series chart types, the
+  whole chart) now has a small clickable color swatch next to it,
+  opening the same color picker window already used elsewhere in the
+  app to override the default palette color. Previously every chart
+  used the same 8-color rotation with no way to change it. New
+  `ChartObject::seriesColors` field (empty by default, zero behavior
+  change for every existing chart) and a `SeriesColor()` helper used at
+  every bar/line/area/hbar/scatter/grouped/multi-series draw site
+  (pie charts intentionally excluded — they already need one color per
+  slice, and extending that to per-slice overrides was judged out of
+  scope for this pass). Colors are indexed by series position, not by
+  sheet column, so they stay meaningful even if a chart's range is later
+  resized. Persisted natively in a new EOF-tolerant `.ascd` trailing
+  section (older files load with an empty, default-palette
+  `seriesColors`, same convention as every other optional section in
+  this format).
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
