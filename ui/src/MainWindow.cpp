@@ -3741,7 +3741,8 @@ void MainWindow::EditChart(int chartIndex)
 	FormatRangeRef(obj.dataRange, rangeText, sizeof(rangeText));
 	if (fChartWindow->Lock())
 	{
-		fChartWindow->LoadForEdit(chartIndex, rangeText, obj.title.String(), obj.type);
+		fChartWindow->LoadForEdit(chartIndex, rangeText, obj.title.String(), obj.type,
+			obj.rowOriented);
 		fChartWindow->Unlock();
 	}
 
@@ -5666,7 +5667,7 @@ void MainWindow::HandleGoToName(const char* name)
 // dati estratti via BMessage: sia la lettura del documento sia la
 // costruzione del messaggio di risposta girano sul thread di
 // MainWindow (che possiede fDoc), mai su quello di ChartWindow.
-void MainWindow::HandleChartRequest(const char* rangeText, ChartType type)
+void MainWindow::HandleChartRequest(const char* rangeText, ChartType type, bool rowOriented)
 {
 	if (!fDoc || !fChartWindow)
 		return;
@@ -5706,6 +5707,46 @@ void MainWindow::HandleChartRequest(const char* rangeText, ChartType type)
 			data.AddDouble("x", points[i].x);
 			data.AddDouble("y", points[i].y);
 		}
+		BMessenger(fChartWindow).SendMessage(&data);
+		return;
+	}
+
+	// Scambia righe/colonne (checkbox "Scambia righe/colonne" in
+	// ChartWindow, caso semplice: stesso intervallo rettangolare,
+	// l'asse opposto diventa le categorie, righe contigue implicite --
+	// vedi il commento su ChartWindow::fRowOrientedCheckbox). Prima del
+	// controllo "piu' di due colonne" sotto: un intervallo per riga puo'
+	// benissimo avere due sole colonne (etichetta + una sola serie).
+	// r.top e' SEMPRE la riga di categoria per questo orientamento
+	// (BuildMultiChartSeriesRows legge le etichette da cell(col, r.top)
+	// incondizionatamente, vedi il commento su valueRows in Chart.h) --
+	// valueRows parte quindi da r.top+1, MAI da r.top stesso, altrimenti
+	// la riga di categoria verrebbe letta anche come riga serie (valori
+	// non numerici, ogni colonna risulterebbe scartata).
+	if (rowOriented)
+	{
+		std::vector<int16> valueRows;
+		for (int row = r.top + 1; row <= r.bottom; row++)
+			valueRows.push_back((int16)row);
+
+		MultiChartData multi;
+		if (!BuildMultiChartSeriesRows(fDoc, r, multi, valueRows))
+		{
+			BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
+				B_TRANSLATE("Intervallo non valido: serve almeno una colonna numerica "
+					"in ogni riga serie."), B_TRANSLATE("OK"));
+			alert->Go();
+			return;
+		}
+
+		BMessage data(kMsgChartDataMulti);
+		for (size_t c = 0; c < multi.categories.size(); c++)
+			data.AddString("category", multi.categories[c]);
+		for (size_t s = 0; s < multi.seriesNames.size(); s++)
+			data.AddString("seriesName", multi.seriesNames[s]);
+		for (size_t s = 0; s < multi.values.size(); s++)
+			for (size_t c = 0; c < multi.values[s].size(); c++)
+				data.AddDouble("value", multi.values[s][c]);
 		BMessenger(fChartWindow).SendMessage(&data);
 		return;
 	}
@@ -5767,7 +5808,7 @@ void MainWindow::HandleChartRequest(const char* rangeText, ChartType type)
 // formato nativo (vedi AscdIO.cpp) e legge i dati dal vivo ogni volta
 // che si ridisegna, non un'istantanea fissa come l'anteprima.
 void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
-	ChartType type, const char* title)
+	ChartType type, const char* title, bool rowOriented)
 {
 	if (!fDoc)
 		return;
@@ -5784,20 +5825,36 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 		return;
 	}
 
+	// Righe usate come serie (caso semplice: righe contigue, vedi il
+	// commento in HandleChartRequest) -- calcolate qui, PRIMA della
+	// validazione sotto, cosi' sia la validazione sia l'eventuale
+	// ChartObject usano esattamente lo stesso elenco.
+	std::vector<int16> valueRows;
+	if (rowOriented)
+	{
+		for (int row = dataRange.top + 1; row <= dataRange.bottom; row++)
+			valueRows.push_back((int16)row);
+	}
+
 	// Validazione: il ChartObject memorizza solo l'intervallo (letto
 	// dal vivo a ogni ridisegno da SheetView, vedi il commento sopra),
 	// quindi qui basta verificare che i dati abbiano una forma valida,
-	// non serve tenerli. Dispersione (Fase 35) prima di tutto il resto,
-	// stesso motivo di HandleChartRequest sopra: due colonne e' anche
-	// la forma normale di barre/linee, serve il tipo per distinguere.
-	// Due colonne senza dispersione (o meno) usano la validazione a
-	// singola serie di sempre; piu' colonne quella a serie multiple
+	// non serve tenerli. Dispersione (Fase 35) e "scambia righe/colonne"
+	// prima di tutto il resto, stesso motivo di HandleChartRequest
+	// sopra: due colonne e' anche la forma normale di barre/linee, serve
+	// tipo/orientamento per distinguere. Il resto usa la validazione a
+	// singola serie di sempre, o quella a serie multiple per colonna
 	// (Fase 17, vedi MultiChartData in Chart.h).
 	bool validData;
 	if (type == eScatterChart)
 	{
 		std::vector<ScatterPoint> points;
 		validData = BuildScatterSeries(fDoc, dataRange, points);
+	}
+	else if (rowOriented)
+	{
+		MultiChartData multi;
+		validData = BuildMultiChartSeriesRows(fDoc, dataRange, multi, valueRows);
 	}
 	else if (dataRange.right - dataRange.left > 1)
 	{
@@ -5828,6 +5885,8 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 	obj.frame.Set(origin.x, origin.y, origin.x + 300, origin.y + 180);
 	obj.type = type;
 	obj.title = title;
+	obj.rowOriented = rowOriented;
+	obj.valueRows = valueRows;
 	fCharts.push_back(obj);
 
 	fSheetView->Invalidate();
@@ -5843,7 +5902,7 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 // DeleteSelectedChart (che cattura l'intero oggetto prima di
 // rimuoverlo).
 void MainWindow::HandleChartUpdate(int chartIndex, const char* rangeText, ChartType type,
-	const char* title)
+	const char* title, bool rowOriented)
 {
 	if (!fDoc || chartIndex < 0 || chartIndex >= (int)fCharts.size())
 		return;
@@ -5858,12 +5917,28 @@ void MainWindow::HandleChartUpdate(int chartIndex, const char* rangeText, ChartT
 		return;
 	}
 
-	// Stessa validazione per tipo di HandleChartInsert sopra.
+	// Righe usate come serie (caso semplice: righe contigue) se
+	// l'orientamento e' attivo -- stesso calcolo di HandleChartInsert
+	// sopra, PRIMA della validazione cosi' entrambe usano lo stesso
+	// elenco.
+	std::vector<int16> valueRows;
+	if (rowOriented)
+	{
+		for (int row = dataRange.top + 1; row <= dataRange.bottom; row++)
+			valueRows.push_back((int16)row);
+	}
+
+	// Stessa validazione per tipo/orientamento di HandleChartInsert sopra.
 	bool validData;
 	if (type == eScatterChart)
 	{
 		std::vector<ScatterPoint> points;
 		validData = BuildScatterSeries(fDoc, dataRange, points);
+	}
+	else if (rowOriented)
+	{
+		MultiChartData multi;
+		validData = BuildMultiChartSeriesRows(fDoc, dataRange, multi, valueRows);
 	}
 	else if (dataRange.right - dataRange.left > 1)
 	{
@@ -5887,22 +5962,22 @@ void MainWindow::HandleChartUpdate(int chartIndex, const char* rangeText, ChartT
 	fSheetView->SaveChartEditUndoState(chartIndex, fCharts[chartIndex]);
 
 	ChartObject& obj = fCharts[chartIndex];
-	// I campi di importazione avanzata (valueColumns/rowOriented/
-	// valueRows, mai esposti da questa finestra) restano quelli di
-	// prima SOLO se l'intervallo non e' stato davvero cambiato -- un
-	// intervallo diverso li renderebbe incoerenti (riferirebbero
-	// colonne/righe fuori dal nuovo dataRange), stesso principio
-	// prudente gia' seguito altrove in questo file quando i dati
-	// cambiano forma.
+	// valueColumns (importazione, mai esposto da questa finestra) resta
+	// quello di prima SOLO se l'intervallo non e' stato davvero cambiato
+	// -- un intervallo diverso lo renderebbe incoerente (riferirebbe
+	// colonne fuori dal nuovo dataRange), stesso principio prudente gia'
+	// seguito altrove in questo file quando i dati cambiano forma.
+	// rowOriented/valueRows invece seguono SEMPRE la nuova casella
+	// "Scambia righe/colonne": una volta che questa finestra tocca un
+	// grafico, la casella diventa l'unica fonte di verita' per quei due
+	// campi, non piu' "preservati" da uno stato di importazione precedente.
 	if (!(dataRange == obj.dataRange))
-	{
 		obj.valueColumns.clear();
-		obj.rowOriented = false;
-		obj.valueRows.clear();
-	}
 	obj.dataRange = dataRange;
 	obj.type = type;
 	obj.title = title;
+	obj.rowOriented = rowOriented;
+	obj.valueRows = valueRows;
 	// obj.frame invariato apposta: la posizione/dimensione di un
 	// grafico gia' incorporato non cambia editandolo (vedi il campo
 	// destinazione nascosto in ChartWindow::SetEditingChartIndex).
@@ -8629,9 +8704,11 @@ void MainWindow::MessageReceived(BMessage* message)
 		{
 			BString rangeText;
 			int32 type = eBarChart;
+			bool rowOriented = false;
 			message->FindInt32("type", &type);
+			message->FindBool("rowOriented", &rowOriented);
 			if (message->FindString("range", &rangeText) == B_OK)
-				HandleChartRequest(rangeText.String(), (ChartType)type);
+				HandleChartRequest(rangeText.String(), (ChartType)type, rowOriented);
 			break;
 		}
 
@@ -8639,12 +8716,14 @@ void MainWindow::MessageReceived(BMessage* message)
 		{
 			BString rangeText, destText, titleText;
 			int32 type = eBarChart;
+			bool rowOriented = false;
 			message->FindInt32("type", &type);
 			message->FindString("title", &titleText);
+			message->FindBool("rowOriented", &rowOriented);
 			if (message->FindString("range", &rangeText) == B_OK
 				&& message->FindString("dest", &destText) == B_OK)
 				HandleChartInsert(rangeText.String(), destText.String(), (ChartType)type,
-					titleText.String());
+					titleText.String(), rowOriented);
 			break;
 		}
 
@@ -8653,11 +8732,14 @@ void MainWindow::MessageReceived(BMessage* message)
 			BString rangeText, titleText;
 			int32 type = eBarChart;
 			int32 index = -1;
+			bool rowOriented = false;
 			message->FindInt32("type", &type);
 			message->FindString("title", &titleText);
+			message->FindBool("rowOriented", &rowOriented);
 			if (message->FindInt32("index", &index) == B_OK
 				&& message->FindString("range", &rangeText) == B_OK)
-				HandleChartUpdate(index, rangeText.String(), (ChartType)type, titleText.String());
+				HandleChartUpdate(index, rangeText.String(), (ChartType)type, titleText.String(),
+					rowOriented);
 			break;
 		}
 

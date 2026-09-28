@@ -76,7 +76,8 @@ public:
 	// (kMsgInsertLocal) la finestra manda kMsgChartUpdate con "index"
 	// invece di kMsgChartInsert -- vedi MainWindow::EditChart/
 	// HandleChartUpdate.
-	void LoadForEdit(int chartIndex, const char* rangeText, const char* title, ChartType type);
+	void LoadForEdit(int chartIndex, const char* rangeText, const char* title, ChartType type,
+		bool rowOriented);
 
 	// Usata da MainWindow::ShowChartWindow PRIMA di ogni altra cosa,
 	// incondizionatamente: senza multi-selezione attiva LoadRange sopra
@@ -103,6 +104,14 @@ private:
 	BTextControl* fTitleField;
 	BTextControl* fRangeField;
 	BMenuField* fTypeField;
+	// "Scambia righe/colonne" (Fase colori/orientamento, richiesta
+	// esplicita dell'utente): espone SOLO il caso semplice di Excel
+	// (reinterpreta lo stesso intervallo rettangolare con l'asse
+	// opposto come categorie, righe contigue implicite) -- l'elenco di
+	// righe non contigue (ChartObject::valueRows quando popolato
+	// dall'importazione XLSX) resta un campo di sola importazione, mai
+	// esposto qui, stesso limite dichiarato di valueColumns.
+	BCheckBox* fRowOrientedCheckbox;
 	BTextControl* fDestField;
 	BButton* fInsertButton;
 	ChartView* fChartView;

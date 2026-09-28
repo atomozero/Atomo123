@@ -189,17 +189,19 @@ public:
 	void ReplaceCurrent(const char* searchText, const char* replaceText);
 	void ReplaceAll(const char* searchText, const char* replaceText);
 	void HandleChartInsert(const char* rangeText, const char* destText,
-		ChartType type = eBarChart, const char* title = "");
+		ChartType type = eBarChart, const char* title = "", bool rowOriented = false);
 	// Come HandleChartInsert, ma aggiorna il grafico ESISTENTE
-	// all'indice dato (intervallo/tipo/titolo) invece di aggiungerne uno
-	// nuovo -- posizione/dimensione (ChartObject::frame) e i campi di
-	// importazione avanzata (valueColumns/rowOriented/valueRows, mai
-	// esposti da questa finestra) restano quelli di prima, a meno che
-	// l'intervallo non sia stato davvero cambiato (vedi il commento nel
-	// .cpp). Annullabile come ogni altra modifica a un grafico
-	// incorporato.
+	// all'indice dato (intervallo/tipo/titolo/orientamento) invece di
+	// aggiungerne uno nuovo -- posizione/dimensione (ChartObject::frame)
+	// e valueColumns (mai esposto da questa finestra) restano quelli di
+	// prima, a meno che l'intervallo non sia stato davvero cambiato (vedi
+	// il commento nel .cpp); rowOriented/valueRows invece seguono
+	// SEMPRE il valore corrente della nuova casella "Scambia
+	// righe/colonne", mai "preservati" dallo stato precedente (vedi il
+	// commento nel .cpp). Annullabile come ogni altra modifica a un
+	// grafico incorporato.
 	void HandleChartUpdate(int chartIndex, const char* rangeText, ChartType type,
-		const char* title);
+		const char* title, bool rowOriented = false);
 	// Pubblico apposta (stesso motivo di HandleChartInsert sopra):
 	// riapre ChartWindow precompilata con le impostazioni ATTUALI di un
 	// grafico gia' incorporato, invece dei valori di default di
@@ -903,7 +905,7 @@ private:
 	void ShowFindWindow();
 	void ShowChartWindow();
 	void ShowPivotWindow();
-	void HandleChartRequest(const char* rangeText, ChartType type);
+	void HandleChartRequest(const char* rangeText, ChartType type, bool rowOriented = false);
 	void ShowNameWindow();
 	void RefreshNameWindow();
 	void ShowPasteSpecialWindow();
