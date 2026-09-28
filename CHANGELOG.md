@@ -4,7 +4,7 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
-What shipped since v0.4.0 (in progress):
+What shipped in v0.4.1, on top of v0.4.0:
 - Circular reference detection: a formula that refers to its own cell
   (directly, like `=A1+A2+A3+A4` written into A4 itself, or indirectly
   through a chain of other formulas) used to silently compute an
