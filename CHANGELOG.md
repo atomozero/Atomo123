@@ -48,6 +48,16 @@ What shipped since v0.4.2 (in progress):
   live preview, and the print-preview renderer. No render cache for
   now; only worth adding later if repaint cost turns out to be an
   actual measured problem.
+- Chart editor: double-clicking an already-embedded chart reopens the
+  same chart window used to create it, precompiled with its current
+  intervallo/type/title, instead of the only previous option (delete
+  and recreate from scratch, losing position/size). Confirming updates
+  the existing chart in place; the button reads "Aggiorna" and the
+  destination field hides itself while editing, since position doesn't
+  change. Undoable like every other chart mutation. Advanced
+  import-only fields (non-contiguous value columns/row orientation,
+  never exposed by this editor) survive an edit that leaves the range
+  text unchanged, and reset if the range is actually changed.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
