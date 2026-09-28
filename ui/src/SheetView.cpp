@@ -52,6 +52,7 @@
 
 #include "AscdIO.h"
 #include "PrintLayout.h"
+#include "RangeRef.h"
 
 #undef B_TRANSLATION_CONTEXT
 #define B_TRANSLATION_CONTEXT "SheetView"
@@ -139,7 +140,7 @@ static std::string WrapCommentTip(const std::string& in, size_t width = 60)
 // di commit esplicitamente.
 class CellEditKeyFilter : public BMessageFilter {
 public:
-	CellEditKeyFilter(BHandler* target)
+	CellEditKeyFilter(SheetView* target)
 		: BMessageFilter(B_KEY_DOWN), fTarget(target) {}
 
 	virtual filter_result Filter(BMessage* message, BHandler** target)
@@ -172,11 +173,46 @@ public:
 				? kMsgCellEditCommitTabLeft : kMsgCellEditCommitTabRight);
 			return B_SKIP_MESSAGE;
 		}
+		if (rawChar == B_UP_ARROW || rawChar == B_DOWN_ARROW
+			|| rawChar == B_LEFT_ARROW || rawChar == B_RIGHT_ARROW)
+		{
+			// Modalita' punta (Excel/LibreOffice Calc): vedi il commento
+			// su HandlePointModeArrow in SheetView.h/.cpp. Chiamata come
+			// funzione C++ diretta (fTarget e' gia' un SheetView*, non
+			// serve passare da un messaggio/Invoke) -- stesso principio
+			// gia' usato altrove in questo file (es. MouseDown chiama
+			// CommitEditing direttamente).
+			int32 modifiers = 0;
+			message->FindInt32("modifiers", &modifiers);
+			if (fTarget->HandlePointModeArrow((char)rawChar,
+				(modifiers & B_SHIFT_KEY) != 0))
+				return B_SKIP_MESSAGE;
+			// Non era un punto valido per puntare (es. cursore a meta'
+			// testo, o l'ultimo carattere non era uno che si aspetta un
+			// operando dopo di se'): lascia che la BTextView muova il
+			// cursore di testo come sempre, nessun cambiamento di
+			// comportamento rispetto a prima di questa funzione.
+			return B_DISPATCH_MESSAGE;
+		}
+		// Qualunque altro tasto (una cifra, una lettera, un operatore
+		// digitato normalmente...) chiude la sessione di modalita' punta
+		// corrente: la freccia successiva ne apre una nuova, ancorata
+		// alla cella in editing, invece di continuare a spostare un
+		// riferimento che l'utente ha gia' smesso di puntare. I tasti
+		// modificatori da soli (Maiusc/Ctrl/Alt, che generano anch'essi
+		// un B_KEY_DOWN con raw_char uguale al proprio codice) sono
+		// esclusi apposta: altrimenti tenere premuto Maiusc PRIMA di una
+		// freccia (per Maiusc+Freccia, l'estensione a intervallo)
+		// chiuderebbe la sessione appena aperta un istante prima che la
+		// freccia stessa arrivi.
+		if (rawChar != B_SHIFT_KEY && rawChar != B_CONTROL_KEY
+			&& rawChar != B_OPTION_KEY && rawChar != B_COMMAND_KEY)
+			fTarget->ExitPointMode();
 		return B_DISPATCH_MESSAGE;
 	}
 
 private:
-	BHandler* fTarget;
+	SheetView* fTarget;
 };
 
 SheetView::SheetView(CContainer* doc)
@@ -228,7 +264,13 @@ SheetView::SheetView(CContainer* doc)
 	fExportingImageIndex(-1),
 	fHasAutoFilter(false),
 	fEditor(NULL),
-	fEditingCell(1, 1)
+	fEditingCell(1, 1),
+	fPointMode(false),
+	fPointAnchor(1, 1),
+	fPointRefStart(0),
+	fPointRefEnd(0),
+	fPointIsRange(false),
+	fPointRangeAnchor(1, 1)
 {
 	SetViewColor(255, 255, 255);
 
@@ -5658,6 +5700,7 @@ void SheetView::StartEditing(cell c, const char* initialText)
 		modeWin->SetCellMode(true);
 
 	fEditingCell = c;
+	fPointMode = false;
 
 	BRect r = CellRect(c);
 	fEditor = new BTextControl(r, "celledit", NULL, "",
@@ -5711,6 +5754,96 @@ void SheetView::StartEditing(cell c, const char* initialText)
 		int32 len = (int32)strlen(fEditor->Text());
 		fEditor->TextView()->Select(len, len);
 	}
+}
+
+// Modalita' punta (Excel/LibreOffice Calc): chiamata da
+// CellEditKeyFilter quando una freccia viene premuta durante l'editing
+// in-cella. Punta solo se il cursore di testo e' alla FINE del testo
+// corrente (niente inserimento a meta' formula per questa prima
+// versione: costruire una formula scrivendo da sinistra a destra resta
+// il caso normale, sia in Excel sia qui) E l'ultimo carattere non
+// vuoto e' uno che si aspetta un operando dopo di se' -- "=", un
+// operatore aritmetico/di confronto, "(" o ",". Senza questo secondo
+// controllo, premere una freccia mentre si scrive un numero o un testo
+// normale (mai iniziato a puntare) sposterebbe il cursore di testo in
+// modo sorprendente invece di limitarsi al comportamento standard della
+// BTextView.
+bool SheetView::HandlePointModeArrow(char key, bool shift)
+{
+	if (!fEditor || !fEditor->TextView())
+		return false;
+
+	BTextView* tv = fEditor->TextView();
+	int32 selStart, selEnd;
+	tv->GetSelection(&selStart, &selEnd);
+	int32 len = tv->TextLength();
+	if (selStart != selEnd || selStart != len)
+		return false;
+
+	if (!fPointMode)
+	{
+		const char* text = tv->Text();
+		int32 i = len - 1;
+		while (i >= 0 && (text[i] == ' ' || text[i] == '\t'))
+			i--;
+		if (i < 0 || strchr("=+-*/^(,:<>", text[i]) == NULL)
+			return false;
+		fPointRefStart = len;
+	}
+
+	// La sessione precedente (se gia' attiva) continua a muoversi a
+	// partire dall'ultima cella puntata, non da capo dalla cella in
+	// editing -- esattamente come una vera freccia sposterebbe la
+	// selezione di una cella alla volta a partire da dove si trova
+	// adesso, non da dove si trovava all'inizio.
+	cell base = fPointMode ? fPointAnchor : fEditingCell;
+	cell next = base;
+	switch (key)
+	{
+		case B_UP_ARROW:	next.v--; break;
+		case B_DOWN_ARROW:	next.v++; break;
+		case B_LEFT_ARROW:	next.h--; break;
+		case B_RIGHT_ARROW:	next.h++; break;
+		default:		return false;
+	}
+	if (next.h < 1) next.h = 1;
+	if (next.v < 1) next.v = 1;
+
+	range refRange;
+	if (shift)
+	{
+		// Maiusc+Freccia: estende a un intervallo invece di spostare un
+		// riferimento a singola cella. Il primo Maiusc+Freccia della
+		// sessione fissa l'angolo dell'intervallo alla cella puntata
+		// finora (non a "base", che sarebbe gia' stata spostata da
+		// questa stessa chiamata) -- Maiusc+Freccia successivi nella
+		// STESSA sessione continuano a estendere da quell'angolo fisso,
+		// mai da quello appena raggiunto.
+		if (!fPointIsRange)
+			fPointRangeAnchor = base;
+		fPointIsRange = true;
+		refRange = range(
+			std::min(fPointRangeAnchor.h, next.h), std::min(fPointRangeAnchor.v, next.v),
+			std::max(fPointRangeAnchor.h, next.h), std::max(fPointRangeAnchor.v, next.v));
+	}
+	else
+	{
+		fPointIsRange = false;
+		refRange = range(next.h, next.v, next.h, next.v);
+	}
+
+	char refText[64];
+	FormatRangeRef(refRange, refText, sizeof(refText));
+
+	if (fPointMode)
+		tv->Delete(fPointRefStart, fPointRefEnd);
+	tv->Insert(fPointRefStart, refText, (int32)strlen(refText));
+	fPointRefEnd = fPointRefStart + (int32)strlen(refText);
+	tv->Select(fPointRefEnd, fPointRefEnd);
+
+	fPointAnchor = next;
+	fPointMode = true;
+	return true;
 }
 
 // Protezione foglio (Fase 32): vedi il commento in SheetView.h. Un

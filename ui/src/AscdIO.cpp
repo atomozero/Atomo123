@@ -13,6 +13,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <map>
+#include <set>
 #include <string>
 
 #include "Cell.h"
@@ -3706,17 +3707,121 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 // NextExisting resta comunque efficiente su un range pieno: salta
 // direttamente da una cella esistente alla successiva tramite la
 // mappa, senza scandire le celle vuote in mezzo.
+// Dichiarata qui, definita piu' sotto: RecalculateAll (subito sotto
+// MarkCircularReferences) ne ha bisogno prima del punto in cui il
+// corpo vero e proprio compare in questo file.
+static void CollectFormulaCells(CContainer* doc, std::vector<cell>* outCells);
+
+// Testo mostrato in una cella la cui formula fa parte di un
+// riferimento circolare (diretto: "=A1" scritta in A1 stessa; o
+// indiretto: A1 dipende da B1 che a sua volta dipende di nuovo da
+// A1) -- bug reale segnalato da un utente: "=A1+A2+A3+A4" scritta in
+// A4 stessa non dava nessun errore, calcolava un valore arbitrario
+// (circa 30000 con A1=100/A2=200/A3=300). Il motivo e' meccanico, non
+// casuale: ogni passata di RecalculatePass legge il valore ANCORA NON
+// AGGIORNATO di A4 e ci somma sopra 600, quindi A4 cresce linearmente
+// di 600 a ogni passata senza mai convergere -- dopo le 50 passate del
+// "guard" qui sotto, il risultato e' esattamente circa 600*50=30000,
+// non un numero a caso. LibreOffice Calc mostra "Err:522" per lo
+// stesso caso; qui un marcatore testuale altrettanto inequivocabile,
+// nella stessa famiglia delle stringhe di errore "#NOME!" gia'
+// familiari a chi usa fogli di calcolo.
+static const char* kCircularRefText = "#CIRCULAR!";
+
+// Visita in profondita' (DFS) a partire da "c", seguendo i precedenti
+// diretti di ogni cella con formula incontrata (GetPrecedents, lo
+// stesso meccanismo gia' usato dalle viste di controllo formule --
+// Path to full Excel parity Tier 2). "state" segna quali celle sono
+// attualmente nello stack di visita (1) o gia' completate (2): se un
+// precedente e' GIA' nello stack, il path corrente da quel punto in
+// poi e' un ciclo vero, e ogni cella coinvolta finisce in
+// "outCircular". Ricorsiva (non uno stack esplicito come il vecchio
+// CCalcStack di Sum-It, mai arrivato a fare da vera protezione contro
+// la ricorsione in questo codice): la profondita' e' limitata dalla
+// catena di riferimenti diretti piu' lunga del foglio, che anche per
+// un foglio enorme resta ben dentro lo stack di un thread moderno.
+// Come GetPrecedents stesso, vede solo riferimenti sullo stesso
+// foglio: un ciclo che passa per un altro foglio non viene rilevato
+// qui, limite gia' documentato per l'auditing delle formule (vedi
+// Container.h), non nuovo con questa funzione.
+static void VisitForCircularCheck(CContainer* doc, const cell& c,
+	std::map<cell, int>& state, std::vector<cell>& path, std::set<cell>* outCircular)
+{
+	state[c] = 1;
+	path.push_back(c);
+
+	std::vector<cell> precedents;
+	doc->GetPrecedents(c, precedents);
+	for (size_t i = 0; i < precedents.size(); i++)
+	{
+		const cell& next = precedents[i];
+		std::map<cell, int>::iterator found = state.find(next);
+		int nextState = (found != state.end()) ? found->second : 0;
+
+		if (nextState == 1)
+		{
+			bool inCycle = false;
+			for (size_t k = 0; k < path.size(); k++)
+			{
+				if (path[k] == next)
+					inCycle = true;
+				if (inCycle)
+					outCircular->insert(path[k]);
+			}
+		}
+		else if (nextState == 0 && doc->GetCellFormula(next))
+			VisitForCircularCheck(doc, next, state, path, outCircular);
+	}
+
+	path.pop_back();
+	state[c] = 2;
+}
+
+// Individua ogni cella di "formulaCells" che fa parte di un
+// riferimento circolare e la marca SUBITO con kCircularRefText (stesso
+// meccanismo di CContainer::SetValue su una cella che ha gia' una
+// formula: sovrascrive solo il valore memorizzato, la formula resta
+// intatta -- l'utente puo' ancora vederla/correggerla). Ritorna
+// l'insieme delle celle marcate perche' RecalculatePass/
+// RecalculateWorkbook le escludano dalla normale valutazione: una
+// formula vera le sovrascriverebbe di nuovo a ogni passata, vanificando
+// il marcatore appena impostato.
+static std::set<cell> MarkCircularReferences(CContainer* doc,
+	const std::vector<cell>& formulaCells)
+{
+	std::set<cell> circular;
+	std::map<cell, int> state;
+
+	for (size_t i = 0; i < formulaCells.size(); i++)
+	{
+		if (state.find(formulaCells[i]) == state.end())
+		{
+			std::vector<cell> path;
+			VisitForCircularCheck(doc, formulaCells[i], state, path, &circular);
+		}
+	}
+
+	for (std::set<cell>::iterator it = circular.begin(); it != circular.end(); it++)
+		doc->SetValue(*it, Value(kCircularRefText));
+
+	return circular;
+}
+
 // Una singola passata su "doc" (usata sia da RecalculateAll che da
 // RecalculateWorkbook sotto): true se almeno una cella ha cambiato
 // valore, cioe' se serve un'altra passata per raggiungere la
-// convergenza.
-static bool RecalculatePass(CContainer* doc)
+// convergenza. "circular" (vedi MarkCircularReferences sopra) viene
+// saltata qui apposta -- altrimenti la formula vera la sovrascriverebbe
+// di nuovo, cancellando il marcatore d'errore appena impostato.
+static bool RecalculatePass(CContainer* doc, const std::set<cell>& circular)
 {
 	bool changed = false;
 	CCellIterator iter(doc, NULL);
 	cell c;
 	while (iter.NextExisting(c))
 	{
+		if (circular.count(c))
+			continue;
 		if (doc->CalcCell(c))
 			changed = true;
 	}
@@ -3725,11 +3830,15 @@ static bool RecalculatePass(CContainer* doc)
 
 void RecalculateAll(CContainer* doc)
 {
+	std::vector<cell> formulaCells;
+	CollectFormulaCells(doc, &formulaCells);
+	std::set<cell> circular = MarkCircularReferences(doc, formulaCells);
+
 	bool changed = true;
 	int guard = 0;
 	while (changed && guard < 50)
 	{
-		changed = RecalculatePass(doc);
+		changed = RecalculatePass(doc, circular);
 		guard++;
 	}
 }
@@ -3787,8 +3896,17 @@ void RecalculateWorkbook(std::vector<AscdSheet>& sheets, RecalcProgressFunc prog
 	void* progressContext)
 {
 	std::vector<std::vector<cell> > formulaCells(sheets.size());
+	std::vector<std::set<cell> > circular(sheets.size());
 	for (size_t i = 0; i < sheets.size(); i++)
+	{
 		CollectFormulaCells(sheets[i].doc, &formulaCells[i]);
+		// Vedi il commento su MarkCircularReferences sopra RecalculateAll:
+		// stesso identico motivo, un riferimento circolare tra formule
+		// dello STESSO foglio (GetPrecedents non vede riferimenti fra
+		// fogli, vedi il suo stesso commento) va rilevato e marcato PRIMA
+		// che la prima passata sotto tenti di valutarne la formula.
+		circular[i] = MarkCircularReferences(sheets[i].doc, formulaCells[i]);
+	}
 
 	bool changed = true;
 	int guard = 0;
@@ -3800,6 +3918,8 @@ void RecalculateWorkbook(std::vector<AscdSheet>& sheets, RecalcProgressFunc prog
 			bool sheetChanged = false;
 			for (size_t j = 0; j < formulaCells[i].size(); j++)
 			{
+				if (circular[i].count(formulaCells[i][j]))
+					continue;
 				if (sheets[i].doc->CalcCell(formulaCells[i][j]))
 					sheetChanged = true;
 			}
