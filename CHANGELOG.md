@@ -55,9 +55,9 @@ What shipped since v0.4.2 (in progress):
   the existing chart in place; the button reads "Aggiorna" and the
   destination field hides itself while editing, since position doesn't
   change. Undoable like every other chart mutation. Advanced
-  import-only fields (non-contiguous value columns/row orientation,
-  never exposed by this editor) survive an edit that leaves the range
-  text unchanged, and reset if the range is actually changed.
+  import-only fields (non-contiguous value columns, never exposed by
+  this editor) survive an edit that leaves the range text unchanged,
+  and reset if the range is actually changed.
 - Chart editor: the 7 chart types in the Tipo dropdown now show a small
   pictogram (bars/zigzag line/pie/filled area/scattered dots/bars+line/
   horizontal bars) instead of plain text, easier to scan at a glance
@@ -66,6 +66,17 @@ What shipped since v0.4.2 (in progress):
   overriding `GetContentSize`/`DrawContent`. The hand-drawn-icon
   technique (4x supersampling) used for toolbar pictograms is now
   shared via `IconCatalog::RenderCustom`, reused here.
+- Chart editor: a new "Scambia righe/colonne" checkbox lets a chart be
+  built or edited with series laid out by row (categories in the top
+  row, one row per series) instead of only by column -- previously the
+  only way to get a row-oriented chart at all was importing an XLSX
+  file that already had one, even though the engine
+  (`BuildMultiChartSeriesRows`) already fully supported it. Matches
+  Excel's own simple "Switch Row/Column" behavior (same rectangular
+  range, contiguous rows implied); the non-contiguous row list XLSX
+  import can produce stays an import-only field, never exposed here.
+  Needed no new undo code: the whole-`ChartObject` undo snapshot added
+  earlier this session for the chart editor already covers it.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
