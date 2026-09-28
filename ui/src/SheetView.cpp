@@ -2075,6 +2075,20 @@ SheetView::UndoSnapshot SheetView::CaptureChartDeleteSnapshot(int chartIndex) co
 	return snap;
 }
 
+// Stesso principio esatto di CaptureChartDeleteSnapshot sopra, ma per
+// una modifica sul posto (vedi SaveChartEditUndoState): il grafico
+// resta nel vettore, cattura solo com'e' ADESSO (prima di applicare
+// "toRestore", vedi Undo/Redo) per il giro simmetrico opposto.
+SheetView::UndoSnapshot SheetView::CaptureChartEditSnapshot(int chartIndex) const
+{
+	UndoSnapshot snap;
+	snap.isChartEditSnapshot = true;
+	snap.editedChartIndex = chartIndex;
+	if (fCharts && chartIndex >= 0 && chartIndex < (int)fCharts->size())
+		snap.chartBefore = (*fCharts)[chartIndex];
+	return snap;
+}
+
 // Stesso principio esatto di CaptureChartSnapshot (Tier 4, slicer).
 SheetView::UndoSnapshot SheetView::CaptureSlicerSnapshot(int slicerIndex) const
 {
@@ -2442,6 +2456,24 @@ void SheetView::Undo()
 		return;
 	}
 
+	// Modifica di un grafico gia' incorporato (MainWindow::
+	// HandleChartUpdate): stesso scambio simmetrico del ramo chartIndex
+	// (frame) sopra, ma sovrascrive l'INTERO ChartObject invece del solo
+	// frame.
+	if (toRestore.isChartEditSnapshot)
+	{
+		fRedoStack.push_back(CaptureChartEditSnapshot(toRestore.editedChartIndex));
+		if (fCharts && toRestore.editedChartIndex >= 0
+			&& toRestore.editedChartIndex < (int)fCharts->size())
+		{
+			(*fCharts)[toRestore.editedChartIndex] = toRestore.chartBefore;
+			fSelectedChartIndex = toRestore.editedChartIndex;
+		}
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
 	// Cancellazione di uno slicer (DeleteSelectedSlicer): stesso
 	// principio esatto del ramo grafico sopra (Tier 4).
 	if (toRestore.isSlicerDeleteSnapshot)
@@ -2569,6 +2601,20 @@ void SheetView::Redo()
 		NotifyDocumentChanged();
 		return;
 	}
+	// Vedi il commento nel ramo equivalente di Undo() sopra.
+	if (toRestore.isChartEditSnapshot)
+	{
+		fUndoStack.push_back(CaptureChartEditSnapshot(toRestore.editedChartIndex));
+		if (fCharts && toRestore.editedChartIndex >= 0
+			&& toRestore.editedChartIndex < (int)fCharts->size())
+		{
+			(*fCharts)[toRestore.editedChartIndex] = toRestore.chartBefore;
+			fSelectedChartIndex = toRestore.editedChartIndex;
+		}
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
 	// Vedi il commento nel ramo equivalente di Undo() sopra, stesso
 	// principio del ramo grafico appena sopra ma per uno slicer (Tier 4).
 	if (toRestore.isSlicerDeleteSnapshot)
@@ -2654,6 +2700,23 @@ void SheetView::SaveChartUndoState(int chartIndex, BRect beforeFrame)
 	UndoSnapshot snap;
 	snap.chartIndex = chartIndex;
 	snap.chartFrameBefore = beforeFrame;
+	fUndoStack.push_back(snap);
+	fRedoStack.clear();
+}
+
+// Stesso principio di SaveChartUndoState sopra, ma per una modifica
+// intervallo/tipo/titolo (MainWindow::HandleChartUpdate) invece di
+// trascinamento/ridimensionamento: serve l'INTERO ChartObject com'era
+// PRIMA, non solo il frame -- vedi UndoSnapshot::chartBefore.
+void SheetView::SaveChartEditUndoState(int chartIndex, const ChartObject& before)
+{
+	if (!fCharts || chartIndex < 0 || chartIndex >= (int)fCharts->size())
+		return;
+
+	UndoSnapshot snap;
+	snap.isChartEditSnapshot = true;
+	snap.editedChartIndex = chartIndex;
+	snap.chartBefore = before;
 	fUndoStack.push_back(snap);
 	fRedoStack.clear();
 }
@@ -4749,10 +4812,31 @@ void SheetView::MouseDown(BPoint where)
 	// nella zona di sovrapposizione.
 	if (fCharts)
 	{
+		int32 chartClicks = 1;
+		BMessage* chartMsg = Window() ? Window()->CurrentMessage() : NULL;
+		if (chartMsg)
+			chartMsg->FindInt32("clicks", &chartClicks);
+
 		for (int i = (int)fCharts->size() - 1; i >= 0; i--)
 		{
 			if ((*fCharts)[i].frame.Contains(where))
 			{
+				// Doppio clic sul corpo di un grafico gia' incorporato:
+				// riapre ChartWindow precompilata con le sue impostazioni
+				// attuali (intervallo/tipo/titolo) invece di afferrarlo
+				// per spostarlo -- stessa richiesta esplicita
+				// dell'utente ("si potrebbe avere un editor dei grafici
+				// dopo averli creati?"), motivata da grafici con
+				// etichette sovrapposte o il tipo sbagliato che prima si
+				// potevano solo cancellare e ricreare da zero.
+				if (chartClicks >= 2)
+				{
+					SelectChart(i);
+					MainWindow* win = dynamic_cast<MainWindow*>(Window());
+					if (win)
+						win->EditChart(i);
+					return;
+				}
 				fDraggingChartIndex = i;
 				fDragChartStart = where;
 				fDragChartStartFrame = (*fCharts)[i].frame;

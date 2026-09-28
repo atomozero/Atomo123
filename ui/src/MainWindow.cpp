@@ -3779,6 +3779,18 @@ void MainWindow::ShowChartWindow()
 	// MainWindow::ShowChartWindow), stesso schema gia' corretto altrove
 	// in questo file per ShowColorWindow/RefreshNameWindow ma mai
 	// applicato qui quando questa precompilazione fu aggiunta.
+	// Esce sempre dalla modalita' "modifica grafico esistente" (vedi
+	// EditChart sotto): senza multi-selezione attiva il ramo LoadRange
+	// sotto (che la azzera anche lui) non verrebbe raggiunto, lasciando
+	// la finestra agganciata all'ultimo grafico modificato invece di
+	// tornare a "crea nuovo grafico". Stesso motivo di threading del
+	// commento sopra: mai senza Lock().
+	if (fChartWindow->Lock())
+	{
+		fChartWindow->ExitEditMode();
+		fChartWindow->Unlock();
+	}
+
 	range sel = fSheetView->SelectionRange();
 	if (sel.left != sel.right || sel.top != sel.bottom)
 	{
@@ -3789,6 +3801,33 @@ void MainWindow::ShowChartWindow()
 			fChartWindow->LoadRange(rangeText);
 			fChartWindow->Unlock();
 		}
+	}
+
+	if (fChartWindow->IsHidden())
+		fChartWindow->Show();
+	fChartWindow->Activate();
+}
+
+// Riapre ChartWindow (creandola se necessario) precompilata con le
+// impostazioni ATTUALI del grafico a "chartIndex" invece dei valori di
+// default -- vedi ChartWindow::LoadForEdit. Stessa regola di threading
+// di ShowChartWindow sopra: mai toccare una BView di fChartWindow senza
+// il suo Lock().
+void MainWindow::EditChart(int chartIndex)
+{
+	if (chartIndex < 0 || chartIndex >= (int)fCharts.size())
+		return;
+
+	if (!fChartWindow)
+		fChartWindow = new ChartWindow(BMessenger(this));
+
+	const ChartObject& obj = fCharts[chartIndex];
+	char rangeText[32];
+	FormatRangeRef(obj.dataRange, rangeText, sizeof(rangeText));
+	if (fChartWindow->Lock())
+	{
+		fChartWindow->LoadForEdit(chartIndex, rangeText, obj.title.String(), obj.type);
+		fChartWindow->Unlock();
 	}
 
 	if (fChartWindow->IsHidden())
@@ -5875,6 +5914,83 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 	obj.type = type;
 	obj.title = title;
 	fCharts.push_back(obj);
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+// Modifica un grafico gia' incorporato (vedi EditChart/ChartWindow::
+// LoadForEdit) invece di aggiungerne uno nuovo alla fine di fCharts:
+// stessa validazione dati di HandleChartInsert sopra (nessuna "dest" da
+// validare qui, la posizione di un grafico esistente non cambia
+// editandolo). Annullabile: SaveChartEditUndoState cattura l'intero
+// ChartObject com'era prima, stesso principio esatto di
+// DeleteSelectedChart (che cattura l'intero oggetto prima di
+// rimuoverlo).
+void MainWindow::HandleChartUpdate(int chartIndex, const char* rangeText, ChartType type,
+	const char* title)
+{
+	if (!fDoc || chartIndex < 0 || chartIndex >= (int)fCharts.size())
+		return;
+
+	range dataRange;
+	if (!ParseRangeRef(rangeText, dataRange))
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
+			B_TRANSLATE("Intervallo dati non valido: deve avere due colonne (etichette, "
+				"valori) con almeno una riga numerica, es. A1:B5."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	// Stessa validazione per tipo di HandleChartInsert sopra.
+	bool validData;
+	if (type == eScatterChart)
+	{
+		std::vector<ScatterPoint> points;
+		validData = BuildScatterSeries(fDoc, dataRange, points);
+	}
+	else if (dataRange.right - dataRange.left > 1)
+	{
+		MultiChartData multi;
+		validData = BuildMultiChartSeries(fDoc, dataRange, multi);
+	}
+	else
+	{
+		std::vector<ChartSeries> series;
+		validData = BuildChartSeries(fDoc, dataRange, series);
+	}
+	if (!validData)
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Grafico"),
+			B_TRANSLATE("Intervallo dati non valido: deve avere due colonne (etichette, "
+				"valori) con almeno una riga numerica, es. A1:B5."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	fSheetView->SaveChartEditUndoState(chartIndex, fCharts[chartIndex]);
+
+	ChartObject& obj = fCharts[chartIndex];
+	// I campi di importazione avanzata (valueColumns/rowOriented/
+	// valueRows, mai esposti da questa finestra) restano quelli di
+	// prima SOLO se l'intervallo non e' stato davvero cambiato -- un
+	// intervallo diverso li renderebbe incoerenti (riferirebbero
+	// colonne/righe fuori dal nuovo dataRange), stesso principio
+	// prudente gia' seguito altrove in questo file quando i dati
+	// cambiano forma.
+	if (!(dataRange == obj.dataRange))
+	{
+		obj.valueColumns.clear();
+		obj.rowOriented = false;
+		obj.valueRows.clear();
+	}
+	obj.dataRange = dataRange;
+	obj.type = type;
+	obj.title = title;
+	// obj.frame invariato apposta: la posizione/dimensione di un
+	// grafico gia' incorporato non cambia editandolo (vedi il campo
+	// destinazione nascosto in ChartWindow::SetEditingChartIndex).
 
 	fSheetView->Invalidate();
 	MarkModified();
@@ -8614,6 +8730,19 @@ void MainWindow::MessageReceived(BMessage* message)
 				&& message->FindString("dest", &destText) == B_OK)
 				HandleChartInsert(rangeText.String(), destText.String(), (ChartType)type,
 					titleText.String());
+			break;
+		}
+
+		case kMsgChartUpdate:
+		{
+			BString rangeText, titleText;
+			int32 type = eBarChart;
+			int32 index = -1;
+			message->FindInt32("type", &type);
+			message->FindString("title", &titleText);
+			if (message->FindInt32("index", &index) == B_OK
+				&& message->FindString("range", &rangeText) == B_OK)
+				HandleChartUpdate(index, rangeText.String(), (ChartType)type, titleText.String());
 			break;
 		}
 
