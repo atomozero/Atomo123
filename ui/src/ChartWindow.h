@@ -45,6 +45,18 @@ const uint32 kMsgChartDataScatter = 'chds';
 // "index" (il grafico esistente da aggiornare) e NON porta "dest" --
 // la posizione di un grafico gia' incorporato non cambia editandolo.
 const uint32 kMsgChartUpdate = 'chup';
+// ChartWindow non tocca mai SheetView direttamente (vedi il commento in
+// cima al file): il pulsante "..." manda questo a fTarget (MainWindow),
+// che inoltra a SheetView::StartRangePicker/CancelRangePicker. Porta un
+// campo bool "start" (true = arma la selezione, false = disarma senza
+// scegliere nulla -- un secondo clic sullo stesso pulsante mentre e'
+// gia' armato).
+const uint32 kMsgChartRangePickRequest = 'crpr';
+// Risposta di SheetView (via MainWindow, BMessenger(chartWindow) passato
+// come target a StartRangePicker) quando l'utente completa un clic o un
+// trascinamento sul foglio: porta "range", il testo gia' formattato da
+// FormatRangeRef, pronto per fRangeField->SetText().
+const uint32 kMsgRangePicked = 'rpkd';
 
 class BBox;
 class BButton;
@@ -105,6 +117,16 @@ private:
 
 	BTextControl* fTitleField;
 	BTextControl* fRangeField;
+	// Pulsante "..." accanto a fRangeField (Fase selettore di
+	// intervallo): manda kMsgChartRangePickRequest a fTarget invece di
+	// toccare SheetView direttamente (stesso principio di ogni altra
+	// richiesta di questa finestra). fPickingRange traccia solo
+	// l'etichetta/lo stato del pulsante in questa finestra -- lo stato
+	// "davvero armato" vive in SheetView (fRangePickerActive), non qui:
+	// un secondo clic su questo pulsante manda semplicemente "start"
+	// false per disarmarlo.
+	BButton* fRangePickButton;
+	bool fPickingRange;
 	BMenuField* fTypeField;
 	// "Scambia righe/colonne" (Fase colori/orientamento, richiesta
 	// esplicita dell'utente): espone SOLO il caso semplice di Excel
@@ -180,6 +202,12 @@ private:
 	// colore per la serie "index", o per l'intero grafico se index < 0
 	// (vedi il commento su kMsgChartColorButtonLocal in ChartWindow.cpp).
 	void ShowSeriesColorPicker(int index);
+	// Disarma fRangePickButton/manda "start"=false a fTarget se un
+	// selettore era rimasto armato da una sessione precedente -- usato
+	// da LoadRange/LoadForEdit/QuitRequested, gli unici tre punti in cui
+	// la finestra puo' "ripartire da capo" mentre il pulsante era ancora
+	// in attesa di un clic sul foglio. Non fa nulla se non era armato.
+	void CancelPickingIfArmed();
 };
 
 #endif

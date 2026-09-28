@@ -22,6 +22,7 @@
 #include <vector>
 
 #include <GraphicsDefs.h>
+#include <Messenger.h>
 #include <NumberFormat.h>
 #include <View.h>
 
@@ -768,6 +769,24 @@ public:
 	void ColumnRowRangeForRect(BRect rect, int& firstCol, int& lastCol,
 		int& firstRow, int& lastRow) const;
 
+	// Selettore di intervallo per un chiamante esterno (Fase colori/
+	// selettore, editor dei grafici): "target" ricevera' "message" con un
+	// campo stringa "range" (SelectionRange() gia' formattato via
+	// FormatRangeRef) al PROSSIMO MouseUp, poi si disarma da solo (un
+	// colpo solo, mai un'osservazione continua). Deliberatamente NON
+	// intercetta MouseDown/MouseMoved: la selezione normale per
+	// trascinamento resta del tutto invariata, un trascinamento e un
+	// singolo clic producono entrambi un MouseUp e quindi funzionano
+	// entrambi per scegliere un intervallo. Non agganciato a
+	// NotifySelectionChanged() apposta: scatta piu' volte durante un
+	// singolo trascinamento, sceglierebbe un intervallo a meta' gesto.
+	void StartRangePicker(BMessenger target, uint32 message);
+	// Disarma senza inviare nulla -- usato quando chi ha chiesto la
+	// selezione (es. la finestra Grafico) viene chiusa o annullata prima
+	// che l'utente completi un clic/trascinamento.
+	void CancelRangePicker();
+	bool IsRangePickerActive() const { return fRangePickerActive; }
+
 private:
 	// Ultima area visibile (Parent()->Bounds(), la vera BScrollView)
 	// per cui le barre di scorrimento sono state posizionate --
@@ -1140,6 +1159,14 @@ private:
 	// impostato dopo il rilascio del mouse, cosi' Canc/Backspace sanno
 	// quale grafico cancellare senza dover tenere il mouse premuto.
 	int fSelectedChartIndex;
+	// Selettore di intervallo (vedi StartRangePicker/CancelRangePicker
+	// pubblici sopra): false = spento, comportamento di sempre (nessuna
+	// interferenza con MouseDown/MouseMoved). fRangePickerMessenger/
+	// fRangePickerMessage sono validi solo quando fRangePickerActive e'
+	// true.
+	bool fRangePickerActive;
+	BMessenger fRangePickerMessenger;
+	uint32 fRangePickerMessage;
 	std::vector<SlicerObject>* fSlicers;
 	// Trascinamento/ridimensionamento/selezione di uno slicer (Tier 4):
 	// stesso schema esatto di fDraggingChartIndex/fResizingChartIndex/

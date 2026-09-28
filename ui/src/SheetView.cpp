@@ -304,6 +304,8 @@ SheetView::SheetView(CContainer* doc)
 	fDraggingChartIndex(-1),
 	fResizingChartIndex(-1),
 	fSelectedChartIndex(-1),
+	fRangePickerActive(false),
+	fRangePickerMessage(0),
 	fSlicers(NULL),
 	fDraggingSlicerIndex(-1),
 	fResizingSlicerIndex(-1),
@@ -5269,6 +5271,21 @@ void SheetView::MouseUp(BPoint where)
 	}
 	fAutoFilling = false;
 
+	// Selettore di intervallo (vedi StartRangePicker): un colpo solo, un
+	// clic o un trascinamento producono entrambi un MouseUp, quindi
+	// funzionano entrambi qui senza distinzione. Si disarma SEMPRE dopo
+	// aver inviato, anche se il messaggero non e' piu' valido (finestra
+	// gia' chiusa) -- non deve restare armato all'infinito.
+	if (fRangePickerActive)
+	{
+		fRangePickerActive = false;
+		char rangeText[64];
+		FormatRangeRef(SelectionRange(), rangeText, sizeof(rangeText));
+		BMessage msg(fRangePickerMessage);
+		msg.AddString("range", rangeText);
+		fRangePickerMessenger.SendMessage(&msg);
+	}
+
 	BView::MouseUp(where);
 }
 
@@ -6421,6 +6438,18 @@ void SheetView::CommitEditing(bool cancel, int moveH, int moveV)
 		Invalidate(CellRect(editedCell));
 		NotifySelectionChanged();
 	}
+}
+
+void SheetView::StartRangePicker(BMessenger target, uint32 message)
+{
+	fRangePickerActive = true;
+	fRangePickerMessenger = target;
+	fRangePickerMessage = message;
+}
+
+void SheetView::CancelRangePicker()
+{
+	fRangePickerActive = false;
 }
 
 void SheetView::NotifySelectionChanged()
