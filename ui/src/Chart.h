@@ -27,6 +27,14 @@ class CContainer;
 struct ChartSeries {
 	BString label;
 	double value;
+	// Testo gia' formattato secondo il formato numerico REALE della
+	// cella sorgente (valuta, percentuale, decimali...), popolato da
+	// BuildChartSeries via CContainer::GetCellResult -- l'etichetta del
+	// valore disegnata sul grafico lo usa al posto di uno "%g" grezzo,
+	// cosi' un grafico su una colonna in euro mostra "1.234,56 EUR" e
+	// non "1234.56". Vuoto solo se costruito a mano fuori da
+	// BuildChartSeries (nessun grafico attuale lo fa).
+	BString formattedValue;
 };
 
 // Tipo di grafico (Fase 13): eBarChart resta il predefinito numerico
@@ -284,6 +292,11 @@ struct MultiChartData {
 	std::vector<BString> categories;
 	std::vector<BString> seriesNames;
 	std::vector<std::vector<double> > values;
+	// Stesso principio di ChartSeries::formattedValue sopra, ma per
+	// serie multiple: formattedValues[s][c] e' il testo gia' formattato
+	// per values[s][c], stessa forma/indicizzazione. Popolato da
+	// BuildMultiChartSeries/BuildMultiChartSeriesRows.
+	std::vector<std::vector<BString> > formattedValues;
 	// Visibilita' dell'etichetta del valore numerico per serie (Fase
 	// 19, una checkbox per serie in ChartWindow): VUOTO significa
 	// "mostra tutte" (comportamento di sempre per un grafico
