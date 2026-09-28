@@ -40,8 +40,14 @@ const uint32 kMsgChartDataMulti = 'chdm';
 // serie/multi/dispersione) costruire senza doverlo indovinare dalla
 // sola forma dell'intervallo.
 const uint32 kMsgChartDataScatter = 'chds';
+// Conferma di ChartWindow quando fEditingChartIndex >= 0 (vedi
+// LoadForEdit): stesso schema di kMsgChartInsert, ma porta anche
+// "index" (il grafico esistente da aggiornare) e NON porta "dest" --
+// la posizione di un grafico gia' incorporato non cambia editandolo.
+const uint32 kMsgChartUpdate = 'chup';
 
 class BBox;
+class BButton;
 class BCheckBox;
 class BMenuField;
 class BTextControl;
@@ -55,19 +61,49 @@ public:
 	// usata da MainWindow::ShowChartWindow quando il foglio ha gia'
 	// una selezione di piu' di una cella al momento dell'apertura,
 	// cosi' l'utente non deve ridigitare come testo un intervallo gia'
-	// selezionato sul foglio (Fase 18).
+	// selezionato sul foglio (Fase 18). Esce SEMPRE dalla modalita' di
+	// modifica (vedi LoadForEdit sotto): un "Inserisci grafico" aperto
+	// dopo aver modificato un grafico esistente non deve restare
+	// agganciato a quello vecchio.
 	void LoadRange(const char* rangeText);
+
+	// Precompila intervallo/tipo/titolo con le impostazioni ATTUALI di
+	// un grafico gia' incorporato e passa in modalita' "modifica": il
+	// pulsante in basso diventa "Aggiorna" invece di "Inserisci nel
+	// foglio" e il campo destinazione (che non ha senso per un grafico
+	// che esiste gia' da qualche parte) si nasconde. Alla conferma
+	// (kMsgInsertLocal) la finestra manda kMsgChartUpdate con "index"
+	// invece di kMsgChartInsert -- vedi MainWindow::EditChart/
+	// HandleChartUpdate.
+	void LoadForEdit(int chartIndex, const char* rangeText, const char* title, ChartType type);
+
+	// Usata da MainWindow::ShowChartWindow PRIMA di ogni altra cosa,
+	// incondizionatamente: senza multi-selezione attiva LoadRange sopra
+	// non verrebbe chiamata, e la finestra resterebbe agganciata
+	// all'ultimo grafico modificato (fEditingChartIndex) invece di
+	// tornare a "crea nuovo grafico".
+	void ExitEditMode() { SetEditingChartIndex(-1); }
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
 
 private:
+	// Comune a LoadRange/LoadForEdit: azzera o imposta la modalita' di
+	// modifica (etichetta del pulsante, visibilita' del campo
+	// destinazione).
+	void SetEditingChartIndex(int chartIndex);
+
 	BTextControl* fTitleField;
 	BTextControl* fRangeField;
 	BMenuField* fTypeField;
 	BTextControl* fDestField;
+	BButton* fInsertButton;
 	ChartView* fChartView;
 	BMessenger fTarget;
+	// -1 = sto creando un grafico nuovo (comportamento di sempre,
+	// kMsgChartInsert); >= 0 = sto modificando il grafico a quell'indice
+	// in MainWindow::fCharts (kMsgChartUpdate). Vedi LoadForEdit sopra.
+	int fEditingChartIndex;
 	// Riquadro (con titolo + suggerimento) che contiene la riga di
 	// checkbox "mostra i valori", una voce per serie (Fase 19). Creato
 	// una sola volta nel costruttore -- solo fSeriesCheckboxRow al suo

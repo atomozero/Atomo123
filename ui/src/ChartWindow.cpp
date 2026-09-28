@@ -43,7 +43,8 @@ ChartWindow::ChartWindow(BMessenger target)
 	BWindow(BRect(140, 120, 780, 680), B_TRANSLATE("Grafico"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_ASYNCHRONOUS_CONTROLS),
-	fTarget(target)
+	fTarget(target),
+	fEditingChartIndex(-1)
 {
 	// Stesso messaggio di fRangeField (kMsgDrawLocal): digitare un
 	// titolo e premere Invio (o "Disegna") lo applica subito
@@ -117,9 +118,9 @@ ChartWindow::ChartWindow(BMessenger target)
 	fDestField = new BTextControl("dest", B_TRANSLATE("Cella di destinazione nel foglio:"),
 		"D1", NULL);
 
-	BButton* insertButton = new BButton("insert", B_TRANSLATE("Inserisci nel foglio"),
+	fInsertButton = new BButton("insert", B_TRANSLATE("Inserisci nel foglio"),
 		new BMessage(kMsgInsertLocal));
-	insertButton->SetTarget(this);
+	fInsertButton->SetTarget(this);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 8)
 		.SetInsets(8, 8, 8, 8)
@@ -134,7 +135,7 @@ ChartWindow::ChartWindow(BMessenger target)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fDestField)
 			.AddGlue()
-			.Add(insertButton)
+			.Add(fInsertButton)
 		.End();
 }
 
@@ -159,8 +160,57 @@ ChartType ChartWindow::SelectedType() const
 
 void ChartWindow::LoadRange(const char* rangeText)
 {
+	SetEditingChartIndex(-1);
 	fRangeField->SetText(rangeText);
 	RequestDraw();
+}
+
+void ChartWindow::LoadForEdit(int chartIndex, const char* rangeText, const char* title,
+	ChartType type)
+{
+	SetEditingChartIndex(chartIndex);
+	fRangeField->SetText(rangeText);
+	fTitleField->SetText(title);
+
+	// Corrispondenza inversa di SelectedType() sopra: stessa
+	// corrispondenza posizionale (0=Barre, 1=Linee, 2=Torta, 3=Area,
+	// 4=Dispersione, 5=Combinato, 6=Barre orizzontali).
+	int32 index = 0;
+	switch (type)
+	{
+		case eLineChart: index = 1; break;
+		case ePieChart: index = 2; break;
+		case eAreaChart: index = 3; break;
+		case eScatterChart: index = 4; break;
+		case eComboChart: index = 5; break;
+		case eHBarChart: index = 6; break;
+		default: index = 0; break;
+	}
+	BMenuItem* item = fTypeField->Menu()->ItemAt(index);
+	if (item)
+		item->SetMarked(true);
+	fChartView->SetChartType(type);
+
+	RequestDraw();
+}
+
+void ChartWindow::SetEditingChartIndex(int chartIndex)
+{
+	fEditingChartIndex = chartIndex;
+	if (chartIndex >= 0)
+	{
+		// La posizione di un grafico gia' incorporato non cambia
+		// editandolo (vedi HandleChartUpdate): il campo destinazione non
+		// avrebbe alcun effetto, nasconderlo evita di far credere
+		// all'utente che spostera' il grafico.
+		fDestField->Hide();
+		fInsertButton->SetLabel(B_TRANSLATE("Aggiorna"));
+	}
+	else
+	{
+		fDestField->Show();
+		fInsertButton->SetLabel(B_TRANSLATE("Inserisci nel foglio"));
+	}
 }
 
 void ChartWindow::RequestDraw()
@@ -247,6 +297,16 @@ void ChartWindow::MessageReceived(BMessage* message)
 
 		case kMsgInsertLocal:
 		{
+			if (fEditingChartIndex >= 0)
+			{
+				BMessage request(kMsgChartUpdate);
+				request.AddInt32("index", fEditingChartIndex);
+				request.AddString("range", fRangeField->Text());
+				request.AddInt32("type", (int32)SelectedType());
+				request.AddString("title", fTitleField->Text());
+				fTarget.SendMessage(&request);
+				return;
+			}
 			BMessage request(kMsgChartInsert);
 			request.AddString("range", fRangeField->Text());
 			request.AddString("dest", fDestField->Text());

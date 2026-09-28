@@ -193,6 +193,14 @@ public:
 	// dell'utente): un solo BRect invece di due coppie di float, dato
 	// che ChartObject::frame e' gia' assoluto.
 	void SaveChartUndoState(int chartIndex, BRect beforeFrame);
+	// Modifica di intervallo/tipo/titolo di un grafico gia' incorporato
+	// (MainWindow::HandleChartUpdate, doppio clic per riaprirlo in
+	// ChartWindow): a differenza di SaveChartUndoState sopra (solo il
+	// frame, per trascinamento/ridimensionamento), qui serve l'INTERO
+	// ChartObject com'era PRIMA della modifica -- stesso principio
+	// esatto di CaptureChartDeleteSnapshot, ma per una sostituzione sul
+	// posto invece di una rimozione.
+	void SaveChartEditUndoState(int chartIndex, const ChartObject& before);
 	// Stesso principio esatto di SaveChartUndoState sopra, per il
 	// trascinamento/ridimensionamento di uno slicer (Tier 4).
 	void SaveSlicerUndoState(int slicerIndex, BRect beforeFrame);
@@ -1059,6 +1067,15 @@ private:
 		bool isChartDeleteSnapshot = false;
 		int deletedChartIndex = -1;
 		ChartObject deletedChart;
+		// Modifica di intervallo/tipo/titolo di un grafico gia'
+		// incorporato (vedi SaveChartEditUndoState): stesso principio di
+		// isChartDeleteSnapshot sopra (serve l'INTERO ChartObject, non
+		// solo il frame), ma il grafico resta al suo posto nel vettore
+		// -- editedChartIndex e' quindi un indice ancora valido da
+		// SOVRASCRIVERE, non una posizione dove reinserire.
+		bool isChartEditSnapshot = false;
+		int editedChartIndex = -1;
+		ChartObject chartBefore;
 		// Trascinamento/ridimensionamento di uno slicer (Tier 4, vedi
 		// SaveSlicerUndoState): stesso principio esatto di chartIndex/
 		// chartFrameBefore sopra.
@@ -1077,6 +1094,7 @@ private:
 	UndoSnapshot CaptureChartSnapshot(int chartIndex) const;
 	UndoSnapshot CaptureImageDeleteSnapshot(int imageIndex) const;
 	UndoSnapshot CaptureChartDeleteSnapshot(int chartIndex) const;
+	UndoSnapshot CaptureChartEditSnapshot(int chartIndex) const;
 	UndoSnapshot CaptureSlicerSnapshot(int slicerIndex) const;
 	UndoSnapshot CaptureSlicerDeleteSnapshot(int slicerIndex) const;
 	UndoSnapshot CaptureMergeSnapshot() const;
