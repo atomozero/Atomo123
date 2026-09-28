@@ -48,6 +48,9 @@ static const uint32 kMsgSeriesColorButtonLocal = 'scbl';
 // area/barre orizzontali/dispersione): nessun indice, sempre e solo
 // "il colore del grafico".
 static const uint32 kMsgChartColorButtonLocal = 'ccbl';
+// Pulsante "..." (Fase selettore di intervallo): vedi il commento su
+// fRangePickButton in ChartWindow.h.
+static const uint32 kMsgRangePickButtonLocal = 'rpbl';
 
 // Piccolo riquadro colorato cliccabile, un colore di serie o del
 // grafico intero -- niente BButton (la sua chrome nativa renderebbe
@@ -260,6 +263,7 @@ ChartWindow::ChartWindow(BMessenger target)
 	BWindow(BRect(140, 120, 780, 680), B_TRANSLATE("Grafico"),
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_ASYNCHRONOUS_CONTROLS),
+	fPickingRange(false),
 	fTarget(target),
 	fEditingChartIndex(-1),
 	fChartColorSwatch(NULL),
@@ -277,6 +281,15 @@ ChartWindow::ChartWindow(BMessenger target)
 		"A1:B5", new BMessage(kMsgDrawLocal));
 	fRangeField->SetTarget(this);
 	fRangeField->MakeFocus(true);
+
+	// "..." (Fase selettore di intervallo): un solo pulsante per armare E
+	// disarmare la selezione sul foglio, stesso principio di un
+	// interruttore -- l'etichetta cambia (vedi kMsgRangePickButtonLocal
+	// sotto) cosi' non serve un secondo pulsante "Annulla" a parte.
+	BButton* rangePickButton = new BButton("rangePick", "...",
+		new BMessage(kMsgRangePickButtonLocal));
+	rangePickButton->SetTarget(this);
+	fRangePickButton = rangePickButton;
 
 	BButton* drawButton = new BButton("draw", B_TRANSLATE("Disegna"), new BMessage(kMsgDrawLocal));
 	drawButton->SetTarget(this);
@@ -381,6 +394,7 @@ ChartWindow::ChartWindow(BMessenger target)
 		.Add(fTitleField)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fRangeField)
+			.Add(fRangePickButton)
 			.Add(fTypeField)
 			.Add(fChartColorSwatch)
 			.Add(drawButton)
@@ -419,9 +433,26 @@ ChartType ChartWindow::SelectedType() const
 	}
 }
 
+void ChartWindow::CancelPickingIfArmed()
+{
+	if (!fPickingRange)
+		return;
+	fPickingRange = false;
+	fRangePickButton->SetLabel("...");
+	BMessage request(kMsgChartRangePickRequest);
+	request.AddBool("start", false);
+	request.AddMessenger("replyTo", BMessenger(this));
+	fTarget.SendMessage(&request);
+}
+
 void ChartWindow::LoadRange(const char* rangeText)
 {
 	SetEditingChartIndex(-1);
+	// Un selettore lasciato armato da una sessione precedente (finestra
+	// mai chiusa, solo un nuovo "Inserisci Grafico" richiesto) non deve
+	// restare attivo su un intervallo/campo che non e' piu' quello a cui
+	// si riferiva -- stesso disarmo esplicito di QuitRequested.
+	CancelPickingIfArmed();
 	fRangeField->SetText(rangeText);
 	fRowOrientedCheckbox->SetValue(B_CONTROL_OFF);
 	// Nessun colore salvato per un grafico nuovo -- azzera qualunque
@@ -435,6 +466,7 @@ void ChartWindow::LoadForEdit(int chartIndex, const char* rangeText, const char*
 	ChartType type, bool rowOriented, const std::vector<rgb_color>& seriesColors)
 {
 	SetEditingChartIndex(chartIndex);
+	CancelPickingIfArmed();
 	fRangeField->SetText(rangeText);
 	fTitleField->SetText(title);
 	fRowOrientedCheckbox->SetValue(rowOriented ? B_CONTROL_ON : B_CONTROL_OFF);
@@ -795,6 +827,44 @@ void ChartWindow::MessageReceived(BMessage* message)
 			ShowSeriesColorPicker(-1);
 			return;
 
+		case kMsgRangePickButtonLocal:
+		{
+			// Un solo pulsante arma/disarma (vedi il commento su
+			// fRangePickButton in ChartWindow.h): il secondo clic mentre
+			// e' gia' armato disarma senza scegliere nulla, invece di
+			// affidarsi a Escape o alla chiusura della finestra.
+			if (fPickingRange)
+			{
+				CancelPickingIfArmed();
+				return;
+			}
+			fPickingRange = true;
+			fRangePickButton->SetLabel(B_TRANSLATE("Seleziona..."));
+			BMessage request(kMsgChartRangePickRequest);
+			request.AddBool("start", true);
+			request.AddMessenger("replyTo", BMessenger(this));
+			fTarget.SendMessage(&request);
+			return;
+		}
+
+		case kMsgRangePicked:
+		{
+			// Arrivata la risposta del foglio (vedi SheetView::MouseUp):
+			// il pulsante torna al suo stato di riposo, il testo scelto
+			// sostituisce quello del campo Intervallo e l'anteprima si
+			// ridisegna subito, come se l'utente lo avesse digitato a
+			// mano e premuto Invio.
+			fPickingRange = false;
+			fRangePickButton->SetLabel("...");
+			BString rangeText;
+			if (message->FindString("range", &rangeText) == B_OK)
+			{
+				fRangeField->SetText(rangeText.String());
+				RequestDraw();
+			}
+			return;
+		}
+
 		case kMsgColorRequest:
 		{
 			int32 target = -1, index = -1;
@@ -834,6 +904,14 @@ void ChartWindow::MessageReceived(BMessage* message)
 
 bool ChartWindow::QuitRequested()
 {
+	// Se il selettore di intervallo era armato, disarmalo: altrimenti
+	// SheetView resterebbe in attesa di un clic che non arrivera' mai
+	// piu' per questa finestra (nascosta, non chiusa davvero -- vedi
+	// sotto), e il pulsante mostrerebbe ancora "Seleziona..." alla
+	// prossima riapertura anche se l'utente non ha mai cliccato di
+	// nuovo su di esso.
+	CancelPickingIfArmed();
+
 	// Stessa regola di FindWindow: resta nascosta e riusabile.
 	Hide();
 	return false;

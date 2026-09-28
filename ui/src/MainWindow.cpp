@@ -8709,6 +8709,24 @@ void MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case kMsgChartRangePickRequest:
+		{
+			// ChartWindow non tocca mai SheetView direttamente (vedi il
+			// commento in cima a ChartWindow.h) -- questo e' il relay: il
+			// mittente ("replyTo") diventa il bersaglio di
+			// SheetView::StartRangePicker, cosi' il risultato torna alla
+			// finestra Grafico che l'ha chiesto, non a MainWindow.
+			bool start = true;
+			message->FindBool("start", &start);
+			BMessenger replyTo;
+			message->FindMessenger("replyTo", &replyTo);
+			if (start && replyTo.IsValid())
+				fSheetView->StartRangePicker(replyTo, kMsgRangePicked);
+			else
+				fSheetView->CancelRangePicker();
+			break;
+		}
+
 		case kMsgChartRequest:
 		{
 			BString rangeText;
