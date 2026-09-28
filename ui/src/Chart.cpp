@@ -201,6 +201,22 @@ static void FillBarGradient(BView* view, BRect bar, rgb_color baseColor)
 	view->FillRect(bar, gradient);
 }
 
+// Quadratino di colore di una voce di legenda: un riempimento pieno da
+// solo (il comportamento di sempre) tende a confondersi con lo sfondo
+// bianco quando il colore della serie e' chiaro -- un sottile bordo
+// grigio lo delimita sempre, indipendentemente dal colore interno,
+// stesso principio del bordo chiaro gia' dato al contenitore del
+// grafico da DrawChartFrame. Ripristina il nero dopo, per l'etichetta
+// di testo che ogni chiamante disegna subito dopo lo swatch.
+static void DrawLegendSwatch(BView* view, BRect swatch, rgb_color color)
+{
+	view->SetHighColor(color);
+	view->FillRect(swatch);
+	view->SetHighColor(150, 150, 150);
+	view->StrokeRect(swatch);
+	view->SetHighColor(0, 0, 0);
+}
+
 // Etichetta del valore da disegnare accanto a una barra/punto: usa il
 // testo gia' formattato secondo il formato numerico reale della cella
 // (ChartSeries::formattedValue), popolato da BuildChartSeries. Un
@@ -1197,9 +1213,7 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	for (size_t i = 0; i < data.size() && i < slices.size(); i++)
 	{
 		BRect swatch(legendX, legendY - 8, legendX + 10, legendY + 2);
-		view->SetHighColor(kPieColors[i % kPieColorCount]);
-		view->FillRect(swatch);
-		view->SetHighColor(0, 0, 0);
+		DrawLegendSwatch(view, swatch, kPieColors[i % kPieColorCount]);
 
 		// Percentuale sul totale, ricavata dalla stessa ampiezza
 		// d'angolo gia' calcolata da ComputePieLayout (sweepAngle e'
@@ -1655,9 +1669,7 @@ static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
 	for (size_t s = 0; s < data.seriesNames.size(); s++)
 	{
 		BRect swatch(legendX, legendY - 8, legendX + 10, legendY + 2);
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
-		view->FillRect(swatch);
-		view->SetHighColor(0, 0, 0);
+		DrawLegendSwatch(view, swatch, kPieColors[s % kPieColorCount]);
 		float used = DrawWrappedLabel(view, data.seriesNames[s].String(), BPoint(legendX + 16, legendY),
 			legendTextWidth, kLegendLabelMaxLines, false);
 		legendY += std::max(16.0f, used + 4);
@@ -1827,9 +1839,7 @@ void DrawGroupedHBarChart(BView* view, BRect frame, const MultiChartData& data, 
 	for (size_t s = 0; s < data.seriesNames.size(); s++)
 	{
 		BRect swatch(legendX, legendY - 8, legendX + 10, legendY + 2);
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
-		view->FillRect(swatch);
-		view->SetHighColor(0, 0, 0);
+		DrawLegendSwatch(view, swatch, kPieColors[s % kPieColorCount]);
 		float used = DrawWrappedLabel(view, data.seriesNames[s].String(), BPoint(legendX + 16, legendY),
 			legendTextWidth, kLegendLabelMaxLines, false);
 		legendY += std::max(16.0f, used + 4);
