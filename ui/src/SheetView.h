@@ -35,6 +35,7 @@
 #include "Slicer.h"
 
 class BTextControl;
+class BListView;
 class CContainer;
 class MainWindow;
 
@@ -1242,6 +1243,35 @@ private:
 	bool fPointIsRange;
 	cell fPointRangeAnchor;
 
+	// Autocompletamento delle funzioni (come Excel/LibreOffice Calc):
+	// dopo "=", un operatore, "(" o "," e ALMENO una lettera digitata,
+	// un elenco a comparsa mostra i nomi di funzione che iniziano con
+	// quanto scritto finora -- vedi UpdateAutocomplete. Mai in conflitto
+	// con la modalita' punta sopra: le due si innescano su condizioni
+	// opposte (l'ultimo carattere e' un operatore per puntare, una
+	// lettera dell'identificatore in corso per completare). NULL quando
+	// non visibile -- stesso principio di fEditor, creato/distrutto
+	// insieme alla sessione che lo mostra, mai riusato fra una comparsa
+	// e l'altra.
+	BListView* fAutocompleteList;
+	// Intervallo di testo (nell'editor) occupato dall'identificatore
+	// parziale corrente -- serve a HandleAutocompleteKey per sapere
+	// cosa sostituire quando l'utente accetta un suggerimento.
+	int32 fAutocompleteStart;
+	int32 fAutocompleteEnd;
+	// Crea/riempie/posiziona fAutocompleteList (chiamata solo da
+	// UpdateAutocomplete, mai da CellEditKeyFilter direttamente --
+	// nessun bisogno di essere pubblica). "labels" sono gia' le
+	// stringhe complete da mostrare ("NOME  descrizione"): tenere
+	// FuncRec/gFuncArrayByName fuori da questo header, tutta la ricerca
+	// vive nel .cpp.
+	void ShowAutocomplete(const std::vector<BString>& labels);
+	// Sostituisce l'identificatore parziale (fAutocompleteStart..End)
+	// con il nome della funzione evidenziata piu' "(" e chiude l'elenco
+	// -- chiamata sia da HandleAutocompleteKey (Invio/Tab) sia dal
+	// messaggio di invocazione del click (kMsgAutocompleteAccept).
+	void AcceptAutocompleteSelection();
+
 	static const int kColWidth = 80;
 	static const int kRowHeight = 20;
 	static const int kHeaderWidth = 30;
@@ -1332,6 +1362,29 @@ public:
 			Invalidate();
 		}
 	}
+
+	// Le tre funzioni sotto sono pubbliche per lo stesso motivo delle
+	// due sopra (chiamate dirette da CellEditKeyFilter/dal messaggio di
+	// invocazione dell'elenco a comparsa, mai tramite un metodo di
+	// SheetView).
+	//
+	// Chiamata da CellEditKeyFilter quando l'elenco di autocompletamento
+	// e' visibile e viene premuto un tasto che lo riguarda (frecce
+	// su/giu' per scorrerlo, Invio/Tab per accettare il suggerimento
+	// evidenziato, Escape per chiuderlo senza accettare nulla). Vero se
+	// il tasto e' stato consumato qui -- falso se l'elenco non e'
+	// visibile o il tasto non lo riguarda, nel qual caso il chiamante
+	// prosegue con la sua logica normale (commit/modalita' punta/
+	// spostamento del cursore).
+	bool HandleAutocompleteKey(char key);
+	// Richiamata dopo ogni modifica del testo dell'editor (vedi il
+	// messaggio di modifica impostato in StartEditing): ricalcola quale
+	// identificatore parziale precede il cursore e mostra/aggiorna/
+	// nasconde l'elenco di conseguenza.
+	void UpdateAutocomplete();
+	// Chiude l'elenco di autocompletamento se visibile, senza toccare
+	// il testo dell'editor -- stesso principio di ExitPointMode sopra.
+	void HideAutocomplete();
 };
 
 #endif
