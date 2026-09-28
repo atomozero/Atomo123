@@ -93,6 +93,17 @@ What shipped since v0.4.2 (in progress):
   section (older files load with an empty, default-palette
   `seriesColors`, same convention as every other optional section in
   this format).
+- Chart editor: a new "..." button next to the range field lets a range
+  be chosen by clicking or dragging on the sheet instead of typing it by
+  hand, closing out the "make the chart editor more professional" pass
+  (last of 4 improvements, after the type icons, row/column toggle and
+  per-series colors above). Clicking it arms the sheet to capture the
+  next click or drag; a second click on the same button disarms it
+  without picking anything, instead of relying on Escape or window
+  focus. Deliberately hooked only at the end of mouse release, not at
+  mouse-down/move, so normal click-and-drag selection is completely
+  unaffected — the sheet's existing selection mechanics didn't need to
+  change at all.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
