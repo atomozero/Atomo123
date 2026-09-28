@@ -19,6 +19,16 @@ What shipped since v0.4.2 (in progress):
   unchanged for now. Verified against the existing `test_chart*` suite
   (pure layout/geometry, unaffected by fill color) and visually in the
   real app against the CdA showcase file's "Sales by segment" chart.
+- Chart value labels now use the source cell's real number format
+  instead of a raw `%g` of the plain double: a currency column shows
+  "$52,504,260.67" next to its bar, not "5.25043e+07". `BuildChartSeries`/
+  `BuildMultiChartSeries`/`BuildMultiChartSeriesRows` capture the
+  already-formatted text via the existing `CContainer::GetCellResult`
+  (same formatting engine the sheet grid itself uses), carried alongside
+  the plain value in a new `formattedValue`/`formattedValues` field.
+  Applies to every value label across single- and multi-series bar/
+  line/area/hbar/combo charts. Axis tick labels are unchanged (a
+  synthetic numeric scale, no single source cell to format from).
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
