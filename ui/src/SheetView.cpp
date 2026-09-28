@@ -4042,6 +4042,35 @@ void SheetView::Draw(BRect updateRect)
 		StrokeRect(previewRect, B_MIXED_COLORS);
 	}
 
+	// Modalita' punta (vedi HandlePointModeArrow): un riquadro
+	// tratteggiato arancione attorno alla cella (o all'intervallo, con
+	// Maiusc+Freccia) appena puntata con le frecce durante l'editing in-
+	// cella -- richiesto dall'utente per vedere subito quale cella sta
+	// per finire nella formula, invece di doverlo dedurre dal solo testo
+	// nell'editor. Colore ARANCIONE apposta, diverso sia dal blu della
+	// selezione corrente sopra sia dal blu tratteggiato dell'anteprima
+	// di riempimento appena sopra: le tre cose possono capitare vicine
+	// (selezione sempre visibile, riempimento durante un trascinamento)
+	// e non vanno confuse fra loro.
+	if (fPointMode && fEditor)
+	{
+		range pointRange = fPointIsRange
+			? range(std::min(fPointRangeAnchor.h, fPointAnchor.h), std::min(fPointRangeAnchor.v, fPointAnchor.v),
+				std::max(fPointRangeAnchor.h, fPointAnchor.h), std::max(fPointRangeAnchor.v, fPointAnchor.v))
+			: range(fPointAnchor.h, fPointAnchor.v, fPointAnchor.h, fPointAnchor.v);
+		BRect pointRect = PinnedCellRect(pointRange.TopLeft()) | PinnedCellRect(pointRange.BotRight());
+		// Arancione piu' saturo e penna piu' spessa (richiesto
+		// dall'utente dopo aver visto la prima versione dal vivo: "puo'
+		// essere leggermente piu' marcato") rispetto al blu della
+		// selezione/anteprima di riempimento, che usano la penna
+		// sottile predefinita.
+		SetHighColor(255, 90, 0);
+		SetLowColor(255, 255, 255);
+		SetPenSize(2.0f);
+		StrokeRect(pointRect, B_MIXED_COLORS);
+		SetPenSize(1.0f);
+	}
+
 	// "Imposta pagina" senza intestazioni (vedi
 	// SetSuppressPrintHeaders in SheetView.h): i due blocchi sotto
 	// (righe qui, colonne in fondo a Draw()) vengono saltati del tutto
@@ -5843,6 +5872,11 @@ bool SheetView::HandlePointModeArrow(char key, bool shift)
 
 	fPointAnchor = next;
 	fPointMode = true;
+	// Ridisegna subito il riquadro arancione della cella/intervallo
+	// appena puntato (vedi Draw()) -- senza questo resterebbe fermo
+	// sulla posizione precedente finche' qualcos'altro non forza un
+	// ridisegno per un motivo estraneo.
+	Invalidate();
 	return true;
 }
 
@@ -5895,6 +5929,13 @@ void SheetView::CommitEditing(bool cancel, int moveH, int moveV)
 	BTextControl* editor = fEditor;
 	cell editedCell = fEditingCell;
 	fEditor = NULL;
+	// Il riquadro arancione di Draw() (vedi HandlePointModeArrow) puo'
+	// estendersi oltre la sola cella in editing (un intervallo puntato
+	// con Maiusc+Freccia) -- ExitPointMode invalida l'intera vista
+	// apposta, non solo CellRect(editedCell) qui sotto, cosi' non resta
+	// nessun resto visivo fuori da quel singolo rettangolo dopo la
+	// conferma/l'annullamento.
+	ExitPointMode();
 
 	// "Pronto" nel footer (Fase 17): sia che il valore venga scritto
 	// sia che l'editing venga annullato, l'editor in-cella e' comunque

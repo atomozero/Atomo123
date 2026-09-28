@@ -1319,7 +1319,19 @@ public:
 	// sui campi fPoint* sopra) senza toccare il testo dell'editor: la
 	// prossima freccia digitata ne aprira' una nuova, ancorata di nuovo
 	// alla cella in editing.
-	void ExitPointMode()	{ fPointMode = false; }
+	void ExitPointMode()
+	{
+		// Il controllo su fPointMode evita un Invalidate() sprecato a
+		// ogni singolo tasto premuto durante l'editing (lettere/cifre
+		// digitate normalmente, mai in modalita' punta) -- serve solo
+		// per cancellare il riquadro arancione di Draw() quando una
+		// sessione di puntamento REALMENTE attiva viene chiusa.
+		if (fPointMode)
+		{
+			fPointMode = false;
+			Invalidate();
+		}
+	}
 };
 
 #endif
