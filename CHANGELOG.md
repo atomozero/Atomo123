@@ -4,7 +4,7 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
-What shipped since v0.4.1 (in progress):
+What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
   `(` or `,` plus at least one letter typed, a popup list shows
   function names starting with what's been typed so far (e.g. typing
