@@ -10,6 +10,7 @@
 #include "ChartWindow.h"
 #include "ChartView.h"
 #include "Chart.h"
+#include "ColorWindow.h"
 #include "IconCatalog.h"
 
 #include <map>
@@ -40,6 +41,60 @@ static const uint32 kMsgTypeChangedLocal = 'tpcl';
 // condividono lo stesso "what", l'indice della serie viaggia nel
 // campo "index" del BMessage di ognuna (vedi RebuildSeriesCheckboxes).
 static const uint32 kMsgSeriesToggleLocal = 'stvl';
+// Un riquadretto ChartColorSwatch per serie (Fase colori), stesso
+// principio esatto di kMsgSeriesToggleLocal sopra: "index" nel BMessage.
+static const uint32 kMsgSeriesColorButtonLocal = 'scbl';
+// Riquadretto singolo per un grafico a UNA sola serie (barre/linee/
+// area/barre orizzontali/dispersione): nessun indice, sempre e solo
+// "il colore del grafico".
+static const uint32 kMsgChartColorButtonLocal = 'ccbl';
+
+// Piccolo riquadro colorato cliccabile, un colore di serie o del
+// grafico intero -- niente BButton (la sua chrome nativa renderebbe
+// difficile vedere il colore vero e proprio su un riquadro cosi'
+// piccolo): un semplice BView che si riempie del proprio colore e
+// manda "what"/"index" al bersaglio dato quando viene cliccato.
+class ChartColorSwatch : public BView {
+public:
+	ChartColorSwatch(int index, BMessenger target, uint32 what)
+		:
+		BView(BRect(0, 0, 15, 15), "colorSwatch", B_FOLLOW_NONE, B_WILL_DRAW),
+		fIndex(index),
+		fTarget(target),
+		fWhat(what),
+		fColor(ui_color(B_PANEL_BACKGROUND_COLOR))
+	{
+		SetExplicitMinSize(BSize(15, 15));
+		SetExplicitMaxSize(BSize(15, 15));
+	}
+
+	void SetColor(rgb_color color)
+	{
+		fColor = color;
+		Invalidate();
+	}
+
+	virtual void Draw(BRect updateRect)
+	{
+		SetHighColor(fColor);
+		FillRect(Bounds());
+		SetHighColor(120, 120, 120);
+		StrokeRect(Bounds());
+	}
+
+	virtual void MouseDown(BPoint where)
+	{
+		BMessage msg(fWhat);
+		msg.AddInt32("index", fIndex);
+		fTarget.SendMessage(&msg);
+	}
+
+private:
+	int fIndex;
+	BMessenger fTarget;
+	uint32 fWhat;
+	rgb_color fColor;
+};
 
 // Pittogrammi 16x16 per le voci del menu Tipo (docs/ICONS.md li elenca
 // come lacuna: nessuna icona del catalogo HVIF autorizzato e' un
@@ -206,7 +261,10 @@ ChartWindow::ChartWindow(BMessenger target)
 		B_FLOATING_WINDOW_LOOK, B_FLOATING_APP_WINDOW_FEEL,
 		B_ASYNCHRONOUS_CONTROLS),
 	fTarget(target),
-	fEditingChartIndex(-1)
+	fEditingChartIndex(-1),
+	fChartColorSwatch(NULL),
+	fChartColor(rgb_color{0, 0, 0, 0}),
+	fSeriesColorWindow(NULL)
 {
 	// Stesso messaggio di fRangeField (kMsgDrawLocal): digitare un
 	// titolo e premere Invio (o "Disegna") lo applica subito
@@ -262,6 +320,16 @@ ChartWindow::ChartWindow(BMessenger target)
 	fTypeField = new BMenuField("type", B_TRANSLATE("Tipo:"), typeMenu);
 	fTypeField->Menu()->SetTargetForItems(this);
 
+	// Colore del grafico (Fase colori, solo grafici a SINGOLA serie --
+	// per serie multiple c'e' un riquadretto per serie nella riga sotto,
+	// vedi RebuildSeriesCheckboxes): nascosto finche' non arriva un
+	// grafico a singola serie (kMsgChartData/kMsgChartDataScatter sotto
+	// lo mostrano, kMsgChartDataMulti lo nasconde), stesso principio di
+	// fSeriesCheckboxBox per il caso opposto.
+	fChartColorSwatch = new ChartColorSwatch(0, BMessenger(this), kMsgChartColorButtonLocal);
+	fChartColorSwatch->SetColor(SeriesColor(std::vector<rgb_color>(), 0));
+	fChartColorSwatch->Hide();
+
 	fChartView = new ChartView();
 
 	// Riquadro "Mostra valori per serie" (Fase 19): titolo del BBox
@@ -314,6 +382,7 @@ ChartWindow::ChartWindow(BMessenger target)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fRangeField)
 			.Add(fTypeField)
+			.Add(fChartColorSwatch)
 			.Add(drawButton)
 		.End()
 		.Add(fRowOrientedCheckbox)
@@ -355,16 +424,28 @@ void ChartWindow::LoadRange(const char* rangeText)
 	SetEditingChartIndex(-1);
 	fRangeField->SetText(rangeText);
 	fRowOrientedCheckbox->SetValue(B_CONTROL_OFF);
+	// Nessun colore salvato per un grafico nuovo -- azzera qualunque
+	// scelta fatta durante una precedente sessione di modifica.
+	fSeriesColorOverrides.clear();
+	fChartColor = rgb_color{0, 0, 0, 0};
 	RequestDraw();
 }
 
 void ChartWindow::LoadForEdit(int chartIndex, const char* rangeText, const char* title,
-	ChartType type, bool rowOriented)
+	ChartType type, bool rowOriented, const std::vector<rgb_color>& seriesColors)
 {
 	SetEditingChartIndex(chartIndex);
 	fRangeField->SetText(rangeText);
 	fTitleField->SetText(title);
 	fRowOrientedCheckbox->SetValue(rowOriented ? B_CONTROL_ON : B_CONTROL_OFF);
+	// Precompila entrambi i possibili usi dello stesso array salvato
+	// (ChartObject::seriesColors e' un unico campo per singola/serie
+	// multiple, vedi Chart.h): quale dei due conta davvero dipende dal
+	// tipo del grafico, non ancora noto qui -- lo decide il gestore di
+	// kMsgChartData/kMsgChartDataMulti quando arriva la risposta di
+	// RequestDraw piu' sotto.
+	fSeriesColorOverrides = seriesColors;
+	fChartColor = !seriesColors.empty() ? seriesColors[0] : rgb_color{0, 0, 0, 0};
 
 	// Corrispondenza inversa di SelectedType() sopra: stessa
 	// corrispondenza posizionale (0=Barre, 1=Linee, 2=Torta, 3=Area,
@@ -427,6 +508,27 @@ void ChartWindow::RequestDraw()
 	fTarget.SendMessage(&request);
 }
 
+void ChartWindow::ShowSeriesColorPicker(int index)
+{
+	if (!fSeriesColorWindow)
+		fSeriesColorWindow = new ColorWindow(BMessenger(this));
+
+	rgb_color initial = (index < 0)
+		? (fChartColor.alpha > 0 ? fChartColor : SeriesColor(std::vector<rgb_color>(), 0))
+		: SeriesColor(fSeriesColorOverrides, (size_t)index);
+
+	if (fSeriesColorWindow->Lock())
+	{
+		fSeriesColorWindow->SetTarget(BMessenger(this));
+		fSeriesColorWindow->SetSeriesIndex(index);
+		fSeriesColorWindow->SetMode(eSeriesColor, initial);
+		fSeriesColorWindow->Unlock();
+	}
+	if (fSeriesColorWindow->IsHidden())
+		fSeriesColorWindow->Show();
+	fSeriesColorWindow->Activate();
+}
+
 void ChartWindow::ClearSeriesCheckboxes()
 {
 	while (fSeriesCheckboxRow->CountChildren() > 0)
@@ -436,6 +538,11 @@ void ChartWindow::ClearSeriesCheckboxes()
 		delete child;
 	}
 	fSeriesCheckboxes.clear();
+	// I riquadretti colore sono GIA' figli di fSeriesCheckboxRow
+	// (aggiunti subito dopo ogni checkbox in RebuildSeriesCheckboxes),
+	// quindi il ciclo sopra li cancella gia' -- questo svuota solo il
+	// vettore di puntatori ormai invalidi.
+	fSeriesColorSwatches.clear();
 	// Nessuna serie da elencare: il riquadro intero sparisce invece di
 	// restare visibile ma vuoto (vedi il commento nel costruttore).
 	if (!fSeriesCheckboxBox->IsHidden())
@@ -444,18 +551,24 @@ void ChartWindow::ClearSeriesCheckboxes()
 
 void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
 {
-	// Preserva lo stato "spuntata/non spuntata" per nome di serie:
-	// senza questo, ridisegnare lo stesso intervallo (es. premendo di
-	// nuovo Invio nel campo Intervallo) resetterebbe ogni volta le
-	// checkbox a "tutte spuntate", cancellando una scelta gia' fatta
-	// dall'utente.
+	// Preserva lo stato "spuntata/non spuntata" E il colore scelto per
+	// nome di serie: senza questo, ridisegnare lo stesso intervallo (es.
+	// premendo di nuovo Invio nel campo Intervallo) resetterebbe ogni
+	// volta le checkbox a "tutte spuntate" e i colori alla tavolozza,
+	// cancellando una scelta gia' fatta dall'utente.
 	std::map<std::string, bool> previousState;
+	std::map<std::string, rgb_color> previousColors;
 	for (size_t i = 0; i < fSeriesCheckboxes.size(); i++)
+	{
 		previousState[fSeriesCheckboxes[i]->Label()] = fSeriesCheckboxes[i]->Value() != 0;
+		if (i < fSeriesColorOverrides.size())
+			previousColors[fSeriesCheckboxes[i]->Label()] = fSeriesColorOverrides[i];
+	}
 
 	ClearSeriesCheckboxes();
 
 	data->showValues.resize(data->seriesNames.size());
+	fSeriesColorOverrides.assign(data->seriesNames.size(), rgb_color{0, 0, 0, 0});
 	for (size_t s = 0; s < data->seriesNames.size(); s++)
 	{
 		bool checked = true;
@@ -465,6 +578,11 @@ void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
 			checked = it->second;
 		data->showValues[s] = checked;
 
+		std::map<std::string, rgb_color>::iterator colorIt =
+			previousColors.find(data->seriesNames[s].String());
+		if (colorIt != previousColors.end())
+			fSeriesColorOverrides[s] = colorIt->second;
+
 		BMessage* msg = new BMessage(kMsgSeriesToggleLocal);
 		msg->AddInt32("index", (int32)s);
 		BCheckBox* cb = new BCheckBox(data->seriesNames[s].String(),
@@ -473,7 +591,17 @@ void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
 		cb->SetValue(checked ? B_CONTROL_ON : B_CONTROL_OFF);
 		fSeriesCheckboxRow->AddChild(cb);
 		fSeriesCheckboxes.push_back(cb);
+
+		ChartColorSwatch* swatch = new ChartColorSwatch((int)s, BMessenger(this),
+			kMsgSeriesColorButtonLocal);
+		swatch->SetColor(SeriesColor(fSeriesColorOverrides, s));
+		fSeriesCheckboxRow->AddChild(swatch);
+		fSeriesColorSwatches.push_back(swatch);
 	}
+	// Popolato PRIMA di ChartView::SetMultiData (chiamato subito dopo da
+	// chi ci ha invocato), cosi' l'anteprima riflette gia' i colori
+	// scelti in precedenza al primo giro, non solo dopo un nuovo clic.
+	data->seriesColors = fSeriesColorOverrides;
 
 	// Almeno una serie da elencare: mostra (o tieni visibile) il
 	// riquadro col titolo/suggerimento -- vedi ClearSeriesCheckboxes
@@ -497,6 +625,17 @@ void ChartWindow::MessageReceived(BMessage* message)
 		case kMsgInsertLocal:
 		{
 			bool rowOriented = fRowOrientedCheckbox->Value() == B_CONTROL_ON;
+			// Colori da inviare (Fase colori): per un grafico a singola
+			// serie, fChartColor (se mai scelto, alpha > 0) e' l'unico
+			// colore che conta, indice 0; per serie multiple,
+			// fSeriesColorOverrides gia' nello stesso ordine di
+			// seriesNames. I due casi non capitano mai insieme (un
+			// grafico e' o l'uno o l'altro), quindi va bene mandare
+			// sempre e solo uno dei due vettori, mai entrambi mescolati.
+			std::vector<rgb_color> colorsToSend = !fSeriesColorOverrides.empty()
+				? fSeriesColorOverrides
+				: (fChartColor.alpha > 0 ? std::vector<rgb_color>(1, fChartColor)
+					: std::vector<rgb_color>());
 			if (fEditingChartIndex >= 0)
 			{
 				BMessage request(kMsgChartUpdate);
@@ -505,6 +644,8 @@ void ChartWindow::MessageReceived(BMessage* message)
 				request.AddInt32("type", (int32)SelectedType());
 				request.AddString("title", fTitleField->Text());
 				request.AddBool("rowOriented", rowOriented);
+				for (size_t i = 0; i < colorsToSend.size(); i++)
+					request.AddData("seriesColor", B_RGB_COLOR_TYPE, &colorsToSend[i], sizeof(rgb_color));
 				fTarget.SendMessage(&request);
 				return;
 			}
@@ -514,6 +655,8 @@ void ChartWindow::MessageReceived(BMessage* message)
 			request.AddInt32("type", (int32)SelectedType());
 			request.AddString("title", fTitleField->Text());
 			request.AddBool("rowOriented", rowOriented);
+			for (size_t i = 0; i < colorsToSend.size(); i++)
+				request.AddData("seriesColor", B_RGB_COLOR_TYPE, &colorsToSend[i], sizeof(rgb_color));
 			fTarget.SendMessage(&request);
 			return;
 		}
@@ -537,6 +680,21 @@ void ChartWindow::MessageReceived(BMessage* message)
 				data.push_back(s);
 			}
 			fChartView->SetData(data);
+			// Riquadretto colore (Fase colori): mai per la torta, che
+			// mantiene sempre la sua tavolozza per fetta -- vedi il
+			// commento su ChartObject::seriesColors in Chart.h.
+			if (SelectedType() == ePieChart)
+			{
+				if (!fChartColorSwatch->IsHidden())
+					fChartColorSwatch->Hide();
+			}
+			else
+			{
+				fChartColorSwatch->SetColor(fChartColor.alpha > 0
+					? fChartColor : SeriesColor(std::vector<rgb_color>(), 0));
+				if (fChartColorSwatch->IsHidden())
+					fChartColorSwatch->Show();
+			}
 			return;
 		}
 
@@ -557,6 +715,12 @@ void ChartWindow::MessageReceived(BMessage* message)
 				data.push_back(p);
 			}
 			fChartView->SetScatterData(data);
+			// Un grafico a dispersione e' sempre a singola serie, mai
+			// torta -- il riquadretto colore e' sempre pertinente qui.
+			fChartColorSwatch->SetColor(fChartColor.alpha > 0
+				? fChartColor : SeriesColor(std::vector<rgb_color>(), 0));
+			if (fChartColorSwatch->IsHidden())
+				fChartColorSwatch->Show();
 			return;
 		}
 
@@ -595,6 +759,10 @@ void ChartWindow::MessageReceived(BMessage* message)
 			// disegna gia' con le visibilita' corrette al primo giro.
 			RebuildSeriesCheckboxes(&data);
 			fChartView->SetMultiData(data);
+			// Il riquadretto singolo non vale per serie multiple (c'e'
+			// un riquadretto per serie nella riga appena ricostruita).
+			if (!fChartColorSwatch->IsHidden())
+				fChartColorSwatch->Hide();
 			return;
 		}
 
@@ -609,6 +777,53 @@ void ChartWindow::MessageReceived(BMessage* message)
 				// che ha generato il messaggio.
 				message->FindInt32("be:value", &value);
 				fChartView->SetSeriesShowValues(index, value != 0);
+			}
+			return;
+		}
+
+		case kMsgSeriesColorButtonLocal:
+		{
+			int32 index;
+			if (message->FindInt32("index", &index) == B_OK)
+				ShowSeriesColorPicker(index);
+			return;
+		}
+
+		case kMsgChartColorButtonLocal:
+			// -1 = "il colore dell'intero grafico", non un vero indice
+			// di serie -- vedi il commento su fChartColor in ChartWindow.h.
+			ShowSeriesColorPicker(-1);
+			return;
+
+		case kMsgColorRequest:
+		{
+			int32 target = -1, index = -1;
+			message->FindInt32("target", &target);
+			if ((ColorTarget)target != eSeriesColor)
+				return;
+			message->FindInt32("seriesIndex", &index);
+
+			const void* colorData;
+			ssize_t size;
+			if (message->FindData("color", B_RGB_COLOR_TYPE, &colorData, &size) != B_OK
+				|| size != (ssize_t)sizeof(rgb_color))
+				return;
+			rgb_color color = *(const rgb_color*)colorData;
+
+			if (index < 0)
+			{
+				fChartColor = color;
+				fChartColorSwatch->SetColor(color);
+				fChartView->SetChartColor(color);
+			}
+			else
+			{
+				if (index >= (int)fSeriesColorOverrides.size())
+					fSeriesColorOverrides.resize(index + 1, rgb_color{0, 0, 0, 0});
+				fSeriesColorOverrides[index] = color;
+				if (index < (int)fSeriesColorSwatches.size())
+					fSeriesColorSwatches[index]->SetColor(color);
+				fChartView->SetSeriesColor(index, color);
 			}
 			return;
 		}

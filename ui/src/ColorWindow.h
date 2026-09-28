@@ -26,7 +26,14 @@ enum ColorTarget {
 	eTextColor,
 	eBackgroundColor,
 	eBorderColor,
-	eTabColor
+	eTabColor,
+	// Colore di una serie di grafico (ChartWindow, Fase colori): a
+	// differenza dei quattro bersagli sopra (sempre diretti a
+	// MainWindow), questo e' pensato per una finestra ChartWindow che
+	// possiede una PROPRIA istanza di ColorWindow puntata a se stessa
+	// (vedi SetTarget sotto) -- il round trip non passa mai da
+	// MainWindow per questo bersaglio.
+	eSeriesColor
 };
 
 class BColorControl;
@@ -40,6 +47,18 @@ public:
 	// selezionato (letto dalla cella attiva da MainWindow prima di
 	// mostrare la finestra).
 	void SetMode(ColorTarget target, rgb_color initial);
+	// Ripunta il round trip verso un bersaglio diverso da quello passato
+	// al costruttore -- serve solo a ChartWindow, che possiede una
+	// propria istanza (vedi il commento su eSeriesColor sopra) e la
+	// punta sempre a se stessa; MainWindow non la chiama mai (la sua
+	// unica istanza resta sempre puntata a BMessenger(this), come da
+	// sempre). Va chiamata PRIMA di SetMode/Show per il nuovo utilizzo.
+	void SetTarget(BMessenger target) { fTarget = target; }
+	// Indice della serie per cui si sta scegliendo il colore -- viaggia
+	// nel round trip (campo "seriesIndex") insieme al colore scelto,
+	// innocuo/mai letto per i quattro bersagli storici sopra. Va
+	// chiamata PRIMA di Show() per il nuovo utilizzo, come SetTarget.
+	void SetSeriesIndex(int index) { fSeriesIndex = index; }
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
@@ -48,6 +67,7 @@ private:
 	BColorControl* fColorControl;
 	BMessenger fTarget;
 	ColorTarget fColorTarget;
+	int fSeriesIndex;
 };
 
 #endif

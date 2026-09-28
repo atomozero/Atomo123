@@ -264,6 +264,40 @@ static void DrawLegendSwatch(BView* view, BRect swatch, rgb_color color)
 	view->SetHighColor(0, 0, 0);
 }
 
+// Tavolozza fissa per gli spicchi della torta/le serie: a differenza di
+// un grafico a singola serie senza personalizzazione (un solo colore ha
+// senso), ogni spicchio/serie rappresenta una categoria diversa nello
+// STESSO grafico e deve restare distinguibile dai vicini -- ciclica se
+// le categorie sono piu' dei colori disponibili. Spostata qui (prima
+// era dichiarata solo vicino a ComputePieLayout, molto piu' sotto in
+// questo file) perche' SeriesColor() sotto -- il punto di fallback per
+// OGNI Draw*Chart, inclusi quelli a singola serie definiti subito dopo
+// -- ne ha bisogno gia' da qui.
+static const rgb_color kPieColors[] = {
+	{ 70, 110, 190, 255 },
+	{ 220, 120, 60, 255 },
+	{ 90, 170, 90, 255 },
+	{ 200, 90, 140, 255 },
+	{ 210, 180, 60, 255 },
+	{ 130, 100, 190, 255 },
+	{ 80, 170, 170, 255 },
+	{ 190, 90, 90, 255 },
+};
+static const int kPieColorCount = sizeof(kPieColors) / sizeof(kPieColors[0]);
+
+rgb_color SeriesColor(const std::vector<rgb_color>& overrides, size_t index)
+{
+	// alpha 0 = "non impostato", non un vero colore scelto (un colore
+	// reale scelto in ColorWindow e' sempre opaco, alpha 255) -- serve
+	// per distinguere un override VERO da uno slot creato solo per far
+	// posto a un indice piu' alto quando il vettore viene ridimensionato
+	// (vedi ChartView::SetSeriesColor/ChartWindow), che altrimenti
+	// restituirebbe nero trasparente invece di ricadere sulla tavolozza.
+	if (index < overrides.size() && overrides[index].alpha > 0)
+		return overrides[index];
+	return kPieColors[index % kPieColorCount];
+}
+
 // Etichetta del valore da disegnare accanto a una barra/punto: usa il
 // testo gia' formattato secondo il formato numerico reale della cella
 // (ChartSeries::formattedValue), popolato da BuildChartSeries. Un
@@ -472,7 +506,7 @@ void ComputeBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 }
 
 void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	const BString& title)
+	const BString& title, const std::vector<rgb_color>& seriesColors)
 {
 	view->SetHighColor(255, 255, 255);
 	view->FillRect(frame);
@@ -537,7 +571,7 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 
 	DrawYAxisGrid(view, plotArea, minValue, maxValue);
 
-	rgb_color barColor = { 70, 110, 190, 255 };
+	rgb_color barColor = SeriesColor(seriesColors, 0);
 	for (size_t i = 0; i < bars.size(); i++)
 		FillBarGradient(view, bars[i].bar, barColor);
 
@@ -610,7 +644,7 @@ void ComputeLineLayout(const std::vector<ChartSeries>& data, BRect bounds,
 }
 
 void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	const BString& title)
+	const BString& title, const std::vector<rgb_color>& seriesColors)
 {
 	view->SetHighColor(255, 255, 255);
 	view->FillRect(frame);
@@ -666,7 +700,7 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 
 	DrawYAxisGrid(view, plotArea, minValue, maxValue);
 
-	view->SetHighColor(70, 110, 190);
+	view->SetHighColor(SeriesColor(seriesColors, 0));
 	for (size_t i = 1; i < points.size(); i++)
 		view->StrokeLine(points[i - 1].point, points[i].point);
 	// Un pallino su ogni punto, non solo la spezzata: rende visibile
@@ -716,7 +750,7 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 }
 
 void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	const BString& title)
+	const BString& title, const std::vector<rgb_color>& seriesColors)
 {
 	view->SetHighColor(255, 255, 255);
 	view->FillRect(frame);
@@ -785,14 +819,15 @@ void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 		// selezione in SheetView::Draw): un riempimento pieno
 		// nasconderebbe del tutto la griglia dell'asse Y appena
 		// disegnata sotto.
+		rgb_color areaColor = SeriesColor(seriesColors, 0);
 		view->SetDrawingMode(B_OP_ALPHA);
 		view->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
-		view->SetHighColor(70, 110, 190, 90);
+		view->SetHighColor(areaColor.red, areaColor.green, areaColor.blue, 90);
 		view->FillPolygon(&polygon[0], (int32)polygon.size());
 		view->SetDrawingMode(B_OP_COPY);
 	}
 
-	view->SetHighColor(70, 110, 190);
+	view->SetHighColor(SeriesColor(seriesColors, 0));
 	for (size_t i = 1; i < points.size(); i++)
 		view->StrokeLine(points[i - 1].point, points[i].point);
 	for (size_t i = 0; i < points.size(); i++)
@@ -906,7 +941,7 @@ void ComputeHBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 }
 
 void DrawHBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	const BString& title)
+	const BString& title, const std::vector<rgb_color>& seriesColors)
 {
 	view->SetHighColor(255, 255, 255);
 	view->FillRect(frame);
@@ -960,7 +995,7 @@ void DrawHBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 
 	DrawXAxisGrid(view, plotArea, minValue, maxValue);
 
-	rgb_color barColor = { 70, 110, 190, 255 };
+	rgb_color barColor = SeriesColor(seriesColors, 0);
 	for (size_t i = 0; i < bars.size(); i++)
 		FillBarGradient(view, bars[i].bar, barColor);
 
@@ -1048,7 +1083,7 @@ void ComputeScatterLayout(const std::vector<ScatterPoint>& data, BRect bounds,
 }
 
 void DrawScatterChart(BView* view, BRect frame, const std::vector<ScatterPoint>& data,
-	const BString& title)
+	const BString& title, const std::vector<rgb_color>& seriesColors)
 {
 	view->SetHighColor(255, 255, 255);
 	view->FillRect(frame);
@@ -1137,7 +1172,7 @@ void DrawScatterChart(BView* view, BRect frame, const std::vector<ScatterPoint>&
 	// variante rara nell'uso reale, non implementata).
 	std::vector<BPoint> points;
 	ComputeScatterLayout(data, plotArea, points);
-	view->SetHighColor(70, 110, 190);
+	view->SetHighColor(SeriesColor(seriesColors, 0));
 	for (size_t i = 0; i < points.size(); i++)
 	{
 		BRect dot(points[i].x - 3, points[i].y - 3, points[i].x + 3, points[i].y + 3);
@@ -1146,23 +1181,6 @@ void DrawScatterChart(BView* view, BRect frame, const std::vector<ScatterPoint>&
 
 	DrawChartFrame(view, frame);
 }
-
-// Tavolozza fissa per gli spicchi della torta: a differenza di barre/
-// linee (una sola serie, un solo colore ha senso), ogni spicchio
-// rappresenta una categoria diversa nello STESSO grafico e deve
-// restare distinguibile dai vicini -- ciclica se le categorie sono
-// piu' dei colori disponibili.
-static const rgb_color kPieColors[] = {
-	{ 70, 110, 190, 255 },
-	{ 220, 120, 60, 255 },
-	{ 90, 170, 90, 255 },
-	{ 200, 90, 140, 255 },
-	{ 210, 180, 60, 255 },
-	{ 130, 100, 190, 255 },
-	{ 80, 170, 170, 255 },
-	{ 190, 90, 90, 255 },
-};
-static const int kPieColorCount = sizeof(kPieColors) / sizeof(kPieColors[0]);
 
 void ComputePieLayout(const std::vector<ChartSeries>& data, std::vector<PieSlice>& out)
 {
@@ -1716,7 +1734,7 @@ static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
 	for (size_t s = 0; s < data.seriesNames.size(); s++)
 	{
 		BRect swatch(legendX, legendY - 8, legendX + 10, legendY + 2);
-		DrawLegendSwatch(view, swatch, kPieColors[s % kPieColorCount]);
+		DrawLegendSwatch(view, swatch, SeriesColor(data.seriesColors, s));
 		float used = DrawWrappedLabel(view, data.seriesNames[s].String(), BPoint(legendX + 16, legendY),
 			legendTextWidth, kLegendLabelMaxLines, false);
 		legendY += std::max(16.0f, used + 4);
@@ -1749,7 +1767,7 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 	for (size_t s = 0; s < layout.bars.size(); s++)
 	{
 		for (size_t c = 0; c < layout.bars[s].size(); c++)
-			FillBarGradient(view, layout.bars[s][c], kPieColors[s % kPieColorCount]);
+			FillBarGradient(view, layout.bars[s][c], SeriesColor(data.seriesColors, s));
 	}
 
 	// Valore numerico sopra/sotto ogni barra, solo per le serie con la
@@ -1764,7 +1782,7 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 	{
 		if (!SeriesShowsValues(data, s))
 			continue;
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		view->SetHighColor(SeriesColor(data.seriesColors, s));
 		for (size_t c = 0; c < layout.bars[s].size(); c++)
 		{
 			BString bufStr = FormatMultiValue(data, s, c);
@@ -1836,14 +1854,14 @@ void DrawGroupedHBarChart(BView* view, BRect frame, const MultiChartData& data, 
 	for (size_t s = 0; s < layout.bars.size(); s++)
 	{
 		for (size_t c = 0; c < layout.bars[s].size(); c++)
-			FillBarGradient(view, layout.bars[s][c], kPieColors[s % kPieColorCount]);
+			FillBarGradient(view, layout.bars[s][c], SeriesColor(data.seriesColors, s));
 	}
 
 	for (size_t s = 0; s < layout.bars.size(); s++)
 	{
 		if (!SeriesShowsValues(data, s))
 			continue;
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		view->SetHighColor(SeriesColor(data.seriesColors, s));
 		for (size_t c = 0; c < layout.bars[s].size(); c++)
 		{
 			BString bufStr = FormatMultiValue(data, s, c);
@@ -1886,7 +1904,7 @@ void DrawGroupedHBarChart(BView* view, BRect frame, const MultiChartData& data, 
 	for (size_t s = 0; s < data.seriesNames.size(); s++)
 	{
 		BRect swatch(legendX, legendY - 8, legendX + 10, legendY + 2);
-		DrawLegendSwatch(view, swatch, kPieColors[s % kPieColorCount]);
+		DrawLegendSwatch(view, swatch, SeriesColor(data.seriesColors, s));
 		float used = DrawWrappedLabel(view, data.seriesNames[s].String(), BPoint(legendX + 16, legendY),
 			legendTextWidth, kLegendLabelMaxLines, false);
 		legendY += std::max(16.0f, used + 4);
@@ -1918,7 +1936,7 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 
 	for (size_t s = 0; s < layout.points.size(); s++)
 	{
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		view->SetHighColor(SeriesColor(data.seriesColors, s));
 		for (size_t c = 1; c < layout.points[s].size(); c++)
 			view->StrokeLine(layout.points[s][c - 1], layout.points[s][c]);
 		for (size_t c = 0; c < layout.points[s].size(); c++)
@@ -1935,7 +1953,7 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 	{
 		if (!SeriesShowsValues(data, s))
 			continue;
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		view->SetHighColor(SeriesColor(data.seriesColors, s));
 		for (size_t c = 0; c < layout.points[s].size(); c++)
 		{
 			BString bufStr = FormatMultiValue(data, s, c);
@@ -1994,7 +2012,7 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, co
 
 		view->SetDrawingMode(B_OP_ALPHA);
 		view->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
-		rgb_color fill = kPieColors[s % kPieColorCount];
+		rgb_color fill = SeriesColor(data.seriesColors, s);
 		fill.alpha = 90;
 		view->SetHighColor(fill);
 		view->FillPolygon(&polygon[0], (int32)polygon.size());
@@ -2003,7 +2021,7 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, co
 
 	for (size_t s = 0; s < layout.points.size(); s++)
 	{
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		view->SetHighColor(SeriesColor(data.seriesColors, s));
 		for (size_t c = 1; c < layout.points[s].size(); c++)
 			view->StrokeLine(layout.points[s][c - 1], layout.points[s][c]);
 		for (size_t c = 0; c < layout.points[s].size(); c++)
@@ -2017,7 +2035,7 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, co
 	{
 		if (!SeriesShowsValues(data, s))
 			continue;
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
+		view->SetHighColor(SeriesColor(data.seriesColors, s));
 		for (size_t c = 0; c < layout.points[s].size(); c++)
 		{
 			BString bufStr = FormatMultiValue(data, s, c);
@@ -2105,11 +2123,11 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 	// Serie 0: barre. Stesso colore (kPieColors[0]) che DrawMultiSeriesFooter
 	// assegna alla legenda della serie 0, cosi' barra e legenda combaciano.
 	for (size_t c = 0; c < layout.bars.size(); c++)
-		FillBarGradient(view, layout.bars[c], kPieColors[0]);
+		FillBarGradient(view, layout.bars[c], SeriesColor(data.seriesColors, 0));
 
 	if (SeriesShowsValues(data, 0))
 	{
-		view->SetHighColor(kPieColors[0]);
+		view->SetHighColor(SeriesColor(data.seriesColors, 0));
 		for (size_t c = 0; c < layout.bars.size(); c++)
 		{
 			BString bufStr = FormatMultiValue(data, 0, c);
@@ -2127,7 +2145,7 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 	// per restare allineati alla stessa numerazione della legenda.
 	for (size_t s = 0; s < layout.lines.size(); s++)
 	{
-		view->SetHighColor(kPieColors[(s + 1) % kPieColorCount]);
+		view->SetHighColor(SeriesColor(data.seriesColors, s + 1));
 		for (size_t c = 1; c < layout.lines[s].size(); c++)
 			view->StrokeLine(layout.lines[s][c - 1], layout.lines[s][c]);
 		for (size_t c = 0; c < layout.lines[s].size(); c++)
@@ -2141,7 +2159,7 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 	{
 		if (!SeriesShowsValues(data, s + 1))
 			continue;
-		view->SetHighColor(kPieColors[(s + 1) % kPieColorCount]);
+		view->SetHighColor(SeriesColor(data.seriesColors, s + 1));
 		for (size_t c = 0; c < layout.lines[s].size(); c++)
 		{
 			BString bufStr = FormatMultiValue(data, s + 1, c);
@@ -2157,25 +2175,25 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 }
 
 void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
-	ChartType type, const BString& title)
+	ChartType type, const BString& title, const std::vector<rgb_color>& seriesColors)
 {
 	switch (type)
 	{
 		case eAreaChart:
-			DrawAreaChart(view, frame, data, title);
+			DrawAreaChart(view, frame, data, title, seriesColors);
 			return;
 		case eLineChart:
-			DrawLineChart(view, frame, data, title);
+			DrawLineChart(view, frame, data, title, seriesColors);
 			return;
 		case ePieChart:
 			DrawPieChart(view, frame, data, title);
 			return;
 		case eHBarChart:
-			DrawHBarChart(view, frame, data, title);
+			DrawHBarChart(view, frame, data, title, seriesColors);
 			return;
 		case eBarChart:
 		default:
-			DrawBarChart(view, frame, data, title);
+			DrawBarChart(view, frame, data, title, seriesColors);
 			return;
 	}
 }
