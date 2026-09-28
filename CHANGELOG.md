@@ -4,6 +4,56 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
+What shipped since v0.4.0 (in progress):
+- Circular reference detection: a formula that refers to its own cell
+  (directly, like `=A1+A2+A3+A4` written into A4 itself, or indirectly
+  through a chain of other formulas) used to silently compute an
+  arbitrary number instead of showing an error. Root cause: the
+  recalculation loop (`RecalculateAll`/`RecalculateWorkbook` in
+  `ui/src/AscdIO.cpp`) is a fixed-point iteration that reads a formula
+  cell's *own current value* on every pass and stops after 50 passes if
+  it never converges — a self-referencing sum grows by the same amount
+  every pass and never converges, so the result after the hardcoded
+  50-pass cap is a deterministic artifact of that cap (reported case:
+  `=A1+A2+A3+A4` with A1=100/A2=200/A3=300 converges to ~30000, exactly
+  `600 * 50`), not randomness. New `MarkCircularReferences` runs a DFS
+  over each formula's direct precedents (reusing `CContainer::
+  GetPrecedents`, the same mechanism already built for the formula
+  auditing/precedent-tracing views) before the numeric passes begin,
+  and marks every cell found in a cycle with `#CIRCULAR!` instead of
+  letting it diverge — matching LibreOffice Calc's approach of showing
+  a clear per-cell error. Like `GetPrecedents` itself, this only
+  detects a cycle through same-sheet references (a documented,
+  pre-existing limit of that mechanism, not new here). New
+  `ui/tests/test_circular_reference.cpp` covers direct self-reference,
+  an indirect two-cell cycle, a normal formula that merely depends on a
+  circular cell (confirmed NOT itself flagged), and the multi-sheet
+  `RecalculateWorkbook` path.
+- Excel/LibreOffice-style "point mode" while editing a formula
+  in-cell: after typing `=`, an operator, `(` or `,`, the arrow keys now
+  insert a cell reference instead of moving the text cursor (Shift+
+  arrow extends it to a range), exactly like pressing an arrow key in
+  Excel's formula bar. Implemented in `SheetView::HandlePointModeArrow`,
+  hooked into the existing `CellEditKeyFilter` (the same `BMessageFilter`
+  already intercepting Escape/Return/Tab during in-cell editing).
+  Pressing the same arrow again *replaces* the just-inserted reference
+  instead of accumulating another one (so Right, Right, Down ends up
+  pointing at one cell, not three) — the session resets the moment any
+  other key is typed, so the next arrow press starts fresh from the
+  cell being edited. Scoped to the in-cell editor for this first
+  version; the separate formula bar (`MainWindow::fFormulaBar`) doesn't
+  share this behavior yet, a declared scope limit, not silently
+  dropped, since it's a fully independent `BTextControl` with its own
+  commit path. New `ui/tests/test_point_mode.cpp`, using the same real
+  synthesized `BMessage(B_KEY_DOWN)` technique as
+  `test_real_input_edit.cpp` (delivered through the actual window
+  dispatch cycle, not called directly) since real arrow-key injection
+  through this sandbox's GUI-automation tool proved unreliable during
+  development (control bytes for arrow keys arrived as literal escaped
+  text instead of real key events) — the same class of problem that
+  motivated `test_real_input_edit.cpp` originally, confirmed
+  independently while building this feature.
+
 What shipped in v0.4.0, on top of v0.3.0:
 - Replaced the bundled "Open Sample File" demo: `Financial_Sample_CdA
   .ascd` (the CdA showcase kept up to date after every feature — pivot
