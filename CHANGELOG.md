@@ -58,6 +58,14 @@ What shipped since v0.4.2 (in progress):
   import-only fields (non-contiguous value columns/row orientation,
   never exposed by this editor) survive an edit that leaves the range
   text unchanged, and reset if the range is actually changed.
+- Chart editor: the 7 chart types in the Tipo dropdown now show a small
+  pictogram (bars/zigzag line/pie/filled area/scattered dots/bars+line/
+  horizontal bars) instead of plain text, easier to scan at a glance
+  like Excel's chart gallery. `BMenuItem` has no built-in icon support
+  in this Haiku version, so this uses a new `ChartTypeMenuItem` subclass
+  overriding `GetContentSize`/`DrawContent`. The hand-drawn-icon
+  technique (4x supersampling) used for toolbar pictograms is now
+  shared via `IconCatalog::RenderCustom`, reused here.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
