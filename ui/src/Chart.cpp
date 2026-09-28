@@ -14,6 +14,7 @@
 
 #include <Catalog.h>
 #include <Font.h>
+#include <GradientLinear.h>
 #include <View.h>
 
 #include "Cell.h"
@@ -161,6 +162,43 @@ static void DrawChartTitle(BView* view, BRect frame, const BString& title)
 
 	font.SetFace(B_REGULAR_FACE);
 	view->SetFont(&font, B_FONT_FACE);
+}
+
+// Bordo esterno del grafico: grigio chiaro invece di nero pieno
+// (richiesto dall'utente: grafici piu' professionali, meno "duri" a
+// vedersi) -- un bordo scuro come qualunque altro elemento del disegno
+// (griglia, barre, testo) non lasciava distinguere il contenitore del
+// grafico dal suo contenuto. Non tocca il colore corrente del
+// chiamante: lo ripristina subito a nero dopo, cosi' il resto del
+// disegno (linea di zero, contorno delle fette di torta...) rimane
+// esattamente come prima di questa funzione.
+static void DrawChartFrame(BView* view, BRect frame)
+{
+	view->SetHighColor(200, 200, 200);
+	view->StrokeRect(frame);
+	view->SetHighColor(0, 0, 0);
+}
+
+// Riempimento di una barra con una sfumatura verticale invece di un
+// unico colore piatto (richiesto dall'utente: grafici piu' professionali)
+// -- piu' chiara in alto, colore pieno in basso, un leggero effetto
+// "lucido" che da' l'impressione di profondita'. Verticale anche per le
+// barre orizzontali di DrawHBarChart: e' la luce che viene dall'alto a
+// dare l'impressione di rilievo, non l'orientamento della barra stessa.
+// Non tocca SetHighColor: i chiamanti la usano gia' solo per le
+// etichette disegnate subito dopo, non per il riempimento in se'.
+static void FillBarGradient(BView* view, BRect bar, rgb_color baseColor)
+{
+	rgb_color lightColor = baseColor;
+	int r = baseColor.red + 50, g = baseColor.green + 50, b = baseColor.blue + 50;
+	lightColor.red = (uint8)(r > 255 ? 255 : r);
+	lightColor.green = (uint8)(g > 255 ? 255 : g);
+	lightColor.blue = (uint8)(b > 255 ? 255 : b);
+
+	BGradientLinear gradient(bar.left, bar.top, bar.left, bar.bottom);
+	gradient.AddColor(lightColor, 0);
+	gradient.AddColor(baseColor, 255);
+	view->FillRect(bar, gradient);
 }
 
 // Righe massime per un'etichetta che va a capo (DrawWrappedLabel):
@@ -400,9 +438,9 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 
 	DrawYAxisGrid(view, plotArea, minValue, maxValue);
 
-	view->SetHighColor(70, 110, 190);
+	rgb_color barColor = { 70, 110, 190, 255 };
 	for (size_t i = 0; i < bars.size(); i++)
-		view->FillRect(bars[i].bar);
+		FillBarGradient(view, bars[i].bar, barColor);
 
 	// Valore numerico accanto a ogni barra, centrato -- sopra per un
 	// valore positivo (plotArea.top riservato apposta qui sopra),
@@ -423,8 +461,7 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 		view->DrawString(buf, BPoint(x, y));
 	}
 
-	view->SetHighColor(0, 0, 0);
-	view->StrokeRect(frame);
+	DrawChartFrame(view, frame);
 	// Linea di zero: sul fondo di plotArea con soli valori positivi
 	// (comportamento di sempre), ma sale a meta' se la serie ha anche
 	// valori negativi -- e' la vera linea di base delle barre, non il
@@ -559,8 +596,7 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 		view->DrawString(buf, BPoint(points[i].point.x - width / 2, y));
 	}
 
-	view->SetHighColor(0, 0, 0);
-	view->StrokeRect(frame);
+	DrawChartFrame(view, frame);
 	// Linea di zero (vedi il commento gemello in DrawBarChart): sale a
 	// meta' di plotArea se la serie ha anche valori negativi, invece di
 	// restare sempre sul fondo.
@@ -677,8 +713,7 @@ void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 		view->DrawString(buf, BPoint(points[i].point.x - width / 2, y));
 	}
 
-	view->SetHighColor(0, 0, 0);
-	view->StrokeRect(frame);
+	DrawChartFrame(view, frame);
 	view->StrokeLine(BPoint(plotArea.left, zeroY), BPoint(plotArea.right, zeroY));
 
 	float slotWidth = plotArea.Width() / data.size();
@@ -826,9 +861,9 @@ void DrawHBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 
 	DrawXAxisGrid(view, plotArea, minValue, maxValue);
 
-	view->SetHighColor(70, 110, 190);
+	rgb_color barColor = { 70, 110, 190, 255 };
 	for (size_t i = 0; i < bars.size(); i++)
-		view->FillRect(bars[i].bar);
+		FillBarGradient(view, bars[i].bar, barColor);
 
 	// Valore numerico accanto alla punta di ogni barra: a destra per
 	// un valore positivo, a sinistra per uno negativo -- gemello della
@@ -844,8 +879,7 @@ void DrawHBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 		view->DrawString(buf, BPoint(x, y));
 	}
 
-	view->SetHighColor(0, 0, 0);
-	view->StrokeRect(frame);
+	DrawChartFrame(view, frame);
 	float zeroX = ChartValueToX(0.0, minValue, maxValue, plotArea);
 	view->StrokeLine(BPoint(zeroX, plotArea.top), BPoint(zeroX, plotArea.bottom));
 
@@ -997,8 +1031,7 @@ void DrawScatterChart(BView* view, BRect frame, const std::vector<ScatterPoint>&
 		view->DrawString(buf, BPoint(x - width / 2, plotArea.bottom + lineHeight));
 	}
 
-	view->SetHighColor(0, 0, 0);
-	view->StrokeRect(plotArea);
+	DrawChartFrame(view, plotArea);
 
 	// Soli punti, MAI una linea di collegamento -- il vero grafico
 	// "Dispersione" di Excel (non "Dispersione con linee dritte",
@@ -1012,8 +1045,7 @@ void DrawScatterChart(BView* view, BRect frame, const std::vector<ScatterPoint>&
 		view->FillEllipse(dot);
 	}
 
-	view->SetHighColor(0, 0, 0);
-	view->StrokeRect(frame);
+	DrawChartFrame(view, frame);
 }
 
 // Tavolozza fissa per gli spicchi della torta: a differenza di barre/
@@ -1115,7 +1147,7 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 
 	view->SetHighColor(0, 0, 0);
 	view->StrokeEllipse(center, radius, radius);
-	view->StrokeRect(frame);
+	DrawChartFrame(view, frame);
 
 	// Larghezza di testo disponibile nella striscia di legenda
 	// (legendWidth sopra, 110px): meno il quadratino di colore/il suo
@@ -1541,8 +1573,7 @@ static void PrepareMultiSeriesPlotArea(BView* view, BRect frame, const MultiChar
 static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
 	const MultiChartData& data, double minValue, double maxValue, float categoryLabelY)
 {
-	view->SetHighColor(0, 0, 0);
-	view->StrokeRect(frame);
+	DrawChartFrame(view, frame);
 	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
 	view->StrokeLine(BPoint(plotArea.left, zeroY), BPoint(plotArea.right, zeroY));
 
@@ -1604,9 +1635,8 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 
 	for (size_t s = 0; s < layout.bars.size(); s++)
 	{
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
 		for (size_t c = 0; c < layout.bars[s].size(); c++)
-			view->FillRect(layout.bars[s][c]);
+			FillBarGradient(view, layout.bars[s][c], kPieColors[s % kPieColorCount]);
 	}
 
 	// Valore numerico sopra/sotto ogni barra, solo per le serie con la
@@ -1692,9 +1722,8 @@ void DrawGroupedHBarChart(BView* view, BRect frame, const MultiChartData& data, 
 
 	for (size_t s = 0; s < layout.bars.size(); s++)
 	{
-		view->SetHighColor(kPieColors[s % kPieColorCount]);
 		for (size_t c = 0; c < layout.bars[s].size(); c++)
-			view->FillRect(layout.bars[s][c]);
+			FillBarGradient(view, layout.bars[s][c], kPieColors[s % kPieColorCount]);
 	}
 
 	for (size_t s = 0; s < layout.bars.size(); s++)
@@ -1714,8 +1743,7 @@ void DrawGroupedHBarChart(BView* view, BRect frame, const MultiChartData& data, 
 		}
 	}
 
-	view->SetHighColor(0, 0, 0);
-	view->StrokeRect(frame);
+	DrawChartFrame(view, frame);
 	float zeroX = ChartValueToX(0.0, minValue, maxValue, plotArea);
 	view->StrokeLine(BPoint(zeroX, plotArea.top), BPoint(zeroX, plotArea.bottom));
 
@@ -1965,9 +1993,8 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 
 	// Serie 0: barre. Stesso colore (kPieColors[0]) che DrawMultiSeriesFooter
 	// assegna alla legenda della serie 0, cosi' barra e legenda combaciano.
-	view->SetHighColor(kPieColors[0]);
 	for (size_t c = 0; c < layout.bars.size(); c++)
-		view->FillRect(layout.bars[c]);
+		FillBarGradient(view, layout.bars[c], kPieColors[0]);
 
 	if (SeriesShowsValues(data, 0))
 	{
