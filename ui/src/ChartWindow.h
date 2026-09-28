@@ -49,6 +49,7 @@ const uint32 kMsgChartUpdate = 'chup';
 class BBox;
 class BButton;
 class BCheckBox;
+class BMenu;
 class BMenuField;
 class BTextControl;
 class ChartView;
@@ -83,6 +84,12 @@ public:
 	// all'ultimo grafico modificato (fEditingChartIndex) invece di
 	// tornare a "crea nuovo grafico".
 	void ExitEditMode() { SetEditingChartIndex(-1); }
+
+	// Pubblico apposta per essere testabile (stesso principio di
+	// MainWindow::GetChartWindow): verifica che le 7 voci del menu Tipo
+	// esistano davvero dopo la costruzione, senza dover ispezionare
+	// pixel -- vedi tests/test_edit_chart.cpp.
+	BMenu* TypeMenu() const;
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();

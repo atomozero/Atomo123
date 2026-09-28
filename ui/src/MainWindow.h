@@ -207,6 +207,11 @@ public:
 	// clic sul corpo di un grafico incorporato, vedi
 	// tests/test_edit_chart.cpp.
 	void EditChart(int chartIndex);
+	// Pubblico apposta per essere testabile (stesso principio di
+	// GetSheetView sopra): EditChart/ShowChartWindow creano fChartWindow
+	// al volo se non esiste ancora, quindi va letto DOPO averne chiamato
+	// una delle due, non prima -- vedi tests/test_edit_chart.cpp.
+	ChartWindow* GetChartWindow() const { return fChartWindow; }
 	// Pubblico apposta per essere testabile senza passare da una vera
 	// PreferencesWindow (stesso principio di GetSheetView sopra): vedi
 	// tests/test_preferences.cpp.
