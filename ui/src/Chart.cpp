@@ -11,7 +11,10 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
+#include <math.h>
 
+#include <Bitmap.h>
 #include <Catalog.h>
 #include <Font.h>
 #include <GradientLinear.h>
@@ -164,6 +167,50 @@ static void DrawChartTitle(BView* view, BRect frame, const BString& title)
 	view->SetFont(&font, B_FONT_FACE);
 }
 
+// Contorno di un rettangolo come quattro FillRect (non StrokeRect): su
+// una vista con BView::SetScale attivo (vedi DrawChartAntialiased piu'
+// sotto) StrokeRect su una forma chiusa riempie l'intero rettangolo di
+// pieno invece di tracciarne solo il contorno -- stesso identico
+// problema gia' scoperto e documentato per le icone della toolbar (vedi
+// MainWindow::RenderCustomIcon/DrawAlignmentIcon). FillRect e' l'unica
+// primitiva per un contorno gia' provata affidabile a qualunque scala,
+// quindi questa funzione la usa SEMPRE (anche a scala 1x, dove rende in
+// modo visivamente identico a uno StrokeRect) cosi' il disegno del
+// grafico e' corretto sia nel percorso normale sia in quello
+// supersampled, senza bisogno di due implementazioni diverse.
+static void FillRectOutline(BView* view, BRect frame, float thickness = 1.0f)
+{
+	view->FillRect(BRect(frame.left, frame.top, frame.right, frame.top + thickness - 1));
+	view->FillRect(BRect(frame.left, frame.bottom - thickness + 1, frame.right, frame.bottom));
+	view->FillRect(BRect(frame.left, frame.top, frame.left + thickness - 1, frame.bottom));
+	view->FillRect(BRect(frame.right - thickness + 1, frame.top, frame.right, frame.bottom));
+}
+
+// Contorno della torta come somma di spicchi sottili (FillPolygon),
+// sostituto scala-sicuro di StrokeEllipse su una forma chiusa -- stesso
+// problema di FillRectOutline sopra, stessa tecnica gia' provata per le
+// icone della toolbar (vedi MainWindow::FillRing). 64 spicchi (non i 16
+// di quella, pensata per un'icona 16x16): una torta e' molto piu'
+// grande, pochi spicchi lascerebbero il contorno visibilmente
+// sfaccettato invece che rotondo.
+static void StrokePieOutline(BView* view, BPoint center, float radius, float thickness = 1.0f)
+{
+	const int kSegments = 64;
+	float innerR = radius - thickness;
+	for (int i = 0; i < kSegments; i++)
+	{
+		float a0 = i * 2.0f * (float)M_PI / kSegments;
+		float a1 = (i + 1) * 2.0f * (float)M_PI / kSegments;
+		BPoint quad[4] = {
+			BPoint(center.x + radius * cosf(a0), center.y + radius * sinf(a0)),
+			BPoint(center.x + radius * cosf(a1), center.y + radius * sinf(a1)),
+			BPoint(center.x + innerR * cosf(a1), center.y + innerR * sinf(a1)),
+			BPoint(center.x + innerR * cosf(a0), center.y + innerR * sinf(a0)),
+		};
+		view->FillPolygon(quad, 4);
+	}
+}
+
 // Bordo esterno del grafico: grigio chiaro invece di nero pieno
 // (richiesto dall'utente: grafici piu' professionali, meno "duri" a
 // vedersi) -- un bordo scuro come qualunque altro elemento del disegno
@@ -175,7 +222,7 @@ static void DrawChartTitle(BView* view, BRect frame, const BString& title)
 static void DrawChartFrame(BView* view, BRect frame)
 {
 	view->SetHighColor(200, 200, 200);
-	view->StrokeRect(frame);
+	FillRectOutline(view, frame);
 	view->SetHighColor(0, 0, 0);
 }
 
@@ -213,7 +260,7 @@ static void DrawLegendSwatch(BView* view, BRect swatch, rgb_color color)
 	view->SetHighColor(color);
 	view->FillRect(swatch);
 	view->SetHighColor(150, 150, 150);
-	view->StrokeRect(swatch);
+	FillRectOutline(view, swatch);
 	view->SetHighColor(0, 0, 0);
 }
 
@@ -1198,7 +1245,7 @@ void DrawPieChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	}
 
 	view->SetHighColor(0, 0, 0);
-	view->StrokeEllipse(center, radius, radius);
+	StrokePieOutline(view, center, radius);
 	DrawChartFrame(view, frame);
 
 	// Larghezza di testo disponibile nella striscia di legenda
@@ -2131,4 +2178,97 @@ void DrawChart(BView* view, BRect frame, const std::vector<ChartSeries>& data,
 			DrawBarChart(view, frame, data, title);
 			return;
 	}
+}
+
+// Vedi il commento su questa funzione in Chart.h. "localFrame" ha le
+// stesse dimensioni di "frame" ma parte da (0,0): drawFunc riceve
+// sempre una vista offscreen le cui coordinate iniziano all'origine,
+// indipendentemente da dove il grafico vero si trovi sul foglio --
+// evita di dover capire come BView::SetOrigin/SetScale si compongono,
+// serve solo un secondo BBitmap della dimensione reale come bersaglio
+// del ricampionamento.
+void DrawChartAntialiased(BView* view, BRect frame,
+	const std::function<void(BView*, BRect)>& drawFunc, int factor)
+{
+	if (!view || !drawFunc)
+		return;
+
+	int width = (int)frame.Width() + 1;
+	int height = (int)frame.Height() + 1;
+	if (width <= 0 || height <= 0 || factor <= 1)
+	{
+		drawFunc(view, frame);
+		return;
+	}
+
+	BRect localFrame(0, 0, width - 1, height - 1);
+	int bigWidth = width * factor;
+	int bigHeight = height * factor;
+
+	BBitmap big(BRect(0, 0, bigWidth - 1, bigHeight - 1), B_RGBA32, true);
+	if (big.InitCheck() != B_OK || !big.Bits())
+	{
+		drawFunc(view, frame);
+		return;
+	}
+	memset(big.Bits(), 0, big.BitsLength());
+
+	BView* painter = new BView(big.Bounds(), "chartSupersample", B_FOLLOW_NONE, B_SUBPIXEL_PRECISE);
+	big.AddChild(painter);
+	if (big.Lock())
+	{
+		painter->SetScale(factor);
+		drawFunc(painter, localFrame);
+		painter->Sync();
+		big.Unlock();
+	}
+	big.RemoveChild(painter);
+	delete painter;
+
+	BBitmap small(BRect(0, 0, width - 1, height - 1), B_RGBA32, true);
+	if (small.InitCheck() != B_OK || !small.Bits())
+		return;
+
+	// Media pesata sull'alpha, identica a MainWindow::RenderCustomIcon
+	// (vedi il commento li' sul perche' pesare sull'alpha invece di una
+	// semplice media RGB) -- ogni DrawXChart riempie subito tutto
+	// "frame" di bianco pieno come prima riga, quindi qui l'alpha resta
+	// 255 quasi ovunque: la sfumatura frazionaria del box-filter si
+	// vede solo sui bordi delle forme disegnate, dove serve davvero.
+	uint8* bigBits = (uint8*)big.Bits();
+	uint8* bits = (uint8*)small.Bits();
+	int32 bigStride = big.BytesPerRow();
+	int32 stride = small.BytesPerRow();
+	for (int y = 0; y < height; y++)
+	{
+		for (int x = 0; x < width; x++)
+		{
+			uint32 sumB = 0, sumG = 0, sumR = 0, sumA = 0;
+			for (int sy = 0; sy < factor; sy++)
+			{
+				const uint8* row = bigBits + (y * factor + sy) * bigStride + (x * factor) * 4;
+				for (int sx = 0; sx < factor; sx++)
+				{
+					const uint8* p = row + sx * 4;
+					uint8 a = p[3];
+					sumB += p[0] * a;
+					sumG += p[1] * a;
+					sumR += p[2] * a;
+					sumA += a;
+				}
+			}
+			uint8* out = bits + y * stride + x * 4;
+			if (sumA > 0)
+			{
+				out[0] = (uint8)(sumB / sumA);
+				out[1] = (uint8)(sumG / sumA);
+				out[2] = (uint8)(sumR / sumA);
+			}
+			else
+				out[0] = out[1] = out[2] = 0;
+			out[3] = (uint8)(sumA / (factor * factor));
+		}
+	}
+
+	view->DrawBitmap(&small, frame.LeftTop());
 }

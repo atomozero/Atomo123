@@ -6872,7 +6872,9 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 			{
 				std::vector<ScatterPoint> points;
 				BuildScatterSeries(doc, obj.dataRange, points);
-				DrawScatterChart(offscreen, previewR, points, obj.title);
+				DrawChartAntialiased(offscreen, previewR, [&](BView* v, BRect f) {
+					DrawScatterChart(v, f, points, obj.title);
+				});
 				continue;
 			}
 
@@ -6886,16 +6888,18 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 				MultiChartData multi;
 				if (BuildMultiChartSeriesRows(doc, obj.dataRange, multi, obj.valueRows))
 				{
-					if (obj.type == eLineChart)
-						DrawMultiLineChart(offscreen, previewR, multi, obj.title);
-					else if (obj.type == eAreaChart)
-						DrawMultiAreaChart(offscreen, previewR, multi, obj.title);
-					else if (obj.type == eComboChart)
-						DrawComboChart(offscreen, previewR, multi, obj.title);
-					else if (obj.type == eHBarChart)
-						DrawGroupedHBarChart(offscreen, previewR, multi, obj.title);
-					else
-						DrawGroupedBarChart(offscreen, previewR, multi, obj.title);
+					DrawChartAntialiased(offscreen, previewR, [&](BView* v, BRect f) {
+						if (obj.type == eLineChart)
+							DrawMultiLineChart(v, f, multi, obj.title);
+						else if (obj.type == eAreaChart)
+							DrawMultiAreaChart(v, f, multi, obj.title);
+						else if (obj.type == eComboChart)
+							DrawComboChart(v, f, multi, obj.title);
+						else if (obj.type == eHBarChart)
+							DrawGroupedHBarChart(v, f, multi, obj.title);
+						else
+							DrawGroupedBarChart(v, f, multi, obj.title);
+					});
 				}
 				continue;
 			}
@@ -6906,21 +6910,25 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 				MultiChartData multi;
 				if (BuildMultiChartSeries(doc, obj.dataRange, multi))
 				{
-					if (obj.type == eLineChart)
-						DrawMultiLineChart(offscreen, previewR, multi, obj.title);
-					else if (obj.type == eAreaChart)
-						DrawMultiAreaChart(offscreen, previewR, multi, obj.title);
-					else if (obj.type == eComboChart)
-						DrawComboChart(offscreen, previewR, multi, obj.title);
-					else
-						DrawGroupedBarChart(offscreen, previewR, multi, obj.title);
+					DrawChartAntialiased(offscreen, previewR, [&](BView* v, BRect f) {
+						if (obj.type == eLineChart)
+							DrawMultiLineChart(v, f, multi, obj.title);
+						else if (obj.type == eAreaChart)
+							DrawMultiAreaChart(v, f, multi, obj.title);
+						else if (obj.type == eComboChart)
+							DrawComboChart(v, f, multi, obj.title);
+						else
+							DrawGroupedBarChart(v, f, multi, obj.title);
+					});
 				}
 				continue;
 			}
 
 			std::vector<ChartSeries> series;
 			BuildChartSeries(doc, obj.dataRange, series);
-			DrawChart(offscreen, previewR, series, obj.type, obj.title);
+			DrawChartAntialiased(offscreen, previewR, [&](BView* v, BRect f) {
+				DrawChart(v, f, series, obj.type, obj.title);
+			});
 		}
 
 		// Testi di intestazione/pie' di pagina: bande bianche sopra le
