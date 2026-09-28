@@ -201,6 +201,39 @@ static void FillBarGradient(BView* view, BRect bar, rgb_color baseColor)
 	view->FillRect(bar, gradient);
 }
 
+// Etichetta del valore da disegnare accanto a una barra/punto: usa il
+// testo gia' formattato secondo il formato numerico reale della cella
+// (ChartSeries::formattedValue), popolato da BuildChartSeries. Un
+// grafico costruito a mano fuori da BuildChartSeries (solo nei test
+// unitari, che verificano la sola geometria) non passa mai da li' e
+// lascia formattedValue vuoto -- senza questo fallback a "%g" la
+// stringa disegnata sarebbe silenziosamente vuota, e in nessun caso
+// deve mai crashare.
+static BString FormatOrFallback(const BString& formatted, double value)
+{
+	if (!formatted.IsEmpty())
+		return formatted;
+	char buf[32];
+	snprintf(buf, sizeof(buf), "%g", value);
+	return BString(buf);
+}
+
+// Gemella di FormatOrFallback sopra per MultiChartData: un grafico a
+// serie multiple costruito a mano (stessa ragione, solo nei test) puo'
+// avere "values" popolato ma "formattedValues" vuoto o di forma diversa
+// -- controllare i limiti qui, non solo la stringa vuota, evita un
+// accesso fuori indice sul vettore (il vero crash osservato prima di
+// questo controllo).
+static BString FormatMultiValue(const MultiChartData& data, size_t s, size_t c)
+{
+	if (s < data.formattedValues.size() && c < data.formattedValues[s].size()
+		&& !data.formattedValues[s][c].IsEmpty())
+		return data.formattedValues[s][c];
+	char buf[32];
+	snprintf(buf, sizeof(buf), "%g", data.values[s][c]);
+	return BString(buf);
+}
+
 // Righe massime per un'etichetta che va a capo (DrawWrappedLabel):
 // due per le categorie sotto barre/punti e per le voci di legenda --
 // abbastanza per un nome ragionevolmente lungo senza far crescere
@@ -230,6 +263,9 @@ bool BuildChartSeries(CContainer* doc, const range& r,
 		ChartSeries s;
 		ValueToLabel(lv, s.label);
 		s.value = (double)vv;
+		char formatted[64];
+		doc->GetCellResult(valueCell, formatted, sizeof(formatted), true);
+		s.formattedValue = formatted;
 		out.push_back(s);
 	}
 
@@ -453,8 +489,8 @@ void DrawBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& data
 	view->SetHighColor(40, 40, 40);
 	for (size_t i = 0; i < bars.size() && i < data.size(); i++)
 	{
-		char buf[32];
-		snprintf(buf, sizeof(buf), "%g", data[i].value);
+		BString bufStr = FormatOrFallback(data[i].formattedValue, data[i].value);
+		const char* buf = bufStr.String();
 		float width = view->StringWidth(buf);
 		float x = bars[i].bar.left + bars[i].bar.Width() / 2 - width / 2;
 		float y = (data[i].value >= 0) ? bars[i].bar.top - 4 : bars[i].bar.bottom + 4;
@@ -589,8 +625,8 @@ void DrawLineChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	view->SetHighColor(40, 40, 40);
 	for (size_t i = 0; i < points.size() && i < data.size(); i++)
 	{
-		char buf[32];
-		snprintf(buf, sizeof(buf), "%g", data[i].value);
+		BString bufStr = FormatOrFallback(data[i].formattedValue, data[i].value);
+		const char* buf = bufStr.String();
 		float width = view->StringWidth(buf);
 		float y = (data[i].value >= 0) ? points[i].point.y - 8 : points[i].point.y + 8;
 		view->DrawString(buf, BPoint(points[i].point.x - width / 2, y));
@@ -706,8 +742,8 @@ void DrawAreaChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	view->SetHighColor(40, 40, 40);
 	for (size_t i = 0; i < points.size() && i < data.size(); i++)
 	{
-		char buf[32];
-		snprintf(buf, sizeof(buf), "%g", data[i].value);
+		BString bufStr = FormatOrFallback(data[i].formattedValue, data[i].value);
+		const char* buf = bufStr.String();
 		float width = view->StringWidth(buf);
 		float y = (data[i].value >= 0) ? points[i].point.y - 8 : points[i].point.y + 8;
 		view->DrawString(buf, BPoint(points[i].point.x - width / 2, y));
@@ -871,8 +907,8 @@ void DrawHBarChart(BView* view, BRect frame, const std::vector<ChartSeries>& dat
 	view->SetHighColor(40, 40, 40);
 	for (size_t i = 0; i < bars.size() && i < data.size(); i++)
 	{
-		char buf[32];
-		snprintf(buf, sizeof(buf), "%g", data[i].value);
+		BString bufStr = FormatOrFallback(data[i].formattedValue, data[i].value);
+		const char* buf = bufStr.String();
 		float width = view->StringWidth(buf);
 		float y = bars[i].bar.top + bars[i].bar.Height() / 2 + 4;
 		float x = (data[i].value >= 0) ? bars[i].bar.right + 4 : bars[i].bar.left - width - 4;
@@ -1188,6 +1224,7 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
 	out.categories.clear();
 	out.seriesNames.clear();
 	out.values.clear();
+	out.formattedValues.clear();
 	if (!doc)
 		return false;
 
@@ -1201,6 +1238,7 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
 		seriesCount = r.right - r.left;
 	}
 	out.values.resize(seriesCount);
+	out.formattedValues.resize(seriesCount);
 
 	// Colonna della serie s: esplicita se "valueColumns" e' popolato
 	// (grafico importato con colonne valore non adiacenti, vedi il
@@ -1267,6 +1305,7 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
 		// l'allineamento values[s][c] <-> categories[c] per tutte le
 		// altre se la riga venisse tenuta con un buco.
 		std::vector<double> rowValues(seriesCount);
+		std::vector<BString> rowFormatted(seriesCount);
 		bool rowOk = true;
 		for (int s = 0; s < seriesCount; s++)
 		{
@@ -1279,6 +1318,9 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
 				break;
 			}
 			rowValues[s] = (double)vv;
+			char formatted[64];
+			doc->GetCellResult(valueCell, formatted, sizeof(formatted), true);
+			rowFormatted[s] = formatted;
 		}
 		if (!rowOk)
 			continue;
@@ -1291,7 +1333,10 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
 
 		out.categories.push_back(label);
 		for (int s = 0; s < seriesCount; s++)
+		{
 			out.values[s].push_back(rowValues[s]);
+			out.formattedValues[s].push_back(rowFormatted[s]);
+		}
 	}
 
 	return !out.categories.empty();
@@ -1303,11 +1348,13 @@ bool BuildMultiChartSeriesRows(CContainer* doc, const range& r, MultiChartData& 
 	out.categories.clear();
 	out.seriesNames.clear();
 	out.values.clear();
+	out.formattedValues.clear();
 	if (!doc || valueRows.empty())
 		return false;
 
 	int seriesCount = (int)valueRows.size();
 	out.values.resize(seriesCount);
+	out.formattedValues.resize(seriesCount);
 
 	// Colonna di intestazione trasposta: se r.left ha un valore testuale
 	// su ALMENO una riga serie, quella colonna si assume il nome delle
@@ -1351,6 +1398,7 @@ bool BuildMultiChartSeriesRows(CContainer* doc, const range& r, MultiChartData& 
 		// Stesso principio "riga scartata per intero" di
 		// BuildMultiChartSeries, trasposto su colonne.
 		std::vector<double> colValues(seriesCount);
+		std::vector<BString> colFormatted(seriesCount);
 		bool colOk = true;
 		for (int s = 0; s < seriesCount; s++)
 		{
@@ -1363,6 +1411,9 @@ bool BuildMultiChartSeriesRows(CContainer* doc, const range& r, MultiChartData& 
 				break;
 			}
 			colValues[s] = (double)vv;
+			char formatted[64];
+			doc->GetCellResult(valueCell, formatted, sizeof(formatted), true);
+			colFormatted[s] = formatted;
 		}
 		if (!colOk)
 			continue;
@@ -1375,7 +1426,10 @@ bool BuildMultiChartSeriesRows(CContainer* doc, const range& r, MultiChartData& 
 
 		out.categories.push_back(label);
 		for (int s = 0; s < seriesCount; s++)
+		{
 			out.values[s].push_back(colValues[s]);
+			out.formattedValues[s].push_back(colFormatted[s]);
+		}
 	}
 
 	return !out.categories.empty();
@@ -1654,8 +1708,8 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 		view->SetHighColor(kPieColors[s % kPieColorCount]);
 		for (size_t c = 0; c < layout.bars[s].size(); c++)
 		{
-			char buf[32];
-			snprintf(buf, sizeof(buf), "%g", data.values[s][c]);
+			BString bufStr = FormatMultiValue(data, s, c);
+			const char* buf = bufStr.String();
 			float width = view->StringWidth(buf);
 			BRect bar = layout.bars[s][c];
 			float x = bar.left + bar.Width() / 2 - width / 2;
@@ -1733,8 +1787,8 @@ void DrawGroupedHBarChart(BView* view, BRect frame, const MultiChartData& data, 
 		view->SetHighColor(kPieColors[s % kPieColorCount]);
 		for (size_t c = 0; c < layout.bars[s].size(); c++)
 		{
-			char buf[32];
-			snprintf(buf, sizeof(buf), "%g", data.values[s][c]);
+			BString bufStr = FormatMultiValue(data, s, c);
+			const char* buf = bufStr.String();
 			float width = view->StringWidth(buf);
 			BRect bar = layout.bars[s][c];
 			float y = bar.top + bar.Height() / 2 + 4;
@@ -1827,8 +1881,8 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 		view->SetHighColor(kPieColors[s % kPieColorCount]);
 		for (size_t c = 0; c < layout.points[s].size(); c++)
 		{
-			char buf[32];
-			snprintf(buf, sizeof(buf), "%g", data.values[s][c]);
+			BString bufStr = FormatMultiValue(data, s, c);
+			const char* buf = bufStr.String();
 			float width = view->StringWidth(buf);
 			BPoint p = layout.points[s][c];
 			float y = (data.values[s][c] >= 0) ? p.y - 8 : p.y + 8;
@@ -1909,8 +1963,8 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, co
 		view->SetHighColor(kPieColors[s % kPieColorCount]);
 		for (size_t c = 0; c < layout.points[s].size(); c++)
 		{
-			char buf[32];
-			snprintf(buf, sizeof(buf), "%g", data.values[s][c]);
+			BString bufStr = FormatMultiValue(data, s, c);
+			const char* buf = bufStr.String();
 			float width = view->StringWidth(buf);
 			BPoint p = layout.points[s][c];
 			float y = (data.values[s][c] >= 0) ? p.y - 8 : p.y + 8;
@@ -2001,8 +2055,8 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 		view->SetHighColor(kPieColors[0]);
 		for (size_t c = 0; c < layout.bars.size(); c++)
 		{
-			char buf[32];
-			snprintf(buf, sizeof(buf), "%g", data.values[0][c]);
+			BString bufStr = FormatMultiValue(data, 0, c);
+			const char* buf = bufStr.String();
 			float width = view->StringWidth(buf);
 			BRect bar = layout.bars[c];
 			float x = bar.left + bar.Width() / 2 - width / 2;
@@ -2033,8 +2087,8 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 		view->SetHighColor(kPieColors[(s + 1) % kPieColorCount]);
 		for (size_t c = 0; c < layout.lines[s].size(); c++)
 		{
-			char buf[32];
-			snprintf(buf, sizeof(buf), "%g", data.values[s + 1][c]);
+			BString bufStr = FormatMultiValue(data, s + 1, c);
+			const char* buf = bufStr.String();
 			float width = view->StringWidth(buf);
 			BPoint p = layout.lines[s][c];
 			float y = (data.values[s + 1][c] >= 0) ? p.y - 8 : p.y + 8;
