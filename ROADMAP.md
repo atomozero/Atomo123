@@ -5,19 +5,21 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.4.1 released** on GitHub (real circular reference
-detection — a self-referencing formula now shows a clear `#CIRCULAR!`
-marker instead of silently computing an arbitrary number — plus
-Excel-style formula "point mode", building a formula by pointing at
-cells with the arrow keys instead of typing references by hand, on top
-of everything shipped in v0.4.0: all four "Path to full Excel parity"
-Tier 4 items, real sheet-protection passwords, workbook open-password
-decryption, 9 more UI languages, and a menu/icon/packaging polish pass
-— see CHANGELOG.md for the full detail). All planned phases through
-"closing the gap with Excel" are done or in good shape; a handful of
-large, optional features remain unplanned backlog items (see "Not
-currently planned" below, and "Path to full Excel parity" for what's
-next).
+**Status: v0.4.2 released** on GitHub (Excel-style formula
+autocomplete — typing a partial function name after "=" pops up a
+filtered, sorted list of matching functions with descriptions, accept
+with Enter/Tab/click — on top of everything shipped in v0.4.1: real
+circular reference detection (a self-referencing formula now shows a
+clear `#CIRCULAR!` marker instead of silently computing an arbitrary
+number) and formula "point mode" (building a formula by pointing at
+cells with the arrow keys instead of typing references by hand), which
+itself built on v0.4.0's four "Path to full Excel parity" Tier 4 items,
+real sheet-protection passwords, workbook open-password decryption, 9
+more UI languages, and a menu/icon/packaging polish pass — see
+CHANGELOG.md for the full detail). All planned phases through "closing
+the gap with Excel" are done or in good shape; a handful of large,
+optional features remain unplanned backlog items (see "Not currently
+planned" below, and "Path to full Excel parity" for what's next).
 This file tracks project-level status and forward plan only — the
 detailed, per-release history of what shipped and the real bugs found
 along the way lives in `CHANGELOG.md`.
