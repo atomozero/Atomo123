@@ -4,6 +4,32 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
+What shipped since v0.4.1 (in progress):
+- Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
+  `(` or `,` plus at least one letter typed, a popup list shows
+  function names starting with what's been typed so far (e.g. typing
+  "SU" lists SUM, SUMIF, SUMPRODUCT, SUMSQ...), with a one-line
+  description reused from the existing `gFuncDescriptions` table (no
+  new data — `gFuncArrayByName`, already sorted alphabetically at
+  startup, was already exactly the primitive needed). Up/Down navigate
+  the list, Enter/Tab or a single click accepts the highlighted
+  suggestion (replacing the typed prefix and appending `(`, matching
+  Excel), Escape closes just the popup without cancelling the whole
+  cell edit. Never conflicts with the existing "point mode" (previous
+  entry below): the two trigger on opposite conditions — point mode
+  needs the last character to be an operator, autocomplete needs an
+  in-progress identifier made of letters — so by construction they're
+  never both eligible at once. A prefix that stops matching any
+  function (typing "A1", a cell reference, after "A" briefly matched
+  ABS/AND/AVERAGE/...) closes the popup on its own, no special-casing
+  needed — this is expected, not a bug, matching real Excel's own
+  behavior of showing function suggestions while a cell reference is
+  still being typed. Scoped to function names only for this version,
+  not named ranges/table names (also autocompleted in real Excel) — a
+  declared scope limit. New `ui/tests/test_autocomplete.cpp`, same
+  real synthesized `BMessage(B_KEY_DOWN)` technique as
+  `test_point_mode.cpp`.
+
 What shipped in v0.4.1, on top of v0.4.0:
 - Circular reference detection: a formula that refers to its own cell
   (directly, like `=A1+A2+A3+A4` written into A4 itself, or indirectly
