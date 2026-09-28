@@ -34,6 +34,20 @@ What shipped since v0.4.2 (in progress):
   gray outline instead of a plain color fill, so a light series color
   no longer blends into the white background. New `DrawLegendSwatch`
   helper, same outline technique already used for the chart frame.
+- Chart edges (bar corners, pie slice boundaries) are now antialiased
+  via manual supersampling: new `DrawChartAntialiased` renders any
+  chart draw call into an offscreen bitmap at 2x scale, then
+  downsamples with an alpha-weighted box filter onto the real
+  destination, same technique already proven for toolbar icons. That
+  technique has a known side effect at scale (`StrokeRect`/
+  `StrokeEllipse` on a closed shape render solid instead of outlined),
+  so the chart frame border, legend swatch border and pie outline were
+  rewritten with scale-safe substitutes (`FillRect` strips, `FillPolygon`
+  wedges) that render identically at any scale. Wired into every real
+  chart draw site: embedded charts on the sheet, the chart editor's
+  live preview, and the print-preview renderer. No render cache for
+  now; only worth adding later if repaint cost turns out to be an
+  actual measured problem.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
