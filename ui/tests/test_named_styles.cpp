@@ -2,26 +2,35 @@
 	test_named_styles.cpp
 
 	Verifica "Stili cella con nome + tavolozza tema dal vivo" (Tier 4,
-	"Path to full Excel parity"). Fase A di questa funzionalita' (vedi
-	ROADMAP.md): solo il nucleo motore -- NamedStyleTable/ThemePalette/
+	"Path to full Excel parity"). Fasi A+B di questa funzionalita' (vedi
+	ROADMAP.md): il nucleo motore -- NamedStyleTable/ThemePalette/
 	NamedStyleDef::Resolve e la risoluzione DAL VIVO dentro
-	CContainer::GetCellStyle -- nessuna MainWindow/UI coinvolta ancora
-	(arriveranno nelle fasi B/C).
+	CContainer::GetCellStyle -- PIU' la persistenza .ascd (Fase B).
+	Nessuna MainWindow/UI coinvolta ancora (arrivera' nella Fase C).
 
-	Punto piu' importante di questo file: il claim "vivo" stesso, provato
-	esplicitamente, non solo assunto -- ridefinire uno stile o cambiare
-	un colore della tavolozza tema deve cambiare cio' che
+	Punto piu' importante delle Parti 1/2: il claim "vivo" stesso,
+	provato esplicitamente, non solo assunto -- ridefinire uno stile o
+	cambiare un colore della tavolozza tema deve cambiare cio' che
 	CContainer::GetCellStyle restituisce per una cella GIA' scritta,
-	SENZA mai riscriverla (vedi gli scenari "dal vivo" sotto: la cella
-	viene scritta UNA sola volta in tutto il file, poi riletta piu'
-	volte dopo ogni ridefinizione).
+	SENZA mai riscriverla (la cella viene scritta UNA sola volta, poi
+	riletta piu' volte dopo ogni ridefinizione).
+
+	Punto piu' importante della Parte 3 (persistenza): la stabilita'
+	degli ID attraverso un giro salva->ricarica anche quando uno stile
+	e' stato rimosso a meta' sessione (tombstone, vedi RawCount/
+	ReplaceAllRaw in NamedStyle.h) -- un bug reale individuato in fase
+	di progettazione, prima di scrivere la sezione .ascd.
 */
 
 #include <cstdio>
 
 #include <Application.h>
+#include <File.h>
 
+#include "AscdIO.h"
 #include "Cell.h"
+#include "Value.h"
+#include "CellParser.h"
 #include "CellStyle.h"
 #include "Container.h"
 #include "NamedStyle.h"
@@ -184,6 +193,193 @@ int main()
 		standalone->Release();
 
 		doc->Release();
+	}
+
+	// --- Parte 3: round-trip AscdIO (Fase B) -------------------------------
+
+	{
+		CContainer& saveDoc = *new CContainer(NULL, NULL);
+		TryToParseString("10", cell(1, 1), &saveDoc, true);
+
+		NamedStyleTable savedStyles;
+		// Uno stile personalizzato legato a un ruolo tema.
+		NamedStyleDef def;
+		def.name = "Prova";
+		def.useThemeBackground = true;
+		def.backgroundRole = eThemeAccent2;
+		def.bold = true;
+		int customID = savedStyles.AddCustom(def);
+		// Un secondo, poi rimosso -- il tombstone deve sopravvivere al
+		// giro (vedi il commento su RawCount/ReplaceAllRaw in
+		// NamedStyle.h): senza, l'ID del terzo stile sotto si
+		// sposterebbe dopo il giro salva->ricarica.
+		int removedID = savedStyles.AddCustom(NamedStyleDef());
+		savedStyles.Remove(removedID);
+		int thirdID = savedStyles.AddCustom(NamedStyleDef());
+
+		ThemePalette savedTheme;
+		savedTheme.colors[eThemeAccent2] = rgb_color{ 77, 88, 99, 255 };
+
+		CellStyle cs;
+		cs.fNamedStyleID = customID;
+		saveDoc.SetCellStyle(cell(2, 2), cs);
+
+		BFile styleFile("tests/roundtrip_named_styles.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		status_t err = SaveASCD(&saveDoc, &styleFile,
+			NULL, // charts
+			NULL, // colWidths
+			NULL, // rowHeights
+			NULL, // frozenRows
+			NULL, // frozenCols
+			NULL, // images
+			NULL, // showGrid
+			NULL, // hasTabColor
+			NULL, // tabColor
+			NULL, // hiddenRows
+			NULL, // hasAutoFilter
+			NULL, // autoFilterRange
+			NULL, // hasPrintArea
+			NULL, // printArea
+			NULL, // printSettings
+			NULL, // vbaProject
+			NULL, // isProtected
+			NULL, // protection
+			NULL, // filterHiddenValues
+			NULL, // slicers
+			NULL, // scenarios
+			&savedStyles, // namedStyles
+			&savedTheme); // themePalette
+		Check(err == B_OK, "SaveASCD con stili con nome + tema riesce");
+		saveDoc.Release();
+
+		BFile styleReopened("tests/roundtrip_named_styles.ascd", B_READ_ONLY);
+		CContainer& loadDoc = *new CContainer(NULL, NULL);
+		NamedStyleTable loadedStyles;
+		ThemePalette loadedTheme;
+		bool hasStyles = false, hasTheme = false;
+		err = LoadASCD(&styleReopened, &loadDoc,
+			NULL, // charts
+			NULL, // colWidths
+			NULL, // rowHeights
+			NULL, // frozenRows
+			NULL, // frozenCols
+			NULL, // images
+			NULL, // showGrid
+			NULL, // hasTabColor
+			NULL, // tabColor
+			NULL, // hiddenRows
+			NULL, // hasAutoFilter
+			NULL, // autoFilterRange
+			NULL, // hasPrintArea
+			NULL, // printArea
+			NULL, // printSettings
+			false, // skipInitialRecalc
+			NULL, // vbaProject
+			NULL, // isProtected
+			false, // skipVbaAndProtectionSections
+			NULL, // protection
+			NULL, // filterHiddenValues
+			NULL, // slicers
+			NULL, // scenarios
+			&hasStyles, &loadedStyles, // hasNamedStyles, namedStyles
+			&hasTheme, &loadedTheme); // hasThemePalette, themePalette
+		Check(err == B_OK, "LoadASCD con stili con nome + tema riesce");
+		Check(hasStyles, "hasNamedStyles diventa true quando il file porta davvero questa sezione");
+		Check(hasTheme, "hasThemePalette diventa true quando il file porta davvero questa sezione");
+
+		Check(loadedStyles.Get(customID) != NULL, "lo stile personalizzato sopravvive con lo stesso ID");
+		if (loadedStyles.Get(customID) != NULL)
+		{
+			Check(loadedStyles.Get(customID)->name == "Prova", "il nome sopravvive");
+			Check(loadedStyles.Get(customID)->useThemeBackground, "useThemeBackground sopravvive");
+			Check(loadedStyles.Get(customID)->backgroundRole == eThemeAccent2, "backgroundRole sopravvive");
+			Check(loadedStyles.Get(customID)->bold, "bold sopravvive");
+		}
+		Check(loadedStyles.Get(removedID) == NULL,
+			"lo stile rimosso resta rimosso dopo il giro (tombstone preservato)");
+		Check(loadedStyles.Get(thirdID) != NULL && loadedStyles.Get(thirdID) == &loadedStyles.RawDefAt(thirdID - 1),
+			"l'ID del terzo stile NON si sposta dopo il giro nonostante il tombstone in mezzo");
+		Check(ColorsEqual(loadedTheme.colors[eThemeAccent2], rgb_color{ 77, 88, 99, 255 }),
+			"il colore del tema modificato sopravvive al giro");
+
+		// Collega un resolver (come farebbe MainWindow::AttachSheetResolver)
+		// perche' GetCellStyle possa risolvere fNamedStyleID: senza,
+		// loadedStyles/loadedTheme appena ricaricati non sarebbero mai
+		// consultati, stesso comportamento di "nessun resolver ancora"
+		// gia' verificato nella Parte 2.
+		TestResolver loadResolver;
+		loadResolver.styles = loadedStyles;
+		loadResolver.theme = loadedTheme;
+		loadDoc.SetSheetResolver(&loadResolver);
+
+		CellStyle loadedCellStyle;
+		loadDoc.GetCellStyle(cell(2, 2), loadedCellStyle);
+		Check(ColorsEqual(loadedCellStyle.fLowColor, rgb_color{ 77, 88, 99, 255 }),
+			"DAL VIVO anche dopo il giro salva->ricarica: la cella risolve col colore tema aggiornato");
+		loadDoc.Release();
+
+		// --- Compatibilita' con un file scritto PRIMA di questa sezione ---
+		//
+		// La sezione stili con nome + tema e' l'ULTIMA cosa scritta da
+		// SaveASCD (subito dopo la sezione ID di stile per cella, che a
+		// sua volta e' subito dopo gli scenari). Per un documento senza
+		// nessuna cella con fNamedStyleID e senza namedStyles/
+		// themePalette passati, le due sezioni sono: 4 byte (conteggio
+		// celle con stile = 0) + 1 byte (hasStyles = 0) + 1 byte
+		// (hasTheme = 0) = 6 byte finali. Troncarli equivale a un file
+		// scritto da una build PRIMA che questa fase esistesse.
+		CContainer& oldDoc = *new CContainer(NULL, NULL);
+		TryToParseString("10", cell(1, 1), &oldDoc, true);
+		BFile oldFile("tests/roundtrip_named_styles_old.ascd",
+			B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+		err = SaveASCD(&oldDoc, &oldFile);
+		Check(err == B_OK, "SaveASCD di riferimento (nessuno stile/tema) riesce");
+		oldDoc.Release();
+
+		off_t size = 0;
+		oldFile.GetSize(&size);
+		Check(size > 6, "il file di riferimento e' abbastanza grande da poter troncare 6 byte");
+		oldFile.SetSize(size - 6);
+
+		BFile oldReopened("tests/roundtrip_named_styles_old.ascd", B_READ_ONLY);
+		CContainer& oldReloaded = *new CContainer(NULL, NULL);
+		bool oldHasStyles = false, oldHasTheme = false;
+		NamedStyleTable oldLoadedStyles;
+		ThemePalette oldLoadedTheme;
+		err = LoadASCD(&oldReopened, &oldReloaded,
+			NULL, // charts
+			NULL, // colWidths
+			NULL, // rowHeights
+			NULL, // frozenRows
+			NULL, // frozenCols
+			NULL, // images
+			NULL, // showGrid
+			NULL, // hasTabColor
+			NULL, // tabColor
+			NULL, // hiddenRows
+			NULL, // hasAutoFilter
+			NULL, // autoFilterRange
+			NULL, // hasPrintArea
+			NULL, // printArea
+			NULL, // printSettings
+			false, // skipInitialRecalc
+			NULL, // vbaProject
+			NULL, // isProtected
+			false, // skipVbaAndProtectionSections
+			NULL, // protection
+			NULL, // filterHiddenValues
+			NULL, // slicers
+			NULL, // scenarios
+			&oldHasStyles, &oldLoadedStyles, // hasNamedStyles, namedStyles
+			&oldHasTheme, &oldLoadedTheme); // hasThemePalette, themePalette
+		Check(err == B_OK,
+			"un file troncato (che simula una build precedente a questa fase) si carica comunque");
+		Check(!oldHasStyles && !oldHasTheme,
+			"un file senza questa sezione lascia hasNamedStyles/hasThemePalette false, non un errore");
+		Check(oldLoadedStyles.Count() == 17,
+			"senza una sezione nel file, la tabella resta ai soli 17 built-in predefiniti");
+		oldReloaded.Release();
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

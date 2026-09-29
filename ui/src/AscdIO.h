@@ -30,6 +30,7 @@
 
 #include "Chart.h"
 #include "EmbeddedImage.h"
+#include "NamedStyle.h"
 #include "Scenario.h"
 #include "Slicer.h"
 
@@ -269,7 +270,20 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// parametro per lo stesso motivo di ogni altro campo aggiunto in coda
 	// qui. NULL/non raccolto = nessuno scenario, il comportamento di
 	// sempre per ogni chiamante esistente.
-	std::vector<Scenario>* scenarios = NULL);
+	std::vector<Scenario>* scenarios = NULL,
+	// Stili con nome + tema (Tier 4, vedi NamedStyle.h): concetto di
+	// CARTELLA DI LAVORO, presente solo sul foglio che lo porta davvero
+	// (di norma il primo, stesso principio di vbaProject) -- a
+	// differenza di vbaProject pero' (un vector, vuoto = assente in modo
+	// naturale), NamedStyleTable/ThemePalette sono sempre "pieni" (i
+	// built-in), quindi serve un booleano esplicito per distinguere
+	// "questo foglio porta davvero i dati" da "nessuna sezione nel file
+	// per questo foglio, resta il vuoto/i predefiniti costruiti qui" --
+	// stesso schema esatto di hasAutoFilter/hasTabColor sopra. NULL/
+	// false = non raccolti/non presenti (il comportamento di sempre per
+	// ogni chiamante esistente).
+	bool* hasNamedStyles = NULL, NamedStyleTable* namedStyles = NULL,
+	bool* hasThemePalette = NULL, ThemePalette* themePalette = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -292,7 +306,10 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	// Vedi il commento gemello sopra in LoadASCD.
 	const std::vector<SlicerObject>* slicers = NULL,
 	// Vedi il commento gemello sopra in LoadASCD.
-	const std::vector<Scenario>* scenarios = NULL);
+	const std::vector<Scenario>* scenarios = NULL,
+	// Vedi il commento gemello sopra in LoadASCD.
+	const NamedStyleTable* namedStyles = NULL,
+	const ThemePalette* themePalette = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -420,6 +437,19 @@ struct AscdSheet {
 	// sempre. A differenza di charts/slicers, nessuna controparte in
 	// SheetView -- uno scenario non ha presenza sul foglio.
 	std::vector<Scenario> scenarios;
+	// Stili con nome + tema (Tier 4, "Named cell styles + live theme
+	// palette", vedi NamedStyle.h): concetto di CARTELLA DI LAVORO,
+	// stesso principio esatto di vbaProject sopra -- popolato SOLO sul
+	// primo foglio, MainWindow lo cerca scandendo fSheets invece di
+	// assumere l'indice 0. hasNamedStyles/hasThemePalette false =
+	// nessuno stile/tema mai personalizzato, il comportamento di sempre
+	// per ogni documento scritto prima di questi campi (un
+	// NamedStyleTable/ThemePalette appena costruito e' gia' un default
+	// sicuro, ResetToBuiltIns() e' il costruttore stesso).
+	bool hasNamedStyles = false;
+	NamedStyleTable namedStyles;
+	bool hasThemePalette = false;
+	ThemePalette themePalette;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

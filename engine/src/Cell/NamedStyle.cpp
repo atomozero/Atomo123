@@ -213,3 +213,16 @@ const NamedStyleDef* NamedStyleTable::Get(int styleID) const
 		return NULL;
 	return &fStyles[styleID - 1].def;
 }
+
+void NamedStyleTable::ReplaceAllRaw(const std::vector<NamedStyleDef>& defs,
+	const std::vector<bool>& removedFlags)
+{
+	fStyles.clear();
+	for (size_t i = 0; i < defs.size(); i++)
+	{
+		Entry entry;
+		entry.def = defs[i];
+		entry.removed = (i < removedFlags.size()) ? removedFlags[i] : false;
+		fStyles.push_back(entry);
+	}
+}

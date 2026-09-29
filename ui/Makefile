@@ -367,8 +367,9 @@ test-range-ref: $(ENGINE_DIR)/libengine.a
 # libengine.a, non l'intera chiusura di oggetti UI.
 test-named-styles: $(ENGINE_DIR)/libengine.a
 	$(CXX) -c tests/test_named_styles.cpp -o tests/test_named_styles.o $(INCLUDES) $(CXXFLAGS)
-	$(CXX) -o tests/test_named_styles tests/test_named_styles.o \
-		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
+	$(CXX) -c src/AscdIO.cpp -o tests/AscdIO.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_named_styles tests/test_named_styles.o tests/AscdIO.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub -ltranslation -ltracker
 	./tests/test_named_styles
 
 # Test del calcolo delle pagine di stampa (PrintLayout.cpp): stessa

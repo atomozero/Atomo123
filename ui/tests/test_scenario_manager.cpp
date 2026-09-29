@@ -234,13 +234,21 @@ int main()
 
 		// --- Compatibilita' con un file scritto PRIMA di questa sezione ---
 		//
-		// La sezione scenari e' l'ULTIMA cosa scritta da SaveASCD (subito
-		// prima del suo "return B_OK;"). Per un file senza scenari
-		// quella sezione e' esattamente 4 byte: un int32 "quanti
-		// scenari" (qui 0). Troncare quei 4 byte finali equivale quindi
-		// a un file scritto da una build PRIMA che questa sezione
-		// esistesse -- prova CONCRETA (non solo un ragionamento sul
+		// La sezione scenari NON e' piu' l'ultima cosa scritta da
+		// SaveASCD (lo era quando questo test e' stato scritto, ma la
+		// Fase "Named cell styles + live theme palette" ne ha aggiunte
+		// altre due in coda dopo di essa -- vedi AscdIO.cpp/NamedStyle.h
+		// e test_named_styles.cpp per quella prova dedicata). Per un
+		// file senza scenari NE senza stili con nome, il totale finale
+		// e' 10 byte: 4 (conteggio scenari, qui 0) + 4 (conteggio celle
+		// con stile con nome, qui 0) + 1 (hasNamedStyles) + 1
+		// (hasThemePalette). Troncare quei 10 byte equivale quindi a un
+		// file scritto da una build PRIMA che ENTRAMBE le sezioni
+		// esistessero -- prova CONCRETA (non solo un ragionamento sul
 		// codice) che LoadASCD resta EOF-tollerante con un file vecchio.
+		// (Nota per la prossima fase che aggiunge una sezione in coda:
+		// questo conteggio andra' aggiornato di nuovo, stessa
+		// manutenzione gia' successa qui una volta.)
 		CContainer& oldDoc = *new CContainer(NULL, NULL);
 		TryToParseString("10", cell(1, 1), &oldDoc, true);
 		BFile oldFile("tests/roundtrip_scenarios_old.ascd", B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
@@ -250,8 +258,8 @@ int main()
 
 		off_t size = 0;
 		oldFile.GetSize(&size);
-		Check(size > 4, "il file di riferimento e' abbastanza grande da poter troncare 4 byte");
-		oldFile.SetSize(size - 4);
+		Check(size > 10, "il file di riferimento e' abbastanza grande da poter troncare 10 byte");
+		oldFile.SetSize(size - 10);
 
 		BFile oldReopened("tests/roundtrip_scenarios_old.ascd", B_READ_ONLY);
 		CContainer& oldReloaded = *new CContainer(NULL, NULL);
