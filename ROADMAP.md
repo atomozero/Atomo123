@@ -815,7 +815,34 @@ list deliberately deviates from pure effort-sorting:
   stored once on the first sheet, same convention as VBA project
   bytes); XLSX round-trip (`theme1.xml`/`<cellStyles>`) is out of scope
   for this pass.
-- Secondary axis, trendlines, error bars on existing chart types
+- ~~**Secondary axis, trendlines, error bars on existing chart types**~~
+  Fixed — see `CHANGELOG.md`. All three are per-series options
+  (`ChartSeriesOptions`, `ui/src/Chart.h`) set from the same
+  "Opzioni…" pop-up (secondary axis is a plain checkbox
+  in the per-series row instead, one bool needs no pop-up) in the chart
+  editor, for the four multi-series chart types (grouped bar, multi-line,
+  multi-area, combo). Trendlines: linear (least-squares) or moving
+  average, drawn in the series' own color at reduced opacity. Error
+  bars: fixed value or percentage of the point's value, drawn as an
+  "I-beam" at full opacity. Secondary axis: the shared value range
+  every multi-series chart used to compute in one pass now splits into
+  an independent primary/secondary range per series, with a label-only
+  right-side axis drawn when at least one series opts in. All three
+  round-trip through native `.ascd` (a single shared trailing record,
+  EOF-tolerant, no format-version bump) and through XLSX
+  (`<c:trendline>`, `<c:errBars>`, and a real dual-`<c:axId>`-pair
+  `<c:plotArea>` shape for the secondary axis — OOXML assigns axis
+  membership by which chart-type element contains a series, not by an
+  attribute on the series itself). **Declared out of scope, not
+  silently missing**: single-series and scatter charts (no per-series
+  UI row exists for them to hang a control on); horizontal bar charts
+  never get a secondary axis on export (its value axis is horizontal,
+  no orientation-swapped dual-axis shape was built); a hand-crafted
+  XLSX file with more than one primary+one secondary axis pair
+  degrades gracefully on import rather than reconstructing correctly;
+  error bars have no standard-deviation or custom-range source, only
+  fixed/percentage; trendlines are linear/moving-average only, not
+  Excel's logarithmic/exponential/power/polynomial family.
 - ~~**Named table styles**~~ Fixed — see `CHANGELOG.md`. XLSX import now
   reads the real `<tableStyleInfo name="...">` and colors the banding
   from a small built-in list of ~8 recognized Excel style names
