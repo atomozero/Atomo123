@@ -1528,6 +1528,51 @@ bool BuildMultiChartSeriesRows(CContainer* doc, const range& r, MultiChartData& 
 // le barre/linee di serie diverse devono restare sullo stesso asse per
 // essere confrontabili, stesso principio di ChartValueRange ma esteso
 // a piu' vettori di valori.
+bool ComputeLinearTrendline(const std::vector<double>& xs, const std::vector<double>& ys,
+	double* outSlope, double* outIntercept)
+{
+	size_t n = xs.size();
+	if (n < 2 || ys.size() != n)
+		return false;
+	double sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+	for (size_t i = 0; i < n; i++)
+	{
+		sumX += xs[i];
+		sumY += ys[i];
+		sumXY += xs[i] * ys[i];
+		sumXX += xs[i] * xs[i];
+	}
+	double denom = n * sumXX - sumX * sumX;
+	if (denom == 0.0)
+		return false;
+	*outSlope = (n * sumXY - sumX * sumY) / denom;
+	*outIntercept = (sumY - (*outSlope) * sumX) / n;
+	return true;
+}
+
+void ComputeMovingAverageTrendline(const std::vector<double>& ys, int period,
+	std::vector<MovingAveragePoint>& out)
+{
+	out.clear();
+	out.resize(ys.size());
+	if (period < 1)
+		period = 1;
+	for (size_t i = 0; i < ys.size(); i++)
+	{
+		if (i + 1 < (size_t)period)
+		{
+			out[i].value = 0.0;
+			out[i].valid = false;
+			continue;
+		}
+		double sum = 0;
+		for (size_t j = i + 1 - (size_t)period; j <= i; j++)
+			sum += ys[j];
+		out[i].value = sum / period;
+		out[i].valid = true;
+	}
+}
+
 static void MultiChartValueRange(const MultiChartData& data, double* outMin, double* outMax)
 {
 	double minValue = 0, maxValue = 0;
@@ -1751,6 +1796,81 @@ static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
 	}
 }
 
+// Disegna la linea di tendenza di ogni serie che la richiede
+// (ChartSeriesOptions::trendlineType, Fase 7) -- stesso colore della
+// serie ma con alpha ridotto (~160/255), stessa convenzione di
+// trasparenza gia' usata per il riempimento di DrawMultiAreaChart, cosi'
+// la linea di tendenza si lega visivamente alla propria serie senza una
+// voce di legenda in piu' e senza richiedere nessun input obbligatorio
+// nuovo. Stessa X di centro-slot di ComputeMultiLineLayout, cosi' gli
+// estremi restano allineati alle barre/punti veri della stessa
+// categoria. Serie senza opzioni (il caso comune, seriesOptions vuoto)
+// non disegnano nulla qui -- zero cambio di comportamento per ogni
+// grafico esistente. Condivisa dalle quattro funzioni di disegno a piu'
+// serie sotto (grafici a singola serie/dispersione restano fuori
+// scopo, non hanno la riga "Opzioni..." nell'editor).
+static void DrawSeriesTrendlines(BView* view, BRect bounds, const MultiChartData& data,
+	double minValue, double maxValue)
+{
+	size_t catCount = data.categories.size();
+	if (catCount == 0)
+		return;
+	float slotWidth = bounds.Width() / catCount;
+
+	for (size_t s = 0; s < data.values.size(); s++)
+	{
+		ChartSeriesOptions opts = SeriesOptions(data.seriesOptions, s);
+		if (opts.trendlineType == eNoTrendline)
+			continue;
+
+		rgb_color color = SeriesColor(data.seriesColors, s);
+		color.alpha = 160;
+		view->SetDrawingMode(B_OP_ALPHA);
+		view->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+		view->SetHighColor(color);
+
+		if (opts.trendlineType == eLinearTrendline)
+		{
+			std::vector<double> xs(catCount);
+			for (size_t c = 0; c < catCount; c++)
+				xs[c] = (double)c;
+			double slope, intercept;
+			if (catCount >= 2 && ComputeLinearTrendline(xs, data.values[s], &slope, &intercept))
+			{
+				double y0 = intercept;
+				double y1 = slope * (catCount - 1) + intercept;
+				float x0 = bounds.left + slotWidth / 2;
+				float x1 = bounds.left + (catCount - 1) * slotWidth + slotWidth / 2;
+				view->StrokeLine(BPoint(x0, ChartValueToY(y0, minValue, maxValue, bounds)),
+					BPoint(x1, ChartValueToY(y1, minValue, maxValue, bounds)));
+			}
+		}
+		else if (opts.trendlineType == eMovingAverageTrendline)
+		{
+			std::vector<MovingAveragePoint> avg;
+			ComputeMovingAverageTrendline(data.values[s], opts.trendlinePeriod, avg);
+			BPoint prev;
+			bool havePrev = false;
+			for (size_t c = 0; c < avg.size(); c++)
+			{
+				if (!avg[c].valid)
+				{
+					havePrev = false;
+					continue;
+				}
+				float x = bounds.left + c * slotWidth + slotWidth / 2;
+				BPoint p(x, ChartValueToY(avg[c].value, minValue, maxValue, bounds));
+				if (havePrev)
+					view->StrokeLine(prev, p);
+				prev = p;
+				havePrev = true;
+			}
+		}
+
+		view->SetDrawingMode(B_OP_COPY);
+	}
+}
+
 void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, const BString& title)
 {
 	view->SetHighColor(255, 255, 255);
@@ -1805,6 +1925,7 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 		}
 	}
 
+	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
@@ -1975,6 +2096,7 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 		}
 	}
 
+	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
@@ -2057,6 +2179,7 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, co
 		}
 	}
 
+	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
@@ -2181,6 +2304,7 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 		}
 	}
 
+	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 

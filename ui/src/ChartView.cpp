@@ -64,6 +64,21 @@ void ChartView::SetSeriesColor(int index, rgb_color color)
 	Invalidate();
 }
 
+void ChartView::SetSeriesOptions(int index, ChartSeriesOptions options)
+{
+	if (index < 0)
+		return;
+	// Slot intermedi creati da resize restano ChartSeriesOptions() di
+	// default ("nessuna opzione", vedi SeriesOptions() in Chart.cpp)
+	// finche' l'utente non li tocca a loro volta -- solo l'indice
+	// richiesto qui viene aggiornato davvero, stesso principio di
+	// SetSeriesColor sopra.
+	if (index >= (int)fMultiData.seriesOptions.size())
+		fMultiData.seriesOptions.resize(index + 1);
+	fMultiData.seriesOptions[index] = options;
+	Invalidate();
+}
+
 void ChartView::SetChartColor(rgb_color color)
 {
 	fSingleColors.resize(1);

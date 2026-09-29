@@ -66,6 +66,7 @@ class BMenuField;
 class BTextControl;
 class ChartView;
 class ChartColorSwatch;
+class ChartSeriesOptionsWindow;
 class ColorWindow;
 
 class ChartWindow : public BWindow {
@@ -162,6 +163,13 @@ private:
 	// ClearSeriesCheckboxes insieme alle checkbox). Un clic su uno apre
 	// fSeriesColorWindow per quella sola serie.
 	std::vector<ChartColorSwatch*> fSeriesColorSwatches;
+	// Pulsante "Opzioni..." per serie (Fase 7), affiancato allo swatch di
+	// colore nella stessa riga -- stesso ciclo di vita esatto (vedi il
+	// commento su fSeriesColorSwatches sopra). Un clic apre
+	// fSeriesOptionsWindow per quella sola serie (linea di
+	// tendenza/barre d'errore: troppa configurazione per stare in riga,
+	// vedi ChartSeriesOptionsWindow.h).
+	std::vector<BButton*> fSeriesOptionsButtons;
 	// Colori scelti dall'utente per serie (Fase colori): indicizzato
 	// come fSeriesCheckboxes/fMultiData.seriesNames, preservato fra una
 	// richiesta e l'altra per NOME di serie in RebuildSeriesCheckboxes
@@ -191,6 +199,12 @@ private:
 	// ColorWindow::SetTarget/SetSeriesIndex per il perche' serve
 	// un'istanza propria invece di condividere quella di MainWindow.
 	ColorWindow* fSeriesColorWindow;
+	// Finestra Opzioni serie (Fase 7) di PROPRIETA' di questa finestra --
+	// stesso principio esatto di fSeriesColorWindow sopra, creata al
+	// volo al primo clic su un pulsante "Opzioni...", riusata per ogni
+	// serie successiva (SetSeriesIndex/SetOptions la ripuntano prima di
+	// ogni Show()).
+	ChartSeriesOptionsWindow* fSeriesOptionsWindow;
 
 	ChartType SelectedType() const;
 	// Corpo comune di kMsgDrawLocal e LoadRange sopra: applica il
@@ -211,6 +225,11 @@ private:
 	// colore per la serie "index", o per l'intero grafico se index < 0
 	// (vedi il commento su kMsgChartColorButtonLocal in ChartWindow.cpp).
 	void ShowSeriesColorPicker(int index);
+	// Apre (creando fSeriesOptionsWindow al volo se serve) il pop-up
+	// linea di tendenza/barre d'errore per la serie "index" -- vedi
+	// ChartSeriesOptionsWindow.h e il commento su
+	// kMsgSeriesOptionsButtonLocal in ChartWindow.cpp.
+	void ShowSeriesOptionsPopup(int index);
 	// Disarma fRangePickButton/manda "start"=false a fTarget se un
 	// selettore era rimasto armato da una sessione precedente -- usato
 	// da LoadRange/LoadForEdit/QuitRequested, gli unici tre punti in cui

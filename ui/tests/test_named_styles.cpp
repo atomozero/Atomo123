@@ -328,14 +328,22 @@ int main()
 
 		// --- Compatibilita' con un file scritto PRIMA di questa sezione ---
 		//
-		// La sezione stili con nome + tema e' l'ULTIMA cosa scritta da
-		// SaveASCD (subito dopo la sezione ID di stile per cella, che a
-		// sua volta e' subito dopo gli scenari). Per un documento senza
-		// nessuna cella con fNamedStyleID e senza namedStyles/
-		// themePalette passati, le due sezioni sono: 4 byte (conteggio
-		// celle con stile = 0) + 1 byte (hasStyles = 0) + 1 byte
-		// (hasTheme = 0) = 6 byte finali. Troncarli equivale a un file
-		// scritto da una build PRIMA che questa fase esistesse.
+		// La sezione stili con nome + tema NON e' piu' l'ultima cosa
+		// scritta da SaveASCD (lo era quando questo test fu scritto): la
+		// Fase 7 ("asse secondario / trendline / barre d'errore") ha
+		// appeso in coda la sezione opzioni per serie di grafico -- stessa
+		// lezione appresa (e documentata) in test_chart_series_colors.cpp/
+		// test_scenario_manager.cpp quando gli si e' aggiunta la stessa
+		// sezione in coda. Per un documento senza nessuna cella con
+		// fNamedStyleID, senza namedStyles/themePalette passati e senza
+		// "charts" passato (NULL, come in questa chiamata): 4 byte
+		// (conteggio celle con stile = 0) + 1 byte (hasStyles = 0) + 1
+		// byte (hasTheme = 0) + 4 byte (contatore grafici della sezione
+		// opzioni per serie, 0 qui perche' "charts" e' NULL) = 10 byte
+		// finali. Troncarli equivale a un file scritto da una build PRIMA
+		// che questa fase esistesse. NOTA per la prossima fase che
+		// aggiunge una sezione in coda: questo conteggio andra'
+		// aggiornato di nuovo.
 		CContainer& oldDoc = *new CContainer(NULL, NULL);
 		TryToParseString("10", cell(1, 1), &oldDoc, true);
 		BFile oldFile("tests/roundtrip_named_styles_old.ascd",
@@ -346,8 +354,8 @@ int main()
 
 		off_t size = 0;
 		oldFile.GetSize(&size);
-		Check(size > 6, "il file di riferimento e' abbastanza grande da poter troncare 6 byte");
-		oldFile.SetSize(size - 6);
+		Check(size > 10, "il file di riferimento e' abbastanza grande da poter troncare 10 byte");
+		oldFile.SetSize(size - 10);
 
 		BFile oldReopened("tests/roundtrip_named_styles_old.ascd", B_READ_ONLY);
 		CContainer& oldReloaded = *new CContainer(NULL, NULL);

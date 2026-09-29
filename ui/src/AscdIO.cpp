@@ -1815,6 +1815,48 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione opzioni per serie di grafico incorporato, in coda DOPO
+	// tutto il resto (Fase 7, "asse secondario / trendline / barre
+	// d'errore"): stesso schema esatto della sezione colori per serie
+	// piu' sopra (un conteggio+elenco per grafico), un ChartSeriesOptions
+	// per intero invece di un colore. Scrive GIA' i campi delle barre
+	// d'errore (Fase 7c, non ancora esposti in nessun controllo) sempre
+	// a "nessuna"/0.0 finche' quella fase non li popola davvero: cosi'
+	// la forma su disco resta fissa da qui in poi, ed eventuali fasi
+	// successive (7c, 7d) non hanno bisogno di una seconda sezione in
+	// coda solo per aggiungere campi gia' riservati qui. VUOTO per la
+	// stragrande maggioranza dei grafici (nessuna opzione scelta, il
+	// comportamento di sempre) -- un file scritto prima di questo campo
+	// (o senza questa sezione) lascia ogni seriesOptions vuoto.
+	{
+		int32 chartSeriesOptionsCount = charts ? (int32)charts->size() : 0;
+		if (dest->Write(&chartSeriesOptionsCount, sizeof(chartSeriesOptionsCount))
+				!= (ssize_t)sizeof(chartSeriesOptionsCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < chartSeriesOptionsCount; i++)
+		{
+			const std::vector<ChartSeriesOptions>& options = (*charts)[i].seriesOptions;
+			int32 optionCount = (int32)options.size();
+			if (dest->Write(&optionCount, sizeof(optionCount)) != (ssize_t)sizeof(optionCount))
+				return B_IO_ERROR;
+			for (int32 s = 0; s < optionCount; s++)
+			{
+				const ChartSeriesOptions& opts = options[s];
+				uint8 secondaryAxis = opts.secondaryAxis ? 1 : 0;
+				uint8 trendlineType = (uint8)opts.trendlineType;
+				int32 trendlinePeriod = opts.trendlinePeriod;
+				uint8 errorBarMode = (uint8)opts.errorBarMode;
+				double errorBarValue = opts.errorBarValue;
+				if (dest->Write(&secondaryAxis, sizeof(secondaryAxis)) != (ssize_t)sizeof(secondaryAxis)
+					|| dest->Write(&trendlineType, sizeof(trendlineType)) != (ssize_t)sizeof(trendlineType)
+					|| dest->Write(&trendlinePeriod, sizeof(trendlinePeriod)) != (ssize_t)sizeof(trendlinePeriod)
+					|| dest->Write(&errorBarMode, sizeof(errorBarMode)) != (ssize_t)sizeof(errorBarMode)
+					|| dest->Write(&errorBarValue, sizeof(errorBarValue)) != (ssize_t)sizeof(errorBarValue))
+					return B_IO_ERROR;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -4167,6 +4209,56 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 					*themePalette = palette;
 				if (hasThemePalette)
 					*hasThemePalette = true;
+			}
+		}
+	}
+
+	// Sezione opzioni per serie di grafico incorporato, scritta da
+	// SaveASCD in coda DOPO tutto il resto (Fase 7, "asse secondario /
+	// trendline / barre d'errore"): stesso principio EOF-tollerante di
+	// sopra, stesso schema della sezione colori per serie piu' sopra (un
+	// conteggio+elenco per grafico). I campi delle barre d'errore sono
+	// gia' letti qui anche se nessun controllo li popola ancora (Fase
+	// 7c) -- la forma del record e' fissa da questa fase in poi, vedi il
+	// commento gemello in SaveASCD.
+	{
+		int32 chartSeriesOptionsCount = 0;
+		ssize_t got = source->Read(&chartSeriesOptionsCount, sizeof(chartSeriesOptionsCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartSeriesOptionsCount) || chartSeriesOptionsCount < 0
+					|| chartSeriesOptionsCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < chartSeriesOptionsCount; i++)
+			{
+				int32 optionCount;
+				if (source->Read(&optionCount, sizeof(optionCount)) != (ssize_t)sizeof(optionCount))
+					return B_BAD_DATA;
+				if (optionCount < 0 || optionCount > 4096)
+					return B_BAD_DATA;
+				std::vector<ChartSeriesOptions> options(optionCount);
+				for (int32 s = 0; s < optionCount; s++)
+				{
+					uint8 secondaryAxis, trendlineType, errorBarMode;
+					int32 trendlinePeriod;
+					double errorBarValue;
+					if (source->Read(&secondaryAxis, sizeof(secondaryAxis)) != (ssize_t)sizeof(secondaryAxis)
+						|| source->Read(&trendlineType, sizeof(trendlineType)) != (ssize_t)sizeof(trendlineType)
+						|| source->Read(&trendlinePeriod, sizeof(trendlinePeriod)) != (ssize_t)sizeof(trendlinePeriod)
+						|| source->Read(&errorBarMode, sizeof(errorBarMode)) != (ssize_t)sizeof(errorBarMode)
+						|| source->Read(&errorBarValue, sizeof(errorBarValue)) != (ssize_t)sizeof(errorBarValue))
+						return B_BAD_DATA;
+					if (trendlineType > eMovingAverageTrendline || errorBarMode > ePercentErrorBars)
+						return B_BAD_DATA;
+
+					options[s].secondaryAxis = secondaryAxis != 0;
+					options[s].trendlineType = (TrendlineType)trendlineType;
+					options[s].trendlinePeriod = trendlinePeriod;
+					options[s].errorBarMode = (ErrorBarMode)errorBarMode;
+					options[s].errorBarValue = errorBarValue;
+				}
+				if (charts && i < (int32)charts->size())
+					(*charts)[i].seriesOptions = options;
 			}
 		}
 	}
