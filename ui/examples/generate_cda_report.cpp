@@ -968,6 +968,32 @@ int main()
 		}
 	}
 
+	// Stile cella con nome "Buono" (v0.4.3, "Named cell styles + live
+	// theme palette"): applicato DOPO Border/BorderColor sopra apposta
+	// -- uno stile con nome sostituisce sfondo/testo/allineamento/
+	// grassetto/corsivo/sottolineato per intero (vedi
+	// CellStyle::fNamedStyleID), ma NON i bordi (non modellati da
+	// NamedStyleDef in questa fase), quindi il bordo arancione del primo
+	// classificato sopravvive intatto sotto il nuovo sfondo verde. Se
+	// l'utente cambia in seguito la definizione di "Buono" (o un colore
+	// del tema, se lo si legasse a un ruolo tema) dalla finestra
+	// "Stili cella...", questa riga cambia aspetto DAL VIVO -- l'intero
+	// punto della funzionalita'.
+	{
+		NamedStyleTable defaultStyles; // 17 built-in predefiniti, nessuna personalizzazione
+		int goodStyleID = defaultStyles.FindByName("Buono");
+		if (goodStyleID > 0)
+		{
+			for (int col = 1; col <= 3; col++)
+			{
+				CellStyle cs;
+				cda->GetCellStyle(cell(col, 9), cs);
+				cs.fNamedStyleID = goodStyleID;
+				cda->SetCellStyle(cell(col, 9), cs);
+			}
+		}
+	}
+
 	int lastRankRow = 8 + (int)segments.size();
 	float chartTop = 20 + (lastRankRow + 1) * 20;
 	float chartBottom = chartTop + 220;
@@ -1431,6 +1457,16 @@ int main()
 	cdaSheet.rowHeights.push_back(std::make_pair(1, 30.0f));
 	cdaSheet.hasTabColor = true;
 	cdaSheet.tabColor = kGreen;
+	// Stili con nome + tema (v0.4.3): concetto di CARTELLA DI LAVORO,
+	// persistito solo sul PRIMO foglio (vedi AscdSheet::hasNamedStyles
+	// in AscdIO.h) -- i 17 built-in predefiniti, tema di default
+	// invariato (l'utente puo' gia' personalizzarli dalla finestra
+	// "Stili cella..." una volta aperto questo file, non serve
+	// precostruire qui un tema diverso solo per dimostrarlo).
+	cdaSheet.hasNamedStyles = true;
+	cdaSheet.namedStyles = NamedStyleTable();
+	cdaSheet.hasThemePalette = true;
+	cdaSheet.themePalette = ThemePalette();
 	// Area di stampa e margini/scala (Fase 29, ora per foglio -- vedi
 	// AscdPrintSettings in AscdIO.h): esattamente il contenuto di
 	// questo foglio, adattato a UNA pagina sola (kPrintFitBoth) --
