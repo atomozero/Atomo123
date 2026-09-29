@@ -97,6 +97,19 @@ public:
 	
 	inline bool Contains(cell c) const;
 	inline bool IsValid() const;
+	// Vero grafo delle dipendenze (roadmap Tier 3): un riferimento come
+	// "A:A"/"1:1" non ha nessun segnaposto dedicato in questo motore --
+	// e' semplicemente un range gia' esteso ai limiti del foglio
+	// (kRowCount/kColCount) dal parser. Usato per riconoscere QUESTO
+	// caso al momento di costruire il grafo delle dipendenze, cosi' una
+	// formula come "=SOMMA(A:A)" ottiene UN bordo grezzo sull'intera
+	// colonna invece di kRowCount bordi individuali (vedi
+	// CContainer::fColumnDependents/fRowDependents). Nota: un intervallo
+	// esplicito altrettanto grande scritto a mano (es. "A1:A16384")
+	// ottiene lo stesso trattamento grezzo -- approssimazione prudente
+	// e corretta per eccesso, non un errore.
+	inline bool IsWholeColumn() const;
+	inline bool IsWholeRow() const;
 };
 
 inline bool range::Contains(cell c) const
@@ -111,5 +124,15 @@ inline bool range::IsValid() const
 		TopLeft() != cell::InvalidCell &&
 		BotRight() != cell::InvalidCell;
 } /* range::IsValid */
+
+inline bool range::IsWholeColumn() const
+{
+	return top <= 1 && bottom >= kRowCount;
+} /* range::IsWholeColumn */
+
+inline bool range::IsWholeRow() const
+{
+	return left <= 1 && right >= kColCount;
+} /* range::IsWholeRow */
 
 #endif

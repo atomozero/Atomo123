@@ -177,6 +177,105 @@ bool CFormulaIterator::Next(cell& ioCell)
 	return (theOpcode == valCell || theOpcode == valRange || theOpcode == valRefRange);
 } /* CFormulaIterator::Next */
 
+bool CFormulaIterator::NextQualified(RawFormulaRef& out)
+{
+	int l;
+	PFToken theOpcode;
+
+	// A differenza di Next() sopra, questo non entra mai in modalita'
+	// "dentro un intervallo" (niente fIndex negativo): ogni chiamata
+	// riparte semplicemente dal token successivo nel flusso, e un
+	// intervallo (stesso foglio o incrociato) viene restituito COSI'
+	// COM'E' in un solo colpo, mai espanso cella per cella qui -- vedi
+	// il commento su questo metodo in Formula.h.
+	do {
+		theOpcode = (PFToken)fString[fIndex];
+		fIndex++;
+
+		switch (theOpcode) {
+			case opFunc:
+				fIndex += sizeof(FuncCallData) / kPFWordSize;
+				break;
+			case valNum:
+			case valPerc:
+				fIndex += sizeof(double) / kPFWordSize;
+				break;
+			case valTime:
+				fIndex += sizeof(time_t) / kPFWordSize;
+				break;
+			case valBool:
+				fIndex++;
+				break;
+			case valStr:
+			case valName:
+				l = 1 + strlen((char *)(fString + fIndex));
+				if (l & kPFAlignBits)
+					l = (l & ~kPFAlignBits) + kPFWordSize;
+				fIndex += l / kPFWordSize;
+				break;
+			case valCell:
+				out.isCrossSheet = false;
+				out.isRange = false;
+				out.loc = ((cell *)(fString + fIndex))->GetFlatCell(fLocation);
+				fIndex += sizeof(cell) / kPFWordSize;
+				break;
+			case valRange:
+			case valRefRange:
+				out.isCrossSheet = false;
+				out.isRange = true;
+				out.rangeVal = ((range *)(fString + fIndex))->GetFlatRange(fLocation);
+				fIndex += sizeof(range) / kPFWordSize;
+				break;
+			case valXRef:
+			{
+				// Stessa lettura byte a byte di CFormula::Calculate
+				// (Formula.cpp, caso valXRef): l'allineamento della
+				// "cell" dopo il nome del foglio NON e' garantito (vedi
+				// il commento sul layout in Formula.h), quindi mai un
+				// cast di puntatore diretto qui.
+				const char *sheetName = (const char *)(fString + fIndex);
+				size_t nameLen = strlen(sheetName) + 1;
+				cell rawTarget;
+				memcpy(&rawTarget, sheetName + nameLen, sizeof(cell));
+				out.isCrossSheet = true;
+				out.sheetName = sheetName;
+				out.isRange = false;
+				out.loc = rawTarget.GetFlatCell(fLocation);
+
+				size_t totalBytes = nameLen + sizeof(cell);
+				if (totalBytes & kPFAlignBits)
+					totalBytes = (totalBytes & ~kPFAlignBits) + kPFWordSize;
+				fIndex += totalBytes / kPFWordSize;
+				break;
+			}
+			case valXRange:
+			{
+				const char *sheetName = (const char *)(fString + fIndex);
+				size_t nameLen = strlen(sheetName) + 1;
+				range rawTarget;
+				memcpy(&rawTarget, sheetName + nameLen, sizeof(range));
+				out.isCrossSheet = true;
+				out.sheetName = sheetName;
+				out.isRange = true;
+				out.rangeVal = rawTarget.GetFlatRange(fLocation);
+
+				size_t totalBytes = nameLen + sizeof(range);
+				if (totalBytes & kPFAlignBits)
+					totalBytes = (totalBytes & ~kPFAlignBits) + kPFWordSize;
+				fIndex += totalBytes / kPFWordSize;
+				break;
+			}
+			default:
+				break;
+		}
+	}
+	while (theOpcode != valCell && theOpcode != valRange && theOpcode != valRefRange
+		&& theOpcode != valXRef && theOpcode != valXRange && theOpcode != opEnd);
+
+	return (theOpcode == valCell || theOpcode == valRange || theOpcode == valRefRange
+		|| theOpcode == valXRef || theOpcode == valXRange);
+} /* CFormulaIterator::NextQualified */
+
 void CFormulaIterator::SetData(const IterData& inData)
 {
 	memcpy(this, &inData, sizeof(CFormulaIterator));

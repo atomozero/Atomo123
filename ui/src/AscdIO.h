@@ -509,4 +509,17 @@ typedef void (*RecalcProgressFunc)(void* context, int sheetIndex, int sheetCount
 void RecalculateWorkbook(std::vector<AscdSheet>& sheets,
 	RecalcProgressFunc progress = NULL, void* progressContext = NULL);
 
+// Vero grafo delle dipendenze (roadmap Tier 3, Fase 0 -- gruppo di
+// strutture dati, ancora inutilizzato dal ricalcolo vero, vedi Container.h):
+// ricostruisce da zero fDependents/fColumnDependents/fRowDependents di
+// OGNI foglio di "sheets", chiamando CContainer::GetQualifiedPrecedents
+// su ogni cella con formula. Da chiamare una sola volta, SUBITO dopo
+// MainWindow::AttachSheetResolver (la risoluzione incrociata fra fogli
+// ha bisogno del resolver gia' collegato), a ogni apertura VERA di file
+// -- non a un documento nuovo/vuoto ne' all'inserimento di un foglio
+// vuoto in piu' (l'aggiornamento incrementale di SetCellFormula/
+// DisposeCell/MoveCell basta gia' da solo da quel momento in poi, senza
+// bisogno di nessuna ricostruzione).
+void RebuildDependencyGraph(std::vector<AscdSheet>& sheets);
+
 #endif

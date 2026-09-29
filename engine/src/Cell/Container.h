@@ -49,6 +49,7 @@
  ***/
 
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -150,6 +151,30 @@ public:
 	// esattamente come prima di questa fase.
 	virtual const NamedStyleTable* GetNamedStyleTable() const = 0;
 	virtual const ThemePalette* GetThemePalette() const = 0;
+};
+
+// Nodo di grafo delle dipendenze (roadmap "Path to full Excel parity"
+// Tier 3, "un vero grafo delle dipendenze"): una cella qualificata dal
+// CContainer (foglio) in cui vive, cosi' un bordo del grafo puo'
+// puntare a una cella di un foglio DIVERSO da quello che lo memorizza.
+// Un riferimento stesso-foglio e' semplicemente il caso comune in cui
+// "container" vale "this" -- nessuna distinzione speciale nel resto del
+// grafo, la stessa identica struttura serve per entrambi i casi.
+// "container" e' un puntatore preso in prestito, MAI posseduto (stesso
+// principio di ISheetResolver/fSheetResolver sopra): un foglio che
+// viene chiuso deve rimuovere ogni bordo che punta a lui PRIMA di essere
+// distrutto (vedi CContainer::PurgeDependenciesOn), altrimenti questi
+// puntatori penderebbero.
+struct QualifiedCell {
+	CContainer* container;
+	cell loc;
+
+	bool operator<(const QualifiedCell& other) const
+	{
+		if (container != other.container)
+			return container < other.container;
+		return loc < other.loc;
+	}
 };
 
 // Formattazione condizionale VIVA (Fase 13): a differenza
@@ -556,6 +581,19 @@ class CContainer : public BLocker {
 	friend class CCellIterator;
 	friend class CCalculateJob;
 
+	// Vero grafo delle dipendenze (roadmap Tier 3): funzione libera
+	// (Container.cpp) che applica una differenza di precedenti ai
+	// fDependents/fColumnDependents/fRowDependents di PIU' CContainer
+	// diversi in un colpo solo (un bordo puo' vivere su un foglio
+	// diverso da quello che lo genera) -- serve accesso privato a
+	// istanze che non sono "this", quindi non puo' essere un metodo
+	// membro normale.
+	friend void ApplyPrecedentDiff(CContainer* selfContainer, const cell& c,
+		const std::vector<QualifiedCell>& oldCells, const std::vector<QualifiedCell>& oldColumns,
+		const std::vector<QualifiedCell>& oldRows,
+		const std::vector<QualifiedCell>& newCells, const std::vector<QualifiedCell>& newColumns,
+		const std::vector<QualifiedCell>& newRows);
+
 	virtual ~CContainer();
 
 public:
@@ -619,7 +657,66 @@ public:
 	// fogli (valXRef/valXRange), limite noto, non un bug qui.
 	void GetPrecedents(const cell& c, std::vector<cell>& out);
 	void GetDependents(const cell& c, std::vector<cell>& out);
-	
+
+	// Vero grafo delle dipendenze (roadmap Tier 3): a differenza di
+	// GetPrecedents sopra (solo stesso foglio, CFormulaIterator salta i
+	// riferimenti incrociati), questa segue anche valXRef/valXRange
+	// tramite "resolver" (mai NULL in pratica quando serve davvero:
+	// vedi ISheetResolver sopra) e reindirizza un riferimento a una
+	// cella "spillata" (ApplySpill) al vero proprietario della formula
+	// (fSpillOwnerOf), perche' solo lui puo' davvero cambiare valore.
+	// Un nome di foglio che non risolve a niente (rinominato/cancellato
+	// dopo che la formula e' stata scritta) produce semplicemente un
+	// bordo in meno, non un errore -- stesso comportamento permissivo
+	// di CFormula::Calculate per lo stesso caso. "resolver" puo' essere
+	// NULL (documento isolato, mai collegato a una cartella di lavoro):
+	// in quel caso si ottengono solo i precedenti stesso-foglio.
+	// "outCells" sono i precedenti su singola cella (destinati a
+	// fDependents del rispettivo container); "outColumns"/"outRows"
+	// sono i bordi GREZZI per un riferimento a colonna/riga intera
+	// (range::IsWholeColumn/IsWholeRow, destinati a fColumnDependents/
+	// fRowDependents) -- una cella dentro un simile intervallo NON
+	// finisce anche in "outCells", solo nel bordo grezzo corrispondente,
+	// altrimenti "=SOMMA(A:A)" produrrebbe migliaia di voci individuali
+	// invece di una sola. Per le voci di "outColumns"/"outRows",
+	// QualifiedCell::loc porta l'indice 1-based (colonna in .h, riga in
+	// .v) invece di una vera posizione di cella.
+	void GetQualifiedPrecedents(const cell& c, ISheetResolver* resolver,
+		std::vector<QualifiedCell>& outCells,
+		std::vector<QualifiedCell>& outColumns,
+		std::vector<QualifiedCell>& outRows);
+
+	// Registra "c" come dipendente di ogni precedente elencato (di
+	// QUALUNQUE foglio) -- il lato "aggiungi" della stessa logica gia'
+	// usata da SetCellFormula/CopyCell/MoveCell per una modifica, ma
+	// senza il lato "vecchio" (nessun bordo da togliere): pensato per
+	// UNA ricostruzione da zero (grafo vuoto in partenza, vedi
+	// RebuildDependencyGraph in ui/src/AscdIO.cpp), non per un
+	// aggiornamento incrementale, che invece resta interamente interno a
+	// questa classe (i tre punti di aggiornamento gia' non hanno bisogno
+	// di questo metodo pubblico). "precedentCells"/"Columns"/"Rows"
+	// vengono tipicamente da una chiamata a GetQualifiedPrecedents fatta
+	// da chi chiama.
+	void RegisterDependencyEdges(const cell& c,
+		const std::vector<QualifiedCell>& precedentCells,
+		const std::vector<QualifiedCell>& precedentColumns,
+		const std::vector<QualifiedCell>& precedentRows);
+
+	// Sola lettura, stesso schema di GetComments/GetHyperlinks/
+	// GetValidations sopra -- usato dai test (nessun consumatore vero
+	// ancora, vedi la Fase 1 del piano) per ispezionare direttamente lo
+	// stato del grafo dopo una modifica.
+	const std::map<cell, std::set<QualifiedCell> >& GetDependentsMap() const { return fDependents; }
+	const std::map<int, std::set<QualifiedCell> >& GetColumnDependentsMap() const { return fColumnDependents; }
+	const std::map<int, std::set<QualifiedCell> >& GetRowDependentsMap() const { return fRowDependents; }
+
+	// Da chiamare su OGNI foglio ANCORA VIVO subito prima di distruggere
+	// "dying" (es. MainWindow::DeleteSheet): rimuove ogni bordo del
+	// grafo di QUESTO CContainer che punta a "dying", altrimenti
+	// resterebbe un QualifiedCell::container penzolante. Non tocca il
+	// grafo DI "dying" stesso (viene distrutto comunque insieme a lui).
+	void PurgeDependenciesOn(CContainer* dying);
+
 	void GetCellStyle(const cell&, CellStyle&);
 	void SetCellStyle(const cell&, CellStyle&);
 	int GetCellStyleNr(const cell&);
@@ -927,6 +1024,21 @@ private:
 	// e' indicizzato SOLO dalla cella owner.
 	std::map<cell, cell> fSpillOwnerOf;
 	std::map<cell, range> fSpillRangeOf;
+
+	// Vero grafo delle dipendenze (roadmap Tier 3): "fDependents[c]" =
+	// l'insieme delle celle (di QUALUNQUE foglio aperto) la cui formula
+	// referenzia DIRETTAMENTE "c" (una cella di QUESTO CContainer) --
+	// l'esatto contrario di GetQualifiedPrecedents. Assenza di chiave =
+	// nessun dipendente, stessa convenzione sparsa di fSpillOwnerOf
+	// sopra. "fColumnDependents"/"fRowDependents" sono il bordo "grezzo"
+	// per un riferimento a colonna/riga intera (es. "=SOMMA(A:A)"): UNA
+	// sola voce per la formula invece di kRowCount voci individuali in
+	// fDependents, indicizzata dalla colonna/riga (1-based, stesso
+	// sistema di range::left/top) di QUESTO foglio che viene osservata
+	// per intero.
+	std::map<cell, std::set<QualifiedCell> > fDependents;
+	std::map<int, std::set<QualifiedCell> > fColumnDependents;
+	std::map<int, std::set<QualifiedCell> > fRowDependents;
 };
 
 inline bool CContainer::WriteLock()

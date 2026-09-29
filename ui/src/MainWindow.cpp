@@ -1986,6 +1986,20 @@ void MainWindow::DeleteSheetNoConfirm(int index)
 		SwitchToSheet(target);
 	}
 
+	// Vero grafo delle dipendenze (roadmap Tier 3, Fase 0): ogni ALTRO
+	// foglio ancora vivo puo' avere bordi che puntano a celle di quello
+	// che sta per sparire (QualifiedCell::container) -- vanno tolti
+	// PRIMA di Release() sotto, altrimenti quei puntatori penzolerebbero
+	// (vedi CContainer::PurgeDependenciesOn/QualifiedCell in Container.h).
+	{
+		CContainer* dying = fSheets[index].doc;
+		for (size_t i = 0; i < fSheets.size(); i++)
+		{
+			if ((int)i != index)
+				fSheets[i].doc->PurgeDependenciesOn(dying);
+		}
+	}
+
 	fSheets[index].doc->Release();
 	fSheets.erase(fSheets.begin() + index);
 	// Ogni indice DOPO quello appena eliminato scala di uno per via
@@ -2610,6 +2624,14 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	// dell'intera cartella, con tutti i fogli gia' collegati fra loro,
 	// e' il primo punto in cui puo' farlo correttamente.
 	AttachSheetResolver();
+	// Vero grafo delle dipendenze (roadmap Tier 3, Fase 0): ricostruito
+	// da zero qui, SUBITO dopo il resolver, per lo stesso motivo del
+	// commento sopra su RecalculateWorkbook -- un riferimento incrociato
+	// non si puo' risolvere finche' ogni foglio non e' collegato agli
+	// altri. Ancora inutilizzato dal ricalcolo vero (vedi Container.h),
+	// costruito qui solo per essere gia' pronto quando una fase
+	// successiva iniziera' a consultarlo.
+	RebuildDependencyGraph(fSheets);
 	RecalculateWorkbook(fSheets);
 
 	fDocumentName = ref.name;
@@ -2899,6 +2921,13 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	// temporaneo si libera SUBITO dopo, non prima: nessun CContainer
 	// deve restare agganciato a un oggetto che sta per sparire.
 	AttachSheetResolver();
+	// Vero grafo delle dipendenze (roadmap Tier 3, Fase 0): stesso
+	// principio del percorso sincrono (vedi il commento gemello piu'
+	// sopra in questo file) -- ricostruito qui, non nel job in
+	// background, perche' e' il primo punto in cui fSheets porta
+	// davvero il resolver DEFINITIVO ("this"), non quello temporaneo del
+	// thread di caricamento.
+	RebuildDependencyGraph(fSheets);
 	delete resolver;
 
 	fDocumentName = ref.name;

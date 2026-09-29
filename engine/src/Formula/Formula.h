@@ -60,6 +60,7 @@
 #include <BeBuild.h>
 #include <DataIO.h>
 #include <cstddef>
+#include <string>
 
 struct Value;
 class CContainer;
@@ -221,13 +222,45 @@ private:
 	int32 *fString;
 };
 
+// Un riferimento GREZZO trovato nel bytecode (cella o intervallo, stesso
+// foglio o un altro) -- vedi CFormulaIterator::NextQualified sotto per
+// il perche' serve, distinto da Next() sopra.
+struct RawFormulaRef {
+	RawFormulaRef() : isCrossSheet(false), isRange(false) {}
+	bool isCrossSheet;     // true => "sheetName" e' significativo
+	std::string sheetName; // solo se isCrossSheet
+	bool isRange;          // true => "rangeVal", false => "loc"
+	cell loc;
+	range rangeVal;
+};
+
 class CFormulaIterator {
 public:
 	typedef long IterData[5];
 
 	CFormulaIterator(void*, cell inLocation);
-	
+
 	bool Next(cell&);
+
+	// Vero grafo delle dipendenze (roadmap Tier 3): a differenza di
+	// Next() sopra (che entra sempre in modalita' "una cella alla
+	// volta" per un intervallo, ed e' SEMPRE stesso-foglio, saltando
+	// valXRef/valXRange), questo restituisce il riferimento COSI' COM'E'
+	// -- un intervallo resta un intervallo, mai espanso qui, e un
+	// riferimento a un altro foglio viene restituito con il suo nome
+	// invece di essere saltato. Lascia a chi chiama (CContainer::
+	// GetQualifiedPrecedents, l'unico uso previsto) la decisione se
+	// espandere un intervallo cella per cella o trattarlo come un unico
+	// bordo grezzo (riferimento a colonna/riga intera, vedi
+	// range::IsWholeColumn/IsWholeRow), e se/come risolvere un nome di
+	// foglio (serve un ISheetResolver, che questa classe non ha). Non
+	// tocca Next() ne' il suo stato interno in modo diverso -- stessa
+	// aritmetica di scarto per i token non terminali (opFunc/valNum/
+	// valPerc/valTime/valBool/valStr/valName), duplicata deliberatamente
+	// invece di essere fattorizzata insieme a Next(), per non rischiare
+	// di alterare il comportamento gia' funzionante dei suoi chiamanti
+	// attuali (GetPrecedents, auditing formule, rilevamento cicli).
+	bool NextQualified(RawFormulaRef& out);
 
 	void GetData(IterData& outData);
 	void SetData(const IterData& inData);
