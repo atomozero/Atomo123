@@ -242,6 +242,46 @@ What shipped since v0.4.2 (in progress):
   section after the checks' last-known point, silently failing on any
   chart-less file — not a translator bug, but a maintenance gap in the
   test's own byte-position bookkeeping now caught and corrected.
+- Chart secondary axis, per series (Phase 7d, the last of the three
+  "Secondary axis / trendlines / error bars" sub-features — this closes
+  the item): a checkbox ("Asse 2") next to each series in the chart
+  editor's per-series row, unlike trendlines/error bars above which
+  needed a pop-up — one bool fits directly in the row. The single
+  shared value range every multi-series chart used to compute
+  (`MultiChartValueRange`) became `MultiChartValueRanges`, splitting it
+  into a primary and a secondary range computed independently, so a
+  secondary series with very different magnitude from the rest (the
+  actual problem a secondary axis solves) is never distorted by, or
+  distorts, the primary series' scale — verified with a dedicated test
+  using values three orders of magnitude apart. Every multi-series
+  layout/draw function (grouped bar, multi-line, multi-area, combo,
+  plus the trendline/error-bar drawing from the previous two phases)
+  now looks up the right range per series instead of assuming one
+  shared scale. A label-only right-side axis (no gridlines — the
+  primary grid already covers it, two overlapping grids would be
+  unreadable) is drawn when any series is secondary. Grouped horizontal
+  bar charts are excluded, same scope limit already in place for
+  trendlines/error bars on that type (its value axis is horizontal; no
+  secondary-axis shape exists yet for that orientation). No native
+  `.ascd` format change needed — the field has been part of the shared
+  `ChartSeriesOptions` record since the trendlines phase, unpopulated
+  until now, so this phase's persistence is a pure no-op verified by
+  re-running the existing round-trip tests unchanged. Round-trips
+  through XLSX: a series on the secondary axis gets its own
+  `<c:barChart>`/`<c:lineChart>` block (real OOXML assigns axis
+  membership by which chart-type element contains a `<c:ser>`, not by
+  an attribute on the series itself) with its own `<c:axId>` pair, plus
+  a second `<c:valAx>` (`axPos="r"`, `<c:crosses val="max"/>` — the
+  detail that makes Excel draw it on the right instead of overlapping
+  the primary axis, the most common mistake in a hand-written version
+  of this shape) and a hidden second `<c:catAx>` (both axis pairs share
+  the same categories). A chart with no secondary-axis series produces
+  byte-identical XML to before this phase, verified directly rather
+  than just by re-running unrelated tests. Import tracks which
+  chart-type block (first or second) a `<c:ser>` was found in to
+  recover the flag — a declared simplification for a 3-axis-pair or
+  non-adjacent-grouping file, which this translator never writes and
+  doesn't try to parse correctly, rather than silently mishandling it.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
