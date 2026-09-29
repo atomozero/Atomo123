@@ -4515,6 +4515,24 @@ void RecalculateWorkbook(std::vector<AscdSheet>& sheets, RecalcProgressFunc prog
 	}
 }
 
+void RebuildDependencyGraph(std::vector<AscdSheet>& sheets)
+{
+	for (size_t i = 0; i < sheets.size(); i++)
+	{
+		std::vector<cell> formulaCells;
+		CollectFormulaCells(sheets[i].doc, &formulaCells);
+
+		ISheetResolver* resolver = sheets[i].doc->GetSheetResolver();
+		for (size_t j = 0; j < formulaCells.size(); j++)
+		{
+			std::vector<QualifiedCell> cells, columns, rows;
+			sheets[i].doc->GetQualifiedPrecedents(formulaCells[j], resolver,
+				cells, columns, rows);
+			sheets[i].doc->RegisterDependencyEdges(formulaCells[j], cells, columns, rows);
+		}
+	}
+}
+
 bool IsASCDBookFile(BPositionIO* source)
 {
 	off_t pos = source->Position();

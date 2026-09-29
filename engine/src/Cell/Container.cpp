@@ -81,6 +81,21 @@ void WarnForUnlockedContainer(int lineNr)
 
 const long kIndexSlotCount = 256;
 
+// Vero grafo delle dipendenze (roadmap Tier 3): dichiarate qui, definite
+// piu' sotto (vicino a GetQualifiedPrecedents) -- SetCellFormula/
+// DisposeCell/MoveCell, definite prima nel file, ne hanno bisogno per
+// aggiornare il grafo a ogni modifica di una formula.
+static void ComputeQualifiedPrecedents(void* formula, const cell& formulaLoc,
+	CContainer* selfContainer, ISheetResolver* resolver,
+	std::vector<QualifiedCell>& outCells,
+	std::vector<QualifiedCell>& outColumns,
+	std::vector<QualifiedCell>& outRows);
+void ApplyPrecedentDiff(CContainer* selfContainer, const cell& c,
+	const std::vector<QualifiedCell>& oldCells, const std::vector<QualifiedCell>& oldColumns,
+	const std::vector<QualifiedCell>& oldRows,
+	const std::vector<QualifiedCell>& newCells, const std::vector<QualifiedCell>& newColumns,
+	const std::vector<QualifiedCell>& newRows);
+
 CContainer::CContainer(CCellView *inPane, CNameTable *inNames)
 	: fColumnStyles(kColCount, -1)
 {
@@ -213,6 +228,10 @@ void CContainer::NewCell(const cell& inLocation, const Value& inValue, void *inF
 	cellmap::iterator it = fCellData.lower_bound(inLocation);
 	bool exists = it != fCellData.end() && !fCellData.key_comp()(inLocation, it->first);
 	int preservedStyle = exists ? it->second.mStyle : fDefaultCellStyle;
+	// Vero grafo delle dipendenze (roadmap Tier 3): letto PRIMA di
+	// sovrascrivere sotto -- vedi il commento piu' in basso sul perche'
+	// serve qui, non solo in SetCellFormula.
+	void* oldFormula = exists ? it->second.mFormula : NULL;
 
 	data = inValue;
 	data.mFormula = inFormula;
@@ -223,6 +242,31 @@ void CContainer::NewCell(const cell& inLocation, const Value& inValue, void *inF
 		it->second = data;
 	else
 		fCellData.insert(it, cellmap::value_type(inLocation, data));
+
+	// Vero grafo delle dipendenze (roadmap Tier 3): a differenza di
+	// SetCellFormula (usato SOLO dall'importatore XLS legacy, vedi il
+	// suo stesso commento in Container.h), QUESTO e' il vero punto di
+	// scrittura di ogni cella digitata dall'utente
+	// (TryToParseString -> NewCell, il percorso reale usato da
+	// MainWindow) -- senza questo aggiornamento qui, il grafo resterebbe
+	// vuoto per ogni formula scritta normalmente. Il controllo veloce
+	// sotto evita QUALUNQUE lavoro extra per il caso comune (una cella
+	// letterale che lo era gia' prima), lo stesso percorso critico per
+	// le prestazioni gia' misurato e ottimizzato sopra (Fase 34, ~50-100
+	// microsecondi per cella su un file XLSX reale a centinaia di
+	// migliaia di celle) -- un confronto di puntatore in piu' per ogni
+	// cella letterale, nessun altro costo.
+	if (oldFormula || inFormula)
+	{
+		std::vector<QualifiedCell> oldCells, oldColumns, oldRows;
+		ComputeQualifiedPrecedents(oldFormula, inLocation, this, fSheetResolver,
+			oldCells, oldColumns, oldRows);
+		std::vector<QualifiedCell> newCells, newColumns, newRows;
+		ComputeQualifiedPrecedents(inFormula, inLocation, this, fSheetResolver,
+			newCells, newColumns, newRows);
+		ApplyPrecedentDiff(this, inLocation, oldCells, oldColumns, oldRows,
+			newCells, newColumns, newRows);
+	}
 } /* NewCell */
 
 void CContainer::DisposeCell(const cell& inLoc)
@@ -233,6 +277,26 @@ void CContainer::DisposeCell(const cell& inLoc)
 
 	if (ci != fCellData.end())
 	{
+		// Vero grafo delle dipendenze (roadmap Tier 3): una cella
+		// cancellata smette di avere QUALUNQUE precedente (i suoi bordi
+		// USCENTI vanno tolti) -- stesso identico trattamento di
+		// SetCellFormula(inLoc, NULL) ai soli fini del grafo, letto PRIMA
+		// di Clear() perche' serve ancora la formula per calcolare i
+		// vecchi precedenti. Le celle che dipendevano DA "inLoc" non
+		// hanno bisogno di nessun bordo tolto qui (il loro riferimento
+		// resta valido, vedra' semplicemente una cella vuota al prossimo
+		// ricalcolo) -- solo di essere ricalcolate, una questione per la
+		// Fase 1 (il consumatore del grafo), non per questo metodo.
+		if ((*ci).second.mFormula)
+		{
+			std::vector<QualifiedCell> oldCells, oldColumns, oldRows;
+			std::vector<QualifiedCell> noneCells, noneColumns, noneRows;
+			ComputeQualifiedPrecedents((*ci).second.mFormula, inLoc, this, fSheetResolver,
+				oldCells, oldColumns, oldRows);
+			ApplyPrecedentDiff(this, inLoc, oldCells, oldColumns, oldRows,
+				noneCells, noneColumns, noneRows);
+		}
+
 		(*ci).second.Clear();
 		fCellData.erase(ci);
 	}
@@ -248,7 +312,19 @@ void CContainer::ClearCellContent(const cell& inLoc)
 	if (data.mType == eTextData && data.mText)
 		FREE(data.mText);
 	if (data.mFormula)
+	{
+		// Vero grafo delle dipendenze (roadmap Tier 3): stesso identico
+		// motivo di DisposeCell sopra -- questo metodo libera mFormula
+		// direttamente (Canc/Backspace, vedi il commento su questo
+		// metodo in Container.h), senza passare da SetCellFormula.
+		std::vector<QualifiedCell> oldCells, oldColumns, oldRows;
+		std::vector<QualifiedCell> noneCells, noneColumns, noneRows;
+		ComputeQualifiedPrecedents(data.mFormula, inLoc, this, fSheetResolver,
+			oldCells, oldColumns, oldRows);
+		ApplyPrecedentDiff(this, inLoc, oldCells, oldColumns, oldRows,
+			noneCells, noneColumns, noneRows);
 		FREE(data.mFormula);
+	}
 
 	data.mFormula = NULL;
 	data.mType = eNoData;
@@ -304,13 +380,41 @@ void CContainer::CopyCell(CContainer *destContainer, const cell& srcLoc, const c
 	}
 	
 	if (cd)
+	{
+		// Vero grafo delle dipendenze (roadmap Tier 3): questo metodo
+		// scrive "fCellData[destLoc]" direttamente, mai tramite
+		// SetCellFormula -- stesso trattamento prima/dopo, letto PRIMA
+		// della scrittura vera perche' serve la formula ATTUALE di
+		// destLoc (se c'era) per calcolare i vecchi precedenti. Il ramo
+		// "cd == NULL" sotto passa gia' da DisposeCell, che si occupa
+		// gia' da solo dei suoi vecchi precedenti.
+		void* oldDestFormula = NULL;
+		cellmap::iterator destIt = destContainer->fCellData.find(destLoc);
+		if (destIt != destContainer->fCellData.end())
+			oldDestFormula = destIt->second.mFormula;
+		std::vector<QualifiedCell> oldCells, oldColumns, oldRows;
+		ComputeQualifiedPrecedents(oldDestFormula, destLoc, destContainer,
+			destContainer->fSheetResolver, oldCells, oldColumns, oldRows);
+
 		destContainer->fCellData[destLoc] = *cd;
+
+		if (isDragMove)
+			CFormula(cd->mFormula).UpdateReferences(srcLoc,
+				srcLoc.h - destLoc.h, srcLoc.v - destLoc.v, *inFrom);
+
+		// I precedenti NUOVI si leggono DOPO l'eventuale UpdateReferences
+		// sopra (che riscrive il bytecode sul posto): cd->mFormula e'
+		// la STESSA memoria ormai posseduta da destContainer->fCellData
+		// [destLoc] (CellData::Copy() sopra ne aveva gia' fatto una copia
+		// indipendente), quindi riflette gia' i riferimenti aggiornati.
+		std::vector<QualifiedCell> newCells, newColumns, newRows;
+		ComputeQualifiedPrecedents(cd->mFormula, destLoc, destContainer,
+			destContainer->fSheetResolver, newCells, newColumns, newRows);
+		ApplyPrecedentDiff(destContainer, destLoc, oldCells, oldColumns, oldRows,
+			newCells, newColumns, newRows);
+	}
 	else
 		destContainer->DisposeCell(destLoc);
-	
-	if (isDragMove && cd)
-		CFormula(cd->mFormula).UpdateReferences(srcLoc,
-			srcLoc.h - destLoc.h, srcLoc.v - destLoc.v, *inFrom);
 } /* CopyCell */
 
 void CContainer::MoveCell(CContainer *destContainer, const cell& srcLoc, const cell& destLoc,
@@ -328,24 +432,62 @@ void CContainer::MoveCell(CContainer *destContainer, const cell& srcLoc, const c
 	{
 		if (split != noSplit)
 		{
+			// Vero grafo delle dipendenze (roadmap Tier 3): la formula
+			// resta nella stessa cella, ma i SUOI riferimenti possono
+			// spostarsi (una riga/colonna e' stata inserita/cancellata
+			// nelle vicinanze) -- stessa identita' di dipendente prima e
+			// dopo (srcLoc), quindi ApplyPrecedentDiff normale basta,
+			// nessun bisogno del trattamento "due chiamate" del ramo
+			// sotto (che invece cambia identita').
+			std::vector<QualifiedCell> oldCells, oldColumns, oldRows;
+			ComputeQualifiedPrecedents(fCellData[srcLoc].mFormula, srcLoc, this,
+				fSheetResolver, oldCells, oldColumns, oldRows);
+
 			CFormula f(fCellData[srcLoc].mFormula);
 			f.UpdateReferences(srcLoc,
 				split == hSplit, first, count);
+
+			std::vector<QualifiedCell> newCells, newColumns, newRows;
+			ComputeQualifiedPrecedents(fCellData[srcLoc].mFormula, srcLoc, this,
+				fSheetResolver, newCells, newColumns, newRows);
+			ApplyPrecedentDiff(this, srcLoc, oldCells, oldColumns, oldRows,
+				newCells, newColumns, newRows);
 		}
 	}
 	else if ((ci = fCellData.find(srcLoc)) != fCellData.end())
 	{
+		// Vero grafo delle dipendenze (roadmap Tier 3): qui la cella
+		// CAMBIA identita' (srcLoc -> destLoc), quindi un ApplyPrecedentDiff
+		// solo non basta -- un precedente "invariato" (presente sia prima
+		// che dopo) avrebbe comunque bisogno che il suo dipendente
+		// registrato passi da srcLoc a destLoc. Piu' semplice ed
+		// altrettanto corretto: togliere TUTTI i bordi registrati sotto
+		// (this, srcLoc), poi aggiungerli TUTTI sotto (this, destLoc) --
+		// due chiamate a ApplyPrecedentDiff, non una, ognuna con un lato
+		// vuoto apposta.
+		std::vector<QualifiedCell> oldCells, oldColumns, oldRows;
+		ComputeQualifiedPrecedents((*ci).second.mFormula, srcLoc, this,
+			fSheetResolver, oldCells, oldColumns, oldRows);
+
 		CellData cr = (*ci).second;
 		fCellData.erase(ci);
-		
+
 		if (split != noSplit)
 		{
 			CFormula f(cr.mFormula);
 			f.UpdateReferences(srcLoc, split == hSplit,
 				first, count);
 		}
-		
+
 		fCellData[destLoc] = cr;
+
+		std::vector<QualifiedCell> newCells, newColumns, newRows;
+		ComputeQualifiedPrecedents(cr.mFormula, destLoc, this,
+			fSheetResolver, newCells, newColumns, newRows);
+
+		static const std::vector<QualifiedCell> kEmpty;
+		ApplyPrecedentDiff(this, srcLoc, oldCells, oldColumns, oldRows, kEmpty, kEmpty, kEmpty);
+		ApplyPrecedentDiff(this, destLoc, kEmpty, kEmpty, kEmpty, newCells, newColumns, newRows);
 	}
 } /* MoveCell */
 
@@ -546,9 +688,26 @@ void CContainer::SetCellFormula(const cell& inLoc, void *inFormula)
 
 	if ((i = fCellData.find(inLoc)) != fCellData.end())
 	{
+		// Vero grafo delle dipendenze (roadmap Tier 3): i precedenti
+		// VECCHI vanno letti PRIMA di liberare la formula attuale (e'
+		// ancora la sua memoria), quelli NUOVI dalla formula appena
+		// installata -- ApplyPrecedentDiff aggiorna solo la differenza,
+		// cosi' una modifica che non tocca affatto i riferimenti (es.
+		// solo il valore costante cambia) non fa nessun lavoro extra sul
+		// grafo.
+		std::vector<QualifiedCell> oldCells, oldColumns, oldRows;
+		std::vector<QualifiedCell> newCells, newColumns, newRows;
+		ComputeQualifiedPrecedents((*i).second.mFormula, inLoc, this, fSheetResolver,
+			oldCells, oldColumns, oldRows);
+
 		if ((*i).second.mFormula) free((*i).second.mFormula);
 		(*i).second.mFormula = inFormula;
 		(*i).second.mConstant = CFormula(inFormula).IsConstant();
+
+		ComputeQualifiedPrecedents(inFormula, inLoc, this, fSheetResolver,
+			newCells, newColumns, newRows);
+		ApplyPrecedentDiff(this, inLoc, oldCells, oldColumns, oldRows,
+			newCells, newColumns, newRows);
 	}
 } /* CContainer::SetCellFormula */
 
@@ -593,6 +752,268 @@ void CContainer::GetDependents(const cell& c, std::vector<cell>& out)
 		}
 	}
 } /* CContainer::GetDependents */
+
+// Reindirizza (container, loc) al vero proprietario dello spill se "loc"
+// e' una cella spillata di "container" (ApplySpill/fSpillOwnerOf) --
+// una cella spillata e' sempre un VALORE, mai una formula propria, il
+// suo contenuto cambia solo come effetto collaterale del ricalcolo del
+// proprietario. Funzione libera (non un metodo): opera su un container
+// generico, non necessariamente "this", perche' un riferimento
+// incrociato puo' puntare a una cella spillata di UN ALTRO foglio.
+static QualifiedCell RedirectSpillMember(CContainer* container, const cell& loc)
+{
+	QualifiedCell qc;
+	qc.container = container;
+	qc.loc = container->IsSpillMember(loc) ? container->GetSpillOwner(loc) : loc;
+	return qc;
+}
+
+// Corpo vero di GetQualifiedPrecedents, estratto in una funzione libera
+// che prende il puntatore alla formula DIRETTAMENTE invece di rileggerlo
+// da fCellData: serve a CContainer::SetCellFormula/DisposeCell/MoveCell
+// per calcolare i precedenti PRIMA e DOPO una modifica (il vecchio
+// puntatore alla formula, in quel momento, non e' piu' quello che
+// fCellData[inLoc].mFormula restituirebbe una volta sostituito -- vedi
+// i commenti li'). "selfContainer" sostituisce il "this" implicito che
+// avrebbe un metodo membro, per i riferimenti stesso-foglio.
+static void ComputeQualifiedPrecedents(void* formula, const cell& formulaLoc,
+	CContainer* selfContainer, ISheetResolver* resolver,
+	std::vector<QualifiedCell>& outCells,
+	std::vector<QualifiedCell>& outColumns,
+	std::vector<QualifiedCell>& outRows)
+{
+	outCells.clear();
+	outColumns.clear();
+	outRows.clear();
+
+	if (!formula)
+		return;
+
+	std::set<QualifiedCell> cellsSeen, columnsSeen, rowsSeen;
+	CFormulaIterator iter(formula, formulaLoc);
+	RawFormulaRef ref;
+
+	while (iter.NextQualified(ref))
+	{
+		// Riferimenti a tabella strutturata fra fogli (Tabella12[Col]):
+		// compaiono nel bytecode come un semplice valName (una stringa),
+		// che NextQualified salta come ogni altro token non terminale --
+		// non ancora tracciati da questo grafo, vedi il commento nel
+		// piano di Fase 0 ("rimandato, non bloccante"). Una formula che
+		// usa SOLO un riferimento a tabella su un altro foglio, senza
+		// nessun altro riferimento a cella/intervallo, produce percio'
+		// oggi zero precedenti qualificati -- non un crash, solo un
+		// grafo temporaneamente incompleto per quel caso raro, finche'
+		// una fase successiva non lo aggiunge.
+
+		CContainer* target = selfContainer;
+		if (ref.isCrossSheet)
+		{
+			target = resolver ? resolver->ResolveSheetByName(ref.sheetName.c_str()) : NULL;
+			if (!target)
+				// Nome di foglio non risolvibile (rinominato/cancellato
+				// dopo che la formula e' stata scritta): un bordo in
+				// meno, non un errore -- stesso comportamento permissivo
+				// di CFormula::Calculate per lo stesso caso.
+				continue;
+		}
+
+		if (!ref.isRange)
+		{
+			QualifiedCell qc = RedirectSpillMember(target, ref.loc);
+			if (cellsSeen.insert(qc).second)
+				outCells.push_back(qc);
+			continue;
+		}
+
+		range r = ref.rangeVal;
+		if (r.IsWholeColumn())
+		{
+			for (int col = r.left; col <= r.right; col++)
+			{
+				QualifiedCell qc;
+				qc.container = target;
+				qc.loc = cell(col, 0);
+				if (columnsSeen.insert(qc).second)
+					outColumns.push_back(qc);
+			}
+		}
+		else if (r.IsWholeRow())
+		{
+			for (int row = r.top; row <= r.bottom; row++)
+			{
+				QualifiedCell qc;
+				qc.container = target;
+				qc.loc = cell(0, row);
+				if (rowsSeen.insert(qc).second)
+					outRows.push_back(qc);
+			}
+		}
+		else
+		{
+			for (int row = r.top; row <= r.bottom; row++)
+				for (int col = r.left; col <= r.right; col++)
+				{
+					QualifiedCell qc = RedirectSpillMember(target, cell(col, row));
+					if (cellsSeen.insert(qc).second)
+						outCells.push_back(qc);
+				}
+		}
+	}
+} /* ComputeQualifiedPrecedents */
+
+// Applica ai grafi dei container coinvolti la differenza fra i
+// precedenti VECCHI e NUOVI della cella "c" di "selfContainer" (rimuove
+// "c" come dipendente da ogni precedente sparito, lo aggiunge a ogni
+// precedente nuovo) -- unico punto usato da SetCellFormula/DisposeCell/
+// MoveCell, cosi' i tre scelgono solo COME calcolare vecchio/nuovo
+// (prima/dopo una modifica), non come applicarli al grafo.
+void ApplyPrecedentDiff(CContainer* selfContainer, const cell& c,
+	const std::vector<QualifiedCell>& oldCells, const std::vector<QualifiedCell>& oldColumns,
+	const std::vector<QualifiedCell>& oldRows,
+	const std::vector<QualifiedCell>& newCells, const std::vector<QualifiedCell>& newColumns,
+	const std::vector<QualifiedCell>& newRows)
+{
+	QualifiedCell me;
+	me.container = selfContainer;
+	me.loc = c;
+
+	std::set<QualifiedCell> oldCellSet(oldCells.begin(), oldCells.end());
+	std::set<QualifiedCell> newCellSet(newCells.begin(), newCells.end());
+	std::set<QualifiedCell> oldColSet(oldColumns.begin(), oldColumns.end());
+	std::set<QualifiedCell> newColSet(newColumns.begin(), newColumns.end());
+	std::set<QualifiedCell> oldRowSet(oldRows.begin(), oldRows.end());
+	std::set<QualifiedCell> newRowSet(newRows.begin(), newRows.end());
+
+	for (std::set<QualifiedCell>::iterator it = oldCellSet.begin(); it != oldCellSet.end(); it++)
+	{
+		if (newCellSet.count(*it))
+			continue;
+		std::map<cell, std::set<QualifiedCell> >& deps = it->container->fDependents;
+		std::map<cell, std::set<QualifiedCell> >::iterator found = deps.find(it->loc);
+		if (found != deps.end())
+		{
+			found->second.erase(me);
+			if (found->second.empty())
+				deps.erase(found);
+		}
+	}
+	for (std::set<QualifiedCell>::iterator it = newCellSet.begin(); it != newCellSet.end(); it++)
+	{
+		if (oldCellSet.count(*it))
+			continue;
+		it->container->fDependents[it->loc].insert(me);
+	}
+
+	for (std::set<QualifiedCell>::iterator it = oldColSet.begin(); it != oldColSet.end(); it++)
+	{
+		if (newColSet.count(*it))
+			continue;
+		std::map<int, std::set<QualifiedCell> >& deps = it->container->fColumnDependents;
+		std::map<int, std::set<QualifiedCell> >::iterator found = deps.find(it->loc.h);
+		if (found != deps.end())
+		{
+			found->second.erase(me);
+			if (found->second.empty())
+				deps.erase(found);
+		}
+	}
+	for (std::set<QualifiedCell>::iterator it = newColSet.begin(); it != newColSet.end(); it++)
+	{
+		if (oldColSet.count(*it))
+			continue;
+		it->container->fColumnDependents[it->loc.h].insert(me);
+	}
+
+	for (std::set<QualifiedCell>::iterator it = oldRowSet.begin(); it != oldRowSet.end(); it++)
+	{
+		if (newRowSet.count(*it))
+			continue;
+		std::map<int, std::set<QualifiedCell> >& deps = it->container->fRowDependents;
+		std::map<int, std::set<QualifiedCell> >::iterator found = deps.find(it->loc.v);
+		if (found != deps.end())
+		{
+			found->second.erase(me);
+			if (found->second.empty())
+				deps.erase(found);
+		}
+	}
+	for (std::set<QualifiedCell>::iterator it = newRowSet.begin(); it != newRowSet.end(); it++)
+	{
+		if (oldRowSet.count(*it))
+			continue;
+		it->container->fRowDependents[it->loc.v].insert(me);
+	}
+} /* ApplyPrecedentDiff */
+
+void CContainer::GetQualifiedPrecedents(const cell& c, ISheetResolver* resolver,
+	std::vector<QualifiedCell>& outCells,
+	std::vector<QualifiedCell>& outColumns,
+	std::vector<QualifiedCell>& outRows)
+{
+	ComputeQualifiedPrecedents(GetCellFormula(c), c, this, resolver, outCells, outColumns, outRows);
+} /* CContainer::GetQualifiedPrecedents */
+
+void CContainer::PurgeDependenciesOn(CContainer* dying)
+{
+	for (std::map<cell, std::set<QualifiedCell> >::iterator it = fDependents.begin();
+			it != fDependents.end(); )
+	{
+		for (std::set<QualifiedCell>::iterator dep = it->second.begin(); dep != it->second.end(); )
+		{
+			if (dep->container == dying)
+				it->second.erase(dep++);
+			else
+				++dep;
+		}
+		if (it->second.empty())
+			fDependents.erase(it++);
+		else
+			++it;
+	}
+
+	for (std::map<int, std::set<QualifiedCell> >::iterator it = fColumnDependents.begin();
+			it != fColumnDependents.end(); )
+	{
+		for (std::set<QualifiedCell>::iterator dep = it->second.begin(); dep != it->second.end(); )
+		{
+			if (dep->container == dying)
+				it->second.erase(dep++);
+			else
+				++dep;
+		}
+		if (it->second.empty())
+			fColumnDependents.erase(it++);
+		else
+			++it;
+	}
+
+	for (std::map<int, std::set<QualifiedCell> >::iterator it = fRowDependents.begin();
+			it != fRowDependents.end(); )
+	{
+		for (std::set<QualifiedCell>::iterator dep = it->second.begin(); dep != it->second.end(); )
+		{
+			if (dep->container == dying)
+				it->second.erase(dep++);
+			else
+				++dep;
+		}
+		if (it->second.empty())
+			fRowDependents.erase(it++);
+		else
+			++it;
+	}
+} /* CContainer::PurgeDependenciesOn */
+
+void CContainer::RegisterDependencyEdges(const cell& c,
+	const std::vector<QualifiedCell>& precedentCells,
+	const std::vector<QualifiedCell>& precedentColumns,
+	const std::vector<QualifiedCell>& precedentRows)
+{
+	static const std::vector<QualifiedCell> kEmpty;
+	ApplyPrecedentDiff(this, c, kEmpty, kEmpty, kEmpty,
+		precedentCells, precedentColumns, precedentRows);
+} /* CContainer::RegisterDependencyEdges */
 
 bool CContainer::GetCellData(const cell& inLoc, CellData& outData)
 {	/*CHECKLOCK*/
