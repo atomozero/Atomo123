@@ -145,6 +145,27 @@ What shipped since v0.4.2 (in progress):
   test proving the live-linking claim explicitly (mutating a style or
   the theme changes what an already-written cell resolves to, with the
   cell never touched again), not just assumed.
+- Named cell styles + live theme palette, native `.ascd` persistence
+  (Phase B of 3 — UI lands in a follow-up phase): the workbook-wide
+  named-style table and theme palette are persisted once (stored on the
+  first sheet only, same convention already used for VBA project
+  bytes), and each cell's style reference is persisted as a small
+  per-cell `(row, col, styleID)` entry — the cell's literal color is
+  skipped entirely when it has a named style, since it would just be
+  ignored on reload anyway. Redefining a style is a full-fidelity
+  round-trip, including cases where a custom style was deleted mid
+  session: removed style slots are kept as tombstones instead of being
+  compacted away, so an ID created after a deletion never shifts and
+  silently starts pointing at the wrong style after a save/reload — a
+  real bug caught by a dedicated test before it could ship. Two more
+  real bugs were caught the same way: the workbook-level "does this
+  section exist" flags were read with a strict check instead of this
+  format's usual EOF-tolerant one, so truncating even a single byte off
+  an old file failed the whole load instead of falling back to
+  defaults; and adding a new trailing section after Scenario Manager's
+  own made that feature's existing backward-compatibility test
+  compute a stale truncation length (fixed by updating it to account
+  for what's now written after it).
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
