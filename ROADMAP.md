@@ -779,18 +779,25 @@ list deliberately deviates from pure effort-sorting:
 
 ### Tier 4 — low priority, niche, or cosmetic
 
-- ~~**What-if Data Tables** (one/two-variable)~~ Fixed — see
-  `CHANGELOG.md`. New "Tabella dati…" command (Data menu,
-  `ui/src/WhatIfWindow.h`): fills a grid of computed results by
-  temporarily swapping substitute values into one or two input cells,
-  recalculating, and reading back the formula cell's result each time —
-  reuses the engine's existing recalculation entry point, no dependency
-  graph needed. Uses this app's own simplified convention (formula cell
-  always at the selection's top-left corner in all three cases) rather
-  than reproducing Excel's real per-case corner placement quirk exactly,
-  since this feature is native-only (no XLSX `{=TABLE(...)}` import/
-  export). Scenario Manager (the other half of this bullet) is still
-  not started.
+- ~~**What-if Data Tables** (one/two-variable) **and Scenario
+  Manager**~~ Fixed — see `CHANGELOG.md`. Data Tables: "Tabella dati…"
+  command (Data menu, `ui/src/WhatIfWindow.h`) fills a grid of computed
+  results by temporarily swapping substitute values into one or two
+  input cells, recalculating, and reading back the formula cell's
+  result each time — reuses the engine's existing recalculation entry
+  point, no dependency graph needed. Uses this app's own simplified
+  convention (formula cell always at the selection's top-left corner in
+  all three cases) rather than reproducing Excel's real per-case corner
+  placement quirk exactly, since this feature is native-only (no XLSX
+  `{=TABLE(...)}` import/export). Scenario Manager: "Gestione
+  scenari…" command (Data menu, `ui/src/ScenarioWindow.h`) saves named
+  sets of substitute values for later reuse and re-application
+  ("Mostra", a real undoable mutation, unlike Data Tables' own
+  auto-restoring preview). Scoped to a single contiguous range of
+  changing cells per scenario (not Excel's arbitrary up-to-32
+  non-contiguous cells — this app's range parser/undo snapshot don't
+  support non-contiguous cell lists yet); Scenario Summary (a static
+  cross-scenario comparison report) is out of scope for this pass.
 - Named cell styles and a swappable theme color palette — today
   formatting is always a literal, one-off style per cell; a gallery/
   theme system is a real usability nicety, not a blocker for any file

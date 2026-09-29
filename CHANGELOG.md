@@ -104,6 +104,25 @@ What shipped since v0.4.2 (in progress):
   mouse-down/move, so normal click-and-drag selection is completely
   unaffected — the sheet's existing selection mechanics didn't need to
   change at all.
+- Scenario Manager (Tier 4, "Path to full Excel parity"): the other half
+  of What-if Data Tables, shipped earlier — a new "Gestione scenari…"
+  window (Data menu) lets named sets of substitute values be saved and
+  reapplied later. Add/Edit/Delete scenarios in a list, each with a name,
+  a range of "changing cells", one substitute value per cell, and an
+  optional comment; "Mostra" writes the stored values into those cells
+  and recalculates — a real, undoable mutation (one `SaveUndoState` +
+  one recalculation), unlike What-if Data Tables' own auto-restoring
+  preview. Declared simplification vs. real Excel (which allows up to 32
+  arbitrary, non-contiguous changing cells per scenario): here the
+  changing cells are a single contiguous range, matching this app's
+  range parser and undo snapshot, which don't support non-contiguous
+  cell lists yet — same narrowing precedent already used for
+  `ChartObject::valueColumns`. Adding, editing, or deleting a scenario is
+  not itself undoable (matching named ranges' own existing behavior,
+  since neither is manipulated on-canvas); only "Mostra" is. Scenario
+  Summary (a static comparison report across all scenarios) is
+  deliberately out of scope for this pass. Persisted in a new
+  EOF-tolerant `.ascd` trailing section.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
