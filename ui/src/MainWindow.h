@@ -200,7 +200,8 @@ public:
 	void ReplaceAll(const char* searchText, const char* replaceText);
 	void HandleChartInsert(const char* rangeText, const char* destText,
 		ChartType type = eBarChart, const char* title = "", bool rowOriented = false,
-		const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>());
+		const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>(),
+		const std::vector<ChartSeriesOptions>& seriesOptions = std::vector<ChartSeriesOptions>());
 	// Come HandleChartInsert, ma aggiorna il grafico ESISTENTE
 	// all'indice dato (intervallo/tipo/titolo/orientamento/colori)
 	// invece di aggiungerne uno nuovo -- posizione/dimensione
@@ -213,7 +214,8 @@ public:
 	// ogni altra modifica a un grafico incorporato.
 	void HandleChartUpdate(int chartIndex, const char* rangeText, ChartType type,
 		const char* title, bool rowOriented = false,
-		const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>());
+		const std::vector<rgb_color>& seriesColors = std::vector<rgb_color>(),
+		const std::vector<ChartSeriesOptions>& seriesOptions = std::vector<ChartSeriesOptions>());
 	// Pubblico apposta (stesso motivo di HandleChartInsert sopra):
 	// riapre ChartWindow precompilata con le impostazioni ATTUALI di un
 	// grafico gia' incorporato, invece dei valori di default di

@@ -4342,6 +4342,7 @@ void SheetView::Draw(BRect updateRect)
 					? BuildMultiChartSeriesRows(fDoc, obj.dataRange, multi, obj.valueRows)
 					: BuildMultiChartSeries(fDoc, obj.dataRange, multi, obj.valueColumns);
 				multi.seriesColors = obj.seriesColors;
+				multi.seriesOptions = obj.seriesOptions;
 				if (built)
 				{
 					DrawChartAntialiased(this, obj.frame, [&](BView* v, BRect f) {

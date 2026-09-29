@@ -67,6 +67,47 @@ enum ChartType {
 	eHBarChart = 6
 };
 
+// Tipo di linea di tendenza per una serie (Fase 7): 0 e' il valore di
+// ChartSeriesOptions() di default, "nessuna" -- un file .ascd scritto
+// prima di questo campo, o una serie senza opzioni esplicite, non
+// disegna nessuna linea di tendenza, zero cambio di comportamento.
+enum TrendlineType {
+	eNoTrendline = 0,
+	eLinearTrendline = 1,
+	eMovingAverageTrendline = 2
+};
+
+// Modalita' delle barre d'errore per una serie (Fase 7): stesso
+// principio di TrendlineType sopra, 0 = "nessuna".
+enum ErrorBarMode {
+	eNoErrorBars = 0,
+	eFixedErrorBars = 1,
+	ePercentErrorBars = 2
+};
+
+// Opzioni di analisi per una singola serie (Fase 7, "asse secondario /
+// trendline / barre d'errore"): un solo struct per le tre funzionalita'
+// invece di tre vettori paralleli, perche' si leggono/scrivono sempre
+// insieme (stessa riga della finestra Grafico, stesso record ASCD,
+// stesso blocco <c:ser> XLSX) e non condividono un unico segnaposto di
+// "non impostato" come seriesColors (alpha=0) -- qui "non impostato" e'
+// semplicemente il valore zero di ogni enum, nessun segnaposto inventato.
+struct ChartSeriesOptions {
+	ChartSeriesOptions()
+		: secondaryAxis(false), trendlineType(eNoTrendline), trendlinePeriod(2),
+		  errorBarMode(eNoErrorBars), errorBarValue(0.0) {}
+
+	bool secondaryAxis;
+	TrendlineType trendlineType;
+	// Finestra della media mobile (solo per eMovingAverageTrendline,
+	// ignorato altrimenti) -- 2 e' il default di Excel.
+	int32 trendlinePeriod;
+	ErrorBarMode errorBarMode;
+	// Valore assoluto (eFixedErrorBars) o percentuale 0..100
+	// (ePercentErrorBars) -- ignorato per eNoErrorBars.
+	double errorBarValue;
+};
+
 // Un grafico incorporato nel foglio (vedi SheetView::Draw): posizione
 // fissa in pixel nello stesso sistema di coordinate delle celle
 // (CellRect), dati letti dal vivo da "dataRange" a ogni ridisegno
@@ -129,7 +170,20 @@ struct ChartObject {
 	// dedicata, EOF-tollerante, in AscdIO.cpp, e SeriesColor() sotto per
 	// la logica di fallback.
 	std::vector<rgb_color> seriesColors;
+	// Opzioni per serie (Fase 7, "asse secondario / trendline / barre
+	// d'errore"): VUOTO significa "nessuna opzione per nessuna serie"
+	// (asse primario, nessuna linea di tendenza, nessuna barra
+	// d'errore) -- zero cambio di comportamento per ogni grafico
+	// esistente. Vedi ChartSeriesOptions/SeriesOptions() sotto e la
+	// sezione dedicata, EOF-tollerante, in AscdIO.cpp.
+	std::vector<ChartSeriesOptions> seriesOptions;
 };
+
+// Opzioni della serie "index": il valore in "options" se presente a
+// quell'indice, altrimenti un ChartSeriesOptions di default (nessuna
+// opzione) -- stesso principio permissivo di SeriesColor sotto, cosi'
+// un vettore vuoto o piu' corto di seriesNames non e' un errore.
+ChartSeriesOptions SeriesOptions(const std::vector<ChartSeriesOptions>& options, size_t index);
 
 // Colore della serie "index": l'override in "overrides" se presente a
 // quell'indice CON alpha > 0, altrimenti la tavolozza predefinita
@@ -380,6 +434,10 @@ struct MultiChartData {
 	// colore personalizzato e salvato si vede anche nel grafico vero sul
 	// foglio, non solo nell'anteprima della finestra Grafico.
 	std::vector<rgb_color> seriesColors;
+	// Stesso principio di ChartObject::seriesOptions sopra: copiato da li'
+	// PRIMA di ogni chiamata a Draw*Chart per un grafico incorporato,
+	// stessa ragione/stesso punto di copiatura di seriesColors sopra.
+	std::vector<ChartSeriesOptions> seriesOptions;
 };
 
 // L'intervallo deve avere almeno due colonne: la prima con le

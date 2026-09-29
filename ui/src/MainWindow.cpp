@@ -3829,7 +3829,7 @@ void MainWindow::EditChart(int chartIndex)
 	if (fChartWindow->Lock())
 	{
 		fChartWindow->LoadForEdit(chartIndex, rangeText, obj.title.String(), obj.type,
-			obj.rowOriented, obj.seriesColors);
+			obj.rowOriented, obj.seriesColors, obj.seriesOptions);
 		fChartWindow->Unlock();
 	}
 
@@ -6177,7 +6177,8 @@ void MainWindow::HandleChartRequest(const char* rangeText, ChartType type, bool 
 // che si ridisegna, non un'istantanea fissa come l'anteprima.
 void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 	ChartType type, const char* title, bool rowOriented,
-	const std::vector<rgb_color>& seriesColors)
+	const std::vector<rgb_color>& seriesColors,
+	const std::vector<ChartSeriesOptions>& seriesOptions)
 {
 	if (!fDoc)
 		return;
@@ -6257,6 +6258,7 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 	obj.rowOriented = rowOriented;
 	obj.valueRows = valueRows;
 	obj.seriesColors = seriesColors;
+	obj.seriesOptions = seriesOptions;
 	fCharts.push_back(obj);
 
 	fSheetView->Invalidate();
@@ -6272,7 +6274,8 @@ void MainWindow::HandleChartInsert(const char* rangeText, const char* destText,
 // DeleteSelectedChart (che cattura l'intero oggetto prima di
 // rimuoverlo).
 void MainWindow::HandleChartUpdate(int chartIndex, const char* rangeText, ChartType type,
-	const char* title, bool rowOriented, const std::vector<rgb_color>& seriesColors)
+	const char* title, bool rowOriented, const std::vector<rgb_color>& seriesColors,
+	const std::vector<ChartSeriesOptions>& seriesOptions)
 {
 	if (!fDoc || chartIndex < 0 || chartIndex >= (int)fCharts.size())
 		return;
@@ -6348,11 +6351,12 @@ void MainWindow::HandleChartUpdate(int chartIndex, const char* rangeText, ChartT
 	obj.title = title;
 	obj.rowOriented = rowOriented;
 	obj.valueRows = valueRows;
-	// seriesColors segue sempre ChartWindow, mai "preservato" -- indicizzato
-	// per POSIZIONE di serie, non per colonna del foglio, quindi resta
-	// significativo anche se l'intervallo cambia forma (a differenza di
-	// valueColumns sopra).
+	// seriesColors/seriesOptions seguono sempre ChartWindow, mai
+	// "preservati" -- indicizzati per POSIZIONE di serie, non per colonna
+	// del foglio, quindi restano significativi anche se l'intervallo
+	// cambia forma (a differenza di valueColumns sopra).
 	obj.seriesColors = seriesColors;
+	obj.seriesOptions = seriesOptions;
 	// obj.frame invariato apposta: la posizione/dimensione di un
 	// grafico gia' incorporato non cambia editandolo (vedi il campo
 	// destinazione nascosto in ChartWindow::SetEditingChartIndex).
@@ -7370,6 +7374,7 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 				if (BuildMultiChartSeriesRows(doc, obj.dataRange, multi, obj.valueRows))
 				{
 					multi.seriesColors = obj.seriesColors;
+					multi.seriesOptions = obj.seriesOptions;
 					DrawChartAntialiased(offscreen, previewR, [&](BView* v, BRect f) {
 						if (obj.type == eLineChart)
 							DrawMultiLineChart(v, f, multi, obj.title);
@@ -7393,6 +7398,7 @@ std::vector<BBitmap*> MainWindow::GeneratePrintPreviewPages(const AscdPrintSetti
 				if (BuildMultiChartSeries(doc, obj.dataRange, multi))
 				{
 					multi.seriesColors = obj.seriesColors;
+					multi.seriesOptions = obj.seriesOptions;
 					DrawChartAntialiased(offscreen, previewR, [&](BView* v, BRect f) {
 						if (obj.type == eLineChart)
 							DrawMultiLineChart(v, f, multi, obj.title);
@@ -9261,10 +9267,19 @@ void MainWindow::MessageReceived(BMessage* message)
 				if (colorSize == (ssize_t)sizeof(rgb_color))
 					seriesColors.push_back(*(const rgb_color*)colorData);
 			}
+			std::vector<ChartSeriesOptions> seriesOptions;
+			const void* optionsData;
+			ssize_t optionsSize;
+			for (int32 i = 0; message->FindData("seriesOptions", B_RAW_TYPE, i,
+					&optionsData, &optionsSize) == B_OK; i++)
+			{
+				if (optionsSize == (ssize_t)sizeof(ChartSeriesOptions))
+					seriesOptions.push_back(*(const ChartSeriesOptions*)optionsData);
+			}
 			if (message->FindString("range", &rangeText) == B_OK
 				&& message->FindString("dest", &destText) == B_OK)
 				HandleChartInsert(rangeText.String(), destText.String(), (ChartType)type,
-					titleText.String(), rowOriented, seriesColors);
+					titleText.String(), rowOriented, seriesColors, seriesOptions);
 			break;
 		}
 
@@ -9286,10 +9301,19 @@ void MainWindow::MessageReceived(BMessage* message)
 				if (colorSize == (ssize_t)sizeof(rgb_color))
 					seriesColors.push_back(*(const rgb_color*)colorData);
 			}
+			std::vector<ChartSeriesOptions> seriesOptions;
+			const void* optionsData;
+			ssize_t optionsSize;
+			for (int32 i = 0; message->FindData("seriesOptions", B_RAW_TYPE, i,
+					&optionsData, &optionsSize) == B_OK; i++)
+			{
+				if (optionsSize == (ssize_t)sizeof(ChartSeriesOptions))
+					seriesOptions.push_back(*(const ChartSeriesOptions*)optionsData);
+			}
 			if (message->FindInt32("index", &index) == B_OK
 				&& message->FindString("range", &rangeText) == B_OK)
 				HandleChartUpdate(index, rangeText.String(), (ChartType)type, titleText.String(),
-					rowOriented, seriesColors);
+					rowOriented, seriesColors, seriesOptions);
 			break;
 		}
 
