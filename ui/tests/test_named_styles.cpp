@@ -2,13 +2,18 @@
 	test_named_styles.cpp
 
 	Verifica "Stili cella con nome + tavolozza tema dal vivo" (Tier 4,
-	"Path to full Excel parity"). Fasi A+B di questa funzionalita' (vedi
-	ROADMAP.md): il nucleo motore -- NamedStyleTable/ThemePalette/
-	NamedStyleDef::Resolve e la risoluzione DAL VIVO dentro
-	CContainer::GetCellStyle -- PIU' la persistenza .ascd (Fase B).
-	Nessuna MainWindow/UI coinvolta ancora (arrivera' nella Fase C).
+	"Path to full Excel parity"). Tutte e tre le fasi di questa
+	funzionalita' (vedi ROADMAP.md): il nucleo motore -- NamedStyleTable/
+	ThemePalette/NamedStyleDef::Resolve e la risoluzione DAL VIVO dentro
+	CContainer::GetCellStyle (Fase A) -- la persistenza .ascd (Fase B) --
+	e i gestori pubblici di MainWindow dietro la UI (Fase C, Parte 4
+	sotto: ApplyNamedStyleToSelection/CreateNamedStyleFromSelection/
+	RedefineNamedStyle/DeleteNamedStyle/SetThemeColor, chiamati
+	direttamente come fa ogni altro test su questo genere di finestra --
+	NamedStyleWindow stessa non e' mai istanziata qui, stesso principio
+	di test_scenario_manager.cpp).
 
-	Punto piu' importante delle Parti 1/2: il claim "vivo" stesso,
+	Punto piu' importante delle Parti 1/2/4: il claim "vivo" stesso,
 	provato esplicitamente, non solo assunto -- ridefinire uno stile o
 	cambiare un colore della tavolozza tema deve cambiare cio' che
 	CContainer::GetCellStyle restituisce per una cella GIA' scritta,
@@ -33,7 +38,9 @@
 #include "CellParser.h"
 #include "CellStyle.h"
 #include "Container.h"
+#include "MainWindow.h"
 #include "NamedStyle.h"
+#include "SheetView.h"
 
 static int gFailures = 0;
 
@@ -380,6 +387,131 @@ int main()
 		Check(oldLoadedStyles.Count() == 17,
 			"senza una sezione nel file, la tabella resta ai soli 17 built-in predefiniti");
 		oldReloaded.Release();
+	}
+
+	// --- Parte 4: gestori pubblici di MainWindow (Fase C, dietro la UI) ----
+
+	{
+		MainWindow* win = new MainWindow();
+		win->Show();
+		win->Lock();
+
+		CContainer* doc = win->GetSheetView()->Document();
+
+		Check(win->NamedStyles().Count() == 17,
+			"una MainWindow nuova parte dai soli 17 stili built-in predefiniti");
+
+		int goodID = win->NamedStyles().FindByName("Buono");
+		Check(goodID > 0, "lo stile built-in \"Buono\" esiste");
+
+		// Applica "Buono" a B2:B3 -- stessa selezione usata sotto per
+		// Annulla/Ripristina.
+		win->GetSheetView()->SetSelection(cell(2, 2));
+		win->GetSheetView()->ExtendSelection(cell(2, 3));
+		win->ApplyNamedStyleToSelection(goodID);
+
+		CellStyle appliedB2;
+		doc->GetCellStyle(cell(2, 2), appliedB2);
+		Check(appliedB2.fNamedStyleID == goodID, "ApplyNamedStyleToSelection imposta fNamedStyleID su B2");
+		CellStyle appliedB3;
+		doc->GetCellStyle(cell(2, 3), appliedB3);
+		Check(appliedB3.fNamedStyleID == goodID, "ApplyNamedStyleToSelection imposta fNamedStyleID anche su B3 (intera selezione)");
+		Check(ColorsEqual(appliedB2.fLowColor, win->NamedStyles().Get(goodID)->backgroundColor),
+			"lo sfondo risolto di B2 e' quello dello stile \"Buono\"");
+
+		// --- Il claim "vivo", ora attraverso i gestori pubblici veri. ---
+		win->RedefineNamedStyle(goodID, /*useThemeBackground=*/false, 0,
+			rgb_color{ 11, 22, 33, 255 }, /*useThemeText=*/false, 0, rgb_color{ 0, 0, 0, 255 },
+			false, false, false);
+		CellStyle afterRedefine;
+		doc->GetCellStyle(cell(2, 2), afterRedefine); // B2, MAI riscritta sopra
+		Check(ColorsEqual(afterRedefine.fLowColor, rgb_color{ 11, 22, 33, 255 }),
+			"DAL VIVO tramite RedefineNamedStyle: B2 risolve col nuovo colore senza essere stata riscritta");
+
+		// Annullabile (l'APPLICAZIONE alla cella, non la ridefinizione
+		// dello stile -- vedi il commento su RedefineNamedStyle in
+		// MainWindow.h): stesso principio "il vecchio istantanea copre
+		// gia' tutta la CellStyle" gia' verificato per gli scenari.
+		Check(win->GetSheetView()->CanUndo(), "Applicare uno stile e' annullabile");
+		win->GetSheetView()->Undo();
+		CellStyle afterUndo;
+		doc->GetCellStyle(cell(2, 2), afterUndo);
+		Check(afterUndo.fNamedStyleID == 0, "Annulla ripristina fNamedStyleID a 0 (B2 non aveva stile prima)");
+		win->GetSheetView()->Redo();
+		CellStyle afterRedo;
+		doc->GetCellStyle(cell(2, 2), afterRedo);
+		Check(afterRedo.fNamedStyleID == goodID, "Ripristina riapplica lo stile appena annullato");
+
+		// --- Creazione da selezione. ---
+		win->GetSheetView()->SetSelection(cell(3, 3));
+		CellStyle customBase;
+		customBase.fLowColor = rgb_color{ 44, 55, 66, 255 };
+		customBase.fHighColor = rgb_color{ 200, 200, 200, 255 };
+		doc->SetCellStyle(cell(3, 3), customBase);
+		win->CreateNamedStyleFromSelection("IlMioStile");
+		int customID = win->NamedStyles().FindByName("IlMioStile");
+		Check(customID > 0, "CreateNamedStyleFromSelection aggiunge il nuovo stile personalizzato");
+		if (customID > 0)
+		{
+			Check(!win->NamedStyles().Get(customID)->useThemeBackground,
+				"lo stile catturato da una cella usa un colore letterale, non un ruolo tema");
+			Check(ColorsEqual(win->NamedStyles().Get(customID)->backgroundColor, rgb_color{ 44, 55, 66, 255 }),
+				"il colore di sfondo catturato e' quello della cella");
+		}
+
+		// NOTA: CreateNamedStyleFromSelection con un nome GIA' esistente
+		// mostra un vero BAlert bloccante -- in questo sandbox, senza un
+		// utente reale che lo chiuda, un test che la chiamasse si
+		// bloccherebbe qui per sempre (stesso limite pre-esistente e
+		// gia' documentato per test_edit_chart.cpp/test_scenario_manager.cpp/
+		// test_insert_chart.cpp, verificato qui empiricamente prima di
+		// scrivere questa nota). Non testato automaticamente per lo
+		// stesso motivo.
+
+		// --- Tema, tramite il gestore pubblico vero. ---
+		win->GetSheetView()->SetSelection(cell(4, 4));
+		NamedStyleDef accentDef;
+		accentDef.name = "AccentTest";
+		accentDef.useThemeBackground = true;
+		accentDef.backgroundRole = eThemeAccent3;
+		// Non esiste un modo pubblico per aggiungere DIRETTAMENTE un
+		// NamedStyleDef gia' costruito tramite MainWindow (l'unico modo
+		// e' CreateNamedStyleFromSelection, che cattura una cella) --
+		// per testare lo swap del tema su uno stile legato a un ruolo
+		// tema, ridefiniamo lo stesso "goodID" di prima per legarlo ad
+		// Accent3, poi lo applichiamo alla cella (4,4).
+		win->RedefineNamedStyle(goodID, /*useThemeBackground=*/true, (int)eThemeAccent3,
+			rgb_color{ 0, 0, 0, 255 }, false, 0, rgb_color{ 0, 0, 0, 255 }, false, false, false);
+		win->ApplyNamedStyleToSelection(goodID);
+		rgb_color originalAccent3 = win->Theme().colors[eThemeAccent3];
+		CellStyle beforeThemeSwap;
+		doc->GetCellStyle(cell(4, 4), beforeThemeSwap);
+		Check(ColorsEqual(beforeThemeSwap.fLowColor, originalAccent3),
+			"la cella (4,4) risolve col colore CORRENTE di Accent3 prima dello swap");
+
+		rgb_color newAccent3 = { 9, 8, 7, 255 };
+		win->SetThemeColor((int)eThemeAccent3, newAccent3);
+		Check(ColorsEqual(win->Theme().colors[eThemeAccent3], newAccent3),
+			"SetThemeColor aggiorna davvero MainWindow::Theme()");
+		CellStyle afterThemeSwap;
+		doc->GetCellStyle(cell(4, 4), afterThemeSwap); // (4,4), MAI riscritta qui
+		Check(ColorsEqual(afterThemeSwap.fLowColor, newAccent3),
+			"DAL VIVO tramite SetThemeColor: la cella (4,4) segue il nuovo colore di Accent3 senza essere stata riscritta");
+
+		// --- Elimina. ---
+		int beforeDelete = win->NamedStyles().Count();
+		win->DeleteNamedStyle(customID);
+		Check(win->NamedStyles().Count() == beforeDelete - 1,
+			"DeleteNamedStyle rimuove davvero lo stile personalizzato");
+		Check(win->NamedStyles().Get(customID) == NULL, "lo stile eliminato non e' piu' raggiungibile");
+		int beforeBuiltinDelete = win->NamedStyles().Count();
+		win->DeleteNamedStyle(goodID);
+		Check(win->NamedStyles().Count() == beforeBuiltinDelete && win->NamedStyles().Get(goodID) != NULL,
+			"uno stile built-in non puo' essere eliminato nemmeno tramite MainWindow");
+
+		win->Unlock();
+		win->Lock();
+		win->Quit();
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
