@@ -5,21 +5,22 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.4.2 released** on GitHub (Excel-style formula
-autocomplete — typing a partial function name after "=" pops up a
-filtered, sorted list of matching functions with descriptions, accept
-with Enter/Tab/click — on top of everything shipped in v0.4.1: real
-circular reference detection (a self-referencing formula now shows a
-clear `#CIRCULAR!` marker instead of silently computing an arbitrary
-number) and formula "point mode" (building a formula by pointing at
-cells with the arrow keys instead of typing references by hand), which
-itself built on v0.4.0's four "Path to full Excel parity" Tier 4 items,
-real sheet-protection passwords, workbook open-password decryption, 9
-more UI languages, and a menu/icon/packaging polish pass — see
-CHANGELOG.md for the full detail). All planned phases through "closing
-the gap with Excel" are done or in good shape; a handful of large,
-optional features remain unplanned backlog items (see "Not currently
-planned" below, and "Path to full Excel parity" for what's next).
+**Status: v0.5.0 released** on GitHub (the entire "Path to full Excel
+parity" Tier 4 chart/data-analysis backlog closed in this cycle: a
+further round of chart editor polish (type icons, row/column
+orientation toggle, per-series custom colors, a range picker), What-if
+Data Tables' other half, Scenario Manager, named cell styles with a
+live, swappable theme palette, and chart secondary axis/trendlines/
+error bars — on top of everything shipped in v0.4.2: Excel-style
+formula autocomplete, which itself built on v0.4.1's circular reference
+detection and formula "point mode", and v0.4.0's four "Path to full
+Excel parity" Tier 4 items, real sheet-protection passwords, workbook
+open-password decryption, 9 more UI languages, and a menu/icon/
+packaging polish pass — see CHANGELOG.md for the full detail). Every
+Tier 4 item on "Path to full Excel parity" is now done; what remains
+there is exclusively the three large Tier 3 foundations (a real
+dependency graph for the calc engine, Goal Seek/Solver, VBA/macros —
+see below for what's next).
 This file tracks project-level status and forward plan only — the
 detailed, per-release history of what shipped and the real bugs found
 along the way lives in `CHANGELOG.md`.

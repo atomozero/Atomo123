@@ -4,7 +4,7 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
-What shipped since v0.4.2 (in progress):
+What shipped in v0.5.0, on top of v0.4.2:
 - Chart visual polish, first step of a broader "make charts more
   professional" pass: the chart frame's outline changed from a heavy
   black `StrokeRect` to a light gray one (new `DrawChartFrame` helper
