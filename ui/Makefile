@@ -62,6 +62,7 @@ SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/SheetTabView.cpp
 	src/ValidationWindow.cpp \
 	src/WhatIfWindow.cpp \
 	src/ScenarioWindow.cpp \
+	src/NamedStyleWindow.cpp \
 	src/ConditionalFormatWindow.cpp \
 	src/PasswordWindow.cpp \
 	src/ColorWindow.cpp \
@@ -361,15 +362,21 @@ test-range-ref: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
 	./tests/test_range_ref
 
-# Verifica il nucleo motore di "Stili cella con nome + tema dal vivo"
-# (Tier 4, Fase A): puro CContainer/NamedStyleTable, nessuna MainWindow
-# coinvolta -- stesso schema leggero di test-range-ref sopra, solo
-# libengine.a, non l'intera chiusura di oggetti UI.
-test-named-styles: $(ENGINE_DIR)/libengine.a
-	$(CXX) -c tests/test_named_styles.cpp -o tests/test_named_styles.o $(INCLUDES) $(CXXFLAGS)
-	$(CXX) -c src/AscdIO.cpp -o tests/AscdIO.o $(INCLUDES) $(CXXFLAGS)
-	$(CXX) -o tests/test_named_styles tests/test_named_styles.o tests/AscdIO.o \
-		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub -ltranslation -ltracker
+# Verifica "Stili cella con nome + tema dal vivo" (Tier 4): Parti 1/2
+# sono nucleo motore puro (nessuna MainWindow), Parte 3 e' persistenza
+# AscdIO, Parte 4 (Fase C) usa una vera MainWindow per i gestori
+# pubblici dietro la UI -- stesso schema completo di
+# test-scenario-manager, non piu' quello leggero di test-range-ref.
+test-named-styles: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_named_styles.cpp -o tests/test_named_styles.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_named_styles tests/test_named_styles.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_named_styles
 
 # Test del calcolo delle pagine di stampa (PrintLayout.cpp): stessa

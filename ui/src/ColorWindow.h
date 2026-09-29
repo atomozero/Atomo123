@@ -33,7 +33,14 @@ enum ColorTarget {
 	// possiede una PROPRIA istanza di ColorWindow puntata a se stessa
 	// (vedi SetTarget sotto) -- il round trip non passa mai da
 	// MainWindow per questo bersaglio.
-	eSeriesColor
+	eSeriesColor,
+	// Colore di un RUOLO della tavolozza tema (Tier 4, "Named cell
+	// styles + live theme palette", NamedStyleWindow): stesso principio
+	// esatto di eSeriesColor sopra -- NamedStyleWindow possiede la
+	// PROPRIA istanza di ColorWindow (mai quella condivisa di
+	// MainWindow), il round trip non passa mai da MainWindow per
+	// questo bersaglio.
+	eThemeColor
 };
 
 class BColorControl;
@@ -59,6 +66,12 @@ public:
 	// innocuo/mai letto per i quattro bersagli storici sopra. Va
 	// chiamata PRIMA di Show() per il nuovo utilizzo, come SetTarget.
 	void SetSeriesIndex(int index) { fSeriesIndex = index; }
+	// Ruolo della tavolozza tema (un ThemeColorRole di NamedStyle.h,
+	// passato come plain int per non aggiungere qui una dipendenza
+	// dall'header -- stesso principio di fSeriesIndex sopra) per cui si
+	// sta scegliendo il colore -- viaggia nel round trip (campo
+	// "themeRole"). Va chiamata PRIMA di Show(), come SetSeriesIndex.
+	void SetThemeRole(int role) { fThemeRole = role; }
 
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
@@ -68,6 +81,7 @@ private:
 	BMessenger fTarget;
 	ColorTarget fColorTarget;
 	int fSeriesIndex;
+	int fThemeRole;
 };
 
 #endif

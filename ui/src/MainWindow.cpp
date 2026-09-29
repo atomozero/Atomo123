@@ -30,6 +30,7 @@
 #include "ValidationWindow.h"
 #include "WhatIfWindow.h"
 #include "ScenarioWindow.h"
+#include "NamedStyleWindow.h"
 #include "ConditionalFormatWindow.h"
 #include "PasswordWindow.h"
 #include "ExcelPasswordHash.h"
@@ -176,6 +177,7 @@ static const uint32 kMsgShowHyperlinkWindow = 'shlw';
 static const uint32 kMsgShowValidationWindow = 'shvw';
 static const uint32 kMsgShowWhatIfWindow = 'shwi';
 static const uint32 kMsgShowScenarioWindow = 'shsc';
+static const uint32 kMsgShowNamedStyleWindow = 'shns';
 static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 // Tier 4 "named table styles": "style" (int32) e' l'indice in
 // kTableStyles (TableStyles.h), oppure -1 per "Nessuno" (banda grigia
@@ -1116,6 +1118,17 @@ MainWindow::MainWindow()
 		borderMenu->AddItem(borderThicknessMenu);
 		formatMenu->AddItem(borderMenu);
 	}
+	// Gestione stili (Tier 4, Fase C -- "Named cell styles + live theme
+	// palette", vedi NamedStyleWindow.h): apre la finestra di gestione,
+	// stesso principio di "Intervalli con nome"/"Gestione scenari" (una
+	// finestra a parte per l'elenco+editor, non un sottomenu dinamico --
+	// a differenza di "Stile tabella" sopra, che ha un elenco FISSO di
+	// 8 built-in, questo elenco cresce/si riduce a runtime con gli
+	// stili personalizzati, quindi un sottomenu andrebbe ricostruito a
+	// ogni apertura del menu Formato; una finestra dedicata evita
+	// quella complicazione in piu').
+	formatMenu->AddItem(new BMenuItem(B_TRANSLATE("Stili cella" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgShowNamedStyleWindow)));
 	formatMenu->AddSeparatorItem();
 	// Celle unite (Fase 12): un rettangolo per foglio (CContainer::
 	// AddMergedRange), non un campo per cella -- vedi MainWindow::
@@ -1494,6 +1507,7 @@ MainWindow::MainWindow()
 	fValidationWindow = NULL;
 	fWhatIfWindow = NULL;
 	fScenarioWindow = NULL;
+	fNamedStyleWindow = NULL;
 	fConditionalFormatWindow = NULL;
 	fPasswordWindow = NULL;
 	fPasswordTargetSheetIndex = -1;
@@ -1603,6 +1617,11 @@ MainWindow::~MainWindow()
 	{
 		fScenarioWindow->Lock();
 		fScenarioWindow->Quit();
+	}
+	if (fNamedStyleWindow)
+	{
+		fNamedStyleWindow->Lock();
+		fNamedStyleWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -3877,6 +3896,18 @@ void MainWindow::RefreshScenarioWindow()
 	}
 }
 
+void MainWindow::RefreshNamedStyleWindow()
+{
+	if (!fNamedStyleWindow)
+		return;
+	if (fNamedStyleWindow->Lock())
+	{
+		fNamedStyleWindow->SetStyles(fNamedStyles);
+		fNamedStyleWindow->SetTheme(fThemePalette);
+		fNamedStyleWindow->Unlock();
+	}
+}
+
 void MainWindow::ShowNameWindow()
 {
 	if (!fNameWindow)
@@ -5868,6 +5899,136 @@ void MainWindow::HandleShowScenario(const char* name)
 	RecalculateActiveWorkbook();
 	fSheetView->Invalidate();
 	MarkModified();
+}
+
+// Scrive una CellStyle FRESCA (mai un read-modify-write sul risultato
+// GIA' risolto di GetCellStyle) con solo fNamedStyleID impostato su
+// ogni cella della selezione: applicare uno stile con nome e' una
+// sostituzione integrale (vedi il commento su CellStyle::fNamedStyleID
+// in CellStyle.h), quindi partire dal risultato RISOLTO di una cella
+// che avesse gia' un altro stile con nome finirebbe per congelare
+// quell'aspetto risolto come nuovo letterale "di riserva" -- innocuo
+// visivamente (lo stile con nome vince comunque) ma fuorviante se lo
+// stile venisse poi rimosso.
+void MainWindow::ApplyNamedStyleToSelection(int styleID)
+{
+	if (!fDoc)
+		return;
+	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return;
+
+	fSheetView->SaveUndoState(sel);
+	for (int row = sel.top; row <= sel.bottom; row++)
+	{
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			CellStyle cs;
+			cs.fNamedStyleID = styleID;
+			fDoc->SetCellStyle(cell(col, row), cs);
+		}
+	}
+
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+// Cattura l'aspetto GIA' RISOLTO della cella attiva (GetCellStyle
+// risolve dal vivo un eventuale stile con nome gia' presente, esatto
+// principio di ogni altro lettore di CellStyle in questo file) come
+// nuovo stile personalizzato -- l'UNICO modo per crearne uno in questa
+// fase, vedi il commento in cima a NamedStyleWindow.h. Grassetto/
+// corsivo letti dalla stringa di stile del font, stesso identico
+// principio di MainWindow::ToggleBold piu' sopra in questo file.
+void MainWindow::CreateNamedStyleFromSelection(const char* name)
+{
+	if (!fDoc || !name || !name[0])
+		return;
+	if (fNamedStyles.FindByName(name) >= 0)
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Esiste gia' uno stile con questo nome."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+
+	font_family family;
+	font_style style;
+	float size;
+	rgb_color color;
+	GetCellFontInfo(cs.fFont, &family, &style, &size, &color);
+	BString styleStr(style);
+
+	NamedStyleDef def;
+	def.name = name;
+	def.useThemeBackground = false;
+	def.backgroundColor = cs.fLowColor;
+	def.useThemeText = false;
+	def.textColor = cs.fHighColor;
+	def.bold = styleStr.IFindFirst("Bold") >= 0;
+	def.italic = styleStr.IFindFirst("Italic") >= 0;
+	def.underline = cs.fUnderline;
+
+	fNamedStyles.AddCustom(def);
+	MarkModified();
+	RefreshNamedStyleWindow();
+}
+
+// IL momento "vivo": nessuna cella viene toccata qui, solo la
+// definizione dello stile stesso -- ogni cella che lo referenzia
+// cambia aspetto al prossimo ridisegno (CContainer::GetCellStyle la
+// risolve fresca ogni volta, vedi Container.styles.cpp). Non
+// annullabile in questa fase, stesso limite dichiarato di
+// HandleDefineScenario/HandleDeleteScenario (metadati di cartella di
+// lavoro, non una mutazione di cella).
+void MainWindow::RedefineNamedStyle(int styleID, bool useThemeBackground, int backgroundRole,
+	rgb_color backgroundColor, bool useThemeText, int textRole, rgb_color textColor,
+	bool bold, bool italic, bool underline)
+{
+	NamedStyleDef def;
+	def.useThemeBackground = useThemeBackground;
+	def.backgroundRole = (ThemeColorRole)backgroundRole;
+	def.backgroundColor = backgroundColor;
+	def.useThemeText = useThemeText;
+	def.textRole = (ThemeColorRole)textRole;
+	def.textColor = textColor;
+	def.bold = bold;
+	def.italic = italic;
+	def.underline = underline;
+
+	if (!fNamedStyles.Redefine(styleID, def))
+		return;
+
+	fSheetView->Invalidate();
+	MarkModified();
+	RefreshNamedStyleWindow();
+}
+
+void MainWindow::DeleteNamedStyle(int styleID)
+{
+	if (!fNamedStyles.Remove(styleID))
+		return;
+
+	fSheetView->Invalidate();
+	MarkModified();
+	RefreshNamedStyleWindow();
+}
+
+// Stesso principio "vivo" di RedefineNamedStyle sopra, ma per un
+// ruolo della tavolozza tema: ogni stile che lo referenzia (built-in
+// Accent1-6 compresi) cambia aspetto subito in ogni cella che li usa.
+void MainWindow::SetThemeColor(int role, rgb_color color)
+{
+	if (role < 0 || role >= kThemeColorRoleCount)
+		return;
+
+	fThemePalette.colors[role] = color;
+	fSheetView->Invalidate();
+	MarkModified();
+	RefreshNamedStyleWindow();
 }
 
 // Legge l'intervallo dati richiesto da ChartWindow e manda indietro i
@@ -8497,6 +8658,86 @@ void MainWindow::MessageReceived(BMessage* message)
 				fSheetView->StartRangePicker(replyTo, kMsgScenarioRangePicked);
 			else
 				fSheetView->CancelRangePicker();
+			break;
+		}
+
+		case kMsgShowNamedStyleWindow:
+			if (!fNamedStyleWindow)
+				fNamedStyleWindow = new NamedStyleWindow(BMessenger(this));
+			if (fNamedStyleWindow->Lock())
+			{
+				fNamedStyleWindow->SetStyles(fNamedStyles);
+				fNamedStyleWindow->SetTheme(fThemePalette);
+				fNamedStyleWindow->Unlock();
+			}
+			if (fNamedStyleWindow->IsHidden())
+				fNamedStyleWindow->Show();
+			fNamedStyleWindow->Activate();
+			break;
+
+		case kMsgApplyNamedStyle:
+		{
+			int32 styleID = 0;
+			if (message->FindInt32("styleID", &styleID) == B_OK)
+				ApplyNamedStyleToSelection(styleID);
+			break;
+		}
+
+		case kMsgCreateNamedStyleFromSelection:
+		{
+			BString name;
+			if (message->FindString("name", &name) == B_OK)
+				CreateNamedStyleFromSelection(name.String());
+			break;
+		}
+
+		case kMsgRedefineNamedStyle:
+		{
+			int32 styleID = 0;
+			bool useThemeBackground = false, useThemeText = false;
+			int32 backgroundRole = 0, textRole = 0;
+			bool bold = false, italic = false, underline = false;
+			const void* bgColorData;
+			const void* textColorData;
+			ssize_t colorSize;
+			rgb_color backgroundColor = { 255, 255, 255, 255 };
+			rgb_color textColor = { 0, 0, 0, 255 };
+			message->FindInt32("styleID", &styleID);
+			message->FindBool("useThemeBackground", &useThemeBackground);
+			message->FindInt32("backgroundRole", &backgroundRole);
+			if (message->FindData("backgroundColor", B_RGB_COLOR_TYPE, &bgColorData, &colorSize) == B_OK
+					&& colorSize == (ssize_t)sizeof(rgb_color))
+				backgroundColor = *(const rgb_color*)bgColorData;
+			message->FindBool("useThemeText", &useThemeText);
+			message->FindInt32("textRole", &textRole);
+			if (message->FindData("textColor", B_RGB_COLOR_TYPE, &textColorData, &colorSize) == B_OK
+					&& colorSize == (ssize_t)sizeof(rgb_color))
+				textColor = *(const rgb_color*)textColorData;
+			message->FindBool("bold", &bold);
+			message->FindBool("italic", &italic);
+			message->FindBool("underline", &underline);
+			RedefineNamedStyle(styleID, useThemeBackground, backgroundRole, backgroundColor,
+				useThemeText, textRole, textColor, bold, italic, underline);
+			break;
+		}
+
+		case kMsgDeleteNamedStyle:
+		{
+			int32 styleID = 0;
+			if (message->FindInt32("styleID", &styleID) == B_OK)
+				DeleteNamedStyle(styleID);
+			break;
+		}
+
+		case kMsgSetThemeColor:
+		{
+			int32 role = 0;
+			const void* colorData;
+			ssize_t colorSize;
+			if (message->FindInt32("role", &role) == B_OK
+					&& message->FindData("color", B_RGB_COLOR_TYPE, &colorData, &colorSize) == B_OK
+					&& colorSize == (ssize_t)sizeof(rgb_color))
+				SetThemeColor(role, *(const rgb_color*)colorData);
 			break;
 		}
 

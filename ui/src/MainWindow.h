@@ -53,6 +53,7 @@ class HyperlinkWindow;
 class ValidationWindow;
 class WhatIfWindow;
 class ScenarioWindow;
+class NamedStyleWindow;
 class ConditionalFormatWindow;
 class PasswordWindow;
 class ColorWindow;
@@ -177,6 +178,10 @@ public:
 	// Pubblico apposta per essere testabile (stesso principio di sopra):
 	// vedi tests/test_scenario_manager.cpp.
 	const std::vector<Scenario>& Scenarios() const { return fScenarios; }
+	// Pubblico apposta per essere testabile (stesso principio di sopra):
+	// vedi tests/test_named_styles.cpp.
+	const NamedStyleTable& NamedStyles() const { return fNamedStyles; }
+	const ThemePalette& Theme() const { return fThemePalette; }
 	// Pubblico apposta per essere testabile (stesso principio di sopra):
 	// vedi il commento su AscdSheet::vbaProject in ui/src/AscdIO.h e
 	// tests/test_xlsm_macro_preservation.cpp.
@@ -624,6 +629,27 @@ public:
 		const char* valuesText, const char* comment);
 	void HandleDeleteScenario(const char* name);
 	void HandleShowScenario(const char* name);
+	// Stili con nome + tema (Tier 4, Fase C, vedi NamedStyleWindow.h):
+	// stesso principio pubblico-per-testabilita' di sopra.
+	// ApplyNamedStyleToSelection scrive UNA CellStyle fresca con solo
+	// fNamedStyleID impostato su ogni cella della selezione (mai un
+	// read-modify-write sul risultato GIA' risolto di GetCellStyle --
+	// vedi il commento nel .cpp sul perche'), annullabile come ogni
+	// altro comando di formattazione. CreateNamedStyleFromSelection
+	// cattura l'aspetto GIA' RISOLTO della cella attiva come un nuovo
+	// stile personalizzato -- l'UNICO modo per crearne uno in questa
+	// fase (vedi il commento in cima a NamedStyleWindow.h).
+	// RedefineNamedStyle/DeleteNamedStyle/SetThemeColor mutano solo
+	// metadati di cartella di lavoro (fNamedStyles/fThemePalette), MAI
+	// annullabili in questa fase -- stesso limite dichiarato di
+	// HandleDefineScenario/HandleDeleteScenario sopra.
+	void ApplyNamedStyleToSelection(int styleID);
+	void CreateNamedStyleFromSelection(const char* name);
+	void RedefineNamedStyle(int styleID, bool useThemeBackground, int backgroundRole,
+		rgb_color backgroundColor, bool useThemeText, int textRole, rgb_color textColor,
+		bool bold, bool italic, bool underline);
+	void DeleteNamedStyle(int styleID);
+	void SetThemeColor(int role, rgb_color color);
 	// Finestra di controllo (Formula auditing views): vedi il commento
 	// su fWatchWindow piu' sotto. ShowWatchWindow crea/mostra la
 	// finestra (senza aggiungere celle); AddSelectionToWatchWindow
@@ -763,6 +789,7 @@ private:
 	ConditionalFormatWindow* fConditionalFormatWindow;
 	WhatIfWindow* fWhatIfWindow;
 	ScenarioWindow* fScenarioWindow;
+	NamedStyleWindow* fNamedStyleWindow;
 	// Password VERA di protezione foglio (Path to full Excel parity):
 	// fPasswordTargetSheetIndex cattura QUALE foglio era attivo quando la
 	// finestra e' stata mostrata, non riletto da fActiveSheetIndex al
@@ -967,6 +994,7 @@ private:
 	void ShowNameWindow();
 	void RefreshNameWindow();
 	void RefreshScenarioWindow();
+	void RefreshNamedStyleWindow();
 	void ShowPasteSpecialWindow();
 	void ShowGoToWindow();
 	void ShowTabColorWindow(int index);
