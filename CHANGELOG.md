@@ -166,6 +166,24 @@ What shipped since v0.4.2 (in progress):
   own made that feature's existing backward-compatibility test
   compute a stale truncation length (fixed by updating it to account
   for what's now written after it).
+- Named cell styles + live theme palette, UI (Phase C of 3, closing out
+  the feature): a "Stili cella…" command (Format menu) opens a
+  management window — apply any style to the current selection in one
+  click, capture a new custom style from the active cell's current
+  (already-resolved) formatting, redefine any style's background/text
+  color, alignment, and bold/italic/underline, delete a custom style, or
+  pick a new color for any of the 8 theme roles. Redefining a style or
+  changing a theme color is a genuinely live edit in the running app,
+  not just in tests: every cell using it repaints with the new look
+  immediately, with no per-cell rewrite. Creating a style always starts
+  from an existing cell's formatting (matching Excel's own most common
+  workflow) rather than a blank editor, so there's no separate
+  from-scratch style-authoring UI to build. Applying a style to a
+  selection is undoable like any other formatting command; redefining a
+  style's own definition or a theme color is not (matching Scenario
+  Manager's identical, already-established limitation for workbook-level
+  metadata edits). This closes out Tier 4's "Path to full Excel parity"
+  list.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,

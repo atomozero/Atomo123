@@ -798,10 +798,23 @@ list deliberately deviates from pure effort-sorting:
   non-contiguous cells — this app's range parser/undo snapshot don't
   support non-contiguous cell lists yet); Scenario Summary (a static
   cross-scenario comparison report) is out of scope for this pass.
-- Named cell styles and a swappable theme color palette — today
-  formatting is always a literal, one-off style per cell; a gallery/
-  theme system is a real usability nicety, not a blocker for any file
-  opening or calculating correctly
+- ~~**Named cell styles and a swappable theme color palette**~~ Fixed —
+  see `CHANGELOG.md`. A cell can reference a named style
+  (`CellStyle::fNamedStyleID`, `engine/src/Cell/NamedStyle.h`) instead
+  of literal formatting; redefining the style, or a color in the new
+  document-wide theme palette, changes every cell using it live, at the
+  next repaint, resolved fresh inside `CContainer::GetCellStyle` — no
+  cell is ever rewritten. ~17 curated built-in styles (a subset of
+  Excel's real ~50, same scoping as named table styles), 8 theme color
+  roles (smaller than Excel's 12-slot model). A named style covers
+  background, text color, alignment, and bold/italic/underline;
+  borders/protection stay whatever the cell's own literal formatting
+  was. "Stili cella…" (Format menu) opens the management window;
+  creating a style always starts from an existing cell's formatting
+  (no from-scratch editor). Persisted natively (workbook-wide,
+  stored once on the first sheet, same convention as VBA project
+  bytes); XLSX round-trip (`theme1.xml`/`<cellStyles>`) is out of scope
+  for this pass.
 - Secondary axis, trendlines, error bars on existing chart types
 - ~~**Named table styles**~~ Fixed — see `CHANGELOG.md`. XLSX import now
   reads the real `<tableStyleInfo name="...">` and colors the banding
