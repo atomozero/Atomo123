@@ -772,6 +772,27 @@ int main()
 	chartSegRowOriented.seriesColors.push_back(rgb_color{ 39, 174, 96, 255 });
 	chartSegRowOriented.frame = BRect(40, 670, 500, 870);
 
+	// Scenario (v0.4.3, "Gestione scenari" -- Dati menu): riusa la stessa
+	// colonna Vendite della tabella del grafico combinato sopra (colonna
+	// 14, una riga per segmento) come "celle variabili" -- un valore
+	// ipotetico per segmento, non derivato dal dataset (uno scenario e'
+	// per definizione un'ipotesi digitata dall'utente, non un calcolo).
+	// Definito ma MAI mostrato qui (SaveASCD non chiama HandleShowScenario):
+	// aprendo il file le formule dal vivo restano intatte, lo scenario
+	// resta disponibile in "Dati > Gestione scenari" per chi vuole
+	// provare "Mostra" di persona.
+	Scenario optimisticScenario;
+	optimisticScenario.name = "Optimistic (+20% target)";
+	optimisticScenario.changingCells = range(14, comboLabelRow + 1, 14,
+		comboLabelRow + (int)segments.size());
+	optimisticScenario.values.push_back("650000");
+	optimisticScenario.values.push_back("480000");
+	optimisticScenario.values.push_back("820000");
+	optimisticScenario.values.push_back("310000");
+	optimisticScenario.values.push_back("260000");
+	optimisticScenario.comment = "Illustrative stretch target per segment -- click \"Mostra\" "
+		"in Data > Scenario Manager to try it (undoable).";
+
 	// Tabella pivot VERA (Inserisci -> Tabella Pivot, Fase 29 per il
 	// raggruppamento a piu' livelli): a differenza dei quattro blocchi
 	// SUMIF sopra (dal vivo, MAI congelati), questa e' deliberatamente
@@ -1455,6 +1476,7 @@ int main()
 	pivotSheet.charts.push_back(chartProductScatter);
 	pivotSheet.charts.push_back(chartProductHBar);
 	pivotSheet.charts.push_back(chartSegRowOriented);
+	pivotSheet.scenarios.push_back(optimisticScenario);
 	pivotSheet.colWidths.push_back(std::make_pair(1, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(4, 130.0f));
 	pivotSheet.colWidths.push_back(std::make_pair(7, 130.0f));
