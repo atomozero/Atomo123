@@ -170,6 +170,12 @@ private:
 	// tendenza/barre d'errore: troppa configurazione per stare in riga,
 	// vedi ChartSeriesOptionsWindow.h).
 	std::vector<BButton*> fSeriesOptionsButtons;
+	// Checkbox "Asse 2" per serie (Fase 7d, asse secondario): stesso
+	// ciclo di vita esatto di fSeriesColorSwatches/fSeriesOptionsButtons
+	// sopra -- a differenza di trendline/barre d'errore (troppa
+	// configurazione per una riga, vedi fSeriesOptionsButtons), un solo
+	// bool sta comodamente in riga come le altre checkbox.
+	std::vector<BCheckBox*> fSeriesSecondaryAxisCheckboxes;
 	// Colori scelti dall'utente per serie (Fase colori): indicizzato
 	// come fSeriesCheckboxes/fMultiData.seriesNames, preservato fra una
 	// richiesta e l'altra per NOME di serie in RebuildSeriesCheckboxes
@@ -180,10 +186,8 @@ private:
 	// Opzioni per serie (Fase 7, "asse secondario / trendline / barre
 	// d'errore"): stesso ciclo di vita/stessa preservazione per NOME di
 	// serie di fSeriesColorOverrides sopra -- vedi RebuildSeriesCheckboxes.
-	// Nessun controllo la mostra ancora (solo plumbing per ora, i
-	// controlli veri arrivano con le fasi 7b/7c/7d), quindi resta sempre
-	// una lista di ChartSeriesOptions() di default finche' non si
-	// aggiungono i controlli.
+	// Popolato dalla checkbox "Asse 2" sopra (secondaryAxis) e dal
+	// pop-up fSeriesOptionsWindow sotto (trendline/barre d'errore).
 	std::vector<ChartSeriesOptions> fSeriesOptions;
 	// Riquadretto di colore per un grafico a SINGOLA serie (barre/linee/
 	// area/barre orizzontali/dispersione): un solo colore per l'intero

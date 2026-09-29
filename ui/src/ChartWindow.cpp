@@ -52,6 +52,9 @@ static const uint32 kMsgChartColorButtonLocal = 'ccbl';
 // Un pulsante "Opzioni..." per serie (Fase 7), stesso principio esatto
 // di kMsgSeriesColorButtonLocal sopra: "index" nel BMessage.
 static const uint32 kMsgSeriesOptionsButtonLocal = 'sobl';
+// Checkbox "Asse 2" per serie (Fase 7d), stesso principio esatto di
+// kMsgSeriesToggleLocal sopra: "index" + "be:value" nel BMessage.
+static const uint32 kMsgSeriesSecondaryAxisLocal = 'ssal';
 // Pulsante "..." (Fase selettore di intervallo): vedi il commento su
 // fRangePickButton in ChartWindow.h.
 static const uint32 kMsgRangePickButtonLocal = 'rpbl';
@@ -606,9 +609,11 @@ void ChartWindow::ClearSeriesCheckboxes()
 	// quindi il ciclo sopra li cancella gia' -- questo svuota solo il
 	// vettore di puntatori ormai invalidi.
 	fSeriesColorSwatches.clear();
-	// Stesso principio: i pulsanti "Opzioni..." sono gia' figli di
-	// fSeriesCheckboxRow, gia' cancellati dal ciclo sopra.
+	// Stesso principio: i pulsanti "Opzioni..." e le checkbox "Asse 2"
+	// sono gia' figli di fSeriesCheckboxRow, gia' cancellati dal ciclo
+	// sopra.
 	fSeriesOptionsButtons.clear();
+	fSeriesSecondaryAxisCheckboxes.clear();
 	// Nessuna serie da elencare: il riquadro intero sparisce invece di
 	// restare visibile ma vuoto (vedi il commento nel costruttore).
 	if (!fSeriesCheckboxBox->IsHidden())
@@ -672,6 +677,18 @@ void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
 		swatch->SetColor(SeriesColor(fSeriesColorOverrides, s));
 		fSeriesCheckboxRow->AddChild(swatch);
 		fSeriesColorSwatches.push_back(swatch);
+
+		// "Asse 2" (Fase 7d): un solo bool, sta comodamente in riga qui
+		// invece che nel pop-up "Opzioni..." sotto (a differenza di
+		// trendline/barre d'errore, che hanno bisogno di piu' di un
+		// controllo ciascuna).
+		BMessage* axisMsg = new BMessage(kMsgSeriesSecondaryAxisLocal);
+		axisMsg->AddInt32("index", (int32)s);
+		BCheckBox* axisCheckbox = new BCheckBox("secondaryAxis", B_TRANSLATE("Asse 2"), axisMsg);
+		axisCheckbox->SetTarget(this);
+		axisCheckbox->SetValue(fSeriesOptions[s].secondaryAxis ? B_CONTROL_ON : B_CONTROL_OFF);
+		fSeriesCheckboxRow->AddChild(axisCheckbox);
+		fSeriesSecondaryAxisCheckboxes.push_back(axisCheckbox);
 
 		// "Opzioni..." (Fase 7): linea di tendenza/barre d'errore per
 		// questa serie, in un pop-up a parte (vedi
@@ -897,6 +914,24 @@ void ChartWindow::MessageReceived(BMessage* message)
 			int32 index;
 			if (message->FindInt32("index", &index) == B_OK)
 				ShowSeriesOptionsPopup(index);
+			return;
+		}
+
+		case kMsgSeriesSecondaryAxisLocal:
+		{
+			int32 index;
+			int32 value = 0;
+			if (message->FindInt32("index", &index) == B_OK)
+			{
+				// "be:value" e' aggiunto automaticamente da
+				// BControl::Invoke(), stesso principio di
+				// kMsgSeriesToggleLocal sopra.
+				message->FindInt32("be:value", &value);
+				if (index >= (int)fSeriesOptions.size())
+					fSeriesOptions.resize(index + 1);
+				fSeriesOptions[index].secondaryAxis = (value != 0);
+				fChartView->SetSeriesOptions(index, fSeriesOptions[index]);
+			}
 			return;
 		}
 

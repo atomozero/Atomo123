@@ -7290,6 +7290,269 @@ int main()
 			Check(false, "xl/charts/chart1.xml (riesportato) si legge dall'archivio");
 	}
 
+	// Asse secondario (Fase 7d): grafico a barre a DUE serie (B=valori
+	// normali sull'asse primario, C=sull'asse secondario), un secondo
+	// blocco <c:barChart> con la propria coppia di <c:axId> invece di un
+	// attributo su <c:ser> -- lo shape reale che Excel scrive per una
+	// serie sull'asse secondario. Verifica sia l'IMPORTAZIONE (il
+	// contatore ChartXmlContext::chartTypeBlockCount riconosce il
+	// secondo blocco) sia la RIESPORTAZIONE (il giro completo XLSX
+	// sintetico -> ASCD reale -> XLSX riesportato, stesso schema del
+	// test trendline/barre d'errore sopra).
+	{
+		static const char kSecAxisContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kSecAxisRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kSecAxisWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kSecAxisWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kSecAxisSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Gen</t></is></c>"
+			"<c r=\"B1\"><v>10</v></c><c r=\"C1\"><v>10000</v></c></row>"
+			"<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>Feb</t></is></c>"
+			"<c r=\"B2\"><v>20</v></c><c r=\"C2\"><v>20000</v></c></row>"
+			"<row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>Mar</t></is></c>"
+			"<c r=\"B3\"><v>30</v></c><c r=\"C3\"><v>30000</v></c></row>"
+			"</sheetData>"
+			"<drawing r:id=\"rId1\"/>"
+			"</worksheet>\n";
+		static const char kSecAxisSheetRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" Target=\"../drawings/drawing1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kSecAxisDrawing[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<xdr:oneCellAnchor>"
+			"<xdr:from><xdr:col>5</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>"
+			"<xdr:ext cx=\"3000000\" cy=\"2000000\"/>"
+			"<xdr:graphicFrame>"
+			"<xdr:nvGraphicFramePr><xdr:cNvPr id=\"1\" name=\"Chart 1\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"
+			"<xdr:xfrm/>"
+			"<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+			"<c:chart r:id=\"rId1\"/></a:graphicData></a:graphic>"
+			"</xdr:graphicFrame>"
+			"<xdr:clientData/>"
+			"</xdr:oneCellAnchor>"
+			"</xdr:wsDr>\n";
+		static const char kSecAxisDrawingRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"../charts/chart1.xml\"/>\n"
+			"</Relationships>\n";
+		// Due blocchi <c:barChart> distinti (STESSO tag per entrambi, come
+		// scrive davvero questo traduttore -- un file con tag misti fra i
+		// due blocchi e' un'ambiguita' dichiaratamente fuori scopo, vedi
+		// il commento su ChartXmlContext::chartTypeBlockCount), ognuno con
+		// la propria coppia di <c:axId>: il secondo e' quello che rende la
+		// serie C "secondaria" in importazione.
+		static const char kSecAxisChart[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<c:chart><c:plotArea>"
+			"<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>"
+			"<c:ser><c:idx val=\"0\"/><c:order val=\"0\"/>"
+			"<c:cat><c:strRef><c:f>Foglio1!$A$1:$A$3</c:f></c:strRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$B$1:$B$3</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:barChart>"
+			"<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>"
+			"<c:ser><c:idx val=\"1\"/><c:order val=\"1\"/>"
+			"<c:cat><c:strRef><c:f>Foglio1!$A$1:$A$3</c:f></c:strRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$C$1:$C$3</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"<c:axId val=\"333333333\"/><c:axId val=\"444444444\"/></c:barChart>"
+			"<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>"
+			"<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>"
+			"<c:valAx><c:axId val=\"444444444\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"r\"/><c:crossAx val=\"333333333\"/><c:crosses val=\"max\"/></c:valAx>"
+			"<c:catAx><c:axId val=\"333333333\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"1\"/><c:axPos val=\"b\"/><c:crossAx val=\"444444444\"/></c:catAx>"
+			"</c:plotArea></c:chart>"
+			"</c:chartSpace>\n";
+
+		BMallocIO secAxisXlsxIn;
+		CZipWriter secAxisZip;
+		secAxisZip.Begin(&secAxisXlsxIn);
+		secAxisZip.AddEntry("[Content_Types].xml", kSecAxisContentTypes, strlen(kSecAxisContentTypes));
+		secAxisZip.AddEntry("_rels/.rels", kSecAxisRootRels, strlen(kSecAxisRootRels));
+		secAxisZip.AddEntry("xl/workbook.xml", kSecAxisWorkbook, strlen(kSecAxisWorkbook));
+		secAxisZip.AddEntry("xl/_rels/workbook.xml.rels", kSecAxisWorkbookRels, strlen(kSecAxisWorkbookRels));
+		secAxisZip.AddEntry("xl/worksheets/sheet1.xml", kSecAxisSheet, strlen(kSecAxisSheet));
+		secAxisZip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kSecAxisSheetRels, strlen(kSecAxisSheetRels));
+		secAxisZip.AddEntry("xl/drawings/drawing1.xml", kSecAxisDrawing, strlen(kSecAxisDrawing));
+		secAxisZip.AddEntry("xl/drawings/_rels/drawing1.xml.rels", kSecAxisDrawingRels, strlen(kSecAxisDrawingRels));
+		secAxisZip.AddEntry("xl/charts/chart1.xml", kSecAxisChart, strlen(kSecAxisChart));
+		Check(secAxisZip.Close(), "costruzione del file XLSX di prova con asse secondario riuscita");
+
+		secAxisXlsxIn.Seek(0, SEEK_SET);
+		translator_info secAxisInfo;
+		err = translator->Identify(&secAxisXlsxIn, NULL, NULL, &secAxisInfo, 0);
+		Check(err == B_OK && secAxisInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con asse secondario");
+
+		secAxisXlsxIn.Seek(0, SEEK_SET);
+		BMallocIO secAxisAscdOut;
+		err = translator->Translate(&secAxisXlsxIn, &secAxisInfo, NULL, kAtomoNativeFormat, &secAxisAscdOut);
+		Check(err == B_OK, "Translate del file di prova con asse secondario (XLSX -> ASCD) riesce");
+
+		const unsigned char* secAxisAscdData = NULL;
+		size_t secAxisAscdLen = 0;
+		bool secAxisUnwrapped = UnwrapFirstSheet((const unsigned char*)secAxisAscdOut.Buffer(),
+			secAxisAscdOut.BufferLength(), &secAxisAscdData, &secAxisAscdLen);
+		Check(secAxisUnwrapped, "l'output di Translate del file con asse secondario e' un ASCD valido");
+
+		int16 saLeft = 0, saTop = 0, saRight = 0, saBottom = 0;
+		int8 saType = -1;
+		std::string saTitle;
+		bool saChartRead = secAxisUnwrapped && ReadFirstChartForTest(secAxisAscdData, secAxisAscdLen,
+			&saLeft, &saTop, &saRight, &saBottom, &saType, &saTitle);
+		Check(saChartRead, "il grafico con asse secondario sulla seconda serie arriva fino all'ASCD");
+		Check(saChartRead && saLeft == 1 && saTop == 1 && saRight == 3 && saBottom == 3,
+			"il dataRange ricostruito (A1:C3) include ENTRAMBE le serie, dal secondo blocco <c:barChart> "
+			"tanto quanto dal primo");
+
+		// Riesportazione: stesso schema del test trendline/barre d'errore
+		// sopra (isolare il singolo foglio da UnwrapFirstSheet, non il
+		// buffer intero multi-foglio).
+		BMallocIO secAxisSingleSheetAscd;
+		Check(secAxisUnwrapped && secAxisSingleSheetAscd.Write(secAxisAscdData, secAxisAscdLen)
+				== (ssize_t)secAxisAscdLen,
+			"il singolo foglio isolato (con asse secondario) si ricopia in un buffer separato");
+
+		secAxisSingleSheetAscd.Seek(0, SEEK_SET);
+		translator_info secAxisReexportInfo;
+		err = translator->Identify(&secAxisSingleSheetAscd, NULL, NULL, &secAxisReexportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && secAxisReexportInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD (con asse secondario gia' importato) prima della riesportazione");
+
+		secAxisSingleSheetAscd.Seek(0, SEEK_SET);
+		BMallocIO secAxisXlsxOut2;
+		err = translator->Translate(&secAxisSingleSheetAscd, &secAxisReexportInfo, NULL, kAtomoXlsxFormat, &secAxisXlsxOut2);
+		Check(err == B_OK, "Translate ASCD (con asse secondario) -> XLSX (riesportazione) riesce");
+
+		secAxisXlsxOut2.Seek(0, SEEK_SET);
+		CZipReader secAxisZip2;
+		Check(secAxisZip2.Open(&secAxisXlsxOut2),
+			"il file XLSX riesportato con asse secondario e' un vero archivio ZIP leggibile");
+
+		std::vector<unsigned char> secAxisChartXmlBytes;
+		if (secAxisZip2.ReadEntry("xl/charts/chart1.xml", secAxisChartXmlBytes))
+		{
+			std::string saChartXml((const char*)&secAxisChartXmlBytes[0], secAxisChartXmlBytes.size());
+
+			int valAxOccurrences = 0;
+			size_t pos = 0;
+			while ((pos = saChartXml.find("<c:valAx>", pos)) != std::string::npos)
+			{
+				valAxOccurrences++;
+				pos += 1;
+			}
+			Check(valAxOccurrences == 2,
+				"il chart1.xml riesportato ha DUE <c:valAx> distinti (primario + secondario)");
+			Check(saChartXml.find("<c:crosses val=\"max\"/>") != std::string::npos,
+				"il chart1.xml riesportato marca l'asse secondario con <c:crosses val=\"max\"/> "
+				"(altrimenti si sovrapporrebbe visivamente al primario)");
+			Check(saChartXml.find("Foglio1!$C$1:$C$3") != std::string::npos,
+				"il chart1.xml riesportato referenzia ancora il riferimento vero della seconda serie (C1:C3)");
+
+			int barChartOccurrences = 0;
+			pos = 0;
+			while ((pos = saChartXml.find("<c:barChart>", pos)) != std::string::npos)
+			{
+				barChartOccurrences++;
+				pos += 1;
+			}
+			Check(barChartOccurrences == 2,
+				"il chart1.xml riesportato ha DUE blocchi <c:barChart> distinti (uno per asse), "
+				"non tutte le serie in un unico blocco");
+		}
+		else
+			Check(false, "xl/charts/chart1.xml (riesportato, asse secondario) si legge dall'archivio");
+
+		// Regressione: il grafico a barre a UNA serie di piu' sopra (senza
+		// nessun asse secondario, il caso comune) deve continuare a
+		// produrre ESATTAMENTE UN <c:valAx> -- non due, non zero. Prova
+		// diretta invece di fidarsi solo del fatto che quel test sia
+		// passato sopra (che verificava altro, non il conteggio).
+		{
+			CContainer &plainDoc = *new CContainer(NULL, NULL);
+			TryToParseString("Gen", cell(1, 1), &plainDoc, true);
+			TryToParseString("10", cell(2, 1), &plainDoc, true);
+			TryToParseString("Feb", cell(1, 2), &plainDoc, true);
+			TryToParseString("20", cell(2, 2), &plainDoc, true);
+
+			BMallocIO plainAscdIn;
+			status_t plainSaveErr = WriteASCDWithChartForTest(&plainDoc,
+				1, 1, 2, 2, 100, 100, 500, 400, 0, "", &plainAscdIn);
+			Check(plainSaveErr == B_OK, "preparazione dell'ASCD di prova senza asse secondario riesce");
+			plainDoc.Release();
+
+			plainAscdIn.Seek(0, SEEK_SET);
+			translator_info plainInfo;
+			err = translator->Identify(&plainAscdIn, NULL, NULL, &plainInfo, kAtomoXlsxFormat);
+			Check(err == B_OK && plainInfo.type == kAtomoNativeFormat,
+				"Identify riconosce l'ASCD di prova senza asse secondario");
+
+			plainAscdIn.Seek(0, SEEK_SET);
+			BMallocIO plainXlsxOut;
+			err = translator->Translate(&plainAscdIn, &plainInfo, NULL, kAtomoXlsxFormat, &plainXlsxOut);
+			Check(err == B_OK, "Translate ASCD (senza asse secondario) -> XLSX riesce");
+
+			plainXlsxOut.Seek(0, SEEK_SET);
+			CZipReader plainZip;
+			Check(plainZip.Open(&plainXlsxOut), "il file XLSX (senza asse secondario) e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> plainChartXmlBytes;
+			if (plainZip.ReadEntry("xl/charts/chart1.xml", plainChartXmlBytes))
+			{
+				std::string plainChartXml((const char*)&plainChartXmlBytes[0], plainChartXmlBytes.size());
+				int plainValAxOccurrences = 0;
+				size_t pos = 0;
+				while ((pos = plainChartXml.find("<c:valAx>", pos)) != std::string::npos)
+				{
+					plainValAxOccurrences++;
+					pos += 1;
+				}
+				Check(plainValAxOccurrences == 1,
+					"un grafico senza nessuna serie secondaria produce ESATTAMENTE UN <c:valAx>, "
+					"non due -- nessuna regressione per ogni grafico esistente");
+			}
+			else
+				Check(false, "xl/charts/chart1.xml (senza asse secondario) si legge dall'archivio");
+		}
+	}
+
 	// Importazione di un vero file XLSX in stile Excel (Fase 25):
 	// tests/sample_chart_import.xlsx e' costruito a mano (non con
 	// questo stesso translator, a differenza dei round-trip sopra) con

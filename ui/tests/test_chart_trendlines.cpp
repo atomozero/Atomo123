@@ -25,6 +25,17 @@
 	   7e dovra' verificare end-to-end). Nessuna modifica al formato
 	   ASCD ne' al conteggio di troncamento: errorBarMode/errorBarValue
 	   erano gia' scritti/letti (a 0/0.0) dalla sezione della 7b.
+	4) Sotto-fase 7d (asse secondario): MultiChartValueRanges pura (con
+	   e senza serie secondarie -- il caso "senza" prova direttamente che
+	   l'intervallo primario resta ESATTAMENTE quello di prima, non solo
+	   per affermazione) e ComputeGroupedBarLayout su un caso costruito
+	   apposta a mostrare il bug che questa fase risolve (una serie
+	   piccola sulla scala primaria che una scala condivisa
+	   schiaccerebbe quasi a zero). Nessuna modifica al formato ASCD:
+	   secondaryAxis era gia' scritto/letto dalla sezione della 7b,
+	   quindi qui basta estendere la Parte 3/nessun nuovo giro AscdIO
+	   dedicato -- vedi anche il round-trip XLSX del vero asse
+	   secondario in translators/xlsx/tests/test_xlsx_translator.cpp.
 */
 
 #include <cstdio>
@@ -209,6 +220,13 @@ int main()
 		newOptions[0].trendlinePeriod = 3;
 		newOptions[0].errorBarMode = ePercentErrorBars;
 		newOptions[0].errorBarValue = 8.0;
+		// Asse secondario (Fase 7d) insieme a trendline E barre d'errore
+		// sulla stessa serie -- la combinazione completa a tre
+		// funzionalita' che la Fase 7e verifichera' end-to-end, gia'
+		// esercitata qui a livello MainWindow senza nessun conflitto
+		// strutturale atteso (stesso ChartSeriesOptions, tre campi
+		// indipendenti).
+		newOptions[0].secondaryAxis = true;
 		win->HandleChartUpdate(0, "A1:C3", eLineChart, "Trendline aggiornata", /*rowOriented=*/false,
 			std::vector<rgb_color>(), newOptions);
 		Check(win->Charts()[0].seriesOptions.size() == 1,
@@ -222,6 +240,8 @@ int main()
 			Check(win->Charts()[0].seriesOptions[0].errorBarMode == ePercentErrorBars
 					&& win->Charts()[0].seriesOptions[0].errorBarValue == 8.0,
 				"le barre d'errore a percentuale sono anch'esse quelle inviate");
+			Check(win->Charts()[0].seriesOptions[0].secondaryAxis == true,
+				"l'asse secondario e' anch'esso quello inviato, insieme a trendline e barre d'errore");
 		}
 
 		// Annullabile SENZA nessun codice nuovo per l'undo (stesso
@@ -366,6 +386,76 @@ int main()
 			Check(oldLoaded[0].seriesOptions.empty(),
 				"un file senza questa sezione (simulato) restituisce seriesOptions vuoto, non un errore");
 		oldReloaded.Release();
+	}
+
+	// --- Parte 5 (7d): asse secondario, MultiChartValueRanges pura ------
+
+	{
+		MultiChartData data;
+		data.categories.push_back("A");
+		data.categories.push_back("B");
+		data.seriesNames.push_back("Primaria");
+		data.seriesNames.push_back("Secondaria");
+		std::vector<double> primaryVals;
+		primaryVals.push_back(10);
+		primaryVals.push_back(20);
+		std::vector<double> secondaryVals;
+		secondaryVals.push_back(10000);
+		secondaryVals.push_back(20000);
+		data.values.push_back(primaryVals);
+		data.values.push_back(secondaryVals);
+		ChartSeriesOptions primaryOpt; // di default, resta sull'asse primario
+		ChartSeriesOptions secondaryOpt;
+		secondaryOpt.secondaryAxis = true;
+		data.seriesOptions.push_back(primaryOpt);
+		data.seriesOptions.push_back(secondaryOpt);
+
+		double primMin, primMax, secMin, secMax;
+		bool hasSecondary;
+		MultiChartValueRanges(data, &primMin, &primMax, &secMin, &secMax, &hasSecondary);
+		Check(hasSecondary, "MultiChartValueRanges rileva la serie secondaria");
+		Check(fabs(primMax - 20.0) < 1e-9,
+			"l'intervallo primario non e' distorto dai valori enormi della serie secondaria (max resta 20)");
+		Check(secMax >= 20000.0 - 1e-9,
+			"l'intervallo secondario riflette i suoi veri valori enormi (max 20000)");
+
+		// Nessuna serie secondaria (il caso comune, ogni grafico esistente
+		// prima di questa fase): outHasSecondary deve restare falso e
+		// l'intervallo primario deve essere ESATTAMENTE quello che
+		// l'unico intervallo condiviso di prima avrebbe dato -- prova
+		// diretta di "zero cambio di comportamento", non solo
+		// un'affermazione nel commento del codice.
+		MultiChartData plainData;
+		plainData.categories = data.categories;
+		plainData.seriesNames = data.seriesNames;
+		plainData.values = data.values; // stessi valori, ma SENZA seriesOptions
+		double plainMin, plainMax, plainSecMin, plainSecMax;
+		bool plainHasSecondary;
+		MultiChartValueRanges(plainData, &plainMin, &plainMax, &plainSecMin, &plainSecMax, &plainHasSecondary);
+		Check(!plainHasSecondary, "senza ChartSeriesOptions, nessuna serie e' mai secondaria");
+		Check(plainMin == 0.0 && plainMax == 20000.0,
+			"senza opzioni, l'intervallo primario include TUTTI i valori (comportamento esatto di prima)");
+
+		// Layout: la posizione della serie secondaria deve venire dalla
+		// SUA scala, non da quella primaria -- il caso costruito sopra
+		// (10/20 contro 10000/20000) e' scelto apposta perche' un
+		// posizionamento ingenuo a scala condivisa schiaccerebbe la
+		// barra della serie primaria quasi a bounds.bottom (20 e'
+		// trascurabile accanto a 20000), invece della cima che le spetta
+		// sulla PROPRIA scala 0..20.
+		BRect bounds(0, 0, 100, 100);
+		GroupedBarLayout layout;
+		ComputeGroupedBarLayout(data, bounds, layout);
+		Check(layout.bars.size() == 2, "ComputeGroupedBarLayout produce le 2 serie");
+		if (layout.bars.size() == 2 && layout.bars[0].size() == 2 && layout.bars[1].size() == 2)
+		{
+			Check(fabs(layout.bars[0][1].top - bounds.top) < 1.0,
+				"la barra della serie primaria al suo massimo (20) tocca la cima -- scala 0..20, "
+				"NON distorta dai valori della serie secondaria");
+			Check(fabs(layout.bars[1][1].top - bounds.top) < 1.0,
+				"la barra della serie secondaria al suo massimo (20000) tocca ANCH'ESSA la cima -- "
+				"usa la propria scala 0..20000, indipendente da quella primaria");
+		}
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

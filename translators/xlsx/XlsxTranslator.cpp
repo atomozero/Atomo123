@@ -4777,7 +4777,19 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 
 	bool multiSeries = (info.dataRight - info.dataLeft > 1) && info.type != 2;
 
-	std::string plot;
+	// Fase 7d, "asse secondario": ogni serie con
+	// XlsxChartSeriesOptions::secondaryAxis finisce nel gruppo
+	// "Secondary" invece che "Primary" -- due stringhe separate invece
+	// di una, cosi' sotto possono finire in DUE blocchi
+	// <c:barChart>/<c:lineChart> con DUE coppie di <c:axId> diverse. Un
+	// grafico senza nessuna serie secondaria (il caso comune, ogni
+	// grafico esistente) lascia "plotSecondary" vuoto, che si traduce
+	// nell'XML IDENTICO di prima (vedi piu' sotto). Restano fuori scopo
+	// qui i grafici a torta (mai multi-serie) e le barre orizzontali
+	// (asse a valori orizzontale, nessun secondo asse implementato --
+	// stesso limite gia' dichiarato per trendline/barre d'errore in
+	// Chart.cpp, mai esteso a questo tipo).
+	std::string plotPrimary, plotSecondary;
 	int seriesCountForLegend = 0;
 
 	if (info.rowOriented)
@@ -4799,8 +4811,9 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 				data.firstDataRow, info.dataRight);
 			const XlsxChartSeriesOptions* opts = s < (int)info.seriesOptions.size()
 				? &info.seriesOptions[s] : NULL;
-			AppendSeries(plot, s, data.seriesNames[s], catRef, data.categories,
-				valRef, data.values[s], true, opts);
+			bool secondary = info.type != 6 && opts && opts->secondaryAxis;
+			AppendSeries(secondary ? plotSecondary : plotPrimary, s, data.seriesNames[s], catRef,
+				data.categories, valRef, data.values[s], true, opts);
 		}
 		seriesCountForLegend = (int)data.seriesNames.size();
 	}
@@ -4826,8 +4839,9 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 				data.firstDataRow, info.dataBottom);
 			const XlsxChartSeriesOptions* opts = s < (int)info.seriesOptions.size()
 				? &info.seriesOptions[s] : NULL;
-			AppendSeries(plot, s, data.seriesNames[s], catRef, data.categories,
-				valRef, data.values[s], true, opts);
+			bool secondary = info.type != 6 && opts && opts->secondaryAxis;
+			AppendSeries(secondary ? plotSecondary : plotPrimary, s, data.seriesNames[s], catRef,
+				data.categories, valRef, data.values[s], true, opts);
 		}
 		seriesCountForLegend = (int)data.seriesNames.size();
 	}
@@ -4842,11 +4856,13 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 		std::string valRef = AbsColumnRangeRef(kSheetName, info.dataLeft + 1,
 			info.dataTop, info.dataBottom);
 
-		AppendSeries(plot, 0, "", catRef, data.labels, valRef, data.values, false);
+		// Grafico a singola serie: nessuna riga "Asse 2" nell'editor per
+		// questo caso (vedi Chart.cpp), quindi sempre nel gruppo primario.
+		AppendSeries(plotPrimary, 0, "", catRef, data.labels, valRef, data.values, false);
 		seriesCountForLegend = 1;
 	}
 
-	if (plot.empty())
+	if (plotPrimary.empty() && plotSecondary.empty())
 		return std::string();
 
 	std::string xml;
@@ -4868,27 +4884,16 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 
 	xml += "<c:plotArea><c:layout/>";
 
-	if (info.type == 2) // torta
+	if (info.type == 2) // torta - sempre una sola serie, mai secondaria
 	{
 		xml += "<c:pieChart><c:varyColors val=\"1\"/>";
-		xml += plot;
+		xml += plotPrimary;
 		xml += "<c:firstSliceAng val=\"0\"/></c:pieChart>";
 	}
-	else if (info.type == 1) // linee
-	{
-		xml += "<c:lineChart><c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>";
-		xml += plot;
-		xml += "<c:marker val=\"1\"/>";
-		xml += "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:lineChart>";
-		xml += "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-			"<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>";
-		xml += "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-			"<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>";
-	}
-	else if (info.type == 6) // barre orizzontali
+	else if (info.type == 6) // barre orizzontali - asse secondario non implementato qui (vedi il commento sopra)
 	{
 		xml += "<c:barChart><c:barDir val=\"bar\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>";
-		xml += plot;
+		xml += plotPrimary;
 		xml += "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:barChart>";
 		// Assi scambiati rispetto alle barre verticali sotto: categoria
 		// a sinistra (axPos "l"), valori in basso (axPos "b") -- il
@@ -4901,15 +4906,58 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 		xml += "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
 			"<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"111111111\"/></c:valAx>";
 	}
-	else // barre verticali (predefinito, include type 0)
+	else // linee (type 1) o barre verticali (predefinito, include type 0):
+		// gli unici due tipi con un vero asse secondario (Fase 7d). Un
+		// blocco di tipo grafico per gruppo (<c:barChart>/<c:lineChart>),
+		// ognuno con la propria coppia di <c:axId> -- lo shape reale che
+		// Excel scrive per una serie sull'asse secondario, non un
+		// attributo su <c:ser> stesso (l'appartenenza a un asse dipende
+		// da QUALE blocco di tipo grafico contiene quella serie).
+		// plotSecondary vuoto (ogni grafico senza nessuna serie
+		// secondaria, cioe' ogni grafico esistente prima di questa fase)
+		// produce l'XML ESATTO di prima: un solo blocco, una sola coppia
+		// di assi, nessuna riga in piu'.
 	{
-		xml += "<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>";
-		xml += plot;
-		xml += "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:barChart>";
+		bool hasSecondary = !plotSecondary.empty();
+		const char* tag = (info.type == 1) ? "c:lineChart" : "c:barChart";
+		const char* openAttrs = (info.type == 1)
+			? "<c:grouping val=\"standard\"/><c:varyColors val=\"0\"/>"
+			: "<c:barDir val=\"col\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>";
+		const char* extraBeforeAxId = (info.type == 1) ? "<c:marker val=\"1\"/>" : "";
+
+		xml += "<"; xml += tag; xml += ">"; xml += openAttrs;
+		xml += plotPrimary;
+		xml += extraBeforeAxId;
+		xml += "<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></"; xml += tag; xml += ">";
+
+		if (hasSecondary)
+		{
+			xml += "<"; xml += tag; xml += ">"; xml += openAttrs;
+			xml += plotSecondary;
+			xml += extraBeforeAxId;
+			xml += "<c:axId val=\"333333333\"/><c:axId val=\"444444444\"/></"; xml += tag; xml += ">";
+		}
+
 		xml += "<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
 			"<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>";
 		xml += "<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
 			"<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>";
+
+		if (hasSecondary)
+		{
+			// Asse a valori secondario, sul lato DESTRO ("r") -- <c:crosses
+			// val="max"/> e' quello che lo fa disegnare a destra invece di
+			// sovrapporsi al primario a sinistra, l'errore piu' comune in
+			// un XML scritto a mano per questo shape. L'asse di categoria
+			// gemello e' nascosto (<c:delete val="1"/>): condivide le
+			// stesse categorie del primario, non ne serve uno visibile
+			// in piu'.
+			xml += "<c:valAx><c:axId val=\"444444444\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+				"<c:delete val=\"0\"/><c:axPos val=\"r\"/><c:crossAx val=\"333333333\"/>"
+				"<c:crosses val=\"max\"/></c:valAx>";
+			xml += "<c:catAx><c:axId val=\"333333333\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+				"<c:delete val=\"1\"/><c:axPos val=\"b\"/><c:crossAx val=\"444444444\"/></c:catAx>";
+		}
 	}
 
 	xml += "</c:plotArea>";
@@ -10310,6 +10358,22 @@ struct ChartXmlContext {
 	// viceversa. Vedi il test dedicato in test_xlsx_translator.cpp che
 	// mette i due <c:val> nello stesso <c:ser> apposta per provarlo.
 	bool insideErrBars;
+	// Contatore di blocchi <c:barChart>/<c:lineChart>/<c:pieChart> aperti
+	// finora (Fase 7d, asse secondario): un vero file Excel con una serie
+	// sull'asse secondario scrive un SECONDO blocco di tipo grafico
+	// dentro lo stesso <c:plotArea>, non un attributo su <c:ser> --
+	// l'appartenenza a un asse dipende da QUALE blocco contiene quella
+	// serie. Ogni <c:ser> aperto mentre questo contatore e' >= 2
+	// appartiene al gruppo secondario (vedi BuildChartXml/il commento su
+	// "linee o barre verticali" li', lo shape gemello in scrittura). Un
+	// file con un solo blocco (ogni file esistente prima di questa fase,
+	// o un tipo che questa fase non estende come la torta) non arriva
+	// mai a 2, quindi ogni serie resta primaria -- zero cambio di
+	// comportamento. Un file con 3+ blocchi (una topologia di assi che
+	// questo importatore non scrive mai) tratta il terzo blocco in poi
+	// come "ancora secondario", una semplificazione dichiarata piuttosto
+	// che un errore silenzioso.
+	int chartTypeBlockCount;
 };
 
 static void XMLCALL ChartXmlStart(void* userData, const char* name, const char** atts)
@@ -10322,6 +10386,7 @@ static void XMLCALL ChartXmlStart(void* userData, const char* name, const char**
 	{
 		ctx->result.type = 0;
 		ctx->result.typeRecognized = true;
+		ctx->chartTypeBlockCount++;
 	}
 	else if (strcmp(name, "c:barDir") == 0)
 	{
@@ -10341,11 +10406,13 @@ static void XMLCALL ChartXmlStart(void* userData, const char* name, const char**
 	{
 		ctx->result.type = 1;
 		ctx->result.typeRecognized = true;
+		ctx->chartTypeBlockCount++;
 	}
 	else if (strcmp(name, "c:pieChart") == 0)
 	{
 		ctx->result.type = 2;
 		ctx->result.typeRecognized = true;
+		ctx->chartTypeBlockCount++;
 	}
 	else if (!ctx->result.typeRecognized)
 	{
@@ -10408,7 +10475,12 @@ static void XMLCALL ChartXmlStart(void* userData, const char* name, const char**
 	else if (strcmp(name, "c:ser") == 0)
 	{
 		ctx->result.valRefs.push_back(std::string());
-		ctx->result.seriesOptions.push_back(XlsxChartSeriesOptions());
+		XlsxChartSeriesOptions opts;
+		// >= 2: siamo dentro il SECONDO blocco di tipo grafico o
+		// successivo -- vedi il commento su ChartXmlContext::
+		// chartTypeBlockCount sopra.
+		opts.secondaryAxis = (ctx->chartTypeBlockCount >= 2);
+		ctx->result.seriesOptions.push_back(opts);
 	}
 	else if (strcmp(name, "c:title") == 0)
 		ctx->inTitle = true;
@@ -10495,6 +10567,7 @@ static bool ParseChartXml(const std::vector<unsigned char>& xml, ChartXmlResult*
 	ctx.capturingF = false;
 	ctx.capturingTitleText = false;
 	ctx.insideErrBars = false;
+	ctx.chartTypeBlockCount = 0;
 
 	XML_Parser parser = XML_ParserCreate(NULL);
 	XML_SetUserData(parser, &ctx);
