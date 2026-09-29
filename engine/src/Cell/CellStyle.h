@@ -94,6 +94,23 @@ struct CellStyle {
 	rgb_color fBorderColor; // colore condiviso da tutti i lati con bordo (Fase 13, predefinito nero)
 	bool fUnderline; // BFont non ha un attributo sottolineato nativo (solo stile del font, vedi Fase 12): disegnato a mano in SheetView, non parte della tripla famiglia/stile/dimensione di fFont
 	bool fWrapText; // a-capo del testo per larghezza di colonna (Fase 12): il motore non fa layout di testo, solo la UI (SheetView) sa disegnare piu' righe e far crescere l'altezza di riga di conseguenza
+	// Nome di stile cella con NOME "vivo" (Tier 4, "Named cell styles +
+	// live theme palette"): indice 1-based in NamedStyleTable (vedi
+	// NamedStyle.h), 0 = nessuno -- il comportamento di sempre per ogni
+	// CellStyle esistente/di ogni file scritto prima di questo campo,
+	// dato che il costruttore sotto lo azzera come ogni altro campo del
+	// memset. Un int semplice, MAI un nome/std::string qui:
+	// CellStyle::operator== e' un memcmp sull'intero struct (vedi
+	// CellStyle.cpp) e CStyleTable interna per valore letterale --
+	// esattamente lo stesso principio gia' seguito da fFormat/fFont
+	// sopra (indici in un'altra tabella, non il dato vero). Quando
+	// != 0, TUTTI gli altri campi di questo CellStyle diventano inerti:
+	// CContainer::GetCellStyle (Container.styles.cpp) sostituisce
+	// l'intero aspetto visivo con quello risolto DAL VIVO dallo stile
+	// con questo indice -- corrispondenza fedele al vero Excel, dove
+	// applicare uno stile cella e' una sostituzione integrale, mai un
+	// merge parziale.
+	int fNamedStyleID;
 
 	CellStyle();
 	bool operator==(const CellStyle& cs) const;
