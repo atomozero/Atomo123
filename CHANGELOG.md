@@ -123,6 +123,28 @@ What shipped since v0.4.2 (in progress):
   Summary (a static comparison report across all scenarios) is
   deliberately out of scope for this pass. Persisted in a new
   EOF-tolerant `.ascd` trailing section.
+- Named cell styles + live theme palette (Tier 4, "Path to full Excel
+  parity"), engine core (Phase A of 3 — persistence and UI land in
+  follow-up phases): a cell can now reference a named style
+  (`CellStyle::fNamedStyleID`) instead of carrying literal formatting.
+  Redefining the style, or swapping a color in the new document-wide
+  theme palette, changes every cell using it — live, at the next
+  repaint, without touching a single cell's stored data. The whole
+  mechanism is one small addition inside `CContainer::GetCellStyle`
+  (the single choke point every color/font read already goes through):
+  when a cell's style has a name, its appearance is resolved fresh from
+  the current style definition and theme, every time. ~17 curated
+  built-in styles for now (Good/Bad/Neutral, Headings, Title, Total,
+  Accent1-6, Note — a subset of Excel's real ~50, same scoping already
+  used for named table styles), 8 theme color roles (text, background,
+  6 accents — smaller than Excel's 12-slot model, no dark/light
+  variants). Declared simplification: a named style covers background,
+  text color, alignment, and bold/italic/underline; borders and cell
+  protection stay whatever the cell's own literal formatting already
+  was. No UI yet in this phase — verified with a dedicated headless
+  test proving the live-linking claim explicitly (mutating a style or
+  the theme changes what an already-written cell resolves to, with the
+  cell never touched again), not just assumed.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
