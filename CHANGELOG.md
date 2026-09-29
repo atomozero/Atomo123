@@ -215,6 +215,33 @@ What shipped since v0.4.2 (in progress):
   features, so the translator's reader/writer now also correctly skip
   past (write empty stubs for, or read-and-discard) each of those four
   sections before reaching this one.
+- Chart error bars, per series (Phase 7c, same "Secondary axis /
+  trendlines / error bars" item): the "Opzioni…" pop-up from trendlines
+  above gains a second, independent control — fixed-value or
+  percentage-of-value error bars, drawn as a classic "I-beam" (a
+  vertical line plus two short caps) in the series' own color at full
+  opacity, unlike the trendline's reduced-opacity convention, since this
+  is a data-accuracy annotation meant to read as crisp rather than
+  decorative. Same four multi-series chart types as trendlines, same
+  scope limit (single-series/scatter charts excluded); drawn before the
+  trendline at each point so a trendline is never hidden under an
+  error-bar cap. No native `.ascd` format change needed — the trailing
+  section Phase 7b introduced already reserved and round-tripped the
+  error-bar fields from day one, unpopulated until now. Round-trips
+  through XLSX (`<c:errBars>` import/export, `errBarType="both"` always,
+  only `errValType` varies between `fixedVal`/`percentage`) — verified
+  with a dedicated test importing a chart where the error bar's own
+  `<c:val val="N"/>` sits in the same `<c:ser>` as the series' real
+  `<c:val><c:numRef><c:f>` (the two elements share a name but not a
+  shape), confirming the parser's `insideErrBars` guard keeps them from
+  being cross-attributed. A real, unrelated byte-alignment bug in this
+  translator's own hand-written test suite was found and fixed along the
+  way: two "does the ASCD stream end exactly here" checks had gone stale
+  across several earlier features (Slicers, per-series chart colors,
+  Scenario Manager, Named Cell Styles) that each appended a trailing
+  section after the checks' last-known point, silently failing on any
+  chart-less file — not a translator bug, but a maintenance gap in the
+  test's own byte-position bookkeeping now caught and corrected.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
