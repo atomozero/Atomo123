@@ -7553,6 +7553,211 @@ int main()
 		}
 	}
 
+	// Fase 7e (regressione incrociata): le TRE funzionalita' insieme sulla
+	// STESSA serie e nello STESSO file -- asse secondario (secondo blocco
+	// <c:barChart>/coppia <c:axId>, come nel test sopra) E <c:trendline> E
+	// <c:errBars> dentro il <c:ser> di quel secondo blocco. Prova che i tre
+	// shape XML non si scontrano quando coesistono nello stesso <c:ser>
+	// (es. l'ordine <c:trendline> poi <c:errBars> poi <c:cat>/<c:val>
+	// stabilito dalle Fasi 7b/7c resta valido anche dentro un blocco
+	// <c:barChart> "secondario", non solo in quello primario gia' provato
+	// da soli i due test precedenti).
+	{
+		static const char kAllThreeContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kAllThreeRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kAllThreeWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kAllThreeWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kAllThreeSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Gen</t></is></c>"
+			"<c r=\"B1\"><v>5</v></c><c r=\"C1\"><v>5000</v></c></row>"
+			"<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>Feb</t></is></c>"
+			"<c r=\"B2\"><v>10</v></c><c r=\"C2\"><v>10000</v></c></row>"
+			"<row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>Mar</t></is></c>"
+			"<c r=\"B3\"><v>15</v></c><c r=\"C3\"><v>15000</v></c></row>"
+			"</sheetData>"
+			"<drawing r:id=\"rId1\"/>"
+			"</worksheet>\n";
+		static const char kAllThreeSheetRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" Target=\"../drawings/drawing1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kAllThreeDrawing[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<xdr:oneCellAnchor>"
+			"<xdr:from><xdr:col>5</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>"
+			"<xdr:ext cx=\"3000000\" cy=\"2000000\"/>"
+			"<xdr:graphicFrame>"
+			"<xdr:nvGraphicFramePr><xdr:cNvPr id=\"1\" name=\"Chart 1\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"
+			"<xdr:xfrm/>"
+			"<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+			"<c:chart r:id=\"rId1\"/></a:graphicData></a:graphic>"
+			"</xdr:graphicFrame>"
+			"<xdr:clientData/>"
+			"</xdr:oneCellAnchor>"
+			"</xdr:wsDr>\n";
+		static const char kAllThreeDrawingRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"../charts/chart1.xml\"/>\n"
+			"</Relationships>\n";
+		// Secondo blocco <c:barChart> (asse secondario, come nel test sopra)
+		// la cui UNICA serie porta ANCHE <c:trendline> e <c:errBars>, nello
+		// stesso ordine schema-valido gia' provato dal test trendline+barre
+		// d'errore (dopo l'eventuale <c:tx>, prima di <c:cat>/<c:val>).
+		static const char kAllThreeChart[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<c:chart><c:plotArea>"
+			"<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>"
+			"<c:ser><c:idx val=\"0\"/><c:order val=\"0\"/>"
+			"<c:cat><c:strRef><c:f>Foglio1!$A$1:$A$3</c:f></c:strRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$B$1:$B$3</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"<c:axId val=\"111111111\"/><c:axId val=\"222222222\"/></c:barChart>"
+			"<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>"
+			"<c:ser><c:idx val=\"1\"/><c:order val=\"1\"/>"
+			"<c:trendline><c:trendlineType val=\"linear\"/></c:trendline>"
+			"<c:errBars><c:errBarType val=\"both\"/><c:errValType val=\"percentage\"/><c:val val=\"10\"/></c:errBars>"
+			"<c:cat><c:strRef><c:f>Foglio1!$A$1:$A$3</c:f></c:strRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$C$1:$C$3</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"<c:axId val=\"333333333\"/><c:axId val=\"444444444\"/></c:barChart>"
+			"<c:catAx><c:axId val=\"111111111\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:crossAx val=\"222222222\"/></c:catAx>"
+			"<c:valAx><c:axId val=\"222222222\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"l\"/><c:crossAx val=\"111111111\"/></c:valAx>"
+			"<c:valAx><c:axId val=\"444444444\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"0\"/><c:axPos val=\"r\"/><c:crossAx val=\"333333333\"/><c:crosses val=\"max\"/></c:valAx>"
+			"<c:catAx><c:axId val=\"333333333\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+			"<c:delete val=\"1\"/><c:axPos val=\"b\"/><c:crossAx val=\"444444444\"/></c:catAx>"
+			"</c:plotArea></c:chart>"
+			"</c:chartSpace>\n";
+
+		BMallocIO allThreeXlsxIn;
+		CZipWriter allThreeZip;
+		allThreeZip.Begin(&allThreeXlsxIn);
+		allThreeZip.AddEntry("[Content_Types].xml", kAllThreeContentTypes, strlen(kAllThreeContentTypes));
+		allThreeZip.AddEntry("_rels/.rels", kAllThreeRootRels, strlen(kAllThreeRootRels));
+		allThreeZip.AddEntry("xl/workbook.xml", kAllThreeWorkbook, strlen(kAllThreeWorkbook));
+		allThreeZip.AddEntry("xl/_rels/workbook.xml.rels", kAllThreeWorkbookRels, strlen(kAllThreeWorkbookRels));
+		allThreeZip.AddEntry("xl/worksheets/sheet1.xml", kAllThreeSheet, strlen(kAllThreeSheet));
+		allThreeZip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kAllThreeSheetRels, strlen(kAllThreeSheetRels));
+		allThreeZip.AddEntry("xl/drawings/drawing1.xml", kAllThreeDrawing, strlen(kAllThreeDrawing));
+		allThreeZip.AddEntry("xl/drawings/_rels/drawing1.xml.rels", kAllThreeDrawingRels, strlen(kAllThreeDrawingRels));
+		allThreeZip.AddEntry("xl/charts/chart1.xml", kAllThreeChart, strlen(kAllThreeChart));
+		Check(allThreeZip.Close(),
+			"costruzione del file XLSX di prova con asse secondario+trendline+barre d'errore insieme riuscita");
+
+		allThreeXlsxIn.Seek(0, SEEK_SET);
+		translator_info allThreeInfo;
+		err = translator->Identify(&allThreeXlsxIn, NULL, NULL, &allThreeInfo, 0);
+		Check(err == B_OK && allThreeInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con le tre funzionalita' insieme");
+
+		allThreeXlsxIn.Seek(0, SEEK_SET);
+		BMallocIO allThreeAscdOut;
+		err = translator->Translate(&allThreeXlsxIn, &allThreeInfo, NULL, kAtomoNativeFormat, &allThreeAscdOut);
+		Check(err == B_OK, "Translate del file di prova con le tre funzionalita' insieme (XLSX -> ASCD) riesce");
+
+		const unsigned char* allThreeAscdData = NULL;
+		size_t allThreeAscdLen = 0;
+		bool allThreeUnwrapped = UnwrapFirstSheet((const unsigned char*)allThreeAscdOut.Buffer(),
+			allThreeAscdOut.BufferLength(), &allThreeAscdData, &allThreeAscdLen);
+		Check(allThreeUnwrapped, "l'output di Translate del file con le tre funzionalita' insieme e' un ASCD valido");
+
+		int16 atLeft = 0, atTop = 0, atRight = 0, atBottom = 0;
+		int8 atType = -1;
+		std::string atTitle;
+		bool atChartRead = allThreeUnwrapped && ReadFirstChartForTest(allThreeAscdData, allThreeAscdLen,
+			&atLeft, &atTop, &atRight, &atBottom, &atType, &atTitle);
+		Check(atChartRead && atLeft == 1 && atTop == 1 && atRight == 3 && atBottom == 3,
+			"il dataRange ricostruito (A1:C3) include ENTRAMBE le serie anche con asse secondario+trendline+"
+			"barre d'errore tutti insieme sulla seconda serie");
+
+		BMallocIO allThreeSingleSheetAscd;
+		Check(allThreeUnwrapped && allThreeSingleSheetAscd.Write(allThreeAscdData, allThreeAscdLen)
+				== (ssize_t)allThreeAscdLen,
+			"il singolo foglio isolato (con le tre funzionalita' insieme) si ricopia in un buffer separato");
+
+		allThreeSingleSheetAscd.Seek(0, SEEK_SET);
+		translator_info allThreeReexportInfo;
+		err = translator->Identify(&allThreeSingleSheetAscd, NULL, NULL, &allThreeReexportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && allThreeReexportInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD (con le tre funzionalita' gia' importate) prima della riesportazione");
+
+		allThreeSingleSheetAscd.Seek(0, SEEK_SET);
+		BMallocIO allThreeXlsxOut2;
+		err = translator->Translate(&allThreeSingleSheetAscd, &allThreeReexportInfo, NULL, kAtomoXlsxFormat, &allThreeXlsxOut2);
+		Check(err == B_OK, "Translate ASCD (con le tre funzionalita' insieme) -> XLSX (riesportazione) riesce");
+
+		allThreeXlsxOut2.Seek(0, SEEK_SET);
+		CZipReader allThreeZip2;
+		Check(allThreeZip2.Open(&allThreeXlsxOut2),
+			"il file XLSX riesportato con le tre funzionalita' insieme e' un vero archivio ZIP leggibile");
+
+		std::vector<unsigned char> allThreeChartXmlBytes;
+		if (allThreeZip2.ReadEntry("xl/charts/chart1.xml", allThreeChartXmlBytes))
+		{
+			std::string atChartXml((const char*)&allThreeChartXmlBytes[0], allThreeChartXmlBytes.size());
+
+			int atBarChartOccurrences = 0, atValAxOccurrences = 0;
+			size_t pos = 0;
+			while ((pos = atChartXml.find("<c:barChart>", pos)) != std::string::npos) { atBarChartOccurrences++; pos += 1; }
+			pos = 0;
+			while ((pos = atChartXml.find("<c:valAx>", pos)) != std::string::npos) { atValAxOccurrences++; pos += 1; }
+			Check(atBarChartOccurrences == 2,
+				"il chart1.xml riesportato ha ANCORA due blocchi <c:barChart> distinti (asse secondario "
+				"preservato) nonostante trendline/barre d'errore siano ANCHE presenti sulla stessa serie");
+			Check(atValAxOccurrences == 2,
+				"il chart1.xml riesportato ha ANCORA due <c:valAx> distinti, stessa ragione");
+			Check(atChartXml.find("<c:crosses val=\"max\"/>") != std::string::npos,
+				"l'asse secondario e' ancora marcato <c:crosses val=\"max\"/>");
+			Check(atChartXml.find("<c:trendlineType val=\"linear\"/>") != std::string::npos,
+				"il chart1.xml riesportato contiene ANCORA <c:trendlineType val=\"linear\"/> sulla serie "
+				"secondaria, non perso per la presenza dell'asse secondario");
+			Check(atChartXml.find("<c:errBarType val=\"both\"/>") != std::string::npos
+					&& atChartXml.find("<c:errValType val=\"percentage\"/>") != std::string::npos
+					&& atChartXml.find("<c:val val=\"10\"/>") != std::string::npos,
+				"il chart1.xml riesportato contiene ANCORA <c:errBars> (percentuale, 10) sulla serie "
+				"secondaria, coesistendo con trendline e asse secondario nello stesso <c:ser>");
+			Check(atChartXml.find("Foglio1!$C$1:$C$3") != std::string::npos,
+				"il riferimento vero della seconda serie (C1:C3) resta intatto con le tre funzionalita' insieme");
+		}
+		else
+			Check(false, "xl/charts/chart1.xml (riesportato, tre funzionalita' insieme) si legge dall'archivio");
+	}
+
 	// Importazione di un vero file XLSX in stile Excel (Fase 25):
 	// tests/sample_chart_import.xlsx e' costruito a mano (non con
 	// questo stesso translator, a differenza dei round-trip sopra) con

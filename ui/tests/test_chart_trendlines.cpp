@@ -290,6 +290,11 @@ int main()
 		opt2.trendlinePeriod = 4;
 		opt2.errorBarMode = ePercentErrorBars;
 		opt2.errorBarValue = 15.0;
+		// Fase 7e (regressione incrociata): questa stessa opzione porta
+		// ANCHE l'asse secondario, cosi' il giro AscdIO qui sotto prova le
+		// tre funzionalita' insieme in un solo ChartSeriesOptions, non solo
+		// trendline+barre d'errore come sopra.
+		opt2.secondaryAxis = true;
 		obj.seriesOptions.push_back(opt0);
 		obj.seriesOptions.push_back(opt1);
 		obj.seriesOptions.push_back(opt2);
@@ -329,8 +334,10 @@ int main()
 				Check(loaded[0].seriesOptions[2].trendlineType == eMovingAverageTrendline
 						&& loaded[0].seriesOptions[2].trendlinePeriod == 4
 						&& loaded[0].seriesOptions[2].errorBarMode == ePercentErrorBars
-						&& loaded[0].seriesOptions[2].errorBarValue == 15.0,
-					"la terza opzione (media mobile periodo 4 + barre percentuali) e' preservata per intero");
+						&& loaded[0].seriesOptions[2].errorBarValue == 15.0
+						&& loaded[0].seriesOptions[2].secondaryAxis == true,
+					"la terza opzione (media mobile periodo 4 + barre percentuali + asse secondario, "
+					"le TRE funzionalita' della Fase 7 insieme sulla stessa serie) e' preservata per intero");
 			}
 			Check(loaded[1].seriesOptions.empty(),
 				"il secondo grafico (senza opzioni) resta vuoto, non eredita quelle del primo");
@@ -456,6 +463,73 @@ int main()
 				"la barra della serie secondaria al suo massimo (20000) tocca ANCH'ESSA la cima -- "
 				"usa la propria scala 0..20000, indipendente da quella primaria");
 		}
+	}
+
+	// --- Parte 6 (Fase 7e): le tre funzionalita' insieme sulla stessa serie
+	// -----------------------------------------------------------------
+
+	{
+		// Stesso caso "grandezze molto diverse" della Parte 5, ma la serie
+		// secondaria ha ANCHE una trendline lineare e barre d'errore a
+		// percentuale -- prova che le tre funzionalita' compongono senza
+		// interferire, non solo che ognuna funziona isolata (gia' provato
+		// sopra e nelle Parti 2/2b).
+		MultiChartData data;
+		data.categories.push_back("A");
+		data.categories.push_back("B");
+		data.categories.push_back("C");
+		data.seriesNames.push_back("Primaria");
+		data.seriesNames.push_back("Secondaria");
+		std::vector<double> primaryVals;
+		primaryVals.push_back(5); primaryVals.push_back(10); primaryVals.push_back(15);
+		std::vector<double> secondaryVals;
+		secondaryVals.push_back(5000); secondaryVals.push_back(10000); secondaryVals.push_back(15000);
+		data.values.push_back(primaryVals);
+		data.values.push_back(secondaryVals);
+
+		ChartSeriesOptions primaryOpt; // di default, resta sull'asse primario, nessun'altra opzione
+		ChartSeriesOptions combinedOpt;
+		combinedOpt.secondaryAxis = true;
+		combinedOpt.trendlineType = eLinearTrendline;
+		combinedOpt.errorBarMode = ePercentErrorBars;
+		combinedOpt.errorBarValue = 10.0;
+		data.seriesOptions.push_back(primaryOpt);
+		data.seriesOptions.push_back(combinedOpt);
+
+		// Disegno "a secco" (nessun crash/asserzione interna): le funzioni
+		// pure di layout non toccano mai un BView, quindi bastano per
+		// provare che le tre funzionalita' non si scontrano strutturalmente
+		// quando vivono sulla stessa serie -- lo stesso principio "nessuna
+		// sessione grafica necessaria" dichiarato in cima a Chart.h.
+		BRect bounds(0, 0, 100, 100);
+		GroupedBarLayout layout;
+		ComputeGroupedBarLayout(data, bounds, layout);
+		Check(layout.bars.size() == 2 && layout.bars[0].size() == 3 && layout.bars[1].size() == 3,
+			"ComputeGroupedBarLayout produce le 2 serie x 3 categorie anche con trendline+barre+asse "
+			"secondario tutti impostati sulla stessa serie (nessun crash/dato mancante)");
+		if (layout.bars.size() == 2 && layout.bars[1].size() == 3)
+			Check(fabs(layout.bars[1][2].top - bounds.top) < 1.0,
+				"la barra della serie combinata al suo massimo (15000) usa la PROPRIA scala secondaria "
+				"(tocca la cima), non quella minuscola della serie primaria (5..15) -- l'asse secondario "
+				"resta effettivo anche quando la stessa serie ha ANCHE una trendline e delle barre d'errore");
+
+		// La trendline/barre d'errore della serie combinata si calcolano
+		// sui suoi VALORI GREZZI (5000/10000/15000), indipendentemente da
+		// quale asse li disegnera' poi -- ComputeLinearTrendline/
+		// ComputeErrorBarMagnitude sono pure e non sanno nulla di assi,
+		// verificato qui esplicitamente sugli stessi dati della serie
+		// secondaria per chiudere il cerchio "le tre funzionalita' non si
+		// pestano i piedi a vicenda".
+		std::vector<double> xs; xs.push_back(0); xs.push_back(1); xs.push_back(2);
+		double combSlope = 0, combIntercept = 0;
+		bool combOk = ComputeLinearTrendline(xs, secondaryVals, &combSlope, &combIntercept);
+		Check(combOk && fabs(combSlope - 5000.0) < 1e-6,
+			"la trendline della serie combinata si calcola correttamente sui suoi valori (pendenza 5000), "
+			"indipendente dall'asse su cui verra' poi disegnata");
+		double combMag = ComputeErrorBarMagnitude(secondaryVals[2], ePercentErrorBars, combinedOpt.errorBarValue);
+		Check(fabs(combMag - 1500.0) < 1e-6,
+			"le barre d'errore della serie combinata (10% di 15000 = 1500) restano coerenti con i suoi "
+			"veri valori, non quelli (piccolissimi) della serie primaria sull'altro asse");
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
