@@ -59,6 +59,7 @@
 #include "CellIterator.h"
 #include "CellStyle.h"
 #include "FontMetrics.h"
+#include "NamedStyle.h"
 #include "parser.h"
 
 #if DEBUG
@@ -73,6 +74,27 @@ void WarnForUnlockedContainer(int lineNr);
 void CContainer::GetCellStyle(const cell& inLoc, CellStyle& outStyle)
 {	//CHECKLOCK
 	outStyle = gStyleTable[GetCellStyleNr(inLoc)];
+	// Tier 4, "Named cell styles + live theme palette" (vedi
+	// NamedStyle.h): risoluzione DAL VIVO, l'unico punto in cui questo
+	// avviene -- ridefinire uno stile o cambiare il tema attivo cambia
+	// quindi l'aspetto di ogni cella che lo referenzia al prossimo
+	// ridisegno, senza toccare fCellData di nessuna cella qui.
+	if (outStyle.fNamedStyleID != 0)
+	{
+		const NamedStyleTable* styles = fSheetResolver ? fSheetResolver->GetNamedStyleTable() : NULL;
+		const NamedStyleDef* def = styles ? styles->Get(outStyle.fNamedStyleID) : NULL;
+		if (def != NULL)
+		{
+			static const ThemePalette kDefaultPalette;
+			const ThemePalette* palette = fSheetResolver ? fSheetResolver->GetThemePalette() : NULL;
+			outStyle = def->Resolve(outStyle, palette ? *palette : kDefaultPalette);
+		}
+		// def == NULL (stile eliminato dopo essere stato applicato a
+		// questa cella, o nessun resolver ancora collegato): ricade in
+		// silenzio sull'aspetto letterale gia' calcolato sopra, mai un
+		// errore -- stessa tolleranza di ResolveSheetByName per un nome
+		// sconosciuto.
+	}
 } /* GetCellStyle */
 
 void CContainer::SetCellStyle(const cell& inLoc, CellStyle& inStyle)

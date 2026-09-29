@@ -2179,6 +2179,16 @@ public:
 				return (*sheets)[i].doc;
 		return NULL;
 	}
+
+	// Tier 4, "Named cell styles + live theme palette": questo
+	// resolver esiste solo durante il ricalcolo in background di un
+	// file appena caricato (vedi OpenFileJob sotto), che non disegna
+	// mai nulla ne' legge mai CContainer::GetCellStyle -- nessuno stile
+	// con nome da risolvere in questa fase, NULL e' gia' il
+	// comportamento "nessun resolver vero collegato ancora" tollerato
+	// da GetCellStyle.
+	const NamedStyleTable* GetNamedStyleTable() const override { return NULL; }
+	const ThemePalette* GetThemePalette() const override { return NULL; }
 };
 
 // Cookie passato al thread di caricamento (Fase 31): allocato da

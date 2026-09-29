@@ -82,6 +82,8 @@ class CCalculateJob;
 struct CellStyle;
 class CSet;
 class CFormula;
+class NamedStyleTable;
+struct ThemePalette;
 
 enum SplitType {
 	noSplit, hSplit, vSplit
@@ -135,6 +137,19 @@ public:
 	// (ancora, o piu') ha una tabella con questo nome esatto -- stesso
 	// principio di ResolveSheetByName, mai un errore fatale.
 	virtual CContainer* FindSheetWithTable(const std::string& tableName) = 0;
+
+	// Tier 4, "Named cell styles + live theme palette" (vedi
+	// NamedStyle.h): la tabella stili con nome e la tavolozza tema
+	// dell'INTERA cartella di lavoro, mai per foglio -- NULL e' un
+	// valore LEGITTIMO (mai un errore), significa "nessun resolver
+	// vero collegato ancora", stesso principio di ResolveSheetByName
+	// sopra che ritorna NULL per un nome sconosciuto:
+	// CContainer::GetCellStyle ricade su un aspetto letterale in quel
+	// caso, cosi' ogni CContainer autonomo (test, esempi in
+	// ui/examples) creato senza mai collegare un resolver si comporta
+	// esattamente come prima di questa fase.
+	virtual const NamedStyleTable* GetNamedStyleTable() const = 0;
+	virtual const ThemePalette* GetThemePalette() const = 0;
 };
 
 // Formattazione condizionale VIVA (Fase 13): a differenza

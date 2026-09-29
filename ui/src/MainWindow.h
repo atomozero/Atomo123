@@ -24,6 +24,7 @@
 #include "Cell.h"
 #include "Chart.h"
 #include "ColorWindow.h"
+#include "NamedStyle.h"
 #include "Container.h"
 #include "PrintLayout.h"
 
@@ -575,6 +576,15 @@ public:
 	// commento su ISheetResolver::FindSheetWithTable in Container.h.
 	CContainer* FindSheetWithTable(const std::string& tableName);
 
+	// ISheetResolver (Tier 4, "Named cell styles + live theme
+	// palette"): la tabella stili con nome + tema dell'INTERA cartella
+	// di lavoro (fNamedStyles/fThemePalette sotto), MAI per foglio --
+	// CContainer::GetCellStyle li consulta tramite questo stesso
+	// puntatore fSheetResolver gia' esistente per la risoluzione tra
+	// fogli, nessun meccanismo nuovo di condivisione fra fogli.
+	const NamedStyleTable* GetNamedStyleTable() const { return &fNamedStyles; }
+	const ThemePalette* GetThemePalette() const { return &fThemePalette; }
+
 	// Pubblico per lo stesso motivo di CopySelection/PasteSelection
 	// sopra -- vedi tests/test_xsheet.cpp. Ricalcola l'intera cartella
 	// di lavoro (tutti i fogli, non solo quello attivo) se ne esiste
@@ -798,6 +808,20 @@ private:
 	// fCharts/fSlicers non serve nessun SetScenarios()-stile su
 	// SheetView.
 	std::vector<Scenario> fScenarios;
+	// Stili con nome + tema (Tier 4, "Named cell styles + live theme
+	// palette", vedi NamedStyle.h): concetto di CARTELLA DI LAVORO
+	// (unico per l'intero file, MAI per foglio, a differenza di
+	// fCharts/fSlicers/fScenarios sopra) -- una sola istanza per tutta
+	// la vita del documento aperto, MAI copiata avanti e indietro a
+	// ogni cambio foglio (niente sincronizzazione a 6 punti come
+	// fScenarios: ogni foglio la raggiunge tramite lo stesso puntatore
+	// ISheetResolver gia' collegato da AttachSheetResolver). Resettata
+	// a NamedStyleTable()/ThemePalette() (i predefiniti) a ogni apertura
+	// di un nuovo file, poi eventualmente sovrascritta da quanto letto
+	// dal file stesso (vedi AscdIO.h, sezione persistita solo sul primo
+	// foglio, stesso principio di vbaProject).
+	NamedStyleTable fNamedStyles;
+	ThemePalette fThemePalette;
 
 	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
 	// AscdSheet (nome + documento + grafici) per ogni foglio, in

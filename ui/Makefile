@@ -361,6 +361,16 @@ test-range-ref: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
 	./tests/test_range_ref
 
+# Verifica il nucleo motore di "Stili cella con nome + tema dal vivo"
+# (Tier 4, Fase A): puro CContainer/NamedStyleTable, nessuna MainWindow
+# coinvolta -- stesso schema leggero di test-range-ref sopra, solo
+# libengine.a, non l'intera chiusura di oggetti UI.
+test-named-styles: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_named_styles.cpp -o tests/test_named_styles.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_named_styles tests/test_named_styles.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -llocalestub
+	./tests/test_named_styles
+
 # Test del calcolo delle pagine di stampa (PrintLayout.cpp): stessa
 # ragione di test-chart, headless -- niente BPrintJob vero (serve una
 # stampante configurata), solo la matematica di quante pagine servono
@@ -1660,7 +1670,7 @@ clean:
 		examples/atomo123_demo.ascd \
 		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
-.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-autosum test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection test-slicer test-whatif test-circular-reference test-point-mode test-autocomplete test-chart-antialiasing test-edit-chart test-chart-row-orientation test-chart-series-colors test-chart-range-picker test-scenario-manager clean
+.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-autosum test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection test-slicer test-whatif test-circular-reference test-point-mode test-autocomplete test-chart-antialiasing test-edit-chart test-chart-row-orientation test-chart-series-colors test-chart-range-picker test-scenario-manager test-named-styles clean
 
 # Include i file di dipendenza generati da -MMD/-MP (vedi CXXFLAGS in
 # cima) -- src/*.d per la build principale, tests/*.d per ogni target
