@@ -30,6 +30,7 @@
 
 #include "Chart.h"
 #include "EmbeddedImage.h"
+#include "Scenario.h"
 #include "Slicer.h"
 
 class CContainer;
@@ -263,7 +264,12 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// motivo di ogni altro campo aggiunto in coda qui. NULL/non raccolto
 	// = nessuno slicer, il comportamento di sempre per ogni chiamante
 	// esistente.
-	std::vector<SlicerObject>* slicers = NULL);
+	std::vector<SlicerObject>* slicers = NULL,
+	// Scenari (Tier 4, "Gestione scenari", vedi Scenario.h): ultimo
+	// parametro per lo stesso motivo di ogni altro campo aggiunto in coda
+	// qui. NULL/non raccolto = nessuno scenario, il comportamento di
+	// sempre per ogni chiamante esistente.
+	std::vector<Scenario>* scenarios = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -284,7 +290,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	// Vedi il commento gemello sopra in LoadASCD.
 	const std::map<int, std::vector<BString> >* filterHiddenValues = NULL,
 	// Vedi il commento gemello sopra in LoadASCD.
-	const std::vector<SlicerObject>* slicers = NULL);
+	const std::vector<SlicerObject>* slicers = NULL,
+	// Vedi il commento gemello sopra in LoadASCD.
+	const std::vector<Scenario>* scenarios = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -407,6 +415,11 @@ struct AscdSheet {
 	// importato da un XLSX con una password reale, incluso ogni file
 	// scritto prima di questo campo.
 	AscdSheetProtection protection;
+	// Scenari (Tier 4, "Gestione scenari", vedi Scenario.h): vuoto per
+	// ogni documento scritto prima di questo campo, il comportamento di
+	// sempre. A differenza di charts/slicers, nessuna controparte in
+	// SheetView -- uno scenario non ha presenza sul foglio.
+	std::vector<Scenario> scenarios;
 };
 
 // Vero solo se "source" comincia con la firma di una cartella di

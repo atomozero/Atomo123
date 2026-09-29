@@ -149,7 +149,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const bool* isProtected,
 	const AscdSheetProtection* protection,
 	const std::map<int, std::vector<BString> >* filterHiddenValues,
-	const std::vector<SlicerObject>* slicers)
+	const std::vector<SlicerObject>* slicers,
+	const std::vector<Scenario>* scenarios)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -1639,6 +1640,56 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione scenari (Tier 4, "Gestione scenari" -- l'altra meta' di
+	// "Tabella dati", vedi Scenario.h e ROADMAP.md), in coda DOPO tutto
+	// il resto: stesso principio EOF-tollerante di ogni altra sezione
+	// opzionale qui sopra. Un conteggio, poi per ciascuno scenario il
+	// nome (con prefisso di lunghezza, stesso idioma del titolo dei
+	// grafici piu' sopra), l'intervallo delle celle variabili (quattro
+	// int, stesso schema di AutoFilter/area di stampa), il conteggio dei
+	// valori seguiti dai valori stessi (testo grezzo, non un double --
+	// una cella variabile puo' contenere una formula/stringa, non solo
+	// un numero), infine il commento facoltativo. VUOTO per la
+	// stragrande maggioranza dei documenti (nessuno scenario definito,
+	// il comportamento di sempre).
+	{
+		int32 scenarioCount = scenarios ? (int32)scenarios->size() : 0;
+		if (dest->Write(&scenarioCount, sizeof(scenarioCount)) != (ssize_t)sizeof(scenarioCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < scenarioCount; i++)
+		{
+			const Scenario& s = (*scenarios)[i];
+			int32 nameLen = s.name.Length();
+			if (dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+				return B_IO_ERROR;
+			if (nameLen > 0 && dest->Write(s.name.String(), nameLen) != nameLen)
+				return B_IO_ERROR;
+
+			int32 rangeVals[4] = { s.changingCells.left, s.changingCells.top,
+				s.changingCells.right, s.changingCells.bottom };
+			if (dest->Write(rangeVals, sizeof(rangeVals)) != (ssize_t)sizeof(rangeVals))
+				return B_IO_ERROR;
+
+			int32 valueCount = (int32)s.values.size();
+			if (dest->Write(&valueCount, sizeof(valueCount)) != (ssize_t)sizeof(valueCount))
+				return B_IO_ERROR;
+			for (int32 v = 0; v < valueCount; v++)
+			{
+				int32 valLen = s.values[v].Length();
+				if (dest->Write(&valLen, sizeof(valLen)) != (ssize_t)sizeof(valLen))
+					return B_IO_ERROR;
+				if (valLen > 0 && dest->Write(s.values[v].String(), valLen) != valLen)
+					return B_IO_ERROR;
+			}
+
+			int32 commentLen = s.comment.Length();
+			if (dest->Write(&commentLen, sizeof(commentLen)) != (ssize_t)sizeof(commentLen))
+				return B_IO_ERROR;
+			if (commentLen > 0 && dest->Write(s.comment.String(), commentLen) != commentLen)
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1660,7 +1711,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	bool skipVbaAndProtectionSections,
 	AscdSheetProtection* protection,
 	std::map<int, std::vector<BString> >* filterHiddenValues,
-	std::vector<SlicerObject>* slicers)
+	std::vector<SlicerObject>* slicers,
+	std::vector<Scenario>* scenarios)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -3753,6 +3805,87 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione scenari, scritta da SaveASCD in coda DOPO tutto il resto
+	// (Tier 4, "Gestione scenari"): stesso principio EOF-tollerante di
+	// sopra (got == 0 -> sezione assente, file scritto prima di questa
+	// modifica, "scenarios" resta vuoto senza errore).
+	{
+		int32 scenarioCount = 0;
+		ssize_t got = source->Read(&scenarioCount, sizeof(scenarioCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(scenarioCount) || scenarioCount < 0
+					|| scenarioCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < scenarioCount; i++)
+			{
+				int32 nameLen;
+				if (source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_BAD_DATA;
+				if (nameLen < 0 || nameLen > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				BString name;
+				if (nameLen > 0)
+				{
+					std::vector<char> buf(nameLen);
+					if (source->Read(&buf[0], nameLen) != nameLen)
+						return B_BAD_DATA;
+					name.SetTo(&buf[0], nameLen);
+				}
+
+				int32 rangeVals[4];
+				if (source->Read(rangeVals, sizeof(rangeVals)) != (ssize_t)sizeof(rangeVals))
+					return B_BAD_DATA;
+
+				int32 valueCount;
+				if (source->Read(&valueCount, sizeof(valueCount)) != (ssize_t)sizeof(valueCount))
+					return B_BAD_DATA;
+				if (valueCount < 0 || valueCount > 100000)
+					return B_BAD_DATA;
+				std::vector<BString> values(valueCount);
+				for (int32 v = 0; v < valueCount; v++)
+				{
+					int32 valLen;
+					if (source->Read(&valLen, sizeof(valLen)) != (ssize_t)sizeof(valLen))
+						return B_BAD_DATA;
+					if (valLen < 0 || valLen > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+					if (valLen > 0)
+					{
+						std::vector<char> vbuf(valLen);
+						if (source->Read(&vbuf[0], valLen) != valLen)
+							return B_BAD_DATA;
+						values[v].SetTo(&vbuf[0], valLen);
+					}
+				}
+
+				int32 commentLen;
+				if (source->Read(&commentLen, sizeof(commentLen)) != (ssize_t)sizeof(commentLen))
+					return B_BAD_DATA;
+				if (commentLen < 0 || commentLen > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				BString comment;
+				if (commentLen > 0)
+				{
+					std::vector<char> cbuf(commentLen);
+					if (source->Read(&cbuf[0], commentLen) != commentLen)
+						return B_BAD_DATA;
+					comment.SetTo(&cbuf[0], commentLen);
+				}
+
+				if (scenarios)
+				{
+					Scenario s;
+					s.name = name;
+					s.changingCells.Set(rangeVals[0], rangeVals[1], rangeVals[2], rangeVals[3]);
+					s.values = values;
+					s.comment = comment;
+					scenarios->push_back(s);
+				}
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -4050,7 +4183,7 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
 			&sheet.vbaProject, &sheet.isProtected, &sheet.protection,
-			&sheet.filterHiddenValues, &sheet.slicers);
+			&sheet.filterHiddenValues, &sheet.slicers, &sheet.scenarios);
 		if (err != B_OK)
 			return err;
 
@@ -4160,7 +4293,7 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 				&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
 				skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected,
 				false /* skipVbaAndProtectionSections */, &sheet.protection,
-				&sheet.filterHiddenValues, &sheet.slicers);
+				&sheet.filterHiddenValues, &sheet.slicers, &sheet.scenarios);
 		}
 		if (err != B_OK)
 		{

@@ -51,6 +51,7 @@ class CommentWindow;
 class HyperlinkWindow;
 class ValidationWindow;
 class WhatIfWindow;
+class ScenarioWindow;
 class ConditionalFormatWindow;
 class PasswordWindow;
 class ColorWindow;
@@ -172,6 +173,9 @@ public:
 	// ridisegno di SheetView (stesso principio di GetSheetView sopra):
 	// vedi tests/test_insert_chart.cpp.
 	const std::vector<ChartObject>& Charts() const { return fCharts; }
+	// Pubblico apposta per essere testabile (stesso principio di sopra):
+	// vedi tests/test_scenario_manager.cpp.
+	const std::vector<Scenario>& Scenarios() const { return fScenarios; }
 	// Pubblico apposta per essere testabile (stesso principio di sopra):
 	// vedi il commento su AscdSheet::vbaProject in ui/src/AscdIO.h e
 	// tests/test_xlsm_macro_preservation.cpp.
@@ -591,6 +595,25 @@ public:
 	void HandleDefineName(const char* name, const char* rangeText);
 	void HandleDeleteName(const char* name);
 	void HandleGoToName(const char* name);
+	// Gestione scenari (Tier 4, l'altra meta' di "Tabella dati"): stesso
+	// principio pubblico-per-testabilita' di HandleDefineName sopra.
+	// HandleDefineScenario ridefinisce sul posto uno scenario con lo
+	// stesso nome invece di duplicarlo (stesso principio di "Aggiungi/
+	// Aggiorna" in NameWindow) -- valuesText e' un valore per riga,
+	// stesso ordine per righe dell'intervallo delle celle variabili, un
+	// numero di righe diverso dal numero di celle non aggiunge nulla
+	// (mostra un BAlert). HandleShowScenario scrive DAVVERO i valori
+	// memorizzati nelle celle variabili e ricalcola -- una mutazione
+	// annullabile ma PERMANENTE (a differenza di ApplyWhatIfDataTable,
+	// che ripristina le celle input alla fine): e' esattamente il punto
+	// di uno scenario. Aggiungere/eliminare uno scenario non e' invece
+	// annullabile in questa fase (stesso limite dichiarato di
+	// HandleDefineName/HandleDeleteName, che non chiamano mai
+	// SaveUndoState nemmeno loro).
+	void HandleDefineScenario(const char* name, const char* rangeText,
+		const char* valuesText, const char* comment);
+	void HandleDeleteScenario(const char* name);
+	void HandleShowScenario(const char* name);
 	// Finestra di controllo (Formula auditing views): vedi il commento
 	// su fWatchWindow piu' sotto. ShowWatchWindow crea/mostra la
 	// finestra (senza aggiungere celle); AddSelectionToWatchWindow
@@ -729,6 +752,7 @@ private:
 	ValidationWindow* fValidationWindow;
 	ConditionalFormatWindow* fConditionalFormatWindow;
 	WhatIfWindow* fWhatIfWindow;
+	ScenarioWindow* fScenarioWindow;
 	// Password VERA di protezione foglio (Path to full Excel parity):
 	// fPasswordTargetSheetIndex cattura QUALE foglio era attivo quando la
 	// finestra e' stata mostrata, non riletto da fActiveSheetIndex al
@@ -766,6 +790,14 @@ private:
 	// risincronizzata con fSheets[fActiveSheetIndex].slicers agli stessi
 	// punti (apertura/cambio foglio/salvataggio).
 	std::vector<SlicerObject> fSlicers;
+	// Scenari (Tier 4, vedi Scenario.h): stesso principio esatto di
+	// fCharts/fSlicers sopra (copia di lavoro del foglio attivo,
+	// risincronizzata agli stessi punti), ma NESSUNA controparte in
+	// SheetView -- uno scenario non ha presenza sul foglio (nessun
+	// frame, non si disegna, non si trascina), quindi a differenza di
+	// fCharts/fSlicers non serve nessun SetScenarios()-stile su
+	// SheetView.
+	std::vector<Scenario> fScenarios;
 
 	// Cartella di lavoro multi-foglio (Fase 9): fSheets tiene un
 	// AscdSheet (nome + documento + grafici) per ogni foglio, in
@@ -910,6 +942,7 @@ private:
 	void HandleChartRequest(const char* rangeText, ChartType type, bool rowOriented = false);
 	void ShowNameWindow();
 	void RefreshNameWindow();
+	void RefreshScenarioWindow();
 	void ShowPasteSpecialWindow();
 	void ShowGoToWindow();
 	void ShowTabColorWindow(int index);

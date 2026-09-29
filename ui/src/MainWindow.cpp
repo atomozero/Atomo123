@@ -29,6 +29,7 @@
 #include "HyperlinkWindow.h"
 #include "ValidationWindow.h"
 #include "WhatIfWindow.h"
+#include "ScenarioWindow.h"
 #include "ConditionalFormatWindow.h"
 #include "PasswordWindow.h"
 #include "ExcelPasswordHash.h"
@@ -174,6 +175,7 @@ static const uint32 kMsgShowCommentWindow = 'shcw';
 static const uint32 kMsgShowHyperlinkWindow = 'shlw';
 static const uint32 kMsgShowValidationWindow = 'shvw';
 static const uint32 kMsgShowWhatIfWindow = 'shwi';
+static const uint32 kMsgShowScenarioWindow = 'shsc';
 static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 // Tier 4 "named table styles": "style" (int32) e' l'indice in
 // kTableStyles (TableStyles.h), oppure -1 per "Nessuno" (banda grigia
@@ -1164,6 +1166,13 @@ MainWindow::MainWindow()
 	// ApplyWhatIfDataTable.
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Tabella dati" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowWhatIfWindow)));
+	// Gestione scenari (Tier 4, l'altra meta' di "Tabella dati" -- vedi
+	// ROADMAP.md e Scenario.h): stesso posto della scheda "Dati" di
+	// Excel ("Analisi di simulazione > Gestione scenari") -- vedi
+	// MainWindow::HandleDefineScenario/HandleDeleteScenario/
+	// HandleShowScenario.
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Gestione scenari" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgShowScenarioWindow)));
 	dataMenu->AddSeparatorItem();
 	// Filtro automatico (revisione dei menu: prima non esisteva NESSUN
 	// comando per attivarlo su un foglio nativo/nuovo -- SetAutoFilter
@@ -1484,6 +1493,7 @@ MainWindow::MainWindow()
 	fHyperlinkWindow = NULL;
 	fValidationWindow = NULL;
 	fWhatIfWindow = NULL;
+	fScenarioWindow = NULL;
 	fConditionalFormatWindow = NULL;
 	fPasswordWindow = NULL;
 	fPasswordTargetSheetIndex = -1;
@@ -1588,6 +1598,11 @@ MainWindow::~MainWindow()
 	{
 		fPageSetupWindow->Lock();
 		fPageSetupWindow->Quit();
+	}
+	if (fScenarioWindow)
+	{
+		fScenarioWindow->Lock();
+		fScenarioWindow->Quit();
 	}
 	// fDoc e' sempre lo stesso puntatore di fSheets[fActiveSheetIndex]
 	// .doc (mai un CContainer a parte): rilasciare solo fDoc
@@ -1770,6 +1785,7 @@ void MainWindow::SwitchToSheet(int index)
 	fSheets[fActiveSheetIndex].charts = fCharts;
 	fSheets[fActiveSheetIndex].images = fImages;
 	fSheets[fActiveSheetIndex].slicers = fSlicers;
+	fSheets[fActiveSheetIndex].scenarios = fScenarios;
 	fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 	fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 	fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
@@ -1794,6 +1810,7 @@ void MainWindow::SwitchToSheet(int index)
 	fCharts = fSheets[index].charts;
 	fImages = fSheets[index].images;
 	fSlicers = fSheets[index].slicers;
+	fScenarios = fSheets[index].scenarios;
 
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetColumnWidths(fSheets[index].colWidths);
@@ -2506,6 +2523,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fCharts = fSheets[0].charts;
 	fImages = fSheets[0].images;
 	fSlicers = fSheets[0].slicers;
+	fScenarios = fSheets[0].scenarios;
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetImages(&fImages);
@@ -2796,6 +2814,7 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	fCharts = fSheets[0].charts;
 	fImages = fSheets[0].images;
 	fSlicers = fSheets[0].slicers;
+	fScenarios = fSheets[0].scenarios;
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetImages(&fImages);
@@ -3007,6 +3026,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		fSheets[fActiveSheetIndex].charts = fCharts;
 		fSheets[fActiveSheetIndex].images = fImages;
 		fSheets[fActiveSheetIndex].slicers = fSlicers;
+		fSheets[fActiveSheetIndex].scenarios = fScenarios;
 		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
@@ -3207,6 +3227,7 @@ void MainWindow::AutoSaveBackup()
 		fSheets[fActiveSheetIndex].charts = fCharts;
 		fSheets[fActiveSheetIndex].images = fImages;
 		fSheets[fActiveSheetIndex].slicers = fSlicers;
+		fSheets[fActiveSheetIndex].scenarios = fScenarios;
 		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
@@ -3791,6 +3812,21 @@ void MainWindow::RefreshNameWindow()
 	{
 		fNameWindow->SetNames(names, ranges);
 		fNameWindow->Unlock();
+	}
+}
+
+// Gestione scenari (Tier 4): stesso schema esatto di RefreshNameWindow
+// sopra, ma senza nessuna trasformazione da fare (fScenarios e' gia'
+// nella forma che SetScenarios si aspetta) -- niente da leggere da un
+// CNameTable, e' gia' un semplice vettore.
+void MainWindow::RefreshScenarioWindow()
+{
+	if (!fScenarioWindow)
+		return;
+	if (fScenarioWindow->Lock())
+	{
+		fScenarioWindow->SetScenarios(fScenarios);
+		fScenarioWindow->Unlock();
 	}
 }
 
@@ -5661,6 +5697,130 @@ void MainWindow::HandleGoToName(const char* name)
 	{
 		// Nome non definito: nessuno spostamento, nessun crash.
 	}
+}
+
+void MainWindow::HandleDefineScenario(const char* name, const char* rangeText,
+	const char* valuesText, const char* comment)
+{
+	if (!fDoc || !name || name[0] == '\0')
+		return;
+
+	range changingCells;
+	if (!ParseRangeRef(rangeText, changingCells))
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Intervallo delle celle variabili non valido."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	// Un valore per riga di testo, stesso ordine per righe
+	// dell'intervallo -- split manuale su '\n' (BTextView non lo fa da
+	// solo), righe vuote in coda scartate.
+	std::vector<BString> values;
+	BString remaining(valuesText);
+	int32 pos;
+	while ((pos = remaining.FindFirst('\n')) >= 0)
+	{
+		BString line;
+		remaining.CopyInto(line, 0, pos);
+		values.push_back(line);
+		remaining.Remove(0, pos + 1);
+	}
+	if (remaining.Length() > 0)
+		values.push_back(remaining);
+
+	int cellCount = (changingCells.right - changingCells.left + 1)
+		* (changingCells.bottom - changingCells.top + 1);
+	if ((int)values.size() != cellCount)
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Errore"),
+			B_TRANSLATE("Il numero di valori non corrisponde al numero di celle "
+				"nell'intervallo."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	Scenario s;
+	s.name = name;
+	s.changingCells = changingCells;
+	s.values = values;
+	s.comment = comment ? comment : "";
+
+	// Un nome gia' esistente aggiorna lo scenario al suo posto (stesso
+	// principio di "Aggiungi/Aggiorna" in NameWindow), non ne aggiunge
+	// un secondo con lo stesso nome.
+	bool replaced = false;
+	for (size_t i = 0; i < fScenarios.size(); i++)
+	{
+		if (fScenarios[i].name == name)
+		{
+			fScenarios[i] = s;
+			replaced = true;
+			break;
+		}
+	}
+	if (!replaced)
+		fScenarios.push_back(s);
+
+	MarkModified();
+	RefreshScenarioWindow();
+}
+
+void MainWindow::HandleDeleteScenario(const char* name)
+{
+	if (!name || !name[0])
+		return;
+	for (size_t i = 0; i < fScenarios.size(); i++)
+	{
+		if (fScenarios[i].name == name)
+		{
+			fScenarios.erase(fScenarios.begin() + i);
+			MarkModified();
+			break;
+		}
+	}
+	RefreshScenarioWindow();
+}
+
+// "Mostra scenario": scrive VERAMENTE i valori memorizzati nelle celle
+// variabili e ricalcola -- a differenza di ApplyWhatIfDataTable, questa
+// e' una mutazione PERMANENTE (annullabile con Annulla, non
+// auto-ripristinata alla fine): e' esattamente il punto dello scenario,
+// l'utente vede le formule del foglio aggiornarsi con questi valori
+// finche' non sceglie di mostrarne un altro o annulla.
+void MainWindow::HandleShowScenario(const char* name)
+{
+	if (!fDoc || !name || !name[0])
+		return;
+
+	const Scenario* found = NULL;
+	for (size_t i = 0; i < fScenarios.size(); i++)
+	{
+		if (fScenarios[i].name == name)
+		{
+			found = &fScenarios[i];
+			break;
+		}
+	}
+	if (!found)
+		return;
+
+	fSheetView->SaveUndoState(found->changingCells);
+
+	int index = 0;
+	for (int row = found->changingCells.top; row <= found->changingCells.bottom; row++)
+	{
+		for (int col = found->changingCells.left; col <= found->changingCells.right; col++)
+		{
+			TryToParseString(found->values[index].String(), cell(col, row), fDoc, false);
+			index++;
+		}
+	}
+
+	RecalculateActiveWorkbook();
+	fSheetView->Invalidate();
+	MarkModified();
 }
 
 // Legge l'intervallo dati richiesto da ChartWindow e manda indietro i
@@ -8233,6 +8393,63 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindString("rowInput", &rowInput);
 			message->FindString("colInput", &colInput);
 			ApplyWhatIfDataTable(rowInput.String(), colInput.String());
+			break;
+		}
+
+		case kMsgShowScenarioWindow:
+			if (!fScenarioWindow)
+				fScenarioWindow = new ScenarioWindow(BMessenger(this));
+			if (fScenarioWindow->Lock())
+			{
+				fScenarioWindow->SetScenarios(fScenarios);
+				fScenarioWindow->Unlock();
+			}
+			if (fScenarioWindow->IsHidden())
+				fScenarioWindow->Show();
+			fScenarioWindow->Activate();
+			break;
+
+		case kMsgDefineScenario:
+		{
+			BString name, rangeText, valuesText, comment;
+			message->FindString("name", &name);
+			message->FindString("range", &rangeText);
+			message->FindString("values", &valuesText);
+			message->FindString("comment", &comment);
+			HandleDefineScenario(name.String(), rangeText.String(),
+				valuesText.String(), comment.String());
+			break;
+		}
+
+		case kMsgDeleteScenario:
+		{
+			BString name;
+			if (message->FindString("name", &name) == B_OK)
+				HandleDeleteScenario(name.String());
+			break;
+		}
+
+		case kMsgShowScenario:
+		{
+			BString name;
+			if (message->FindString("name", &name) == B_OK)
+				HandleShowScenario(name.String());
+			break;
+		}
+
+		case kMsgScenarioRangePickRequest:
+		{
+			// Stesso relay esatto di kMsgChartRangePickRequest piu' sotto,
+			// ma con una coppia di costanti PARALLELA (vedi il commento in
+			// ScenarioWindow.h sul perche').
+			bool start = true;
+			message->FindBool("start", &start);
+			BMessenger replyTo;
+			message->FindMessenger("replyTo", &replyTo);
+			if (start && replyTo.IsValid())
+				fSheetView->StartRangePicker(replyTo, kMsgScenarioRangePicked);
+			else
+				fSheetView->CancelRangePicker();
 			break;
 		}
 
