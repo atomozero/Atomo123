@@ -586,4 +586,16 @@ struct MovingAveragePoint {
 void ComputeMovingAverageTrendline(const std::vector<double>& ys, int period,
 	std::vector<MovingAveragePoint>& out);
 
+// Semiampiezza della barra d'errore per il valore "value" secondo
+// "mode" (Fase 7, barre d'errore): eFixedErrorBars restituisce
+// "magnitude" cosi' com'e' (un valore assoluto costante per ogni punto
+// della serie), ePercentErrorBars restituisce fabs(value) * magnitude
+// / 100 (magnitude e' una percentuale 0..100, vedi
+// ChartSeriesOptions::errorBarValue) -- sempre un numero non negativo,
+// anche per un "value" negativo, cosi' il chiamante non deve gestire
+// il segno separatamente. eNoErrorBars non e' un caso valido qui: il
+// chiamante (DrawSeriesErrorBars in Chart.cpp) non chiama mai questa
+// funzione per una serie senza barre d'errore.
+double ComputeErrorBarMagnitude(double value, ErrorBarMode mode, double magnitude);
+
 #endif

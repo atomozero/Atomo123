@@ -1573,6 +1573,13 @@ void ComputeMovingAverageTrendline(const std::vector<double>& ys, int period,
 	}
 }
 
+double ComputeErrorBarMagnitude(double value, ErrorBarMode mode, double magnitude)
+{
+	if (mode == ePercentErrorBars)
+		return fabs(value) * magnitude / 100.0;
+	return fabs(magnitude);
+}
+
 static void MultiChartValueRange(const MultiChartData& data, double* outMin, double* outMax)
 {
 	double minValue = 0, maxValue = 0;
@@ -1796,6 +1803,52 @@ static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
 	}
 }
 
+// Disegna le barre d'errore di ogni serie che le richiede
+// (ChartSeriesOptions::errorBarMode, Fase 7) -- una "I" per punto
+// (linea verticale + due tacche orizzontali corte), colore della serie
+// A PIENA opacita' (a differenza della linea di tendenza sotto, che usa
+// alpha ridotto: qui e' un'annotazione di accuratezza del dato, deve
+// restare netta, non decorativa). L'altezza in pixel viene da
+// ChartValueToY applicata sia a "value" sia a "value + magnitude", cosi'
+// la barra si scala correttamente qualunque sia il segno/l'ordine di
+// grandezza della serie invece di un valore in pixel fisso. Stessa X di
+// centro-slot di DrawSeriesTrendlines sotto (e stesso motivo: un'unica
+// geometria uniforme per tutti e quattro i tipi di grafico a piu' serie,
+// niente calcolo separato per barra/linea). Chiamata SEMPRE prima di
+// DrawSeriesTrendlines nelle quattro funzioni di disegno sotto, cosi'
+// una linea di tendenza non finisce mai nascosta sotto una tacca di
+// barra d'errore.
+static void DrawSeriesErrorBars(BView* view, BRect bounds, const MultiChartData& data,
+	double minValue, double maxValue)
+{
+	size_t catCount = data.categories.size();
+	if (catCount == 0)
+		return;
+	float slotWidth = bounds.Width() / catCount;
+	const float kCapHalfWidth = 4;
+
+	for (size_t s = 0; s < data.values.size(); s++)
+	{
+		ChartSeriesOptions opts = SeriesOptions(data.seriesOptions, s);
+		if (opts.errorBarMode == eNoErrorBars)
+			continue;
+
+		view->SetHighColor(SeriesColor(data.seriesColors, s));
+
+		for (size_t c = 0; c < data.values[s].size() && c < catCount; c++)
+		{
+			double value = data.values[s][c];
+			double magnitude = ComputeErrorBarMagnitude(value, opts.errorBarMode, opts.errorBarValue);
+			float x = bounds.left + c * slotWidth + slotWidth / 2;
+			float yTop = ChartValueToY(value + magnitude, minValue, maxValue, bounds);
+			float yBottom = ChartValueToY(value - magnitude, minValue, maxValue, bounds);
+			view->StrokeLine(BPoint(x, yTop), BPoint(x, yBottom));
+			view->StrokeLine(BPoint(x - kCapHalfWidth, yTop), BPoint(x + kCapHalfWidth, yTop));
+			view->StrokeLine(BPoint(x - kCapHalfWidth, yBottom), BPoint(x + kCapHalfWidth, yBottom));
+		}
+	}
+}
+
 // Disegna la linea di tendenza di ogni serie che la richiede
 // (ChartSeriesOptions::trendlineType, Fase 7) -- stesso colore della
 // serie ma con alpha ridotto (~160/255), stessa convenzione di
@@ -1925,6 +1978,7 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 		}
 	}
 
+	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue);
 	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
@@ -2096,6 +2150,7 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 		}
 	}
 
+	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue);
 	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
@@ -2179,6 +2234,7 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, co
 		}
 	}
 
+	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue);
 	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
@@ -2304,6 +2360,7 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 		}
 	}
 
+	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue);
 	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }

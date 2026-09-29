@@ -11,12 +11,10 @@
 	finestra, che si occupa solo delle due configurazioni troppo
 	ingombranti per stare in riga: linea di tendenza e barre d'errore.
 
-	Tiene un ChartSeriesOptions COMPLETO in memoria (fOptions): questa
-	fase (7b) espone solo i controlli per la linea di tendenza, la fase
-	successiva (7c, barre d'errore) aggiunge altri controlli SENZA
-	riscrivere questa finestra -- Applica manda sempre l'intero struct
-	indietro, coi campi non ancora esposti qui semplicemente invariati
-	rispetto a quello che SetOptions ha ricevuto.
+	Tiene un ChartSeriesOptions COMPLETO in memoria (fOptions): la fase
+	7b ha aggiunto i controlli per la linea di tendenza, questa fase
+	(7c) aggiunge quelli per le barre d'errore SENZA riscrivere la
+	finestra -- Applica manda sempre l'intero struct indietro.
 
 	Stessa regola sui thread di FindWindow (vedi FindWindow.h): non
 	tocca mai il documento direttamente, manda la richiesta a
@@ -63,6 +61,13 @@ private:
 	// (non nascosto: la finestra non deve "saltare" dimensione a ogni
 	// cambio di tipo) altrimenti.
 	void UpdatePeriodEnabled();
+	// Il campo valore ha senso solo con una modalita' scelta (non
+	// "Nessuna") -- stessa disabilitazione di UpdatePeriodEnabled, e
+	// l'etichetta cambia fra "Valore:" e "Percentuale (%):" a seconda
+	// della modalita' (nessun precedente di etichetta dinamica in questo
+	// progetto: una semplice SetLabel() qui basta, non serve una nuova
+	// astrazione).
+	void UpdateErrorBarValueField();
 
 	BMessenger fTarget;
 	int fSeriesIndex;
@@ -70,6 +75,8 @@ private:
 
 	BMenuField* fTrendlineTypeField;
 	BTextControl* fTrendlinePeriodField;
+	BMenuField* fErrorBarModeField;
+	BTextControl* fErrorBarValueField;
 };
 
 #endif

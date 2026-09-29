@@ -25,6 +25,7 @@
 
 static const uint32 kMsgApplyLocal = 'sapl';
 static const uint32 kMsgTrendlineTypeChangedLocal = 'strl';
+static const uint32 kMsgErrorBarModeChangedLocal = 'sebl';
 
 ChartSeriesOptionsWindow::ChartSeriesOptionsWindow(BMessenger target)
 	:
@@ -52,6 +53,23 @@ ChartSeriesOptionsWindow::ChartSeriesOptionsWindow(BMessenger target)
 	fTrendlinePeriodField = new BTextControl("trendlinePeriod",
 		B_TRANSLATE("Punti media mobile:"), "2", NULL);
 
+	BPopUpMenu* errorBarMenu = new BPopUpMenu("errorBarMode");
+	errorBarMenu->AddItem(new BMenuItem(B_TRANSLATE("Nessuna"),
+		new BMessage(kMsgErrorBarModeChangedLocal)));
+	errorBarMenu->AddItem(new BMenuItem(B_TRANSLATE("Valore fisso"),
+		new BMessage(kMsgErrorBarModeChangedLocal)));
+	errorBarMenu->AddItem(new BMenuItem(B_TRANSLATE("Percentuale"),
+		new BMessage(kMsgErrorBarModeChangedLocal)));
+	errorBarMenu->ItemAt(0)->SetMarked(true);
+	errorBarMenu->SetTargetForItems(this);
+	fErrorBarModeField = new BMenuField("errorBarMode",
+		B_TRANSLATE("Barre d'errore:"), errorBarMenu);
+
+	// Etichetta/contenuto iniziale sovrascritti da UpdateErrorBarValueField
+	// sotto (chiamata a fine costruttore) -- "0" e' il valore di default
+	// di ChartSeriesOptions().
+	fErrorBarValueField = new BTextControl("errorBarValue", B_TRANSLATE("Valore:"), "0", NULL);
+
 	BButton* applyButton = new BButton("apply", B_TRANSLATE("Applica"),
 		new BMessage(kMsgApplyLocal));
 	applyButton->SetTarget(this);
@@ -61,15 +79,15 @@ ChartSeriesOptionsWindow::ChartSeriesOptionsWindow(BMessenger target)
 		.SetInsets(8, 8, 8, 8)
 		.Add(fTrendlineTypeField)
 		.Add(fTrendlinePeriodField)
-		// Le fasi successive (7c, barre d'errore) aggiungono qui altri
-		// controlli, sotto quelli della linea di tendenza -- stessa
-		// finestra, nessuna riscrittura del layout esistente sopra.
+		.Add(fErrorBarModeField)
+		.Add(fErrorBarValueField)
 		.AddGroup(B_HORIZONTAL)
 			.AddGlue()
 			.Add(applyButton)
 		.End();
 
 	UpdatePeriodEnabled();
+	UpdateErrorBarValueField();
 }
 
 void ChartSeriesOptionsWindow::SetOptions(const ChartSeriesOptions& options)
@@ -82,11 +100,27 @@ void ChartSeriesOptionsWindow::SetOptions(const ChartSeriesOptions& options)
 	periodText << fOptions.trendlinePeriod;
 	fTrendlinePeriodField->SetText(periodText.String());
 	UpdatePeriodEnabled();
+
+	BMenuItem* errorItem = fErrorBarModeField->Menu()->ItemAt((int32)fOptions.errorBarMode);
+	if (errorItem)
+		errorItem->SetMarked(true);
+	BString valueText;
+	valueText << fOptions.errorBarValue;
+	fErrorBarValueField->SetText(valueText.String());
+	UpdateErrorBarValueField();
 }
 
 void ChartSeriesOptionsWindow::UpdatePeriodEnabled()
 {
 	fTrendlinePeriodField->SetEnabled(fOptions.trendlineType == eMovingAverageTrendline);
+}
+
+void ChartSeriesOptionsWindow::UpdateErrorBarValueField()
+{
+	bool enabled = fOptions.errorBarMode != eNoErrorBars;
+	fErrorBarValueField->SetEnabled(enabled);
+	fErrorBarValueField->SetLabel(fOptions.errorBarMode == ePercentErrorBars
+		? B_TRANSLATE("Percentuale (%):") : B_TRANSLATE("Valore:"));
 }
 
 void ChartSeriesOptionsWindow::MessageReceived(BMessage* message)
@@ -103,12 +137,23 @@ void ChartSeriesOptionsWindow::MessageReceived(BMessage* message)
 			return;
 		}
 
+		case kMsgErrorBarModeChangedLocal:
+		{
+			int32 index = fErrorBarModeField->Menu()->IndexOf(
+				fErrorBarModeField->Menu()->FindMarked());
+			if (index >= 0)
+				fOptions.errorBarMode = (ErrorBarMode)index;
+			UpdateErrorBarValueField();
+			return;
+		}
+
 		case kMsgApplyLocal:
 		{
 			int period = atoi(fTrendlinePeriodField->Text());
 			if (period < 1)
 				period = 1;
 			fOptions.trendlinePeriod = period;
+			fOptions.errorBarValue = atof(fErrorBarValueField->Text());
 
 			BMessage request(kMsgSeriesOptionsRequest);
 			request.AddInt32("index", fSeriesIndex);
