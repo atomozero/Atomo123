@@ -482,6 +482,18 @@ void DrawYAxisGrid(BView* view, BRect plotArea, double minValue, double maxValue
 	}
 }
 
+void DrawSecondaryYAxisLabels(BView* view, BRect plotArea, double minValue, double maxValue)
+{
+	std::vector<AxisTick> ticks;
+	ComputeYAxisTicks(minValue, maxValue, plotArea, ticks);
+
+	// Nessuna griglia orizzontale qui apposta (vedi il commento in
+	// Chart.h): solo le etichette, a destra invece che a sinistra.
+	view->SetHighColor(90, 90, 90);
+	for (size_t i = 0; i < ticks.size(); i++)
+		view->DrawString(ticks[i].label.String(), BPoint(plotArea.right + 6, ticks[i].y + 4));
+}
+
 void ComputeBarLayout(const std::vector<ChartSeries>& data, BRect bounds,
 	std::vector<BarLayout>& out)
 {
@@ -1580,23 +1592,58 @@ double ComputeErrorBarMagnitude(double value, ErrorBarMode mode, double magnitud
 	return fabs(magnitude);
 }
 
-static void MultiChartValueRange(const MultiChartData& data, double* outMin, double* outMax)
+void MultiChartValueRanges(const MultiChartData& data,
+	double* outPrimaryMin, double* outPrimaryMax,
+	double* outSecondaryMin, double* outSecondaryMax, bool* outHasSecondary)
 {
-	double minValue = 0, maxValue = 0;
+	double primaryMin = 0, primaryMax = 0;
+	double secondaryMin = 0, secondaryMax = 0;
+	bool hasSecondary = false;
 	for (size_t s = 0; s < data.values.size(); s++)
 	{
+		bool secondary = SeriesOptions(data.seriesOptions, s).secondaryAxis;
+		if (secondary)
+			hasSecondary = true;
+		double& lo = secondary ? secondaryMin : primaryMin;
+		double& hi = secondary ? secondaryMax : primaryMax;
 		for (size_t c = 0; c < data.values[s].size(); c++)
 		{
-			if (data.values[s][c] < minValue)
-				minValue = data.values[s][c];
-			if (data.values[s][c] > maxValue)
-				maxValue = data.values[s][c];
+			if (data.values[s][c] < lo)
+				lo = data.values[s][c];
+			if (data.values[s][c] > hi)
+				hi = data.values[s][c];
 		}
 	}
-	if (minValue == maxValue)
-		maxValue = minValue + 1;
-	*outMin = minValue;
-	*outMax = maxValue;
+	if (primaryMin == primaryMax)
+		primaryMax = primaryMin + 1;
+	if (hasSecondary && secondaryMin == secondaryMax)
+		secondaryMax = secondaryMin + 1;
+	*outPrimaryMin = primaryMin;
+	*outPrimaryMax = primaryMax;
+	*outSecondaryMin = secondaryMin;
+	*outSecondaryMax = secondaryMax;
+	*outHasSecondary = hasSecondary;
+}
+
+// Intervallo di valori da usare per la serie "s": quello secondario se
+// ChartSeriesOptions::secondaryAxis e' vero per quella serie, altrimenti
+// il primario -- unico punto che ogni funzione di layout/disegno a piu'
+// serie sotto consulta per sapere su quale scala posizionare la serie
+// "s" (vedi MultiChartValueRanges sopra).
+static void SeriesValueRange(const MultiChartData& data, size_t s,
+	double primaryMin, double primaryMax, double secondaryMin, double secondaryMax,
+	double* outMin, double* outMax)
+{
+	if (SeriesOptions(data.seriesOptions, s).secondaryAxis)
+	{
+		*outMin = secondaryMin;
+		*outMax = secondaryMax;
+	}
+	else
+	{
+		*outMin = primaryMin;
+		*outMax = primaryMax;
+	}
 }
 
 void ComputeGroupedBarLayout(const MultiChartData& data, BRect bounds, GroupedBarLayout& out)
@@ -1607,9 +1654,9 @@ void ComputeGroupedBarLayout(const MultiChartData& data, BRect bounds, GroupedBa
 	if (seriesCount == 0 || catCount == 0)
 		return;
 
-	double minValue, maxValue;
-	MultiChartValueRange(data, &minValue, &maxValue);
-	float zeroY = ChartValueToY(0.0, minValue, maxValue, bounds);
+	double primaryMin, primaryMax, secondaryMin, secondaryMax;
+	bool hasSecondary;
+	MultiChartValueRanges(data, &primaryMin, &primaryMax, &secondaryMin, &secondaryMax, &hasSecondary);
 
 	float slotWidth = bounds.Width() / catCount;
 	float slotGap = slotWidth * 0.15f;
@@ -1621,13 +1668,16 @@ void ComputeGroupedBarLayout(const MultiChartData& data, BRect bounds, GroupedBa
 	out.bars.resize(seriesCount);
 	for (size_t s = 0; s < seriesCount; s++)
 	{
+		double lo, hi;
+		SeriesValueRange(data, s, primaryMin, primaryMax, secondaryMin, secondaryMax, &lo, &hi);
+		float zeroY = ChartValueToY(0.0, lo, hi, bounds);
 		out.bars[s].resize(catCount);
 		for (size_t c = 0; c < catCount; c++)
 		{
 			float groupLeft = bounds.left + c * slotWidth + slotGap / 2;
 			float left = groupLeft + s * barWidth;
 			float right = left + barWidth;
-			float valueY = ChartValueToY(data.values[s][c], minValue, maxValue, bounds);
+			float valueY = ChartValueToY(data.values[s][c], lo, hi, bounds);
 			out.bars[s][c].Set(left, std::min(valueY, zeroY), right, std::max(valueY, zeroY));
 		}
 	}
@@ -1646,9 +1696,9 @@ void ComputeGroupedHBarLayout(const MultiChartData& data, BRect bounds, GroupedH
 	if (seriesCount == 0 || catCount == 0)
 		return;
 
-	double minValue, maxValue;
-	MultiChartValueRange(data, &minValue, &maxValue);
-	float zeroX = ChartValueToX(0.0, minValue, maxValue, bounds);
+	double primaryMin, primaryMax, secondaryMin, secondaryMax;
+	bool hasSecondary;
+	MultiChartValueRanges(data, &primaryMin, &primaryMax, &secondaryMin, &secondaryMax, &hasSecondary);
 
 	float slotHeight = bounds.Height() / catCount;
 	float slotGap = slotHeight * 0.15f;
@@ -1660,13 +1710,16 @@ void ComputeGroupedHBarLayout(const MultiChartData& data, BRect bounds, GroupedH
 	out.bars.resize(seriesCount);
 	for (size_t s = 0; s < seriesCount; s++)
 	{
+		double lo, hi;
+		SeriesValueRange(data, s, primaryMin, primaryMax, secondaryMin, secondaryMax, &lo, &hi);
+		float zeroX = ChartValueToX(0.0, lo, hi, bounds);
 		out.bars[s].resize(catCount);
 		for (size_t c = 0; c < catCount; c++)
 		{
 			float groupTop = bounds.top + c * slotHeight + slotGap / 2;
 			float top = groupTop + s * barHeight;
 			float bottom = top + barHeight;
-			float valueX = ChartValueToX(data.values[s][c], minValue, maxValue, bounds);
+			float valueX = ChartValueToX(data.values[s][c], lo, hi, bounds);
 			out.bars[s][c].Set(std::min(valueX, zeroX), top, std::max(valueX, zeroX), bottom);
 		}
 	}
@@ -1680,18 +1733,21 @@ void ComputeMultiLineLayout(const MultiChartData& data, BRect bounds, MultiLineP
 	if (seriesCount == 0 || catCount == 0)
 		return;
 
-	double minValue, maxValue;
-	MultiChartValueRange(data, &minValue, &maxValue);
+	double primaryMin, primaryMax, secondaryMin, secondaryMax;
+	bool hasSecondary;
+	MultiChartValueRanges(data, &primaryMin, &primaryMax, &secondaryMin, &secondaryMax, &hasSecondary);
 	float slotWidth = bounds.Width() / catCount;
 
 	out.points.resize(seriesCount);
 	for (size_t s = 0; s < seriesCount; s++)
 	{
+		double lo, hi;
+		SeriesValueRange(data, s, primaryMin, primaryMax, secondaryMin, secondaryMax, &lo, &hi);
 		out.points[s].resize(catCount);
 		for (size_t c = 0; c < catCount; c++)
 		{
 			float x = bounds.left + c * slotWidth + slotWidth / 2;
-			float y = ChartValueToY(data.values[s][c], minValue, maxValue, bounds);
+			float y = ChartValueToY(data.values[s][c], lo, hi, bounds);
 			out.points[s][c].Set(x, y);
 		}
 	}
@@ -1716,7 +1772,7 @@ static bool SeriesShowsValues(const MultiChartData& data, size_t s)
 
 static void PrepareMultiSeriesPlotArea(BView* view, BRect frame, const MultiChartData& data,
 	const BString& title, BRect* outPlotArea, double* outMinValue, double* outMaxValue,
-	float* outCategoryLabelY)
+	float* outCategoryLabelY, double* outSecondaryMin, double* outSecondaryMax, bool* outHasSecondary)
 {
 	float legendWidth = 110;
 	BRect plotArea = frame;
@@ -1726,8 +1782,18 @@ static void PrepareMultiSeriesPlotArea(BView* view, BRect frame, const MultiChar
 		plotArea.top += 18;
 	plotArea.right -= legendWidth;
 
-	double minValue, maxValue;
-	MultiChartValueRange(data, &minValue, &maxValue);
+	double minValue, maxValue, secondaryMin, secondaryMax;
+	bool hasSecondary;
+	MultiChartValueRanges(data, &minValue, &maxValue, &secondaryMin, &secondaryMax, &hasSecondary);
+
+	// Margine destro aggiuntivo per le etichette dell'asse secondario
+	// (Fase 7, "asse secondario"), riservato PRIMA del margine sinistro
+	// sotto -- stessa idea della striscia di legenda sopra, ma solo
+	// quando serve davvero (hasSecondary): zero cambio per ogni grafico
+	// esistente. Vedi DrawSecondaryYAxisLabels in Chart.h.
+	const float kSecondaryAxisWidth = 50;
+	if (hasSecondary)
+		plotArea.right -= kSecondaryAxisWidth;
 
 	// Spazio per le etichette di categoria sotto, fino a
 	// kCategoryLabelMaxLines righe -- vedi il commento gemello in
@@ -1740,9 +1806,12 @@ static void PrepareMultiSeriesPlotArea(BView* view, BRect frame, const MultiChar
 	// PRIMA di ogni restrizione aggiuntiva sotto), stessa correzione
 	// di DrawBarChart/DrawLineChart -- vedi il commento gemello li'
 	// per il bug che questo evita (etichetta valore negativo
-	// sovrapposta alla riga di categoria).
+	// sovrapposta alla riga di categoria). Controlla anche l'intervallo
+	// secondario (Fase 7): una serie secondaria con valori negativi ha
+	// bisogno dello stesso spazio in piu', anche se il primario resta
+	// tutto positivo.
 	float categoryLabelY = plotArea.bottom + 12;
-	if (minValue < 0)
+	if (minValue < 0 || (hasSecondary && secondaryMin < 0))
 		plotArea.bottom -= 14;
 
 	std::vector<AxisTick> ticks;
@@ -1760,6 +1829,9 @@ static void PrepareMultiSeriesPlotArea(BView* view, BRect frame, const MultiChar
 	*outMinValue = minValue;
 	*outMaxValue = maxValue;
 	*outCategoryLabelY = categoryLabelY;
+	*outSecondaryMin = secondaryMin;
+	*outSecondaryMax = secondaryMax;
+	*outHasSecondary = hasSecondary;
 }
 
 // Bordo, linea di zero, etichette di categoria e legenda per serie --
@@ -1819,7 +1891,7 @@ static void DrawMultiSeriesFooter(BView* view, BRect frame, BRect plotArea,
 // una linea di tendenza non finisce mai nascosta sotto una tacca di
 // barra d'errore.
 static void DrawSeriesErrorBars(BView* view, BRect bounds, const MultiChartData& data,
-	double minValue, double maxValue)
+	double primaryMin, double primaryMax, double secondaryMin, double secondaryMax)
 {
 	size_t catCount = data.categories.size();
 	if (catCount == 0)
@@ -1833,6 +1905,8 @@ static void DrawSeriesErrorBars(BView* view, BRect bounds, const MultiChartData&
 		if (opts.errorBarMode == eNoErrorBars)
 			continue;
 
+		double lo, hi;
+		SeriesValueRange(data, s, primaryMin, primaryMax, secondaryMin, secondaryMax, &lo, &hi);
 		view->SetHighColor(SeriesColor(data.seriesColors, s));
 
 		for (size_t c = 0; c < data.values[s].size() && c < catCount; c++)
@@ -1840,8 +1914,8 @@ static void DrawSeriesErrorBars(BView* view, BRect bounds, const MultiChartData&
 			double value = data.values[s][c];
 			double magnitude = ComputeErrorBarMagnitude(value, opts.errorBarMode, opts.errorBarValue);
 			float x = bounds.left + c * slotWidth + slotWidth / 2;
-			float yTop = ChartValueToY(value + magnitude, minValue, maxValue, bounds);
-			float yBottom = ChartValueToY(value - magnitude, minValue, maxValue, bounds);
+			float yTop = ChartValueToY(value + magnitude, lo, hi, bounds);
+			float yBottom = ChartValueToY(value - magnitude, lo, hi, bounds);
 			view->StrokeLine(BPoint(x, yTop), BPoint(x, yBottom));
 			view->StrokeLine(BPoint(x - kCapHalfWidth, yTop), BPoint(x + kCapHalfWidth, yTop));
 			view->StrokeLine(BPoint(x - kCapHalfWidth, yBottom), BPoint(x + kCapHalfWidth, yBottom));
@@ -1863,7 +1937,7 @@ static void DrawSeriesErrorBars(BView* view, BRect bounds, const MultiChartData&
 // serie sotto (grafici a singola serie/dispersione restano fuori
 // scopo, non hanno la riga "Opzioni..." nell'editor).
 static void DrawSeriesTrendlines(BView* view, BRect bounds, const MultiChartData& data,
-	double minValue, double maxValue)
+	double primaryMin, double primaryMax, double secondaryMin, double secondaryMax)
 {
 	size_t catCount = data.categories.size();
 	if (catCount == 0)
@@ -1875,6 +1949,9 @@ static void DrawSeriesTrendlines(BView* view, BRect bounds, const MultiChartData
 		ChartSeriesOptions opts = SeriesOptions(data.seriesOptions, s);
 		if (opts.trendlineType == eNoTrendline)
 			continue;
+
+		double lo, hi;
+		SeriesValueRange(data, s, primaryMin, primaryMax, secondaryMin, secondaryMax, &lo, &hi);
 
 		rgb_color color = SeriesColor(data.seriesColors, s);
 		color.alpha = 160;
@@ -1894,8 +1971,8 @@ static void DrawSeriesTrendlines(BView* view, BRect bounds, const MultiChartData
 				double y1 = slope * (catCount - 1) + intercept;
 				float x0 = bounds.left + slotWidth / 2;
 				float x1 = bounds.left + (catCount - 1) * slotWidth + slotWidth / 2;
-				view->StrokeLine(BPoint(x0, ChartValueToY(y0, minValue, maxValue, bounds)),
-					BPoint(x1, ChartValueToY(y1, minValue, maxValue, bounds)));
+				view->StrokeLine(BPoint(x0, ChartValueToY(y0, lo, hi, bounds)),
+					BPoint(x1, ChartValueToY(y1, lo, hi, bounds)));
 			}
 		}
 		else if (opts.trendlineType == eMovingAverageTrendline)
@@ -1912,7 +1989,7 @@ static void DrawSeriesTrendlines(BView* view, BRect bounds, const MultiChartData
 					continue;
 				}
 				float x = bounds.left + c * slotWidth + slotWidth / 2;
-				BPoint p(x, ChartValueToY(avg[c].value, minValue, maxValue, bounds));
+				BPoint p(x, ChartValueToY(avg[c].value, lo, hi, bounds));
 				if (havePrev)
 					view->StrokeLine(prev, p);
 				prev = p;
@@ -1938,14 +2015,18 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 	}
 
 	BRect plotArea;
-	double minValue, maxValue;
+	double minValue, maxValue, secondaryMin, secondaryMax;
+	bool hasSecondary;
 	float categoryLabelY;
-	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY);
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY,
+		&secondaryMin, &secondaryMax, &hasSecondary);
 
 	GroupedBarLayout layout;
 	ComputeGroupedBarLayout(data, plotArea, layout);
 
 	DrawYAxisGrid(view, plotArea, minValue, maxValue);
+	if (hasSecondary)
+		DrawSecondaryYAxisLabels(view, plotArea, secondaryMin, secondaryMax);
 
 	for (size_t s = 0; s < layout.bars.size(); s++)
 	{
@@ -1978,8 +2059,8 @@ void DrawGroupedBarChart(BView* view, BRect frame, const MultiChartData& data, c
 		}
 	}
 
-	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue);
-	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
+	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue, secondaryMin, secondaryMax);
+	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue, secondaryMin, secondaryMax);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
@@ -2011,8 +2092,19 @@ void DrawGroupedHBarChart(BView* view, BRect frame, const MultiChartData& data, 
 		plotArea.top += 18;
 	plotArea.right -= legendWidth;
 
-	double minValue, maxValue;
-	MultiChartValueRange(data, &minValue, &maxValue);
+	// Le barre orizzontali raggruppate restano fuori scopo per l'asse
+	// secondario VISIBILE (Fase 7): il loro asse a valori e' orizzontale
+	// (DrawXAxisGrid), non verticale, quindi non esiste un secondo asse
+	// da disegnare a destra/sinistra come per i quattro grafici verticali
+	// sopra -- stesso limite gia' dichiarato per trendline/barre
+	// d'errore, mai estesi a questo tipo. ComputeGroupedHBarLayout usa
+	// comunque l'intervallo corretto per ogni serie (vedi
+	// MultiChartValueRanges/SeriesValueRange), quindi una serie
+	// secondaria si posiziona comunque in modo sensato, solo senza una
+	// scala numerica visibile per riferimento.
+	double minValue, maxValue, secondaryMin, secondaryMax;
+	bool hasSecondary;
+	MultiChartValueRanges(data, &minValue, &maxValue, &secondaryMin, &secondaryMax, &hasSecondary);
 
 	font_height fh;
 	view->GetFontHeight(&fh);
@@ -2110,14 +2202,18 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 	}
 
 	BRect plotArea;
-	double minValue, maxValue;
+	double minValue, maxValue, secondaryMin, secondaryMax;
+	bool hasSecondary;
 	float categoryLabelY;
-	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY);
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY,
+		&secondaryMin, &secondaryMax, &hasSecondary);
 
 	MultiLinePoint layout;
 	ComputeMultiLineLayout(data, plotArea, layout);
 
 	DrawYAxisGrid(view, plotArea, minValue, maxValue);
+	if (hasSecondary)
+		DrawSecondaryYAxisLabels(view, plotArea, secondaryMin, secondaryMax);
 
 	for (size_t s = 0; s < layout.points.size(); s++)
 	{
@@ -2150,8 +2246,8 @@ void DrawMultiLineChart(BView* view, BRect frame, const MultiChartData& data, co
 		}
 	}
 
-	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue);
-	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
+	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue, secondaryMin, secondaryMax);
+	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue, secondaryMin, secondaryMax);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
@@ -2169,27 +2265,34 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, co
 	}
 
 	BRect plotArea;
-	double minValue, maxValue;
+	double minValue, maxValue, secondaryMin, secondaryMax;
+	bool hasSecondary;
 	float categoryLabelY;
-	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY);
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY,
+		&secondaryMin, &secondaryMax, &hasSecondary);
 
 	MultiLinePoint layout;
 	ComputeMultiLineLayout(data, plotArea, layout);
 
 	DrawYAxisGrid(view, plotArea, minValue, maxValue);
-
-	float zeroY = ChartValueToY(0.0, minValue, maxValue, plotArea);
+	if (hasSecondary)
+		DrawSecondaryYAxisLabels(view, plotArea, secondaryMin, secondaryMax);
 
 	// Ogni serie riempita verso lo zero PRIMA di disegnarne la linea/i
 	// pallini (stesso ordine di DrawAreaChart sopra): una serie
 	// disegnata dopo copre visivamente quella precedente dove si
 	// sovrappongono, esattamente come il grafico ad area "normale" (non
 	// impilato) di Excel -- niente somma fra serie, ognuna resta la
-	// propria altezza vera.
+	// propria altezza vera. Lo zero e' calcolato PER SERIE (Fase 7): una
+	// serie sull'asse secondario riempie verso lo zero della propria
+	// scala, non quella della serie primaria.
 	for (size_t s = 0; s < layout.points.size(); s++)
 	{
 		if (layout.points[s].size() < 2)
 			continue;
+		double lo, hi;
+		SeriesValueRange(data, s, minValue, maxValue, secondaryMin, secondaryMax, &lo, &hi);
+		float zeroY = ChartValueToY(0.0, lo, hi, plotArea);
 		std::vector<BPoint> polygon;
 		polygon.reserve(layout.points[s].size() + 2);
 		for (size_t c = 0; c < layout.points[s].size(); c++)
@@ -2234,8 +2337,8 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data, co
 		}
 	}
 
-	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue);
-	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
+	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue, secondaryMin, secondaryMax);
+	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue, secondaryMin, secondaryMax);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 
@@ -2248,9 +2351,12 @@ void ComputeComboLayout(const MultiChartData& data, BRect bounds, ComboLayout& o
 	if (seriesCount == 0 || catCount == 0)
 		return;
 
-	double minValue, maxValue;
-	MultiChartValueRange(data, &minValue, &maxValue);
-	float zeroY = ChartValueToY(0.0, minValue, maxValue, bounds);
+	double primaryMin, primaryMax, secondaryMin, secondaryMax;
+	bool hasSecondary;
+	MultiChartValueRanges(data, &primaryMin, &primaryMax, &secondaryMin, &secondaryMax, &hasSecondary);
+	double barMin, barMax;
+	SeriesValueRange(data, 0, primaryMin, primaryMax, secondaryMin, secondaryMax, &barMin, &barMax);
+	float zeroY = ChartValueToY(0.0, barMin, barMax, bounds);
 	float slotWidth = bounds.Width() / catCount;
 	// Barra piu' stretta dello slot (60%), stesso principio di
 	// ComputeBarLayout a singola serie -- qui non c'e' bisogno di
@@ -2262,7 +2368,7 @@ void ComputeComboLayout(const MultiChartData& data, BRect bounds, ComboLayout& o
 	for (size_t c = 0; c < catCount; c++)
 	{
 		float centerX = bounds.left + c * slotWidth + slotWidth / 2;
-		float valueY = ChartValueToY(data.values[0][c], minValue, maxValue, bounds);
+		float valueY = ChartValueToY(data.values[0][c], barMin, barMax, bounds);
 		out.bars[c].Set(centerX - barWidth / 2, std::min(valueY, zeroY),
 			centerX + barWidth / 2, std::max(valueY, zeroY));
 	}
@@ -2272,15 +2378,21 @@ void ComputeComboLayout(const MultiChartData& data, BRect bounds, ComboLayout& o
 
 	// Le linee condividono la STESSA X di centro-slot delle barre
 	// (identica formula di ComputeMultiLineLayout), cosi' un punto e la
-	// barra della stessa categoria restano allineati verticalmente.
+	// barra della stessa categoria restano allineati verticalmente. Ogni
+	// linea usa la propria scala (Fase 7, asse secondario): la serie 0
+	// (barre) e le serie 1..N-1 (linee) possono avere combinazioni
+	// primario/secondario indipendenti, non serve niente di speciale per
+	// il combinato rispetto agli altri tre grafici a piu' serie.
 	out.lines.resize(seriesCount - 1);
 	for (size_t s = 1; s < seriesCount; s++)
 	{
+		double lineMin, lineMax;
+		SeriesValueRange(data, s, primaryMin, primaryMax, secondaryMin, secondaryMax, &lineMin, &lineMax);
 		out.lines[s - 1].resize(catCount);
 		for (size_t c = 0; c < catCount; c++)
 		{
 			float x = bounds.left + c * slotWidth + slotWidth / 2;
-			float y = ChartValueToY(data.values[s][c], minValue, maxValue, bounds);
+			float y = ChartValueToY(data.values[s][c], lineMin, lineMax, bounds);
 			out.lines[s - 1][c].Set(x, y);
 		}
 	}
@@ -2300,14 +2412,18 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 	}
 
 	BRect plotArea;
-	double minValue, maxValue;
+	double minValue, maxValue, secondaryMin, secondaryMax;
+	bool hasSecondary;
 	float categoryLabelY;
-	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY);
+	PrepareMultiSeriesPlotArea(view, frame, data, title, &plotArea, &minValue, &maxValue, &categoryLabelY,
+		&secondaryMin, &secondaryMax, &hasSecondary);
 
 	ComboLayout layout;
 	ComputeComboLayout(data, plotArea, layout);
 
 	DrawYAxisGrid(view, plotArea, minValue, maxValue);
+	if (hasSecondary)
+		DrawSecondaryYAxisLabels(view, plotArea, secondaryMin, secondaryMax);
 
 	// Serie 0: barre. Stesso colore (kPieColors[0]) che DrawMultiSeriesFooter
 	// assegna alla legenda della serie 0, cosi' barra e legenda combaciano.
@@ -2360,8 +2476,8 @@ void DrawComboChart(BView* view, BRect frame, const MultiChartData& data, const 
 		}
 	}
 
-	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue);
-	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue);
+	DrawSeriesErrorBars(view, plotArea, data, minValue, maxValue, secondaryMin, secondaryMax);
+	DrawSeriesTrendlines(view, plotArea, data, minValue, maxValue, secondaryMin, secondaryMax);
 	DrawMultiSeriesFooter(view, frame, plotArea, data, minValue, maxValue, categoryLabelY);
 }
 

@@ -231,6 +231,14 @@ void ComputeYAxisTicks(double minValue, double maxValue, BRect plotArea,
 // lo stesso asse a valori (a differenza della torta, che non ne ha uno).
 void DrawYAxisGrid(BView* view, BRect plotArea, double minValue, double maxValue);
 
+// Gemella di DrawYAxisGrid, ma disegna SOLO le etichette numeriche (nessuna
+// griglia orizzontale: quella dell'asse primario basta gia', due griglie
+// sovrapposte sarebbero illeggibili) sul lato DESTRO di plotArea invece che
+// a sinistra -- usata quando almeno una serie e' sull'asse secondario
+// (Fase 7, "asse secondario"), vedi MultiChartValueRanges/
+// ChartSeriesOptions::secondaryAxis sotto.
+void DrawSecondaryYAxisLabels(BView* view, BRect plotArea, double minValue, double maxValue);
+
 // Calcola il rettangolo di ogni barra dentro "bounds", scalato
 // all'intervallo di valori della serie (vedi ComputeYAxisTicks sopra):
 // un valore negativo produce una barra che scende sotto la linea dello
@@ -477,16 +485,31 @@ bool BuildMultiChartSeries(CContainer* doc, const range& r, MultiChartData& out,
 bool BuildMultiChartSeriesRows(CContainer* doc, const range& r, MultiChartData& out,
 	const std::vector<int16>& valueRows);
 
+// Calcola gli intervalli di valori PRIMARIO e SECONDARIO separatamente
+// (Fase 7, "asse secondario", ChartSeriesOptions::secondaryAxis): quando
+// NESSUNA serie ha secondaryAxis=true (il caso comune, ogni grafico
+// esistente prima di questa funzione), outPrimaryMin/Max sono ESATTAMENTE
+// il risultato che l'intervallo unico di prima avrebbe dato -- zero
+// cambio di comportamento. outSecondaryMin/Max hanno senso solo quando
+// *outHasSecondary e' vero (altrimenti restano 0/1, non significativi).
+// Funzione pura, verificabile senza BView/Draw -- ogni funzione di
+// layout a piu' serie sotto la usa per sapere su quale scala posizionare
+// la serie "s" (vedi SeriesOptions in Chart.cpp).
+void MultiChartValueRanges(const MultiChartData& data,
+	double* outPrimaryMin, double* outPrimaryMax,
+	double* outSecondaryMin, double* outSecondaryMax, bool* outHasSecondary);
+
 struct GroupedBarLayout {
 	std::vector<std::vector<BRect> > bars;	// bars[serie][categoria]
 };
 
 // Calcola il rettangolo di ogni barra, raggruppate per categoria (una
 // barra affiancata per serie dentro lo stesso "slot" di categoria) --
-// stessa scala di valori (intervallo min/max comune a tutte le serie)
-// di ComputeBarLayout, cosi' le barre di serie diverse restano
-// confrontabili sullo stesso asse. Funzione pura, verificabile senza
-// BView/Draw.
+// stessa scala di valori comune a tutte le serie SULLO STESSO asse
+// (vedi MultiChartValueRanges sopra: una serie sull'asse secondario usa
+// la propria scala, non quella delle altre), cosi' le barre di serie
+// diverse sullo stesso asse restano confrontabili. Funzione pura,
+// verificabile senza BView/Draw.
 void ComputeGroupedBarLayout(const MultiChartData& data, BRect bounds,
 	GroupedBarLayout& out);
 
@@ -542,11 +565,12 @@ void DrawMultiAreaChart(BView* view, BRect frame, const MultiChartData& data,
 
 // Grafico combinato barre+linee (Fase 35): la PRIMA serie (indice 0)
 // si disegna come barre, tutte le successive come linee -- stessa
-// scala di valori comune (MultiChartValueRange) e stessa griglia di
+// scala di valori comune (MultiChartValueRanges) e stessa griglia di
 // categorie di ComputeGroupedBarLayout/ComputeMultiLineLayout, cosi'
-// barre e linee restano confrontabili e allineate sullo stesso asse.
-// Nessun secondo asse Y: fuori scopo per questa prima versione (vedi
-// il commento sul roadmap item "More chart types").
+// barre e linee restano confrontabili e allineate sullo stesso asse
+// quando sono sullo STESSO asse. Un asse secondario (Fase 7,
+// ChartSeriesOptions::secondaryAxis) resta comunque possibile per
+// qualunque serie, barra o linea che sia -- vedi MultiChartValueRanges.
 struct ComboLayout {
 	std::vector<BRect> bars;			// una barra per categoria, solo per la serie 0
 	std::vector<std::vector<BPoint> > lines;	// lines[s][categoria], per le serie 1..N-1 (indice 0 qui = serie 1)
