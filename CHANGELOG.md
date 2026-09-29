@@ -184,6 +184,37 @@ What shipped since v0.4.2 (in progress):
   Manager's identical, already-established limitation for workbook-level
   metadata edits). This closes out Tier 4's "Path to full Excel parity"
   list.
+- Chart trendlines, per series (Phase 7b of the last remaining Tier 4
+  chart item, "Secondary axis / trendlines / error bars"): a new
+  "Opzioni…" button next to each series in the chart editor opens a
+  small pop-up offering a linear (least-squares regression) or
+  moving-average trendline, drawn in the series' own color at reduced
+  opacity so it reads as an annotation rather than a second data
+  series. Linear uses the category index as x (no closed-form fit
+  exists for a categorical axis, matching how Excel itself treats a
+  non-scatter trendline); moving average starts partway through the
+  series (no value for the first `period-1` points), matching Excel's
+  own behavior rather than padding with zeros. Applies to the four
+  multi-series chart types (grouped bar, multi-line, multi-area,
+  combo) — single-series and scatter charts are out of scope for this
+  pass, since neither has the per-series editor row this feature hangs
+  off of. Persists natively (one more trailing `.ascd` section, already
+  sized to also carry the still-unused error-bar fields Phase 7c will
+  populate, so that phase needs no format change) and round-trips
+  through XLSX (`<c:trendline>` import/export) — recognizing only
+  `linear`/`movingAvg`, Excel's other trendline types (log/poly/power/
+  exp) are declared unsupported rather than silently misclassified. A
+  real, non-obvious bug was found and fixed while wiring the XLSX
+  side: the translator keeps its own independent copy of the native
+  `.ascd` reader/writer (never depends on the app's own), which had
+  fallen behind by several already-shipped sections (per-series
+  colors, Slicers, Scenario Manager, Named Cell Styles) that it neither
+  reads nor writes — appending the new trendline section naively right
+  after the translator's own last known section would have
+  misaligned every byte after it for any file exercising those
+  features, so the translator's reader/writer now also correctly skip
+  past (write empty stubs for, or read-and-discard) each of those four
+  sections before reaching this one.
 
 What shipped in v0.4.2, on top of v0.4.1:
 - Excel/LibreOffice-style formula autocomplete: after `=`, an operator,
