@@ -557,4 +557,33 @@ void ComputeComboLayout(const MultiChartData& data, BRect bounds, ComboLayout& o
 void DrawComboChart(BView* view, BRect frame, const MultiChartData& data,
 	const BString& title = BString());
 
+// Retta di regressione lineare ai minimi quadrati (Fase 7, linea di
+// tendenza): xs/ys stesso indice -- per un grafico normale (non a
+// dispersione) xs e' semplicemente l'indice di categoria 0..n-1, vedi
+// DrawSeriesTrendlines in Chart.cpp. Funzione pura, verificabile senza
+// BView/Draw. Restituisce false se n<2 o se ogni xs coincide
+// (denominatore zero, nessuna retta possibile) -- il chiamante non
+// disegna nulla in quel caso, invece di una retta arbitraria.
+bool ComputeLinearTrendline(const std::vector<double>& xs, const std::vector<double>& ys,
+	double* outSlope, double* outIntercept);
+
+struct MovingAveragePoint {
+	double value;
+	// false per i primi (period-1) punti: una media mobile non ha
+	// valore li' (a differenza di un vero zero) -- il comportamento
+	// reale di Excel, la linea parte a meta' della serie, mai dal primo
+	// punto. Un bool separato invece di un valore sentinella, cosi' una
+	// media davvero pari a zero non si confonde con "nessun valore".
+	bool valid;
+};
+
+// Media mobile locale su una finestra di "period" punti (2 e' il
+// default di Excel): out[i] e' la media di ys[i-period+1 .. i], con
+// valid=false per i primi (period-1) punti (vedi MovingAveragePoint
+// sopra). out.size() == ys.size() sempre. "period" < 1 viene forzato a
+// 1 (nessun crash su un input non valido, anche se l'interfaccia
+// dell'editor grafico non lo produce mai).
+void ComputeMovingAverageTrendline(const std::vector<double>& ys, int period,
+	std::vector<MovingAveragePoint>& out);
+
 #endif

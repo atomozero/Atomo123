@@ -46,6 +46,10 @@ public:
 	// ridisegna subito, senza dover rifare la richiesta dati a
 	// MainWindow. Simmetrico a SetSeriesShowValues sopra.
 	void SetSeriesColor(int index, rgb_color color);
+	// Opzioni (linea di tendenza/barre d'errore/asse secondario, Fase 7)
+	// della serie "index" -- stesso principio esatto di SetSeriesColor
+	// sopra, aggiorna fMultiData.seriesOptions e ridisegna subito.
+	void SetSeriesOptions(int index, ChartSeriesOptions options);
 	// Gemella di SetSeriesColor, ma per un grafico a SINGOLA serie
 	// (barre/linee/area/barre orizzontali/dispersione): un solo colore
 	// per l'intero grafico, non uno per categoria. Ininfluente per la

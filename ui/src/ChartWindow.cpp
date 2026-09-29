@@ -10,6 +10,7 @@
 #include "ChartWindow.h"
 #include "ChartView.h"
 #include "Chart.h"
+#include "ChartSeriesOptionsWindow.h"
 #include "ColorWindow.h"
 #include "IconCatalog.h"
 
@@ -48,6 +49,9 @@ static const uint32 kMsgSeriesColorButtonLocal = 'scbl';
 // area/barre orizzontali/dispersione): nessun indice, sempre e solo
 // "il colore del grafico".
 static const uint32 kMsgChartColorButtonLocal = 'ccbl';
+// Un pulsante "Opzioni..." per serie (Fase 7), stesso principio esatto
+// di kMsgSeriesColorButtonLocal sopra: "index" nel BMessage.
+static const uint32 kMsgSeriesOptionsButtonLocal = 'sobl';
 // Pulsante "..." (Fase selettore di intervallo): vedi il commento su
 // fRangePickButton in ChartWindow.h.
 static const uint32 kMsgRangePickButtonLocal = 'rpbl';
@@ -268,7 +272,8 @@ ChartWindow::ChartWindow(BMessenger target)
 	fEditingChartIndex(-1),
 	fChartColorSwatch(NULL),
 	fChartColor(rgb_color{0, 0, 0, 0}),
-	fSeriesColorWindow(NULL)
+	fSeriesColorWindow(NULL),
+	fSeriesOptionsWindow(NULL)
 {
 	// Stesso messaggio di fRangeField (kMsgDrawLocal): digitare un
 	// titolo e premere Invio (o "Disegna") lo applica subito
@@ -568,6 +573,25 @@ void ChartWindow::ShowSeriesColorPicker(int index)
 	fSeriesColorWindow->Activate();
 }
 
+void ChartWindow::ShowSeriesOptionsPopup(int index)
+{
+	if (!fSeriesOptionsWindow)
+		fSeriesOptionsWindow = new ChartSeriesOptionsWindow(BMessenger(this));
+
+	ChartSeriesOptions current = (index >= 0 && index < (int)fSeriesOptions.size())
+		? fSeriesOptions[index] : ChartSeriesOptions();
+
+	if (fSeriesOptionsWindow->Lock())
+	{
+		fSeriesOptionsWindow->SetSeriesIndex(index);
+		fSeriesOptionsWindow->SetOptions(current);
+		fSeriesOptionsWindow->Unlock();
+	}
+	if (fSeriesOptionsWindow->IsHidden())
+		fSeriesOptionsWindow->Show();
+	fSeriesOptionsWindow->Activate();
+}
+
 void ChartWindow::ClearSeriesCheckboxes()
 {
 	while (fSeriesCheckboxRow->CountChildren() > 0)
@@ -582,6 +606,9 @@ void ChartWindow::ClearSeriesCheckboxes()
 	// quindi il ciclo sopra li cancella gia' -- questo svuota solo il
 	// vettore di puntatori ormai invalidi.
 	fSeriesColorSwatches.clear();
+	// Stesso principio: i pulsanti "Opzioni..." sono gia' figli di
+	// fSeriesCheckboxRow, gia' cancellati dal ciclo sopra.
+	fSeriesOptionsButtons.clear();
 	// Nessuna serie da elencare: il riquadro intero sparisce invece di
 	// restare visibile ma vuoto (vedi il commento nel costruttore).
 	if (!fSeriesCheckboxBox->IsHidden())
@@ -645,6 +672,17 @@ void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
 		swatch->SetColor(SeriesColor(fSeriesColorOverrides, s));
 		fSeriesCheckboxRow->AddChild(swatch);
 		fSeriesColorSwatches.push_back(swatch);
+
+		// "Opzioni..." (Fase 7): linea di tendenza/barre d'errore per
+		// questa serie, in un pop-up a parte (vedi
+		// ChartSeriesOptionsWindow.h) invece che altri due controlli in
+		// questa riga gia' affollata (checkbox + swatch).
+		BMessage* optionsMsg = new BMessage(kMsgSeriesOptionsButtonLocal);
+		optionsMsg->AddInt32("index", (int32)s);
+		BButton* optionsButton = new BButton("seriesOptions", B_TRANSLATE("Opzioni..."), optionsMsg);
+		optionsButton->SetTarget(this);
+		fSeriesCheckboxRow->AddChild(optionsButton);
+		fSeriesOptionsButtons.push_back(optionsButton);
 	}
 	// Popolato PRIMA di ChartView::SetMultiData (chiamato subito dopo da
 	// chi ci ha invocato), cosi' l'anteprima riflette gia' i colori/le
@@ -853,6 +891,32 @@ void ChartWindow::MessageReceived(BMessage* message)
 			// di serie -- vedi il commento su fChartColor in ChartWindow.h.
 			ShowSeriesColorPicker(-1);
 			return;
+
+		case kMsgSeriesOptionsButtonLocal:
+		{
+			int32 index;
+			if (message->FindInt32("index", &index) == B_OK)
+				ShowSeriesOptionsPopup(index);
+			return;
+		}
+
+		case kMsgSeriesOptionsRequest:
+		{
+			int32 index = -1;
+			message->FindInt32("index", &index);
+			const void* optionsData;
+			ssize_t size;
+			if (index < 0 || message->FindData("options", B_RAW_TYPE, &optionsData, &size) != B_OK
+				|| size != (ssize_t)sizeof(ChartSeriesOptions))
+				return;
+			ChartSeriesOptions options = *(const ChartSeriesOptions*)optionsData;
+
+			if (index >= (int)fSeriesOptions.size())
+				fSeriesOptions.resize(index + 1);
+			fSeriesOptions[index] = options;
+			fChartView->SetSeriesOptions(index, options);
+			return;
+		}
 
 		case kMsgRangePickButtonLocal:
 		{

@@ -1564,6 +1564,83 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Le successive quattro sezioni (slicer, colori per serie, scenari,
+	// stili con nome per cella + tema) non hanno equivalente importabile
+	// da XLSX in questo translator (Tier 4, tutte dichiarate "solo
+	// round-trip nativo .ascd" nei rispettivi item di ROADMAP.md) --
+	// scritte comunque, sempre vuote/assenti, SOLO per restare allineate
+	// con l'ordine dei campi che LoadASCD (ui/src/AscdIO.cpp) si aspetta
+	// prima della sezione opzioni per serie di grafico subito sotto,
+	// l'UNICA di questo gruppo che questo translator popola davvero
+	// (Fase 7). Senza questi quattro segnaposto, i byte scritti per le
+	// opzioni di serie finirebbero disallineati e verrebbero letti da
+	// LoadASCD come se appartenessero a una di queste quattro sezioni
+	// invece che alla propria.
+	{
+		int32 slicerCount = 0;
+		if (dest->Write(&slicerCount, sizeof(slicerCount)) != (ssize_t)sizeof(slicerCount))
+			return B_IO_ERROR;
+	}
+	{
+		int32 chartSeriesColorCount = 0;
+		if (dest->Write(&chartSeriesColorCount, sizeof(chartSeriesColorCount))
+				!= (ssize_t)sizeof(chartSeriesColorCount))
+			return B_IO_ERROR;
+	}
+	{
+		int32 scenarioCount = 0;
+		if (dest->Write(&scenarioCount, sizeof(scenarioCount)) != (ssize_t)sizeof(scenarioCount))
+			return B_IO_ERROR;
+	}
+	{
+		int32 namedStyleCellCount = 0;
+		if (dest->Write(&namedStyleCellCount, sizeof(namedStyleCellCount))
+				!= (ssize_t)sizeof(namedStyleCellCount))
+			return B_IO_ERROR;
+	}
+	{
+		uint8 hasStyles = 0;
+		uint8 hasTheme = 0;
+		if (dest->Write(&hasStyles, sizeof(hasStyles)) != (ssize_t)sizeof(hasStyles)
+			|| dest->Write(&hasTheme, sizeof(hasTheme)) != (ssize_t)sizeof(hasTheme))
+			return B_IO_ERROR;
+	}
+
+	// Sezione opzioni per serie di grafico incorporato, in coda DOPO
+	// tutto il resto (Fase 7, "asse secondario / trendline / barre
+	// d'errore"): stesso formato byte per byte del gemello in
+	// ui/src/AscdIO.cpp (SaveASCD). A differenza delle cinque sezioni
+	// sopra, QUESTA si popola davvero da un <c:trendline>/<c:errBars>
+	// XLSX importato (vedi ParseChartXml/ChartXmlResult::seriesOptions).
+	{
+		int32 chartSeriesOptionsCount = charts ? (int32)charts->size() : 0;
+		if (dest->Write(&chartSeriesOptionsCount, sizeof(chartSeriesOptionsCount))
+				!= (ssize_t)sizeof(chartSeriesOptionsCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < chartSeriesOptionsCount; i++)
+		{
+			const std::vector<XlsxChartSeriesOptions>& options = (*charts)[i].seriesOptions;
+			int32 optionCount = (int32)options.size();
+			if (dest->Write(&optionCount, sizeof(optionCount)) != (ssize_t)sizeof(optionCount))
+				return B_IO_ERROR;
+			for (int32 s = 0; s < optionCount; s++)
+			{
+				const XlsxChartSeriesOptions& opts = options[s];
+				uint8 secondaryAxis = opts.secondaryAxis ? 1 : 0;
+				uint8 trendlineType = (uint8)opts.trendlineType;
+				int32 trendlinePeriod = opts.trendlinePeriod;
+				uint8 errorBarMode = (uint8)opts.errorBarMode;
+				double errorBarValue = opts.errorBarValue;
+				if (dest->Write(&secondaryAxis, sizeof(secondaryAxis)) != (ssize_t)sizeof(secondaryAxis)
+					|| dest->Write(&trendlineType, sizeof(trendlineType)) != (ssize_t)sizeof(trendlineType)
+					|| dest->Write(&trendlinePeriod, sizeof(trendlinePeriod)) != (ssize_t)sizeof(trendlinePeriod)
+					|| dest->Write(&errorBarMode, sizeof(errorBarMode)) != (ssize_t)sizeof(errorBarMode)
+					|| dest->Write(&errorBarValue, sizeof(errorBarValue)) != (ssize_t)sizeof(errorBarValue))
+					return B_IO_ERROR;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -3264,6 +3341,264 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Le successive quattro sezioni (slicer, colori per serie, scenari,
+	// stili con nome per cella + tema), scritte da SaveASCD in coda
+	// DOPO la sezione valori esclusi dell'AutoFilter sopra: nessuna delle
+	// quattro ha un equivalente scrivibile verso XLSX in questo
+	// translator (Tier 4, tutte dichiarate "solo round-trip nativo
+	// .ascd"), quindi si leggono e si scartano SOLO per restare allineati
+	// e raggiungere correttamente la sezione opzioni per serie di
+	// grafico subito sotto -- l'unica di questo gruppo che questo
+	// translator legge davvero (Fase 7). Un file .ascd nativo vero
+	// scritto dall'app (il caso normale in esportazione XLSX) ha sempre
+	// tutte e cinque queste sezioni, anche quando le prime quattro sono
+	// vuote.
+	{
+		int32 slicerCount = 0;
+		ssize_t got = source->Read(&slicerCount, sizeof(slicerCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(slicerCount) || slicerCount < 0 || slicerCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < slicerCount; i++)
+			{
+				float frame[4];
+				int16 col;
+				int32 titleLen;
+				if (source->Read(frame, sizeof(frame)) != (ssize_t)sizeof(frame)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&titleLen, sizeof(titleLen)) != (ssize_t)sizeof(titleLen))
+					return B_BAD_DATA;
+				if (titleLen < 0 || titleLen > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				if (titleLen > 0)
+				{
+					std::vector<char> buf(titleLen);
+					if (source->Read(&buf[0], titleLen) != titleLen)
+						return B_BAD_DATA;
+				}
+			}
+		}
+	}
+	{
+		int32 chartSeriesColorCount = 0;
+		ssize_t got = source->Read(&chartSeriesColorCount, sizeof(chartSeriesColorCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartSeriesColorCount) || chartSeriesColorCount < 0
+					|| chartSeriesColorCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < chartSeriesColorCount; i++)
+			{
+				int32 colorCount;
+				if (source->Read(&colorCount, sizeof(colorCount)) != (ssize_t)sizeof(colorCount))
+					return B_BAD_DATA;
+				if (colorCount < 0 || colorCount > 4096)
+					return B_BAD_DATA;
+				for (int32 c = 0; c < colorCount; c++)
+				{
+					uint8 rgba[4];
+					if (source->Read(rgba, sizeof(rgba)) != (ssize_t)sizeof(rgba))
+						return B_BAD_DATA;
+				}
+			}
+		}
+	}
+	{
+		int32 scenarioCount = 0;
+		ssize_t got = source->Read(&scenarioCount, sizeof(scenarioCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(scenarioCount) || scenarioCount < 0 || scenarioCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < scenarioCount; i++)
+			{
+				int32 nameLen;
+				if (source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_BAD_DATA;
+				if (nameLen < 0 || nameLen > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				if (nameLen > 0)
+				{
+					std::vector<char> buf(nameLen);
+					if (source->Read(&buf[0], nameLen) != nameLen)
+						return B_BAD_DATA;
+				}
+
+				int32 rangeVals[4];
+				if (source->Read(rangeVals, sizeof(rangeVals)) != (ssize_t)sizeof(rangeVals))
+					return B_BAD_DATA;
+
+				int32 valueCount;
+				if (source->Read(&valueCount, sizeof(valueCount)) != (ssize_t)sizeof(valueCount))
+					return B_BAD_DATA;
+				if (valueCount < 0 || valueCount > 100000)
+					return B_BAD_DATA;
+				for (int32 v = 0; v < valueCount; v++)
+				{
+					int32 valLen;
+					if (source->Read(&valLen, sizeof(valLen)) != (ssize_t)sizeof(valLen))
+						return B_BAD_DATA;
+					if (valLen < 0 || valLen > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+					if (valLen > 0)
+					{
+						std::vector<char> buf(valLen);
+						if (source->Read(&buf[0], valLen) != valLen)
+							return B_BAD_DATA;
+					}
+				}
+
+				int32 commentLen;
+				if (source->Read(&commentLen, sizeof(commentLen)) != (ssize_t)sizeof(commentLen))
+					return B_BAD_DATA;
+				if (commentLen < 0 || commentLen > 16 * 1024 * 1024)
+					return B_BAD_DATA;
+				if (commentLen > 0)
+				{
+					std::vector<char> buf(commentLen);
+					if (source->Read(&buf[0], commentLen) != commentLen)
+						return B_BAD_DATA;
+				}
+			}
+		}
+	}
+	{
+		int32 namedStyleCellCount = 0;
+		ssize_t got = source->Read(&namedStyleCellCount, sizeof(namedStyleCellCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(namedStyleCellCount) || namedStyleCellCount < 0
+					|| namedStyleCellCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < namedStyleCellCount; i++)
+			{
+				int16 row, col;
+				int32 styleID;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&styleID, sizeof(styleID)) != (ssize_t)sizeof(styleID))
+					return B_BAD_DATA;
+			}
+		}
+	}
+	{
+		uint8 hasStyles = 0;
+		ssize_t got = source->Read(&hasStyles, sizeof(hasStyles));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(hasStyles))
+				return B_BAD_DATA;
+			if (hasStyles)
+			{
+				int32 styleCount;
+				if (source->Read(&styleCount, sizeof(styleCount)) != (ssize_t)sizeof(styleCount))
+					return B_BAD_DATA;
+				if (styleCount < 0 || styleCount > 100000)
+					return B_BAD_DATA;
+				for (int32 i = 0; i < styleCount; i++)
+				{
+					uint8 removed;
+					int32 nameLen;
+					if (source->Read(&removed, sizeof(removed)) != (ssize_t)sizeof(removed)
+						|| source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+						return B_BAD_DATA;
+					if (nameLen < 0 || nameLen > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+					if (nameLen > 0)
+					{
+						std::vector<char> buf(nameLen);
+						if (source->Read(&buf[0], nameLen) != nameLen)
+							return B_BAD_DATA;
+					}
+
+					// builtIn, useThemeBg, bgRole, bgColor[4], useThemeText,
+					// textRole, textColor[4], alignment, bold, italic,
+					// underline -- letti e scartati per intero, stesso
+					// motivo del blocco sopra.
+					uint8 u8;
+					int32 i32;
+					uint8 color4[4];
+					if (source->Read(&u8, sizeof(u8)) != (ssize_t)sizeof(u8) // builtIn
+						|| source->Read(&u8, sizeof(u8)) != (ssize_t)sizeof(u8) // useThemeBg
+						|| source->Read(&i32, sizeof(i32)) != (ssize_t)sizeof(i32) // bgRole
+						|| source->Read(color4, sizeof(color4)) != (ssize_t)sizeof(color4) // bgColor
+						|| source->Read(&u8, sizeof(u8)) != (ssize_t)sizeof(u8) // useThemeText
+						|| source->Read(&i32, sizeof(i32)) != (ssize_t)sizeof(i32) // textRole
+						|| source->Read(color4, sizeof(color4)) != (ssize_t)sizeof(color4) // textColor
+						|| source->Read(&u8, sizeof(u8)) != (ssize_t)sizeof(u8) // alignment
+						|| source->Read(&u8, sizeof(u8)) != (ssize_t)sizeof(u8) // bold
+						|| source->Read(&u8, sizeof(u8)) != (ssize_t)sizeof(u8) // italic
+						|| source->Read(&u8, sizeof(u8)) != (ssize_t)sizeof(u8)) // underline
+						return B_BAD_DATA;
+				}
+			}
+
+			uint8 hasTheme = 0;
+			if (source->Read(&hasTheme, sizeof(hasTheme)) != (ssize_t)sizeof(hasTheme))
+				return B_BAD_DATA;
+			if (hasTheme)
+			{
+				// Otto ruoli della tavolozza tema (kThemeColorRoleCount in
+				// engine/src/Cell/NamedStyle.h, non incluso qui apposta --
+				// vedi il commento su XlsxChartInfo piu' sopra): un numero
+				// letterale invece della costante, questo translator non
+				// legge mai il significato di questi colori.
+				for (int i = 0; i < 8; i++)
+				{
+					uint8 c[4];
+					if (source->Read(c, sizeof(c)) != (ssize_t)sizeof(c))
+						return B_BAD_DATA;
+				}
+			}
+		}
+	}
+
+	// Sezione opzioni per serie di grafico incorporato, scritta da
+	// SaveASCD in coda DOPO tutto il resto (Fase 7, "asse secondario /
+	// trendline / barre d'errore"): a differenza delle cinque sezioni
+	// sopra, QUESTA si legge davvero -- serve per scrivere
+	// <c:trendline>/<c:errBars> nell'XLSX in uscita (vedi
+	// BuildChartXml/AppendSeries).
+	{
+		int32 chartSeriesOptionsCount = 0;
+		ssize_t got = source->Read(&chartSeriesOptionsCount, sizeof(chartSeriesOptionsCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(chartSeriesOptionsCount) || chartSeriesOptionsCount < 0
+					|| chartSeriesOptionsCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < chartSeriesOptionsCount; i++)
+			{
+				int32 optionCount;
+				if (source->Read(&optionCount, sizeof(optionCount)) != (ssize_t)sizeof(optionCount))
+					return B_BAD_DATA;
+				if (optionCount < 0 || optionCount > 4096)
+					return B_BAD_DATA;
+				std::vector<XlsxChartSeriesOptions> options(optionCount);
+				for (int32 s = 0; s < optionCount; s++)
+				{
+					uint8 secondaryAxis, trendlineType, errorBarMode;
+					int32 trendlinePeriod;
+					double errorBarValue;
+					if (source->Read(&secondaryAxis, sizeof(secondaryAxis)) != (ssize_t)sizeof(secondaryAxis)
+						|| source->Read(&trendlineType, sizeof(trendlineType)) != (ssize_t)sizeof(trendlineType)
+						|| source->Read(&trendlinePeriod, sizeof(trendlinePeriod)) != (ssize_t)sizeof(trendlinePeriod)
+						|| source->Read(&errorBarMode, sizeof(errorBarMode)) != (ssize_t)sizeof(errorBarMode)
+						|| source->Read(&errorBarValue, sizeof(errorBarValue)) != (ssize_t)sizeof(errorBarValue))
+						return B_BAD_DATA;
+					options[s].secondaryAxis = secondaryAxis != 0;
+					options[s].trendlineType = (int8)trendlineType;
+					options[s].trendlinePeriod = trendlinePeriod;
+					options[s].errorBarMode = (int8)errorBarMode;
+					options[s].errorBarValue = errorBarValue;
+				}
+				if (outCharts && i < (int32)outCharts->size())
+					(*outCharts)[i].seriesOptions = options;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -4367,9 +4702,17 @@ static void AppendNumCache(std::string& xml, const std::vector<double>& values)
 // sorgente), categorie/valori invece SEMPRE con riferimento vivo
 // (<c:f>) piu' la cache -- cosi' Excel/LibreOffice possono ricalcolare
 // il grafico se i dati cambiano, non solo mostrare l'istantanea.
+// "opts" opzionale (Fase 7, "asse secondario / trendline / barre
+// d'errore"): NULL per ogni chiamante che non ha un ChartSeriesOptions
+// da inoltrare (comportamento identico a prima -- nessun <c:trendline>/
+// <c:errBars> scritto), altrimenti emette <c:trendline> quando
+// trendlineType != 0. Ordine degli elementi verificato contro lo
+// schema ECMA-376 (CT_LineSer/CT_BarSer): <c:trendline> va dopo
+// l'eventuale <c:tx> e prima di <c:cat>, mai in coda al <c:ser>.
 static void AppendSeries(std::string& xml, int idx, const std::string& seriesName,
 	const std::string& catRef, const std::vector<std::string>& categories,
-	const std::string& valRef, const std::vector<double>& values, bool withTx)
+	const std::string& valRef, const std::vector<double>& values, bool withTx,
+	const XlsxChartSeriesOptions* opts = NULL)
 {
 	char buf[32];
 	xml += "<c:ser><c:idx val=\"";
@@ -4383,6 +4726,20 @@ static void AppendSeries(std::string& xml, int idx, const std::string& seriesNam
 		xml += "<c:tx><c:v>";
 		AppendXmlEscaped(xml, seriesName.c_str());
 		xml += "</c:v></c:tx>";
+	}
+	if (opts && opts->trendlineType != 0)
+	{
+		xml += "<c:trendline><c:trendlineType val=\"";
+		xml += (opts->trendlineType == 2) ? "movingAvg" : "linear";
+		xml += "\"/>";
+		if (opts->trendlineType == 2)
+		{
+			xml += "<c:period val=\"";
+			snprintf(buf, sizeof(buf), "%d", (int)opts->trendlinePeriod);
+			xml += buf;
+			xml += "\"/>";
+		}
+		xml += "</c:trendline>";
 	}
 	xml += "<c:cat><c:strRef><c:f>";
 	AppendXmlEscaped(xml, catRef.c_str());
@@ -4427,8 +4784,10 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 		{
 			std::string valRef = AbsRowRangeRef(kSheetName, info.valueRows[s],
 				data.firstDataRow, info.dataRight);
+			const XlsxChartSeriesOptions* opts = s < (int)info.seriesOptions.size()
+				? &info.seriesOptions[s] : NULL;
 			AppendSeries(plot, s, data.seriesNames[s], catRef, data.categories,
-				valRef, data.values[s], true);
+				valRef, data.values[s], true, opts);
 		}
 		seriesCountForLegend = (int)data.seriesNames.size();
 	}
@@ -4452,8 +4811,10 @@ static std::string BuildChartXml(CContainer* doc, const XlsxChartInfo& info)
 			int valCol = info.valueColumns.empty() ? (info.dataLeft + 1 + s) : info.valueColumns[s];
 			std::string valRef = AbsColumnRangeRef(kSheetName, valCol,
 				data.firstDataRow, info.dataBottom);
+			const XlsxChartSeriesOptions* opts = s < (int)info.seriesOptions.size()
+				? &info.seriesOptions[s] : NULL;
 			AppendSeries(plot, s, data.seriesNames[s], catRef, data.categories,
-				valRef, data.values[s], true);
+				valRef, data.values[s], true, opts);
 		}
 		seriesCountForLegend = (int)data.seriesNames.size();
 	}
@@ -9902,6 +10263,12 @@ struct ChartXmlResult {
 	std::string title;
 	std::string catRef;
 	std::vector<std::string> valRefs; // uno per <c:ser>, stesso ordine
+	// Opzioni per serie (Fase 7, "asse secondario / trendline / barre
+	// d'errore"): un elemento per <c:ser>, stesso ordine/stessa
+	// popolazione di valRefs sopra (push_back all'apertura di ogni
+	// <c:ser>). Solo <c:trendlineType>/<c:period> letti per ora (7b) --
+	// <c:errBars> arriva in 7c, riusando questo stesso vettore.
+	std::vector<XlsxChartSeriesOptions> seriesOptions;
 
 	ChartXmlResult() : type(0), typeRecognized(false) {}
 };
@@ -9974,7 +10341,10 @@ static void XMLCALL ChartXmlStart(void* userData, const char* name, const char**
 	else if (strcmp(name, "c:val") == 0)
 		ctx->kind = ChartXmlContext::eVal;
 	else if (strcmp(name, "c:ser") == 0)
+	{
 		ctx->result.valRefs.push_back(std::string());
+		ctx->result.seriesOptions.push_back(XlsxChartSeriesOptions());
+	}
 	else if (strcmp(name, "c:title") == 0)
 		ctx->inTitle = true;
 	else if (strcmp(name, "c:f") == 0)
@@ -9984,6 +10354,32 @@ static void XMLCALL ChartXmlStart(void* userData, const char* name, const char**
 	}
 	else if (ctx->inTitle && strcmp(name, "a:t") == 0)
 		ctx->capturingTitleText = true;
+	else if (strcmp(name, "c:trendlineType") == 0 && !ctx->result.seriesOptions.empty())
+	{
+		// Solo "linear"/"movingAvg" sono modellati da questo app
+		// (ChartSeriesOptions::TrendlineType in ui/src/Chart.h) -- ogni
+		// altro valore reale di Excel (log/poly/power/exp) resta
+		// dichiaratamente non supportato, lasciato a "nessuna" invece di
+		// essere rimappato in modo scorretto su uno dei due tipi che
+		// esistono qui.
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "val") != 0)
+				continue;
+			if (strcmp(atts[i + 1], "linear") == 0)
+				ctx->result.seriesOptions.back().trendlineType = 1;
+			else if (strcmp(atts[i + 1], "movingAvg") == 0)
+				ctx->result.seriesOptions.back().trendlineType = 2;
+		}
+	}
+	else if (strcmp(name, "c:period") == 0 && !ctx->result.seriesOptions.empty())
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "val") == 0)
+				ctx->result.seriesOptions.back().trendlinePeriod = atoi(atts[i + 1]);
+		}
+	}
 }
 
 static void XMLCALL ChartXmlEnd(void* userData, const char* name)
@@ -11507,6 +11903,11 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 							info.valueColumns = valueColumns;
 							info.rowOriented = rowOriented;
 							info.valueRows = valueRows;
+							// Opzioni per serie (Fase 7): stesso ordine di
+							// chartResult.valRefs/data.seriesNames, un
+							// <c:trendlineType>/<c:period> per <c:ser> letto
+							// da ParseChartXml sopra.
+							info.seriesOptions = chartResult.seriesOptions;
 							parsed.charts.push_back(info);
 						}
 					}

@@ -218,22 +218,27 @@ int main()
 		// La sezione seriesColors NON e' piu' l'ultima cosa scritta da
 		// SaveASCD (lo era quando questo test fu scritto): fasi
 		// successive hanno appeso, in ordine, la sezione scenari, quella
-		// degli ID di stile con nome per cella, e infine il byte
-		// hasStyles/hasTheme (Tier 4, "Named cell styles + live theme
-		// palette") -- stessa lezione appresa (e documentata) in
-		// test_scenario_manager.cpp quando gli si e' aggiunta la stessa
-		// sezione in coda. Per un file con un solo grafico SENZA colori
-		// personalizzati, senza scenari, senza celle con stile con nome e
-		// senza tema, la coda del file e' quindi: 4+4 byte (contatore
-		// grafici/colori di QUESTA sezione) + 4 byte (contatore scenari,
-		// sempre 0 qui) + 4 byte (contatore celle con stile con nome,
-		// sempre 0 qui) + 1 byte (hasStyles, 0) + 1 byte (hasTheme, 0) =
-		// 18 byte in tutto. Troncare questi 18 byte finali equivale quindi
-		// a un file scritto da una build PRIMA che la sezione seriesColors
-		// esistesse -- prova CONCRETA (non solo un ragionamento sul
-		// codice) che LoadASCD resta EOF-tollerante con un file vecchio.
-		// NOTA per la prossima fase che aggiunge una sezione in coda:
-		// questo conteggio andra' aggiornato di nuovo.
+		// degli ID di stile con nome per cella, il byte hasStyles/hasTheme
+		// (Tier 4, "Named cell styles + live theme palette"), e infine la
+		// sezione opzioni per serie di grafico (Fase 7, "asse secondario /
+		// trendline / barre d'errore") -- stessa lezione appresa (e
+		// documentata) in test_scenario_manager.cpp quando gli si e'
+		// aggiunta la stessa sezione in coda. Per un file con un solo
+		// grafico SENZA colori personalizzati, senza scenari, senza celle
+		// con stile con nome, senza tema e senza opzioni di serie, la coda
+		// del file e' quindi: 4+4 byte (contatore grafici/colori di
+		// QUESTA sezione) + 4 byte (contatore scenari, sempre 0 qui) + 4
+		// byte (contatore celle con stile con nome, sempre 0 qui) + 1
+		// byte (hasStyles, 0) + 1 byte (hasTheme, 0) + 4 byte (contatore
+		// grafici della sezione opzioni per serie, 1 qui: il vettore
+		// "charts" passato a SaveASCD non e' mai NULL in questo test) + 4
+		// byte (optionCount di quell'unico grafico, 0 qui: nessuna
+		// opzione impostata) = 26 byte in tutto. Troncare questi 26 byte
+		// finali equivale quindi a un file scritto da una build PRIMA che
+		// la sezione seriesColors esistesse -- prova CONCRETA (non solo
+		// un ragionamento sul codice) che LoadASCD resta EOF-tollerante
+		// con un file vecchio. NOTA per la prossima fase che aggiunge una
+		// sezione in coda: questo conteggio andra' aggiornato di nuovo.
 		CContainer& oldDoc = *new CContainer(NULL, NULL);
 		TryToParseString("10", cell(1, 1), &oldDoc, true);
 		std::vector<ChartObject> oldSaved;
@@ -250,8 +255,8 @@ int main()
 
 		off_t size = 0;
 		oldFile.GetSize(&size);
-		Check(size > 18, "il file di riferimento e' abbastanza grande da poter troncare 18 byte");
-		oldFile.SetSize(size - 18);
+		Check(size > 26, "il file di riferimento e' abbastanza grande da poter troncare 26 byte");
+		oldFile.SetSize(size - 26);
 
 		BFile oldReopened("tests/roundtrip_chart_series_colors_old.ascd", B_READ_ONLY);
 		CContainer& oldReloaded = *new CContainer(NULL, NULL);
