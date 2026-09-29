@@ -215,15 +215,25 @@ int main()
 
 		// --- Compatibilita' con file scritti PRIMA di questa modifica ---
 		//
-		// La sezione seriesColors e' l'ULTIMA cosa scritta da SaveASCD
-		// (subito prima del suo "return B_OK;"). Per un file con un solo
-		// grafico SENZA colori personalizzati, quella sezione e'
-		// esattamente 8 byte: un int32 "quanti grafici" (qui 1) seguito
-		// da un int32 "quanti colori per questo grafico" (qui 0). Troncare
-		// questi 8 byte finali equivale quindi a un file scritto da una
-		// build PRIMA che questa sezione esistesse -- prova CONCRETA
-		// (non solo un ragionamento sul codice) che LoadASCD resta
-		// EOF-tollerante con un file vecchio.
+		// La sezione seriesColors NON e' piu' l'ultima cosa scritta da
+		// SaveASCD (lo era quando questo test fu scritto): fasi
+		// successive hanno appeso, in ordine, la sezione scenari, quella
+		// degli ID di stile con nome per cella, e infine il byte
+		// hasStyles/hasTheme (Tier 4, "Named cell styles + live theme
+		// palette") -- stessa lezione appresa (e documentata) in
+		// test_scenario_manager.cpp quando gli si e' aggiunta la stessa
+		// sezione in coda. Per un file con un solo grafico SENZA colori
+		// personalizzati, senza scenari, senza celle con stile con nome e
+		// senza tema, la coda del file e' quindi: 4+4 byte (contatore
+		// grafici/colori di QUESTA sezione) + 4 byte (contatore scenari,
+		// sempre 0 qui) + 4 byte (contatore celle con stile con nome,
+		// sempre 0 qui) + 1 byte (hasStyles, 0) + 1 byte (hasTheme, 0) =
+		// 18 byte in tutto. Troncare questi 18 byte finali equivale quindi
+		// a un file scritto da una build PRIMA che la sezione seriesColors
+		// esistesse -- prova CONCRETA (non solo un ragionamento sul
+		// codice) che LoadASCD resta EOF-tollerante con un file vecchio.
+		// NOTA per la prossima fase che aggiunge una sezione in coda:
+		// questo conteggio andra' aggiornato di nuovo.
 		CContainer& oldDoc = *new CContainer(NULL, NULL);
 		TryToParseString("10", cell(1, 1), &oldDoc, true);
 		std::vector<ChartObject> oldSaved;
@@ -240,8 +250,8 @@ int main()
 
 		off_t size = 0;
 		oldFile.GetSize(&size);
-		Check(size > 8, "il file di riferimento e' abbastanza grande da poter troncare 8 byte");
-		oldFile.SetSize(size - 8);
+		Check(size > 18, "il file di riferimento e' abbastanza grande da poter troncare 18 byte");
+		oldFile.SetSize(size - 18);
 
 		BFile oldReopened("tests/roundtrip_chart_series_colors_old.ascd", B_READ_ONLY);
 		CContainer& oldReloaded = *new CContainer(NULL, NULL);

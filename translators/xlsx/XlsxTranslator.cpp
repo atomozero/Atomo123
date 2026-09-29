@@ -118,6 +118,21 @@ static bool ColorsEqual(rgb_color a, rgb_color b)
 	return a.red == b.red && a.green == b.green && a.blue == b.blue && a.alpha == b.alpha;
 }
 
+// Opzioni per serie (Fase 7, "asse secondario / trendline / barre
+// d'errore"): duplicato leggero di ChartSeriesOptions in ui/src/Chart.h,
+// stesso motivo di XlsxChartInfo sotto (nessun collegamento a ui/src/*).
+// Tipi grezzi (int8, non l'enum vero) per la stessa ragione di "type" su
+// XlsxChartInfo: questo file non conosce TrendlineType/ErrorBarMode.
+struct XlsxChartSeriesOptions {
+	bool secondaryAxis;
+	int8 trendlineType;   // 0=nessuna, 1=lineare, 2=media mobile
+	int32 trendlinePeriod;
+	int8 errorBarMode;    // 0=nessuna, 1=fissa, 2=percentuale
+	double errorBarValue;
+	XlsxChartSeriesOptions() : secondaryAxis(false), trendlineType(0),
+		trendlinePeriod(2), errorBarMode(0), errorBarValue(0.0) {}
+};
+
 // Un grafico incorporato, sia in lettura (Fase 24, esportazione verso
 // XLSX) sia in scrittura (Fase 25, importazione da XLSX): stessi campi
 // di ChartObject in ui/src/Chart.h, MAI quell'header incluso qui
@@ -137,6 +152,13 @@ struct XlsxChartInfo {
 	// rowOriented e' true".
 	bool rowOriented;
 	std::vector<int16> valueRows;
+	// Opzioni per serie (Fase 7, "asse secondario / trendline / barre
+	// d'errore"): stesso significato di ChartObject::seriesOptions in
+	// ui/src/Chart.h, duplicato qui per lo stesso motivo dichiarato sopra
+	// (nessun collegamento a ui/src/*). VUOTO = nessuna opzione per
+	// nessuna serie -- non ancora popolato da nessun lettore/scrittore
+	// XML, vedi le fasi 7b/7c/7d.
+	std::vector<XlsxChartSeriesOptions> seriesOptions;
 
 	XlsxChartInfo() : dataLeft(0), dataTop(0), dataRight(0), dataBottom(0),
 		frameLeft(0), frameTop(0), frameRight(0), frameBottom(0),

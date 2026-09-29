@@ -298,6 +298,16 @@ rgb_color SeriesColor(const std::vector<rgb_color>& overrides, size_t index)
 	return kPieColors[index % kPieColorCount];
 }
 
+ChartSeriesOptions SeriesOptions(const std::vector<ChartSeriesOptions>& options, size_t index)
+{
+	// Stesso principio permissivo di SeriesColor sopra: un vettore vuoto o
+	// piu' corto di seriesNames non e' un errore, restituisce semplicemente
+	// "nessuna opzione" per quella serie.
+	if (index < options.size())
+		return options[index];
+	return ChartSeriesOptions();
+}
+
 // Etichetta del valore da disegnare accanto a una barra/punto: usa il
 // testo gia' formattato secondo il formato numerico reale della cella
 // (ChartSeries::formattedValue), popolato da BuildChartSeries. Un

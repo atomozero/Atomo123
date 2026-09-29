@@ -91,7 +91,8 @@ public:
 	// invece di kMsgChartInsert -- vedi MainWindow::EditChart/
 	// HandleChartUpdate.
 	void LoadForEdit(int chartIndex, const char* rangeText, const char* title, ChartType type,
-		bool rowOriented, const std::vector<rgb_color>& seriesColors);
+		bool rowOriented, const std::vector<rgb_color>& seriesColors,
+		const std::vector<ChartSeriesOptions>& seriesOptions = std::vector<ChartSeriesOptions>());
 
 	// Usata da MainWindow::ShowChartWindow PRIMA di ogni altra cosa,
 	// incondizionatamente: senza multi-selezione attiva LoadRange sopra
@@ -168,6 +169,14 @@ private:
 	// checkbox). alpha 0 = "non ancora scelto per questa serie", vedi
 	// SeriesColor() in Chart.h.
 	std::vector<rgb_color> fSeriesColorOverrides;
+	// Opzioni per serie (Fase 7, "asse secondario / trendline / barre
+	// d'errore"): stesso ciclo di vita/stessa preservazione per NOME di
+	// serie di fSeriesColorOverrides sopra -- vedi RebuildSeriesCheckboxes.
+	// Nessun controllo la mostra ancora (solo plumbing per ora, i
+	// controlli veri arrivano con le fasi 7b/7c/7d), quindi resta sempre
+	// una lista di ChartSeriesOptions() di default finche' non si
+	// aggiungono i controlli.
+	std::vector<ChartSeriesOptions> fSeriesOptions;
 	// Riquadretto di colore per un grafico a SINGOLA serie (barre/linee/
 	// area/barre orizzontali/dispersione): un solo colore per l'intero
 	// grafico, mostrato vicino al campo Tipo invece che nella riga serie

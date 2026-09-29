@@ -455,15 +455,17 @@ void ChartWindow::LoadRange(const char* rangeText)
 	CancelPickingIfArmed();
 	fRangeField->SetText(rangeText);
 	fRowOrientedCheckbox->SetValue(B_CONTROL_OFF);
-	// Nessun colore salvato per un grafico nuovo -- azzera qualunque
-	// scelta fatta durante una precedente sessione di modifica.
+	// Nessun colore/opzione salvati per un grafico nuovo -- azzera
+	// qualunque scelta fatta durante una precedente sessione di modifica.
 	fSeriesColorOverrides.clear();
+	fSeriesOptions.clear();
 	fChartColor = rgb_color{0, 0, 0, 0};
 	RequestDraw();
 }
 
 void ChartWindow::LoadForEdit(int chartIndex, const char* rangeText, const char* title,
-	ChartType type, bool rowOriented, const std::vector<rgb_color>& seriesColors)
+	ChartType type, bool rowOriented, const std::vector<rgb_color>& seriesColors,
+	const std::vector<ChartSeriesOptions>& seriesOptions)
 {
 	SetEditingChartIndex(chartIndex);
 	CancelPickingIfArmed();
@@ -478,6 +480,11 @@ void ChartWindow::LoadForEdit(int chartIndex, const char* rangeText, const char*
 	// RequestDraw piu' sotto.
 	fSeriesColorOverrides = seriesColors;
 	fChartColor = !seriesColors.empty() ? seriesColors[0] : rgb_color{0, 0, 0, 0};
+	// Solo per serie multiple (vedi ChartObject::seriesOptions in
+	// Chart.h): nessun controllo la modifica ancora (fasi 7b/7c/7d),
+	// ma la precompiliamo comunque cosi' un grafico modificato non perde
+	// silenziosamente opzioni gia' salvate al primo Aggiorna.
+	fSeriesOptions = seriesOptions;
 
 	// Corrispondenza inversa di SelectedType() sopra: stessa
 	// corrispondenza posizionale (0=Barre, 1=Linee, 2=Torta, 3=Area,
@@ -590,17 +597,21 @@ void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
 	// cancellando una scelta gia' fatta dall'utente.
 	std::map<std::string, bool> previousState;
 	std::map<std::string, rgb_color> previousColors;
+	std::map<std::string, ChartSeriesOptions> previousOptions;
 	for (size_t i = 0; i < fSeriesCheckboxes.size(); i++)
 	{
 		previousState[fSeriesCheckboxes[i]->Label()] = fSeriesCheckboxes[i]->Value() != 0;
 		if (i < fSeriesColorOverrides.size())
 			previousColors[fSeriesCheckboxes[i]->Label()] = fSeriesColorOverrides[i];
+		if (i < fSeriesOptions.size())
+			previousOptions[fSeriesCheckboxes[i]->Label()] = fSeriesOptions[i];
 	}
 
 	ClearSeriesCheckboxes();
 
 	data->showValues.resize(data->seriesNames.size());
 	fSeriesColorOverrides.assign(data->seriesNames.size(), rgb_color{0, 0, 0, 0});
+	fSeriesOptions.assign(data->seriesNames.size(), ChartSeriesOptions());
 	for (size_t s = 0; s < data->seriesNames.size(); s++)
 	{
 		bool checked = true;
@@ -614,6 +625,11 @@ void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
 			previousColors.find(data->seriesNames[s].String());
 		if (colorIt != previousColors.end())
 			fSeriesColorOverrides[s] = colorIt->second;
+
+		std::map<std::string, ChartSeriesOptions>::iterator optionsIt =
+			previousOptions.find(data->seriesNames[s].String());
+		if (optionsIt != previousOptions.end())
+			fSeriesOptions[s] = optionsIt->second;
 
 		BMessage* msg = new BMessage(kMsgSeriesToggleLocal);
 		msg->AddInt32("index", (int32)s);
@@ -631,9 +647,11 @@ void ChartWindow::RebuildSeriesCheckboxes(MultiChartData* data)
 		fSeriesColorSwatches.push_back(swatch);
 	}
 	// Popolato PRIMA di ChartView::SetMultiData (chiamato subito dopo da
-	// chi ci ha invocato), cosi' l'anteprima riflette gia' i colori
-	// scelti in precedenza al primo giro, non solo dopo un nuovo clic.
+	// chi ci ha invocato), cosi' l'anteprima riflette gia' i colori/le
+	// opzioni scelti in precedenza al primo giro, non solo dopo un nuovo
+	// clic.
 	data->seriesColors = fSeriesColorOverrides;
+	data->seriesOptions = fSeriesOptions;
 
 	// Almeno una serie da elencare: mostra (o tieni visibile) il
 	// riquadro col titolo/suggerimento -- vedi ClearSeriesCheckboxes
@@ -668,6 +686,11 @@ void ChartWindow::MessageReceived(BMessage* message)
 				? fSeriesColorOverrides
 				: (fChartColor.alpha > 0 ? std::vector<rgb_color>(1, fChartColor)
 					: std::vector<rgb_color>());
+			// Opzioni per serie (Fase 7): solo per serie multiple, come
+			// fSeriesColorOverrides sopra -- un grafico a singola serie non
+			// ha un equivalente "opzioni del grafico intero", quindi non
+			// c'e' nulla da inviare in quel caso (vettore vuoto).
+			const std::vector<ChartSeriesOptions>& optionsToSend = fSeriesOptions;
 			if (fEditingChartIndex >= 0)
 			{
 				BMessage request(kMsgChartUpdate);
@@ -678,6 +701,8 @@ void ChartWindow::MessageReceived(BMessage* message)
 				request.AddBool("rowOriented", rowOriented);
 				for (size_t i = 0; i < colorsToSend.size(); i++)
 					request.AddData("seriesColor", B_RGB_COLOR_TYPE, &colorsToSend[i], sizeof(rgb_color));
+				for (size_t i = 0; i < optionsToSend.size(); i++)
+					request.AddData("seriesOptions", B_RAW_TYPE, &optionsToSend[i], sizeof(ChartSeriesOptions));
 				fTarget.SendMessage(&request);
 				return;
 			}
@@ -689,6 +714,8 @@ void ChartWindow::MessageReceived(BMessage* message)
 			request.AddBool("rowOriented", rowOriented);
 			for (size_t i = 0; i < colorsToSend.size(); i++)
 				request.AddData("seriesColor", B_RGB_COLOR_TYPE, &colorsToSend[i], sizeof(rgb_color));
+			for (size_t i = 0; i < optionsToSend.size(); i++)
+				request.AddData("seriesOptions", B_RAW_TYPE, &optionsToSend[i], sizeof(ChartSeriesOptions));
 			fTarget.SendMessage(&request);
 			return;
 		}
