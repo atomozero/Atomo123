@@ -4359,8 +4359,7 @@ int main()
 						}
 
 						// Valori esclusi dell'AutoFilter (Tier 4): un
-						// conteggio, la NUOVISSIMA ultima sezione del
-						// formato -- sample.xlsx ha un AutoFilter (A1:D1)
+						// conteggio -- sample.xlsx ha un AutoFilter (A1:D1)
 						// ma nessuna colonna con un <filterColumn> (nessun
 						// criterio gia' applicato nel file originale),
 						// quindi il conteggio e' zero e non ci sono record
@@ -4371,6 +4370,50 @@ int main()
 							memcpy(&filterHiddenCount, ascdData + pos, 4); pos += 4;
 							Check(filterHiddenCount == 0,
 								"nessuna colonna filtrata in sample.xlsx, il conteggio valori esclusi e' zero");
+						}
+
+						// Quattro segnaposto sempre scritti (Slicer, colori
+						// per serie di grafico, scenari, celle con stile con
+						// nome) SOLO per restare allineati col formato reale
+						// -- nessuno ha un equivalente importabile da XLSX in
+						// questo translator (vedi il commento gemello in
+						// XlsxTranslator.cpp, "Le successive quattro sezioni
+						// ... non hanno equivalente importabile da XLSX"),
+						// quindi sono sempre a zero qui.
+						for (int s = 0; pos + 4 <= ascdLen && s < 4; s++)
+						{
+							int32 n;
+							memcpy(&n, ascdData + pos, 4); pos += 4;
+							Check(n == 0,
+								"sample.xlsx non ha slicer/colori serie/scenari/celle con stile con "
+								"nome, i quattro segnaposto sono a zero");
+						}
+
+						// Tema/stili con nome (hasStyles/hasTheme, Fase
+						// "Named cell styles + live theme palette"): due
+						// byte fissi, mai seguiti da altro qui perche'
+						// sample.xlsx non usa ne' stili con nome ne' un
+						// tema personalizzato.
+						if (pos + 2 <= ascdLen)
+						{
+							uint8 hasStyles, hasTheme;
+							memcpy(&hasStyles, ascdData + pos, 1); pos += 1;
+							memcpy(&hasTheme, ascdData + pos, 1); pos += 1;
+							Check(hasStyles == 0 && hasTheme == 0,
+								"sample.xlsx non ha ne' stili con nome ne' un tema personalizzato");
+						}
+
+						// Opzioni per serie di grafico incorporato (asse
+						// secondario/trendline/barre d'errore, Fase 7),
+						// la NUOVISSIMA ultima sezione del formato --
+						// sample.xlsx non ha nessun grafico, quindi il
+						// conteggio e' zero e non ci sono record a seguire.
+						if (pos + 4 <= ascdLen)
+						{
+							int32 chartSeriesOptionsCount;
+							memcpy(&chartSeriesOptionsCount, ascdData + pos, 4); pos += 4;
+							Check(chartSeriesOptionsCount == 0,
+								"nessun grafico in sample.xlsx, il conteggio opzioni per serie e' zero");
 						}
 
 						// sample.xlsx e' un solo foglio: dopo tutte le
@@ -4671,6 +4714,39 @@ int main()
 			}
 			else
 				sectionsOk = false;
+
+			// Stessi sette segnaposto/sezioni di sample.xlsx sopra (vedi il
+			// commento gemello li'): quattro contatori a zero (Slicer,
+			// colori per serie, scenari, celle con stile con nome), poi
+			// hasStyles/hasTheme (due byte, entrambi zero), poi il
+			// conteggio delle opzioni per serie di grafico (zero, nessun
+			// grafico in questo fixture).
+			for (int s = 0; sectionsOk && s < 4 && pos + 4 <= afLen; s++)
+			{
+				int32 n;
+				memcpy(&n, afData + pos, 4); pos += 4;
+				sectionsOk = (n == 0);
+			}
+			if (sectionsOk && pos + 2 <= afLen)
+			{
+				uint8 hasStyles, hasTheme;
+				memcpy(&hasStyles, afData + pos, 1); pos += 1;
+				memcpy(&hasTheme, afData + pos, 1); pos += 1;
+				sectionsOk = (hasStyles == 0 && hasTheme == 0);
+			}
+			else
+				sectionsOk = false;
+			if (sectionsOk && pos + 4 <= afLen)
+			{
+				int32 chartSeriesOptionsCount;
+				memcpy(&chartSeriesOptionsCount, afData + pos, 4); pos += 4;
+				sectionsOk = (chartSeriesOptionsCount == 0);
+			}
+			else
+				sectionsOk = false;
+			Check(sectionsOk,
+				"le sezioni finali (segnaposto/tema/opzioni per serie di grafico) restano allineate "
+				"in sample_autofilter_hidden.xlsx");
 
 			Check(pos == afLen,
 				"dopo tutte le sezioni lo stream ASCD del foglio finisce esattamente alla fine "
@@ -6988,6 +7064,230 @@ int main()
 		Check(pieChartRead && (int)pieRtFrame[0] == 0 && (int)pieRtFrame[1] == 0
 				&& (int)pieRtFrame[2] == 300 && (int)pieRtFrame[3] == 300,
 			"il frame della torta riletta (0,0,300,300) e' quello vero, non il ripiego predefinito (400x300)");
+	}
+
+	// Trendline/barre d'errore (Fase 7): grafico a barre a DUE serie
+	// (B=valori normali, C=valori con <c:trendline> E <c:errBars>
+	// insieme), verifica sia l'IMPORTAZIONE (il rischio piu' alto di
+	// questa fase: <c:errBars><c:val val="N"/></c:errBars> condivide il
+	// nome elemento "val" col <c:val><c:numRef><c:f>...</c:f></c:numRef>
+	// del riferimento di serie VERO, che nel documento reale arriva
+	// DOPO -- se il parser confondesse i due, il dataRange ricostruito
+	// (che dipende dal riferimento vero della serie C) verrebbe letto
+	// male o mancante) sia l'ESPORTAZIONE (il giro completo XLSX
+	// sintetico -> ASCD reale -> XLSX riesportato, non un ASCD scritto a
+	// mano: cosi' la sezione "opzioni per serie" del formato nativo,
+	// scritta dal vero codice di importazione con TUTTI i segnaposto
+	// delle quattro sezioni precedenti gia' allineati, si rilegge poi
+	// davvero in fase di esportazione invece di dover replicare quello
+	// stesso allineamento a mano in un ASCD di prova).
+	{
+		static const char kErrBarsContentTypes[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\n"
+			"<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\n"
+			"<Default Extension=\"xml\" ContentType=\"application/xml\"/>\n"
+			"<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>\n"
+			"<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n"
+			"</Types>\n";
+		static const char kErrBarsRootRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kErrBarsWorkbook[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheets><sheet name=\"Foglio1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>\n"
+			"</workbook>\n";
+		static const char kErrBarsWorkbookRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kErrBarsSheet[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">\n"
+			"<sheetData>"
+			"<row r=\"1\"><c r=\"A1\" t=\"inlineStr\"><is><t>Gen</t></is></c>"
+			"<c r=\"B1\"><v>10</v></c><c r=\"C1\"><v>100</v></c></row>"
+			"<row r=\"2\"><c r=\"A2\" t=\"inlineStr\"><is><t>Feb</t></is></c>"
+			"<c r=\"B2\"><v>20</v></c><c r=\"C2\"><v>200</v></c></row>"
+			"<row r=\"3\"><c r=\"A3\" t=\"inlineStr\"><is><t>Mar</t></is></c>"
+			"<c r=\"B3\"><v>30</v></c><c r=\"C3\"><v>300</v></c></row>"
+			"</sheetData>"
+			"<drawing r:id=\"rId1\"/>"
+			"</worksheet>\n";
+		static const char kErrBarsSheetRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing\" Target=\"../drawings/drawing1.xml\"/>\n"
+			"</Relationships>\n";
+		static const char kErrBarsDrawing[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<xdr:oneCellAnchor>"
+			"<xdr:from><xdr:col>5</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>"
+			"<xdr:ext cx=\"3000000\" cy=\"2000000\"/>"
+			"<xdr:graphicFrame>"
+			"<xdr:nvGraphicFramePr><xdr:cNvPr id=\"1\" name=\"Chart 1\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"
+			"<xdr:xfrm/>"
+			"<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+			"<c:chart r:id=\"rId1\"/></a:graphicData></a:graphic>"
+			"</xdr:graphicFrame>"
+			"<xdr:clientData/>"
+			"</xdr:oneCellAnchor>"
+			"</xdr:wsDr>\n";
+		static const char kErrBarsDrawingRels[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+			"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" Target=\"../charts/chart1.xml\"/>\n"
+			"</Relationships>\n";
+		// Serie 0 (B) resta semplice (nessuna opzione). Serie 1 (C) ha
+		// <c:trendline> E <c:errBars> insieme, ESATTAMENTE nell'ordine
+		// dichiarato dallo schema (dopo <c:tx>/<c:trendline>, prima di
+		// <c:cat>) -- il <c:val val="15"/> dentro <c:errBars> precede nel
+		// documento il VERO <c:val><c:numRef><c:f>Foglio1!$C$1:$C$3</c:f>
+		// (il riferimento da cui dipende il dataRange ricostruito).
+		static const char kErrBarsChart[] =
+			"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+			"<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+			"xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+			"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+			"<c:chart><c:plotArea><c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>"
+			"<c:ser><c:idx val=\"0\"/><c:order val=\"0\"/>"
+			"<c:cat><c:strRef><c:f>Foglio1!$A$1:$A$3</c:f></c:strRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$B$1:$B$3</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"<c:ser><c:idx val=\"1\"/><c:order val=\"1\"/>"
+			"<c:trendline><c:trendlineType val=\"linear\"/></c:trendline>"
+			"<c:errBars><c:errBarType val=\"both\"/><c:errValType val=\"percentage\"/><c:val val=\"15\"/></c:errBars>"
+			"<c:cat><c:strRef><c:f>Foglio1!$A$1:$A$3</c:f></c:strRef></c:cat>"
+			"<c:val><c:numRef><c:f>Foglio1!$C$1:$C$3</c:f></c:numRef></c:val>"
+			"</c:ser>"
+			"</c:barChart></c:plotArea></c:chart>"
+			"</c:chartSpace>\n";
+
+		BMallocIO errBarsXlsxIn;
+		CZipWriter errBarsZip;
+		errBarsZip.Begin(&errBarsXlsxIn);
+		errBarsZip.AddEntry("[Content_Types].xml", kErrBarsContentTypes, strlen(kErrBarsContentTypes));
+		errBarsZip.AddEntry("_rels/.rels", kErrBarsRootRels, strlen(kErrBarsRootRels));
+		errBarsZip.AddEntry("xl/workbook.xml", kErrBarsWorkbook, strlen(kErrBarsWorkbook));
+		errBarsZip.AddEntry("xl/_rels/workbook.xml.rels", kErrBarsWorkbookRels, strlen(kErrBarsWorkbookRels));
+		errBarsZip.AddEntry("xl/worksheets/sheet1.xml", kErrBarsSheet, strlen(kErrBarsSheet));
+		errBarsZip.AddEntry("xl/worksheets/_rels/sheet1.xml.rels", kErrBarsSheetRels, strlen(kErrBarsSheetRels));
+		errBarsZip.AddEntry("xl/drawings/drawing1.xml", kErrBarsDrawing, strlen(kErrBarsDrawing));
+		errBarsZip.AddEntry("xl/drawings/_rels/drawing1.xml.rels", kErrBarsDrawingRels, strlen(kErrBarsDrawingRels));
+		errBarsZip.AddEntry("xl/charts/chart1.xml", kErrBarsChart, strlen(kErrBarsChart));
+		Check(errBarsZip.Close(),
+			"costruzione del file XLSX di prova con trendline+barre d'errore riuscita");
+
+		errBarsXlsxIn.Seek(0, SEEK_SET);
+		translator_info errBarsInfo;
+		err = translator->Identify(&errBarsXlsxIn, NULL, NULL, &errBarsInfo, 0);
+		Check(err == B_OK && errBarsInfo.type == kAtomoXlsxFormat,
+			"Identify riconosce il file XLSX di prova con trendline+barre d'errore");
+
+		errBarsXlsxIn.Seek(0, SEEK_SET);
+		BMallocIO errBarsAscdOut;
+		err = translator->Translate(&errBarsXlsxIn, &errBarsInfo, NULL, kAtomoNativeFormat, &errBarsAscdOut);
+		Check(err == B_OK, "Translate del file di prova con trendline+barre d'errore (XLSX -> ASCD) riesce");
+
+		const unsigned char* errBarsAscdData = NULL;
+		size_t errBarsAscdLen = 0;
+		bool errBarsUnwrapped = UnwrapFirstSheet((const unsigned char*)errBarsAscdOut.Buffer(),
+			errBarsAscdOut.BufferLength(), &errBarsAscdData, &errBarsAscdLen);
+		Check(errBarsUnwrapped, "l'output di Translate del file con trendline+barre d'errore e' un ASCD valido");
+
+		int16 ebLeft = 0, ebTop = 0, ebRight = 0, ebBottom = 0;
+		int8 ebType = -1;
+		std::string ebTitle;
+		bool ebChartRead = errBarsUnwrapped && ReadFirstChartForTest(errBarsAscdData, errBarsAscdLen,
+			&ebLeft, &ebTop, &ebRight, &ebBottom, &ebType, &ebTitle);
+		Check(ebChartRead,
+			"il grafico con trendline+barre d'errore sulla seconda serie arriva fino all'ASCD");
+		Check(ebChartRead && ebLeft == 1 && ebTop == 1 && ebRight == 3 && ebBottom == 3,
+			"il dataRange ricostruito (A1:C3) include ENTRAMBE le serie: il <c:val val=\"15\"/> dentro "
+			"<c:errBars> non e' stato scambiato per il riferimento vero della serie C, che arriva "
+			"correttamente dopo (altrimenti la colonna C non risulterebbe mai letta come serie)");
+		Check(ebChartRead && ebType == 0,
+			"il tipo importato resta \"barre\" (0), non alterato dalla presenza di trendline/errBars");
+
+		// Riesportazione: l'output di Translate(XLSX -> ASCD) e' una
+		// cartella multi-foglio ("ASCB"/"ASC2", vedi UnwrapFirstSheet piu'
+		// sopra), NON il singolo foglio "ASCD" che Identify/Translate si
+		// aspettano per la direzione di esportazione (ASCD -> XLSX, vedi
+		// CXlsxTranslator::Identify) -- va quindi ricostruito un
+		// BMallocIO con SOLO i byte del singolo foglio gia' isolati da
+		// UnwrapFirstSheet sopra (errBarsAscdData/errBarsAscdLen), non il
+		// buffer intero di errBarsAscdOut. Il foglio isolato porta con se'
+		// la sezione "opzioni per serie" scritta dal vero codice di
+		// importazione (Fase 7), che il chart1.xml risultante deve
+		// contenere DAVVERO sia <c:trendlineType val="linear"/> sia
+		// <c:errBars> con <c:errValType val="percentage"/> e il valore
+		// 15 -- solo sulla SECONDA serie, non sulla prima.
+		BMallocIO errBarsSingleSheetAscd;
+		Check(errBarsUnwrapped && errBarsSingleSheetAscd.Write(errBarsAscdData, errBarsAscdLen)
+				== (ssize_t)errBarsAscdLen,
+			"il singolo foglio isolato (con opzioni per serie) si ricopia in un buffer separato");
+
+		errBarsSingleSheetAscd.Seek(0, SEEK_SET);
+		translator_info errBarsReexportInfo;
+		err = translator->Identify(&errBarsSingleSheetAscd, NULL, NULL, &errBarsReexportInfo, kAtomoXlsxFormat);
+		Check(err == B_OK && errBarsReexportInfo.type == kAtomoNativeFormat,
+			"Identify riconosce l'ASCD (con trendline+barre d'errore gia' importati) prima della riesportazione");
+
+		errBarsSingleSheetAscd.Seek(0, SEEK_SET);
+		BMallocIO errBarsXlsxOut2;
+		err = translator->Translate(&errBarsSingleSheetAscd, &errBarsReexportInfo, NULL, kAtomoXlsxFormat, &errBarsXlsxOut2);
+		Check(err == B_OK, "Translate ASCD (con trendline+barre d'errore) -> XLSX (riesportazione) riesce");
+
+		errBarsXlsxOut2.Seek(0, SEEK_SET);
+		CZipReader errBarsZip2;
+		Check(errBarsZip2.Open(&errBarsXlsxOut2),
+			"il file XLSX riesportato con trendline+barre d'errore e' un vero archivio ZIP leggibile");
+
+		std::vector<unsigned char> errBarsChartXmlBytes;
+		if (errBarsZip2.ReadEntry("xl/charts/chart1.xml", errBarsChartXmlBytes))
+		{
+			std::string ebChartXml((const char*)&errBarsChartXmlBytes[0], errBarsChartXmlBytes.size());
+			Check(ebChartXml.find("<c:trendlineType val=\"linear\"/>") != std::string::npos,
+				"il chart1.xml riesportato contiene <c:trendlineType val=\"linear\"/> per la seconda serie");
+			Check(ebChartXml.find("<c:errBarType val=\"both\"/>") != std::string::npos
+					&& ebChartXml.find("<c:errValType val=\"percentage\"/>") != std::string::npos
+					&& ebChartXml.find("<c:val val=\"15\"/>") != std::string::npos,
+				"il chart1.xml riesportato contiene <c:errBars> con modalita' percentuale e valore 15");
+			Check(ebChartXml.find("Foglio1!$C$1:$C$3") != std::string::npos,
+				"il chart1.xml riesportato referenzia ancora il riferimento vero della seconda serie (C1:C3), "
+				"non alterato dalla presenza delle barre d'errore");
+			// Conta le occorrenze: la PRIMA serie non deve avere nessuna
+			// delle due funzionalita' (solo la seconda le aveva impostate).
+			int trendlineOccurrences = 0, errBarsOccurrences = 0;
+			size_t pos = 0;
+			while ((pos = ebChartXml.find("<c:trendlineType", pos)) != std::string::npos)
+			{
+				trendlineOccurrences++;
+				pos += 1;
+			}
+			pos = 0;
+			while ((pos = ebChartXml.find("<c:errBars>", pos)) != std::string::npos)
+			{
+				errBarsOccurrences++;
+				pos += 1;
+			}
+			Check(trendlineOccurrences == 1,
+				"esattamente UNA serie ha una trendline (solo la seconda, non la prima)");
+			Check(errBarsOccurrences == 1,
+				"esattamente UNA serie ha barre d'errore (solo la seconda, non la prima)");
+		}
+		else
+			Check(false, "xl/charts/chart1.xml (riesportato) si legge dall'archivio");
 	}
 
 	// Importazione di un vero file XLSX in stile Excel (Fase 25):

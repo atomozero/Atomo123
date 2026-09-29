@@ -4706,9 +4706,13 @@ static void AppendNumCache(std::string& xml, const std::vector<double>& values)
 // d'errore"): NULL per ogni chiamante che non ha un ChartSeriesOptions
 // da inoltrare (comportamento identico a prima -- nessun <c:trendline>/
 // <c:errBars> scritto), altrimenti emette <c:trendline> quando
-// trendlineType != 0. Ordine degli elementi verificato contro lo
-// schema ECMA-376 (CT_LineSer/CT_BarSer): <c:trendline> va dopo
-// l'eventuale <c:tx> e prima di <c:cat>, mai in coda al <c:ser>.
+// trendlineType != 0 e <c:errBars> quando errorBarMode != 0. Ordine
+// degli elementi verificato contro lo schema ECMA-376
+// (CT_LineSer/CT_BarSer): <c:trendline> va dopo l'eventuale <c:tx>,
+// <c:errBars> subito dopo <c:trendline>, entrambi prima di <c:cat> --
+// mai in coda al <c:ser>. "both" e' l'unico errBarType usato: la scelta
+// fisso/percentuale vive tutta in errValType, mai in errBarType (nessun
+// "solo sopra"/"solo sotto" nello scope di questa fase).
 static void AppendSeries(std::string& xml, int idx, const std::string& seriesName,
 	const std::string& catRef, const std::vector<std::string>& categories,
 	const std::string& valRef, const std::vector<double>& values, bool withTx,
@@ -4740,6 +4744,15 @@ static void AppendSeries(std::string& xml, int idx, const std::string& seriesNam
 			xml += "\"/>";
 		}
 		xml += "</c:trendline>";
+	}
+	if (opts && opts->errorBarMode != 0)
+	{
+		xml += "<c:errBars><c:errBarType val=\"both\"/><c:errValType val=\"";
+		xml += (opts->errorBarMode == 2) ? "percentage" : "fixedVal";
+		xml += "\"/><c:val val=\"";
+		snprintf(buf, sizeof(buf), "%g", opts->errorBarValue);
+		xml += buf;
+		xml += "\"/></c:errBars>";
 	}
 	xml += "<c:cat><c:strRef><c:f>";
 	AppendXmlEscaped(xml, catRef.c_str());
@@ -10266,8 +10279,9 @@ struct ChartXmlResult {
 	// Opzioni per serie (Fase 7, "asse secondario / trendline / barre
 	// d'errore"): un elemento per <c:ser>, stesso ordine/stessa
 	// popolazione di valRefs sopra (push_back all'apertura di ogni
-	// <c:ser>). Solo <c:trendlineType>/<c:period> letti per ora (7b) --
-	// <c:errBars> arriva in 7c, riusando questo stesso vettore.
+	// <c:ser>). <c:trendlineType>/<c:period> (7b) e
+	// <c:errBarType>/<c:errValType>/<c:val> dentro <c:errBars> (7c)
+	// popolano questo stesso vettore.
 	std::vector<XlsxChartSeriesOptions> seriesOptions;
 
 	ChartXmlResult() : type(0), typeRecognized(false) {}
@@ -10285,6 +10299,17 @@ struct ChartXmlContext {
 	bool capturingF;
 	bool capturingTitleText;
 	std::string fText;
+	// Vero fra <c:errBars> e </c:errBars> (Fase 7c): il <c:val val="N"/>
+	// delle barre d'errore condivide il nome elemento "val" col <c:val>
+	// del riferimento di serie vero (quello con dentro <c:numRef><c:f>),
+	// ma e' una foglia con un semplice attributo, MAI un contenitore --
+	// questo flag impedisce al gestore di "c:val" sotto di scambiare
+	// l'uno per l'altro (kind resterebbe eNone, non eVal, mentre siamo
+	// dentro <c:errBars>), cosi' la magnitudine della barra d'errore non
+	// finisce mai instradata nel riferimento di cella della serie ne'
+	// viceversa. Vedi il test dedicato in test_xlsx_translator.cpp che
+	// mette i due <c:val> nello stesso <c:ser> apposta per provarlo.
+	bool insideErrBars;
 };
 
 static void XMLCALL ChartXmlStart(void* userData, const char* name, const char** atts)
@@ -10339,7 +10364,47 @@ static void XMLCALL ChartXmlStart(void* userData, const char* name, const char**
 	if (strcmp(name, "c:cat") == 0)
 		ctx->kind = ChartXmlContext::eCat;
 	else if (strcmp(name, "c:val") == 0)
-		ctx->kind = ChartXmlContext::eVal;
+	{
+		// Il <c:val val="N"/> delle barre d'errore (dentro <c:errBars>) e'
+		// una foglia con un semplice attributo, non il contenitore
+		// <c:val><c:numRef><c:f>...</c:f></c:numRef></c:val> del
+		// riferimento di serie vero -- vedi il commento su
+		// ChartXmlContext::insideErrBars sopra. Gestito subito sotto,
+		// SENZA toccare "kind" (che resta quello che era, tipicamente
+		// eNone a questo punto della sequenza), cosi' il <c:f> reale che
+		// arriva piu' avanti nello stesso <c:ser> non viene mai scambiato
+		// per questo.
+		if (ctx->insideErrBars)
+		{
+			for (int i = 0; atts[i]; i += 2)
+			{
+				if (strcmp(atts[i], "val") == 0 && !ctx->result.seriesOptions.empty())
+					ctx->result.seriesOptions.back().errorBarValue = atof(atts[i + 1]);
+			}
+		}
+		else
+			ctx->kind = ChartXmlContext::eVal;
+	}
+	else if (strcmp(name, "c:errBars") == 0)
+		ctx->insideErrBars = true;
+	else if (strcmp(name, "c:errValType") == 0 && !ctx->result.seriesOptions.empty())
+	{
+		// Solo "fixedVal"/"percentage" sono modellati da questo app
+		// (ChartSeriesOptions::ErrorBarMode in ui/src/Chart.h) -- ogni
+		// altro valore reale di Excel (stdDev/stdErr/cust) resta
+		// dichiaratamente non supportato, lasciato a "nessuna" invece di
+		// essere rimappato in modo scorretto su uno dei due che esistono
+		// qui.
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "val") != 0)
+				continue;
+			if (strcmp(atts[i + 1], "fixedVal") == 0)
+				ctx->result.seriesOptions.back().errorBarMode = 1;
+			else if (strcmp(atts[i + 1], "percentage") == 0)
+				ctx->result.seriesOptions.back().errorBarMode = 2;
+		}
+	}
 	else if (strcmp(name, "c:ser") == 0)
 	{
 		ctx->result.valRefs.push_back(std::string());
@@ -10388,7 +10453,10 @@ static void XMLCALL ChartXmlEnd(void* userData, const char* name)
 	std::string qualifiedName;
 	name = QualifyElementName(name, "c:", qualifiedName);
 
-	if (strcmp(name, "c:cat") == 0 || strcmp(name, "c:val") == 0)
+	if (strcmp(name, "c:errBars") == 0)
+		ctx->insideErrBars = false;
+	else if (strcmp(name, "c:cat") == 0
+			|| (strcmp(name, "c:val") == 0 && !ctx->insideErrBars))
 		ctx->kind = ChartXmlContext::eNone;
 	else if (strcmp(name, "c:title") == 0)
 		ctx->inTitle = false;
@@ -10426,6 +10494,7 @@ static bool ParseChartXml(const std::vector<unsigned char>& xml, ChartXmlResult*
 	ctx.inTitle = false;
 	ctx.capturingF = false;
 	ctx.capturingTitleText = false;
+	ctx.insideErrBars = false;
 
 	XML_Parser parser = XML_ParserCreate(NULL);
 	XML_SetUserData(parser, &ctx);

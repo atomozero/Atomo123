@@ -18,6 +18,13 @@
 	   stesso schema di test_chart_series_colors.cpp Parte 2) e infine un
 	   giro AscdIO (salva->ricarica + troncamento EOF-tollerante, stesso
 	   schema della Parte 3 li').
+	3) Sotto-fase 7c (barre d'errore): ComputeErrorBarMagnitude pura,
+	   poi le stesse verifiche MainWindow/AscdIO della 7b estese con
+	   errorBarMode/errorBarValue (incluso un caso con trendline E barre
+	   d'errore insieme sulla stessa serie, la combinazione che la Fase
+	   7e dovra' verificare end-to-end). Nessuna modifica al formato
+	   ASCD ne' al conteggio di troncamento: errorBarMode/errorBarValue
+	   erano gia' scritti/letti (a 0/0.0) dalla sezione della 7b.
 */
 
 #include <cstdio>
@@ -135,6 +142,21 @@ int main()
 		}
 	}
 
+	// --- Parte 2b: ComputeErrorBarMagnitude pura -------------------------
+
+	{
+		Check(fabs(ComputeErrorBarMagnitude(50.0, eFixedErrorBars, 5.0) - 5.0) < 1e-9,
+			"valore fisso: la semiampiezza e' esattamente la magnitudine, indipendente dal valore");
+		Check(fabs(ComputeErrorBarMagnitude(-50.0, eFixedErrorBars, 5.0) - 5.0) < 1e-9,
+			"valore fisso: un valore negativo del punto non cambia la semiampiezza");
+		Check(fabs(ComputeErrorBarMagnitude(200.0, ePercentErrorBars, 10.0) - 20.0) < 1e-9,
+			"percentuale: il 10% di 200 e' 20");
+		Check(fabs(ComputeErrorBarMagnitude(-200.0, ePercentErrorBars, 10.0) - 20.0) < 1e-9,
+			"percentuale: un valore negativo del punto produce comunque una semiampiezza positiva");
+		Check(fabs(ComputeErrorBarMagnitude(0.0, ePercentErrorBars, 10.0) - 0.0) < 1e-9,
+			"percentuale di un valore zero e' zero");
+	}
+
 	// --- Parte 3: MainWindow vera, insert/update/undo/redo --------------
 
 	{
@@ -156,6 +178,12 @@ int main()
 
 		std::vector<ChartSeriesOptions> chosenOptions(2);
 		chosenOptions[1].trendlineType = eLinearTrendline;
+		// La seconda serie ha ANCHE barre d'errore, insieme alla
+		// trendline gia' impostata sopra: la combinazione che la Fase 7e
+		// dovra' verificare end-to-end (le due funzionalita' vivono nello
+		// stesso ChartSeriesOptions, nessun conflitto strutturale atteso).
+		chosenOptions[1].errorBarMode = eFixedErrorBars;
+		chosenOptions[1].errorBarValue = 3.5;
 
 		win->HandleChartInsert("A1:C3", "E1", eBarChart, "Con trendline", /*rowOriented=*/false,
 			std::vector<rgb_color>(), chosenOptions);
@@ -170,12 +198,17 @@ int main()
 					"la prima serie non ha trendline (come inviato)");
 				Check(obj.seriesOptions[1].trendlineType == eLinearTrendline,
 					"la seconda serie ha trendline lineare (come inviato)");
+				Check(obj.seriesOptions[1].errorBarMode == eFixedErrorBars
+						&& obj.seriesOptions[1].errorBarValue == 3.5,
+					"la seconda serie ha ANCHE barre d'errore a valore fisso, insieme alla trendline");
 			}
 		}
 
 		std::vector<ChartSeriesOptions> newOptions(1);
 		newOptions[0].trendlineType = eMovingAverageTrendline;
 		newOptions[0].trendlinePeriod = 3;
+		newOptions[0].errorBarMode = ePercentErrorBars;
+		newOptions[0].errorBarValue = 8.0;
 		win->HandleChartUpdate(0, "A1:C3", eLineChart, "Trendline aggiornata", /*rowOriented=*/false,
 			std::vector<rgb_color>(), newOptions);
 		Check(win->Charts()[0].seriesOptions.size() == 1,
@@ -186,6 +219,9 @@ int main()
 				"la nuova opzione e' quella inviata (media mobile)");
 			Check(win->Charts()[0].seriesOptions[0].trendlinePeriod == 3,
 				"il periodo della media mobile e' quello inviato");
+			Check(win->Charts()[0].seriesOptions[0].errorBarMode == ePercentErrorBars
+					&& win->Charts()[0].seriesOptions[0].errorBarValue == 8.0,
+				"le barre d'errore a percentuale sono anch'esse quelle inviate");
 		}
 
 		// Annullabile SENZA nessun codice nuovo per l'undo (stesso
@@ -227,9 +263,13 @@ int main()
 		ChartSeriesOptions opt0; // di default, nessuna opzione
 		ChartSeriesOptions opt1;
 		opt1.trendlineType = eLinearTrendline;
+		opt1.errorBarMode = eFixedErrorBars;
+		opt1.errorBarValue = 2.0;
 		ChartSeriesOptions opt2;
 		opt2.trendlineType = eMovingAverageTrendline;
 		opt2.trendlinePeriod = 4;
+		opt2.errorBarMode = ePercentErrorBars;
+		opt2.errorBarValue = 15.0;
 		obj.seriesOptions.push_back(opt0);
 		obj.seriesOptions.push_back(opt1);
 		obj.seriesOptions.push_back(opt2);
@@ -262,11 +302,15 @@ int main()
 			{
 				Check(loaded[0].seriesOptions[0].trendlineType == eNoTrendline,
 					"la prima opzione (di default) resta senza trendline");
-				Check(loaded[0].seriesOptions[1].trendlineType == eLinearTrendline,
-					"la seconda opzione (lineare) e' preservata per intero");
+				Check(loaded[0].seriesOptions[1].trendlineType == eLinearTrendline
+						&& loaded[0].seriesOptions[1].errorBarMode == eFixedErrorBars
+						&& loaded[0].seriesOptions[1].errorBarValue == 2.0,
+					"la seconda opzione (lineare + barre fisse) e' preservata per intero");
 				Check(loaded[0].seriesOptions[2].trendlineType == eMovingAverageTrendline
-						&& loaded[0].seriesOptions[2].trendlinePeriod == 4,
-					"la terza opzione (media mobile, periodo 4) e' preservata per intero");
+						&& loaded[0].seriesOptions[2].trendlinePeriod == 4
+						&& loaded[0].seriesOptions[2].errorBarMode == ePercentErrorBars
+						&& loaded[0].seriesOptions[2].errorBarValue == 15.0,
+					"la terza opzione (media mobile periodo 4 + barre percentuali) e' preservata per intero");
 			}
 			Check(loaded[1].seriesOptions.empty(),
 				"il secondo grafico (senza opzioni) resta vuoto, non eredita quelle del primo");
