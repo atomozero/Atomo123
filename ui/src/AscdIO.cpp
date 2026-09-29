@@ -150,7 +150,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const AscdSheetProtection* protection,
 	const std::map<int, std::vector<BString> >* filterHiddenValues,
 	const std::vector<SlicerObject>* slicers,
-	const std::vector<Scenario>* scenarios)
+	const std::vector<Scenario>* scenarios,
+	const NamedStyleTable* namedStyles,
+	const ThemePalette* themePalette)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -268,6 +270,16 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		{
 			CellStyle cs;
 			doc->GetCellStyle(sc, cs);
+			// Una cella con uno stile con nome (Tier 4, "Named cell
+			// styles + live theme palette") ha un colore RISOLTO dal
+			// vivo qui (GetCellStyle lo sostituisce sempre) -- scriverlo
+			// come se fosse un colore letterale sarebbe ridondante
+			// (verrebbe comunque ignorato in lettura, l'assegnazione a
+			// mano di uno stile con nome vince sempre) e sprecherebbe
+			// solo byte: quella cella e' gia' coperta dalla sezione
+			// dedicata piu' in fondo a questo file.
+			if (cs.fNamedStyleID != 0)
+				continue;
 			if (!ColorsEqual(cs.fLowColor, defaultStyle.fLowColor)
 				|| !ColorsEqual(cs.fHighColor, defaultStyle.fHighColor))
 				toWrite.push_back(std::make_pair(sc, cs));
@@ -1690,6 +1702,119 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione ID di stile con nome per cella, in coda (Tier 4, "Named
+	// cell styles + live theme palette", vedi NamedStyle.h): solo le
+	// celle ESISTENTI con fNamedStyleID != 0, stesso schema esatto
+	// della sezione colori di cella piu' sopra (riga+colonna, int16) ma
+	// con un int32 (l'ID dello stile) invece di due colori -- quella
+	// sezione salta apposta queste stesse celle (vedi il commento li'),
+	// il loro colore/font e' comunque ignorato in lettura
+	// (CContainer::GetCellStyle risolve DAL VIVO).
+	{
+		std::vector<std::pair<cell, int32> > toWrite;
+		CCellIterator namedStyleIter(doc, NULL);
+		cell nsc;
+		while (namedStyleIter.NextExisting(nsc))
+		{
+			CellStyle cs;
+			doc->GetCellStyle(nsc, cs);
+			if (cs.fNamedStyleID != 0)
+				toWrite.push_back(std::make_pair(nsc, (int32)cs.fNamedStyleID));
+		}
+
+		int32 namedStyleCellCount = (int32)toWrite.size();
+		if (dest->Write(&namedStyleCellCount, sizeof(namedStyleCellCount))
+				!= (ssize_t)sizeof(namedStyleCellCount))
+			return B_IO_ERROR;
+		for (int32 i = 0; i < namedStyleCellCount; i++)
+		{
+			int16 row = toWrite[i].first.v, col = toWrite[i].first.h;
+			int32 styleID = toWrite[i].second;
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(&styleID, sizeof(styleID)) != (ssize_t)sizeof(styleID))
+				return B_IO_ERROR;
+		}
+	}
+
+	// Sezione stili con nome + tema DELL'INTERA cartella di lavoro
+	// (Tier 4), in coda DOPO tutto il resto: scritta per INTERO
+	// (built-in compresi, con le eventuali ridefinizioni dell'utente, e
+	// gli slot rimossi come tombstone -- vedi RawCount/RawDefAt/
+	// IsRemovedAt in NamedStyle.h) SOLO quando "namedStyles" non e'
+	// NULL, cioe' solo dalla chiamata sul PRIMO foglio della cartella
+	// di lavoro -- stesso principio esatto di vbaProject piu' sopra
+	// (concetto di cartella di lavoro, non per foglio). Preservare
+	// anche gli slot rimossi (non solo quelli attivi) e' quello che
+	// evita che l'ID di uno stile aggiunto DOPO uno rimosso si sposti
+	// a un giro salva->ricarica, invalidando ogni CellStyle::
+	// fNamedStyleID gia' scritta altrove -- bug reale individuato in
+	// fase di progettazione, prima di scrivere questa sezione.
+	{
+		uint8 hasStyles = namedStyles ? 1 : 0;
+		if (dest->Write(&hasStyles, sizeof(hasStyles)) != (ssize_t)sizeof(hasStyles))
+			return B_IO_ERROR;
+		if (namedStyles)
+		{
+			int32 styleCount = namedStyles->RawCount();
+			if (dest->Write(&styleCount, sizeof(styleCount)) != (ssize_t)sizeof(styleCount))
+				return B_IO_ERROR;
+			for (int32 i = 0; i < styleCount; i++)
+			{
+				const NamedStyleDef& def = namedStyles->RawDefAt(i);
+				uint8 removed = namedStyles->IsRemovedAt(i) ? 1 : 0;
+
+				int32 nameLen = (int32)def.name.length();
+				if (dest->Write(&removed, sizeof(removed)) != (ssize_t)sizeof(removed)
+					|| dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_IO_ERROR;
+				if (nameLen > 0 && dest->Write(def.name.c_str(), nameLen) != nameLen)
+					return B_IO_ERROR;
+
+				uint8 builtIn = def.builtIn ? 1 : 0;
+				uint8 useThemeBg = def.useThemeBackground ? 1 : 0;
+				int32 bgRole = (int32)def.backgroundRole;
+				uint8 bgColor[4] = { def.backgroundColor.red, def.backgroundColor.green,
+					def.backgroundColor.blue, def.backgroundColor.alpha };
+				uint8 useThemeText = def.useThemeText ? 1 : 0;
+				int32 textRole = (int32)def.textRole;
+				uint8 textColor[4] = { def.textColor.red, def.textColor.green,
+					def.textColor.blue, def.textColor.alpha };
+				uint8 alignment = (uint8)def.alignment;
+				uint8 bold = def.bold ? 1 : 0;
+				uint8 italic = def.italic ? 1 : 0;
+				uint8 underline = def.underline ? 1 : 0;
+
+				if (dest->Write(&builtIn, sizeof(builtIn)) != (ssize_t)sizeof(builtIn)
+					|| dest->Write(&useThemeBg, sizeof(useThemeBg)) != (ssize_t)sizeof(useThemeBg)
+					|| dest->Write(&bgRole, sizeof(bgRole)) != (ssize_t)sizeof(bgRole)
+					|| dest->Write(bgColor, sizeof(bgColor)) != (ssize_t)sizeof(bgColor)
+					|| dest->Write(&useThemeText, sizeof(useThemeText)) != (ssize_t)sizeof(useThemeText)
+					|| dest->Write(&textRole, sizeof(textRole)) != (ssize_t)sizeof(textRole)
+					|| dest->Write(textColor, sizeof(textColor)) != (ssize_t)sizeof(textColor)
+					|| dest->Write(&alignment, sizeof(alignment)) != (ssize_t)sizeof(alignment)
+					|| dest->Write(&bold, sizeof(bold)) != (ssize_t)sizeof(bold)
+					|| dest->Write(&italic, sizeof(italic)) != (ssize_t)sizeof(italic)
+					|| dest->Write(&underline, sizeof(underline)) != (ssize_t)sizeof(underline))
+					return B_IO_ERROR;
+			}
+		}
+
+		uint8 hasTheme = themePalette ? 1 : 0;
+		if (dest->Write(&hasTheme, sizeof(hasTheme)) != (ssize_t)sizeof(hasTheme))
+			return B_IO_ERROR;
+		if (themePalette)
+		{
+			for (int i = 0; i < kThemeColorRoleCount; i++)
+			{
+				uint8 c[4] = { themePalette->colors[i].red, themePalette->colors[i].green,
+					themePalette->colors[i].blue, themePalette->colors[i].alpha };
+				if (dest->Write(c, sizeof(c)) != (ssize_t)sizeof(c))
+					return B_IO_ERROR;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1712,7 +1837,9 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	AscdSheetProtection* protection,
 	std::map<int, std::vector<BString> >* filterHiddenValues,
 	std::vector<SlicerObject>* slicers,
-	std::vector<Scenario>* scenarios)
+	std::vector<Scenario>* scenarios,
+	bool* hasNamedStyles, NamedStyleTable* namedStyles,
+	bool* hasThemePalette, ThemePalette* themePalette)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -3886,6 +4013,164 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione ID di stile con nome per cella, scritta da SaveASCD in
+	// coda (Tier 4, "Named cell styles + live theme palette"): stesso
+	// principio EOF-tollerante di sopra. Applicata direttamente a "doc"
+	// (stesso schema della sezione colori di cella piu' sopra) --
+	// GetCellStyle/SetCellStyle bastano, nessun "out" a parte serve dato
+	// che l'ID fa gia' parte del documento stesso.
+	{
+		int32 namedStyleCellCount = 0;
+		ssize_t got = source->Read(&namedStyleCellCount, sizeof(namedStyleCellCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(namedStyleCellCount) || namedStyleCellCount < 0
+					|| namedStyleCellCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < namedStyleCellCount; i++)
+			{
+				int16 row, col;
+				int32 styleID;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(&styleID, sizeof(styleID)) != (ssize_t)sizeof(styleID))
+					return B_BAD_DATA;
+
+				cell loc(col, row);
+				if (!loc.IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
+
+				CellStyle cs;
+				doc->GetCellStyle(loc, cs);
+				cs.fNamedStyleID = styleID;
+				doc->SetCellStyle(loc, cs);
+			}
+		}
+	}
+
+	// Sezione stili con nome + tema DELL'INTERA cartella di lavoro
+	// (Tier 4), scritta da SaveASCD in coda DOPO tutto il resto: stesso
+	// principio EOF-tollerante di sopra (hasStyles/hasTheme a 0 ->
+	// sezione assente per QUESTO foglio, il comportamento normale per
+	// ogni foglio tranne il primo -- vedi il commento gemello in
+	// SaveASCD). ReplaceAllRaw (non un ciclo di AddCustom) preserva
+	// anche gli slot rimossi nella stessa posizione/ID -- vedi il
+	// commento su questo stesso punto in SaveASCD per il bug reale che
+	// altrimenti si presenterebbe.
+	{
+		uint8 hasStyles = 0;
+		// EOF-tollerante SOLO qui (il primo read di questa sezione,
+		// stesso principio di ogni altra sezione EOF-tollerante di
+		// questo file): got == 0 -> ne' hasStyles ne' hasTheme sotto
+		// erano presenti nel file (troncato qui, o scritto prima di
+		// questa fase) -- ogni read SUCCESSIVO a questo, una volta
+		// confermato che la sezione esiste davvero, resta invece
+		// strettamente obbligatorio (un errore reale, non piu' un
+		// limite di file vecchio). Bug reale catturato in fase di
+		// test: senza questo, troncare anche un solo byte (il byte
+		// hasTheme finale) faceva fallire l'intero caricamento con
+		// B_BAD_DATA invece di ricadere sui predefiniti.
+		ssize_t hasStylesGot = source->Read(&hasStyles, sizeof(hasStyles));
+		if (hasStylesGot != 0)
+		{
+			if (hasStylesGot != (ssize_t)sizeof(hasStyles))
+				return B_BAD_DATA;
+			if (hasStyles)
+			{
+				int32 styleCount;
+				if (source->Read(&styleCount, sizeof(styleCount)) != (ssize_t)sizeof(styleCount))
+					return B_BAD_DATA;
+				if (styleCount < 0 || styleCount > 100000)
+					return B_BAD_DATA;
+
+				std::vector<NamedStyleDef> defs;
+				std::vector<bool> removedFlags;
+				for (int32 i = 0; i < styleCount; i++)
+				{
+					uint8 removed;
+					int32 nameLen;
+					if (source->Read(&removed, sizeof(removed)) != (ssize_t)sizeof(removed)
+						|| source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+						return B_BAD_DATA;
+					if (nameLen < 0 || nameLen > 16 * 1024 * 1024)
+						return B_BAD_DATA;
+					std::string name;
+					if (nameLen > 0)
+					{
+						std::vector<char> buf(nameLen);
+						if (source->Read(&buf[0], nameLen) != nameLen)
+							return B_BAD_DATA;
+						name.assign(&buf[0], nameLen);
+					}
+
+					uint8 builtIn, useThemeBg;
+					int32 bgRole;
+					uint8 bgColor[4];
+					uint8 useThemeText;
+					int32 textRole;
+					uint8 textColor[4];
+					uint8 alignment, bold, italic, underline;
+					if (source->Read(&builtIn, sizeof(builtIn)) != (ssize_t)sizeof(builtIn)
+						|| source->Read(&useThemeBg, sizeof(useThemeBg)) != (ssize_t)sizeof(useThemeBg)
+						|| source->Read(&bgRole, sizeof(bgRole)) != (ssize_t)sizeof(bgRole)
+						|| source->Read(bgColor, sizeof(bgColor)) != (ssize_t)sizeof(bgColor)
+						|| source->Read(&useThemeText, sizeof(useThemeText)) != (ssize_t)sizeof(useThemeText)
+						|| source->Read(&textRole, sizeof(textRole)) != (ssize_t)sizeof(textRole)
+						|| source->Read(textColor, sizeof(textColor)) != (ssize_t)sizeof(textColor)
+						|| source->Read(&alignment, sizeof(alignment)) != (ssize_t)sizeof(alignment)
+						|| source->Read(&bold, sizeof(bold)) != (ssize_t)sizeof(bold)
+						|| source->Read(&italic, sizeof(italic)) != (ssize_t)sizeof(italic)
+						|| source->Read(&underline, sizeof(underline)) != (ssize_t)sizeof(underline))
+						return B_BAD_DATA;
+					if (bgRole < 0 || bgRole >= kThemeColorRoleCount
+							|| textRole < 0 || textRole >= kThemeColorRoleCount)
+						return B_BAD_DATA;
+
+					NamedStyleDef def;
+					def.name = name;
+					def.builtIn = builtIn != 0;
+					def.useThemeBackground = useThemeBg != 0;
+					def.backgroundRole = (ThemeColorRole)bgRole;
+					def.backgroundColor = rgb_color{ bgColor[0], bgColor[1], bgColor[2], bgColor[3] };
+					def.useThemeText = useThemeText != 0;
+					def.textRole = (ThemeColorRole)textRole;
+					def.textColor = rgb_color{ textColor[0], textColor[1], textColor[2], textColor[3] };
+					def.alignment = (char)alignment;
+					def.bold = bold != 0;
+					def.italic = italic != 0;
+					def.underline = underline != 0;
+
+					defs.push_back(def);
+					removedFlags.push_back(removed != 0);
+				}
+
+				if (namedStyles)
+					namedStyles->ReplaceAllRaw(defs, removedFlags);
+				if (hasNamedStyles)
+					*hasNamedStyles = true;
+			}
+
+			uint8 hasTheme = 0;
+			if (source->Read(&hasTheme, sizeof(hasTheme)) != (ssize_t)sizeof(hasTheme))
+				return B_BAD_DATA;
+			if (hasTheme)
+			{
+				ThemePalette palette;
+				for (int i = 0; i < kThemeColorRoleCount; i++)
+				{
+					uint8 c[4];
+					if (source->Read(c, sizeof(c)) != (ssize_t)sizeof(c))
+						return B_BAD_DATA;
+					palette.colors[i] = rgb_color{ c[0], c[1], c[2], c[3] };
+				}
+				if (themePalette)
+					*themePalette = palette;
+				if (hasThemePalette)
+					*hasThemePalette = true;
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -4183,7 +4468,15 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			&sheet.hiddenRows, &sheet.hasAutoFilter, &sheet.autoFilterRange,
 			&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
 			&sheet.vbaProject, &sheet.isProtected, &sheet.protection,
-			&sheet.filterHiddenValues, &sheet.slicers, &sheet.scenarios);
+			&sheet.filterHiddenValues, &sheet.slicers, &sheet.scenarios,
+			// Concetto di cartella di lavoro (vedi il commento su
+			// AscdSheet::hasNamedStyles): scritto SOLO dal foglio che
+			// lo porta davvero (hasNamedStyles/hasThemePalette
+			// impostati da MainWindow solo sul primo foglio prima del
+			// salvataggio) -- NULL per ogni altro, stesso principio di
+			// come SaveASCD stesso decide se scrivere la sezione.
+			sheet.hasNamedStyles ? &sheet.namedStyles : NULL,
+			sheet.hasThemePalette ? &sheet.themePalette : NULL);
 		if (err != B_OK)
 			return err;
 
@@ -4293,7 +4586,14 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 				&sheet.hasPrintArea, &sheet.printArea, &sheet.printSettings,
 				skipInitialRecalc, &sheet.vbaProject, &sheet.isProtected,
 				false /* skipVbaAndProtectionSections */, &sheet.protection,
-				&sheet.filterHiddenValues, &sheet.slicers, &sheet.scenarios);
+				&sheet.filterHiddenValues, &sheet.slicers, &sheet.scenarios,
+				// Concetto di cartella di lavoro (vedi il commento su
+				// AscdSheet::hasNamedStyles): passati sempre, LoadASCD
+				// stesso decide se popolarli in base al byte presenza
+				// scritto DAVVERO nel file per QUESTO foglio (di norma
+				// solo il primo).
+				&sheet.hasNamedStyles, &sheet.namedStyles,
+				&sheet.hasThemePalette, &sheet.themePalette);
 		}
 		if (err != B_OK)
 		{

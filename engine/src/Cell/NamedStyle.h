@@ -167,6 +167,25 @@ public:
 	// NULL se styleID e' 0, fuori range, o e' stato rimosso.
 	const NamedStyleDef* Get(int styleID) const;
 
+	// Accesso GREZZO (compresi gli slot rimossi) per la persistenza
+	// (AscdIO.cpp): a differenza di Count()/IDAtIndex()/Get() sopra, che
+	// saltano sempre i rimossi, un giro salva->ricarica deve preservare
+	// anche QUELLI, altrimenti l'ID di ogni stile aggiunto DOPO uno
+	// rimosso si sposterebbe (bug reale individuato in fase di
+	// progettazione: senza questo, rimuovere lo stile 18 e risalvare
+	// farebbe diventare lo stile 19 il nuovo 18, invalidando ogni
+	// CellStyle::fNamedStyleID che lo referenziava gia' scritta su
+	// disco). "index" e' 0-based, ID = index+1, stesso schema di
+	// IDAtIndex.
+	int RawCount() const { return (int)fStyles.size(); }
+	const NamedStyleDef& RawDefAt(int index) const { return fStyles[index].def; }
+	bool IsRemovedAt(int index) const { return fStyles[index].removed; }
+	// Ricostruisce l'INTERO contenuto da un giro di lettura, stesso
+	// ordine/ID di RawCount/RawDefAt/IsRemovedAt sopra -- MAI ID
+	// spostati, a differenza di ricostruire chiamando AddCustom in un
+	// ciclo (che salterebbe gli slot rimossi).
+	void ReplaceAllRaw(const std::vector<NamedStyleDef>& defs, const std::vector<bool>& removedFlags);
+
 private:
 	// fStyles[i] ha ID i+1; una voce rimossa diventa builtIn=false con
 	// un nome vuoto e "removed=true" (mai un vero erase(), altrimenti

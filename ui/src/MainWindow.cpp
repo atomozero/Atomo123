@@ -1754,6 +1754,25 @@ void MainWindow::AttachSheetResolver()
 {
 	for (size_t i = 0; i < fSheets.size(); i++)
 		fSheets[i].doc->SetSheetResolver(this);
+
+	// Stili con nome + tema (Tier 4, vedi NamedStyle.h): concetto di
+	// CARTELLA DI LAVORO, popolato SOLO sul foglio che lo porta davvero
+	// (di norma il primo, stesso principio di vbaProject/
+	// WorkbookVbaProject) -- si riparte SEMPRE dai predefiniti
+	// (ResetToBuiltIns()/ThemePalette()) prima di cercare, cosi' un
+	// documento nuovo o un file senza questa sezione (scritto prima di
+	// questa fase) si comporta esattamente come se non fosse mai stato
+	// personalizzato, invece di ereditare lo stato del documento
+	// aperto in precedenza in questa stessa finestra.
+	fNamedStyles.ResetToBuiltIns();
+	fThemePalette = ThemePalette();
+	for (size_t i = 0; i < fSheets.size(); i++)
+	{
+		if (fSheets[i].hasNamedStyles)
+			fNamedStyles = fSheets[i].namedStyles;
+		if (fSheets[i].hasThemePalette)
+			fThemePalette = fSheets[i].themePalette;
+	}
 }
 
 bool MainWindow::IsFooterProgressVisible() const
@@ -3037,6 +3056,15 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		fSheets[fActiveSheetIndex].images = fImages;
 		fSheets[fActiveSheetIndex].slicers = fSlicers;
 		fSheets[fActiveSheetIndex].scenarios = fScenarios;
+		// Stili con nome + tema (Tier 4, vedi NamedStyle.h): concetto di
+		// CARTELLA DI LAVORO, non del foglio attivo -- SEMPRE su
+		// fSheets[0] (mai fActiveSheetIndex), stesso principio esatto di
+		// vbaProject (vedi il commento su AscdSheet::hasNamedStyles in
+		// AscdIO.h).
+		fSheets[0].hasNamedStyles = true;
+		fSheets[0].namedStyles = fNamedStyles;
+		fSheets[0].hasThemePalette = true;
+		fSheets[0].themePalette = fThemePalette;
 		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
@@ -3238,6 +3266,15 @@ void MainWindow::AutoSaveBackup()
 		fSheets[fActiveSheetIndex].images = fImages;
 		fSheets[fActiveSheetIndex].slicers = fSlicers;
 		fSheets[fActiveSheetIndex].scenarios = fScenarios;
+		// Stili con nome + tema (Tier 4, vedi NamedStyle.h): concetto di
+		// CARTELLA DI LAVORO, non del foglio attivo -- SEMPRE su
+		// fSheets[0] (mai fActiveSheetIndex), stesso principio esatto di
+		// vbaProject (vedi il commento su AscdSheet::hasNamedStyles in
+		// AscdIO.h).
+		fSheets[0].hasNamedStyles = true;
+		fSheets[0].namedStyles = fNamedStyles;
+		fSheets[0].hasThemePalette = true;
+		fSheets[0].themePalette = fThemePalette;
 		fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
 		fSheets[fActiveSheetIndex].rowHeights = fSheetView->CustomRowHeights();
 		fSheets[fActiveSheetIndex].frozenRows = fSheetView->FrozenRows();
