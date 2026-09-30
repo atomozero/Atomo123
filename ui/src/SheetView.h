@@ -1345,14 +1345,17 @@ private:
 	// mutazione del documento e' avvenuta qui dentro -- stesso
 	// principio di NotifySelectionChanged.
 	void NotifyDocumentChanged();
-	// Ricalcola fDoc dopo una mutazione -- al posto di RecalculateAll
-	// diretto (usato prima di Fase 9): se la finestra proprietaria e'
-	// una vera MainWindow con piu' fogli, ricalcola l'intera cartella
-	// di lavoro (una formula puo' referenziarne un altro), altrimenti
-	// ricade su RecalculateAll(fDoc) da solo -- stesso principio di
+	// Ricalcola fDoc dopo una mutazione, tramite RecalculateMinimal
+	// (Tier 3, "grafo delle dipendenze" -- vedi AscdIO.h/MainWindow::
+	// RecalculateActiveWorkbook): se la finestra proprietaria e' una
+	// vera MainWindow, le inoltra "touched" cosi' com'e' (NULL = seme
+	// largo ma corretto, una cella precisa = lo sconto vero -- vedi il
+	// commento su MainWindow::RecalculateActiveWorkbook); altrimenti
+	// (nessuna MainWindow, es. un test diretto su SheetView) ricade su
+	// un seme locale equivalente costruito qui, stesso principio di
 	// NotifySelectionChanged/NotifyDocumentChanged (dynamic_cast su
 	// Window()).
-	void RecalculateOwningWorkbook();
+	void RecalculateOwningWorkbook(const cell* touched = NULL);
 
 	// Il Frame() della view copre l'intero intervallo virtuale del
 	// motore (kColCount x kRowCount celle), non solo l'area visibile a

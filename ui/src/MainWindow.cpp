@@ -1799,89 +1799,52 @@ bool MainWindow::IsFooterProgressVisible() const
 	return !fFooterProgressBar->IsHidden();
 }
 
-void MainWindow::RecalculateActiveWorkbook()
+void MainWindow::RecalculateActiveWorkbook(const cell* touched)
 {
-	if (fSheets.size() > 1)
-		RecalculateWorkbook(fSheets);
-	else
-		RecalculateAll(fDoc);
-
-	ShadowVerifyDependencyGraph();
-}
-
-void MainWindow::ShadowVerifyDependencyGraph()
-{
-	// Fotografia "vecchia" (fidata): ogni cella con formula di ogni
-	// foglio, col valore appena prodotto dal percorso a punto fisso
-	// sopra. Stesso costo di un'altra passata completa sul documento --
-	// accettabile qui perche' e' impalcatura di collaudo temporanea
-	// (Fase 1), non codice di produzione: verra' rimossa per intero
-	// alla Fase 3, non ottimizzata.
-	std::vector<std::vector<cell> > formulaCells(fSheets.size());
-	std::vector<std::map<cell, Value> > oldValues(fSheets.size());
 	std::vector<QualifiedCell> seeds;
 
-	for (size_t i = 0; i < fSheets.size(); i++)
+	if (touched)
 	{
-		CCellIterator iter(fSheets[i].doc, NULL);
-		cell c;
-		while (iter.NextExisting(c))
-		{
-			if (!fSheets[i].doc->GetCellFormula(c))
-				continue;
-			formulaCells[i].push_back(c);
-			Value v;
-			fSheets[i].doc->GetValue(c, v);
-			oldValues[i][c] = v;
-
-			QualifiedCell qc;
-			qc.container = fSheets[i].doc;
-			qc.loc = c;
-			seeds.push_back(qc);
-		}
+		// Percorso preciso (Fase 3, il taglio vero): un solo seme, la
+		// cella appena modificata -- RecalculateMinimal scopre da solo,
+		// tramite il grafo, ogni dipendente reale (diretto o transitivo,
+		// anche su un altro foglio), senza toccare nient'altro. Questo e'
+		// lo sconto vero che l'intero lavoro sul grafo delle dipendenze
+		// esiste per dare, sul percorso piu' comune e piu' sensibile alle
+		// prestazioni (un tasto premuto alla volta).
+		QualifiedCell qc;
+		qc.container = fDoc;
+		qc.loc = *touched;
+		seeds.push_back(qc);
 	}
-
-	// Esegue il nuovo percorso basato sul grafo SULLO STESSO documento
-	// reale: se e' corretto, ricalcolare celle gia' al loro punto fisso
-	// e' innocuo (stesso risultato). Se sbaglia, il confronto sotto lo
-	// scopre e ripristina subito il valore fidato.
-	RecalculateMinimal(seeds);
-
-	for (size_t i = 0; i < fSheets.size(); i++)
+	else
 	{
-		for (size_t j = 0; j < formulaCells[i].size(); j++)
+		// Percorso "largo" ma sempre corretto: ogni cella con formula di
+		// ogni foglio aperto, per ogni chiamante che non traccia ancora
+		// con precisione cosa ha appena modificato (incolla, riempi,
+		// ordina, inserisci/elimina riga o colonna, ecc.) -- una sola
+		// passata topologica invece delle vecchie fino a 50 passate a
+		// punto fisso, ma non lo sconto massimo possibile. Affinare
+		// questi chiamanti con un seme preciso resta un miglioramento
+		// futuro dichiarato, non un difetto di questa fase (vedi
+		// ROADMAP.md).
+		for (size_t i = 0; i < fSheets.size(); i++)
 		{
-			const cell& c = formulaCells[i][j];
-			Value& oldVal = oldValues[i][c];
-			Value newVal;
-			fSheets[i].doc->GetValue(c, newVal);
-
-			// NaN non e' mai uguale a se stesso in virgola mobile (IEEE
-			// 754): CompareNE sotto confronterebbe due valori di errore
-			// (es. testo moltiplicato per un numero, entrambi calcolati
-			// nello stesso identico modo dai due percorsi) come "diversi"
-			// anche quando sono bit per bit identici -- falso positivo
-			// scoperto scrivendo test_dependency_graph_recalc.cpp (Parte
-			// 7: una cella che legge una cella marcata "#CIRCULAR!").
-			// Caso speciale SOLO qui (non tocca Value::CompareNE stesso,
-			// usato ovunque nel motore per la vera semantica di "<>"
-			// delle formule, un problema diverso e non di questa fase):
-			// due NaN contano come "d'accordo" per questo confronto di
-			// collaudo.
-			bool bothNan = oldVal.fType == eNumData && newVal.fType == eNumData
-				&& isnan(oldVal.fDouble) && isnan(newVal.fDouble);
-			bool changed = !bothNan && oldVal.CompareNE(newVal, fSheets[i].doc);
-			if (changed)
+			CCellIterator iter(fSheets[i].doc, NULL);
+			cell c;
+			while (iter.NextExisting(c))
 			{
-				fprintf(stderr, "DEPGRAPH SHADOW MISMATCH: foglio \"%s\" cella (%d,%d) -- "
-					"il nuovo percorso basato sul grafo disaccorda col vecchio ciclo a "
-					"punto fisso; valore fidato ripristinato (atteso per un vero ciclo "
-					"tra fogli diversi, altrimenti da indagare)\n",
-					fSheets[i].name.String(), (int)c.h, (int)c.v);
-				fSheets[i].doc->SetValue(c, oldVal);
+				if (!fSheets[i].doc->GetCellFormula(c))
+					continue;
+				QualifiedCell qc;
+				qc.container = fSheets[i].doc;
+				qc.loc = c;
+				seeds.push_back(qc);
 			}
 		}
 	}
+
+	RecalculateMinimal(seeds);
 }
 
 void MainWindow::SwitchToSheet(int index)
