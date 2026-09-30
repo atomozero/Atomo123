@@ -11501,6 +11501,10 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		// foglio, come da sempre -- non cambia con il supporto
 		// multi-foglio, che riguarda solo l'IMPORTAZIONE (vedi sotto).
 		CContainer* doc = new CContainer(NULL, NULL);
+		// Vero grafo delle dipendenze (roadmap Tier 3): buffer interno
+		// usa-e-getta, mai letto per il grafo (solo per generare l'XML
+		// XLSX sotto) -- stesso motivo del gemello in ParseSheet sopra.
+		doc->SetSuppressGraphMaintenance(true);
 		std::vector<XlsxChartInfo> charts;
 		std::vector<unsigned char> vbaProject;
 		bool isProtected = false;
@@ -11648,6 +11652,16 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		ParsedSheet parsed;
 		parsed.name = sheetsToRead[i].first;
 		parsed.doc = new CContainer(NULL, NULL);
+		// Vero grafo delle dipendenze (roadmap Tier 3): questo CContainer
+		// e' un buffer interno usa-e-getta, letto solo per serializzare
+		// (WriteASCDBook sotto) e poi scartato -- il vero documento che
+		// l'utente vedra' e' un CContainer TOTALMENTE DIVERSO, popolato
+		// piu' tardi da LoadASCDBook (ui/src/AscdIO.cpp) leggendo QUESTI
+		// byte serializzati. Mantenere qui un grafo che nessuno legge mai
+		// e' puro spreco -- su un file reale con decine di migliaia di
+		// formule, questo da solo spiega una parte del rallentamento
+		// scoperto da un utente (vedi CHANGELOG.md).
+		parsed.doc->SetSuppressGraphMaintenance(true);
 		std::vector<CondFormatRule> condRules;
 		std::vector<HyperlinkRefInfo> hyperlinkRefs;
 		std::vector<DataValidationRefInfo> dataValidationRefs;

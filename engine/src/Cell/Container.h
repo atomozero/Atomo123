@@ -729,6 +729,26 @@ public:
 	// grafo DI "dying" stesso (viene distrutto comunque insieme a lui).
 	void PurgeDependenciesOn(CContainer* dying);
 
+	// Sospende il mantenimento incrementale del grafo (i tre punti di
+	// aggiornamento in NewCell/ClearCellContent/CopyCell/MoveCell) --
+	// SOLO per il caricamento massivo di un file: NewCell viene chiamata
+	// una volta per cella durante LoadASCD/il parsing dei translator,
+	// ma a quel punto ISheetResolver non e' ancora collegato (vedi
+	// AttachSheetResolver in MainWindow.cpp, chiamato SEMPRE dopo),
+	// quindi ogni calcolo dei precedenti fatto qui vedrebbe solo i
+	// riferimenti sullo stesso foglio e andrebbe comunque rifatto da
+	// capo (per intero, stesso foglio E fogli diversi insieme) da
+	// RebuildDependencyGraph subito dopo -- lavoro doppio, sprecato,
+	// mai esistito prima di questa funzionalita'. Bug di prestazioni
+	// reale scoperto da un utente su un file reale (44.639 formule,
+	// XLSX 3.4MB): l'apertura era diventata piu' lenta di prima invece
+	// che piu' veloce. Falso di default (comportamento invariato per
+	// una modifica interattiva dal vivo, che deve sempre aggiornare il
+	// grafo subito) -- va impostato a vero SOLO per la durata del ciclo
+	// di popolamento celle di un caricamento file, poi rimesso a falso
+	// PRIMA che l'utente possa modificare qualcosa.
+	void SetSuppressGraphMaintenance(bool suppress) { fSuppressGraphMaintenance = suppress; }
+
 	void GetCellStyle(const cell&, CellStyle&);
 	void SetCellStyle(const cell&, CellStyle&);
 	int GetCellStyleNr(const cell&);
@@ -1051,6 +1071,10 @@ private:
 	std::map<cell, std::set<QualifiedCell> > fDependents;
 	std::map<int, std::set<QualifiedCell> > fColumnDependents;
 	std::map<int, std::set<QualifiedCell> > fRowDependents;
+	// Vedi SetSuppressGraphMaintenance sopra. Falso di default: un
+	// CContainer usato direttamente (test, documento nuovo dal vivo)
+	// mantiene il grafo fin da subito, comportamento invariato.
+	bool fSuppressGraphMaintenance;
 };
 
 inline bool CContainer::WriteLock()
