@@ -96,6 +96,22 @@ static bool HasColumnDependent(CContainer* watchedContainer, int column,
 	return false;
 }
 
+// Gemella di HasColumnDependent sopra, per fRowDependents.
+static bool HasRowDependent(CContainer* watchedContainer, int row,
+	CContainer* dependentContainer, cell dependentLoc)
+{
+	const std::map<int, std::set<QualifiedCell> >& deps = watchedContainer->GetRowDependentsMap();
+	std::map<int, std::set<QualifiedCell> >::const_iterator it = deps.find(row);
+	if (it == deps.end())
+		return false;
+	for (std::set<QualifiedCell>::const_iterator d = it->second.begin(); d != it->second.end(); d++)
+	{
+		if (d->container == dependentContainer && d->loc == dependentLoc)
+			return true;
+	}
+	return false;
+}
+
 int main()
 {
 	BApplication app("application/x-vnd.Atomo-TestDependencyGraphBuild");
@@ -324,6 +340,60 @@ int main()
 			"nessun bordo individuale su A2 (assorbito dal bordo grezzo di colonna)");
 
 		doc->Release();
+	}
+
+	// Parte 9: gemella della Parte 8 per una riga intera. Il parser di
+	// questo motore non accetta la sintassi letterale "1:1" (un numero
+	// puro non e' un token di riferimento, a differenza di una lettera
+	// di colonna -- confermato da un vero CParseErr durante lo sviluppo
+	// di questo test), quindi si scrive un intervallo esplicito che
+	// copre l'intera larghezza del foglio (A1:ZZ1, ZZ = kColCount = 702):
+	// range::IsWholeRow() lo riconosce comunque come riga intera per
+	// approssimazione prudente (vedi il commento su IsWholeRow in
+	// Range.h), stesso trattamento grezzo di "1:1" se il parser lo
+	// avesse accettato.
+	{
+		CContainer* doc = new CContainer(NULL, NULL);
+		TryToParseString("1", cell(1, 1), doc, true); // A1
+		TryToParseString("2", cell(2, 1), doc, true); // B1
+		TryToParseString("=SUM(A1:ZZ1)", cell(1, 2), doc, true); // A2
+
+		Check(HasRowDependent(doc, 1, doc, cell(1, 2)),
+			"A2=\"=SUM(A1:ZZ1)\" registra un bordo grezzo su fRowDependents[1] (riga 1)");
+		Check(!HasDependent(doc, cell(1, 1), doc, cell(1, 2)),
+			"nessun bordo individuale su A1 (assorbito dal bordo grezzo di riga)");
+		Check(!HasDependent(doc, cell(2, 1), doc, cell(1, 2)),
+			"nessun bordo individuale su B1 (assorbito dal bordo grezzo di riga)");
+
+		doc->Release();
+	}
+
+	// Parte 10: riferimento a colonna intera CROSS-FOGLIO -- Sheet2 ha
+	// "=SUM(Sheet1!A:A)", il bordo grezzo deve comparire su
+	// fColumnDependents di Sheet1 (il foglio osservato), qualificato con
+	// Sheet2 come dipendente -- stessa idea della Parte 5 (cross-foglio
+	// puntuale) applicata al caso grezzo della Parte 8.
+	{
+		CContainer* sheet1 = new CContainer(NULL, NULL);
+		CContainer* sheet2 = new CContainer(NULL, NULL);
+		TestResolver resolver;
+		resolver.sheet1 = sheet1;
+		resolver.sheet2 = sheet2;
+		sheet1->SetSheetResolver(&resolver);
+		sheet2->SetSheetResolver(&resolver);
+
+		TryToParseString("1", cell(1, 1), sheet1, true); // Sheet1!A1
+		TryToParseString("2", cell(1, 2), sheet1, true); // Sheet1!A2
+		TryToParseString("=SUM(Sheet1!A:A)", cell(1, 1), sheet2, true); // Sheet2!A1
+
+		Check(HasColumnDependent(sheet1, 1, sheet2, cell(1, 1)),
+			"Sheet2!A1=\"=SUM(Sheet1!A:A)\" registra un bordo grezzo su fColumnDependents "
+			"di Sheet1 (colonna A), qualificato con Sheet2");
+		Check(!HasDependent(sheet1, cell(1, 1), sheet2, cell(1, 1)),
+			"nessun bordo individuale su Sheet1!A1 (assorbito dal bordo grezzo di colonna)");
+
+		sheet1->Release();
+		sheet2->Release();
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

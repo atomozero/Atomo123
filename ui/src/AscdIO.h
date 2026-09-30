@@ -540,6 +540,11 @@ void RebuildDependencyGraph(std::vector<AscdSheet>& sheets);
 // MainWindow::ShadowVerifyDependencyGraph, mai come sola fonte di
 // verita' per l'utente -- vedi il commento li'. La sostituzione vera di
 // RecalculateAll/RecalculateWorkbook e' compito della Fase 3.
-void RecalculateMinimal(const std::vector<QualifiedCell>& seeds);
+// "depth" e' interno (mai passato da un vero chiamante): guardia contro
+// una catena patologica di spill che ne fa crescere un altro all'infinito
+// (vedi il commento sul richiamo per crescita spill nell'implementazione)
+// -- non e' il vecchio limite di 50 passate per OGNI ricalcolo, solo per
+// questo raro caso limite.
+void RecalculateMinimal(const std::vector<QualifiedCell>& seeds, int depth = 0);
 
 #endif

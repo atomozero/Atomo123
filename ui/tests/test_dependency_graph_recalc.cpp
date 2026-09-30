@@ -335,6 +335,96 @@ int main()
 		doc->Release();
 	}
 
+	// Parte 8: riferimento a colonna intera (fColumnDependents, Fase 2) --
+	// modificare QUALUNQUE cella della colonna osservata deve pianificare
+	// la formula grezza; una modifica in un'altra colonna non deve
+	// toccarla per niente (il seme non la raggiungerebbe nemmeno).
+	{
+		CContainer* doc = new CContainer(NULL, NULL);
+		TryToParseString("1", cell(1, 1), doc, true);       // A1
+		TryToParseString("2", cell(1, 2), doc, true);       // A2
+		TryToParseString("=SUM(A:A)", cell(2, 1), doc, true); // B1
+
+		std::vector<QualifiedCell> seeds;
+		SeedAllFormulaCells(doc, seeds);
+		RecalculateMinimal(seeds);
+		Check(NumValue(doc, cell(2, 1)) == 3, "colonna intera: B1=SUM(A:A)=1+2=3 al primo giro");
+
+		TryToParseString("10", cell(1, 2), doc, true); // A2 cambia, e' nella colonna osservata
+		QualifiedCell a2; a2.container = doc; a2.loc = cell(1, 2);
+		std::vector<QualifiedCell> seedA2(1, a2);
+		RecalculateMinimal(seedA2);
+		Check(NumValue(doc, cell(2, 1)) == 11,
+			"colonna intera: modificare A2 (dentro la colonna osservata) aggiorna B1 a 1+10=11");
+
+		TryToParseString("99", cell(2, 2), doc, true); // B2, colonna B, non osservata da nessuno
+		QualifiedCell b2; b2.container = doc; b2.loc = cell(2, 2);
+		std::vector<QualifiedCell> seedB2(1, b2);
+		RecalculateMinimal(seedB2);
+		Check(NumValue(doc, cell(2, 1)) == 11,
+			"colonna intera: modificare B2 (colonna NON osservata) non tocca B1, resta 11");
+
+		doc->Release();
+	}
+
+	// Parte 9: dipendente di una cella spillata (fSpillOwnerOf +
+	// RedirectSpillMember, Fase 2) -- "=B5*2" dipende in realta'
+	// dall'owner del suo spill (B3), non da B5 stessa: modificare B3
+	// (l'unica cella con una formula propria nello spill) deve
+	// ripercuotersi sul dipendente.
+	{
+		CContainer* doc = new CContainer(NULL, NULL);
+		TryToParseString("=SEQUENCE(3,1)", cell(2, 3), doc, true, '.', ','); // B3:B5
+		TryToParseString("=B5*2", cell(4, 1), doc, true); // D1, B5 e' gia' spillata quando D1 nasce
+
+		std::vector<QualifiedCell> seeds;
+		SeedAllFormulaCells(doc, seeds);
+		RecalculateMinimal(seeds);
+		Check(NumValue(doc, cell(2, 5)) == 3, "spill: B5 (terza cella spillata) vale 3");
+		Check(NumValue(doc, cell(4, 1)) == 6, "spill: D1=B5*2=6, dipendente redirected sull'owner B3");
+
+		doc->Release();
+	}
+
+	// Parte 10: caso limite REALE (vedi il commento in
+	// CContainer::ApplySpill) -- un dipendente scritto PRIMA che la sua
+	// cella diventi membro di uno spill deve migrare a dipendere
+	// dall'owner, cosi' una futura crescita dello spill (per un cambio
+	// di un argomento a monte, non della formula dell'owner stessa) lo
+	// raggiunge comunque.
+	{
+		CContainer* doc = new CContainer(NULL, NULL);
+		TryToParseString("3", cell(3, 1), doc, true); // C1 = 3 (argomento di SEQUENCE)
+		TryToParseString("=SEQUENCE(C1,1)", cell(2, 3), doc, true, '.', ','); // B3:B5, C1 righe
+		// D1 dipende da B6, che NON e' ancora membro dello spill (lo
+		// spill iniziale e' solo B3:B5, 3 righe) -- fDependents[B6] nasce
+		// puntando a D1 direttamente, non redirected su B3.
+		TryToParseString("=B6*2", cell(4, 1), doc, true); // D1
+
+		std::vector<QualifiedCell> seeds;
+		SeedAllFormulaCells(doc, seeds);
+		RecalculateMinimal(seeds);
+		Check(NumValue(doc, cell(4, 1)) == 0,
+			"crescita spill: prima della crescita B6 e' vuota, D1=B6*2=0");
+
+		// C1 cresce da 3 a 4: lo spill di B3 si estende a B3:B6, B6
+		// diventa membro per la prima volta (valore atteso 4, quarto
+		// elemento di SEQUENCE(4,1)).
+		TryToParseString("4", cell(3, 1), doc, true);
+		QualifiedCell c1; c1.container = doc; c1.loc = cell(3, 1);
+		std::vector<QualifiedCell> seedC1(1, c1);
+		RecalculateMinimal(seedC1);
+
+		Check(NumValue(doc, cell(2, 6)) == 4, "crescita spill: B6 e' ora membro dello spill, vale 4");
+		Check(NumValue(doc, cell(4, 1)) == 8,
+			"crescita spill: D1=B6*2=8 si aggiorna SUBITO, provando che il dipendente scritto "
+			"prima della crescita e' stato migrato su fDependents[owner] (senza la migrazione "
+			"in CContainer::ApplySpill, D1 resterebbe fermo a 0: il seme parte da C1, arriva a "
+			"B3 (owner), ma senza la migrazione non raggiungerebbe D1, ancora agganciato a B6)");
+
+		doc->Release();
+	}
+
 	// Parte 7: la verifica "ombra" (MainWindow::ShadowVerifyDependencyGraph,
 	// chiamata da RecalculateActiveWorkbook dopo il vecchio percorso) non
 	// deve alterare il risultato ne' bloccarsi su una sequenza di editing

@@ -78,7 +78,29 @@ bool CContainer::ApplySpill(const cell& owner, int rows, int cols, const std::ve
 			cell c(col, row);
 			int idx = (row - target.top) * cols + (col - target.left);
 			if (c != owner)
+			{
 				NewCell(c, values[idx], NULL);
+				// Caso limite reale del grafo delle dipendenze (Fase 2):
+				// "c" puo' gia' avere dipendenti diretti registrati DA
+				// PRIMA di diventare un membro spill (una formula scritta
+				// quando "c" era ancora una cella letterale/vuota
+				// qualunque, es. lo spill di "owner" e' cresciuto solo
+				// ora fino a raggiungerla). Da questo momento in poi il
+				// valore di "c" cambia SOLO come effetto collaterale del
+				// ricalcolo di "owner", mai da solo -- se non si
+				// migrassero questi dipendenti su fDependents[owner], un
+				// futuro ricalcolo di "owner" non li pianificherebbe piu'
+				// (RecalculateMinimal parte da "owner", non da "c", per
+				// arrivarci). Sicuro perche' c != owner in questo ramo:
+				// "depIt"/"fDependents[owner]" sono sempre voci diverse
+				// della mappa, mai la stessa.
+				std::map<cell, std::set<QualifiedCell> >::iterator depIt = fDependents.find(c);
+				if (depIt != fDependents.end())
+				{
+					fDependents[owner].insert(depIt->second.begin(), depIt->second.end());
+					fDependents.erase(depIt);
+				}
+			}
 			fSpillOwnerOf[c] = owner;
 		}
 	}

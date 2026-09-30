@@ -4614,7 +4614,7 @@ static std::set<QualifiedCell> MarkCircularReferencesQualified(
 	return circular;
 }
 
-void RecalculateMinimal(const std::vector<QualifiedCell>& seeds)
+void RecalculateMinimal(const std::vector<QualifiedCell>& seeds, int depth)
 {
 	// Passo 1: BFS sul grafo INVERSO a partire da "seeds", raccogliendo
 	// ogni cella qualificata transitivamente coinvolta (dipendenti
@@ -4754,9 +4754,20 @@ void RecalculateMinimal(const std::vector<QualifiedCell>& seeds)
 	}
 
 	// Passo 4: calcola nell'ordine trovato -- ogni cella al massimo una
-	// volta, non fino a 50 volte.
+	// volta, non fino a 50 volte. Si tiene traccia di ogni cella il cui
+	// intervallo di spill CAMBIA FORMA per effetto del proprio stesso
+	// calcolo (es. "=SEQUENCE(C1,1)" che cresce perche' C1 e' appena
+	// cambiato): vedi il commento sulla rete di sicurezza piu' sotto per
+	// il perche' serve.
+	std::vector<QualifiedCell> spillGrowthSeeds;
 	for (size_t i = 0; i < order.size(); i++)
+	{
+		range before = order[i].container->GetSpillRange(order[i].loc);
 		order[i].container->CalcCell(order[i].loc);
+		range after = order[i].container->GetSpillRange(order[i].loc);
+		if (!(before == after))
+			spillGrowthSeeds.push_back(order[i]);
+	}
 
 	// Rete di sicurezza: un raro ciclo che passa SOLO per un bordo
 	// grezzo colonna/riga (es. una cella dentro SOMMA(A:A) che referenzia
@@ -4775,6 +4786,25 @@ void RecalculateMinimal(const std::vector<QualifiedCell>& seeds)
 		if (!circular.count(*it) && !ordered.count(*it))
 			it->container->SetValue(it->loc, Value(kCircularRefText));
 	}
+
+	// Rete di sicurezza per lo spill che cambia forma DURANTE questa
+	// stessa passata (Fase 2 del grafo delle dipendenze, caso limite
+	// reale -- vedi il commento sulla migrazione dei dipendenti in
+	// CContainer::ApplySpill): il Passo 1 raccoglie "affected" PRIMA che
+	// il Passo 4 esegua le formule vere, quindi una cella che diventa
+	// membro di uno spill solo ORA (es. "=SEQUENCE(C1,1)" appena
+	// cresciuta) non puo' essere stata inclusa nell'ordinamento sopra --
+	// i suoi dipendenti pero' ESISTONO gia' in fDependents[owner] subito
+	// dopo il CalcCell dell'owner qui sopra (migrati da ApplySpill). Una
+	// passata di richiamo, seminata dall'owner stesso (i suoi dipendenti
+	// diretti sono esattamente cio' che il Passo 1 esplorerebbe da capo,
+	// ora con il grafo aggiornato), li raggiunge. "depth" limita una
+	// catena patologica di spill che ne fa crescere un altro all'infinito
+	// -- un caso raro, non il percorso comune che questa fase ottimizza,
+	// quindi un limite basso (20) invece delle vecchie 50 passate PER
+	// OGNI ricalcolo basta e avanza.
+	if (!spillGrowthSeeds.empty() && depth < 20)
+		RecalculateMinimal(spillGrowthSeeds, depth + 1);
 }
 
 bool IsASCDBookFile(BPositionIO* source)
