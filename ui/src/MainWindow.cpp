@@ -2313,24 +2313,6 @@ static void SendFooterProgress(BMessenger target, float fraction, const char* ph
 	target.SendMessage(&msg);
 }
 
-// Callback di RecalculateWorkbook (vedi RecalcProgressFunc in
-// AscdIO.h): l'ultimo terzo della barra di avanzamento e' dedicato al
-// ricalcolo (le prime due fasi, lettura/traduzione, sono gia' passate
-// a questo punto) -- passIndex non ha un limite noto in anticipo (fino
-// a 50, ma converge quasi sempre molto prima), quindi il progresso qui
-// dentro e' stimato solo sul foglio corrente/totale della PASSATA
-// corrente, non sull'intero ricalcolo.
-static void OpenFileRecalcProgress(void* context, int sheetIndex, int sheetCount,
-	int passIndex, const char* sheetName)
-{
-	BMessenger* target = (BMessenger*)context;
-	float withinPhase = sheetCount > 0 ? (float)(sheetIndex + 1) / sheetCount : 1.0f;
-	BString phase;
-	phase.SetToFormat(B_TRANSLATE("Ricalcolo: foglio %d di %d (passata %d) - %s"),
-		sheetIndex + 1, sheetCount, passIndex + 1, sheetName);
-	SendFooterProgress(*target, 0.66f + withinPhase * 0.34f, phase.String());
-}
-
 // Corpo del thread di caricamento (Fase 31, richiesta esplicita
 // dell'utente dopo aver misurato ~3 minuti di finestra bloccata su un
 // file XLSX reale a 13 fogli): stessa identica logica che prima stava
@@ -2495,7 +2477,34 @@ static int32 OpenFileThreadEntry(void* data)
 		for (size_t i = 0; i < newSheets->size(); i++)
 			(*newSheets)[i].doc->SetSheetResolver(resolver);
 
-		RecalculateWorkbook(*newSheets, OpenFileRecalcProgress, &job->target);
+		// Grafo delle dipendenze (Tier 3, taglio di produzione): un solo
+		// giro ordinato topologicamente su ogni cella con formula di ogni
+		// foglio, mai piu' fino a 50 passate a punto fisso come il vecchio
+		// RecalculateWorkbook qui sopra -- stesso principio "seme largo ma
+		// corretto" di MainWindow::RecalculateActiveWorkbook (nessun
+		// chiamante qui sa ancora quali celle sono "le sole toccate",
+		// essendo un caricamento completo da zero). "passIndex" non esiste
+		// piu' (una sola passata per costruzione): la barra di avanzamento
+		// resta ferma al messaggio "Ricalcolo in corso..." gia' inviato
+		// sopra invece di avanzare per passata/foglio, dato che l'intero
+		// ricalcolo e' ormai troppo rapido perche' un progresso granulare
+		// serva ancora a qualcosa.
+		std::vector<QualifiedCell> seeds;
+		for (size_t i = 0; i < newSheets->size(); i++)
+		{
+			CCellIterator iter((*newSheets)[i].doc, NULL);
+			cell c;
+			while (iter.NextExisting(c))
+			{
+				if (!(*newSheets)[i].doc->GetCellFormula(c))
+					continue;
+				QualifiedCell qc;
+				qc.container = (*newSheets)[i].doc;
+				qc.loc = c;
+				seeds.push_back(qc);
+			}
+		}
+		RecalculateMinimal(seeds);
 	}
 	else
 	{
@@ -2672,7 +2681,28 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	// costruito qui solo per essere gia' pronto quando una fase
 	// successiva iniziera' a consultarlo.
 	RebuildDependencyGraph(fSheets);
-	RecalculateWorkbook(fSheets);
+	// Grafo delle dipendenze (Tier 3, taglio di produzione): stesso
+	// principio "seme largo ma corretto" del percorso di caricamento in
+	// background (OpenFileThreadEntry) -- una sola passata topologica
+	// invece delle vecchie fino a 50 a punto fisso.
+	{
+		std::vector<QualifiedCell> seeds;
+		for (size_t i = 0; i < fSheets.size(); i++)
+		{
+			CCellIterator iter(fSheets[i].doc, NULL);
+			cell c;
+			while (iter.NextExisting(c))
+			{
+				if (!fSheets[i].doc->GetCellFormula(c))
+					continue;
+				QualifiedCell qc;
+				qc.container = fSheets[i].doc;
+				qc.loc = c;
+				seeds.push_back(qc);
+			}
+		}
+		RecalculateMinimal(seeds);
+	}
 
 	fDocumentName = ref.name;
 	{
