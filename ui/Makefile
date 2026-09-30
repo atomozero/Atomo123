@@ -250,6 +250,23 @@ test-translator-multisheet: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -ltranslation
 	./tests/test_translator_multisheet_import
 
+# Profiling reale di Translate()/LoadASCDBook (post -O2/NewCell, post
+# grafo delle dipendenze) su un foglio sintetico grande -- vedi il
+# commento in testa al file per il perche' di un solo foglio grande
+# invece di tredici piccoli.
+test-xlsx-perf-profile: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
+	$(CXX) -c tests/test_xlsx_perf_profile.cpp -o tests/test_xlsx_perf_profile.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_xlsx_perf_profile tests/test_xlsx_perf_profile.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	xres -o tests/test_xlsx_perf_profile $(RSRC)
+	./tests/test_xlsx_perf_profile
+
 # Test dei bordi di cella (Fase 11): un lato alla volta, applicati a
 # tutta la selezione, indipendenti fra loro, ClearBorders. Stessa
 # ragione di test-paste-range (serve una vera MainWindow).
