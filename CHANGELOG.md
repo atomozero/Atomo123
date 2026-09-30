@@ -4,6 +4,72 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
+What shipped since v0.5.0 (in progress):
+- A real dependency graph for the calc engine (roadmap Tier 3, the
+  single largest remaining architectural item): replaces
+  `RecalculateAll`/`RecalculateWorkbook`'s brute-force fixed-point loop
+  (up to 50 passes over every formula cell, on every single edit) with
+  an incrementally-maintained, workbook-wide reverse-dependency graph
+  and a single topological-order recalculation pass that touches only
+  a cell's true transitive dependents, exactly once. Built in four
+  phases, each shipped and tested independently: Phase 0 added the
+  qualified-node graph data structures (`QualifiedCell`, `fDependents`/
+  `fColumnDependents`/`fRowDependents`, `engine/src/Cell/Container.h`)
+  and incremental maintenance at every formula-mutating chokepoint
+  (`NewCell` — the real user-formula-entry path, not the legacy-only
+  `SetCellFormula` the original plan assumed — plus `ClearCellContent`,
+  `CopyCell`, and row/column insert-delete's `MoveCell`); Phase 1 added
+  the consumer, `RecalculateMinimal` (`ui/src/AscdIO.cpp`): a BFS over
+  the reverse graph followed by Kahn's-algorithm topological sort,
+  developed behind a temporary shadow-verification mode (every edit ran
+  both the old and new engine on the same live document and compared
+  results, restoring the old value and logging loudly on any
+  disagreement) rather than trusting it blind; Phase 2 added
+  whole-column/row coarse dependency edges (`=SUM(A:A)` gets one graph
+  edge, not one per cell in the column) and spill-owner-aware precedent
+  redirection (a formula reading a `SEQUENCE`/`UNIQUE`/etc. spill
+  member depends on the owning formula, including when the spill's
+  shape changes mid-recalculation); Phase 3 removed the shadow-mode
+  scaffolding and cut the new engine over as the only path a real user
+  exercises. A genuine new capability falls out of the same mechanism
+  for free: circular references spanning two different sheets are now
+  detected and marked `#CIRCULAR!`, which the old same-sheet-only DFS
+  cycle detector could never see. Measured, honest performance result
+  on a synthetic 20,000+ cell single sheet with a worst-case
+  (iteration-order-reversed) 40-link dependency chain — deliberately
+  constructed to hit the old algorithm's actual multi-pass-convergence
+  cost, not its accidental best case, which an earlier draft of this
+  same benchmark had measured by mistake (1.9x, since a naturally
+  row-ordered chain converges in one pass regardless of algorithm):
+  **125x faster** for a single interactive edit. Real bugs found and
+  fixed along the way, none of them shipped: a false-positive shadow
+  mismatch from comparing two independent NaN error values (never
+  equal under IEEE 754, special-cased in the *test* comparison only,
+  not in the engine's real `Value::CompareNE`); `CContainer::ApplySpill`
+  wasn't migrating a cell's pre-existing dependents when it newly
+  became a spill member, which would have left a real formula
+  permanently stale after a `SEQUENCE`-style spill grew to reach it;
+  and a related same-recalculation-pass edge case where a spill
+  growing mid-pass could make a cell newly reachable before the walk's
+  own bookkeeping accounted for it, fixed with a small bounded (20-level)
+  recall pass, not a return to the old 50-pass-per-edit cost. Declared,
+  explicit scope limits, not silent gaps: only the single most
+  performance-sensitive call site (a single cell-edit commit) seeds the
+  new engine with the precise edited cell for now — every other
+  mutation (paste, fill, sort, row/column insert-delete, undo/redo)
+  still seeds broadly with every formula cell in the workbook, correct
+  and still one pass instead of up to 50, but not the maximum possible
+  speedup; and structured-table (`Table1[Col]`) references don't get a
+  precise cross-sheet graph edge yet (the reference is a bytecode token
+  invisible to the new cross-sheet iterator), falling back to the same
+  broad-but-correct seeding instead. Four new dedicated test files
+  (`test_dependency_graph_build.cpp`, extended `test_dependency_graph_recalc.cpp`)
+  cover graph construction/incremental maintenance, same-sheet and
+  cross-sheet recalculation correctness, circular-reference parity with
+  the old detector plus the new cross-sheet cases it couldn't catch,
+  whole-column/row coarsening, spill-owner redirection, and the
+  performance benchmark itself.
+
 What shipped in v0.5.0, on top of v0.4.2:
 - Chart visual polish, first step of a broader "make charts more
   professional" pass: the chart frame's outline changed from a heavy

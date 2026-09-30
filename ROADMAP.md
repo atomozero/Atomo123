@@ -748,17 +748,48 @@ list deliberately deviates from pure effort-sorting:
 
 ### Tier 3 — needs dedicated planning: large effort, foundational or high-value
 
-- **A real dependency graph for the calc engine.** Today
-  `RecalculateAll`/`RecalculateWorkbook` is a brute-force fixed-point
-  loop over every formula cell, up to 50 passes, on *every* edit —
-  not just at file-open (where the "dirty cell" fix already helps).
-  A file large enough to need that fix will still feel sluggish while
-  being edited interactively. Fixing this properly (track which cells
-  reference which, only re-evaluate what actually changed) is the
-  biggest architectural investment on this list, touches the core of
-  the engine, and needs its own dedicated design pass — but it also
-  makes every future feature built on top of recalculation cheaper to
-  ship well, so it belongs here and not at the bottom
+- ~~**A real dependency graph for the calc engine.**~~ Fixed — see
+  `CHANGELOG.md`. `RecalculateAll`/`RecalculateWorkbook`'s brute-force
+  fixed-point loop (up to 50 passes over every formula cell, on every
+  edit) is replaced by an incrementally-maintained, workbook-wide
+  reverse-dependency graph (`QualifiedCell`, `engine/src/Cell/
+  Container.h`) and a single topological-order recalculation pass
+  (`RecalculateMinimal`, `ui/src/AscdIO.cpp`) that touches only a cell's
+  true transitive dependents — same-sheet or cross-sheet — exactly
+  once. Covers whole-column/row references (`=SUM(A:A)`, coarse edges
+  instead of one per cell) and spill-owner redirection (a cell reading
+  a `SEQUENCE`/`UNIQUE`/etc. spill member depends on the owning
+  formula, including when the spill's own shape grows/shrinks
+  mid-recalculation). A genuine new capability falls out of the same
+  mechanism: circular references spanning two different sheets are now
+  detected and marked `#CIRCULAR!`, which the old same-sheet-only DFS
+  detector could never see. Measured, honest benchmark on a synthetic
+  20,000+ cell single sheet with a worst-case (iteration-order-reversed)
+  40-link dependency chain: **125x faster** for a single-cell edit
+  (`ui/tests/test_dependency_graph_recalc.cpp`, Part 11) — developed
+  behind a temporary shadow-verification mode (every edit ran both the
+  old and new engine and compared results) during a multi-phase bake-in
+  before the old path was cut over. `RecalculateAll`/`RecalculateWorkbook`
+  remain in the codebase (still exercised directly by several tests,
+  not dead code) but are no longer on the live user-facing path.
+  **Explicitly out of scope, not silently missing**: only the single
+  most performance-sensitive call site (`SheetView::CommitEditing`, one
+  keystroke commit) seeds the new engine with the precise edited cell;
+  every other mutation (paste, fill, sort, row/column insert-delete,
+  undo/redo, etc.) still seeds with every formula cell in the workbook
+  for now — correct and still one pass instead of up to 50, but not the
+  maximum possible speedup; threading a precise seed through those
+  remaining call sites is a real, declared follow-up, not a bug.
+  Structured-table (`Table1[Col]`) cross-sheet dependency tracking is
+  also deferred (the reference is a `valName` bytecode token, invisible
+  to the new cross-sheet-precedent iterator) — a table formula still
+  recalculates correctly, just via the broad fallback seed rather than
+  a precise graph edge. The pre-existing, unrelated bug where renaming
+  a sheet doesn't rewrite other sheets' formula text referencing its
+  old name (`MainWindow::RenameSheet`) is untouched by this work either
+  way — the graph resolves to a live sheet object once built, so a
+  rename doesn't corrupt it, but the underlying formula-text gap
+  remains for a future session
 - ~~**Real 2D pivot tables** (a "Columns" field, multiple simultaneous
   measures)~~ Fixed — see `CHANGELOG.md`. `PivotTableObject` gained a
   Columns axis and a list of explicit measure columns (each with its
