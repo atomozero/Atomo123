@@ -69,6 +69,32 @@ What shipped since v0.5.0 (in progress):
   the old detector plus the new cross-sheet cases it couldn't catch,
   whole-column/row coarsening, spill-owner redirection, and the
   performance benchmark itself.
+- Fixed a real correctness bug found while working on the dependency
+  graph above: a formula directly referencing a cell that gets deleted
+  (e.g. `=A3+1`, then row 3 deleted) silently computed as if the
+  reference were simply absent (`+1` evaluates to `1`) instead of
+  showing an error — `cell::Offset`/`range::Offset` already flagged
+  such a reference as `cell::InvalidCell`, but `CFormula::Calculate`
+  never checked for it before reading the value, so a lookup on
+  garbage coordinates silently came back empty. `valCell`/`valRange`/
+  `valRefRange` now push a `"#REF!"` text value instead — the same
+  "literal string in the cell, no real error `Value` type exists"
+  convention already used for `#CIRCULAR!`; combining it with a number
+  in an expression (e.g. the `+1` above) already produces `NaN` via
+  the existing `Value::operator+=` type-mismatch path, which the rest
+  of the app already treats as an error state, so no further engine
+  change was needed for expressions. Chasing this down surfaced a
+  second, real, separate gap: `SheetView::DeleteRows`/`DeleteColumns`
+  only seed recalculation for the shifted-and-below region, so a
+  stationary formula *above* the deletion point that directly
+  references a cell inside the deleted zone never got recalculated at
+  all — its stale pre-deletion value stuck around forever even though
+  its own formula bytecode was already correctly rewritten. Both now
+  also collect the external dependents of every about-to-be-deleted
+  cell (via the dependency graph's `GetDependentsMap`, read before
+  `DisposeCell` runs) and seed those explicitly through a new
+  `QualifiedCell`-based `RecalculateOwningWorkbook`/
+  `RecalculateActiveWorkbook` overload.
 
 What shipped in v0.5.0, on top of v0.4.2:
 - Chart visual polish, first step of a broader "make charts more
