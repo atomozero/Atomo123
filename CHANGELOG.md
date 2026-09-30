@@ -95,6 +95,34 @@ What shipped since v0.5.0 (in progress):
   `DisposeCell` runs) and seed those explicitly through a new
   `QualifiedCell`-based `RecalculateOwningWorkbook`/
   `RecalculateActiveWorkbook` overload.
+- Fixed a real regression, found by a user the same day the dependency
+  graph above shipped: opening a real, formula-heavy XLSX file (13
+  sheets, ~44,639 formulas, one sheet 95% formulas) got SLOWER after
+  the dependency-graph work, not faster — the opposite of the whole
+  point of that change. Root cause: `NewCell`/`ClearCellContent`/
+  `CopyCell`/`MoveCell`/`SetCellFormula` each maintain the new
+  dependency graph incrementally on every call, including while a file
+  is first being read cell-by-cell — at that point `ISheetResolver`
+  isn't attached yet (only same-sheet edges could be found anyway), and
+  `RebuildDependencyGraph` (called right after `AttachSheetResolver`)
+  immediately recomputes the exact same graph from scratch for the
+  whole workbook — meaning every formula's precedents got computed
+  twice on every file open, a brand new cost that never existed before
+  today. New `CContainer::SetSuppressGraphMaintenance()`, set for the
+  duration of `LoadASCD`'s cell-population loop (cleared on every exit
+  path, including early returns on malformed data — verified none left
+  it stuck on) and permanently on the throwaway `CContainer` instances
+  each of the four translators uses internally to build/consume its own
+  intermediate ASCD byte stream, which never need graph tracking since
+  they're discarded right after serialization. Measured on the actual
+  reported file: `RebuildDependencyGraph` dropped from a real
+  contributor to under half a second. Honestly incomplete: this fix
+  does not explain the file's full open time on its own — real
+  phase-by-phase timing traced the dominant remaining cost to
+  `LoadASCD`/`WriteASCDBook`'s own per-cell read/write loop on this
+  specific high-formula-density file (far above the flat per-cell rate
+  measured on a lower-density synthetic benchmark earlier), a separate,
+  still-open investigation, not resolved by this change.
 
 What shipped in v0.5.0, on top of v0.4.2:
 - Chart visual polish, first step of a broader "make charts more
