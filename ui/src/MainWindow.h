@@ -615,6 +615,17 @@ public:
 	// SOLO con quella, lasciando che il grafo scopra da solo i soli
 	// dipendenti reali -- lo sconto vero che questa fase esiste per dare.
 	void RecalculateActiveWorkbook(const cell* touched = NULL);
+	// Gemelle di RecalculateActiveWorkbook sopra, per un chiamante che
+	// conosce con precisione l'intero intervallo (o l'elenco sparso di
+	// celle) appena toccato invece di una sola cella -- incolla,
+	// riempi, ordina, taglia, ripristino annulla/ripeti ecc. Seminano
+	// RecalculateMinimal con OGNI cella di "touched" (esistente o
+	// meno: una cella appena svuotata deve restare seminabile per
+	// coordinata, cosi' chi ne dipende viene comunque ricalcolato),
+	// mai solo quelle con una formula propria -- stesso principio
+	// della singola cella sopra.
+	void RecalculateActiveWorkbook(const range& touched);
+	void RecalculateActiveWorkbook(const std::vector<cell>& touched);
 
 	// Pubblici per lo stesso motivo di CopySelection/PasteSelection
 	// sopra -- vedi tests/test_names.cpp. Definire/eliminare un nome

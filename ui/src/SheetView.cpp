@@ -910,7 +910,7 @@ void SheetView::ShowValidationMenu(cell c, BPoint screenAnchor)
 	catch (...)
 	{
 	}
-	RecalculateOwningWorkbook();
+	RecalculateOwningWorkbook(&c);
 	NotifyDocumentChanged();
 	Invalidate(CellRect(c));
 }
@@ -1467,7 +1467,7 @@ void SheetView::ClearSelection()
 	while (iter.NextExisting(c))
 		fDoc->ClearCellContent(c);
 
-	RecalculateOwningWorkbook();
+	RecalculateOwningWorkbook(sel);
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -1496,7 +1496,7 @@ void SheetView::FillDown()
 			fDoc->CopyCell(fDoc, src, cell(col, row));
 	}
 
-	RecalculateOwningWorkbook();
+	RecalculateOwningWorkbook(sel);
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -1525,7 +1525,7 @@ void SheetView::FillRight()
 			fDoc->CopyCell(fDoc, src, cell(col, row));
 	}
 
-	RecalculateOwningWorkbook();
+	RecalculateOwningWorkbook(sel);
 	Invalidate(CellRect(sel.TopLeft()) | CellRect(sel.BotRight()));
 	NotifySelectionChanged();
 	NotifyDocumentChanged();
@@ -1664,7 +1664,7 @@ void SheetView::SortSelection(bool ascending)
 		}
 	}
 
-	RecalculateOwningWorkbook();
+	RecalculateOwningWorkbook(sel);
 	// Le righe filtrate nascoste (fRowHidden) sono decise dal
 	// CONTENUTO di ogni riga, che Ordina ha appena rimescolato: senza
 	// questo, la riga nascosta prima dell'ordinamento resta nascosta
@@ -1806,7 +1806,17 @@ void SheetView::InsertRows()
 		}
 	}
 
-	RecalculateOwningWorkbook();
+	// Seme "largo ma sicuro" limitato all'estensione REALE dei dati
+	// (bounds, gia' calcolato sopra) invece dell'intero foglio: ogni
+	// cella toccata da MoveCell vive per forza dentro
+	// (1..bounds.right, first..bounds.bottom+count), mai oltre --
+	// ancora piu' largo del necessario (include anche celle non
+	// spostate dentro quel rettangolo), ma sempre corretto, e molto
+	// piu' stretto di "ogni cella con formula di ogni foglio aperto".
+	// bounds.right < 1 (foglio vuoto): il ciclo dentro l'overload a
+	// range non itera nulla (right < left), nessun caso speciale
+	// serve qui.
+	RecalculateOwningWorkbook(range(1, first, bounds.right, bounds.bottom + count));
 	// Vedi il commento gemello alla fine di SortSelection sopra: le
 	// righe filtrate nascoste vanno ricalcolate anche qui, non solo
 	// quando l'utente cambia un criterio -- inserire righe sposta il
@@ -1862,7 +1872,10 @@ void SheetView::InsertColumns()
 		}
 	}
 
-	RecalculateOwningWorkbook();
+	// Seme "largo ma sicuro" limitato all'estensione reale dei dati,
+	// stesso principio di InsertRows sopra (trasposto: righe invece di
+	// colonne per il bordo, colonne invece di righe per lo spostamento).
+	RecalculateOwningWorkbook(range(first, 1, bounds.right + count, bounds.bottom));
 	// Vedi il commento gemello alla fine di SortSelection sopra.
 	RecomputeAutoFilterVisibility();
 	Invalidate();
@@ -1916,7 +1929,14 @@ void SheetView::DeleteRows()
 		}
 	}
 
-	RecalculateOwningWorkbook();
+	// Seme "largo ma sicuro" limitato all'estensione reale ORIGINALE
+	// dei dati (bounds, calcolato PRIMA della cancellazione): copre sia
+	// la zona cancellata (first..last, per i dipendenti di celle ora
+	// sparite) sia la zona spostata in su sotto di essa, in un colpo
+	// solo -- una cancellazione non puo' mai allargare l'estensione
+	// del foglio, quindi bounds.bottom (non aggiornato) resta un
+	// limite superiore valido.
+	RecalculateOwningWorkbook(range(1, first, bounds.right, bounds.bottom));
 	// Vedi il commento gemello alla fine di SortSelection sopra.
 	RecomputeAutoFilterVisibility();
 	Invalidate();
@@ -1963,7 +1983,9 @@ void SheetView::DeleteColumns()
 		}
 	}
 
-	RecalculateOwningWorkbook();
+	// Seme "largo ma sicuro", stesso principio di DeleteRows sopra
+	// (trasposto).
+	RecalculateOwningWorkbook(range(first, 1, bounds.right, bounds.bottom));
 	// Vedi il commento gemello alla fine di SortSelection sopra.
 	RecomputeAutoFilterVisibility();
 	Invalidate();
@@ -2323,7 +2345,7 @@ void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 		fDoc->SetCellStyle(c, style);
 	}
 
-	RecalculateOwningWorkbook();
+	RecalculateOwningWorkbook(snap.r);
 }
 
 void SheetView::SaveUndoState(range affected)
@@ -5262,7 +5284,7 @@ void SheetView::MouseUp(BPoint where)
 				}
 			}
 
-			RecalculateOwningWorkbook();
+			RecalculateOwningWorkbook(preview);
 			Invalidate(CellRect(preview.TopLeft()) | CellRect(preview.BotRight()));
 			NotifySelectionChanged();
 			NotifyDocumentChanged();
@@ -6556,5 +6578,51 @@ void SheetView::RecalculateOwningWorkbook(const cell* touched)
 	// non si aggiorna in automatico"). Un solo Invalidate() qui, invece
 	// di doverlo aggiungere in ogni chiamante, copre tutti i percorsi
 	// in un colpo solo.
+	Invalidate();
+}
+
+void SheetView::RecalculateOwningWorkbook(const range& touched)
+{
+	MainWindow* win = dynamic_cast<MainWindow*>(Window());
+	if (win)
+		win->RecalculateActiveWorkbook(touched);
+	else
+	{
+		std::vector<QualifiedCell> seeds;
+		for (int row = touched.top; row <= touched.bottom; row++)
+		{
+			for (int col = touched.left; col <= touched.right; col++)
+			{
+				QualifiedCell qc;
+				qc.container = fDoc;
+				qc.loc = cell(col, row);
+				seeds.push_back(qc);
+			}
+		}
+		RecalculateMinimal(seeds);
+	}
+
+	Invalidate();
+}
+
+void SheetView::RecalculateOwningWorkbook(const std::vector<cell>& touched)
+{
+	MainWindow* win = dynamic_cast<MainWindow*>(Window());
+	if (win)
+		win->RecalculateActiveWorkbook(touched);
+	else
+	{
+		std::vector<QualifiedCell> seeds;
+		seeds.reserve(touched.size());
+		for (size_t i = 0; i < touched.size(); i++)
+		{
+			QualifiedCell qc;
+			qc.container = fDoc;
+			qc.loc = touched[i];
+			seeds.push_back(qc);
+		}
+		RecalculateMinimal(seeds);
+	}
+
 	Invalidate();
 }
