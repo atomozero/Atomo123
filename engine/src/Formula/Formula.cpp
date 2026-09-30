@@ -202,6 +202,22 @@ static void ValueToConcatText(const Value &v, char *out, size_t outSize)
 	}
 }
 
+// Marcatore testuale per un riferimento diretto a una cella/intervallo
+// eliminato (riga o colonna cancellata attraverso il riferimento
+// stesso) -- stessa famiglia di "#CIRCULAR!" (ui/src/AscdIO.cpp), lo
+// stesso approccio "stringa letterale nella cella" gia' usato li' per
+// mancanza di un vero tipo di valore d'errore in questo motore (vedi
+// ValueType in Value.h: nessun eErrorData esiste). Prima di questa
+// correzione, cell::Offset/range::Offset (Cell.cpp/Range.cpp)
+// mettevano gia' cell::InvalidCell in casi come questo, ma Calculate
+// sotto non lo controllava mai: leggeva comunque GetValue su
+// coordinate spazzatura, che il CContainer::fCellData sparso non trova
+// mai, restituendo silenziosamente "vuoto" (0) invece di un errore --
+// "=A3+1" con la riga 3 cancellata diventava "+1" invece di mostrare
+// un errore, un bug reale scoperto lavorando sul grafo delle
+// dipendenze (Fase dependency graph, 2026-09-30).
+static const char* const kRefErrorText = "#REF!";
+
 void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContainer) const
 {
 	PFToken nextOpcode;
@@ -414,14 +430,20 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 				stackIndx++;
 				theCell = *((cell *)(fString + indx));
 				indx += sizeof(cell) / kPFWordSize;
-				inContainer->GetValue(theCell.GetFlatCell(inLocation), stack[stackIndx]);
+				if (theCell == cell::InvalidCell)
+					stack[stackIndx] = Value(kRefErrorText);
+				else
+					inContainer->GetValue(theCell.GetFlatCell(inLocation), stack[stackIndx]);
 				break;
 
 			case valRange:
 				stackIndx++;
 				theRange = *((range *)(fString + indx));
 
-				if (theRange.TopLeft() == theRange.BotRight())
+				if (theRange.TopLeft() == cell::InvalidCell
+						|| theRange.BotRight() == cell::InvalidCell)
+					stack[stackIndx] = Value(kRefErrorText);
+				else if (theRange.TopLeft() == theRange.BotRight())
 					// Bug reale (Fase 16, scoperto sistemando gli
 					// argomenti-intervallo fra fogli): TopLeft() qui
 					// e' ancora l'offset relativo grezzo del
@@ -449,8 +471,16 @@ void CFormula::Calculate(cell inLocation, Value& outResult, CContainer *inContai
 			case valRefRange:
 				stackIndx++;
 				theRange = *((range *)(fString + indx));
-				stack[stackIndx].fType = eRangeData;
-				stack[stackIndx] = theRange.GetFlatRange(inLocation);
+				if (theRange.TopLeft() == cell::InvalidCell
+						|| theRange.BotRight() == cell::InvalidCell)
+				{
+					stack[stackIndx] = Value(kRefErrorText);
+				}
+				else
+				{
+					stack[stackIndx].fType = eRangeData;
+					stack[stackIndx] = theRange.GetFlatRange(inLocation);
+				}
 				indx += sizeof(range) / kPFWordSize;
 				break;
 

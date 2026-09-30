@@ -626,6 +626,15 @@ public:
 	// della singola cella sopra.
 	void RecalculateActiveWorkbook(const range& touched);
 	void RecalculateActiveWorkbook(const std::vector<cell>& touched);
+	// Gemella delle precedenti, per un chiamante che ha gia' una lista
+	// di QualifiedCell pronta (tipicamente i dipendenti di una cella
+	// che sta per sparire, presi da GetDependentsMap() PRIMA di
+	// cancellarla -- vedi SheetView::DeleteRows/DeleteColumns): a
+	// differenza di RecalculateActiveWorkbook(const std::vector<cell>&)
+	// sopra, ogni voce porta gia' il proprio CContainer* (puo' essere
+	// un foglio diverso da fDoc), quindi qui non si presume fDoc per
+	// nessuna di esse.
+	void RecalculateActiveWorkbook(const std::vector<QualifiedCell>& touched);
 
 	// Pubblici per lo stesso motivo di CopySelection/PasteSelection
 	// sopra -- vedi tests/test_names.cpp. Definire/eliminare un nome

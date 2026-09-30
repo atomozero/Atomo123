@@ -1877,6 +1877,11 @@ void MainWindow::RecalculateActiveWorkbook(const std::vector<cell>& touched)
 	RecalculateMinimal(seeds);
 }
 
+void MainWindow::RecalculateActiveWorkbook(const std::vector<QualifiedCell>& touched)
+{
+	RecalculateMinimal(touched);
+}
+
 void MainWindow::SwitchToSheet(int index)
 {
 	if (index < 0 || index >= (int)fSheets.size() || index == fActiveSheetIndex)

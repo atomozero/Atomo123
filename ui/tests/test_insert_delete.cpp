@@ -69,6 +69,20 @@ static bool IsEmpty(CContainer* doc, int col, int row)
 	return text[0] == 0;
 }
 
+static bool IsRefError(CContainer* doc, int col, int row)
+{
+	Value v;
+	doc->GetValue(cell(col, row), v);
+	return v.fType == eTextData && strcmp(v.fText, "#REF!") == 0;
+}
+
+static bool IsNanAt(CContainer* doc, int col, int row)
+{
+	Value v;
+	doc->GetValue(cell(col, row), v);
+	return v.fType == eNumData && v.IsNan();
+}
+
 int main()
 {
 	BApplication app("application/x-vnd.Atomo-TestInsertDelete");
@@ -290,6 +304,64 @@ int main()
 				foundShiftedCols = true;
 		Check(foundShiftedCols,
 			"Eliminare una colonna prima di un intervallo unito lo sposta a sinistra per intero");
+	}
+
+	// --- Riferimento DIRETTO a una riga/colonna eliminata mostra
+	// #REF!, non un valore plausibile ma sbagliato -- bug reale
+	// scoperto lavorando sul grafo delle dipendenze (2026-09-30):
+	// cell::Offset/range::Offset gia' marcavano il riferimento come
+	// cell::InvalidCell, ma CFormula::Calculate non lo controllava mai
+	// prima di leggere GetValue su coordinate spazzatura, che il
+	// documento sparso semplicemente non trova (silenziosamente "0").
+	{
+		// L60=5, L62="=L60+1" (riferimento che SOPRAVVIVE allo
+		// spostamento, deve continuare a funzionare), L63="=L65"
+		// (riferimento diretto, senza aritmetica, alla riga che sta per
+		// essere eliminata), L64="=L65+1" (stesso riferimento, ma dentro
+		// un'espressione aritmetica). L65=100, la riga che sparira'.
+		TryToParseString("5", cell(12, 60), doc, true);
+		TryToParseString("=L60+1", cell(12, 62), doc, true);
+		TryToParseString("=L65", cell(12, 63), doc, true);
+		TryToParseString("=L65+1", cell(12, 64), doc, true);
+		TryToParseString("100", cell(12, 65), doc, true);
+		doc->CalcCell(cell(12, 62));
+		doc->CalcCell(cell(12, 63));
+		doc->CalcCell(cell(12, 64));
+		Check(NumAt(doc, 12, 63) == 100.0, "prima dell'eliminazione, L63 (=L65) calcola 100");
+		Check(NumAt(doc, 12, 64) == 101.0, "prima dell'eliminazione, L64 (=L65+1) calcola 101");
+
+		view->SetSelection(cell(12, 65));
+		view->DeleteRows();
+
+		Check(NumAt(doc, 12, 62) == 6.0,
+			"un riferimento che SOPRAVVIVE allo spostamento (L60+1) continua a funzionare dopo l'eliminazione");
+		Check(IsRefError(doc, 12, 63),
+			"un riferimento DIRETTO alla riga eliminata (=L65 da solo) mostra #REF!, non un valore vuoto");
+		Check(IsNanAt(doc, 12, 64),
+			"lo stesso riferimento dentro un'espressione (=L65+1) propaga l'errore (NaN, la convenzione "
+			"gia' esistente per un valore d'errore), non lo tratta come zero silenzioso");
+
+		Check(view->CanUndo(), "Elimina riga (scenario #REF!) e' annullabile");
+		view->Undo();
+		Check(NumAt(doc, 12, 63) == 100.0,
+			"Annulla ripristina il riferimento diretto: L63 (=L65) torna a calcolare 100");
+		Check(NumAt(doc, 12, 64) == 101.0,
+			"Annulla ripristina il riferimento in espressione: L64 (=L65+1) torna a calcolare 101");
+	}
+
+	// --- Stesso scenario sull'asse orizzontale (eliminazione di
+	// colonna) ---
+	{
+		TryToParseString("=P70", cell(15, 70), doc, true); // O70 = "=P70"
+		TryToParseString("200", cell(16, 70), doc, true); // P70 = 200
+		doc->CalcCell(cell(15, 70));
+		Check(NumAt(doc, 15, 70) == 200.0, "prima dell'eliminazione, O70 (=P70) calcola 200");
+
+		view->SetSelection(cell(16, 70));
+		view->DeleteColumns();
+
+		Check(IsRefError(doc, 15, 70),
+			"un riferimento DIRETTO alla colonna eliminata (=P70) mostra #REF!, non un valore vuoto");
 	}
 
 	win->Unlock();
