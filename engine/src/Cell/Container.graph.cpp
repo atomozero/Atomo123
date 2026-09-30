@@ -50,12 +50,16 @@
 #include "MThread.h"
 #include "StLocker.h"
 
+long CContainer::sCalcCellCallCount = 0;
+
 bool CContainer::CalcCell(const cell& c)
 {
+	sCalcCellCallCount++;
+
 	Value val, newVal;
 	bool result = false;
 	cellmap::iterator i;
-	
+
 	if ((i = fCellData.find(c)) != fCellData.end())
 	{
 		fCalculatingCell = c;
