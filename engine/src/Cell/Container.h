@@ -639,6 +639,18 @@ public:
 /* cell inhoud manipulaties */
 
 	bool CalcCell(const cell&);
+
+	// Contatore di test (roadmap Tier 3, Fase 1): incrementato SEMPRE
+	// all'inizio di CalcCell, indipendentemente dal fatto che la cella
+	// abbia davvero una formula -- serve solo a un test headless per
+	// verificare che RecalculateMinimal calcoli ogni cella al massimo
+	// UNA volta per modifica (es. il nodo comune di un "diamante" A->B,
+	// A->C, B->D, C->D non deve calcolare D due volte), cosa che il
+	// valore risultante da solo non rivelerebbe (ricalcolare due volte
+	// una somma corretta produce comunque la stessa somma corretta).
+	// Costo trascurabile (un solo incremento) per ogni chiamata reale,
+	// mai letto fuori dai test.
+	static long sCalcCellCallCount;
 	int GetCellResult(const cell&, char *, size_t bufSize, bool);
 	void GetCellFormula(const cell&, char *, size_t bufSize, bool rcStyle = false);
 	void* GetCellFormula(const cell&);

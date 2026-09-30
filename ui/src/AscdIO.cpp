@@ -4533,6 +4533,250 @@ void RebuildDependencyGraph(std::vector<AscdSheet>& sheets)
 	}
 }
 
+// Gemella "qualificata" (multi-foglio) di VisitForCircularCheck sopra:
+// stessa identica logica DFS a 3 stati (0 mai visitata, 1 nello stack,
+// 2 completata) e stesso criterio "solo le celle DAVVERO sul ciclo
+// finiscono in outCircular, non chi si limita a leggerne una" (vedi
+// test_circular_reference.cpp, caso "B1=A1*2 non deve essere marcata
+// essa stessa") -- l'unica differenza e' che qui i precedenti vengono
+// da GetQualifiedPrecedents (attraversa anche valXRef/valXRange), non
+// da GetPrecedents (solo stesso foglio). Questo chiude per davvero il
+// limite "un ciclo tra due fogli non viene rilevato" gia' documentato
+// per la vecchia funzione. I bordi grezzi colonna/riga (outColumns/
+// outRows di GetQualifiedPrecedents) non partecipano qui apposta: un
+// riferimento a colonna/riga intera non forma un "ciclo" nel senso
+// classico che questa funzione riconosce (nessun bordo di ritorno
+// puntuale con cui richiudere il cammino) -- vedi la rete di sicurezza
+// in RecalculateMinimal sotto per il raro caso limite di una formula
+// che si autoreferenzia tramite SOMMA(A:A) includendo se stessa.
+static void VisitForCircularCheckQualified(const QualifiedCell& c,
+	std::map<QualifiedCell, int>& state, std::vector<QualifiedCell>& path,
+	std::set<QualifiedCell>* outCircular)
+{
+	state[c] = 1;
+	path.push_back(c);
+
+	if (c.container->GetCellFormula(c.loc))
+	{
+		std::vector<QualifiedCell> cells, columns, rows;
+		ISheetResolver* resolver = c.container->GetSheetResolver();
+		c.container->GetQualifiedPrecedents(c.loc, resolver, cells, columns, rows);
+
+		for (size_t i = 0; i < cells.size(); i++)
+		{
+			const QualifiedCell& next = cells[i];
+			std::map<QualifiedCell, int>::iterator found = state.find(next);
+			int nextState = (found != state.end()) ? found->second : 0;
+
+			if (nextState == 1)
+			{
+				bool inCycle = false;
+				for (size_t k = 0; k < path.size(); k++)
+				{
+					if (path[k].container == next.container && path[k].loc == next.loc)
+						inCycle = true;
+					if (inCycle)
+						outCircular->insert(path[k]);
+				}
+			}
+			else if (nextState == 0 && next.container->GetCellFormula(next.loc))
+				VisitForCircularCheckQualified(next, state, path, outCircular);
+		}
+	}
+
+	path.pop_back();
+	state[c] = 2;
+}
+
+// Gemella "qualificata" di MarkCircularReferences: stesso identico
+// comportamento (marca con kCircularRefText, restituisce l'insieme
+// marcato perche' il chiamante lo escluda dal ricalcolo vero), ma su un
+// insieme di celle qualificate (potenzialmente sparse su piu' fogli)
+// invece di un solo CContainer.
+static std::set<QualifiedCell> MarkCircularReferencesQualified(
+	const std::set<QualifiedCell>& affected)
+{
+	std::set<QualifiedCell> circular;
+	std::map<QualifiedCell, int> state;
+
+	for (std::set<QualifiedCell>::const_iterator it = affected.begin(); it != affected.end(); it++)
+	{
+		if (it->container->GetCellFormula(it->loc) && state.find(*it) == state.end())
+		{
+			std::vector<QualifiedCell> path;
+			VisitForCircularCheckQualified(*it, state, path, &circular);
+		}
+	}
+
+	for (std::set<QualifiedCell>::iterator it = circular.begin(); it != circular.end(); it++)
+		it->container->SetValue(it->loc, Value(kCircularRefText));
+
+	return circular;
+}
+
+void RecalculateMinimal(const std::vector<QualifiedCell>& seeds)
+{
+	// Passo 1: BFS sul grafo INVERSO a partire da "seeds", raccogliendo
+	// ogni cella qualificata transitivamente coinvolta (dipendenti
+	// diretti/indiretti, ovunque vivano) -- lo stesso identico
+	// meccanismo di GetDependents, ma via indice inverso vero invece di
+	// una scansione O(N) di tutto il documento.
+	std::set<QualifiedCell> affected;
+	std::vector<QualifiedCell> frontier;
+	for (size_t i = 0; i < seeds.size(); i++)
+	{
+		if (affected.insert(seeds[i]).second)
+			frontier.push_back(seeds[i]);
+	}
+	while (!frontier.empty())
+	{
+		QualifiedCell qc = frontier.back();
+		frontier.pop_back();
+		CContainer* c = qc.container;
+
+		const std::map<cell, std::set<QualifiedCell> >& deps = c->GetDependentsMap();
+		std::map<cell, std::set<QualifiedCell> >::const_iterator it = deps.find(qc.loc);
+		if (it != deps.end())
+		{
+			for (std::set<QualifiedCell>::const_iterator d = it->second.begin();
+					d != it->second.end(); d++)
+				if (affected.insert(*d).second)
+					frontier.push_back(*d);
+		}
+
+		const std::map<int, std::set<QualifiedCell> >& colDeps = c->GetColumnDependentsMap();
+		std::map<int, std::set<QualifiedCell> >::const_iterator itCol = colDeps.find(qc.loc.h);
+		if (itCol != colDeps.end())
+		{
+			for (std::set<QualifiedCell>::const_iterator d = itCol->second.begin();
+					d != itCol->second.end(); d++)
+				if (affected.insert(*d).second)
+					frontier.push_back(*d);
+		}
+
+		const std::map<int, std::set<QualifiedCell> >& rowDeps = c->GetRowDependentsMap();
+		std::map<int, std::set<QualifiedCell> >::const_iterator itRow = rowDeps.find(qc.loc.v);
+		if (itRow != rowDeps.end())
+		{
+			for (std::set<QualifiedCell>::const_iterator d = itRow->second.begin();
+					d != itRow->second.end(); d++)
+				if (affected.insert(*d).second)
+					frontier.push_back(*d);
+		}
+	}
+
+	// Passo 2: individua e marca ogni riferimento circolare DENTRO
+	// "affected" (anche fra fogli diversi) PRIMA di ordinare -- stesso
+	// principio di RecalculateAll/RecalculateWorkbook (marcare prima di
+	// calcolare, cosi' una formula vera non sovrascrive subito il
+	// marcatore appena impostato).
+	std::set<QualifiedCell> circular = MarkCircularReferencesQualified(affected);
+
+	// Passo 3: ordinamento topologico (Kahn) di "affected - circular":
+	// grado entrante = numero di precedenti DENTRO l'insieme raccolto
+	// (un precedente FUORI da "affected" e' gia' un valore assestato,
+	// non blocca nulla). I bordi grezzi colonna/riga si espandono qui,
+	// al momento, contro il solo insieme "affected" (che per una singola
+	// modifica resta piccolo) invece di essere mantenuti come bordi
+	// permanenti verso "una colonna intera" -- vedi Fase 2 del piano per
+	// un affinamento pensato per un insieme "affected" grande.
+	std::map<QualifiedCell, int> inDegree;
+	std::map<QualifiedCell, std::vector<QualifiedCell> > outEdges;
+
+	for (std::set<QualifiedCell>::const_iterator it = affected.begin(); it != affected.end(); it++)
+	{
+		if (circular.count(*it))
+			continue;
+
+		std::vector<QualifiedCell> cells, columns, rows;
+		ISheetResolver* resolver = it->container->GetSheetResolver();
+		it->container->GetQualifiedPrecedents(it->loc, resolver, cells, columns, rows);
+
+		int degree = 0;
+		for (size_t i = 0; i < cells.size(); i++)
+		{
+			if (affected.count(cells[i]) && !circular.count(cells[i]))
+			{
+				degree++;
+				outEdges[cells[i]].push_back(*it);
+			}
+		}
+		for (size_t i = 0; i < columns.size(); i++)
+		{
+			for (std::set<QualifiedCell>::const_iterator a = affected.begin(); a != affected.end(); a++)
+			{
+				if (!circular.count(*a) && a->container == columns[i].container
+						&& a->loc.h == columns[i].loc.h)
+				{
+					degree++;
+					outEdges[*a].push_back(*it);
+				}
+			}
+		}
+		for (size_t i = 0; i < rows.size(); i++)
+		{
+			for (std::set<QualifiedCell>::const_iterator a = affected.begin(); a != affected.end(); a++)
+			{
+				if (!circular.count(*a) && a->container == rows[i].container
+						&& a->loc.v == rows[i].loc.v)
+				{
+					degree++;
+					outEdges[*a].push_back(*it);
+				}
+			}
+		}
+		inDegree[*it] = degree;
+	}
+
+	std::vector<QualifiedCell> queue;
+	for (std::set<QualifiedCell>::const_iterator it = affected.begin(); it != affected.end(); it++)
+	{
+		if (!circular.count(*it) && inDegree[*it] == 0)
+			queue.push_back(*it);
+	}
+
+	std::vector<QualifiedCell> order;
+	while (!queue.empty())
+	{
+		QualifiedCell qc = queue.back();
+		queue.pop_back();
+		order.push_back(qc);
+
+		std::map<QualifiedCell, std::vector<QualifiedCell> >::iterator it = outEdges.find(qc);
+		if (it != outEdges.end())
+		{
+			for (size_t i = 0; i < it->second.size(); i++)
+			{
+				if (--inDegree[it->second[i]] == 0)
+					queue.push_back(it->second[i]);
+			}
+		}
+	}
+
+	// Passo 4: calcola nell'ordine trovato -- ogni cella al massimo una
+	// volta, non fino a 50 volte.
+	for (size_t i = 0; i < order.size(); i++)
+		order[i].container->CalcCell(order[i].loc);
+
+	// Rete di sicurezza: un raro ciclo che passa SOLO per un bordo
+	// grezzo colonna/riga (es. una cella dentro SOMMA(A:A) che referenzia
+	// se stessa tramite quella stessa somma) non viene individuato da
+	// MarkCircularReferencesQualified sopra (che segue solo i precedenti
+	// puntuali, come il vecchio rilevatore stesso-foglio -- stesso
+	// limite gia' preesistente, non nuovo qui) ne' puo' mai raggiungere
+	// grado zero nell'ordinamento sopra. Marcarlo comunque come
+	// "#CIRCULAR!" invece di lasciarlo silenziosamente non calcolato e'
+	// piu' corretto del comportamento precedente (che perlomeno tentava
+	// fino a 50 passate, anche se non convergenti) e non peggiore per
+	// l'utente finale.
+	std::set<QualifiedCell> ordered(order.begin(), order.end());
+	for (std::set<QualifiedCell>::const_iterator it = affected.begin(); it != affected.end(); it++)
+	{
+		if (!circular.count(*it) && !ordered.count(*it))
+			it->container->SetValue(it->loc, Value(kCircularRefText));
+	}
+}
+
 bool IsASCDBookFile(BPositionIO* source)
 {
 	off_t pos = source->Position();

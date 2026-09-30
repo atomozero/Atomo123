@@ -603,6 +603,23 @@ public:
 	// una modifica del documento.
 	void RecalculateActiveWorkbook();
 
+	// Verifica "ombra" del nuovo ricalcolo basato sul grafo delle
+	// dipendenze (roadmap Tier 3, Fase 1, periodo di collaudo): chiamata
+	// da RecalculateActiveWorkbook DOPO il vecchio percorso a punto
+	// fisso (che resta l'unica fonte di verita' vista dall'utente fino
+	// al taglio della Fase 3). Fotografa il risultato "vecchio" di ogni
+	// cella con formula, esegue RecalculateMinimal (AscdIO.h) sullo
+	// STESSO documento reale, confronta, e ripristina immediatamente il
+	// valore vecchio su ogni cella in cui i due algoritmi disaccordano
+	// -- non e' mai possibile che l'utente veda un risultato calcolato
+	// dal nuovo percorso durante questa fase, anche in caso di bug.
+	// Un disaccordo viene comunque segnalato forte (stderr): un vero
+	// ciclo tra fogli diversi (che il vecchio rilevatore stesso-foglio
+	// non puo' vedere) produce un disaccordo ATTESO qui (il nuovo
+	// algoritmo lo marca "#CIRCULAR!", il vecchio no) -- non un bug, la
+	// motivazione stessa di questa fase.
+	void ShadowVerifyDependencyGraph();
+
 	// Pubblici per lo stesso motivo di CopySelection/PasteSelection
 	// sopra -- vedi tests/test_names.cpp. Definire/eliminare un nome
 	// ricalcola l'intera cartella di lavoro (una ridefinizione puo'

@@ -29,6 +29,7 @@
 #include <SupportDefs.h>
 
 #include "Chart.h"
+#include "Container.h"
 #include "EmbeddedImage.h"
 #include "NamedStyle.h"
 #include "Scenario.h"
@@ -521,5 +522,24 @@ void RecalculateWorkbook(std::vector<AscdSheet>& sheets,
 // DisposeCell/MoveCell basta gia' da solo da quel momento in poi, senza
 // bisogno di nessuna ricostruzione).
 void RebuildDependencyGraph(std::vector<AscdSheet>& sheets);
+
+// Vero grafo delle dipendenze (roadmap Tier 3, Fase 1 -- il primo vero
+// CONSUMATORE del grafo di Fase 0): sostituisce il ciclo a punto fisso
+// di RecalculateAll/RecalculateWorkbook con un ordinamento topologico
+// (Kahn) del solo sottoinsieme di celle transitivamente raggiungibili
+// da "seeds" tramite fDependents/fColumnDependents/fRowDependents dei
+// rispettivi CContainer -- ogni cella viene calcolata al massimo UNA
+// volta, non fino a 50 volte. "seeds" puo' attraversare piu' fogli
+// liberamente: ogni QualifiedCell porta gia' il proprio CContainer, non
+// serve nessun elenco esterno di "tutti i fogli aperti". I riferimenti
+// circolari (anche fra fogli diversi, una vera novita' rispetto al
+// rilevatore DFS stesso-foglio esistente) vengono individuati PRIMA
+// dell'ordinamento e marcati con lo stesso "#CIRCULAR!" di sempre.
+//
+// Fase 1 (bake-in): usata SOLO in modalita' "ombra" da
+// MainWindow::ShadowVerifyDependencyGraph, mai come sola fonte di
+// verita' per l'utente -- vedi il commento li'. La sostituzione vera di
+// RecalculateAll/RecalculateWorkbook e' compito della Fase 3.
+void RecalculateMinimal(const std::vector<QualifiedCell>& seeds);
 
 #endif
