@@ -1847,6 +1847,36 @@ void MainWindow::RecalculateActiveWorkbook(const cell* touched)
 	RecalculateMinimal(seeds);
 }
 
+void MainWindow::RecalculateActiveWorkbook(const range& touched)
+{
+	std::vector<QualifiedCell> seeds;
+	for (int row = touched.top; row <= touched.bottom; row++)
+	{
+		for (int col = touched.left; col <= touched.right; col++)
+		{
+			QualifiedCell qc;
+			qc.container = fDoc;
+			qc.loc = cell(col, row);
+			seeds.push_back(qc);
+		}
+	}
+	RecalculateMinimal(seeds);
+}
+
+void MainWindow::RecalculateActiveWorkbook(const std::vector<cell>& touched)
+{
+	std::vector<QualifiedCell> seeds;
+	seeds.reserve(touched.size());
+	for (size_t i = 0; i < touched.size(); i++)
+	{
+		QualifiedCell qc;
+		qc.container = fDoc;
+		qc.loc = touched[i];
+		seeds.push_back(qc);
+	}
+	RecalculateMinimal(seeds);
+}
+
 void MainWindow::SwitchToSheet(int index)
 {
 	if (index < 0 || index >= (int)fSheets.size() || index == fActiveSheetIndex)
@@ -3554,7 +3584,7 @@ void MainWindow::CopySelection(bool cut)
 		for (int i = 0; i < numRows; i++)
 			for (int j = 0; j < numCols; j++)
 				fDoc->DisposeCell(cell(sel.left + j, sel.top + i));
-		RecalculateActiveWorkbook();
+		RecalculateActiveWorkbook(sel);
 		fSheetView->Invalidate();
 		SelectionChanged(fSheetView->Selection());
 		MarkModified();
@@ -3682,7 +3712,7 @@ void MainWindow::PasteSelection()
 				}
 			}
 
-			RecalculateActiveWorkbook();
+			RecalculateActiveWorkbook(destRange);
 			fSheetView->Invalidate();
 			fSheetView->SetSelection(destRange.TopLeft());
 			fSheetView->ExtendSelection(destRange.BotRight());
@@ -3826,7 +3856,7 @@ void MainWindow::HandlePasteSpecialRequest(int32 content, int32 operation, bool 
 			}
 		}
 
-		RecalculateActiveWorkbook();
+		RecalculateActiveWorkbook(destRange);
 		fSheetView->Invalidate();
 		fSheetView->SetSelection(destRange.TopLeft());
 		fSheetView->ExtendSelection(destRange.BotRight());
@@ -5099,7 +5129,7 @@ void MainWindow::AutoSum()
 	catch (...)
 	{
 	}
-	RecalculateActiveWorkbook();
+	RecalculateActiveWorkbook(&sel);
 	fSheetView->Invalidate();
 	MarkModified();
 }
@@ -5608,7 +5638,7 @@ void MainWindow::ApplyWhatIfDataTable(const char* rowInputText, const char* colI
 			{
 				fDoc->GetCellFormula(cell(sel.left, row), valueText, sizeof(valueText), false);
 				TryToParseString(valueText, colInputCell, fDoc, false);
-				RecalculateActiveWorkbook();
+				RecalculateActiveWorkbook(&colInputCell);
 				Value result;
 				fDoc->GetValue(formulaCell, result);
 				fDoc->SetValue(cell(col, row), result);
@@ -5621,7 +5651,7 @@ void MainWindow::ApplyWhatIfDataTable(const char* rowInputText, const char* colI
 		{
 			fDoc->GetCellFormula(cell(col, sel.top), valueText, sizeof(valueText), false);
 			TryToParseString(valueText, rowInputCell, fDoc, false);
-			RecalculateActiveWorkbook();
+			RecalculateActiveWorkbook(&rowInputCell);
 			Value result;
 			fDoc->GetValue(formulaCell, result);
 			fDoc->SetValue(cell(col, sel.top + 1), result);
@@ -5633,7 +5663,7 @@ void MainWindow::ApplyWhatIfDataTable(const char* rowInputText, const char* colI
 		{
 			fDoc->GetCellFormula(cell(sel.left, row), valueText, sizeof(valueText), false);
 			TryToParseString(valueText, colInputCell, fDoc, false);
-			RecalculateActiveWorkbook();
+			RecalculateActiveWorkbook(&colInputCell);
 			Value result;
 			fDoc->GetValue(formulaCell, result);
 			fDoc->SetValue(cell(sel.left + 1, row), result);
@@ -5995,7 +6025,7 @@ void MainWindow::HandleShowScenario(const char* name)
 		}
 	}
 
-	RecalculateActiveWorkbook();
+	RecalculateActiveWorkbook(found->changingCells);
 	fSheetView->Invalidate();
 	MarkModified();
 }
@@ -6815,7 +6845,7 @@ void MainWindow::ReplaceCurrent(const char* searchText, const char* replaceText)
 	catch (...)
 	{
 	}
-	RecalculateActiveWorkbook();
+	RecalculateActiveWorkbook(&sel);
 	fSheetView->Invalidate();
 	SelectionChanged(sel);
 	MarkModified();
@@ -6880,11 +6910,11 @@ void MainWindow::ReplaceAll(const char* searchText, const char* replaceText)
 		}
 	}
 
-	// Un solo ricalcolo completo dopo tutte le sostituzioni, non uno
-	// per cella modificata: piu' efficiente ed equivalente (vedi
-	// AscdIO.h per il perche' non basta CalcCell sulla sola cella
-	// toccata).
-	RecalculateActiveWorkbook();
+	// Un solo ricalcolo dopo tutte le sostituzioni, non uno per cella
+	// modificata, seminato con l'elenco sparso vero di "matches" (non
+	// il rettangolo "affected" usato solo per l'istantanea annulla,
+	// che include anche celle di mezzo mai toccate).
+	RecalculateActiveWorkbook(matches);
 	fSheetView->Invalidate();
 	SelectionChanged(fSheetView->Selection());
 	MarkModified();
@@ -7717,7 +7747,7 @@ void MainWindow::CommitFormulaBar()
 	catch (...)
 	{
 	}
-	RecalculateActiveWorkbook();
+	RecalculateActiveWorkbook(&sel);
 	fSheetView->Invalidate();
 	SetCellMode(false);
 }

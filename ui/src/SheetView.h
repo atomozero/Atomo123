@@ -1356,6 +1356,12 @@ private:
 	// NotifySelectionChanged/NotifyDocumentChanged (dynamic_cast su
 	// Window()).
 	void RecalculateOwningWorkbook(const cell* touched = NULL);
+	// Gemelle per un chiamante che conosce l'intero intervallo/elenco
+	// sparso appena toccato -- stesso principio di
+	// MainWindow::RecalculateActiveWorkbook(const range&)/(const
+	// std::vector<cell>&).
+	void RecalculateOwningWorkbook(const range& touched);
+	void RecalculateOwningWorkbook(const std::vector<cell>& touched);
 
 	// Il Frame() della view copre l'intero intervallo virtuale del
 	// motore (kColCount x kRowCount celle), non solo l'area visibile a
