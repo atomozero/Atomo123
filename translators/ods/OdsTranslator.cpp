@@ -909,6 +909,12 @@ status_t COdsTranslator::Translate(BPositionIO* source,
 		return B_NO_TRANSLATOR;
 
 	CContainer* doc = new CContainer(NULL, NULL);
+	// Vero grafo delle dipendenze (roadmap Tier 3): buffer interno
+	// usa-e-getta di questo translator, mai letto per il grafo -- stesso
+	// motivo/stesso fix di XlsxTranslator.cpp (vedi CHANGELOG.md per il
+	// bug di prestazioni reale scoperto su un file XLSX, ma il principio
+	// vale identico qui).
+	doc->SetSuppressGraphMaintenance(true);
 	status_t err = B_OK;
 
 	if (info->type == kAtomoNativeFormat)

@@ -2712,9 +2712,7 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	// da zero qui, SUBITO dopo il resolver, per lo stesso motivo del
 	// commento sopra su RecalculateWorkbook -- un riferimento incrociato
 	// non si puo' risolvere finche' ogni foglio non e' collegato agli
-	// altri. Ancora inutilizzato dal ricalcolo vero (vedi Container.h),
-	// costruito qui solo per essere gia' pronto quando una fase
-	// successiva iniziera' a consultarlo.
+	// altri.
 	RebuildDependencyGraph(fSheets);
 	// Grafo delle dipendenze (Tier 3, taglio di produzione): stesso
 	// principio "seme largo ma corretto" del percorso di caricamento in

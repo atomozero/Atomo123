@@ -1915,27 +1915,43 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	if (source->Read(&count, sizeof(count)) != (ssize_t)sizeof(count))
 		return B_BAD_DATA;
 
+	// Vero grafo delle dipendenze (roadmap Tier 3): durante QUESTO ciclo
+	// ISheetResolver non e' ancora collegato (AttachSheetResolver in
+	// MainWindow.cpp gira sempre dopo, una volta per l'intero caricamento)
+	// -- ogni bordo cross-foglio calcolato qui andrebbe comunque rifatto
+	// da capo, e anche i bordi stesso-foglio verrebbero ricalcolati DI
+	// NUOVO da RebuildDependencyGraph subito dopo. Sospendere qui e
+	// lasciare che RebuildDependencyGraph costruisca il grafo INTERO
+	// (stesso-foglio + cross-foglio insieme) in un solo passaggio pulito
+	// e' l'intento originale del progetto (mai realizzato del tutto in
+	// pratica) -- bug di prestazioni reale scoperto da un utente su un
+	// file reale (44.639 formule, XLSX 3.4MB): l'apertura era diventata
+	// piu' lenta di prima invece che piu' veloce, per via di questo
+	// doppio calcolo. Ripristinato SEMPRE prima di uscire da questa
+	// funzione (anche sui rami di errore sotto), mai lasciato sospeso.
+	doc->SetSuppressGraphMaintenance(true);
+
 	for (int32 i = 0; i < count; i++)
 	{
 		int16 row, col;
 		int32 len;
 
 		if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row))
-			return B_BAD_DATA;
+			{ doc->SetSuppressGraphMaintenance(false); return B_BAD_DATA; }
 		if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col))
-			return B_BAD_DATA;
+			{ doc->SetSuppressGraphMaintenance(false); return B_BAD_DATA; }
 		if (source->Read(&len, sizeof(len)) != (ssize_t)sizeof(len))
-			return B_BAD_DATA;
+			{ doc->SetSuppressGraphMaintenance(false); return B_BAD_DATA; }
 
 		uint8 kind = kAscdCellFormula;
 		if (version >= 2 && source->Read(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
-			return B_BAD_DATA;
+			{ doc->SetSuppressGraphMaintenance(false); return B_BAD_DATA; }
 
 		char text[4096];
 		if (len < 0 || len >= (int32)sizeof(text))
-			return B_BAD_DATA;
+			{ doc->SetSuppressGraphMaintenance(false); return B_BAD_DATA; }
 		if (len > 0 && source->Read(text, len) != len)
-			return B_BAD_DATA;
+			{ doc->SetSuppressGraphMaintenance(false); return B_BAD_DATA; }
 		text[len] = 0;
 
 		cell c(col, row);
@@ -1985,6 +2001,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 			}
 		}
 	}
+
+	doc->SetSuppressGraphMaintenance(false);
 
 	// Fase 30: saltato quando il chiamante ricalcolera' comunque
 	// l'intera cartella di lavoro subito dopo (MainWindow::OpenFile) --
