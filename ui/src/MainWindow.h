@@ -593,32 +593,28 @@ public:
 	const ThemePalette* GetThemePalette() const { return &fThemePalette; }
 
 	// Pubblico per lo stesso motivo di CopySelection/PasteSelection
-	// sopra -- vedi tests/test_xsheet.cpp. Ricalcola l'intera cartella
-	// di lavoro (tutti i fogli, non solo quello attivo) se ne esiste
-	// piu' di uno, altrimenti il solo foglio attivo (RecalculateAll,
-	// piu' economico) -- serve perche' una formula in un foglio puo'
-	// referenziarne un altro (vedi AscdIO.h), quindi modificare un
-	// foglio puo' richiedere di ricalcolare anche gli altri. Sostituisce
-	// RecalculateAll(fDoc) in tutti i punti che gia' lo chiamavano dopo
-	// una modifica del documento.
-	void RecalculateActiveWorkbook();
-
-	// Verifica "ombra" del nuovo ricalcolo basato sul grafo delle
-	// dipendenze (roadmap Tier 3, Fase 1, periodo di collaudo): chiamata
-	// da RecalculateActiveWorkbook DOPO il vecchio percorso a punto
-	// fisso (che resta l'unica fonte di verita' vista dall'utente fino
-	// al taglio della Fase 3). Fotografa il risultato "vecchio" di ogni
-	// cella con formula, esegue RecalculateMinimal (AscdIO.h) sullo
-	// STESSO documento reale, confronta, e ripristina immediatamente il
-	// valore vecchio su ogni cella in cui i due algoritmi disaccordano
-	// -- non e' mai possibile che l'utente veda un risultato calcolato
-	// dal nuovo percorso durante questa fase, anche in caso di bug.
-	// Un disaccordo viene comunque segnalato forte (stderr): un vero
-	// ciclo tra fogli diversi (che il vecchio rilevatore stesso-foglio
-	// non puo' vedere) produce un disaccordo ATTESO qui (il nuovo
-	// algoritmo lo marca "#CIRCULAR!", il vecchio no) -- non un bug, la
-	// motivazione stessa di questa fase.
-	void ShadowVerifyDependencyGraph();
+	// sopra -- vedi tests/test_xsheet.cpp. Ricalcola l'intera cartella di
+	// lavoro aperta (tutti i fogli, mai solo quello attivo: una formula
+	// in un foglio puo' referenziarne un altro, vedi AscdIO.h) tramite
+	// RecalculateMinimal (Tier 3, "grafo delle dipendenze" -- vedi
+	// AscdIO.h), che ordina topologicamente e calcola una volta sola
+	// ogni cella davvero coinvolta, MAI piu' fino a 50 passate su ogni
+	// cella con formula del documento come il vecchio RecalculateAll/
+	// RecalculateWorkbook (rimasti nel codice, ancora usati da diversi
+	// test diretti su CContainer che non hanno bisogno di un vero
+	// MainWindow, ma non piu' dal percorso live dell'utente da questo
+	// taglio -- Fase 3 del piano).
+	// "touched" e' opzionale: NULL (il caso comune per chiamanti che non
+	// tracciano ancora con precisione cosa hanno appena modificato)
+	// semina con OGNI cella con formula della cartella di lavoro --
+	// corretto per costruzione (mai un mancato ricalcolo), ancora una
+	// sola passata invece di 50, ma non lo sconto massimo possibile.
+	// Passare la cella vera appena modificata (unico chiamante che lo fa
+	// oggi: SheetView::CommitEditing, il percorso piu' comune e piu'
+	// sensibile alle prestazioni, un tasto premuto alla volta) semina
+	// SOLO con quella, lasciando che il grafo scopra da solo i soli
+	// dipendenti reali -- lo sconto vero che questa fase esiste per dare.
+	void RecalculateActiveWorkbook(const cell* touched = NULL);
 
 	// Pubblici per lo stesso motivo di CopySelection/PasteSelection
 	// sopra -- vedi tests/test_names.cpp. Definire/eliminare un nome

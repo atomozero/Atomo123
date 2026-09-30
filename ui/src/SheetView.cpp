@@ -6409,7 +6409,7 @@ void SheetView::CommitEditing(bool cancel, int moveH, int moveV)
 		catch (...)
 		{
 		}
-		RecalculateOwningWorkbook();
+		RecalculateOwningWorkbook(&editedCell);
 		NotifyDocumentChanged();
 	}
 
@@ -6526,11 +6526,19 @@ void SheetView::NotifyDocumentChanged()
 		win->DocumentChanged();
 }
 
-void SheetView::RecalculateOwningWorkbook()
+void SheetView::RecalculateOwningWorkbook(const cell* touched)
 {
 	MainWindow* win = dynamic_cast<MainWindow*>(Window());
 	if (win)
-		win->RecalculateActiveWorkbook();
+		win->RecalculateActiveWorkbook(touched);
+	else if (touched)
+	{
+		QualifiedCell qc;
+		qc.container = fDoc;
+		qc.loc = *touched;
+		std::vector<QualifiedCell> seeds(1, qc);
+		RecalculateMinimal(seeds);
+	}
 	else
 		RecalculateAll(fDoc);
 

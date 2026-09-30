@@ -13,13 +13,13 @@
 	attraversa due fogli diversi, che il vecchio rilevatore DFS
 	(GetPrecedents, solo stesso foglio) non puo' vedere.
 
-	Fase 1 e' ancora in modalita' "ombra" (MainWindow::
-	ShadowVerifyDependencyGraph esegue RecalculateMinimal DOPO il
-	vecchio percorso, confronta, e ripristina il valore vecchio in
-	caso di disaccordo -- l'utente non vede mai un risultato calcolato
-	da RecalculateMinimal fino al taglio della Fase 3): questo file
-	testa RecalculateMinimal DIRETTAMENTE, non attraverso quella rete
-	di sicurezza.
+	Fase 3 (taglio): RecalculateMinimal e' ora l'UNICO percorso di
+	ricalcolo visto dall'utente reale (MainWindow::
+	RecalculateActiveWorkbook lo chiama direttamente, niente piu' rete
+	di sicurezza "ombra" ne' vecchio ciclo a punto fisso nel percorso
+	live) -- la Parte 7 sotto, che durante il periodo di collaudo
+	verificava che la rete ombra non alterasse un uso comune, ora
+	verifica lo stesso comportamento sul percorso di produzione vero.
 */
 
 #include <cstdio>
@@ -425,12 +425,12 @@ int main()
 		doc->Release();
 	}
 
-	// Parte 7: la verifica "ombra" (MainWindow::ShadowVerifyDependencyGraph,
-	// chiamata da RecalculateActiveWorkbook dopo il vecchio percorso) non
-	// deve alterare il risultato ne' bloccarsi su una sequenza di editing
-	// del tutto ordinaria -- prova indiretta che il confronto non scatta
-	// falsi positivi sull'uso comune (un vero falso allarme sarebbe
-	// altrettanto dannoso di uno mancato per il periodo di collaudo).
+	// Parte 7 (Fase 3, percorso di produzione reale): MainWindow::
+	// RecalculateActiveWorkbook() con seme "largo" (nessuna cella
+	// passata) deve produrre lo stesso risultato corretto di sempre su
+	// una sequenza di editing ordinaria, e un vero ciclo resta rilevato
+	// -- nessuna rete di sicurezza ombra di mezzo, questo E' il percorso
+	// che l'utente reale esercita ora.
 	{
 		MainWindow* win = new MainWindow();
 		win->Show();
@@ -442,18 +442,138 @@ int main()
 		win->RecalculateActiveWorkbook();
 
 		Check(NumValue(doc, cell(2, 1)) == 12,
-			"verifica ombra: RecalculateActiveWorkbook produce ancora il risultato corretto "
-			"(B1=A1*4=12) dopo l'aggiunta della verifica ombra");
+			"percorso di produzione: RecalculateActiveWorkbook produce il risultato corretto "
+			"(B1=A1*4=12)");
 
 		TryToParseString("=A1+A1", cell(1, 1), doc, true); // A1 autoreferenziata
 		win->RecalculateActiveWorkbook();
 		Check(IsCircularMarker(doc, cell(1, 1)),
-			"verifica ombra: un vero ciclo resta rilevato dal vecchio percorso "
-			"(la rete di sicurezza non nasconde un errore reale)");
+			"percorso di produzione: un vero ciclo viene rilevato e marcato");
 
 		win->Unlock();
 		win->Lock();
 		win->Quit();
+	}
+
+	// Parte 11 (Fase 3): banco di prova di prestazioni -- la prova
+	// concreta che l'intero lavoro sul grafo delle dipendenze valeva la
+	// pena. Un solo foglio con: 20000 celle letterali di riempimento
+	// (nessuna relazione con nulla), un input condiviso S1, 500 formule a
+	// ventaglio che dipendono TUTTE da S1 (F1..F500 = S1*2), e una catena
+	// INVERTITA di 40 celle (Chain1=Chain2+1, ..., Chain39=Chain40+1,
+	// Chain40=A1+1) -- invertita apposta: CCellIterator scandisce in
+	// ordine di riga crescente, quindi Chain1 (che dipende da Chain2,
+	// scandita DOPO nella stessa passata) legge il valore vecchio di
+	// Chain2 nella stessa passata in cui e' cambiato, serve una passata
+	// in piu' per ogni anello della catena per propagare all'indietro --
+	// esattamente il caso reale che la roadmap descrive ("fino a 50
+	// passate"), non il caso migliore (una catena diretta nello stesso
+	// verso dell'iterazione converge gia' in 1 passata, come una prima
+	// versione di questo banco di prova aveva scoperto per errore).
+	// Si modifica S1 UNA volta e si cronometra il ricalcolo intero con
+	// (a) il vecchio ciclo a punto fisso (RecalculateAll, fino a 50
+	// passate su OGNI cella esistente, letterali comprese) e (b)
+	// RecalculateMinimal seminato con la sola S1 (che scopre da solo,
+	// tramite il grafo, i soli ~540 dipendenti reali, in UNA passata
+	// ordinata topologicamente). RecalculateAll resta nel codice apposta
+	// (non e' morto: altri test lo chiamano direttamente) proprio per
+	// rendere possibile questo confronto onesto a parita' di documento.
+	{
+		CContainer* doc = new CContainer(NULL, NULL);
+
+		cell s1(1, 1); // A1, l'input condiviso
+		TryToParseString("1", s1, doc, true);
+
+		const int kPadding = 20000;
+		const int kFanout = 500;
+		const int kChain = 40;
+
+		// Riempimento: colonne D in poi, 1000 righe per colonna -- pura
+		// zavorra, nessuna formula, nessuna relazione con S1.
+		{
+			int written = 0;
+			for (int col = 4; written < kPadding; col++)
+			{
+				for (int row = 1; row <= 1000 && written < kPadding; row++)
+				{
+					char buf[16];
+					snprintf(buf, sizeof(buf), "%d", written);
+					TryToParseString(buf, cell(col, row), doc, true);
+					written++;
+				}
+			}
+		}
+
+		// Ventaglio: colonna B (indice 2), righe 1..500, tutte "=A1*2".
+		for (int row = 1; row <= kFanout; row++)
+			TryToParseString("=A1*2", cell(2, row), doc, true);
+
+		// Catena INVERTITA: colonna C (indice 3). Chain(kChain) e' la
+		// prima a dipendere da A1; ogni cella precedente dipende dalla
+		// SUCCESSIVA (numero di riga piu' alto), il contrario dell'ordine
+		// di scansione di CCellIterator.
+		{
+			char buf[32];
+			snprintf(buf, sizeof(buf), "=A1+1");
+			TryToParseString(buf, cell(3, kChain), doc, true);
+			for (int row = kChain - 1; row >= 1; row--)
+			{
+				snprintf(buf, sizeof(buf), "=C%d+1", row + 1);
+				TryToParseString(buf, cell(3, row), doc, true);
+			}
+		}
+
+		// Porta il documento a un primo stato coerente (non cronometrato:
+		// e' il costo "una tantum" dell'apertura file, non quello che
+		// questa fase ottimizza) prima di misurare l'effetto di UNA
+		// modifica interattiva.
+		RecalculateAll(doc);
+		Check(NumValue(doc, cell(2, 1)) == 2, "banco di prova: stato iniziale coerente (F1=A1*2=2)");
+		Check(NumValue(doc, cell(3, 1)) == 1 + kChain,
+			"banco di prova: stato iniziale coerente (inizio catena, propagato dalla fine)");
+
+		// (a) vecchio percorso: modifica A1, cronometra RecalculateAll.
+		TryToParseString("2", s1, doc, true);
+		bigtime_t oldStart = system_time();
+		RecalculateAll(doc);
+		bigtime_t oldElapsed = system_time() - oldStart;
+
+		Check(NumValue(doc, cell(2, 1)) == 4, "banco di prova (vecchio): F1=A1*2=4 dopo la modifica");
+		Check(NumValue(doc, cell(3, 1)) == 2 + kChain,
+			"banco di prova (vecchio): inizio catena propagato correttamente entro 50 passate");
+
+		// (b) nuovo percorso: un'altra modifica reale ad A1 (non un
+		// ricalcolo a vuoto di un valore gia' corretto -- stesso tipo di
+		// lavoro del punto (a), per un confronto onesto), cronometra
+		// RecalculateMinimal seminato con la sola A1.
+		TryToParseString("3", s1, doc, true);
+		QualifiedCell seed;
+		seed.container = doc;
+		seed.loc = s1;
+		std::vector<QualifiedCell> seeds(1, seed);
+
+		bigtime_t newStart = system_time();
+		RecalculateMinimal(seeds);
+		bigtime_t newElapsed = system_time() - newStart;
+
+		Check(NumValue(doc, cell(2, 1)) == 6, "banco di prova (nuovo): F1=A1*2=6 dopo la modifica");
+		Check(NumValue(doc, cell(3, 1)) == 3 + kChain,
+			"banco di prova (nuovo): inizio catena propagato correttamente in una sola passata");
+
+		double speedup = (newElapsed > 0) ? (double)oldElapsed / (double)newElapsed : 0.0;
+		printf("\nBANCO DI PROVA PRESTAZIONI (foglio singolo, ~%d celle, ~%d dipendenti reali di A1, "
+			"catena invertita di %d anelli):\n"
+			"  RecalculateAll (vecchio):      %8lld us\n"
+			"  RecalculateMinimal (nuovo):    %8lld us\n"
+			"  Accelerazione:                 %.1fx\n\n",
+			kPadding + kFanout + kChain + 1, kFanout + kChain, kChain,
+			(long long)oldElapsed, (long long)newElapsed, speedup);
+
+		Check(speedup >= 10.0,
+			"banco di prova: il nuovo percorso e' almeno un ordine di grandezza piu' veloce "
+			"del vecchio per una singola modifica su questo documento sintetico");
+
+		doc->Release();
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
