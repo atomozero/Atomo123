@@ -1362,6 +1362,11 @@ private:
 	// std::vector<cell>&).
 	void RecalculateOwningWorkbook(const range& touched);
 	void RecalculateOwningWorkbook(const std::vector<cell>& touched);
+	// Gemella per un chiamante che ha gia' una lista di QualifiedCell
+	// pronta (ognuna col proprio CContainer*, non necessariamente fDoc)
+	// -- stesso principio di
+	// MainWindow::RecalculateActiveWorkbook(const std::vector<QualifiedCell>&).
+	void RecalculateOwningWorkbook(const std::vector<QualifiedCell>& touched);
 
 	// Il Frame() della view copre l'intero intervallo virtuale del
 	// motore (kColCount x kRowCount celle), non solo l'area visibile a

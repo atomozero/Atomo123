@@ -1902,6 +1902,35 @@ void SheetView::DeleteRows()
 
 	AdjustMergedRanges(fDoc, first, -count, true);
 
+	// Dipendenti "esterni" di ogni cella che sta per sparire del tutto
+	// -- ovunque si trovino, anche SOPRA il punto di cancellazione o su
+	// un altro foglio (es. "=A50" scritta in A10, cancellando la riga
+	// 50): il seme "largo ma sicuro" qui sotto copre solo la zona
+	// cancellata e tutto cio' che sta SOTTO di essa, mai quello che sta
+	// sopra, quindi un simile riferimento diretto restava per sempre
+	// non ricalcolato (il suo valore visualizzato restava quello di
+	// PRIMA della cancellazione) anche se MoveCell/UpdateReferences
+	// sotto ne riscriveva gia' correttamente il bytecode. Bug reale
+	// scoperto 2026-09-30 verificando la correzione di #REF! (vedi
+	// CFormula::Calculate) -- letto da GetDependentsMap() PRIMA di
+	// DisposeCell sotto, che non tocca affatto questa mappa (rimuovere
+	// gli archi "chi dipende da questa cella" non e' compito suo, vedi
+	// il commento su DisposeCell in Container.h).
+	std::vector<QualifiedCell> externalDependents;
+	{
+		range deletedZone(1, first, kColCount, last);
+		CCellIterator scanIter(fDoc, &deletedZone);
+		cell disappearing;
+		while (scanIter.NextExisting(disappearing))
+		{
+			const std::map<cell, std::set<QualifiedCell> >& deps = fDoc->GetDependentsMap();
+			std::map<cell, std::set<QualifiedCell> >::const_iterator found = deps.find(disappearing);
+			if (found != deps.end())
+				externalDependents.insert(externalDependents.end(),
+					found->second.begin(), found->second.end());
+		}
+	}
+
 	// Le celle dentro le righe eliminate spariscono (nessuna
 	// destinazione valida per loro, a differenza di quelle sotto, che
 	// si spostano in su).
@@ -1937,6 +1966,13 @@ void SheetView::DeleteRows()
 	// del foglio, quindi bounds.bottom (non aggiornato) resta un
 	// limite superiore valido.
 	RecalculateOwningWorkbook(range(1, first, bounds.right, bounds.bottom));
+	// Secondo seme, separato: i dipendenti esterni raccolti sopra,
+	// tipicamente FUORI dal rettangolo appena seminato (vedi il
+	// commento su externalDependents) -- una seconda chiamata invece di
+	// fondere i due elenchi, piu' semplice e comunque corretta (ogni
+	// chiamata a RecalculateMinimal e' di per se' completa).
+	if (!externalDependents.empty())
+		RecalculateOwningWorkbook(externalDependents);
 	// Vedi il commento gemello alla fine di SortSelection sopra.
 	RecomputeAutoFilterVisibility();
 	Invalidate();
@@ -1963,6 +1999,24 @@ void SheetView::DeleteColumns()
 
 	AdjustMergedRanges(fDoc, first, -count, false);
 
+	// Dipendenti esterni, stesso principio di DeleteRows sopra
+	// (trasposto): una formula a SINISTRA del punto di cancellazione
+	// puo' riferirsi direttamente a una colonna che sta per sparire.
+	std::vector<QualifiedCell> externalDependents;
+	{
+		range deletedZone(first, 1, last, kRowCount);
+		CCellIterator scanIter(fDoc, &deletedZone);
+		cell disappearing;
+		while (scanIter.NextExisting(disappearing))
+		{
+			const std::map<cell, std::set<QualifiedCell> >& deps = fDoc->GetDependentsMap();
+			std::map<cell, std::set<QualifiedCell> >::const_iterator found = deps.find(disappearing);
+			if (found != deps.end())
+				externalDependents.insert(externalDependents.end(),
+					found->second.begin(), found->second.end());
+		}
+	}
+
 	{
 		range deletedZone(first, 1, last, kRowCount);
 		CCellIterator deletedIter(fDoc, &deletedZone);
@@ -1986,6 +2040,8 @@ void SheetView::DeleteColumns()
 	// Seme "largo ma sicuro", stesso principio di DeleteRows sopra
 	// (trasposto).
 	RecalculateOwningWorkbook(range(first, 1, bounds.right, bounds.bottom));
+	if (!externalDependents.empty())
+		RecalculateOwningWorkbook(externalDependents);
 	// Vedi il commento gemello alla fine di SortSelection sopra.
 	RecomputeAutoFilterVisibility();
 	Invalidate();
@@ -6623,6 +6679,17 @@ void SheetView::RecalculateOwningWorkbook(const std::vector<cell>& touched)
 		}
 		RecalculateMinimal(seeds);
 	}
+
+	Invalidate();
+}
+
+void SheetView::RecalculateOwningWorkbook(const std::vector<QualifiedCell>& touched)
+{
+	MainWindow* win = dynamic_cast<MainWindow*>(Window());
+	if (win)
+		win->RecalculateActiveWorkbook(touched);
+	else
+		RecalculateMinimal(touched);
 
 	Invalidate();
 }
