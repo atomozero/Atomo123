@@ -117,6 +117,15 @@ test-newcell: $(LIB)
 	$(CXX) -o tests/newcell_test $(OBJDIR)/newcell_test.o -L. -lengine -lbe
 	./tests/newcell_test
 
+# Test di CFontSizeTable::GetFontID dopo l'aggiunta di una cache per
+# richiesta grezza (bug di prestazioni reale su un file XLSX reale con
+# decine di migliaia di celle a font personalizzato): vedi il commento
+# in cima a fontmetrics_test.cpp.
+test-fontmetrics: $(LIB)
+	$(CXX) -c tests/fontmetrics_test.cpp -o $(OBJDIR)/fontmetrics_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/fontmetrics_test $(OBJDIR)/fontmetrics_test.o -L. -lengine -lbe
+	./tests/fontmetrics_test
+
 # Test dell'hash VERO di protezione foglio (ECMA-376 18.3.1.85, Path to
 # full Excel parity -- gestione completa delle password): vedi il
 # commento in cima a password_hash_test.cpp. -lcrypto (OpenSSL): prima
