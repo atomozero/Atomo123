@@ -123,6 +123,30 @@ What shipped since v0.5.0 (in progress):
   specific high-formula-density file (far above the flat per-cell rate
   measured on a lower-density synthetic benchmark earlier), a separate,
   still-open investigation, not resolved by this change.
+- Found and fixed that separate investigation's real cause, same day:
+  `LoadASCD`'s font-reconstruction section calls `CFontSizeTable::
+  GetFontID` once per non-default-font cell to re-register its font —
+  and `GetFontID`'s own deduplication check had to construct a full
+  `CFontMetrics` (which resolves a real `BFont` via
+  `SetFamilyAndStyle`, a round-trip to `app_server`) before it could
+  even compare that candidate against already-registered fonts, so a
+  file reusing the same handful of fonts across many cells paid that
+  round-trip once per cell instead of once per distinct font ever
+  requested. On the real reported file (~45,000 custom-font cells in
+  its two largest sheets) this one section alone cost on the order of
+  95 seconds. Added a small cache inside `CFontSizeTable`, keyed by the
+  raw (family, style, size, color) request, checked before doing any
+  real work — the same raw request always resolves identically (font
+  resolution only depends on the installed font list, which doesn't
+  change mid-load), so this changes nothing about behavior, only
+  redundant work. Measured on the real file: `LoadASCDBook` dropped
+  from roughly 100 seconds to roughly 27 seconds. `Translate()` itself
+  (the XLSX XML-parsing phase, a separate function) remains slow on
+  this same file for an unrelated reason not addressed here — its own
+  font resolution already only runs once per distinct `<cellXfs>`
+  style entry, not per cell, so this fix doesn't apply there; left as
+  a further open item. New `engine/tests/fontmetrics_test.cpp` pins
+  both the deduplication behavior and the performance characteristic.
 
 What shipped in v0.5.0, on top of v0.4.2:
 - Chart visual polish, first step of a broader "make charts more
