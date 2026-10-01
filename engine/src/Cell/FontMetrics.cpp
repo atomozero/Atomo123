@@ -39,6 +39,7 @@
 */
 
 #ifndef   FONTMETRICS_H
+#include <cstdio>
 #include <cstring>
 #include "FontMetrics.h"
 #endif
@@ -261,17 +262,36 @@ ulong CFontSizeTable::GetFontID(const char *fontName, const char *fontStyle,
 	// specifico (Bold, Italic, ...) riceve sempre un indice >= 1.
 	ReserveDefaultSlot();
 
+	// Chiave grezza (vedi il commento su fRequestCache in FontMetrics.h):
+	// se la STESSA richiesta esatta e' gia' stata risolta prima, si
+	// ritorna direttamente l'id senza toccare affatto CFontMetrics/BFont
+	// -- il costo reale da evitare e' costruire "ns" sotto, non la
+	// scansione lineare in se'.
+	char key[sizeof(font_family) + sizeof(font_style) + 64];
+	snprintf(key, sizeof(key), "%s\x01%s\x01%.4f\x01%02x%02x%02x%02x",
+		fontName, fontStyle, fontSize,
+		fontColor.red, fontColor.green, fontColor.blue, fontColor.alpha);
+	std::map<std::string, ulong>::iterator cached = fRequestCache.find(key);
+	if (cached != fRequestCache.end())
+		return cached->second;
+
 	std::vector<CFontMetrics>::iterator i;
 	CFontMetrics ns(fontName, fontStyle, fontSize, fontColor);
 
 	for (i = fFonts.begin() + 1; i != fFonts.end(); i++)
 	{
 		if ((*i) == ns)
-			return i - fFonts.begin();
+		{
+			ulong id = i - fFonts.begin();
+			fRequestCache[key] = id;
+			return id;
+		}
 	}
 
 	fFonts.push_back(ns);
-	return fFonts.size() - 1;
+	ulong id = fFonts.size() - 1;
+	fRequestCache[key] = id;
+	return id;
 } /* CFontSizeTable::GetFontID */
 
 void CFontSizeTable::SetFontID(BView *view, ulong formatID,

@@ -45,6 +45,8 @@
 #include "Globals.h"
 #endif
 
+#include <map>
+#include <string>
 #include <vector>
 #include <cstring>
 
@@ -123,6 +125,29 @@ private:
 	void ReserveDefaultSlot();
 
 	std::vector<CFontMetrics> fFonts;
+
+	// Cache di GetFontID, chiave = richiesta GREZZA (fontName/fontStyle/
+	// fontSize/fontColor cosi' come arrivano, PRIMA di qualunque ripiego
+	// di SetFamilyAndStyle) -> id gia' risolto. Costruire un CFontMetrics
+	// richiede fFont.SetFamilyAndStyle(), una vera chiamata IPC ad
+	// app_server per validare la famiglia/lo stile contro i font
+	// installati -- prima di questa cache, GetFontID pagava quel
+	// round-trip a OGNI chiamata, anche per un font gia' registrato
+	// (la scansione lineare di deduplica confronta CONTRO un
+	// CFontMetrics temporaneo che va comunque costruito prima di poter
+	// confrontare). Bug di prestazioni reale scoperto da un utente:
+	// riaprire un file XLSX reale con decine di migliaia di celle a
+	// font personalizzato (una tabella dati fittamente formattata)
+	// impiegava svariate decine di secondi SOLO in questa sezione,
+	// perche' ogni cella ripeteva lo stesso identico round-trip anche
+	// quando il font richiesto era gia' in tabella. La stessa identica
+	// richiesta grezza risolve SEMPRE allo stesso font (SetFamilyAndStyle
+	// e' deterministica per un dato elenco di font installati, che non
+	// cambia durante un caricamento), quindi memorizzare per richiesta
+	// grezza e' corretto quanto la scansione lineare originale, solo
+	// molto piu' veloce per celle che ripetono lo stesso font -- il caso
+	// comune in un vero foglio di calcolo.
+	std::map<std::string, ulong> fRequestCache;
 };
 
 extern CFontSizeTable gFontSizeTable;
