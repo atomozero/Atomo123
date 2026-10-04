@@ -176,6 +176,44 @@ What shipped since v0.5.0 (in progress):
   that printed once per cell instead of once per shared group — tens
   of thousands of identical lines on this file alone, a real
   contributor in its own right (`Translate()` 53.9s → 30.6s headless).
+- Pushed further on the same real file (112s baseline above), with
+  mixed results worth recording honestly. What helped: `Recalculate-
+  Minimal`'s topological-sort step used `std::map<QualifiedCell,...>`
+  for its `inDegree`/`outEdges` bookkeeping — a tree-based lookup
+  costing roughly 17 pointer-and-cell comparisons per operation across
+  149,000 affected cells. Switched to `std::unordered_map` with a new
+  `QualifiedCellHash` (`engine/src/Cell/Container.h`, alongside a new
+  `QualifiedCell::operator==`), cutting that step from ~30.6s to
+  ~17.7s. A redundant full-graph-rebuild pass (`RebuildDependencyGraph`,
+  called separately at both `MainWindow::OpenFile` and
+  `HandleFileLoadResult` after `AttachSheetResolver`) was also removed:
+  `RecalculateMinimal`'s own topological-sort step already registers
+  every graph edge as a side effect of computing each cell's
+  precedents, so the separate pass was recomputing the exact same thing
+  a second time for every formula cell. What did *not* help, despite
+  three independent, targeted attempts: the XLSX translator's own
+  `WriteASCD` (`translators/xlsx/XlsxTranslator.cpp`) spends ~45
+  seconds turning 149,000 formula cells back into text for the ASCD
+  intermediate format (`CFormula::UnMangle`) — consolidating its 11
+  separate full-document style scans into one (already landed, see
+  above) only shaved off a few seconds; replacing `UnMangle`'s per-call
+  ~100KB malloc/free with a reusable `thread_local` buffer
+  (`engine/src/Formula/Formula.cpp`) made no measurable difference;
+  coalescing its five small `Write()` calls per cell into one made no
+  measurable difference either. All three fixes are kept (they're
+  correct, harmless, and the scan consolidation + allocation removal
+  both still apply to every other translator caller) but none moved
+  the needle — the real cost there, and in the matching ~26s spent
+  re-parsing that same text back into bytecode in `LoadASCD`, is
+  CPU-bound string formatting work inherent to round-tripping formulas
+  through a text intermediate format, not an allocation or I/O-call
+  pattern this session could find a quick fix for. Net effect end to
+  end on the real file: **112s → ~100s**. A user request to halve it
+  to ~56-58s was *not* met; a deeper fix would mean changing the ASCD
+  intermediate format to carry compiled bytecode instead of decompiled
+  text between the translator and the main app, which is a materially
+  bigger, riskier change than anything else in this round and is left
+  as an open item, not attempted here.
 
 What shipped in v0.5.0, on top of v0.4.2:
 - Chart visual polish, first step of a broader "make charts more

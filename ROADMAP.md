@@ -789,7 +789,20 @@ list deliberately deviates from pure effort-sorting:
   old name (`MainWindow::RenameSheet`) is untouched by this work either
   way — the graph resolves to a live sheet object once built, so a
   rename doesn't corrupt it, but the underlying formula-text gap
-  remains for a future session
+  remains for a future session.
+  **Follow-up open item, found profiling a real large file (see
+  CHANGELOG.md)**: on a 13-sheet, ~149,000-formula real workbook, the
+  XLSX translator's own text round-trip through the ASCD intermediate
+  format — decompiling every formula back to text on export
+  (`CFormula::UnMangle`, ~45s) and re-parsing/recompiling it on import
+  (`LoadASCD`, ~26s) — now dominates file-open time (~71s of a ~100s
+  total) once the graph-build/recalc cost above was fixed. Three
+  independent, targeted fixes (fewer per-cell scans, no per-call
+  malloc/free, fewer I/O calls) failed to move this number, confirming
+  it's CPU-bound string formatting, not an easy allocation/I-O win.
+  Closing this gap for real would mean changing the translator/ASCD
+  boundary to pass compiled bytecode instead of decompiled text — a
+  bigger, riskier change than this round attempted, left open.
 - ~~**Real 2D pivot tables** (a "Columns" field, multiple simultaneous
   measures)~~ Fixed — see `CHANGELOG.md`. `PivotTableObject` gained a
   Columns axis and a list of explicit measure columns (each with its
