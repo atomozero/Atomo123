@@ -48,6 +48,7 @@
  *** TPV (2000-Feb-06) Added Headers Guards
  ***/
 
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -174,6 +175,25 @@ struct QualifiedCell {
 		if (container != other.container)
 			return container < other.container;
 		return loc < other.loc;
+	}
+	bool operator==(const QualifiedCell& other) const
+	{
+		return container == other.container && loc == other.loc;
+	}
+};
+
+// std::map/std::set<QualifiedCell> compare via operator< (tree-based,
+// ~log2(149000)=17 comparisons per op on the real file that motivated
+// this) -- RecalculateMinimal's hottest local maps (inDegree/outEdges in
+// AscdIO.cpp) switched to unordered_map keyed by this hash instead,
+// cutting its topo-sort step from seconds to a fraction on that same file.
+struct QualifiedCellHash {
+	size_t operator()(const QualifiedCell& qc) const
+	{
+		size_t h = std::hash<void*>()(qc.container);
+		h ^= (std::hash<int>()(qc.loc.v) << 1);
+		h ^= (std::hash<int>()(qc.loc.h) * 2654435761u);
+		return h;
 	}
 };
 

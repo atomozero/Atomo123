@@ -275,15 +275,23 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			kind = (v.fType == eTextData) ? kAscdCellLiteralText : kAscdCellLiteralOther;
 		}
 
-		if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row))
-			return B_IO_ERROR;
-		if (dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col))
-			return B_IO_ERROR;
-		if (dest->Write(&len, sizeof(len)) != (ssize_t)sizeof(len))
-			return B_IO_ERROR;
-		if (dest->Write(&kind, sizeof(kind)) != (ssize_t)sizeof(kind))
-			return B_IO_ERROR;
-		if (len > 0 && dest->Write(text, len) != len)
+		// Un solo Write() invece di cinque per cella: stessi byte, stesso
+		// ordine (row, col, len, kind, testo), ma un solo giro attraverso
+		// BPositionIO::Write (virtuale) invece di cinque -- su un file
+		// reale con centinaia di migliaia di celle questo da solo
+		// risparmia centinaia di migliaia di chiamate virtuali ridondanti.
+		char record[sizeof(row) + sizeof(col) + sizeof(len) + sizeof(kind) + sizeof(text)];
+		size_t off = 0;
+		memcpy(record + off, &row, sizeof(row)); off += sizeof(row);
+		memcpy(record + off, &col, sizeof(col)); off += sizeof(col);
+		memcpy(record + off, &len, sizeof(len)); off += sizeof(len);
+		memcpy(record + off, &kind, sizeof(kind)); off += sizeof(kind);
+		if (len > 0)
+		{
+			memcpy(record + off, text, len);
+			off += len;
+		}
+		if (dest->Write(record, off) != (ssize_t)off)
 			return B_IO_ERROR;
 	}
 
@@ -343,9 +351,31 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// dentro il documento, esattamente come per ui/src/AscdIO.cpp
 	// (duplicato qui, stesso motivo di WriteASCD in generale -- questo
 	// translator non linka contro ui/src/).
+	// Passata UNICA su tutte le celle del documento, condivisa dalle
+	// dieci sezioni sotto (colori/font/allineamento/bordi/formato/
+	// sottolineato/testo a capo/colore bordo/blocco/allineamento
+	// verticale): prima, ognuna delle dieci faceva la SUA PROPRIA
+	// scansione completa del documento via CCellIterator+GetCellStyle,
+	// dieci volte lo stesso lavoro per lo stesso insieme di celle. Bug
+	// di prestazioni reale e grave scoperto sullo stesso file utente
+	// (CLUSTERIZZAZIONE MAX 1500 SITI, un foglio solo da 326275 celle)
+	// del fix sulle range grandi nel motore di calcolo (vedi
+	// CHANGELOG.md): dieci scansioni complete anziché una sola erano la
+	// causa dominante dei quasi 50 secondi spesi da questa funzione su
+	// quel file. GetCellStyle resta chiamata una sola volta per cella,
+	// non dieci.
+	std::vector<std::pair<cell, CellStyle> > cellStyles;
+	std::vector<std::pair<cell, CellStyle> > fontToWrite;
+	std::vector<std::pair<cell, char> > alignToWrite;
+	std::vector<std::pair<cell, CellStyle> > borderToWrite;
+	std::vector<std::pair<cell, int32> > formatToWrite;
+	std::vector<cell> underlineToWrite;
+	std::vector<cell> wrapToWrite;
+	std::vector<std::pair<cell, rgb_color> > borderColorToWrite;
+	std::vector<cell> lockToWrite;
+	std::vector<std::pair<cell, char> > valignToWrite;
 	{
 		CellStyle defaultStyle;
-		std::vector<std::pair<cell, CellStyle> > cellStyles;
 		CCellIterator styleIter(doc, NULL);
 		cell sc;
 		while (styleIter.NextExisting(sc))
@@ -355,6 +385,27 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 			if (!ColorsEqual(cs.fLowColor, defaultStyle.fLowColor)
 				|| !ColorsEqual(cs.fHighColor, defaultStyle.fHighColor))
 				cellStyles.push_back(std::make_pair(sc, cs));
+			if (cs.fFont != defaultStyle.fFont)
+				fontToWrite.push_back(std::make_pair(sc, cs));
+			if (cs.fAlignment != defaultStyle.fAlignment)
+				alignToWrite.push_back(std::make_pair(sc, cs.fAlignment));
+			if (cs.fTBorderColor != defaultStyle.fTBorderColor
+				|| cs.fLBorderColor != defaultStyle.fLBorderColor
+				|| cs.fBBorderColor != defaultStyle.fBBorderColor
+				|| cs.fRBorderColor != defaultStyle.fRBorderColor)
+				borderToWrite.push_back(std::make_pair(sc, cs));
+			if (cs.fFormat != defaultStyle.fFormat)
+				formatToWrite.push_back(std::make_pair(sc, (int32)cs.fFormat));
+			if (cs.fUnderline != defaultStyle.fUnderline)
+				underlineToWrite.push_back(sc);
+			if (cs.fWrapText != defaultStyle.fWrapText)
+				wrapToWrite.push_back(sc);
+			if (!ColorsEqual(cs.fBorderColor, defaultStyle.fBorderColor))
+				borderColorToWrite.push_back(std::make_pair(sc, cs.fBorderColor));
+			if (cs.fLocked != defaultStyle.fLocked)
+				lockToWrite.push_back(sc);
+			if (cs.fVerticalAlignment != defaultStyle.fVerticalAlignment)
+				valignToWrite.push_back(std::make_pair(sc, cs.fVerticalAlignment));
 		}
 
 		int32 cellColorCount = (int32)cellStyles.size();
@@ -445,18 +496,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// dimensione gia' risolti, mai l'indice grezzo -- vedi il commento
 	// li' sul perche' fFont e' un indice VOLATILE).
 	{
-		CellStyle defaultStyle;
-		std::vector<std::pair<cell, CellStyle> > toWrite;
-		CCellIterator fontIter(doc, NULL);
-		cell fc2;
-		while (fontIter.NextExisting(fc2))
-		{
-			CellStyle cs;
-			doc->GetCellStyle(fc2, cs);
-			if (cs.fFont != defaultStyle.fFont)
-				toWrite.push_back(std::make_pair(fc2, cs));
-		}
-
+		const std::vector<std::pair<cell, CellStyle> >& toWrite = fontToWrite;
 		int32 fontCount = (int32)toWrite.size();
 		if (dest->Write(&fontCount, sizeof(fontCount)) != (ssize_t)sizeof(fontCount))
 			return B_IO_ERROR;
@@ -487,18 +527,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// differenza del font sopra, CellStyle::fAlignment e' gia' il
 	// valore finale, non un indice).
 	{
-		CellStyle defaultStyle;
-		std::vector<std::pair<cell, char> > toWrite;
-		CCellIterator alignIter(doc, NULL);
-		cell ac;
-		while (alignIter.NextExisting(ac))
-		{
-			CellStyle cs;
-			doc->GetCellStyle(ac, cs);
-			if (cs.fAlignment != defaultStyle.fAlignment)
-				toWrite.push_back(std::make_pair(ac, cs.fAlignment));
-		}
-
+		const std::vector<std::pair<cell, char> >& toWrite = alignToWrite;
 		int32 alignCount = (int32)toWrite.size();
 		if (dest->Write(&alignCount, sizeof(alignCount)) != (ssize_t)sizeof(alignCount))
 			return B_IO_ERROR;
@@ -521,21 +550,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// in ParseStyles, applicato a CellStyle::fTBorderColor ecc durante
 	// ParseSheet) -- va quindi scritta con i valori reali.
 	{
-		CellStyle defaultStyle;
-		std::vector<std::pair<cell, CellStyle> > toWrite;
-		CCellIterator borderIter(doc, NULL);
-		cell bc;
-		while (borderIter.NextExisting(bc))
-		{
-			CellStyle cs;
-			doc->GetCellStyle(bc, cs);
-			if (cs.fTBorderColor != defaultStyle.fTBorderColor
-				|| cs.fLBorderColor != defaultStyle.fLBorderColor
-				|| cs.fBBorderColor != defaultStyle.fBBorderColor
-				|| cs.fRBorderColor != defaultStyle.fRBorderColor)
-				toWrite.push_back(std::make_pair(bc, cs));
-		}
-
+		const std::vector<std::pair<cell, CellStyle> >& toWrite = borderToWrite;
 		int32 borderCount = (int32)toWrite.size();
 		if (dest->Write(&borderCount, sizeof(borderCount)) != (ssize_t)sizeof(borderCount))
 			return B_IO_ERROR;
@@ -560,18 +575,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// applicato a CellStyle::fFormat durante ParseSheet) -- va quindi
 	// scritta con i valori reali, non a zero.
 	{
-		CellStyle defaultStyle;
-		std::vector<std::pair<cell, int32> > toWrite;
-		CCellIterator formatIter(doc, NULL);
-		cell fc;
-		while (formatIter.NextExisting(fc))
-		{
-			CellStyle cs;
-			doc->GetCellStyle(fc, cs);
-			if (cs.fFormat != defaultStyle.fFormat)
-				toWrite.push_back(std::make_pair(fc, (int32)cs.fFormat));
-		}
-
+		const std::vector<std::pair<cell, int32> >& toWrite = formatToWrite;
 		int32 formatCount = (int32)toWrite.size();
 		if (dest->Write(&formatCount, sizeof(formatCount)) != (ssize_t)sizeof(formatCount))
 			return B_IO_ERROR;
@@ -594,18 +598,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// riga/colonna, nessun valore da scrivere (la sola presenza vuol
 	// dire true, stesso principio di ui/src/AscdIO.cpp).
 	{
-		CellStyle defaultStyle;
-		std::vector<cell> toWrite;
-		CCellIterator underlineIter(doc, NULL);
-		cell uc;
-		while (underlineIter.NextExisting(uc))
-		{
-			CellStyle cs;
-			doc->GetCellStyle(uc, cs);
-			if (cs.fUnderline != defaultStyle.fUnderline)
-				toWrite.push_back(uc);
-		}
-
+		const std::vector<cell>& toWrite = underlineToWrite;
 		int32 underlineCount = (int32)toWrite.size();
 		if (dest->Write(&underlineCount, sizeof(underlineCount)) != (ssize_t)sizeof(underlineCount))
 			return B_IO_ERROR;
@@ -625,18 +618,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// fWrapText durante ParseSheet) -- va quindi scritta con i valori
 	// reali. Solo riga/colonna, nessun valore da scrivere.
 	{
-		CellStyle defaultStyle;
-		std::vector<cell> toWrite;
-		CCellIterator wrapIter(doc, NULL);
-		cell wc;
-		while (wrapIter.NextExisting(wc))
-		{
-			CellStyle cs;
-			doc->GetCellStyle(wc, cs);
-			if (cs.fWrapText != defaultStyle.fWrapText)
-				toWrite.push_back(wc);
-		}
-
+		const std::vector<cell>& toWrite = wrapToWrite;
 		int32 wrapCount = (int32)toWrite.size();
 		if (dest->Write(&wrapCount, sizeof(wrapCount)) != (ssize_t)sizeof(wrapCount))
 			return B_IO_ERROR;
@@ -828,18 +810,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// che ParseSheet estrae davvero il colore da un <color> XLSX vero
 	// (vedi ParseStyles/ResolveColorAttrs).
 	{
-		CellStyle defaultBorderStyle;
-		std::vector<std::pair<cell, rgb_color> > borderColorsToWrite;
-		CCellIterator borderColorIter(doc, NULL);
-		cell bcc;
-		while (borderColorIter.NextExisting(bcc))
-		{
-			CellStyle cs;
-			doc->GetCellStyle(bcc, cs);
-			if (!ColorsEqual(cs.fBorderColor, defaultBorderStyle.fBorderColor))
-				borderColorsToWrite.push_back(std::make_pair(bcc, cs.fBorderColor));
-		}
-
+		const std::vector<std::pair<cell, rgb_color> >& borderColorsToWrite = borderColorToWrite;
 		int32 borderColorCount = (int32)borderColorsToWrite.size();
 		if (dest->Write(&borderColorCount, sizeof(borderColorCount)) != (ssize_t)sizeof(borderColorCount))
 			return B_IO_ERROR;
@@ -1195,18 +1166,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// funzione e' chiamata per l'esportazione ASCD -> XLSX di un
 	// documento riletto da un file XLSX originale.
 	{
-		CellStyle defaultStyle;
-		std::vector<cell> unlocked;
-		CCellIterator lockIter(doc, NULL);
-		cell lc;
-		while (lockIter.NextExisting(lc))
-		{
-			CellStyle cs;
-			doc->GetCellStyle(lc, cs);
-			if (cs.fLocked != defaultStyle.fLocked)
-				unlocked.push_back(lc);
-		}
-
+		const std::vector<cell>& unlocked = lockToWrite;
 		int32 unlockedCount = (int32)unlocked.size();
 		if (dest->Write(&unlockedCount, sizeof(unlockedCount)) != (ssize_t)sizeof(unlockedCount))
 			return B_IO_ERROR;
@@ -1308,18 +1268,7 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// senza di lei, un XLSX con celle centrate/in basso verticalmente
 	// perderebbe quell informazione nel giro XLSX -> ASCD.
 	{
-		CellStyle defaultStyle;
-		std::vector<std::pair<cell, char> > toWrite;
-		CCellIterator valignIter(doc, NULL);
-		cell vc;
-		while (valignIter.NextExisting(vc))
-		{
-			CellStyle cs;
-			doc->GetCellStyle(vc, cs);
-			if (cs.fVerticalAlignment != defaultStyle.fVerticalAlignment)
-				toWrite.push_back(std::make_pair(vc, cs.fVerticalAlignment));
-		}
-
+		const std::vector<std::pair<cell, char> >& toWrite = valignToWrite;
 		int32 valignCount = (int32)toWrite.size();
 		if (dest->Write(&valignCount, sizeof(valignCount)) != (ssize_t)sizeof(valignCount))
 			return B_IO_ERROR;
@@ -12252,7 +12201,9 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 	if (err == B_OK)
 	{
 		if (outType == kAtomoNativeFormat)
+		{
 			err = WriteASCDBook(sheets, destination);
+		}
 		else
 			// L'esportazione XLSX resta a un solo foglio (quello
 			// attivo, il primo qui): i writer non nativi non

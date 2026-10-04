@@ -2708,16 +2708,17 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	// dell'intera cartella, con tutti i fogli gia' collegati fra loro,
 	// e' il primo punto in cui puo' farlo correttamente.
 	AttachSheetResolver();
-	// Vero grafo delle dipendenze (roadmap Tier 3, Fase 0): ricostruito
-	// da zero qui, SUBITO dopo il resolver, per lo stesso motivo del
-	// commento sopra su RecalculateWorkbook -- un riferimento incrociato
-	// non si puo' risolvere finche' ogni foglio non e' collegato agli
-	// altri.
-	RebuildDependencyGraph(fSheets);
-	// Grafo delle dipendenze (Tier 3, taglio di produzione): stesso
-	// principio "seme largo ma corretto" del percorso di caricamento in
-	// background (OpenFileThreadEntry) -- una sola passata topologica
-	// invece delle vecchie fino a 50 a punto fisso.
+	// Grafo delle dipendenze (Tier 3, taglio di produzione): nessuna
+	// chiamata separata a RebuildDependencyGraph qui apposta -- il passo
+	// 3 di RecalculateMinimal sotto registra gia' ogni bordo come
+	// sottoprodotto del proprio calcolo dei precedenti (vedi il commento
+	// gemello in AscdIO.cpp), quindi una ricostruzione separata
+	// ricalcolerebbe la stessa identica cosa una seconda volta per
+	// ognuna delle celle con formula -- bug di prestazioni reale
+	// scoperto insieme al fix sulle range grandi (vedi CHANGELOG.md),
+	// stesso principio "seme largo ma corretto" del percorso di
+	// caricamento in background (OpenFileThreadEntry): una sola passata
+	// topologica invece delle vecchie fino a 50 a punto fisso.
 	{
 		std::vector<QualifiedCell> seeds;
 		for (size_t i = 0; i < fSheets.size(); i++)
@@ -3024,13 +3025,18 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	// temporaneo si libera SUBITO dopo, non prima: nessun CContainer
 	// deve restare agganciato a un oggetto che sta per sparire.
 	AttachSheetResolver();
-	// Vero grafo delle dipendenze (roadmap Tier 3, Fase 0): stesso
-	// principio del percorso sincrono (vedi il commento gemello piu'
-	// sopra in questo file) -- ricostruito qui, non nel job in
-	// background, perche' e' il primo punto in cui fSheets porta
-	// davvero il resolver DEFINITIVO ("this"), non quello temporaneo del
-	// thread di caricamento.
-	RebuildDependencyGraph(fSheets);
+	// Grafo delle dipendenze (Tier 3, taglio di produzione): nessuna
+	// RebuildDependencyGraph qui apposta, per lo stesso motivo del
+	// commento gemello nel percorso sincrono piu' sopra in questo file
+	// -- il passo 3 di RecalculateMinimal, gia' eseguito dentro
+	// OpenFileThreadEntry col resolver TEMPORANEO del thread di
+	// caricamento, ha gia' registrato ogni bordo del grafo come
+	// sottoprodotto del proprio calcolo dei precedenti. Quel grafo resta
+	// corretto anche ora che il resolver e' stato sostituito con "this":
+	// un bordo e' identificato dal vero puntatore CContainer* della
+	// cella precedente (QualifiedCell::container), mai dal resolver
+	// usato per trovarlo, quindi ricostruirlo di nuovo qui sarebbe
+	// lavoro sprecato, non una correzione di qualcosa di sbagliato.
 	delete resolver;
 
 	fDocumentName = ref.name;

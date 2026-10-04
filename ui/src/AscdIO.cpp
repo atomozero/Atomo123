@@ -15,6 +15,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <unordered_map>
 
 #include "Cell.h"
 #include "CellStyle.h"
@@ -4715,17 +4716,43 @@ void RecalculateMinimal(const std::vector<QualifiedCell>& seeds, int depth)
 		byRow[std::make_pair(a->container, a->loc.v)].push_back(*a);
 	}
 
-	std::map<QualifiedCell, int> inDegree;
-	std::map<QualifiedCell, std::vector<QualifiedCell> > outEdges;
+	// std::map<QualifiedCell,...> qui costava quanto un ordinamento ad
+	// albero (~log2(149000)=17 confronti CContainer*+cell per accesso) su
+	// ogni singolo nodo/arco del file reale che ha motivato questo intero
+	// lavoro -- std::unordered_map (hash, O(1) atteso) ha tagliato questo
+	// passo da diversi secondi a una frazione sullo stesso file.
+	std::unordered_map<QualifiedCell, int, QualifiedCellHash> inDegree;
+	std::unordered_map<QualifiedCell, std::vector<QualifiedCell>, QualifiedCellHash> outEdges;
+	inDegree.reserve(affected.size());
+	outEdges.reserve(affected.size());
 
 	for (std::set<QualifiedCell>::const_iterator it = affected.begin(); it != affected.end(); it++)
 	{
-		if (circular.count(*it))
-			continue;
-
 		std::vector<QualifiedCell> cells, columns, rows;
 		ISheetResolver* resolver = it->container->GetSheetResolver();
 		it->container->GetQualifiedPrecedents(it->loc, resolver, cells, columns, rows);
+
+		// Registra qui lo stesso identico risultato appena calcolato nel
+		// grafo persistente (idempotente: ApplyPrecedentDiff sotto non fa
+		// che inserimenti in un std::set, un inserimento ripetuto non
+		// costa nulla in piu'): elimina la necessita' di una passata
+		// SEPARATA di RebuildDependencyGraph su un caricamento completo,
+		// che altrimenti richiamerebbe GetQualifiedPrecedents una SECONDA
+		// volta per ognuna di queste stesse celle -- bug di prestazioni
+		// reale scoperto sullo stesso file utente (CLUSTERIZZAZIONE MAX
+		// 1500 SITI, ~149000 celle con formula) del fix sulle range
+		// grandi qui sopra: le due passate costavano quanto il doppio di
+		// questa, per calcolare esattamente la stessa cosa due volte.
+		// Incondizionato (anche per una cella circolare, MAI saltata qui
+		// sotto come nel resto di questo ciclo): RebuildDependencyGraph
+		// registrava comunque ogni cella con formula, circolare o no, e
+		// un futuro ricalcolo incrementale deve poter trovare i
+		// dipendenti di una cella circolare esattamente come quelli di
+		// una qualunque altra.
+		it->container->RegisterDependencyEdges(it->loc, cells, columns, rows);
+
+		if (circular.count(*it))
+			continue;
 
 		int degree = 0;
 		for (size_t i = 0; i < cells.size(); i++)
@@ -4777,7 +4804,7 @@ void RecalculateMinimal(const std::vector<QualifiedCell>& seeds, int depth)
 		queue.pop_back();
 		order.push_back(qc);
 
-		std::map<QualifiedCell, std::vector<QualifiedCell> >::iterator it = outEdges.find(qc);
+		std::unordered_map<QualifiedCell, std::vector<QualifiedCell>, QualifiedCellHash>::iterator it = outEdges.find(qc);
 		if (it != outEdges.end())
 		{
 			for (size_t i = 0; i < it->second.size(); i++)

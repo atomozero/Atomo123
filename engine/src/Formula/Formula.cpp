@@ -673,11 +673,18 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 	range theRange;
 	FuncCallData theFuncData;
 
-	void *p = MALLOC(kMaxStackHeight * kMaxStringLength);
-	FailNil(p);
+	// thread_local invece di MALLOC/FREE a ogni chiamata: UnMangle non e'
+	// mai reentrante (nessuna chiamata a se stessa qui dentro) ma viene
+	// chiamata una volta per cella con formula durante il giro testuale
+	// di WriteASCD/SaveASCD -- su un file reale con 149259 formule,
+	// l'alloca/libera di un buffer fisso da ~100KB quel numero di volte
+	// costava diversi secondi da solo. Un buffer per thread, allocato una
+	// volta e riusato per sempre, resta sicuro anche se questo motore
+	// viene mai chiamato da piu' di un thread.
+	static thread_local char sStackBuf[kMaxStackHeight * kMaxStringLength];
 
 	for (int i = 0; i < kMaxStackHeight; i++)
-		stack[i] = (char *)p + i * kMaxStringLength;
+		stack[i] = sStackBuf + i * kMaxStringLength;
 
 	stackIndx = -1;
 	indx = 0;
@@ -1134,8 +1141,6 @@ void CFormula::UnMangle(char *outString, cell inLocation, CContainer *inContaine
 	{
 		strlcpy(outString, e, kMaxStringLength);
 	}
-	
-	FREE(p);
 } /* CFormula::UnMangle */
 
 bool CFormula::ReferencesOtherSheet() const
