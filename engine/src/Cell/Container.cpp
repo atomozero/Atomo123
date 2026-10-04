@@ -797,6 +797,17 @@ static QualifiedCell RedirectSpillMember(CContainer* container, const cell& loc)
 	return qc;
 }
 
+// Soglia (celle) sopra la quale un intervallo esplicito ma grande
+// (es. $CN$3:$CW$16002) viene trattato come un bordo grezzo di colonna
+// invece di enumerare una QualifiedCell per cella -- vedi il commento
+// nel ramo "else if" di ComputeQualifiedPrecedents sotto per il bug
+// reale che questa soglia evita. 256 celle (es. un intervallo 16x16)
+// e' abbondantemente sopra qualunque tabella di lookup piccola/media
+// scritta a mano, e abbondantemente sotto le migliaia/decine di
+// migliaia di celle che un vero file XLSX denso di formule puo'
+// referenziare in un solo intervallo.
+static const long kLargeRangeCellThreshold = 256;
+
 // Corpo vero di GetQualifiedPrecedents, estratto in una funzione libera
 // che prende il puntatore alla formula DIRETTAMENTE invece di rileggerlo
 // da fCellData: serve a CContainer::SetCellFormula/DisposeCell/MoveCell
@@ -876,6 +887,34 @@ static void ComputeQualifiedPrecedents(void* formula, const cell& formulaLoc,
 				qc.loc = cell(0, row);
 				if (rowsSeen.insert(qc).second)
 					outRows.push_back(qc);
+			}
+		}
+		else if ((long)(r.bottom - r.top + 1) * (long)(r.right - r.left + 1) > kLargeRangeCellThreshold)
+		{
+			// Intervallo esplicito ma GRANDE (non IsWholeColumn/IsWholeRow
+			// in senso stretto, ma comunque troppo ampio per enumerare una
+			// QualifiedCell per cella): bug di prestazioni reale scoperto
+			// su un file utente vero (CLUSTERIZZAZIONE MAX 1500 SITI) --
+			// 6000+ formule in un solo foglio referenziano intervalli
+			// espliciti come $CN$3:$CW$16002 (10 colonne x 16000 righe =
+			// 160000 celle), portando il solo passo di rilevamento cicli
+			// da qualche secondo a diversi minuti. Si tratta ogni colonna
+			// toccata dall'intervallo come un bordo grezzo di colonna
+          	// (stesso meccanismo di IsWholeColumn sopra, stessa mappa
+			// fColumnDependents) invece di enumerare ogni singola cella:
+			// un'approssimazione per eccesso SICURA (un bordo di colonna
+			// invalida tutta la colonna anche fuori dalle righe r.top..
+			// r.bottom realmente referenziate), mai una perdita di
+			// dipendenza vera -- lo stesso compromesso "largo ma
+			// corretto" gia' usato altrove in questo grafo (vedi
+			// MainWindow::RecalculateActiveWorkbook).
+			for (int col = r.left; col <= r.right; col++)
+			{
+				QualifiedCell qc;
+				qc.container = target;
+				qc.loc = cell(col, 0);
+				if (columnsSeen.insert(qc).second)
+					outColumns.push_back(qc);
 			}
 		}
 		else

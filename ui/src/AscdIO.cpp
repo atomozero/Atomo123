@@ -4694,10 +4694,27 @@ void RecalculateMinimal(const std::vector<QualifiedCell>& seeds, int depth)
 	// grado entrante = numero di precedenti DENTRO l'insieme raccolto
 	// (un precedente FUORI da "affected" e' gia' un valore assestato,
 	// non blocca nulla). I bordi grezzi colonna/riga si espandono qui,
-	// al momento, contro il solo insieme "affected" (che per una singola
-	// modifica resta piccolo) invece di essere mantenuti come bordi
-	// permanenti verso "una colonna intera" -- vedi Fase 2 del piano per
-	// un affinamento pensato per un insieme "affected" grande.
+	// contro il solo insieme "affected" (mai l'intera colonna/riga del
+	// documento, che potrebbe non essere mai stata toccata) -- ma tramite
+	// un indice precalcolato per (container, colonna)/(container, riga),
+	// non una scansione lineare di "affected" per ogni riferimento
+	// colonna/riga incontrato. Bug di prestazioni reale scoperto insieme
+	// a quello di ComputeQualifiedPrecedents (vedi il commento gemello
+	// su kLargeRangeCellThreshold in Container.cpp): quella correzione
+	// convertiva migliaia di riferimenti a intervallo grande in bordi di
+	// colonna, rendendo la vecchia scansione O(|affected|) PER bordo di
+	// colonna -- su un file reale con 149259 celle "affected" e migliaia
+	// di tali bordi, l'esplosione quadratica risultante bastava da sola
+	// a bloccare l'apertura file per minuti anche dopo quella correzione.
+	std::map<std::pair<CContainer*, int>, std::vector<QualifiedCell> > byColumn, byRow;
+	for (std::set<QualifiedCell>::const_iterator a = affected.begin(); a != affected.end(); a++)
+	{
+		if (circular.count(*a))
+			continue;
+		byColumn[std::make_pair(a->container, a->loc.h)].push_back(*a);
+		byRow[std::make_pair(a->container, a->loc.v)].push_back(*a);
+	}
+
 	std::map<QualifiedCell, int> inDegree;
 	std::map<QualifiedCell, std::vector<QualifiedCell> > outEdges;
 
@@ -4721,26 +4738,26 @@ void RecalculateMinimal(const std::vector<QualifiedCell>& seeds, int depth)
 		}
 		for (size_t i = 0; i < columns.size(); i++)
 		{
-			for (std::set<QualifiedCell>::const_iterator a = affected.begin(); a != affected.end(); a++)
+			std::map<std::pair<CContainer*, int>, std::vector<QualifiedCell> >::const_iterator found =
+				byColumn.find(std::make_pair(columns[i].container, columns[i].loc.h));
+			if (found == byColumn.end())
+				continue;
+			for (size_t k = 0; k < found->second.size(); k++)
 			{
-				if (!circular.count(*a) && a->container == columns[i].container
-						&& a->loc.h == columns[i].loc.h)
-				{
-					degree++;
-					outEdges[*a].push_back(*it);
-				}
+				degree++;
+				outEdges[found->second[k]].push_back(*it);
 			}
 		}
 		for (size_t i = 0; i < rows.size(); i++)
 		{
-			for (std::set<QualifiedCell>::const_iterator a = affected.begin(); a != affected.end(); a++)
+			std::map<std::pair<CContainer*, int>, std::vector<QualifiedCell> >::const_iterator found =
+				byRow.find(std::make_pair(rows[i].container, rows[i].loc.v));
+			if (found == byRow.end())
+				continue;
+			for (size_t k = 0; k < found->second.size(); k++)
 			{
-				if (!circular.count(*a) && a->container == rows[i].container
-						&& a->loc.v == rows[i].loc.v)
-				{
-					degree++;
-					outEdges[*a].push_back(*it);
-				}
+				degree++;
+				outEdges[found->second[k]].push_back(*it);
 			}
 		}
 		inDegree[*it] = degree;
