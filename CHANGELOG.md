@@ -147,6 +147,35 @@ What shipped since v0.5.0 (in progress):
   style entry, not per cell, so this fix doesn't apply there; left as
   a further open item. New `engine/tests/fontmetrics_test.cpp` pins
   both the deduplication behavior and the performance characteristic.
+- Closed out the investigation above, same day: the real file still
+  took 15+ minutes to open (never actually finished, killed repeatedly)
+  even after both preceding fixes, because neither one touched the
+  real dominant cost — `RecalculateMinimal` itself, which no synthetic
+  benchmark so far had exercised with formulas referencing large
+  explicit ranges. Two separate, real quadratic blowups, both only
+  visible once that step was actually profiled on the real file:
+  (1) `ComputeQualifiedPrecedents` only coarsened a true whole-column/
+  row reference to one graph edge — a large but bounded explicit range
+  (`$CN$3:$CW$16002`, an ordinary HLOOKUP/VLOOKUP table reference, not
+  a literal `A:A`) fell through to one `QualifiedCell` per cell:
+  160,000 of them for that one formula, and this file has 6,000+ such
+  formulas in a single sheet. Fixed with a size threshold (256 cells)
+  above which a rectangular range now coarsens to one column-watch per
+  column, the same safe over-approximation the true whole-column case
+  already used. (2) That fix then exposed a second, pre-existing gap,
+  already flagged in its own comment as deferred until a large
+  "affected" set needed it: the topological-sort step expanded each
+  column/row reference by scanning the *entire* affected set linearly,
+  which fix (1) made fire far more often by turning thousands of
+  cell-level references into column references. Replaced with a
+  precomputed `(container, column)`/`(container, row)` index. Measured
+  on the real file end to end (13 sheets, ~149,000 formula cells, not
+  the ~44,639 estimated earlier from a raw XML scan that missed shared-
+  formula member cells): opening it now takes 112 seconds, down from
+  never completing. Also deduplicated a shared-formula import warning
+  that printed once per cell instead of once per shared group — tens
+  of thousands of identical lines on this file alone, a real
+  contributor in its own right (`Translate()` 53.9s → 30.6s headless).
 
 What shipped in v0.5.0, on top of v0.4.2:
 - Chart visual polish, first step of a broader "make charts more
