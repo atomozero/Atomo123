@@ -17,6 +17,7 @@
 #include <cstring>
 #include <ctime>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -7845,6 +7846,18 @@ struct SheetContext {
 	// volta che una <f t="shared"> con testo non vuoto viene chiusa.
 	std::string formulaSi;
 	std::map<int, std::pair<cell, std::string> > sharedFormulaAnchors;
+	// Indici "si" per cui l'avviso sotto (CompileSharedFormulaAt che
+	// lancia CErr) e' gia' stato stampato una volta: un gruppo condiviso
+	// si estende su decine di migliaia di celle in un file reale denso
+	// di formule (vedi CLUSTERIZZAZIONE MAX 1500 SITI), e senza questo
+	// insieme lo stesso identico avviso veniva stampato una volta per
+	// OGNI cella del gruppo (decine di migliaia di righe su stderr) --
+	// bug di prestazioni reale e grave, non solo di leggibilita':
+	// l'eco a schermo di quel volume di righe in un terminale vero
+	// dominava il tempo di apertura file (confermato strumentando
+	// Translate() separatamente da LoadASCDBook), non il lavoro di
+	// importazione in se'.
+	std::set<int> sharedFormulaWarned;
 
 	// Stato per <conditionalFormatting>/<cfRule>/<formula> (solo se
 	// condRules non e' NULL).
@@ -8688,9 +8701,16 @@ static void XMLCALL SheetEnd(void* userData, const char* name)
 					// una BAlert qui sarebbe sbagliata (Translate() gira
 					// anche dentro Tracker per le anteprime, vedi il
 					// commento in cima a CXlsxTranslator::Translate).
-					fprintf(stderr,
-						"Atomo123: importazione XLSX: formula condivisa non importata (%s): \"%s\"\n",
-						(char*)e, found->second.second.c_str());
+					// UNA VOLTA per indice "si" (vedi sharedFormulaWarned
+					// sopra): lo stesso fallimento si ripeterebbe
+					// altrimenti identico per ogni cella del gruppo
+					// condiviso, decine di migliaia di volte su un file
+					// reale denso di formule.
+					int si = atoi(ctx->formulaSi.c_str());
+					if (ctx->sharedFormulaWarned.insert(si).second)
+						fprintf(stderr,
+							"Atomo123: importazione XLSX: formula condivisa non importata (%s): \"%s\"\n",
+							(char*)e, found->second.second.c_str());
 					sharedFormulaHandled = false;
 				}
 			}
