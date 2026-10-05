@@ -1270,6 +1270,21 @@ test-format-toolbar: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_format_toolbar
 
+# Selettore famiglia/dimensione carattere nella toolbar (richiesta
+# esplicita dell'utente, "come per Excel"): stessa ragione di
+# test-format-toolbar sopra, ma passando dal vero BMenuField/BMenuItem.
+test-font-toolbar: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_font_toolbar.cpp -o tests/test_font_toolbar.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_font_toolbar tests/test_font_toolbar.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_font_toolbar
+
 # Test dei cinque pulsanti Fase 13 (hyperlink/commento/vai a/intervalli
 # con nome/colore bordo) e della nuova toolbar su piu' righe per
 # categoria: stessa ragione headless-ma-con-vera-MainWindow di
@@ -1765,7 +1780,7 @@ clean:
 		examples/atomo123_demo.ascd \
 		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
-.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-autosum test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection test-slicer test-whatif test-circular-reference test-point-mode test-autocomplete test-chart-antialiasing test-edit-chart test-chart-row-orientation test-chart-series-colors test-chart-range-picker test-scenario-manager test-named-styles test-chart-trendlines test-dependency-graph-build test-dependency-graph-recalc test-recalc-seeding clean
+.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-autosum test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-font-toolbar test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection test-slicer test-whatif test-circular-reference test-point-mode test-autocomplete test-chart-antialiasing test-edit-chart test-chart-row-orientation test-chart-series-colors test-chart-range-picker test-scenario-manager test-named-styles test-chart-trendlines test-dependency-graph-build test-dependency-graph-recalc test-recalc-seeding clean
 
 # Include i file di dipendenza generati da -MMD/-MP (vedi CXXFLAGS in
 # cima) -- src/*.d per la build principale, tests/*.d per ogni target

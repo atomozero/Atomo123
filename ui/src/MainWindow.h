@@ -34,6 +34,7 @@ class BFilePanel;
 class BMessageRunner;
 class BScrollBar;
 class BMenu;
+class BMenuField;
 class BMenuItem;
 class BTextControl;
 class BStringView;
@@ -299,6 +300,17 @@ public:
 	// l'altezza delle righe coinvolte se serve (vedi SheetView::
 	// RecalculateWrappedRowHeights).
 	void ToggleWrapText();
+
+	// Selettore famiglia/dimensione font nella toolbar (come Excel):
+	// a differenza di ToggleBold/ToggleItalic sopra (che invertono lo
+	// stato letto dalla cella attiva), qui l'utente sceglie un valore
+	// esplicito dal menu -- si applica sempre a tutto SelectionRange(),
+	// preservando ogni altro attributo del font (stile/dimensione o
+	// famiglia/stile, a seconda di quale dei due cambia). Pubbliche per
+	// lo stesso motivo di SetCellFormat sopra -- vedi tests/
+	// test_font_toolbar.cpp.
+	void SetFontFamily(const char* family);
+	void SetFontSize(float size);
 
 	// Celle unite (Fase 12): un rettangolo per foglio (CContainer::
 	// AddMergedRange), non un campo per cella -- vedi il commento
@@ -762,6 +774,12 @@ private:
 	BMenu* fRecentMenu;
 	BTextControl* fFormulaBar;
 	BStringView* fCellLabel;
+	// Selettore famiglia/dimensione font nella toolbar (come Excel):
+	// vedi il commento su SetFontFamily/SetFontSize sopra e
+	// UpdateFontFields in MainWindow.cpp (chiamato da SelectionChanged)
+	// per come riflettono il font della cella attiva.
+	BMenuField* fFontFamilyField;
+	BMenuField* fFontSizeField;
 	BStringView* fCellMode;
 	bool fEditingCell;
 	BStringView* fSelectionStats;
@@ -980,6 +998,11 @@ private:
 
 	void UpdateTitle();
 	void MarkModified();
+	// Aggiorna fFontFamilyField/fFontSizeField per riflettere il font
+	// della cella passata -- chiamato da SelectionChanged, stesso
+	// principio di fCellLabel/fFormulaBar li' sopra (letto dalla SOLA
+	// cella attiva, come il resto dei controlli di formattazione).
+	void UpdateFontFields(cell c);
 	// Aggiorna il testo di fCellMode combinando modalita' (Pronto/
 	// Modifica) e fModified (prefisso "* ", stesso segno gia' usato dal
 	// titolo -- vedi UpdateTitle): chiamata da entrambi, cosi' il

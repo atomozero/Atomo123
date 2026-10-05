@@ -77,6 +77,7 @@
 #include <LayoutBuilder.h>
 #include <Menu.h>
 #include <MenuBar.h>
+#include <MenuField.h>
 #include <MenuItem.h>
 #include <MessageRunner.h>
 #include <NodeInfo.h>
@@ -169,6 +170,8 @@ static const uint32 kMsgUnlockSelection = 'ulks';
 static const uint32 kMsgToggleBold = 'tbld';
 static const uint32 kMsgToggleItalic = 'tita';
 static const uint32 kMsgToggleUnderline = 'tund';
+static const uint32 kMsgSetFontFamily = 'sffm';
+static const uint32 kMsgSetFontSize = 'sfsz';
 static const uint32 kMsgToggleWrapText = 'twrp';
 static const uint32 kMsgMergeCells = 'mrgc';
 static const uint32 kMsgAutoSum = 'asum';
@@ -841,6 +844,68 @@ static BView* BuildToolbar(BHandler* target)
 	return toolbar;
 }
 
+// Dimensioni fisse, come il vero menu "Dimensione carattere" di Excel
+// (una tendina, non un campo digitabile libero -- scelta deliberata
+// dell'utente: Haiku non offre un controllo combo nativo, costruirne
+// uno da zero solo per questo sarebbe piu' lavoro/rischio del
+// necessario per la v1).
+static const float kFontSizeChoices[] = {
+	8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72
+};
+
+// Selettore famiglia font nella toolbar (come Excel): un BMenuField
+// senza etichetta a sinistra (NULL), popolato con ogni famiglia
+// installata su questo sistema (count_font_families/get_font_family,
+// <Font.h>) -- a differenza di fFontSizeField sotto, qui la lista non
+// puo' essere una costante fissa, dipende da cosa e' davvero
+// installato. "target" riceve kMsgSetFontFamily con la famiglia scelta
+// in "family" (stringa).
+static BMenuField* BuildFontFamilyField(BHandler* target)
+{
+	BPopUpMenu* menu = new BPopUpMenu("fontFamilyMenu");
+	int32 count = count_font_families();
+	for (int32 i = 0; i < count; i++)
+	{
+		font_family name;
+		if (get_font_family(i, &name) != B_OK)
+			continue;
+		BMessage* msg = new BMessage(kMsgSetFontFamily);
+		msg->AddString("family", name);
+		BMenuItem* item = new BMenuItem(name, msg);
+		item->SetTarget(target);
+		menu->AddItem(item);
+	}
+	BMenuField* field = new BMenuField("fontFamilyField", NULL, menu);
+	field->SetToolTip(B_TRANSLATE("Famiglia carattere"));
+	field->SetExplicitMinSize(BSize(130, B_SIZE_UNSET));
+	field->SetExplicitMaxSize(BSize(130, B_SIZE_UNSET));
+	return field;
+}
+
+// Selettore dimensione font nella toolbar: stesso principio sopra ma
+// dalla lista fissa kFontSizeChoices, non dal sistema. "target" riceve
+// kMsgSetFontSize con la dimensione scelta in "size" (float, come
+// CellStyle/gFontSizeTable la vogliono altrove in questo file).
+static BMenuField* BuildFontSizeField(BHandler* target)
+{
+	BPopUpMenu* menu = new BPopUpMenu("fontSizeMenu");
+	for (size_t i = 0; i < sizeof(kFontSizeChoices) / sizeof(kFontSizeChoices[0]); i++)
+	{
+		char label[8];
+		snprintf(label, sizeof(label), "%d", (int)kFontSizeChoices[i]);
+		BMessage* msg = new BMessage(kMsgSetFontSize);
+		msg->AddFloat("size", kFontSizeChoices[i]);
+		BMenuItem* item = new BMenuItem(label, msg);
+		item->SetTarget(target);
+		menu->AddItem(item);
+	}
+	BMenuField* field = new BMenuField("fontSizeField", NULL, menu);
+	field->SetToolTip(B_TRANSLATE("Dimensione carattere"));
+	field->SetExplicitMinSize(BSize(50, B_SIZE_UNSET));
+	field->SetExplicitMaxSize(BSize(50, B_SIZE_UNSET));
+	return field;
+}
+
 // Stessa logica di SheetView::ColumnName (vedi li' per il perche'
 // della duplicazione: e' una manciata di righe, non vale la pena
 // condividerla tramite un header dedicato).
@@ -1371,6 +1436,15 @@ MainWindow::MainWindow()
 	// a partire da kToolbarGroups invece che uno per uno a mano.
 	BView* toolbar = BuildToolbar(this);
 
+	fFontFamilyField = BuildFontFamilyField(this);
+	fFontSizeField = BuildFontSizeField(this);
+	// Senza questa chiamata i due campi mostrerebbero il nome interno
+	// del BPopUpMenu ("fontFamilyMenu"/"fontSizeMenu", nessuna voce
+	// ancora marcata) fino al primo vero cambio di selezione -- fDoc e'
+	// gia' valido qui (ResetWorkbook() all'inizio del costruttore lo
+	// imposta indipendentemente da fSheetView, vedi il commento li').
+	UpdateFontFields(cell(1, 1));
+
 	fCellLabel = new BStringView("cellLabel", "A1");
 	fCellLabel->SetExplicitMinSize(BSize(50, B_SIZE_UNSET));
 	fCellLabel->SetExplicitMaxSize(BSize(50, B_SIZE_UNSET));
@@ -1458,6 +1532,18 @@ MainWindow::MainWindow()
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.Add(toolbar)
+		// Riga separata per famiglia/dimensione carattere (come Excel):
+		// controlli a larghezza variabile (nomi di font), non pulsanti a
+		// icona a larghezza fissa -- non entrano nel sistema di
+		// avvolgimento a gruppi di ToolbarView sopra (pensato solo per
+		// BButton), quindi vivono qui, una riga a parte, invece che
+		// dentro BuildToolbar.
+		.AddGroup(B_HORIZONTAL, 4)
+			.SetInsets(4, 2, 4, 2)
+			.Add(fFontFamilyField)
+			.Add(fFontSizeField)
+			.AddGlue()
+		.End()
 		// Riga di separazione sotto la toolbar: l'altra meta' dell'aspetto
 		// di una vera BToolBar (vedi il commento sopra BuildToolbar), non
 		// disponibile su questo sistema.
@@ -5032,6 +5118,108 @@ void MainWindow::ToggleWrapText()
 	MarkModified();
 }
 
+// Selettore famiglia font nella toolbar (come Excel): a differenza di
+// ToggleBold/ToggleItalic/ToggleUnderline sopra (che invertono lo
+// stato letto dalla cella attiva), qui l'utente ha gia' scelto un
+// valore esplicito dal menu -- si preserva ogni altro attributo del
+// font (stile/dimensione/colore), letto dalla sola cella attiva come
+// ToggleBold, e si applica a tutto SelectionRange() tramite
+// ApplyFontToRange.
+void MainWindow::SetFontFamily(const char* family)
+{
+	if (!fDoc)
+		return;
+	if (!fSheetView->GuardProtectedEdit(fSheetView->SelectionRange()))
+		return;
+
+	fSheetView->SaveUndoState(fSheetView->SelectionRange()); // stesso motivo di ToggleBold
+
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	font_family oldFamily;
+	font_style style;
+	float size;
+	rgb_color color;
+	GetCellFontInfo(cs.fFont, &oldFamily, &style, &size, &color);
+
+	ApplyFontToRange(fDoc, fSheetView->SelectionRange(), family, style, size, color);
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+// Selettore dimensione font nella toolbar: stesso principio di
+// SetFontFamily sopra, ma cambia solo la dimensione.
+void MainWindow::SetFontSize(float size)
+{
+	if (!fDoc)
+		return;
+	if (!fSheetView->GuardProtectedEdit(fSheetView->SelectionRange()))
+		return;
+
+	fSheetView->SaveUndoState(fSheetView->SelectionRange()); // stesso motivo di ToggleBold
+
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	font_family family;
+	font_style style;
+	float oldSize;
+	rgb_color color;
+	GetCellFontInfo(cs.fFont, &family, &style, &oldSize, &color);
+
+	ApplyFontToRange(fDoc, fSheetView->SelectionRange(), family, style, size, color);
+	fSheetView->Invalidate();
+	MarkModified();
+}
+
+// Aggiorna fFontFamilyField/fFontSizeField per riflettere il font
+// della cella passata (chiamato da SelectionChanged) -- stesso
+// principio di fCellLabel/fFormulaBar li', letto dalla sola cella
+// attiva come il resto dei controlli di formattazione. Limite
+// dichiarato, non un bug silenzioso: se la famiglia non e' installata
+// su questo sistema, o la dimensione non e' una delle scelte fisse di
+// kFontSizeChoices (es. un font importato da un XLSX con una
+// dimensione non standard), il rispettivo campo resta semplicemente
+// sulla voce marcata in precedenza invece di riflettere il valore
+// reale -- stesso compromesso della scelta "lista fissa invece di
+// campo digitabile" per fFontSizeField.
+void MainWindow::UpdateFontFields(cell c)
+{
+	if (!fDoc)
+		return;
+
+	CellStyle cs;
+	fDoc->GetCellStyle(c, cs);
+	font_family family;
+	font_style style;
+	float size;
+	rgb_color color;
+	GetCellFontInfo(cs.fFont, &family, &style, &size, &color);
+
+	BMenu* familyMenu = fFontFamilyField->Menu();
+	for (int32 i = 0; i < familyMenu->CountItems(); i++)
+	{
+		BMenuItem* item = familyMenu->ItemAt(i);
+		if (strcmp(item->Label(), family) == 0)
+		{
+			item->SetMarked(true);
+			break;
+		}
+	}
+
+	BMenu* sizeMenu = fFontSizeField->Menu();
+	for (int32 i = 0; i < sizeMenu->CountItems(); i++)
+	{
+		BMenuItem* item = sizeMenu->ItemAt(i);
+		float itemSize;
+		if (item->Message() && item->Message()->FindFloat("size", &itemSize) == B_OK
+			&& fabs(itemSize - size) < 0.5f)
+		{
+			item->SetMarked(true);
+			break;
+		}
+	}
+}
+
 // Rimuove dall'elenco gli intervalli uniti che si sovrappongono a
 // "sel", restituendo quelli che restano -- usata sia da MergeCells
 // (per non lasciare due intervalli sovrapposti, ambigui sia per il
@@ -7907,6 +8095,8 @@ void MainWindow::SelectionChanged(cell c)
 	}
 
 	fFormulaBar->SetText(formula);
+
+	UpdateFontFields(c);
 }
 
 const char* MainWindow::FormulaBarText() const
@@ -8605,6 +8795,22 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgToggleWrapText:
 			ToggleWrapText();
 			break;
+
+		case kMsgSetFontFamily:
+		{
+			const char* family;
+			if (message->FindString("family", &family) == B_OK)
+				SetFontFamily(family);
+			break;
+		}
+
+		case kMsgSetFontSize:
+		{
+			float size;
+			if (message->FindFloat("size", &size) == B_OK)
+				SetFontSize(size);
+			break;
+		}
 
 		case kMsgMergeCells:
 			MergeCells();
