@@ -877,7 +877,14 @@ static BMenuField* BuildFontFamilyField(BHandler* target)
 	}
 	BMenuField* field = new BMenuField("fontFamilyField", NULL, menu);
 	field->SetToolTip(B_TRANSLATE("Famiglia carattere"));
-	field->SetExplicitMinSize(BSize(130, B_SIZE_UNSET));
+	// Solo un MASSIMO, non anche il minimo: forzare ENTRAMBI allo
+	// stesso valore fisso tagliava visibilmente il bordo/freccina del
+	// controllo quando la sua larghezza naturale (bordo + freccina +
+	// margini interni, non solo il testo) superava di poco quel valore
+	// -- bug reale segnalato dall'utente sul campo dimensione gemello
+	// sotto, stesso principio qui per coerenza. La larghezza naturale
+	// (calcolata dalla voce di menu piu' lunga) resta libera di fare da
+	// minimo; solo un nome di famiglia lunghissimo viene troncato.
 	field->SetExplicitMaxSize(BSize(130, B_SIZE_UNSET));
 	return field;
 }
@@ -901,8 +908,16 @@ static BMenuField* BuildFontSizeField(BHandler* target)
 	}
 	BMenuField* field = new BMenuField("fontSizeField", NULL, menu);
 	field->SetToolTip(B_TRANSLATE("Dimensione carattere"));
-	field->SetExplicitMinSize(BSize(50, B_SIZE_UNSET));
-	field->SetExplicitMaxSize(BSize(50, B_SIZE_UNSET));
+	// Solo un MASSIMO (stesso principio di fFontFamilyField sopra), non
+	// anche il minimo: bug reale segnalato dall'utente, BSize(50,...)
+	// forzato su min E max tagliava visibilmente il bordo/freccina del
+	// controllo (50 era sotto la larghezza naturale minima che
+	// BMenuField si riserva per il proprio bordo/freccina/margini
+	// interni, non solo per il testo "72"). Senza ALCUN vincolo pero'
+	// si allargava fino quasi a riempire la riga (nessun massimo a cui
+	// ancorarsi per BGroupLayout) -- un massimo da solo basta a tenerlo
+	// compatto senza tornare a tagliarlo.
+	field->SetExplicitMaxSize(BSize(70, B_SIZE_UNSET));
 	return field;
 }
 
