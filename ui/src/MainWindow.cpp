@@ -85,6 +85,7 @@
 #include <Path.h>
 #include <PopUpMenu.h>
 #include <PrintJob.h>
+#include <PropertyInfo.h>
 #include <Region.h>
 #include <ScrollView.h>
 #include <SeparatorView.h>
@@ -9722,10 +9723,240 @@ void MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case B_GET_PROPERTY:
+		case B_SET_PROPERTY:
+		{
+			// Property gia' risolta da ResolveSpecifier sotto (sempre
+			// "this" per DIRETTA "Value"/"Selection", o delegata alla
+			// classe base per ogni altra proprieta' generica gia'
+			// esistente -- Title/Frame/... -- che arriva qui comunque
+			// con lo stesso "what"): si guarda il nome della proprieta'
+			// CORRENTE per sapere quale delle due gestire qui, tutto il
+			// resto ricade su BWindow::MessageReceived come prima.
+			int32 specIndex;
+			BMessage specifier;
+			int32 specWhat;
+			const char* property;
+			if (message->GetCurrentSpecifier(&specIndex, &specifier, &specWhat, &property) == B_OK)
+			{
+				if (strcmp(property, "Value") == 0)
+				{
+					HandleScriptingValue(message);
+					break;
+				}
+				if (strcmp(property, "Selection") == 0)
+				{
+					HandleScriptingSelection(message);
+					break;
+				}
+			}
+			BWindow::MessageReceived(message);
+			break;
+		}
+
 		default:
 			BWindow::MessageReceived(message);
 			break;
 	}
+}
+
+// Scripting BMessage reale (vedi il commento gemello in MainWindow.h):
+// "Value"/"Selection" sono le uniche due proprieta' DIRETTE riconosciute
+// qui, ogni altra (es. "Title", gia' gestita da BWindow) ricade sulla
+// classe base esattamente come prima -- questo override non toglie
+// nulla di gia' funzionante, aggiunge solo le due proprieta' nuove.
+BHandler* MainWindow::ResolveSpecifier(BMessage* message, int32 index,
+	BMessage* specifier, int32 what, const char* property)
+{
+	if (what == B_DIRECT_SPECIFIER
+		&& (strcmp(property, "Value") == 0 || strcmp(property, "Selection") == 0))
+		return this;
+	return BWindow::ResolveSpecifier(message, index, specifier, what, property);
+}
+
+status_t MainWindow::GetSupportedSuites(BMessage* data)
+{
+	static property_info sSheetProperties[] = {
+		{ "Selection", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"Active cell/range address, e.g. \"A1\" or \"A1:B2\"; setting it "
+			"moves/extends the selection, same as clicking a cell." },
+		{ "Value", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"Computed value of the active cell as text; setting it parses the "
+			"text the same way the in-cell editor would (a number, plain "
+			"text, or a formula starting with \"=\")." },
+		{ 0 }
+	};
+	data->AddString("suites", "suite/vnd.Atomo-sheet");
+	BPropertyInfo propInfo(sSheetProperties);
+	data->AddFlat("messages", &propInfo);
+	return BWindow::GetSupportedSuites(data);
+}
+
+// "hey"/lo scripting BMessage in generale non manda mai "data" come
+// stringa per forza: un valore che sembra numerico (es. "42") arriva
+// impacchettato come int32/double anche passato fra virgolette sulla
+// riga di comando (bug reale scoperto testando "set Value ... to
+// "42"": FindString falliva con B_BAD_TYPE, PrintToStream confermava
+// data = int32(42), non una stringa) -- letto con ogni tipo comune,
+// convertito a testo, invece del solo FindString.
+static bool FindScriptedDataAsString(BMessage* message, BString* out)
+{
+	const char* s;
+	if (message->FindString("data", &s) == B_OK)
+	{
+		*out = s;
+		return true;
+	}
+	char buf[64];
+	int32 i32;
+	if (message->FindInt32("data", &i32) == B_OK)
+	{
+		snprintf(buf, sizeof(buf), "%ld", (long)i32);
+		*out = buf;
+		return true;
+	}
+	double d;
+	if (message->FindDouble("data", &d) == B_OK)
+	{
+		snprintf(buf, sizeof(buf), "%g", d);
+		*out = buf;
+		return true;
+	}
+	float f;
+	if (message->FindFloat("data", &f) == B_OK)
+	{
+		snprintf(buf, sizeof(buf), "%g", (double)f);
+		*out = buf;
+		return true;
+	}
+	bool b;
+	if (message->FindBool("data", &b) == B_OK)
+	{
+		*out = b ? "true" : "false";
+		return true;
+	}
+	return false;
+}
+
+// Legge il valore calcolato della cella attiva come testo -- pubblico e
+// separato dal dispatch BMessage sotto per lo stesso motivo di
+// SetFontFamily/ToggleBold altrove in questo file: testabile in modo
+// diretto (vedi tests/test_scripting.cpp), senza dover costruire un
+// vero giro di andata/ritorno SendReply.
+BString MainWindow::ScriptedGetValue() const
+{
+	char text[4096];
+	text[0] = 0;
+	if (fDoc && fSheetView)
+	{
+		Value v;
+		if (fDoc->GetValue(fSheetView->Selection(), v))
+			gFormatTable.FormatValue(eGeneral, v, text);
+	}
+	return BString(text);
+}
+
+// Scrive un nuovo valore nella cella attiva, stesso percorso reale di
+// SheetView::CommitEditing (cattura annullabile, TryToParseString --
+// lo stesso parser di numeri/testo/formule dell'editor in-cella vero
+// -- ricalcolo, ridisegno, titolo con l'asterisco di modifica): non
+// una scorciatoia a parte.
+status_t MainWindow::ScriptedSetValue(const char* text)
+{
+	if (!fDoc || !fSheetView || !text)
+		return B_BAD_VALUE;
+
+	cell active = fSheetView->Selection();
+	range sel(active.h, active.v, active.h, active.v);
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return B_NOT_ALLOWED;
+
+	fSheetView->SaveUndoState(active);
+	try { TryToParseString(text, active, fDoc, true); }
+	catch (...) {}
+	RecalculateActiveWorkbook(&active);
+	DocumentChanged();
+	fSheetView->Invalidate();
+	MarkModified();
+	return B_OK;
+}
+
+// fCellLabel gia' mostra esattamente questo testo (vedi
+// SelectionChanged) -- nessuna logica di formattazione duplicata qui,
+// solo letta dalla stessa vista che l'utente vede.
+BString MainWindow::ScriptedGetSelection() const
+{
+	return fCellLabel ? BString(fCellLabel->Text()) : BString();
+}
+
+// Sposta/estende la selezione a un indirizzo testuale ("A1" o
+// "A1:B2"), stesso parser (cell::Set) usato altrove per gli indirizzi
+// di cella.
+status_t MainWindow::ScriptedSetSelection(const char* text)
+{
+	if (!fSheetView || !text)
+		return B_BAD_VALUE;
+
+	BString addr(text);
+	int colon = addr.FindFirst(':');
+	cell start, end;
+	if (colon >= 0)
+	{
+		BString a, b;
+		addr.CopyInto(a, 0, colon);
+		addr.CopyInto(b, colon + 1, addr.Length() - colon - 1);
+		start.Set(a.String());
+		end.Set(b.String());
+	}
+	else
+	{
+		start.Set(addr.String());
+		end = start;
+	}
+	if (!start.IsValid() || !end.IsValid())
+		return B_BAD_VALUE;
+
+	fSheetView->SetSelection(start);
+	fSheetView->ExtendSelection(end);
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingValue(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetValue());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedSetValue(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+void MainWindow::HandleScriptingSelection(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetSelection());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedSetSelection(text.String()));
+	}
+	message->SendReply(&reply);
 }
 
 void MainWindow::FrameResized(float width, float height)

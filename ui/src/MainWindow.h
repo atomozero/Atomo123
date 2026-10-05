@@ -75,6 +75,31 @@ public:
 	virtual void MessageReceived(BMessage* message);
 	virtual bool QuitRequested();
 
+	// Scripting BMessage reale (richiesta esplicita dell'utente, dopo
+	// aver verificato che "hey" vedeva solo le suite generiche di
+	// BWindow/BView/BMenu, nessuna proprieta' specifica di questa app):
+	// due sole proprieta' DIRETTE, "Selection" e "Value" -- niente
+	// concatenazione tipo "Value of Cell "A1"" (un vero indirizzamento
+	// composto richiederebbe spingere/togliere specificatori a mano in
+	// ResolveSpecifier, piu' rischioso da sbagliare su un percorso di
+	// dispatch dei messaggi condiviso con ogni altra proprieta' gia'
+	// funzionante). Lo stesso risultato si ottiene in due passi:
+	// spostare "Selection" sulla cella voluta, poi leggere/scrivere
+	// "Value" -- esattamente il flusso con cui un umano userebbe
+	// davvero il foglio. Vedi MainWindow.cpp per l'implementazione.
+	virtual status_t GetSupportedSuites(BMessage* data);
+	virtual BHandler* ResolveSpecifier(BMessage* message, int32 index,
+		BMessage* specifier, int32 what, const char* property);
+
+	// Logica vera dietro "Value"/"Selection" sopra, pubblica e separata
+	// dal dispatch BMessage per lo stesso motivo di SetFontFamily/
+	// ToggleBold altrove in questo file: testabile in modo diretto, vedi
+	// tests/test_scripting.cpp.
+	BString ScriptedGetValue() const;
+	status_t ScriptedSetValue(const char* text);
+	BString ScriptedGetSelection() const;
+	status_t ScriptedSetSelection(const char* text);
+
 	// Riposiziona le due barre di scorrimento di fSheetView ogni volta
 	// che la finestra (quindi la vera area visibile della griglia)
 	// cambia dimensione -- SheetView::FrameResized da solo non basta,
@@ -1003,6 +1028,13 @@ private:
 	// principio di fCellLabel/fFormulaBar li' sopra (letto dalla SOLA
 	// cella attiva, come il resto dei controlli di formattazione).
 	void UpdateFontFields(cell c);
+	// Gestori dei due messaggi di scripting (vedi ResolveSpecifier/
+	// GetSupportedSuites sopra): chiamati da MessageReceived per
+	// B_GET_PROPERTY/B_SET_PROPERTY quando la proprieta' risolta e'
+	// "Value"/"Selection", sempre con una vera risposta (SendReply),
+	// mai silenziosi -- "hey" aspetta sempre una risposta.
+	void HandleScriptingValue(BMessage* message);
+	void HandleScriptingSelection(BMessage* message);
 	// Aggiorna il testo di fCellMode combinando modalita' (Pronto/
 	// Modifica) e fModified (prefisso "* ", stesso segno gia' usato dal
 	// titolo -- vedi UpdateTitle): chiamata da entrambi, cosi' il
