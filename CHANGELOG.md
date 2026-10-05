@@ -4,6 +4,32 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
+What shipped since v0.7.0 (in progress):
+- Real BMessage scripting (explicit user request, after checking that
+  `hey Atomo123 get Suites of Window 0` only showed the generic
+  BWindow/BView/BMenu suites every Haiku app gets for free — nothing
+  specific to this app). New `suite/vnd.Atomo-sheet` with two DIRECT
+  properties on `MainWindow`: `Selection` (the active cell/range
+  address, e.g. `"A1"` or `"A1:B2"`) and `Value` (the active cell's
+  computed value, parsed the same way the in-cell editor would when
+  written). Compound addressing (`"Value of Cell \"A1\""`) was
+  deliberately not implemented — hand-replicating `BLooper`'s internal
+  specifier-stack bookkeeping to test it directly turned out fragile
+  (one attempt crashed inside `BWindow::ResolveSpecifier`/
+  `BPropertyInfo::FindMatch`, Haiku's own code, not this project's);
+  `Selection`+`Value` together cover the same workflow in two steps,
+  the same way a human would use the sheet. The real logic lives in
+  four public methods (`ScriptedGetValue`/`ScriptedSetValue`/
+  `ScriptedGetSelection`/`ScriptedSetSelection`), directly testable
+  without a `BMessage` round trip, same pattern as `SetFontFamily`/
+  `ToggleBold` elsewhere in `MainWindow`. Real bug found testing this
+  live against the running app: `hey` packs a value that looks numeric
+  (even quoted on the command line, e.g. `"42"`) as `int32`/`double`,
+  not a string — the handler now tries every common type before giving
+  up, instead of only `BMessage::FindString`. New
+  `ui/tests/test_scripting.cpp` covers both the public methods directly
+  and `GetSupportedSuites`'s advertised suite.
+
 What shipped in v0.7.0, on top of v0.6.0:
 - Font family/size picker in the toolbar, like Excel's own Home ribbon
   (explicit user request): two new `BMenuField`s, a dropdown of every
