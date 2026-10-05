@@ -4,24 +4,40 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
-What shipped since v0.6.0 (in progress):
+What shipped in v0.7.0, on top of v0.6.0:
 - Font family/size picker in the toolbar, like Excel's own Home ribbon
-  (explicit user request): two new `BMenuField`s under the icon
-  toolbar, a dropdown of every font family installed on the system and
-  a fixed list of common sizes (8-72, Haiku has no native editable
-  combo control, so this stays a dropdown rather than a free-typed
-  field — a deliberate v1 scope choice, not a limitation discovered
-  later). Picking either applies it to the whole selection, preserving
-  every other font attribute, same pattern as the existing Bold/Italic
-  toggles; both fields track the active cell's real font as the
-  selection moves. Real bug found while building it: the fields
-  initially displayed the raw internal menu name ("fontFamilyMenu")
-  instead of a real font, because nothing marked a default item before
-  the first selection-change event — fixed by syncing them once right
-  after construction. New `ui/tests/test_font_toolbar.cpp` drives the
-  real `BMenuField`/`BMenuItem` widgets (not a direct method call),
-  covering existence, population, attribute preservation, single-cell
-  isolation, and selection-driven sync.
+  (explicit user request): two new `BMenuField`s, a dropdown of every
+  font family installed on the system and a fixed list of common sizes
+  (8-72, Haiku has no native editable combo control, so this stays a
+  dropdown rather than a free-typed field — a deliberate v1 scope
+  choice, not a limitation discovered later). Picking either applies
+  it to the whole selection, preserving every other font attribute,
+  same pattern as the existing Bold/Italic toggles; both fields track
+  the active cell's real font as the selection moves. Real bug found
+  while building it: the fields initially displayed the raw internal
+  menu name ("fontFamilyMenu") instead of a real font, because nothing
+  marked a default item before the first selection-change event —
+  fixed by syncing them once right after construction. New
+  `ui/tests/test_font_toolbar.cpp` drives the real `BMenuField`/
+  `BMenuItem` widgets (not a direct method call), covering existence,
+  population, attribute preservation, single-cell isolation, and
+  selection-driven sync. Two follow-up fixes from live user feedback
+  on the actual rendered toolbar: (1) the size field's border/dropdown
+  arrow were visibly clipped — forcing its min and max width to the
+  same fixed `BSize` left less room than `BMenuField` needs for its
+  own chrome, not just for the longest label ("72"); fixed by
+  constraining only the max width on both fields, same pattern already
+  used elsewhere in the toolbar, and letting the natural minimum win.
+  (2) Moved both fields from their own dedicated row into the
+  "Formato" icon group itself (Bold/Italic/Underline/...), as the
+  first two items, aligned with the icons on the same row — matching
+  Excel's layout more closely. This required widening `ToolbarView`'s
+  item type from `BButton*` to `BView*`: every method it actually
+  calls on an item (`GetPreferredSize`/`MoveTo`/`ResizeTo`/`Show`/
+  `Hide`) was already plain `BView`, never `BButton`-specific, so the
+  change is purely a type widening, not new logic. The group is found
+  by matching the button-table's own address, not a hardcoded index,
+  so it stays correct if the toolbar's group order changes later.
 
 What shipped in v0.6.0, on top of v0.5.0:
 - A real dependency graph for the calc engine (roadmap Tier 3, the

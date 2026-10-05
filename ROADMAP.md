@@ -5,25 +5,21 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.6.0 released** on GitHub (closes the single largest
-remaining Tier 3 foundation, a real dependency graph for the calc
-engine: replaces the old brute-force up-to-50-pass recalculation with
-an incrementally-maintained, workbook-wide reverse-dependency graph
-and a single topological-order pass — measured 125x faster on a
-worst-case synthetic benchmark, with a genuine new capability,
-cross-sheet circular reference detection, falling out for free. A real
-user-reported regression and two real correctness bugs (`#REF!` on a
-deleted-reference formula; a stale recalculation gap above a
-row/column deletion point) were found and fixed along the way, plus a
-substantial file-open performance investigation on a real 149,000-
-formula XLSX file (112s baseline, down to ~100s after a hash-map fix
-to the graph's topological sort — full halving not reached; the
-remaining cost is CPU-bound text round-tripping through the ASCD
-intermediate format, an open item — see CHANGELOG.md for the full,
-honest detail) — on top of v0.5.0, which closed the entire "Path to
-full Excel parity" Tier 4 chart/data-analysis backlog (see CHANGELOG.md
-for that detail too). What remains on Tier 3 is now Goal Seek/Solver
-and VBA/macros (see below for what's next).
+**Status: v0.7.0 released** on GitHub (a font family/size picker in
+the toolbar, like Excel's own Home ribbon — explicit user request,
+positioned inline as the first two items of the "Formato" icon group,
+aligned with Bold/Italic/Underline on the same row. Required widening
+`ToolbarView` to accept any `BView`, not just icon buttons. Two
+follow-up fixes from live user feedback on the real rendered toolbar
+along the way: a clipped border/dropdown-arrow on the size field, and
+the initial positioning in its own separate row before being moved
+inline — see CHANGELOG.md for the full detail) — on top of v0.6.0,
+which closed the single largest remaining Tier 3 foundation, a real
+dependency graph for the calc engine (125x faster on a worst-case
+synthetic benchmark, cross-sheet circular reference detection as a
+free side effect, plus real correctness/performance fixes found along
+the way — see CHANGELOG.md for that detail too). What remains on
+Tier 3 is Goal Seek/Solver and VBA/macros (see below for what's next).
 This file tracks project-level status and forward plan only — the
 detailed, per-release history of what shipped and the real bugs found
 along the way lives in `CHANGELOG.md`.
