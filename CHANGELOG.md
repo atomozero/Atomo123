@@ -4,6 +4,25 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
+What shipped since v0.6.0 (in progress):
+- Font family/size picker in the toolbar, like Excel's own Home ribbon
+  (explicit user request): two new `BMenuField`s under the icon
+  toolbar, a dropdown of every font family installed on the system and
+  a fixed list of common sizes (8-72, Haiku has no native editable
+  combo control, so this stays a dropdown rather than a free-typed
+  field — a deliberate v1 scope choice, not a limitation discovered
+  later). Picking either applies it to the whole selection, preserving
+  every other font attribute, same pattern as the existing Bold/Italic
+  toggles; both fields track the active cell's real font as the
+  selection moves. Real bug found while building it: the fields
+  initially displayed the raw internal menu name ("fontFamilyMenu")
+  instead of a real font, because nothing marked a default item before
+  the first selection-change event — fixed by syncing them once right
+  after construction. New `ui/tests/test_font_toolbar.cpp` drives the
+  real `BMenuField`/`BMenuItem` widgets (not a direct method call),
+  covering existence, population, attribute preservation, single-cell
+  isolation, and selection-driven sync.
+
 What shipped in v0.6.0, on top of v0.5.0:
 - A real dependency graph for the calc engine (roadmap Tier 3, the
   single largest remaining architectural item): replaces
