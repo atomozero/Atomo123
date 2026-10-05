@@ -4,7 +4,7 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
-What shipped since v0.5.0 (in progress):
+What shipped in v0.6.0, on top of v0.5.0:
 - A real dependency graph for the calc engine (roadmap Tier 3, the
   single largest remaining architectural item): replaces
   `RecalculateAll`/`RecalculateWorkbook`'s brute-force fixed-point loop
