@@ -9,7 +9,6 @@
 
 #include "ToolbarView.h"
 
-#include <Button.h>
 #include <SeparatorView.h>
 #include <Window.h>
 
@@ -91,7 +90,7 @@ void ToolbarView::GetHeightForWidth(float width, float* min, float* max, float* 
 		*preferred = height;
 }
 
-void ToolbarView::AddButton(BButton* button, const char* label)
+void ToolbarView::AddButton(BView* button, const char* label)
 {
 	AddChild(button);
 
@@ -254,7 +253,7 @@ void ToolbarView::Layout()
 
 		for (size_t i = 0; i < group.buttons.size(); i++)
 		{
-			BButton* button = group.buttons[i].view;
+			BView* button = group.buttons[i].view;
 			float w, h;
 			button->GetPreferredSize(&w, &h);
 			button->MoveTo(x, y);

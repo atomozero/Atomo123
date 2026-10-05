@@ -29,7 +29,6 @@
 
 #include <vector>
 
-class BButton;
 class BSeparatorView;
 
 class ToolbarView : public BView {
@@ -53,10 +52,15 @@ public:
 	virtual void GetHeightForWidth(float width, float* min, float* max,
 		float* preferred);
 
-	// Aggiunge un pulsante gia' costruito (icona/messaggio/target gia'
-	// impostati da BuildToolbar) al gruppo corrente. "label" e' lo
-	// stesso testo gia' passato a SetToolTip dal chiamante.
-	void AddButton(BButton* button, const char* label);
+	// Aggiunge un elemento gia' costruito (icona/messaggio/target gia'
+	// impostati da BuildToolbar, o un controllo qualunque come i
+	// selettori famiglia/dimensione carattere) al gruppo corrente.
+	// "label" e' lo stesso testo gia' passato a SetToolTip dal
+	// chiamante. Qualunque BView va bene, non solo BButton: questa
+	// classe lo tratta sempre tramite la sola interfaccia BView
+	// (GetPreferredSize/MoveTo/ResizeTo/Show/Hide), mai un metodo
+	// specifico di BButton.
+	void AddButton(BView* button, const char* label);
 	// Chiude il gruppo corrente e ne apre uno nuovo (separato dal
 	// precedente da un separatore verticale, nascosto quando il nuovo
 	// gruppo finisce per essere il primo della sua riga -- un
@@ -82,7 +86,7 @@ public:
 
 private:
 	struct ButtonItem {
-		BButton* view;
+		BView* view;
 		BString label;
 	};
 

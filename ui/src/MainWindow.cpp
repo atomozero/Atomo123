@@ -758,8 +758,14 @@ static void DrawReplaceIcon(BView* view)
 // nuovo (AddSeparator) per ogni voce di kToolbarGroups. "target" riceve
 // i messaggi di tutti i pulsanti (sempre "this" per MainWindow, passato
 // esplicitamente solo per non legare questa funzione libera a una
-// particolare istanza).
-static BView* BuildToolbar(BHandler* target)
+// particolare istanza). "fontFamilyField"/"fontSizeField" (gia'
+// costruiti dal chiamante, vedi il costruttore) vengono inseriti come
+// primi due elementi del gruppo "Formato" (kFormatToolbarButtons,
+// riconosciuto per indirizzo, non per indice fisso -- resta corretto
+// anche se l'ordine di kToolbarGroups cambia), allineati sulla stessa
+// riga di Grassetto/Corsivo/... invece che in una riga a parte --
+// richiesta esplicita dell'utente, come la barra Home di Excel.
+static BView* BuildToolbar(BHandler* target, BView* fontFamilyField, BView* fontSizeField)
 {
 	ToolbarView* toolbar = new ToolbarView("toolbar");
 
@@ -770,6 +776,11 @@ static BView* BuildToolbar(BHandler* target)
 			toolbar->AddSeparator();
 
 		const ToolbarGroupDef& group = kToolbarGroups[g];
+		if (group.buttons == kFormatToolbarButtons)
+		{
+			toolbar->AddButton(fontFamilyField, B_TRANSLATE("Famiglia carattere"));
+			toolbar->AddButton(fontSizeField, B_TRANSLATE("Dimensione carattere"));
+		}
 		for (size_t i = 0; i < group.count; i++)
 		{
 			const ToolbarButtonDef& def = group.buttons[i];
@@ -1442,15 +1453,11 @@ MainWindow::MainWindow()
 		new BMessage(kMsgShowNames)));
 	menuBar->AddItem(insertMenu);
 
-	// Barra strumenti: pulsanti di testo semplici (BButton), non
-	// BToolBar -- quella classe vive solo sotto develop/headers/
-	// private/shared/ su questo sistema, non nell'SDK pubblico
-	// stabile, e il progetto usa solo API pubbliche. I pulsanti
-	// inviano semplicemente gli stessi messaggi gia' gestiti dai
-	// menu, nessuna logica nuova -- costruiti da BuildToolbar() sopra
-	// a partire da kToolbarGroups invece che uno per uno a mano.
-	BView* toolbar = BuildToolbar(this);
-
+	// Selettori famiglia/dimensione carattere (richiesta esplicita
+	// dell'utente, "come per Excel"): costruiti PRIMA di BuildToolbar()
+	// sotto apposta, cosi' puo' inserirli nel gruppo "Formato" (Grassetto/
+	// Corsivo/...) invece che in una riga a parte -- stessa riga delle
+	// icone, allineati con esse, come nella barra Home di Excel.
 	fFontFamilyField = BuildFontFamilyField(this);
 	fFontSizeField = BuildFontSizeField(this);
 	// Senza questa chiamata i due campi mostrerebbero il nome interno
@@ -1459,6 +1466,15 @@ MainWindow::MainWindow()
 	// gia' valido qui (ResetWorkbook() all'inizio del costruttore lo
 	// imposta indipendentemente da fSheetView, vedi il commento li').
 	UpdateFontFields(cell(1, 1));
+
+	// Barra strumenti: pulsanti di testo semplici (BButton), non
+	// BToolBar -- quella classe vive solo sotto develop/headers/
+	// private/shared/ su questo sistema, non nell'SDK pubblico
+	// stabile, e il progetto usa solo API pubbliche. I pulsanti
+	// inviano semplicemente gli stessi messaggi gia' gestiti dai
+	// menu, nessuna logica nuova -- costruiti da BuildToolbar() sopra
+	// a partire da kToolbarGroups invece che uno per uno a mano.
+	BView* toolbar = BuildToolbar(this, fFontFamilyField, fFontSizeField);
 
 	fCellLabel = new BStringView("cellLabel", "A1");
 	fCellLabel->SetExplicitMinSize(BSize(50, B_SIZE_UNSET));
@@ -1547,18 +1563,6 @@ MainWindow::MainWindow()
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(menuBar)
 		.Add(toolbar)
-		// Riga separata per famiglia/dimensione carattere (come Excel):
-		// controlli a larghezza variabile (nomi di font), non pulsanti a
-		// icona a larghezza fissa -- non entrano nel sistema di
-		// avvolgimento a gruppi di ToolbarView sopra (pensato solo per
-		// BButton), quindi vivono qui, una riga a parte, invece che
-		// dentro BuildToolbar.
-		.AddGroup(B_HORIZONTAL, 4)
-			.SetInsets(4, 2, 4, 2)
-			.Add(fFontFamilyField)
-			.Add(fFontSizeField)
-			.AddGlue()
-		.End()
 		// Riga di separazione sotto la toolbar: l'altra meta' dell'aspetto
 		// di una vera BToolBar (vedi il commento sopra BuildToolbar), non
 		// disponibile su questo sistema.
