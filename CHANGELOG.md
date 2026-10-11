@@ -72,6 +72,18 @@ What shipped since v0.7.0 (in progress):
   asymmetry only visible by actually doing a live save/reopen round
   trip. New `PixelsToExcelColWidth` is the exact inverse of the
   existing `ExcelColWidthToPixels`.
+- Four more scripting properties, same suite: `Bold` (explicit
+  true/false, not a toggle — a repeated scripted call stays
+  idempotent), `Border` (thickness applied to all four edges of every
+  cell in the selection, a grid/box border), `NumberFormat`
+  (general/fixed/currency/percent/scientific), and `Chart` (inserts an
+  embedded chart from `"dataRange|destCell|type|title"`, reusing
+  `HandleChartInsert` after re-validating the range itself so a
+  malformed call can never reach that function's blocking BAlert).
+  Added for four new Pippo MCP tools (`set_cell_bold`/
+  `set_cell_border`/`set_number_format`/`insert_chart`), so a script
+  can build a presentation-ready, print-ready sheet — including a
+  live-updating chart — entirely through MCP calls.
 
 What shipped in v0.7.0, on top of v0.6.0:
 - Font family/size picker in the toolbar, like Excel's own Home ribbon
