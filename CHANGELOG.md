@@ -84,6 +84,14 @@ What shipped since v0.7.0 (in progress):
   `set_cell_border`/`set_number_format`/`insert_chart`), so a script
   can build a presentation-ready, print-ready sheet — including a
   live-updating chart — entirely through MCP calls.
+- A tenth scripting property, `WrapText` (same suite): explicit
+  true/false, same idempotent-not-a-toggle reasoning as `Bold`/
+  `Border`. Reuses `CellStyle::fWrapText` and `SheetView::
+  RecalculateWrappedRowHeights`, the same mechanism behind the
+  existing Wrap Text toolbar button. Added for Pippo's new
+  `set_wrap_text` MCP tool, to keep a long free-text cell (a caveat
+  note, an attribution line) inside its column instead of overflowing
+  past the printable page width.
 
 What shipped in v0.7.0, on top of v0.6.0:
 - Font family/size picker in the toolbar, like Excel's own Home ribbon
