@@ -47,6 +47,31 @@ What shipped since v0.7.0 (in progress):
   new engine code. Added for Pippo's new `set_cell_color` MCP tool, so
   a script can build presentation-ready, colored sheets without going
   through the UI's color picker.
+- A fifth scripting property, `ColumnWidth` (same suite as above): GET
+  returns the width in pixels of the leftmost selected column; SET
+  applies to every column spanned by the current selection, same as
+  dragging a column border. Backed by two new `SheetView` methods
+  (`ColumnWidth`/`SetSingleColumnWidth`). Added for Pippo's new
+  `set_column_width` MCP tool.
+- Fixed `ROUND()` rounding to one extra decimal for most real numbers
+  (`ROUND(67.76, 2)` gave `67.759`, three decimals not two): the shared
+  `Round(double, int)` utility scaled its factor by
+  `ceil(log10(fabs(d))) + digits - 1` instead of `digits` alone, adding
+  a spurious digit whenever the input's integer part had 2+ digits —
+  masked by the existing tests, which only covered single-digit inputs
+  where the bug happens to cancel out. Replaced with a direct
+  `pow(10, digits)` factor, matching Excel and this engine's own
+  (already-correct) `ROUNDUP`/`ROUNDDOWN`.
+- Fixed XLSX export silently dropping custom column widths: two bugs,
+  `MainWindow::SaveToFile` never passed the sheet's column widths to
+  `SaveASCD` on non-native export (same bug class already fixed for
+  charts), and `XlsxTranslator`'s own ASCD parser read past that
+  section to stay byte-aligned but discarded it instead of capturing
+  it — `WriteXLSX` never wrote a `<cols>` element at all. Import
+  already handled `<cols>` correctly; only export was missing, an
+  asymmetry only visible by actually doing a live save/reopen round
+  trip. New `PixelsToExcelColWidth` is the exact inverse of the
+  existing `ExcelColWidthToPixels`.
 
 What shipped in v0.7.0, on top of v0.6.0:
 - Font family/size picker in the toolbar, like Excel's own Home ribbon
