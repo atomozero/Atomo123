@@ -3396,8 +3396,15 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 	const std::vector<unsigned char>* vbaProject = isXlsm ? WorkbookVbaProject() : NULL;
 	bool isProtectedNow = fSheetView->IsProtected();
 	AscdSheetProtection protectionNow = fSheetView->GetProtectionHash();
+	// colWidths va passato esplicitamente qui, stesso identico motivo
+	// gia' documentato sopra per fCharts (bug reale, stessa classe:
+	// senza, SaveASCD scrive sempre colWidthCount=0, indipendentemente
+	// da quante colonne l'utente ha ridimensionato a mano -- trovato
+	// costruendo una demo vera, un ridimensionamento fatto nell'app
+	// spariva dopo "Salva con nome" in .xlsx).
+	std::vector<std::pair<int, float> > colWidthsNow = fSheetView->CustomColumnWidths();
 	status_t err = SaveASCD(fDoc, &ascd, &fCharts,
-		NULL /* colWidths */, NULL /* rowHeights */,
+		&colWidthsNow, NULL /* rowHeights */,
 		NULL /* frozenRows */, NULL /* frozenCols */, NULL /* images */,
 		NULL /* showGrid */, NULL /* hasTabColor */, NULL /* tabColor */,
 		NULL /* hiddenRows */, NULL /* hasAutoFilter */, NULL /* autoFilterRange */,

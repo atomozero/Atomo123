@@ -1643,7 +1643,16 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	std::string* outProtectionAlgorithmName = NULL,
 	std::string* outProtectionHashValue = NULL,
 	std::string* outProtectionSaltValue = NULL,
-	int32* outProtectionSpinCount = NULL)
+	int32* outProtectionSpinCount = NULL,
+	// Larghezze di colonna personalizzate (100% XLSX standard
+	// compatibility): stesso principio di outFrozenRows/outHasPrintArea
+	// sopra, servono all'esportazione ASCD -> XLSX per scrivere un vero
+	// <cols> (vedi WriteXLSX) -- bug reale trovato costruendo una demo
+	// vera (un ridimensionamento di colonna fatto nell'app spariva dopo
+	// "Salva con nome" in .xlsx): questa sezione veniva gia' letta per
+	// restare allineata col resto del formato (vedi il blocco poco
+	// sotto), ma MAI catturata, solo scartata.
+	std::vector<std::pair<int, float> >* outColWidths = NULL)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -1797,7 +1806,9 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	// nello STESSO ORDINE di LoadASCD in ui/src/AscdIO.cpp fra le due
 	// sezioni che servono davvero qui.
 	{
-		// Larghezze di colonna: (int16 col, float width) per record.
+		// Larghezze di colonna: (int16 col, float width) per record --
+		// catturate in outColWidths quando il chiamante lo vuole (vedi
+		// il commento sul parametro sopra), scartate come prima altrimenti.
 		int32 count = 0;
 		ssize_t got = source->Read(&count, sizeof(count));
 		if (got != 0)
@@ -1809,6 +1820,8 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 				if (source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
 					|| source->Read(&width, sizeof(width)) != (ssize_t)sizeof(width))
 					return B_BAD_DATA;
+				if (outColWidths)
+					outColWidths->push_back(std::make_pair((int)col, width));
 			}
 		}
 	}
@@ -4141,7 +4154,12 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	const std::string& protectionAlgorithmName = std::string(),
 	const std::string& protectionHashValue = std::string(),
 	const std::string& protectionSaltValue = std::string(),
-	int32 protectionSpinCount = 0)
+	int32 protectionSpinCount = 0,
+	// <cols>...</cols> (100% XLSX standard compatibility), gia' pronto
+	// da WriteXLSX sotto -- va DOPO <sheetViews>, PRIMA di <sheetData>
+	// per lo schema OOXML (CT_Worksheet); vuoto quando non c'e' nessuna
+	// colonna ridimensionata da scrivere.
+	const std::string& colsXml = std::string())
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -4155,6 +4173,7 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">";
 	xml += sheetPrXml;
 	xml += sheetViewsXml;
+	xml += colsXml;
 	xml += "<sheetData>";
 
 	CCellIterator iter(doc, &bounds);
@@ -5777,6 +5796,23 @@ static bool BuildPivotXmlParts2D(CContainer* doc, const PivotTableObject& pivot,
 	return true;
 }
 
+// Inversa esatta di ExcelColWidthToPixels (vedi piu' sotto nel ramo di
+// importazione, stessa formula ECMA-376 18.3.1.13, risolta per
+// charWidth) -- per l'esportazione <col width="..."> (100% XLSX
+// standard compatibility): un giro pixel->charWidth->pixel riproduce
+// lo stesso valore in pixel (a meno dell'arrotondamento floor() della
+// formula originale, al piu' 1px), esattamente come farebbe Excel
+// stesso salvando una larghezza di colonna. Dichiarata qui (serve a
+// WriteXLSX sotto), non vicino alla sua gemella di importazione --
+// nessuno stato condiviso fra le due, solo la stessa costante MDW
+// ricalcolata localmente in entrambe.
+static double PixelsToExcelColWidth(float pixels)
+{
+	const double kMDW = 7.0;
+	double n = std::floor(128.0 / kMDW);
+	return (256.0 * pixels / kMDW - n) / 256.0;
+}
+
 static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& charts, BPositionIO* dest,
 	const std::vector<unsigned char>& vbaProject = std::vector<unsigned char>(),
 	// Protezione foglio (Fase 32): vedi il commento gemello in
@@ -5808,7 +5844,12 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	const std::string& protectionAlgorithmName = std::string(),
 	const std::string& protectionHashValue = std::string(),
 	const std::string& protectionSaltValue = std::string(),
-	int32 protectionSpinCount = 0)
+	int32 protectionSpinCount = 0,
+	// Larghezze di colonna personalizzate (100% XLSX standard
+	// compatibility): (colonna 1-based, larghezza in pixel), stesso
+	// formato di AscdSheet::colWidths in ui/src/AscdIO.h -- vuoto di
+	// default, come ogni altro parametro opzionale qui sopra.
+	const std::vector<std::pair<int, float> >& colWidths = std::vector<std::pair<int, float> >())
 {
 	// Presenza di un progetto VBA (XLSM, Fase 31): un file .xlsx puro
 	// non ha mai xl/vbaProject.bin, quindi "hasMacros" e' sempre false
@@ -6113,6 +6154,34 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		sheetViewsXml = buf;
 	}
 
+	// <cols><col min="N" max="N" width="..." customWidth="1"/>...</cols>
+	// (100% XLSX standard compatibility): un elenco <col> per entry di
+	// colWidths, min/max uguali (una sola colonna per entry, mai un
+	// intervallo) esattamente come l'importazione gia' si aspetta (vedi
+	// SheetStart). "width" nell'unita' di misura di Excel (vedi
+	// PixelsToExcelColWidth sopra, inversa esatta della stessa formula
+	// usata in importazione) -- bug reale trovato costruendo una demo
+	// vera: un ridimensionamento di colonna fatto nell'app spariva dopo
+	// "Salva con nome" in .xlsx perche' questo export non scriveva mai
+	// <cols> (l'importazione lo leggeva correttamente, solo l'export
+	// mancava, asimmetria scoperta solo con un vero giro salva/riapri).
+	std::string colsXml;
+	if (!colWidths.empty())
+	{
+		colsXml = "<cols>";
+		char buf[128];
+		for (size_t i = 0; i < colWidths.size(); i++)
+		{
+			int col = colWidths[i].first;
+			double charWidth = PixelsToExcelColWidth(colWidths[i].second);
+			snprintf(buf, sizeof(buf),
+				"<col min=\"%d\" max=\"%d\" width=\"%.4g\" customWidth=\"1\"/>",
+				col, col, charWidth);
+			colsXml += buf;
+		}
+		colsXml += "</cols>";
+	}
+
 	// <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr> +
 	// <pageMargins>/<pageSetup> (100% XLSX standard compatibility,
 	// Tier 2, passo 2/4 -- direzione ASCD -> XLSX, il gemello
@@ -6175,7 +6244,8 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		dataValidationXml + hyperlinksXml, sheetViewsXml, sheetPrXml, pageSetupXml,
 		&xfIndexForStyle, conditionalFormattingXml,
 		protectionHasPassword, protectionIsModernHash, protectionLegacyPassword,
-		protectionAlgorithmName, protectionHashValue, protectionSaltValue, protectionSpinCount);
+		protectionAlgorithmName, protectionHashValue, protectionSaltValue, protectionSpinCount,
+		colsXml);
 
 	// docProps/core.xml e docProps/app.xml (Tier 4 "100% XLSX standard
 	// compatibility", cosmetico -- vedi ROADMAP.md): questo export non
@@ -11488,13 +11558,14 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		std::string protectionLegacyPassword, protectionAlgorithmName;
 		std::string protectionHashValue, protectionSaltValue;
 		int32 protectionSpinCount = 0;
+		std::vector<std::pair<int, float> > colWidths;
 		status_t err = ReadASCD(source, doc, &charts, &vbaProject, &isProtected,
 			&frozenRows, &frozenCols,
 			&hasPrintSettings, &marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
 			&scaleMode, &scalePercent, &hasPrintArea, &printArea,
 			&protectionHasPassword, &protectionIsModernHash, &protectionLegacyPassword,
 			&protectionAlgorithmName, &protectionHashValue, &protectionSaltValue,
-			&protectionSpinCount);
+			&protectionSpinCount, &colWidths);
 		if (err == B_OK)
 			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
 				: WriteXLSX(doc, charts, destination, vbaProject, isProtected,
@@ -11503,7 +11574,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 					scaleMode, scalePercent, hasPrintArea, printArea,
 					protectionHasPassword, protectionIsModernHash, protectionLegacyPassword,
 					protectionAlgorithmName, protectionHashValue, protectionSaltValue,
-					protectionSpinCount);
+					protectionSpinCount, colWidths);
 		doc->Release();
 		return err;
 	}
@@ -12222,7 +12293,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 				sheets[0].protectionHasPassword, sheets[0].protectionIsModernHash,
 				sheets[0].protectionLegacyPassword, sheets[0].protectionAlgorithmName,
 				sheets[0].protectionHashValue, sheets[0].protectionSaltValue,
-				sheets[0].protectionSpinCount);
+				sheets[0].protectionSpinCount, sheets[0].colWidths);
 	}
 
 	if (err == B_OK && extension != NULL && !unsupportedCharts.empty())

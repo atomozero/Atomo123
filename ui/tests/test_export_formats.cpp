@@ -100,6 +100,16 @@ int main()
 		TryToParseString("Ciao", cell(1, 2), doc, true);      // A2
 		doc->CalcCell(cell(3, 1));
 
+		// Larghezza di colonna personalizzata (100% XLSX standard
+		// compatibility): l'esportazione scriveva sempre byte ASCD con
+		// colWidthCount=0 verso il translator, perche' MainWindow::
+		// SaveToFile non passava mai fSheetView->CustomColumnWidths() a
+		// SaveASCD (passava sempre NULL) -- bug reale trovato costruendo
+		// una demo vera, un ridimensionamento fatto a mano spariva dopo
+		// "Salva con nome" in .xlsx. Qui A e' allargata a 250px prima di
+		// salvare, poi verificata sotto dopo il giro salva/riapri.
+		view->SetSingleColumnWidth(1, 250);
+
 		SaveViaRealMessage(win, "/tmp", "test_export_formats.xlsx");
 		win->Unlock();
 
@@ -139,6 +149,15 @@ int main()
 		reDoc->GetValue(cell(1, 2), v);
 		Check(v.fType == eTextData && strcmp((const char*)v, "Ciao") == 0,
 			"XLSX riaperto: A2 vale ancora \"Ciao\"");
+
+		// Tolleranza di qualche pixel: la conversione pixel -> unita' di
+		// misura Excel -> pixel (ExcelColWidthToPixels/
+		// PixelsToExcelColWidth in XlsxTranslator.cpp) passa per un
+		// floor(), non un giro esatto bit per bit.
+		float reopenedWidthA = reopened->GetSheetView()->ColumnWidth(1);
+		Check(reopenedWidthA >= 245 && reopenedWidthA <= 255,
+			"XLSX riaperto: la larghezza personalizzata della colonna A (250px) e' "
+			"sopravvissuta al giro salva/riapri, non tornata al valore predefinito");
 
 		reopened->Unlock();
 	}
