@@ -103,6 +103,8 @@ public:
 	status_t ScriptedSetFilePath(const char* path);
 	BString ScriptedGetCellColor() const;
 	status_t ScriptedSetCellColor(const char* text);
+	BString ScriptedGetColumnWidth() const;
+	status_t ScriptedSetColumnWidth(const char* text);
 
 	// Riposiziona le due barre di scorrimento di fSheetView ogni volta
 	// che la finestra (quindi la vera area visibile della griglia)
@@ -1041,6 +1043,7 @@ private:
 	void HandleScriptingSelection(BMessage* message);
 	void HandleScriptingFilePath(BMessage* message);
 	void HandleScriptingCellColor(BMessage* message);
+	void HandleScriptingColumnWidth(BMessage* message);
 	// Aggiorna il testo di fCellMode combinando modalita' (Pronto/
 	// Modifica) e fModified (prefisso "* ", stesso segno gia' usato dal
 	// titolo -- vedi UpdateTitle): chiamata da entrambi, cosi' il

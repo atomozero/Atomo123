@@ -289,6 +289,15 @@ public:
 	// salvataggio nel formato nativo.
 	std::vector<std::pair<int, float> > CustomColumnWidths() const;
 
+	// Larghezza attuale di una singola colonna (1-based) e il suo
+	// setter equivalente -- per lo scripting "ColumnWidth" di
+	// MainWindow, che agisce colonna per colonna sulla selezione
+	// corrente invece che sull'intero vettore come SetColumnWidths
+	// sopra (pensato per un caricamento in blocco, non per una singola
+	// modifica dal vivo).
+	float ColumnWidth(int col) const;
+	void SetSingleColumnWidth(int col, float width);
+
 	// Speculari a SetColumnWidths/CustomColumnWidths sopra, sull'altro
 	// asse (Fase 10: persistenza dell'altezza di riga, prima un limite
 	// noto -- solo per la sessione corrente).

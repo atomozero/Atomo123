@@ -599,6 +599,28 @@ std::vector<std::pair<int, float> > SheetView::CustomColumnWidths() const
 	return result;
 }
 
+float SheetView::ColumnWidth(int col) const
+{
+	if (col < 1 || col > kColCount)
+		return 0.0f;
+	return fColWidths[col - 1];
+}
+
+// Stessa logica di clamp del trascinamento manuale del bordo colonna
+// (vedi MouseMoved piu' sotto), ma per una singola colonna data
+// direttamente, senza bisogno di un trascinamento del mouse.
+void SheetView::SetSingleColumnWidth(int col, float width)
+{
+	if (col < 1 || col > kColCount)
+		return;
+	if (width < kMinColWidth)
+		width = kMinColWidth;
+	fColWidths[col - 1] = width;
+	RebuildColumnOffsets();
+	UpdateCanvasSize();
+	Invalidate();
+}
+
 void SheetView::SetRowHeights(const std::vector<std::pair<int, float> >& heights)
 {
 	fRowHeights.assign(kRowCount, kRowHeight);

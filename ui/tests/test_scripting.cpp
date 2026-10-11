@@ -5,15 +5,16 @@
 	esplicita dell'utente, dopo aver controllato con "hey Atomo123 get
 	Suites of Window 0" che prima esistevano solo le suite generiche di
 	BWindow/BView/BMenu, nessuna proprieta' specifica di questa app):
-	quattro proprieta' DIRETTE, "Value"/"Selection"/"FilePath"/
-	"CellColor", in una nuova suite "suite/vnd.Atomo-sheet"
-	(GetSupportedSuites/ResolveSpecifier). La logica vera vive in otto
+	cinque proprieta' DIRETTE, "Value"/"Selection"/"FilePath"/
+	"CellColor"/"ColumnWidth", in una nuova suite "suite/vnd.Atomo-sheet"
+	(GetSupportedSuites/ResolveSpecifier). La logica vera vive in dieci
 	metodi pubblici (ScriptedGetValue/ScriptedSetValue/
 	ScriptedGetSelection/ScriptedSetSelection/ScriptedGetFilePath/
-	ScriptedSetFilePath/ScriptedGetCellColor/ScriptedSetCellColor),
-	testati qui sia direttamente sia attraverso un vero giro BMessage
-	(AddSpecifier/ResolveSpecifier/MessageReceived), stesso principio
-	gemello di test_format_toolbar.cpp per i pulsanti della toolbar.
+	ScriptedSetFilePath/ScriptedGetCellColor/ScriptedSetCellColor/
+	ScriptedGetColumnWidth/ScriptedSetColumnWidth), testati qui sia
+	direttamente sia attraverso un vero giro BMessage (AddSpecifier/
+	ResolveSpecifier/MessageReceived), stesso principio gemello di
+	test_format_toolbar.cpp per i pulsanti della toolbar.
 
 	Bug reale trovato costruendo questo: "hey ... set Value ... to
 	"42"" falliva con B_BAD_VALUE anche se il testo era fra virgolette
@@ -207,6 +208,31 @@ int main()
 
 	err = win->ScriptedSetCellColor("");
 	Check(err == B_BAD_VALUE, "ScriptedSetCellColor con una stringa vuota restituisce B_BAD_VALUE");
+
+	// --- ScriptedGetColumnWidth/ScriptedSetColumnWidth ---
+	win->ScriptedSetSelection("A1");
+
+	err = win->ScriptedSetColumnWidth("250");
+	Check(err == B_OK, "ScriptedSetColumnWidth(\"250\") su una singola colonna riesce");
+	Check(win->ScriptedGetColumnWidth() == "250",
+		"ScriptedGetColumnWidth rilegge la stessa larghezza appena impostata");
+
+	win->ScriptedSetSelection("B1:D1");
+	err = win->ScriptedSetColumnWidth("100");
+	Check(err == B_OK, "ScriptedSetColumnWidth su un intervallo (\"B1:D1\") riesce");
+	win->ScriptedSetSelection("C1");
+	Check(win->ScriptedGetColumnWidth() == "100",
+		"ScriptedSetColumnWidth su un intervallo applica la larghezza a OGNI colonna coperta, "
+		"non solo alla prima (qui verificato sulla colonna di mezzo, C)");
+
+	err = win->ScriptedSetColumnWidth("0");
+	Check(err == B_BAD_VALUE, "ScriptedSetColumnWidth(\"0\") restituisce B_BAD_VALUE, non una colonna invisibile");
+
+	err = win->ScriptedSetColumnWidth("non e' un numero");
+	Check(err == B_BAD_VALUE, "ScriptedSetColumnWidth con testo non numerico restituisce B_BAD_VALUE");
+
+	err = win->ScriptedSetColumnWidth("");
+	Check(err == B_BAD_VALUE, "ScriptedSetColumnWidth con una stringa vuota restituisce B_BAD_VALUE");
 
 	win->Unlock();
 

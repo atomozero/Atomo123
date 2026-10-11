@@ -9759,6 +9759,11 @@ void MainWindow::MessageReceived(BMessage* message)
 					HandleScriptingCellColor(message);
 					break;
 				}
+				if (strcmp(property, "ColumnWidth") == 0)
+				{
+					HandleScriptingColumnWidth(message);
+					break;
+				}
 			}
 			BWindow::MessageReceived(message);
 			break;
@@ -9781,7 +9786,8 @@ BHandler* MainWindow::ResolveSpecifier(BMessage* message, int32 index,
 {
 	if (what == B_DIRECT_SPECIFIER
 		&& (strcmp(property, "Value") == 0 || strcmp(property, "Selection") == 0
-			|| strcmp(property, "FilePath") == 0 || strcmp(property, "CellColor") == 0))
+			|| strcmp(property, "FilePath") == 0 || strcmp(property, "CellColor") == 0
+			|| strcmp(property, "ColumnWidth") == 0))
 		return this;
 	return BWindow::ResolveSpecifier(message, index, specifier, what, property);
 }
@@ -9806,6 +9812,10 @@ status_t MainWindow::GetSupportedSuites(BMessage* data)
 			"(0-255 each) or a 6-digit hex string; setting it applies to "
 			"the whole current selection, same as the fill color toolbar "
 			"button." },
+		{ "ColumnWidth", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"Width in pixels of the leftmost selected column; setting it "
+			"applies to every column spanned by the current selection, "
+			"same as dragging a column border." },
 		{ 0 }
 	};
 	data->AddString("suites", "suite/vnd.Atomo-sheet");
@@ -10126,6 +10136,64 @@ void MainWindow::HandleScriptingCellColor(BMessage* message)
 			reply.AddInt32("error", B_BAD_VALUE);
 		else
 			reply.AddInt32("error", ScriptedSetCellColor(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+// Larghezza della colonna piu' a sinistra della selezione corrente --
+// stessa scelta di ScriptedGetCellColor sopra per lo stesso motivo (una
+// selezione multi-colonna potrebbe avere larghezze diverse).
+BString MainWindow::ScriptedGetColumnWidth() const
+{
+	if (!fDoc)
+		return BString();
+
+	range sel = fSheetView->SelectionRange();
+	float width = fSheetView->ColumnWidth(sel.left);
+
+	BString result;
+	result << (int)width;
+	return result;
+}
+
+// Applica la larghezza data a TUTTE le colonne della selezione
+// corrente (non solo alla prima) -- un intervallo come "A1:D1" serve
+// proprio a colorare/dimensionare una fascia di colonne in un solo
+// giro, stesso spirito di ScriptedSetCellColor sopra.
+status_t MainWindow::ScriptedSetColumnWidth(const char* text)
+{
+	if (text == NULL || text[0] == '\0')
+		return B_BAD_VALUE;
+
+	char* end = NULL;
+	float width = strtod(text, &end);
+	if (end == text || width <= 0)
+		return B_BAD_VALUE;
+
+	if (!fDoc)
+		return B_NOT_ALLOWED;
+
+	range sel = fSheetView->SelectionRange();
+	for (int col = sel.left; col <= sel.right; col++)
+		fSheetView->SetSingleColumnWidth(col, width);
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingColumnWidth(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetColumnWidth());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedSetColumnWidth(text.String()));
 	}
 	message->SendReply(&reply);
 }
