@@ -39,6 +39,14 @@ What shipped since v0.7.0 (in progress):
   skips the "this file was password-protected" confirmation dialog
   `MainWindow::Save()` normally shows — a blocking modal would hang a
   scripted caller forever waiting for a human click.
+- A fourth scripting property, `CellColor` (same suite as above): GET
+  returns the background color of the top-left cell of the current
+  selection as `"R,G,B"`; SET accepts either `"R,G,B"` or a 6-digit hex
+  string and applies it to the whole current selection, same as the
+  fill color toolbar button — reuses `SetBackgroundColor` directly, no
+  new engine code. Added for Pippo's new `set_cell_color` MCP tool, so
+  a script can build presentation-ready, colored sheets without going
+  through the UI's color picker.
 
 What shipped in v0.7.0, on top of v0.6.0:
 - Font family/size picker in the toolbar, like Excel's own Home ribbon
