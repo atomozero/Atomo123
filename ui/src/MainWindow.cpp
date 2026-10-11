@@ -9771,6 +9771,26 @@ void MainWindow::MessageReceived(BMessage* message)
 					HandleScriptingColumnWidth(message);
 					break;
 				}
+				if (strcmp(property, "Bold") == 0)
+				{
+					HandleScriptingBold(message);
+					break;
+				}
+				if (strcmp(property, "Border") == 0)
+				{
+					HandleScriptingBorder(message);
+					break;
+				}
+				if (strcmp(property, "NumberFormat") == 0)
+				{
+					HandleScriptingNumberFormat(message);
+					break;
+				}
+				if (strcmp(property, "Chart") == 0)
+				{
+					HandleScriptingChart(message);
+					break;
+				}
 			}
 			BWindow::MessageReceived(message);
 			break;
@@ -9794,7 +9814,9 @@ BHandler* MainWindow::ResolveSpecifier(BMessage* message, int32 index,
 	if (what == B_DIRECT_SPECIFIER
 		&& (strcmp(property, "Value") == 0 || strcmp(property, "Selection") == 0
 			|| strcmp(property, "FilePath") == 0 || strcmp(property, "CellColor") == 0
-			|| strcmp(property, "ColumnWidth") == 0))
+			|| strcmp(property, "ColumnWidth") == 0 || strcmp(property, "Bold") == 0
+			|| strcmp(property, "Border") == 0 || strcmp(property, "NumberFormat") == 0
+			|| strcmp(property, "Chart") == 0))
 		return this;
 	return BWindow::ResolveSpecifier(message, index, specifier, what, property);
 }
@@ -9823,6 +9845,28 @@ status_t MainWindow::GetSupportedSuites(BMessage* data)
 			"Width in pixels of the leftmost selected column; setting it "
 			"applies to every column spanned by the current selection, "
 			"same as dragging a column border." },
+		{ "Bold", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"\"true\"/\"false\": whether the active cell's text is bold; "
+			"setting it applies explicitly (not a toggle) to the whole "
+			"current selection, same as the Bold toolbar button." },
+		{ "Border", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"Border thickness (0 = none, 1-3 = thin/medium/thick) of the "
+			"active cell's top edge; setting it applies that thickness to "
+			"all four edges of every cell in the current selection "
+			"(a grid/box border), same look as Excel's \"All Borders\"." },
+		{ "NumberFormat", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"Number format of the active cell as text: \"general\", "
+			"\"fixed\", \"currency\", \"percent\", or \"scientific\"; "
+			"setting it applies to the whole current selection, same as "
+			"the format toolbar buttons." },
+		{ "Chart", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"GET returns the number of charts embedded in the document. "
+			"SET inserts a new one from "
+			"\"dataRange|destCell|type|title\" (title may be empty), e.g. "
+			"\"A1:B5|D1|bar|Sales\" -- type is one of \"bar\"/\"line\"/"
+			"\"pie\"/\"area\"/\"scatter\"/\"combo\"/\"hbar\". dataRange "
+			"needs a category column plus one or more value columns, same "
+			"shape the chart range picker expects." },
 		{ 0 }
 	};
 	data->AddString("suites", "suite/vnd.Atomo-sheet");
@@ -10201,6 +10245,332 @@ void MainWindow::HandleScriptingColumnWidth(BMessage* message)
 			reply.AddInt32("error", B_BAD_VALUE);
 		else
 			reply.AddInt32("error", ScriptedSetColumnWidth(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+// Grassetto della cella attiva, "true"/"false" -- a differenza di
+// ToggleBold (che inverte lo stato), questa versione per lo scripting
+// applica lo stato ESPLICITO richiesto, cosi' una chiamata ripetuta e'
+// idempotente (un vero requisito per uno script, non per un pulsante
+// premuto a mano).
+BString MainWindow::ScriptedGetBold() const
+{
+	if (!fDoc)
+		return BString();
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	font_family family;
+	font_style style;
+	float size;
+	rgb_color color;
+	GetCellFontInfo(cs.fFont, &family, &style, &size, &color);
+	BString styleStr(style);
+	return (styleStr.IFindFirst("Bold") >= 0) ? "true" : "false";
+}
+
+status_t MainWindow::ScriptedSetBold(const char* text)
+{
+	if (text == NULL || text[0] == '\0')
+		return B_BAD_VALUE;
+	bool wantBold;
+	if (strcasecmp(text, "true") == 0 || strcmp(text, "1") == 0)
+		wantBold = true;
+	else if (strcasecmp(text, "false") == 0 || strcmp(text, "0") == 0)
+		wantBold = false;
+	else
+		return B_BAD_VALUE;
+
+	if (!fDoc)
+		return B_NOT_ALLOWED;
+	if (!fSheetView->GuardProtectedEdit(fSheetView->SelectionRange()))
+		return B_NOT_ALLOWED;
+
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	font_family family;
+	font_style style;
+	float size;
+	rgb_color color;
+	GetCellFontInfo(cs.fFont, &family, &style, &size, &color);
+	BString styleStr(style);
+	bool isItalic = styleStr.IFindFirst("Italic") >= 0;
+
+	char newStyle[64];
+	if (wantBold && isItalic)
+		strlcpy(newStyle, "Bold Italic", sizeof(newStyle));
+	else if (wantBold)
+		strlcpy(newStyle, "Bold", sizeof(newStyle));
+	else if (isItalic)
+		strlcpy(newStyle, "Italic", sizeof(newStyle));
+	else
+		strlcpy(newStyle, "Regular", sizeof(newStyle));
+
+	fSheetView->SaveUndoState(fSheetView->SelectionRange());
+	ApplyFontToRange(fDoc, fSheetView->SelectionRange(), family, newStyle, size, color);
+	fSheetView->Invalidate();
+	MarkModified();
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingBold(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetBold());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedSetBold(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+// Spessore del bordo superiore della cella attiva (0 = nessuno) --
+// stessa scelta di rappresentante singolo di ScriptedGetCellColor/
+// ScriptedGetColumnWidth sopra (una selezione multi-cella potrebbe
+// avere bordi diversi).
+BString MainWindow::ScriptedGetBorder() const
+{
+	if (!fDoc)
+		return BString();
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	BString result;
+	result << (int)cs.fTBorderColor;
+	return result;
+}
+
+// Applica lo spessore dato a TUTTI E QUATTRO i lati di OGNI cella della
+// selezione corrente (un bordo a griglia/scatola, come "Tutti i bordi"
+// di Excel) -- 0 lo rimuove. A differenza di ToggleBorder (un lato alla
+// volta, stato invertito in base alla cella attiva), questa versione e'
+// pensata per uno script che vuole delimitare una tabella in un solo
+// giro, sempre con lo stesso risultato indipendentemente da cosa c'era
+// prima (idempotente).
+status_t MainWindow::ScriptedSetBorder(const char* text)
+{
+	if (text == NULL || text[0] == '\0')
+		return B_BAD_VALUE;
+
+	char* end = NULL;
+	long thickness = strtol(text, &end, 10);
+	if (end == text || thickness < 0 || thickness > 255)
+		return B_BAD_VALUE;
+
+	if (!fDoc)
+		return B_NOT_ALLOWED;
+
+	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return B_NOT_ALLOWED;
+
+	fSheetView->SaveUndoState(sel);
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fTBorderColor = cs.fLBorderColor = cs.fBBorderColor
+				= cs.fRBorderColor = (uchar)thickness;
+			fDoc->SetCellStyle(c, cs);
+		}
+	fSheetView->Invalidate();
+	MarkModified();
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingBorder(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetBorder());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedSetBorder(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+// Solo le forme base (nessuna cifra decimale/separatore delle migliaia
+// personalizzati, vedi SetCellFormat): sufficiente per distinguere
+// valuta/percentuale/generico da uno script, lo stesso sottoinsieme
+// gia' esposto dai pulsanti della toolbar.
+static const struct { const char* name; int32 value; } kScriptedFormats[] = {
+	{ "general", eGeneral },
+	{ "fixed", eFixed },
+	{ "currency", eCurrency },
+	{ "percent", ePercent },
+	{ "scientific", eScientific },
+};
+
+BString MainWindow::ScriptedGetNumberFormat() const
+{
+	if (!fDoc)
+		return BString();
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	for (size_t i = 0; i < sizeof(kScriptedFormats) / sizeof(kScriptedFormats[0]); i++)
+		if (kScriptedFormats[i].value == cs.fFormat)
+			return kScriptedFormats[i].name;
+	return "general";
+}
+
+status_t MainWindow::ScriptedSetNumberFormat(const char* text)
+{
+	if (text == NULL || text[0] == '\0')
+		return B_BAD_VALUE;
+
+	int32 format = -1;
+	for (size_t i = 0; i < sizeof(kScriptedFormats) / sizeof(kScriptedFormats[0]); i++)
+		if (strcasecmp(text, kScriptedFormats[i].name) == 0)
+		{
+			format = kScriptedFormats[i].value;
+			break;
+		}
+	if (format < 0)
+		return B_BAD_VALUE;
+
+	if (!fDoc)
+		return B_NOT_ALLOWED;
+
+	SetCellFormat(format);
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingNumberFormat(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetNumberFormat());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedSetNumberFormat(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+// Numero di grafici gia' incorporati nel documento -- nessun altro
+// stato sensato da restituire qui (un grafico ha troppi campi per un
+// GET a singolo valore, a differenza delle altre proprieta' sopra),
+// ma cosi' uno script puo' almeno verificare che l'inserimento sia
+// riuscito confrontando il conteggio prima/dopo.
+BString MainWindow::ScriptedGetChart() const
+{
+	BString result;
+	result << (int)fCharts.size();
+	return result;
+}
+
+// Formato "intervallo|destinazione|tipo|titolo" (il titolo puo' essere
+// vuoto, es. "A1:B5|D1|bar|"): un solo valore testuale invece di piu'
+// proprieta' separate, stesso spirito "R,G,B" di ScriptedSetCellColor
+// sopra, perche' questa suite di scripting espone solo proprieta' GET/
+// SET a singolo valore, non un vero BMessage strutturato a piu' campi.
+//
+// Rivalida l'intervallo/i dati PRIMA di chiamare HandleChartInsert
+// (la stessa funzione usata dalla UI, riusata senza duplicarne la
+// logica di inserimento vera): quella funzione mostra un BAlert
+// bloccante sui dati non validi, che impiccerebbe per sempre uno
+// script in attesa di un clic umano che non arrivera' mai -- stesso
+// motivo gia' documentato per ScriptedSetFilePath. Una chiamata ben
+// formata non puo' mai arrivare al suo path di errore, perche' qui
+// si ripete la stessa identica validazione prima.
+status_t MainWindow::ScriptedInsertChart(const char* text)
+{
+	if (!fDoc || text == NULL || text[0] == '\0')
+		return B_BAD_VALUE;
+
+	BString input(text);
+	BString parts[4];
+	int32 start = 0;
+	for (int i = 0; i < 3; i++)
+	{
+		int32 sep = input.FindFirst('|', start);
+		if (sep < 0)
+			return B_BAD_VALUE;
+		input.CopyInto(parts[i], start, sep - start);
+		start = sep + 1;
+	}
+	input.CopyInto(parts[3], start, input.Length() - start);
+
+	range dataRange;
+	cell dest;
+	if (!ParseRangeRef(parts[0].String(), dataRange) || !cell::GetCell(parts[1].String(), dest))
+		return B_BAD_VALUE;
+
+	BString typeStr(parts[2]);
+	typeStr.ToLower();
+	ChartType type;
+	if (typeStr == "bar") type = eBarChart;
+	else if (typeStr == "line") type = eLineChart;
+	else if (typeStr == "pie") type = ePieChart;
+	else if (typeStr == "area") type = eAreaChart;
+	else if (typeStr == "scatter") type = eScatterChart;
+	else if (typeStr == "combo") type = eComboChart;
+	else if (typeStr == "hbar") type = eHBarChart;
+	else return B_BAD_VALUE;
+
+	bool validData;
+	if (type == eScatterChart)
+	{
+		std::vector<ScatterPoint> points;
+		validData = BuildScatterSeries(fDoc, dataRange, points);
+	}
+	else if (dataRange.right - dataRange.left > 1)
+	{
+		MultiChartData multi;
+		validData = BuildMultiChartSeries(fDoc, dataRange, multi);
+	}
+	else
+	{
+		std::vector<ChartSeries> series;
+		validData = BuildChartSeries(fDoc, dataRange, series);
+	}
+	if (!validData)
+		return B_BAD_VALUE;
+
+	HandleChartInsert(parts[0].String(), parts[1].String(), type, parts[3].String(),
+		false /* rowOriented */, std::vector<rgb_color>(), std::vector<ChartSeriesOptions>());
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingChart(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetChart());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedInsertChart(text.String()));
 	}
 	message->SendReply(&reply);
 }

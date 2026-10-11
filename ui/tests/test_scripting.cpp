@@ -5,15 +5,13 @@
 	esplicita dell'utente, dopo aver controllato con "hey Atomo123 get
 	Suites of Window 0" che prima esistevano solo le suite generiche di
 	BWindow/BView/BMenu, nessuna proprieta' specifica di questa app):
-	cinque proprieta' DIRETTE, "Value"/"Selection"/"FilePath"/
-	"CellColor"/"ColumnWidth", in una nuova suite "suite/vnd.Atomo-sheet"
-	(GetSupportedSuites/ResolveSpecifier). La logica vera vive in dieci
-	metodi pubblici (ScriptedGetValue/ScriptedSetValue/
-	ScriptedGetSelection/ScriptedSetSelection/ScriptedGetFilePath/
-	ScriptedSetFilePath/ScriptedGetCellColor/ScriptedSetCellColor/
-	ScriptedGetColumnWidth/ScriptedSetColumnWidth), testati qui sia
-	direttamente sia attraverso un vero giro BMessage (AddSpecifier/
-	ResolveSpecifier/MessageReceived), stesso principio gemello di
+	nove proprieta' DIRETTE, "Value"/"Selection"/"FilePath"/"CellColor"/
+	"ColumnWidth"/"Bold"/"Border"/"NumberFormat"/"Chart", in una nuova
+	suite "suite/vnd.Atomo-sheet" (GetSupportedSuites/ResolveSpecifier).
+	La logica vera vive in altrettante coppie di metodi pubblici Get/Set
+	(Get/Insert per Chart), testati qui sia direttamente sia attraverso
+	un vero giro BMessage (AddSpecifier/ResolveSpecifier/
+	MessageReceived), stesso principio gemello di
 	test_format_toolbar.cpp per i pulsanti della toolbar.
 
 	Bug reale trovato costruendo questo: "hey ... set Value ... to
@@ -233,6 +231,97 @@ int main()
 
 	err = win->ScriptedSetColumnWidth("");
 	Check(err == B_BAD_VALUE, "ScriptedSetColumnWidth con una stringa vuota restituisce B_BAD_VALUE");
+
+	// --- ScriptedGetBold/ScriptedSetBold ---
+	win->ScriptedSetSelection("A1");
+	Check(win->ScriptedGetBold() == "false", "ScriptedGetBold e' \"false\" su una cella nuova");
+
+	err = win->ScriptedSetBold("true");
+	Check(err == B_OK, "ScriptedSetBold(\"true\") riesce");
+	Check(win->ScriptedGetBold() == "true", "ScriptedGetBold rilegge \"true\" appena impostato");
+
+	err = win->ScriptedSetBold("true");
+	Check(err == B_OK && win->ScriptedGetBold() == "true",
+		"ScriptedSetBold(\"true\") ripetuto resta \"true\" (esplicito, non un toggle)");
+
+	err = win->ScriptedSetBold("false");
+	Check(err == B_OK && win->ScriptedGetBold() == "false",
+		"ScriptedSetBold(\"false\") riporta a non grassetto");
+
+	err = win->ScriptedSetBold("maybe");
+	Check(err == B_BAD_VALUE, "ScriptedSetBold con un valore che non e' \"true\"/\"false\" restituisce B_BAD_VALUE");
+
+	// --- ScriptedGetBorder/ScriptedSetBorder ---
+	win->ScriptedSetSelection("A1:B2");
+	err = win->ScriptedSetBorder("1");
+	Check(err == B_OK, "ScriptedSetBorder(\"1\") su un intervallo riesce");
+	win->ScriptedSetSelection("B2");
+	Check(win->ScriptedGetBorder() == "1",
+		"ScriptedSetBorder applica il bordo a OGNI cella dell'intervallo, non solo alla prima "
+		"(qui verificato sull'angolo opposto, B2)");
+
+	err = win->ScriptedSetBorder("0");
+	Check(err == B_OK && win->ScriptedGetBorder() == "0", "ScriptedSetBorder(\"0\") rimuove il bordo");
+
+	err = win->ScriptedSetBorder("-1");
+	Check(err == B_BAD_VALUE, "ScriptedSetBorder con uno spessore negativo restituisce B_BAD_VALUE");
+
+	// --- ScriptedGetNumberFormat/ScriptedSetNumberFormat ---
+	win->ScriptedSetSelection("A1");
+	Check(win->ScriptedGetNumberFormat() == "general", "ScriptedGetNumberFormat e' \"general\" su una cella nuova");
+
+	err = win->ScriptedSetNumberFormat("currency");
+	Check(err == B_OK && win->ScriptedGetNumberFormat() == "currency",
+		"ScriptedSetNumberFormat(\"currency\") riesce e si rilegge");
+
+	err = win->ScriptedSetNumberFormat("percent");
+	Check(err == B_OK && win->ScriptedGetNumberFormat() == "percent",
+		"ScriptedSetNumberFormat(\"percent\") riesce e si rilegge");
+
+	err = win->ScriptedSetNumberFormat("CURRENCY");
+	Check(err == B_OK && win->ScriptedGetNumberFormat() == "currency",
+		"ScriptedSetNumberFormat non distingue maiuscole/minuscole");
+
+	err = win->ScriptedSetNumberFormat("euro");
+	Check(err == B_BAD_VALUE, "ScriptedSetNumberFormat con un formato non riconosciuto restituisce B_BAD_VALUE");
+
+	// --- ScriptedGetChart/ScriptedInsertChart ---
+	win->ScriptedSetSelection("Y1");
+	win->ScriptedSetValue("Categoria");
+	win->ScriptedSetSelection("Y2");
+	win->ScriptedSetValue("A");
+	win->ScriptedSetSelection("Y3");
+	win->ScriptedSetValue("B");
+	win->ScriptedSetSelection("Z1");
+	win->ScriptedSetValue("Valore");
+	win->ScriptedSetSelection("Z2");
+	win->ScriptedSetValue("10");
+	win->ScriptedSetSelection("Z3");
+	win->ScriptedSetValue("20");
+
+	Check(win->ScriptedGetChart() == "0", "ScriptedGetChart e' \"0\" su un documento senza grafici");
+
+	err = win->ScriptedInsertChart("Y1:Z3|AB1|bar|Prova");
+	Check(err == B_OK, "ScriptedInsertChart con un intervallo/tipo/destinazione validi riesce");
+	Check(win->ScriptedGetChart() == "1", "ScriptedGetChart sale a \"1\" dopo l'inserimento");
+
+	err = win->ScriptedInsertChart("Y1:Z3|AB10|pie|");
+	Check(err == B_OK, "ScriptedInsertChart con titolo vuoto riesce comunque");
+	Check(win->ScriptedGetChart() == "2", "un secondo ScriptedInsertChart si aggiunge, non sostituisce il primo");
+
+	err = win->ScriptedInsertChart("Y1:Z3|AB20|poligono|");
+	Check(err == B_BAD_VALUE,
+		"ScriptedInsertChart con un tipo non riconosciuto restituisce B_BAD_VALUE, non aggiunge nulla");
+	Check(win->ScriptedGetChart() == "2", "...e il conteggio dei grafici resta invariato");
+
+	err = win->ScriptedInsertChart("Y1|AB20|bar|");
+	Check(err == B_BAD_VALUE,
+		"ScriptedInsertChart con un intervallo mal formato (senza \"|\" sufficienti) restituisce B_BAD_VALUE");
+
+	err = win->ScriptedInsertChart("A1:A3|AB20|bar|");
+	Check(err == B_BAD_VALUE,
+		"ScriptedInsertChart con un intervallo a una sola colonna (dati non validi per un grafico) "
+		"restituisce B_BAD_VALUE invece di mostrare l'avviso bloccante di HandleChartInsert");
 
 	win->Unlock();
 
