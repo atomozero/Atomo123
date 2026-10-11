@@ -29,6 +29,16 @@ What shipped since v0.7.0 (in progress):
   up, instead of only `BMessage::FindString`. New
   `ui/tests/test_scripting.cpp` covers both the public methods directly
   and `GetSupportedSuites`'s advertised suite.
+- A third scripting property, `FilePath` (same suite as above): GET
+  returns the currently open file's full path, SET saves to a given
+  path, picking the export format from its extension — the one piece
+  needed for Pippo's new `save_file` MCP tool (see its own changelog)
+  that has no standard Haiku protocol equivalent reachable from another
+  process (unlike opening a file, which just needed Pippo to send a
+  plain `B_REFS_RECEIVED`, no Atomo123 change at all). Deliberately
+  skips the "this file was password-protected" confirmation dialog
+  `MainWindow::Save()` normally shows — a blocking modal would hang a
+  scripted caller forever waiting for a human click.
 
 What shipped in v0.7.0, on top of v0.6.0:
 - Font family/size picker in the toolbar, like Excel's own Home ribbon
