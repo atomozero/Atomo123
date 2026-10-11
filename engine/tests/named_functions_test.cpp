@@ -411,6 +411,54 @@ int main()
 		gFailures++;
 	}
 
+	// Round(double,int) (Utils/Round.cpp) scalava il fattore con
+	// "ceil(log10(fabs(d))) + digits - 1" invece di "digits" puro --
+	// bug reale trovato costruendo una demo vera (ROUND(67.76;2) dava
+	// 67.759, tre decimali non due). Per qualunque d la cui parte
+	// intera ha 2 o piu' cifre (la stragrande maggioranza dei numeri
+	// reali), ceil(log10(d)) aggiunge una cifra di scala di troppo,
+	// arrotondando sistematicamente a digits+1 decimali. Mascherato dai
+	// test sopra perche' con d<10 (3.5, 3.45) il bug coincide per caso
+	// col risultato corretto. Qui coperto esplicitamente con d>=10.
+	try
+	{
+		TryToParseString("=ROUND(67.75899280575539,2)", cell(24, 8), &doc, true, '.', ',');
+		doc.CalcCell(cell(24, 8));
+		doc.GetValue(cell(24, 8), v);
+		Check((double)v == 67.76, "=ROUND(67.75899280575539,2) calcola 67.76, non 67.759 (d con 2 cifre intere)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUND(67.75899280575539,2): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ROUND(2011.15,1)", cell(24, 9), &doc, true, '.', ',');
+		doc.CalcCell(cell(24, 9));
+		doc.GetValue(cell(24, 9), v);
+		Check((double)v == 2011.2, "=ROUND(2011.15,1) calcola 2011.2, non 2011.15 invariato (d con 4 cifre intere)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUND(2011.15,1): %s\n", (char *)e);
+		gFailures++;
+	}
+
+	try
+	{
+		TryToParseString("=ROUND(123.456,2)", cell(24, 10), &doc, true, '.', ',');
+		doc.CalcCell(cell(24, 10));
+		doc.GetValue(cell(24, 10), v);
+		Check((double)v == 123.46, "=ROUND(123.456,2) calcola 123.46, non 123.456 invariato (d con 3 cifre intere)");
+	}
+	catch (CErr &e)
+	{
+		printf("FAIL =ROUND(123.456,2): %s\n", (char *)e);
+		gFailures++;
+	}
+
 	// Argomento finale PRESENTE ma vuoto (es. "ROUND(F6*G6,)", una
 	// virgola scritta ma senza valore dopo): bug reale trovato
 	// importando un vero file XLSX (centinaia di formule con questa
@@ -2221,6 +2269,8 @@ int main()
 			{
 				return (tableName == "opere_elettriche") ? dataSheet : NULL;
 			}
+			const NamedStyleTable *GetNamedStyleTable() const { return NULL; }
+			const ThemePalette *GetThemePalette() const { return NULL; }
 		};
 
 		CContainer &summarySheet = *new CContainer(NULL, NULL);
@@ -2440,6 +2490,8 @@ int main()
 				return (strcmp(name, "Dati") == 0) ? dataSheet : NULL;
 			}
 			CContainer *FindSheetWithTable(const std::string &) { return NULL; }
+			const NamedStyleTable *GetNamedStyleTable() const { return NULL; }
+			const ThemePalette *GetThemePalette() const { return NULL; }
 		};
 
 		CContainer &formulaSheet = *new CContainer(NULL, NULL);

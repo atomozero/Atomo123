@@ -66,11 +66,24 @@ double Round(double d, int digits)
 		return d;
 	else
 	{
-		int scale = (int)ceil(log10(fabs(d)));
-		scale += digits - 1;
-		
-		double factor = pow(10, scale);
-		
+		// Era "scale = ceil(log10(fabs(d))) + digits - 1" (un tentativo
+		// di evitare perdita di precisione per numeri enormi scalando
+		// il fattore in base alla grandezza di d) -- bug reale trovato
+		// costruendo una demo vera (ROUND(67.76;2) dava 67.759, tre
+		// decimali non due): ceil(log10(d)) aggiunge una cifra di scala
+		// in piu' ogni volta che la parte intera di d ha 2 o piu' cifre
+		// (qualunque d non esattamente una potenza di 10), quindi
+		// ROUND arrotondava sistematicamente a digits+1 decimali per
+		// la stragrande maggioranza dei numeri reali -- mascherato nei
+		// test precedenti perche' con digits=0 (il caso ROUND(3.5,0)
+		// gia' corretto sopra) lo scarto si annulla, e con una parte
+		// intera a una sola cifra (d<10) il bug coincide per caso col
+		// risultato corretto. Il fattore 10^digits diretto e' esattamente
+		// la stessa cosa che Excel fa (nessuna perdita di precisione in
+		// piu' rispetto al limite dei double che esiste comunque in
+		// Excel stesso).
+		double factor = pow(10, digits);
+
 		return Round(d * factor) / factor;
 	}
 }
