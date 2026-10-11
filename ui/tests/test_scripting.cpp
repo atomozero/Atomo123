@@ -5,14 +5,15 @@
 	esplicita dell'utente, dopo aver controllato con "hey Atomo123 get
 	Suites of Window 0" che prima esistevano solo le suite generiche di
 	BWindow/BView/BMenu, nessuna proprieta' specifica di questa app):
-	tre proprieta' DIRETTE, "Value"/"Selection"/"FilePath", in una nuova
-	suite "suite/vnd.Atomo-sheet" (GetSupportedSuites/ResolveSpecifier).
-	La logica vera vive in sei metodi pubblici (ScriptedGetValue/
-	ScriptedSetValue/ScriptedGetSelection/ScriptedSetSelection/
-	ScriptedGetFilePath/ScriptedSetFilePath), testati qui sia
-	direttamente sia attraverso un vero giro BMessage (AddSpecifier/
-	ResolveSpecifier/MessageReceived), stesso principio gemello di
-	test_format_toolbar.cpp per i pulsanti della toolbar.
+	quattro proprieta' DIRETTE, "Value"/"Selection"/"FilePath"/
+	"CellColor", in una nuova suite "suite/vnd.Atomo-sheet"
+	(GetSupportedSuites/ResolveSpecifier). La logica vera vive in otto
+	metodi pubblici (ScriptedGetValue/ScriptedSetValue/
+	ScriptedGetSelection/ScriptedSetSelection/ScriptedGetFilePath/
+	ScriptedSetFilePath/ScriptedGetCellColor/ScriptedSetCellColor),
+	testati qui sia direttamente sia attraverso un vero giro BMessage
+	(AddSpecifier/ResolveSpecifier/MessageReceived), stesso principio
+	gemello di test_format_toolbar.cpp per i pulsanti della toolbar.
 
 	Bug reale trovato costruendo questo: "hey ... set Value ... to
 	"42"" falliva con B_BAD_VALUE anche se il testo era fra virgolette
@@ -182,6 +183,30 @@ int main()
 
 	err = win->ScriptedSetFilePath("");
 	Check(err == B_BAD_VALUE, "ScriptedSetFilePath con una stringa vuota restituisce B_BAD_VALUE");
+
+	// --- ScriptedGetCellColor/ScriptedSetCellColor ---
+	win->ScriptedSetSelection("A1");
+
+	err = win->ScriptedSetCellColor("255,0,0");
+	Check(err == B_OK, "ScriptedSetCellColor(\"255,0,0\") riesce");
+	Check(win->ScriptedGetCellColor() == "255,0,0",
+		"ScriptedGetCellColor rilegge lo stesso colore appena impostato (formato decimale)");
+
+	err = win->ScriptedSetCellColor("00FF00");
+	Check(err == B_OK, "ScriptedSetCellColor(\"00FF00\") (formato esadecimale) riesce");
+	Check(win->ScriptedGetCellColor() == "0,255,0",
+		"ScriptedGetCellColor rilegge il colore esadecimale, riconvertito in formato decimale");
+
+	err = win->ScriptedSetCellColor("999,0,0");
+	Check(err == B_BAD_VALUE,
+		"ScriptedSetCellColor con una componente fuori da 0-255 restituisce B_BAD_VALUE");
+
+	err = win->ScriptedSetCellColor("non e' un colore");
+	Check(err == B_BAD_VALUE,
+		"ScriptedSetCellColor con una stringa che non e' ne' \"R,G,B\" ne' esadecimale restituisce B_BAD_VALUE");
+
+	err = win->ScriptedSetCellColor("");
+	Check(err == B_BAD_VALUE, "ScriptedSetCellColor con una stringa vuota restituisce B_BAD_VALUE");
 
 	win->Unlock();
 

@@ -9754,6 +9754,11 @@ void MainWindow::MessageReceived(BMessage* message)
 					HandleScriptingFilePath(message);
 					break;
 				}
+				if (strcmp(property, "CellColor") == 0)
+				{
+					HandleScriptingCellColor(message);
+					break;
+				}
 			}
 			BWindow::MessageReceived(message);
 			break;
@@ -9776,7 +9781,7 @@ BHandler* MainWindow::ResolveSpecifier(BMessage* message, int32 index,
 {
 	if (what == B_DIRECT_SPECIFIER
 		&& (strcmp(property, "Value") == 0 || strcmp(property, "Selection") == 0
-			|| strcmp(property, "FilePath") == 0))
+			|| strcmp(property, "FilePath") == 0 || strcmp(property, "CellColor") == 0))
 		return this;
 	return BWindow::ResolveSpecifier(message, index, specifier, what, property);
 }
@@ -9796,6 +9801,11 @@ status_t MainWindow::GetSupportedSuites(BMessage* data)
 			"setting it saves the document to that path, choosing the "
 			"export format from the extension (.csv/.xlsx/.ods, anything "
 			"else stays native .ascd), same as \"Save As\"." },
+		{ "CellColor", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"Background color of the active cell/range as \"R,G,B\" "
+			"(0-255 each) or a 6-digit hex string; setting it applies to "
+			"the whole current selection, same as the fill color toolbar "
+			"button." },
 		{ 0 }
 	};
 	data->AddString("suites", "suite/vnd.Atomo-sheet");
@@ -10037,6 +10047,85 @@ void MainWindow::HandleScriptingFilePath(BMessage* message)
 			reply.AddInt32("error", B_BAD_VALUE);
 		else
 			reply.AddInt32("error", ScriptedSetFilePath(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+// Colore di sfondo della cella in alto a sinistra della selezione
+// corrente, come "R,G,B" (0-255 ciascuno) -- stesso campo fLowColor
+// che SetBackgroundColor sotto scrive, letto da un solo angolo perche'
+// una selezione multi-cella potrebbe avere colori diversi e non c'e'
+// un modo sensato di restituirli tutti in una singola proprieta'
+// scalare.
+BString MainWindow::ScriptedGetCellColor() const
+{
+	if (!fDoc)
+		return BString();
+
+	range sel = fSheetView->SelectionRange();
+	cell c(sel.left, sel.top);
+	CellStyle cs;
+	fDoc->GetCellStyle(c, cs);
+
+	BString result;
+	result << (int)cs.fLowColor.red << "," << (int)cs.fLowColor.green
+		<< "," << (int)cs.fLowColor.blue;
+	return result;
+}
+
+// Accetta sia "R,G,B" decimale sia "RRGGBB" esadecimale -- rimanda
+// l'applicazione vera a SetBackgroundColor, che gia' scrive sull'intera
+// selezione corrente esattamente come il pulsante colore di sfondo
+// della toolbar.
+status_t MainWindow::ScriptedSetCellColor(const char* text)
+{
+	if (text == NULL || text[0] == '\0')
+		return B_BAD_VALUE;
+
+	int r, g, b;
+	rgb_color color;
+	if (sscanf(text, "%d,%d,%d", &r, &g, &b) == 3)
+	{
+		if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255)
+			return B_BAD_VALUE;
+		color.red = (uchar)r;
+		color.green = (uchar)g;
+		color.blue = (uchar)b;
+		color.alpha = 255;
+	}
+	else if (strlen(text) == 6
+		&& sscanf(text, "%2x%2x%2x", &r, &g, &b) == 3)
+	{
+		color.red = (uchar)r;
+		color.green = (uchar)g;
+		color.blue = (uchar)b;
+		color.alpha = 255;
+	}
+	else
+		return B_BAD_VALUE;
+
+	if (!fDoc)
+		return B_NOT_ALLOWED;
+
+	SetBackgroundColor(color);
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingCellColor(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetCellColor());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedSetCellColor(text.String()));
 	}
 	message->SendReply(&reply);
 }
