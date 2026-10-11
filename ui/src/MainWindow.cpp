@@ -9791,6 +9791,11 @@ void MainWindow::MessageReceived(BMessage* message)
 					HandleScriptingChart(message);
 					break;
 				}
+				if (strcmp(property, "WrapText") == 0)
+				{
+					HandleScriptingWrapText(message);
+					break;
+				}
 			}
 			BWindow::MessageReceived(message);
 			break;
@@ -9816,7 +9821,7 @@ BHandler* MainWindow::ResolveSpecifier(BMessage* message, int32 index,
 			|| strcmp(property, "FilePath") == 0 || strcmp(property, "CellColor") == 0
 			|| strcmp(property, "ColumnWidth") == 0 || strcmp(property, "Bold") == 0
 			|| strcmp(property, "Border") == 0 || strcmp(property, "NumberFormat") == 0
-			|| strcmp(property, "Chart") == 0))
+			|| strcmp(property, "Chart") == 0 || strcmp(property, "WrapText") == 0))
 		return this;
 	return BWindow::ResolveSpecifier(message, index, specifier, what, property);
 }
@@ -9867,6 +9872,12 @@ status_t MainWindow::GetSupportedSuites(BMessage* data)
 			"\"pie\"/\"area\"/\"scatter\"/\"combo\"/\"hbar\". dataRange "
 			"needs a category column plus one or more value columns, same "
 			"shape the chart range picker expects." },
+		{ "WrapText", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"\"true\"/\"false\": whether the active cell wraps long text "
+			"onto multiple lines instead of overflowing into neighboring "
+			"cells; setting it applies explicitly (not a toggle) to the "
+			"whole current selection and grows the row height to fit, "
+			"same as the Wrap Text toolbar button." },
 		{ 0 }
 	};
 	data->AddString("suites", "suite/vnd.Atomo-sheet");
@@ -10571,6 +10582,74 @@ void MainWindow::HandleScriptingChart(BMessage* message)
 			reply.AddInt32("error", B_BAD_VALUE);
 		else
 			reply.AddInt32("error", ScriptedInsertChart(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+// A capo automatico della cella attiva, "true"/"false" -- esplicito,
+// non un toggle, stesso motivo gia' documentato per ScriptedSetBold.
+BString MainWindow::ScriptedGetWrapText() const
+{
+	if (!fDoc)
+		return BString();
+	CellStyle cs;
+	fDoc->GetCellStyle(fSheetView->Selection(), cs);
+	return cs.fWrapText ? "true" : "false";
+}
+
+status_t MainWindow::ScriptedSetWrapText(const char* text)
+{
+	if (text == NULL || text[0] == '\0')
+		return B_BAD_VALUE;
+	bool wantWrap;
+	if (strcasecmp(text, "true") == 0 || strcmp(text, "1") == 0)
+		wantWrap = true;
+	else if (strcasecmp(text, "false") == 0 || strcmp(text, "0") == 0)
+		wantWrap = false;
+	else
+		return B_BAD_VALUE;
+
+	if (!fDoc)
+		return B_NOT_ALLOWED;
+
+	range sel = fSheetView->SelectionRange();
+	if (!fSheetView->GuardProtectedEdit(sel))
+		return B_NOT_ALLOWED;
+
+	fSheetView->SaveUndoState(sel);
+	for (int row = sel.top; row <= sel.bottom; row++)
+		for (int col = sel.left; col <= sel.right; col++)
+		{
+			cell c(col, row);
+			CellStyle cs;
+			fDoc->GetCellStyle(c, cs);
+			cs.fWrapText = wantWrap;
+			fDoc->SetCellStyle(c, cs);
+		}
+	// Stesso ricalcolo di ToggleWrapText -- senza, l'altezza di riga
+	// non cresce per mostrare il testo appena andato a capo finche' non
+	// succede qualcos'altro che la ricalcola per un altro motivo.
+	fSheetView->RecalculateWrappedRowHeights();
+	fSheetView->Invalidate();
+	MarkModified();
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingWrapText(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetWrapText());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedSetWrapText(text.String()));
 	}
 	message->SendReply(&reply);
 }

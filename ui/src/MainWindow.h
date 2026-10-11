@@ -113,6 +113,8 @@ public:
 	status_t ScriptedSetNumberFormat(const char* text);
 	BString ScriptedGetChart() const;
 	status_t ScriptedInsertChart(const char* text);
+	BString ScriptedGetWrapText() const;
+	status_t ScriptedSetWrapText(const char* text);
 
 	// Riposiziona le due barre di scorrimento di fSheetView ogni volta
 	// che la finestra (quindi la vera area visibile della griglia)
@@ -1056,6 +1058,7 @@ private:
 	void HandleScriptingBorder(BMessage* message);
 	void HandleScriptingNumberFormat(BMessage* message);
 	void HandleScriptingChart(BMessage* message);
+	void HandleScriptingWrapText(BMessage* message);
 	// Aggiorna il testo di fCellMode combinando modalita' (Pronto/
 	// Modifica) e fModified (prefisso "* ", stesso segno gia' usato dal
 	// titolo -- vedi UpdateTitle): chiamata da entrambi, cosi' il

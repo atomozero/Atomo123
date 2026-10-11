@@ -5,9 +5,9 @@
 	esplicita dell'utente, dopo aver controllato con "hey Atomo123 get
 	Suites of Window 0" che prima esistevano solo le suite generiche di
 	BWindow/BView/BMenu, nessuna proprieta' specifica di questa app):
-	nove proprieta' DIRETTE, "Value"/"Selection"/"FilePath"/"CellColor"/
-	"ColumnWidth"/"Bold"/"Border"/"NumberFormat"/"Chart", in una nuova
-	suite "suite/vnd.Atomo-sheet" (GetSupportedSuites/ResolveSpecifier).
+	dieci proprieta' DIRETTE, "Value"/"Selection"/"FilePath"/"CellColor"/
+	"ColumnWidth"/"Bold"/"Border"/"NumberFormat"/"Chart"/"WrapText", in
+	una nuova suite "suite/vnd.Atomo-sheet" (GetSupportedSuites/ResolveSpecifier).
 	La logica vera vive in altrettante coppie di metodi pubblici Get/Set
 	(Get/Insert per Chart), testati qui sia direttamente sia attraverso
 	un vero giro BMessage (AddSpecifier/ResolveSpecifier/
@@ -322,6 +322,25 @@ int main()
 	Check(err == B_BAD_VALUE,
 		"ScriptedInsertChart con un intervallo a una sola colonna (dati non validi per un grafico) "
 		"restituisce B_BAD_VALUE invece di mostrare l'avviso bloccante di HandleChartInsert");
+
+	// --- ScriptedGetWrapText/ScriptedSetWrapText ---
+	win->ScriptedSetSelection("A1");
+	Check(win->ScriptedGetWrapText() == "false", "ScriptedGetWrapText e' \"false\" su una cella nuova");
+
+	err = win->ScriptedSetWrapText("true");
+	Check(err == B_OK, "ScriptedSetWrapText(\"true\") riesce");
+	Check(win->ScriptedGetWrapText() == "true", "ScriptedGetWrapText rilegge \"true\" appena impostato");
+
+	err = win->ScriptedSetWrapText("true");
+	Check(err == B_OK && win->ScriptedGetWrapText() == "true",
+		"ScriptedSetWrapText(\"true\") ripetuto resta \"true\" (esplicito, non un toggle)");
+
+	err = win->ScriptedSetWrapText("false");
+	Check(err == B_OK && win->ScriptedGetWrapText() == "false",
+		"ScriptedSetWrapText(\"false\") disattiva l'a capo");
+
+	err = win->ScriptedSetWrapText("forse");
+	Check(err == B_BAD_VALUE, "ScriptedSetWrapText con un valore che non e' \"true\"/\"false\" restituisce B_BAD_VALUE");
 
 	win->Unlock();
 
