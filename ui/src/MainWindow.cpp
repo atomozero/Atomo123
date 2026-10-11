@@ -9749,6 +9749,11 @@ void MainWindow::MessageReceived(BMessage* message)
 					HandleScriptingSelection(message);
 					break;
 				}
+				if (strcmp(property, "FilePath") == 0)
+				{
+					HandleScriptingFilePath(message);
+					break;
+				}
 			}
 			BWindow::MessageReceived(message);
 			break;
@@ -9761,15 +9766,17 @@ void MainWindow::MessageReceived(BMessage* message)
 }
 
 // Scripting BMessage reale (vedi il commento gemello in MainWindow.h):
-// "Value"/"Selection" sono le uniche due proprieta' DIRETTE riconosciute
-// qui, ogni altra (es. "Title", gia' gestita da BWindow) ricade sulla
-// classe base esattamente come prima -- questo override non toglie
-// nulla di gia' funzionante, aggiunge solo le due proprieta' nuove.
+// "Value"/"Selection"/"FilePath" sono le uniche proprieta' DIRETTE
+// riconosciute qui, ogni altra (es. "Title", gia' gestita da BWindow)
+// ricade sulla classe base esattamente come prima -- questo override
+// non toglie nulla di gia' funzionante, aggiunge solo le proprieta'
+// nuove.
 BHandler* MainWindow::ResolveSpecifier(BMessage* message, int32 index,
 	BMessage* specifier, int32 what, const char* property)
 {
 	if (what == B_DIRECT_SPECIFIER
-		&& (strcmp(property, "Value") == 0 || strcmp(property, "Selection") == 0))
+		&& (strcmp(property, "Value") == 0 || strcmp(property, "Selection") == 0
+			|| strcmp(property, "FilePath") == 0))
 		return this;
 	return BWindow::ResolveSpecifier(message, index, specifier, what, property);
 }
@@ -9784,6 +9791,11 @@ status_t MainWindow::GetSupportedSuites(BMessage* data)
 			"Computed value of the active cell as text; setting it parses the "
 			"text the same way the in-cell editor would (a number, plain "
 			"text, or a formula starting with \"=\")." },
+		{ "FilePath", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"Full path of the currently open file (empty if never saved); "
+			"setting it saves the document to that path, choosing the "
+			"export format from the extension (.csv/.xlsx/.ods, anything "
+			"else stays native .ascd), same as \"Save As\"." },
 		{ 0 }
 	};
 	data->AddString("suites", "suite/vnd.Atomo-sheet");
@@ -9955,6 +9967,76 @@ void MainWindow::HandleScriptingSelection(BMessage* message)
 			reply.AddInt32("error", B_BAD_VALUE);
 		else
 			reply.AddInt32("error", ScriptedSetSelection(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+// Percorso completo del file attualmente aperto, vuoto se il documento
+// non e' mai stato salvato (fDocumentName vuoto, stesso segnale gia'
+// usato da IsUntouched()) -- fFileDirRef/fDocumentName sono gia' le
+// due meta' che Save() stessa usa per richiamare SaveToFile.
+BString MainWindow::ScriptedGetFilePath() const
+{
+	if (fDocumentName.Length() == 0)
+		return BString();
+
+	BPath dirPath(&fFileDirRef);
+	if (dirPath.InitCheck() != B_OK)
+		return BString();
+	dirPath.Append(fDocumentName.String());
+	return BString(dirPath.Path());
+}
+
+// Salva il documento nel percorso dato, scegliendo il formato
+// dall'estensione (stesso SaveToFile di "Salva con nome" vero). A
+// differenza di Save() (il comando "Salva" semplice), qui non si apre
+// MAI l'avviso "file protetto da password" -- un vero BAlert bloccante
+// impiccherebbe una chiamata di script in attesa di un clic umano che
+// non arrivera' mai; scrivere comunque in chiaro e' la scelta giusta
+// per un salvataggio esplicito con un percorso nuovo (concettualmente
+// gia' un "Salva con nome", mai un semplice "Salva" sull'originale
+// cifrato).
+status_t MainWindow::ScriptedSetFilePath(const char* path)
+{
+	if (path == NULL || path[0] == '\0')
+		return B_BAD_VALUE;
+
+	BPath fullPath(path);
+	if (fullPath.InitCheck() != B_OK)
+		return B_BAD_VALUE;
+
+	BPath dirPath;
+	if (fullPath.GetParent(&dirPath) != B_OK)
+		return B_BAD_VALUE;
+
+	BEntry dirEntry(dirPath.Path());
+	if (dirEntry.InitCheck() != B_OK || !dirEntry.Exists())
+		return B_NAME_NOT_FOUND;
+
+	entry_ref dirRef;
+	status_t err = dirEntry.GetRef(&dirRef);
+	if (err != B_OK)
+		return err;
+
+	SaveToFile(dirRef, fullPath.Leaf());
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingFilePath(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetFilePath());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedSetFilePath(text.String()));
 	}
 	message->SendReply(&reply);
 }

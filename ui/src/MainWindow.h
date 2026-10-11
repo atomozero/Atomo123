@@ -91,14 +91,16 @@ public:
 	virtual BHandler* ResolveSpecifier(BMessage* message, int32 index,
 		BMessage* specifier, int32 what, const char* property);
 
-	// Logica vera dietro "Value"/"Selection" sopra, pubblica e separata
-	// dal dispatch BMessage per lo stesso motivo di SetFontFamily/
-	// ToggleBold altrove in questo file: testabile in modo diretto, vedi
-	// tests/test_scripting.cpp.
+	// Logica vera dietro "Value"/"Selection"/"FilePath" sopra, pubblica e
+	// separata dal dispatch BMessage per lo stesso motivo di
+	// SetFontFamily/ToggleBold altrove in questo file: testabile in modo
+	// diretto, vedi tests/test_scripting.cpp.
 	BString ScriptedGetValue() const;
 	status_t ScriptedSetValue(const char* text);
 	BString ScriptedGetSelection() const;
 	status_t ScriptedSetSelection(const char* text);
+	BString ScriptedGetFilePath() const;
+	status_t ScriptedSetFilePath(const char* path);
 
 	// Riposiziona le due barre di scorrimento di fSheetView ogni volta
 	// che la finestra (quindi la vera area visibile della griglia)
@@ -1028,13 +1030,14 @@ private:
 	// principio di fCellLabel/fFormulaBar li' sopra (letto dalla SOLA
 	// cella attiva, come il resto dei controlli di formattazione).
 	void UpdateFontFields(cell c);
-	// Gestori dei due messaggi di scripting (vedi ResolveSpecifier/
+	// Gestori dei messaggi di scripting (vedi ResolveSpecifier/
 	// GetSupportedSuites sopra): chiamati da MessageReceived per
 	// B_GET_PROPERTY/B_SET_PROPERTY quando la proprieta' risolta e'
-	// "Value"/"Selection", sempre con una vera risposta (SendReply),
-	// mai silenziosi -- "hey" aspetta sempre una risposta.
+	// "Value"/"Selection"/"FilePath", sempre con una vera risposta
+	// (SendReply), mai silenziosi -- "hey" aspetta sempre una risposta.
 	void HandleScriptingValue(BMessage* message);
 	void HandleScriptingSelection(BMessage* message);
+	void HandleScriptingFilePath(BMessage* message);
 	// Aggiorna il testo di fCellMode combinando modalita' (Pronto/
 	// Modifica) e fModified (prefisso "* ", stesso segno gia' usato dal
 	// titolo -- vedi UpdateTitle): chiamata da entrambi, cosi' il

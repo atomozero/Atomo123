@@ -5,13 +5,14 @@
 	esplicita dell'utente, dopo aver controllato con "hey Atomo123 get
 	Suites of Window 0" che prima esistevano solo le suite generiche di
 	BWindow/BView/BMenu, nessuna proprieta' specifica di questa app):
-	due proprieta' DIRETTE, "Value" e "Selection", in una nuova suite
-	"suite/vnd.Atomo-sheet" (GetSupportedSuites/ResolveSpecifier). La
-	logica vera vive in quattro metodi pubblici (ScriptedGetValue/
-	ScriptedSetValue/ScriptedGetSelection/ScriptedSetSelection),
-	testati qui sia direttamente sia attraverso un vero giro BMessage
-	(AddSpecifier/ResolveSpecifier/MessageReceived), stesso principio
-	gemello di test_format_toolbar.cpp per i pulsanti della toolbar.
+	tre proprieta' DIRETTE, "Value"/"Selection"/"FilePath", in una nuova
+	suite "suite/vnd.Atomo-sheet" (GetSupportedSuites/ResolveSpecifier).
+	La logica vera vive in sei metodi pubblici (ScriptedGetValue/
+	ScriptedSetValue/ScriptedGetSelection/ScriptedSetSelection/
+	ScriptedGetFilePath/ScriptedSetFilePath), testati qui sia
+	direttamente sia attraverso un vero giro BMessage (AddSpecifier/
+	ResolveSpecifier/MessageReceived), stesso principio gemello di
+	test_format_toolbar.cpp per i pulsanti della toolbar.
 
 	Bug reale trovato costruendo questo: "hey ... set Value ... to
 	"42"" falliva con B_BAD_VALUE anche se il testo era fra virgolette
@@ -25,6 +26,7 @@
 #include <cstring>
 
 #include <Application.h>
+#include <Entry.h>
 #include <Message.h>
 
 #include "Cell.h"
@@ -159,6 +161,27 @@ int main()
 	// La logica vera (sopra) e la sua vera chiamata da MessageReceived
 	// (HandleScriptingValue/HandleScriptingSelection in MainWindow.cpp)
 	// restano comunque coperte: qui direttamente, dal vivo con "hey".
+
+	// --- ScriptedGetFilePath/ScriptedSetFilePath ---
+	Check(win->ScriptedGetFilePath() == "",
+		"ScriptedGetFilePath e' vuoto su un documento mai salvato (stesso segnale di IsUntouched)");
+
+	BString savePath("/boot/system/cache/tmp/test_scripting_save.ascd");
+	err = win->ScriptedSetFilePath(savePath.String());
+	Check(err == B_OK, "ScriptedSetFilePath riesce su una cartella che esiste davvero");
+	Check(win->ScriptedGetFilePath() == savePath,
+		"ScriptedGetFilePath rilegge lo stesso percorso appena salvato");
+
+	BEntry savedEntry(savePath.String());
+	Check(savedEntry.Exists(), "il file e' stato scritto davvero sul disco");
+	savedEntry.Remove();
+
+	err = win->ScriptedSetFilePath("/percorso/che/non/esiste/x.ascd");
+	Check(err == B_NAME_NOT_FOUND,
+		"ScriptedSetFilePath con una cartella inesistente restituisce B_NAME_NOT_FOUND, non va in crash ne' scrive altrove");
+
+	err = win->ScriptedSetFilePath("");
+	Check(err == B_BAD_VALUE, "ScriptedSetFilePath con una stringa vuota restituisce B_BAD_VALUE");
 
 	win->Unlock();
 
