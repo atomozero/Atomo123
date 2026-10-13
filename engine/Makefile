@@ -178,7 +178,18 @@ test-vba-project: $(LIB)
 	$(CXX) -o tests/vba_project_test $(OBJDIR)/vba_project_test.o -L. -lengine -lbe
 	./tests/vba_project_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test
+# Test della decompressione [MS-OVBA] 2.4.1 (Path to full Excel parity,
+# VBA/macro execution, Fase 1b): vedi il commento in cima a
+# vba_decompress_test.cpp sul perche' questo e' un controllo di
+# coerenza interna (compressore e decompressore scritti insieme) e non
+# (ancora) una convalida contro un vero campione Microsoft, limite
+# segnalato anche in ROADMAP.md.
+test-vba-decompress: $(LIB)
+	$(CXX) -c tests/vba_decompress_test.cpp -o $(OBJDIR)/vba_decompress_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/vba_decompress_test $(OBJDIR)/vba_decompress_test.o -L. -lengine -lbe
+	./tests/vba_decompress_test
 
-.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test
+
+.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress
