@@ -5,12 +5,13 @@
 	esplicita dell'utente, dopo aver controllato con "hey Atomo123 get
 	Suites of Window 0" che prima esistevano solo le suite generiche di
 	BWindow/BView/BMenu, nessuna proprieta' specifica di questa app):
-	dieci proprieta' DIRETTE, "Value"/"Selection"/"FilePath"/"CellColor"/
-	"ColumnWidth"/"Bold"/"Border"/"NumberFormat"/"Chart"/"WrapText", in
-	una nuova suite "suite/vnd.Atomo-sheet" (GetSupportedSuites/ResolveSpecifier).
-	La logica vera vive in altrettante coppie di metodi pubblici Get/Set
-	(Get/Insert per Chart), testati qui sia direttamente sia attraverso
-	un vero giro BMessage (AddSpecifier/ResolveSpecifier/
+	undici proprieta' DIRETTE, "Value"/"Selection"/"FilePath"/"CellColor"/
+	"ColumnWidth"/"Bold"/"Border"/"NumberFormat"/"Chart"/"WrapText"/
+	"GoalSeek", in una nuova suite "suite/vnd.Atomo-sheet"
+	(GetSupportedSuites/ResolveSpecifier). La logica vera vive in
+	altrettante coppie di metodi pubblici Get/Set (Get/Insert per
+	Chart, Get/Run per GoalSeek), testati qui sia direttamente sia
+	attraverso un vero giro BMessage (AddSpecifier/ResolveSpecifier/
 	MessageReceived), stesso principio gemello di
 	test_format_toolbar.cpp per i pulsanti della toolbar.
 
@@ -341,6 +342,30 @@ int main()
 
 	err = win->ScriptedSetWrapText("forse");
 	Check(err == B_BAD_VALUE, "ScriptedSetWrapText con un valore che non e' \"true\"/\"false\" restituisce B_BAD_VALUE");
+
+	// --- ScriptedGetGoalSeek/ScriptedRunGoalSeek ---
+	win->ScriptedSetSelection("P1");
+	win->ScriptedSetValue("3");
+	win->ScriptedSetSelection("P2");
+	win->ScriptedSetValue("=P1*4");
+
+	Check(win->ScriptedGetGoalSeek() == "", "ScriptedGetGoalSeek e' \"\" prima di ogni esecuzione");
+
+	err = win->ScriptedRunGoalSeek("P2|40|P1");
+	Check(err == B_OK, "ScriptedRunGoalSeek con un formato valido riesce (sia che converga o meno)");
+	Check(win->ScriptedGetGoalSeek().FindFirst("true,") == 0,
+		"ScriptedGetGoalSeek inizia con \"true,\" dopo una convergenza (P1 diventa 10, P2 raggiunge 40)");
+	win->ScriptedSetSelection("P1");
+	double p1Value = atof(win->ScriptedGetValue().String());
+	Check(p1Value > 9.99 && p1Value < 10.01,
+		"ScriptedRunGoalSeek applica davvero il valore trovato a P1 (~10)");
+
+	err = win->ScriptedRunGoalSeek("P2|40"); // manca il terzo campo "|cambiando"
+	Check(err == B_BAD_VALUE,
+		"ScriptedRunGoalSeek con meno di due separatori \"|\" restituisce B_BAD_VALUE");
+
+	err = win->ScriptedRunGoalSeek("");
+	Check(err == B_BAD_VALUE, "ScriptedRunGoalSeek con una stringa vuota restituisce B_BAD_VALUE");
 
 	win->Unlock();
 

@@ -62,6 +62,7 @@ SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/SheetTabView.cpp
 	src/ValidationWindow.cpp \
 	src/WhatIfWindow.cpp \
 	src/ScenarioWindow.cpp \
+	src/GoalSeekWindow.cpp \
 	src/NamedStyleWindow.cpp \
 	src/ConditionalFormatWindow.cpp \
 	src/PasswordWindow.cpp \
@@ -261,7 +262,7 @@ test-xlsx-perf-profile: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_xlsx_perf_profile $(RSRC)
@@ -277,7 +278,7 @@ test-borders: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_borders
@@ -293,7 +294,7 @@ test-currency-format: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_currency_format
@@ -309,7 +310,7 @@ test-overflow: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_overflow
@@ -392,7 +393,7 @@ test-named-styles: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_named_styles
@@ -450,7 +451,7 @@ test-scroll: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_scroll
@@ -465,7 +466,7 @@ test-editing: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_editing
@@ -482,7 +483,7 @@ test-real-input-edit: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_real_input_edit
@@ -498,7 +499,7 @@ test-point-mode: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_point_mode $(RSRC)
@@ -514,7 +515,7 @@ test-autocomplete: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_autocomplete $(RSRC)
@@ -531,7 +532,7 @@ test-navigation: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_navigation
@@ -546,7 +547,7 @@ test-selection: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_selection
@@ -562,7 +563,7 @@ test-image-alpha: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_image_alpha
@@ -576,7 +577,7 @@ test-fill: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_fill
@@ -590,7 +591,7 @@ test-sort: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_sort
@@ -604,7 +605,7 @@ test-undo: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_undo
@@ -619,7 +620,7 @@ test-clear-keeps-style: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_clear_keeps_style
@@ -634,7 +635,7 @@ test-paste-range: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_paste_range
@@ -650,7 +651,7 @@ test-recalc-seeding: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_recalc_seeding
@@ -664,7 +665,7 @@ test-insert-delete: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_insert_delete
@@ -679,7 +680,7 @@ test-unsaved-changes: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_unsaved_changes
@@ -693,7 +694,7 @@ test-resize: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_resize
@@ -707,7 +708,7 @@ test-autofilter: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_autofilter
@@ -722,7 +723,7 @@ test-chart-drag: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_chart_drag
@@ -736,7 +737,7 @@ test-chart-resize: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_chart_resize
@@ -751,7 +752,7 @@ test-slicer: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_slicer
@@ -765,7 +766,7 @@ test-image-drag: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_image_drag
@@ -779,7 +780,7 @@ test-image-resize: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_image_resize
@@ -793,7 +794,7 @@ test-image-delete: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_image_delete
@@ -807,7 +808,7 @@ test-chart-delete: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_chart_delete
@@ -826,7 +827,7 @@ test-image-export-drag: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_image_export_drag
@@ -841,7 +842,7 @@ test-image-autoscroll: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_image_autoscroll
@@ -857,7 +858,7 @@ test-merge-click: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_merge_click
@@ -873,7 +874,7 @@ test-multisheet: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_multisheet
@@ -891,7 +892,7 @@ test-open-async: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_open_async
@@ -909,7 +910,7 @@ test-recalc-dirty-cells: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_recalc_dirty_cells $(RSRC)
@@ -926,7 +927,7 @@ test-recent-files: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_recent_files
@@ -944,7 +945,7 @@ test-xsheet-formulas: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_xsheet_formulas
@@ -985,7 +986,7 @@ test-open-encrypted: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_open_encrypted $(RSRC)
@@ -998,7 +999,7 @@ test-xlsx-named-functions-dynamic: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_xlsx_named_functions_dynamic $(RSRC)
@@ -1041,7 +1042,7 @@ test-multiwindow: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		src/SplashWindow.o src/AtomGLView.o src/AtomTheme.o src/TextTexture.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -1060,7 +1061,7 @@ test-argv-open: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		src/SplashWindow.o src/AtomGLView.o src/AtomTheme.o src/TextTexture.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
@@ -1076,7 +1077,7 @@ test-paste-special: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_paste_special
@@ -1092,7 +1093,7 @@ test-preferences: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_preferences
@@ -1108,7 +1109,7 @@ test-print-settings: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_print_settings
@@ -1128,7 +1129,7 @@ test-export-formats: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_export_formats $(RSRC)
@@ -1144,7 +1145,7 @@ test-plain-save: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_plain_save $(RSRC)
@@ -1160,7 +1161,7 @@ test-autosave: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_autosave $(RSRC)
@@ -1177,7 +1178,7 @@ test-chart-export-xlsx: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_chart_export_xlsx $(RSRC)
@@ -1190,7 +1191,7 @@ test-style-export-xlsx: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_style_export_xlsx $(RSRC)
@@ -1212,7 +1213,7 @@ test-xlsm-macro-preservation: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS) -lz
 	xres -o tests/test_xlsm_macro_preservation $(RSRC)
@@ -1232,7 +1233,7 @@ test-cell-protection: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS) -lz
 	xres -o tests/test_cell_protection $(RSRC)
@@ -1249,7 +1250,7 @@ test-format: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_format
@@ -1265,7 +1266,7 @@ test-format-toolbar: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_format_toolbar
@@ -1280,7 +1281,7 @@ test-font-toolbar: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_font_toolbar
@@ -1297,7 +1298,7 @@ test-scripting: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_scripting
@@ -1313,7 +1314,7 @@ test-toolbar-phase13: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_toolbar_phase13
@@ -1330,7 +1331,7 @@ test-freeze: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_freeze
@@ -1346,7 +1347,7 @@ test-formula-display: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_formula_display
@@ -1363,7 +1364,7 @@ test-formula-auditing: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_formula_auditing $(RSRC)
@@ -1378,7 +1379,7 @@ test-selection-stats: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_selection_stats
@@ -1393,7 +1394,7 @@ test-scrollbars-visible: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_scrollbars_visible
@@ -1409,7 +1410,7 @@ test-comments: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_comments
@@ -1428,7 +1429,7 @@ test-autosum: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_autosum $(RSRC)
@@ -1443,12 +1444,27 @@ test-whatif: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_whatif $(RSRC)
 	./tests/test_whatif
 	./tests/test_autosum
+
+# Ricerca obiettivo (Tier 3, "Path to full Excel parity" -- Goal Seek):
+# MainWindow::ApplyGoalSeek, stesso schema esatto di test-whatif sopra.
+test-goal-seek: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
+	$(CXX) -c tests/test_goal_seek.cpp -o tests/test_goal_seek.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_goal_seek tests/test_goal_seek.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	xres -o tests/test_goal_seek $(RSRC)
+	./tests/test_goal_seek
 
 # Rilevamento dei riferimenti circolari (RecalculateAll/
 # RecalculateWorkbook in AscdIO.cpp): bug reale segnalato da un
@@ -1460,7 +1476,7 @@ test-circular-reference: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_circular_reference $(RSRC)
@@ -1478,7 +1494,7 @@ test-dependency-graph-build: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_dependency_graph_build $(RSRC)
@@ -1495,7 +1511,7 @@ test-dependency-graph-recalc: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_dependency_graph_recalc $(RSRC)
@@ -1511,7 +1527,7 @@ test-hyperlinks: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_hyperlinks
@@ -1526,7 +1542,7 @@ test-validation: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_validation
@@ -1542,7 +1558,7 @@ test-condformat: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_condformat
@@ -1559,7 +1575,7 @@ test-pivot-refresh: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_pivot_refresh
@@ -1575,7 +1591,7 @@ test-sheet-management: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_sheet_management
@@ -1591,7 +1607,7 @@ test-find-replace: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_find_replace
@@ -1607,7 +1623,7 @@ test-insert-chart: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_insert_chart
@@ -1622,7 +1638,7 @@ test-edit-chart: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_edit_chart
@@ -1636,7 +1652,7 @@ test-chart-row-orientation: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_chart_row_orientation
@@ -1650,7 +1666,7 @@ test-chart-series-colors: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_chart_series_colors
@@ -1668,7 +1684,7 @@ test-chart-trendlines: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_chart_trendlines
@@ -1682,7 +1698,7 @@ test-chart-range-picker: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_chart_range_picker
@@ -1696,7 +1712,7 @@ test-scenario-manager: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_scenario_manager
@@ -1711,7 +1727,7 @@ test-goto: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_goto
@@ -1729,7 +1745,7 @@ test-names: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_names
@@ -1797,7 +1813,7 @@ clean:
 		examples/atomo123_demo.ascd \
 		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
-.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-autosum test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-font-toolbar test-scripting test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection test-slicer test-whatif test-circular-reference test-point-mode test-autocomplete test-chart-antialiasing test-edit-chart test-chart-row-orientation test-chart-series-colors test-chart-range-picker test-scenario-manager test-named-styles test-chart-trendlines test-dependency-graph-build test-dependency-graph-recalc test-recalc-seeding clean
+.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-autosum test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-font-toolbar test-scripting test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection test-slicer test-whatif test-goal-seek test-circular-reference test-point-mode test-autocomplete test-chart-antialiasing test-edit-chart test-chart-row-orientation test-chart-series-colors test-chart-range-picker test-scenario-manager test-named-styles test-chart-trendlines test-dependency-graph-build test-dependency-graph-recalc test-recalc-seeding clean
 
 # Include i file di dipendenza generati da -MMD/-MP (vedi CXXFLAGS in
 # cima) -- src/*.d per la build principale, tests/*.d per ogni target

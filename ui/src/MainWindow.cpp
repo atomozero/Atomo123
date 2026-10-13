@@ -30,6 +30,7 @@
 #include "ValidationWindow.h"
 #include "WhatIfWindow.h"
 #include "ScenarioWindow.h"
+#include "GoalSeekWindow.h"
 #include "NamedStyleWindow.h"
 #include "ConditionalFormatWindow.h"
 #include "PasswordWindow.h"
@@ -181,6 +182,7 @@ static const uint32 kMsgShowHyperlinkWindow = 'shlw';
 static const uint32 kMsgShowValidationWindow = 'shvw';
 static const uint32 kMsgShowWhatIfWindow = 'shwi';
 static const uint32 kMsgShowScenarioWindow = 'shsc';
+static const uint32 kMsgShowGoalSeekWindow = 'shgs';
 static const uint32 kMsgShowNamedStyleWindow = 'shns';
 static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 // Tier 4 "named table styles": "style" (int32) e' l'indice in
@@ -1278,6 +1280,12 @@ MainWindow::MainWindow()
 	// HandleShowScenario.
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Gestione scenari" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowScenarioWindow)));
+	// Ricerca obiettivo (Tier 3, "Path to full Excel parity" -- Goal
+	// Seek): stesso posto della scheda "Dati" di Excel ("Analisi di
+	// simulazione > Ricerca obiettivo") -- vedi MainWindow::
+	// ApplyGoalSeek/HandleGoalSeekRequest.
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Ricerca obiettivo" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgShowGoalSeekWindow)));
 	dataMenu->AddSeparatorItem();
 	// Filtro automatico (revisione dei menu: prima non esisteva NESSUN
 	// comando per attivarlo su un foglio nativo/nuovo -- SetAutoFilter
@@ -1613,6 +1621,7 @@ MainWindow::MainWindow()
 	fValidationWindow = NULL;
 	fWhatIfWindow = NULL;
 	fScenarioWindow = NULL;
+	fGoalSeekWindow = NULL;
 	fNamedStyleWindow = NULL;
 	fConditionalFormatWindow = NULL;
 	fPasswordWindow = NULL;
@@ -5917,6 +5926,212 @@ void MainWindow::ApplyWhatIfDataTable(const char* rowInputText, const char* colI
 	MarkModified();
 }
 
+MainWindow::GoalSeekOutcome MainWindow::ApplyGoalSeek(const char* setCellText,
+	const char* toValueText, const char* changingCellText,
+	double* outAchievedValue, BString* outErrorDetail)
+{
+	if (outAchievedValue)
+		*outAchievedValue = 0.0;
+
+	if (!fDoc)
+	{
+		if (outErrorDetail)
+			*outErrorDetail = B_TRANSLATE("Nessun documento aperto.");
+		return eGoalSeekBadInput;
+	}
+	if (!setCellText || setCellText[0] == '\0'
+		|| !toValueText || toValueText[0] == '\0'
+		|| !changingCellText || changingCellText[0] == '\0')
+	{
+		if (outErrorDetail)
+			*outErrorDetail = B_TRANSLATE("Specifica la cella formula, il valore obiettivo e la "
+				"cella da cambiare.");
+		return eGoalSeekBadInput;
+	}
+
+	range setRange, changingRange;
+	if (!ParseRangeRef(setCellText, setRange))
+	{
+		if (outErrorDetail)
+			*outErrorDetail = B_TRANSLATE("Riferimento della cella \"Imposta\" non valido.");
+		return eGoalSeekBadInput;
+	}
+	if (!ParseRangeRef(changingCellText, changingRange))
+	{
+		if (outErrorDetail)
+			*outErrorDetail = B_TRANSLATE("Riferimento della cella da cambiare non valido.");
+		return eGoalSeekBadInput;
+	}
+
+	cell setCell = setRange.TopLeft();
+	cell changingCell = changingRange.TopLeft();
+
+	char* endPtr = NULL;
+	double target = strtod(toValueText, &endPtr);
+	if (endPtr == toValueText)
+	{
+		if (outErrorDetail)
+			*outErrorDetail = B_TRANSLATE("Il valore obiettivo non e' un numero.");
+		return eGoalSeekBadInput;
+	}
+
+	// La cella "Imposta" deve avere una formula vera (altrimenti
+	// cambiare la cella da variare non sposterebbe mai il suo
+	// risultato) -- stesso controllo "kind" gia' usato da SaveASCD per
+	// distinguere formula da letterale.
+	if (fDoc->GetCellFormula(setCell) == NULL)
+	{
+		if (outErrorDetail)
+			*outErrorDetail = B_TRANSLATE("La cella \"Imposta\" deve contenere una formula.");
+		return eGoalSeekBadInput;
+	}
+
+	// Controllo di protezione SENZA l'avviso di GuardProtectedEdit
+	// (apposta pubblico/testabile senza passare da li', vedi il
+	// commento gemello in SheetView.h): un avviso bloccante qui
+	// impiccerebbe per sempre un chiamante da script.
+	range changingSel(changingCell.h, changingCell.v, changingCell.h, changingCell.v);
+	if (fSheetView->IsProtected() && fSheetView->RangeHasLockedCell(changingSel))
+	{
+		if (outErrorDetail)
+			*outErrorDetail = B_TRANSLATE("La cella da cambiare e' protetta.");
+		return eGoalSeekBadInput;
+	}
+
+	// Contenuto ORIGINALE della cella da cambiare, per ripristinarlo
+	// alla fine se il solutore non converge (o prima di scrivere il
+	// valore trovato, cosi' Annulla cattura lo stato VERO precedente,
+	// non un valore intermedio del ciclo sotto) -- stesso principio
+	// esatto di ApplyWhatIfDataTable sopra.
+	char origText[4096] = "";
+	fDoc->GetCellFormula(changingCell, origText, sizeof(origText), false);
+
+	Value startVal;
+	fDoc->GetValue(changingCell, startVal);
+	double v0 = (startVal.fType == eNumData) ? (double)startVal : 0.0;
+	// Perturbazione iniziale piccola ma proporzionale al valore di
+	// partenza (0.01 fisso solo se v0 e' zero) -- stesso spirito del
+	// 10%/11% di RATEFunction, scalato qui perche' la cella da cambiare
+	// puo' avere qualunque grandezza, a differenza di un tasso sempre
+	// vicino a zero.
+	double step = (v0 != 0.0) ? fabs(v0) * 0.01 : 0.01;
+	double v1 = v0 + step;
+
+	// Scrive "v" nella cella da cambiare, ricalcola, legge il
+	// risultato della cella "Imposta" -- la stessa identica tecnica
+	// "sostituisci, ricalcola, rileggi" di ApplyWhatIfDataTable sopra,
+	// qui come scarto dal valore obiettivo invece che come risultato
+	// grezzo (il metodo delle secanti sotto cerca lo zero di questa
+	// funzione). NAN se il risultato non e' numerico (es. un errore di
+	// formula durante il tentativo), mai confuso con una vera
+	// convergenza perche' ogni confronto con NAN e' sempre falso in
+	// C++ -- controllato esplicitamente sotto, non lasciato scorrere.
+	auto Residual = [&](double v) -> double
+	{
+		fDoc->NewCell(changingCell, Value(v), NULL);
+		RecalculateActiveWorkbook(&changingCell);
+		Value result;
+		fDoc->GetValue(setCell, result);
+		if (result.fType != eNumData)
+			return NAN;
+		return (double)result - target;
+	};
+
+	// Tolleranza assoluta-o-relativa: un obiettivo enorme non deve mai
+	// richiedere una precisione assoluta irraggiungibile in virgola
+	// mobile, uno piccolo non deve accontentarsi di una tolleranza
+	// assoluta troppo larga.
+	double tolerance = fabs(target) * 0.000001;
+	if (tolerance < 0.000001)
+		tolerance = 0.000001;
+
+	double f0 = Residual(v0);
+	double f1 = Residual(v1);
+	int iterations = 0;
+	while (!(fabs(f1) <= tolerance))
+	{
+		if (isnan(f0) || isnan(f1) || f1 == f0 || ++iterations >= 100)
+			break;
+		double v2 = v1 - f1 * (v1 - v0) / (f1 - f0);
+		v0 = v1;
+		f0 = f1;
+		v1 = v2;
+		f1 = Residual(v1);
+	}
+	bool converged = !isnan(f1) && fabs(f1) <= tolerance;
+
+	// Ripristina SEMPRE prima il contenuto originale (il ciclo sopra
+	// ha scritto molti valori di tentativo senza traccia di Annulla,
+	// stesso principio di ApplyWhatIfDataTable): cosi' SaveUndoState
+	// sotto cattura lo stato vero precedente, non un residuo del
+	// solutore.
+	if (origText[0] != '\0')
+		TryToParseString(origText, changingCell, fDoc, false);
+	else
+		fDoc->DisposeCell(changingCell);
+
+	if (converged)
+	{
+		fSheetView->SaveUndoState(changingSel);
+		fDoc->NewCell(changingCell, Value(v1), NULL);
+		RecalculateActiveWorkbook(&changingCell);
+		if (outAchievedValue)
+			*outAchievedValue = target + f1;
+		fSheetView->Invalidate();
+		MarkModified();
+		return eGoalSeekConverged;
+	}
+
+	RecalculateActiveWorkbook(&changingCell);
+	if (outAchievedValue && !isnan(f1))
+		*outAchievedValue = target + f1;
+	fSheetView->Invalidate();
+	return eGoalSeekNotConverged;
+}
+
+void MainWindow::HandleGoalSeekRequest(const char* setCellText, const char* toValueText,
+	const char* changingCellText)
+{
+	BString errorDetail;
+	double achieved = 0.0;
+	GoalSeekOutcome outcome = ApplyGoalSeek(setCellText, toValueText, changingCellText,
+		&achieved, &errorDetail);
+
+	switch (outcome)
+	{
+		case eGoalSeekBadInput:
+		{
+			BAlert* alert = new BAlert(B_TRANSLATE("Ricerca obiettivo"), errorDetail.String(),
+				B_TRANSLATE("OK"));
+			alert->Go();
+			break;
+		}
+		case eGoalSeekConverged:
+		{
+			BString msg;
+			msg.SetToFormat(B_TRANSLATE("Trovato un valore per %s che porta %s a %.6g "
+				"(ottenuto: %.6g)."),
+				changingCellText, setCellText, strtod(toValueText, NULL), achieved);
+			BAlert* alert = new BAlert(B_TRANSLATE("Ricerca obiettivo"), msg.String(),
+				B_TRANSLATE("OK"));
+			alert->Go();
+			break;
+		}
+		case eGoalSeekNotConverged:
+		{
+			BString msg;
+			msg.SetToFormat(B_TRANSLATE("La ricerca obiettivo potrebbe non aver trovato una "
+				"soluzione per %s. Valore più vicino ottenuto: %.6g (obiettivo: %.6g). %s non "
+				"è stata modificata."),
+				setCellText, achieved, strtod(toValueText, NULL), changingCellText);
+			BAlert* alert = new BAlert(B_TRANSLATE("Ricerca obiettivo"), msg.String(),
+				B_TRANSLATE("OK"));
+			alert->Go();
+			break;
+		}
+	}
+}
+
 // "type" e' l'indice posizionale del menu di ConditionalFormatWindow
 // (vedi il commento li' per la tabella completa), NON lo stesso ordine
 // di CondFormatRuleType -- questa funzione ospita ogni tipo "per
@@ -9038,6 +9253,24 @@ void MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 
+		case kMsgShowGoalSeekWindow:
+			if (!fGoalSeekWindow)
+				fGoalSeekWindow = new GoalSeekWindow(BMessenger(this));
+			if (fGoalSeekWindow->IsHidden())
+				fGoalSeekWindow->Show();
+			fGoalSeekWindow->Activate();
+			break;
+
+		case kMsgGoalSeekCommit:
+		{
+			BString setCell, toValue, changingCell;
+			message->FindString("setCell", &setCell);
+			message->FindString("toValue", &toValue);
+			message->FindString("changingCell", &changingCell);
+			HandleGoalSeekRequest(setCell.String(), toValue.String(), changingCell.String());
+			break;
+		}
+
 		case kMsgShowNamedStyleWindow:
 			if (!fNamedStyleWindow)
 				fNamedStyleWindow = new NamedStyleWindow(BMessenger(this));
@@ -9796,6 +10029,11 @@ void MainWindow::MessageReceived(BMessage* message)
 					HandleScriptingWrapText(message);
 					break;
 				}
+				if (strcmp(property, "GoalSeek") == 0)
+				{
+					HandleScriptingGoalSeek(message);
+					break;
+				}
 			}
 			BWindow::MessageReceived(message);
 			break;
@@ -9821,7 +10059,8 @@ BHandler* MainWindow::ResolveSpecifier(BMessage* message, int32 index,
 			|| strcmp(property, "FilePath") == 0 || strcmp(property, "CellColor") == 0
 			|| strcmp(property, "ColumnWidth") == 0 || strcmp(property, "Bold") == 0
 			|| strcmp(property, "Border") == 0 || strcmp(property, "NumberFormat") == 0
-			|| strcmp(property, "Chart") == 0 || strcmp(property, "WrapText") == 0))
+			|| strcmp(property, "Chart") == 0 || strcmp(property, "WrapText") == 0
+			|| strcmp(property, "GoalSeek") == 0))
 		return this;
 	return BWindow::ResolveSpecifier(message, index, specifier, what, property);
 }
@@ -9878,6 +10117,15 @@ status_t MainWindow::GetSupportedSuites(BMessage* data)
 			"cells; setting it applies explicitly (not a toggle) to the "
 			"whole current selection and grows the row height to fit, "
 			"same as the Wrap Text toolbar button." },
+		{ "GoalSeek", { B_GET_PROPERTY, B_SET_PROPERTY, 0 }, { B_DIRECT_SPECIFIER, 0 },
+			"GET returns the outcome of the last run as \"true,<value>\" "
+			"(converged) or \"false,<value>\" (did not converge), or an "
+			"empty string if never run. SET solves from "
+			"\"setCell|toValue|changingCell\", e.g. \"B10|5000|B3\" -- "
+			"varies changingCell (a secant-method search, same technique "
+			"as the RATE function) until setCell's formula evaluates to "
+			"toValue, same as Data > Goal Seek. setCell must actually "
+			"contain a formula." },
 		{ 0 }
 	};
 	data->AddString("suites", "suite/vnd.Atomo-sheet");
@@ -10650,6 +10898,76 @@ void MainWindow::HandleScriptingWrapText(BMessage* message)
 			reply.AddInt32("error", B_BAD_VALUE);
 		else
 			reply.AddInt32("error", ScriptedSetWrapText(text.String()));
+	}
+	message->SendReply(&reply);
+}
+
+// Esito dell'ultima ScriptedRunGoalSeek, "" se mai eseguita in questa
+// sessione (stesso significato di fLastGoalSeekResult, solo esposto
+// come stringa di scripting qui).
+BString MainWindow::ScriptedGetGoalSeek() const
+{
+	return fLastGoalSeekResult;
+}
+
+// Formato "celllaImposta|valoreObiettivo|cellaDaCambiare", stesso
+// spirito "un solo valore testuale" di ScriptedInsertChart sopra (tre
+// campi separati da "|" invece di una vera BMessage strutturata,
+// perche' questa suite di scripting espone solo proprieta' a valore
+// singolo). Chiama ApplyGoalSeek DIRETTAMENTE (mai HandleGoalSeekRequest,
+// che mostra un BAlert): sia l'esito "convergente" sia "non
+// convergente" sono risultati legittimi di un'esecuzione riuscita per
+// uno script (corrispondono rispettivamente a "trovato" e "nessuna
+// soluzione", non a un errore della chiamata stessa) -- solo
+// eGoalSeekBadInput (campo mancante/malformato) restituisce
+// B_BAD_VALUE qui.
+status_t MainWindow::ScriptedRunGoalSeek(const char* text)
+{
+	if (text == NULL || text[0] == '\0')
+		return B_BAD_VALUE;
+
+	BString input(text);
+	BString parts[3];
+	int32 start = 0;
+	for (int i = 0; i < 2; i++)
+	{
+		int32 sep = input.FindFirst('|', start);
+		if (sep < 0)
+			return B_BAD_VALUE;
+		input.CopyInto(parts[i], start, sep - start);
+		start = sep + 1;
+	}
+	input.CopyInto(parts[2], start, input.Length() - start);
+
+	double achieved = 0.0;
+	GoalSeekOutcome outcome = ApplyGoalSeek(parts[0].String(), parts[1].String(),
+		parts[2].String(), &achieved, NULL);
+	if (outcome == eGoalSeekBadInput)
+	{
+		fLastGoalSeekResult = "";
+		return B_BAD_VALUE;
+	}
+
+	fLastGoalSeekResult = (outcome == eGoalSeekConverged) ? "true," : "false,";
+	fLastGoalSeekResult << achieved;
+	return B_OK;
+}
+
+void MainWindow::HandleScriptingGoalSeek(BMessage* message)
+{
+	BMessage reply(B_REPLY);
+	if (message->what == B_GET_PROPERTY)
+	{
+		reply.AddString("result", ScriptedGetGoalSeek());
+		reply.AddInt32("error", B_OK);
+	}
+	else // B_SET_PROPERTY
+	{
+		BString text;
+		if (!FindScriptedDataAsString(message, &text))
+			reply.AddInt32("error", B_BAD_VALUE);
+		else
+			reply.AddInt32("error", ScriptedRunGoalSeek(text.String()));
 	}
 	message->SendReply(&reply);
 }

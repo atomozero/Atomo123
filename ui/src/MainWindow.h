@@ -54,6 +54,7 @@ class HyperlinkWindow;
 class ValidationWindow;
 class WhatIfWindow;
 class ScenarioWindow;
+class GoalSeekWindow;
 class NamedStyleWindow;
 class ConditionalFormatWindow;
 class PasswordWindow;
@@ -115,6 +116,8 @@ public:
 	status_t ScriptedInsertChart(const char* text);
 	BString ScriptedGetWrapText() const;
 	status_t ScriptedSetWrapText(const char* text);
+	BString ScriptedGetGoalSeek() const;
+	status_t ScriptedRunGoalSeek(const char* text);
 
 	// Riposiziona le due barre di scorrimento di fSheetView ogni volta
 	// che la finestra (quindi la vera area visibile della griglia)
@@ -581,6 +584,44 @@ public:
 	void HandleInsertSlicer();
 	void ApplyWhatIfDataTable(const char* rowInputText, const char* colInputText);
 
+	// Ricerca obiettivo (Tier 3, "Path to full Excel parity" -- Goal
+	// Seek): tre esiti distinti, non solo successo/fallimento, quindi
+	// un enum invece di un bool/status_t -- il chiamante (BAlert del
+	// menu, o la proprieta' di scripting "GoalSeek") decide da solo
+	// come riportare ciascuno, questa funzione non mostra MAI un
+	// BAlert (stesso motivo gia' documentato per ScriptedSetFilePath/
+	// ScriptedInsertChart: un avviso bloccante impiccerebbe per sempre
+	// un chiamante da script in attesa di un clic umano che non
+	// arrivera' mai).
+	enum GoalSeekOutcome {
+		eGoalSeekBadInput,     // campo mancante/malformato, protezione, o la cella "Imposta" non ha una formula
+		eGoalSeekConverged,    // trovato un valore entro la tolleranza, applicato (annullabile)
+		eGoalSeekNotConverged  // non converge entro 100 iterazioni; la cella da cambiare torna al contenuto originale
+	};
+	// Metodo delle secanti (nessuna derivata esplicita), stessa tecnica
+	// di RATEFunction/IRRFunction nel motore (Functions.finance.cpp),
+	// qui applicata a una cella formula qualsiasi invece che a
+	// un'equazione di cash-flow chiusa: ogni tentativo scrive un
+	// valore letterale nella cella da cambiare, ricalcola, legge il
+	// risultato della cella "Imposta" -- la stessa identica tecnica
+	// "sostituisci, ricalcola, rileggi" gia' usata da
+	// ApplyWhatIfDataTable sopra. outAchievedValue (se non NULL)
+	// riceve il valore finale raggiunto dalla cella "Imposta" in ogni
+	// caso (anche su mancata convergenza, il tentativo piu' vicino);
+	// outErrorDetail (se non NULL) e' valorizzato SOLO per
+	// eGoalSeekBadInput, con il messaggio esatto da mostrare.
+	GoalSeekOutcome ApplyGoalSeek(const char* setCellText, const char* toValueText,
+		const char* changingCellText, double* outAchievedValue = NULL,
+		BString* outErrorDetail = NULL);
+	// Wrapper per il comando di menu/GoalSeekWindow: chiama
+	// ApplyGoalSeek sopra e mostra esattamente un BAlert in base
+	// all'esito -- l'UNICO punto che mostra un avviso per questa
+	// funzionalita', cosi' ApplyGoalSeek stessa resta priva di
+	// interfaccia e riusabile dallo scripting senza duplicare la
+	// logica del solutore.
+	void HandleGoalSeekRequest(const char* setCellText, const char* toValueText,
+		const char* changingCellText);
+
 	// Formattazione condizionale VIVA (Fase 13): a differenza di
 	// SetCellValidation sopra (un primitivo per singola cella), qui
 	// non serve un doppio livello -- una regola si applica gia' a un
@@ -883,6 +924,11 @@ private:
 	ConditionalFormatWindow* fConditionalFormatWindow;
 	WhatIfWindow* fWhatIfWindow;
 	ScenarioWindow* fScenarioWindow;
+	GoalSeekWindow* fGoalSeekWindow;
+	// Esito dell'ultima ScriptedRunGoalSeek (vedi li'), letto da
+	// ScriptedGetGoalSeek -- "" se mai eseguita in questa sessione,
+	// altrimenti "true,<valore>" o "false,<valore>".
+	BString fLastGoalSeekResult;
 	NamedStyleWindow* fNamedStyleWindow;
 	// Password VERA di protezione foglio (Path to full Excel parity):
 	// fPasswordTargetSheetIndex cattura QUALE foglio era attivo quando la
@@ -1059,6 +1105,7 @@ private:
 	void HandleScriptingNumberFormat(BMessage* message);
 	void HandleScriptingChart(BMessage* message);
 	void HandleScriptingWrapText(BMessage* message);
+	void HandleScriptingGoalSeek(BMessage* message);
 	// Aggiorna il testo di fCellMode combinando modalita' (Pronto/
 	// Modifica) e fModified (prefisso "* ", stesso segno gia' usato dal
 	// titolo -- vedi UpdateTitle): chiamata da entrambi, cosi' il
