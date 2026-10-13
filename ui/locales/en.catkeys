@@ -1,4 +1,4 @@
-1	English	application/x-vnd.Atomo-Atomo123	1829224689
+1	English	application/x-vnd.Atomo-Atomo123	865844741
 Dividi	PasteSpecialWindow		Divide
 Nuovo documento	MainWindow		New document
 Sostituisci con:	FindWindow		Replace with:
@@ -124,7 +124,6 @@ Media	Pivot		Average
 Rimuovi commento	CommentWindow		Remove comment
 Elimina	NameWindow		Delete
 Nessuna anteprima	PageSetupWindow		No preview
-Se il valore e' uguale a	ConditionalFormatWindow		If the value is equal to
 A capo automatico	MainWindow		Wrap text
 Il file non e' piu' disponibile nella posizione registrata.	MainWindow		The file is no longer available at its recorded location.
 Tipo:	ChartWindow		Type:
@@ -150,7 +149,6 @@ Apri recenti	MainWindow		Open Recent
 Grassetto	MainWindow		Bold
 Nessun translator installato sa esportare in questo formato.	MainWindow		No installed translator can export to this format.
 Somma	PivotWindow		Sum
-Grafico a barre…	MainWindow		Bar chart…
 Superiore:	PageSetupWindow		Top:
 Ordina crescente	MainWindow		Sort ascending
 Una sola pagina	PageSetupWindow		Fit to one page
@@ -284,7 +282,6 @@ Abilita il salvataggio automatico (backup)	PreferencesWindow		Enable automatic s
 Vai a…	MainWindow		Go to…
 Tipo:	ConditionalFormatWindow		Type:
 Ordina decrescente	MainWindow		Sort descending
-Valore (solo per \"uguale a\"):	ConditionalFormatWindow		Value (only for \"equal to\"):
 Copia	MainWindow		Copy
 Cerca:	FindWindow		Search:
 Tutto (come Incolla)	PasteSpecialWindow		All (like Paste)
@@ -337,7 +334,6 @@ Lettura del file...	MainWindow		Reading file...
 Mostra formule	MainWindow		Show formulas
 Proteggi foglio	MainWindow		Protect sheet
 Ricalcolo in corso...	MainWindow		Recalculating...
-Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		Recalculating: sheet %d of %d (pass %d) - %s
 Rimuovi	WatchWindow		Remove
 Rimuovi frecce	MainWindow		Remove arrows
 Sblocca celle selezionate	MainWindow		Unlock selected cells
@@ -394,3 +390,133 @@ Italiano	PreferencesWindow		Italian
 English	PreferencesWindow		English
 Lingua (al prossimo avvio):	PreferencesWindow		Language (on next launch):
 Riapri i file recenti all'avvio	PreferencesWindow		Reopen recent files on launch
+Password	PasswordWindow		Password
+Grassetto	NamedStyleWindow		Bold
+Testo:	NamedStyleWindow		Text:
+Trova il valore della cella da cambiare che porta la cella formula al valore voluto:	GoalSeekWindow		Find the value for the changing cell that drives the formula cell to the desired value:
+Confronto numerico (vedi Operatore)	ConditionalFormatWindow		Numeric comparison (see Operator)
+Esiste gia' uno stile con questo nome.	MainWindow		A style with this name already exists.
+Aggiorna	ChartWindow		Refresh
+Ultimi (invece di primi)	ConditionalFormatWindow		Bottom (instead of top)
+Colori tema	NamedStyleWindow		Theme colors
+Il numero di valori non corrisponde al numero di celle nell'intervallo.	MainWindow		The number of values doesn't match the number of cells in the range.
+Quanti valori:	ConditionalFormatWindow		How many values:
+E:	ConditionalFormatWindow		And:
+Serve un AutoFilter attivo per inserire uno slicer.	MainWindow		An active AutoFilter is required to insert a slicer.
+Scambia righe/colonne	ChartWindow		Swap rows/columns
+Continua comunque	MainWindow		Continue anyway
+Nome (per \"Nuovo dalla selezione\"):	NamedStyleWindow		Name (for \"New from selection\"):
+Primi/ultimi N valori	ConditionalFormatWindow		Top/bottom N values
+Media mobile	ChartSeriesOptionsWindow		Moving average
+Contiene testo	ConditionalFormatWindow		Contains text
+Gestione stili cella	NamedStyleWindow		Cell style manager
+Minore o uguale a	ConditionalFormatWindow		Less than or equal to
+Tra	ConditionalFormatWindow		Between
+Specifica la cella formula, il valore obiettivo e la cella da cambiare.	MainWindow		Specify the formula cell, the target value, and the changing cell.
+Gestione scenari	ScenarioWindow		Scenario manager
+Non tra	ConditionalFormatWindow		Not between
+Gestione scenari…	MainWindow		Scenario manager…
+Questo foglio e' protetto da password:	PasswordWindow		This sheet is password-protected:
+Bordo	MainWindow		Border
+Non contiene errori	ConditionalFormatWindow		Does not contain errors
+Ricerca obiettivo	GoalSeekWindow		Goal Seek
+Riferimento della cella input colonna non valido.	MainWindow		Invalid column input cell reference.
+Le due password non corrispondono.	PasswordWindow		The two passwords do not match.
+Nessun dato valido nell'intervallo per la combinazione di campo Colonne/misure scelta.	MainWindow		No valid data in the range for the chosen Columns field/measures combination.
+Intervallo dati non valido: deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Invalid data range: it must have two columns (labels, values) with at least one numeric row, e.g. A1:B5.
+Percentuale (%):	ChartSeriesOptionsWindow		Percentage (%):
+Grafico…	MainWindow		Chart…
+Questo file era protetto da una password di apertura. Salvarlo con \"Salva\" rimuove la protezione: il file diventa leggibile senza password. Usa \"Salva con nome\" per mantenere l'originale cifrato intatto.	MainWindow		This file was protected by an open password. Saving it with \"Save\" removes the protection: the file becomes readable without a password. Use \"Save as\" to keep the original encrypted file intact.
+Password	MainWindow		Password
+Password facoltativa per questo foglio (vuota = proteggi senza password):	PasswordWindow		Optional password for this sheet (empty = protect without a password):
+Valore fisso	ChartSeriesOptionsWindow		Fixed value
+Cella formula in alto a sinistra, valori a destra/sotto:	WhatIfWindow		Formula cell at the top-left, values to the right/below:
+Commento (facoltativo):	ScenarioWindow		Comment (optional):
+Non contiene celle vuote	ConditionalFormatWindow		Does not contain blanks
+Finisce con	ConditionalFormatWindow		Ends with
+Asse 2	ChartWindow		Axis 2
+Password errata: il foglio resta protetto.	MainWindow		Wrong password: the sheet remains protected.
+Ricerca obiettivo…	MainWindow		Goal Seek…
+Slicer	MainWindow		Slicer
+Percentuale	ChartSeriesOptionsWindow		Percentage
+Cella input riga (opzionale):	WhatIfWindow		Row input cell (optional):
+Linea di tendenza:	ChartSeriesOptionsWindow		Trendline:
+Inizia con	ConditionalFormatWindow		Starts with
+Barre orizzontali	ChartWindow		Horizontal bars
+Misure	PivotWindow		Measures
+Nome:	ScenarioWindow		Name:
+Aggiorna	NamedStyleWindow		Update
+Elimina	NamedStyleWindow		Delete
+Applica	ChartSeriesOptionsWindow		Apply
+Password:	PasswordWindow		Password:
+Uguale a	ConditionalFormatWindow		Equal to
+Percentuale	ConditionalFormatWindow		Percentage
+Maggiore di	ConditionalFormatWindow		Greater than
+Imposta cella (deve contenere una formula):	GoalSeekWindow		Set cell (must contain a formula):
+Cambiando la cella:	GoalSeekWindow		By changing cell:
+Contiene errori	ConditionalFormatWindow		Contains errors
+Al valore:	GoalSeekWindow		To value:
+Nessuna	ChartSeriesOptionsWindow		None
+Stili cella…	MainWindow		Cell styles…
+Applica	NamedStyleWindow		Apply
+Valore:	ConditionalFormatWindow		Value:
+Punti media mobile:	ChartSeriesOptionsWindow		Moving average points:
+Sottolineato	NamedStyleWindow		Underline
+Riferimento della cella \"Imposta\" non valido.	MainWindow		Invalid \"Set\" cell reference.
+OK	PasswordWindow		OK
+Intervallo non valido: serve almeno una colonna numerica in ogni riga serie.	MainWindow		Invalid range: at least one numeric column is needed in each series row.
+Nuovo dalla selezione	NamedStyleWindow		New from selection
+Elimina	ScenarioWindow		Delete
+La ricerca obiettivo potrebbe non aver trovato una soluzione per %s. Valore più vicino ottenuto: %.6g (obiettivo: %.6g). %s non è stata modificata.	MainWindow		Goal Seek may not have found a solution for %s. Closest value reached: %.6g (target: %.6g). %s was not changed.
+Dimensione carattere	MainWindow		Font size
+Celle variabili (un solo intervallo contiguo):	ScenarioWindow		Changing cells (a single contiguous range):
+Lineare	ChartSeriesOptionsWindow		Linear
+Nessuno	MainWindow		None
+Conferma password:	PasswordWindow		Confirm password:
+Cella input colonna (opzionale):	WhatIfWindow		Column input cell (optional):
+Colore personalizzato	NamedStyleWindow		Custom color
+Famiglia carattere	MainWindow		Font family
+Riprova	MainWindow		Retry
+Nessun documento aperto.	MainWindow		No document open.
+Minore di	ConditionalFormatWindow		Less than
+Ricerca obiettivo	MainWindow		Goal Seek
+Sotto la media (invece di sopra)	ConditionalFormatWindow		Below average (instead of above)
+Intervallo delle celle variabili non valido.	MainWindow		Invalid changing-cells range.
+Rileva colonne	PivotWindow		Detect columns
+Diverso da	ConditionalFormatWindow		Not equal to
+Riferimento della cella input riga non valido.	MainWindow		Invalid row input cell reference.
+La cella da cambiare e' protetta.	MainWindow		The changing cell is protected.
+Colore tema	ColorWindow		Theme color
+Valore:	ChartSeriesOptionsWindow		Value:
+Tabella dati…	MainWindow		Data table…
+Tabella dati	WhatIfWindow		Data table
+Esegui	GoalSeekWindow		Run
+Mostra	ScenarioWindow		Show
+Operatore:	ConditionalFormatWindow		Operator:
+Sopra/sotto la media	ConditionalFormatWindow		Above/below average
+Opzioni serie	ChartSeriesOptionsWindow		Series options
+Corsivo	NamedStyleWindow		Italic
+Campo Colonne:	PivotWindow		Columns field:
+Crea	WhatIfWindow		Create
+Password errata: impossibile aprire il file.	MainWindow		Wrong password: unable to open the file.
+Aggiungi/Aggiorna	ScenarioWindow		Add/Update
+Stile tabella	MainWindow		Table style
+(nessuna)	PivotWindow		(none)
+Sfondo:	NamedStyleWindow		Background:
+Seleziona una cella dentro una tabella strutturata.	MainWindow		Select a cell inside a structured table.
+Trovato un valore per %s che porta %s a %.6g (ottenuto: %.6g).	MainWindow		Found a value for %s that drives %s to %.6g (reached: %.6g).
+Seleziona...	ChartWindow		Select...
+Maggiore o uguale a	ConditionalFormatWindow		Greater than or equal to
+Valori sostitutivi (uno per riga, stesso ordine dell'intervallo):	ScenarioWindow		Substitute values (one per line, same order as the range):
+Il valore obiettivo non e' un numero.	MainWindow		The target value is not a number.
+Non contiene testo	ConditionalFormatWindow		Does not contain text
+Contiene celle vuote	ConditionalFormatWindow		Contains blanks
+Barre d'errore:	ChartSeriesOptionsWindow		Error bars:
+La cella \"Imposta\" deve contenere una formula.	MainWindow		The \"Set\" cell must contain a formula.
+Riferimento della cella da cambiare non valido.	MainWindow		Invalid changing cell reference.
+Annulla	PasswordWindow		Cancel
+Opzioni...	ChartWindow		Options...
+Seleziona...	ScenarioWindow		Select...
+Specifica almeno una cella input (riga o colonna).	MainWindow		Specify at least one input cell (row or column).
+Colore serie	ColorWindow		Series color
+Filtro automatico	MainWindow		AutoFilter
