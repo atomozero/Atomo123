@@ -205,7 +205,15 @@ test-vba-module-source: $(LIB)
 	$(CXX) -o tests/vba_module_source_test $(OBJDIR)/vba_module_source_test.o -L. -lengine -lbe
 	./tests/vba_module_source_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test
+# Test dell'analisi lessicale del sottoinsieme VBA (Path to full Excel
+# parity, VBA/macro execution, Fase 2a): vedi il commento in cima a
+# vba_token_test.cpp.
+test-vba-token: $(LIB)
+	$(CXX) -c tests/vba_token_test.cpp -o $(OBJDIR)/vba_token_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/vba_token_test $(OBJDIR)/vba_token_test.o -L. -lengine -lbe
+	./tests/vba_token_test
 
-.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test tests/vba_token_test
+
+.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source test-vba-token
