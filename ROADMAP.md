@@ -89,8 +89,6 @@ existing code to build on):
 - **Legacy XLS writing** (BIFF/OLE2) — import only today; writing BIFF8
   from scratch has no library to build on, deliberately excluded (XLSX
   already covers export to the Excel ecosystem)
-- **Macros/VBA** — would need an embedded scripting engine, effectively
-  its own sub-project
 
 ## Current focus
 
@@ -139,14 +137,70 @@ parity gap, and file-type icons from the HVIF store (www.hvif-store.art
 one; .xlsx/.xlsm/.xls share a generic icon by necessity, documented
 gap). XLS has no export path at all, deliberately, not a gap.
 
-**v4.0** — scripting: expose the app to Haiku's native BHandler/
-BMessage scripting protocol, with macro execution provided by an
-existing embeddable VBA-compatible library if a suitable one is found
-(a research spike, not yet started — no known standalone embeddable
-VBA engine has been confirmed to exist; LibreOffice's Basic is the
-only mature open implementation and is deeply coupled to its own UNO
-API, not extractable as-is) — falls back to a self-written VBA-subset
-interpreter if the spike finds nothing usable.
+**v4.0** — scripting, in two halves. The OS-exposure half is **done**:
+`suite/vnd.Atomo-sheet` (eleven DIRECT properties on `MainWindow`, see
+the status note above) exposes the app to Haiku's native BHandler/
+BMessage scripting protocol, driven today by the separate Pippo
+project's MCP tools. The macro-*execution* half (running real VBA code
+embedded in a `.xlsm` file) is still unstarted — the research spike
+this item always called for has now actually run: no standalone
+embeddable VBA-compatible library exists to pull in (LibreOffice's
+Basic is the only mature open implementation and is deeply coupled to
+its own UNO API, not extractable as-is), confirming the fallback this
+item already anticipated — a self-written VBA-subset interpreter.
+
+Options considered for that interpreter, ordered by scope:
+
+- **(A) Full VBA interpreter from scratch** — MS-OVBA decompression,
+  a real Basic-syntax parser, the whole Excel object model (Range/
+  Worksheet/Workbook/Application) bound onto `CContainer`, a sandboxed
+  execution engine. This is genuinely "its own sub-project" in scope
+  (multi-year), with no guarantee of covering real-world macro idioms
+  even then.
+- **(B) Adapt an existing engine (e.g. LibreOffice Basic)** — already
+  ruled out above: too coupled to UNO to extract, would mean
+  rewriting it anyway.
+- **(C) A self-written interpreter for an explicit, honestly-scoped
+  VBA subset** — the statements that cover most real "record a macro"
+  output (`Range(...).Value =`, `For`/`Next`, `If`/`Then`, `Cells()`,
+  basic string/math functions), rejecting anything outside that scope
+  with a clear per-statement error (same spirit as the existing
+  "chart type not implemented" dialog) instead of pretending full
+  compatibility. Note that 100% fidelity is structurally impossible on
+  Haiku regardless of effort spent: VBA's `Declare ... Lib "kernel32"`
+  and COM/ActiveX automation target Windows APIs that don't exist
+  here, so an honestly-bounded subset isn't just a smaller version of
+  (A), it's the only version of this that full fidelity could never
+  reach either.
+- **(D) Repurpose the already-shipped BMessage scripting suite as a
+  native (non-VBA) macro layer** — a small interpreter calling the
+  same `suite/vnd.Atomo-sheet` properties Pippo already drives
+  externally. Much smaller effort, reuses tested plumbing, but doesn't
+  close the real compatibility gap: it wouldn't run actual VBA code
+  from a real `.xlsm` file, just offer a parallel native automation
+  story.
+- **(E) Scope macro execution out permanently** — keep only the
+  existing byte-preserving round-trip (`.xlsm` macros survive open/
+  save unexecuted, shipped in v0.2.7), declare execution a deliberate
+  non-goal, matching how several other non-Excel spreadsheet apps
+  handle this.
+
+**Decision: proceeding with (C).** It's the only option that makes
+measurable, shippable progress without being a multi-year effort,
+consistent with this project's established pattern of honestly-scoped
+limits documented in CHANGELOG.md rather than false completeness.
+Starting point already in hand, not from zero: `engine/src/FileSys/
+CompoundFileReader` is a real general OLE2/CFB reader (header + DIFAT
++ FAT + MiniFAT + directory tree, any named stream), built for Agile
+Encryption's `EncryptionInfo`/`EncryptedPackage` streams — since
+`vbaProject.bin` (preserved as an opaque blob since v0.2.7, see
+`XlsxTranslator.cpp`, never parsed) is itself a CFB container, this
+reader can open its structure and enumerate/extract named streams
+(`VBA/dir`, `VBA/Module1`, ...) without writing a second CFB parser.
+Any execution path must default macros to **disabled** on open with
+an explicit per-file enable decision (Excel's own trust-bar pattern) —
+macro-enabled documents are a well-known malware vector, and that risk
+doesn't shrink just because the interpreter itself is scoped down.
 
 ## Path to 100% XLSX standard compatibility
 
