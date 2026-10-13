@@ -33,7 +33,7 @@ AR ?= ar
 # supportati da gcc): i crash report restano leggibili, vedi il
 # commento su feedback_debugger_save_report nella memoria di progetto.
 CXXFLAGS ?= -std=gnu++17 -Wall -g -O2 -fPIC -MMD -MP
-SRCDIRS := src/Cell src/Formula src/Functions src/Excel src/FileSys src/Collections src/Misc-Classes src/Utils src/Config src/bsl src/Metrowerks src/Stubs
+SRCDIRS := src/Cell src/Formula src/Functions src/Excel src/FileSys src/Vba src/Collections src/Misc-Classes src/Utils src/Config src/bsl src/Metrowerks src/Stubs
 INCLUDES := $(addprefix -I, $(SRCDIRS))
 OBJDIR := obj
 
@@ -167,7 +167,18 @@ test-dynamic-range: $(LIB) $(FUNC_TEST_RSRC)
 	$(CXX) -o tests/dynamic_range_test $(OBJDIR)/dynamic_range_test.o -L. -lengine -lbe
 	./tests/dynamic_range_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test
+# Test dell'accesso al contenitore di un progetto VBA (Path to full
+# Excel parity, VBA/macro execution, Fase 1a -- vedi la decisione in
+# ROADMAP.md): vbaProject.bin e' esso stesso un contenitore OLE2/CFB
+# ([MS-OVBA] 2.2), quindi riusa CompoundFileReader (engine/src/
+# FileSys, gia' provato per la decifratura Agile Encryption) invece di
+# scriverne un secondo -- vedi il commento in cima a vba_project_test.cpp.
+test-vba-project: $(LIB)
+	$(CXX) -c tests/vba_project_test.cpp -o $(OBJDIR)/vba_project_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/vba_project_test $(OBJDIR)/vba_project_test.o -L. -lengine -lbe
+	./tests/vba_project_test
 
-.PHONY: all clean test test-functions test-xsheet test-names test-tables
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test
+
+.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project
