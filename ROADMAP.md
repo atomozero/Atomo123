@@ -202,6 +202,33 @@ an explicit per-file enable decision (Excel's own trust-bar pattern) —
 macro-enabled documents are a well-known malware vector, and that risk
 doesn't shrink just because the interpreter itself is scoped down.
 
+**Progress — Phase 1 (container access through readable VBA source)
+is done.** New `engine/src/Vba` subsystem, four sub-phases, each with
+its own dedicated test suite: (1a) identify/open `vbaProject.bin` as a
+CFB container via the existing `CompoundFileReader`, cross-checked
+against `olefile` (an independent Python CFB implementation) during
+development; (1b) decode the `[MS-OVBA]` 2.4.1 compression format used
+by every real stream inside a VBA project; (1c) parse the decompressed
+`dir` stream into a module list (name, which CFB stream holds its
+code, the byte offset where real source begins past the binary
+PerformanceCache prefix); (1d) combine all three into one function
+that turns a raw `vbaProject.bin` blob into real, readable VBA source
+text per module. ~60 test assertions across four files, all passing,
+no regressions in the rest of the engine suite.
+
+Known gap, honestly flagged rather than hidden: no real Microsoft-
+produced `.xlsm` with macros was available in this environment, so
+only the CFB container layer (1a) was cross-validated against an
+independent implementation — the MS-OVBA decompression (1b) and dir-
+stream record IDs (1c) were reconstructed from documentation and
+tested for internal consistency (round-trip against this project's own
+encoder, synthetic fixtures with the same record IDs), not confirmed
+against a real file. Close this gap by testing against a real macro-
+enabled workbook as soon as one is available.
+
+Next: Phase 2, a lexer and parser for the explicit VBA subset described
+in option (C) above, still ahead of any execution.
+
 ## Path to 100% XLSX standard compatibility
 
 This is a different axis from "Path to full Excel parity" below: that
