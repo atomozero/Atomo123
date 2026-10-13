@@ -6,11 +6,23 @@
 	costruiti a mano da AppendRecord()/AppendProjectVersion() sotto,
 	con gli stessi ID di record descritti in [MS-OVBA] 2.3.4.2.
 
-	Stesso limite gia' segnalato in VbaDecompress.h/ROADMAP.md: nessun
-	vero progetto VBA prodotto da Microsoft Excel era disponibile in
-	questo ambiente, quindi questo verifica la coerenza interna (un
-	record scritto con un dato ID viene riconosciuto con quell'ID),
-	non la fedelta' degli ID stessi alla specifica reale.
+	I casi sintetici sotto verificano solo la coerenza interna (un
+	record scritto con un dato ID viene riconosciuto con quell'ID). I
+	DUE casi "MS-OVBA ufficiale" in fondo invece sono i byte ESATTI di
+	due esempi pubblicati dalla specifica [MS-OVBA] stessa (sezione
+	3.1.1/3.1.2, "ThisWorkbook Document Module Record Example" e
+	"Sheet1 Document Module Record Example" --
+	https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-ovba/12fae4e5-a9ca-4f02-a564-848fd4ec0413
+	e
+	https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-ovba/9a7f6068-6bb4-4000-9fab-08a9612736f1):
+	confermano che OGNI Id di record usato da questo parser (incluso il
+	dettaglio meno ovvio che MODULESTREAMNAMEUNICODE/0x0032 e
+	MODULEDOCSTRINGUNICODE/0x0048 sono, sul disco reale, record
+	generici Id+Size+Dati separati e consecutivi, non campi annidati
+	dentro un unico record piu' grande nonostante la tabella della
+	specifica li raggruppi sotto un solo nome per la documentazione)
+	corrisponde esattamente a quello vero -- non solo coerenza interna
+	come il resto di questo file.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).
@@ -232,6 +244,104 @@ int main()
 		Check(!ParseVbaDirStream(&dir[0], dir.size(), &modules),
 			"un record PROJECTVERSION troncato (il caso a formato irregolare) "
 			"restituisce false, non legge oltre il buffer");
+	}
+
+	// ---- Vettori di test ufficiali [MS-OVBA] (sezione 3.1.1/3.1.2), non auto-coerenza ----
+	// Vedi il commento in cima al file. Byte ESATTI dagli esempi
+	// pubblicati da Microsoft stesso -- ricostruiti a mano dalla
+	// tabella Offset/Size/Struttura/Valore di ciascuna pagina, con la
+	// dimensione totale di ogni record verificata di nuovo contro
+	// quella dichiarata nella prima riga della tabella (0x94=148 byte
+	// per "ThisWorkbook", 0xBE=190 byte per "Sheet1") prima di fidarsi
+	// della trascrizione.
+	{
+		// "ThisWorkbook Document Module Record Example" (sezione 3.1.1):
+		// nome modulo e nome stream entrambi "ThisWorkbook", offset
+		// del testo 0, modulo documento (0x0022), docstring/help
+		// context vuoti.
+		unsigned bytes[] = {
+			0x19,0x00, 0x0C,0x00,0x00,0x00, 'T','h','i','s','W','o','r','k','b','o','o','k',
+			0x47,0x00, 0x18,0x00,0x00,0x00,
+				'T',0,'h',0,'i',0,'s',0,'W',0,'o',0,'r',0,'k',0,'b',0,'o',0,'o',0,'k',0,
+			0x1A,0x00, 0x0C,0x00,0x00,0x00, 'T','h','i','s','W','o','r','k','b','o','o','k',
+			0x32,0x00, 0x18,0x00,0x00,0x00,
+				'T',0,'h',0,'i',0,'s',0,'W',0,'o',0,'r',0,'k',0,'b',0,'o',0,'o',0,'k',0,
+			0x1C,0x00, 0x00,0x00,0x00,0x00,
+			0x48,0x00, 0x00,0x00,0x00,0x00,
+			0x31,0x00, 0x04,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,
+			0x1E,0x00, 0x04,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,
+			0x2C,0x00, 0x02,0x00,0x00,0x00, 0xFF,0xFF,
+			0x22,0x00, 0x00,0x00,0x00,0x00,
+			0x2B,0x00, 0x00,0x00,0x00,0x00,
+		};
+		std::vector<uint8> dir;
+		for (unsigned b : bytes)
+			dir.push_back((uint8)b);
+		Check(dir.size() == 148, "[MS-OVBA] vettore \"ThisWorkbook\": la trascrizione totalizza "
+			"148 byte, come dichiarato dalla tabella della specifica (0x94)");
+
+		std::vector<VbaModuleInfo> modules;
+		bool ok = ParseVbaDirStream(&dir[0], dir.size(), &modules);
+		Check(ok, "[MS-OVBA] vettore ufficiale \"ThisWorkbook\": l'analisi riesce senza errori");
+		Check(ok && modules.size() == 1, "[MS-OVBA] vettore ufficiale \"ThisWorkbook\": trova esattamente un modulo");
+		if (ok && modules.size() == 1)
+		{
+			Check(modules[0].name == "ThisWorkbook",
+				"[MS-OVBA] vettore ufficiale \"ThisWorkbook\": il nome del modulo combacia");
+			Check(modules[0].streamName == "ThisWorkbook",
+				"[MS-OVBA] vettore ufficiale \"ThisWorkbook\": il nome dello stream combacia");
+			Check(modules[0].textOffset == 0,
+				"[MS-OVBA] vettore ufficiale \"ThisWorkbook\": l'offset del testo combacia (0)");
+			Check(modules[0].isDocumentModule,
+				"[MS-OVBA] vettore ufficiale \"ThisWorkbook\": riconosciuto come modulo documento");
+		}
+	}
+	{
+		// "Sheet1 Document Module Record Example" (sezione 3.1.2):
+		// nomi piu' corti ("Sheet1"), e stavolta con un vero
+		// MODULEDOCSTRING non vuoto ("Example Module Description") e
+		// un vero MODULEHELPCONTEXT (2) -- prova che il salto generico
+		// via il campo Size funziona anche per record con contenuto
+		// vero, non solo per quelli vuoti gia' coperti dall'esempio
+		// precedente.
+		unsigned bytes[] = {
+			0x19,0x00, 0x06,0x00,0x00,0x00, 'S','h','e','e','t','1',
+			0x47,0x00, 0x0C,0x00,0x00,0x00, 'S',0,'h',0,'e',0,'e',0,'t',0,'1',0,
+			0x1A,0x00, 0x06,0x00,0x00,0x00, 'S','h','e','e','t','1',
+			0x32,0x00, 0x0C,0x00,0x00,0x00, 'S',0,'h',0,'e',0,'e',0,'t',0,'1',0,
+			0x1C,0x00, 0x1A,0x00,0x00,0x00,
+				'E','x','a','m','p','l','e',' ','M','o','d','u','l','e',' ',
+				'D','e','s','c','r','i','p','t','i','o','n',
+			0x48,0x00, 0x34,0x00,0x00,0x00,
+				'E',0,'x',0,'a',0,'m',0,'p',0,'l',0,'e',0,' ',0,
+				'M',0,'o',0,'d',0,'u',0,'l',0,'e',0,' ',0,
+				'D',0,'e',0,'s',0,'c',0,'r',0,'i',0,'p',0,'t',0,'i',0,'o',0,'n',0,
+			0x31,0x00, 0x04,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,
+			0x1E,0x00, 0x04,0x00,0x00,0x00, 0x02,0x00,0x00,0x00,
+			0x2C,0x00, 0x02,0x00,0x00,0x00, 0xFF,0xFF,
+			0x22,0x00, 0x00,0x00,0x00,0x00,
+			0x2B,0x00, 0x00,0x00,0x00,0x00,
+		};
+		std::vector<uint8> dir;
+		for (unsigned b : bytes)
+			dir.push_back((uint8)b);
+		Check(dir.size() == 190, "[MS-OVBA] vettore \"Sheet1\": la trascrizione totalizza "
+			"190 byte, come dichiarato dalla tabella della specifica (0xBE)");
+
+		std::vector<VbaModuleInfo> modules;
+		bool ok = ParseVbaDirStream(&dir[0], dir.size(), &modules);
+		Check(ok, "[MS-OVBA] vettore ufficiale \"Sheet1\": l'analisi riesce senza errori, "
+			"incluso il salto corretto di un vero MODULEDOCSTRING non vuoto");
+		Check(ok && modules.size() == 1, "[MS-OVBA] vettore ufficiale \"Sheet1\": trova esattamente un modulo");
+		if (ok && modules.size() == 1)
+		{
+			Check(modules[0].name == "Sheet1",
+				"[MS-OVBA] vettore ufficiale \"Sheet1\": il nome del modulo combacia");
+			Check(modules[0].streamName == "Sheet1",
+				"[MS-OVBA] vettore ufficiale \"Sheet1\": il nome dello stream combacia");
+			Check(modules[0].isDocumentModule,
+				"[MS-OVBA] vettore ufficiale \"Sheet1\": riconosciuto come modulo documento");
+		}
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

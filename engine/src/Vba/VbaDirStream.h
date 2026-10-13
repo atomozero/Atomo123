@@ -20,14 +20,20 @@
 	altro record disallineerebbe la lettura di TUTTO cio' che segue
 	nello stream, moduli inclusi.
 
-	Stesso limite gia' segnalato per VbaDecompress.h e in ROADMAP.md:
-	gli ID dei record e il loro formato sono stati ricostruiti dalla
-	documentazione della specifica, non confermati contro un vero
-	progetto VBA prodotto da Microsoft Excel (nessun campione reale
-	disponibile in questo ambiente) -- i test qui sotto verificano la
-	coerenza interna (un vero stream "dir" sintetico, costruito a mano
-	con gli stessi ID, viene letto correttamente), non la fedelta' a un
-	file reale.
+	Gli ID dei record sono stati ricostruiti dalla documentazione della
+	specifica, poi confermati byte per byte contro due esempi REALI
+	pubblicati dalla specifica [MS-OVBA] stessa (sezione 3.1.1/3.1.2,
+	"ThisWorkbook"/"Sheet1" Document Module Record Example -- vedi
+	vba_dir_stream_test.cpp): confermano anche il dettaglio meno ovvio
+	che MODULESTREAMNAMEUNICODE (0x0032) e MODULEDOCSTRINGUNICODE
+	(0x0048) sono, sul disco reale, record Id+Size+Dati generici
+	separati e consecutivi -- non campi annidati dentro un unico record
+	piu' grande, nonostante la tabella della specifica li raggruppi
+	sotto un solo nome per la documentazione. Quello che resta non
+	confermato contro un file vero e' solo il contesto piu' ampio
+	attorno a questi record isolati (un intero vbaProject.bin reale,
+	completo di PROJECTINFORMATION/PROJECTREFERENCES prima di
+	PROJECTMODULES) -- limite minore, segnalato comunque in ROADMAP.md.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).

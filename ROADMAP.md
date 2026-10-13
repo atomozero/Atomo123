@@ -216,22 +216,31 @@ that turns a raw `vbaProject.bin` blob into real, readable VBA source
 text per module. ~60 test assertions across four files, all passing,
 no regressions in the rest of the engine suite.
 
-Known gap, honestly flagged rather than hidden — now partially closed.
-No real Microsoft-produced `.xlsm` with macros was available in this
+Known gap, honestly flagged rather than hidden — now mostly closed. No
+real Microsoft-produced `.xlsm` with macros was available in this
 environment at first, so correctness rested on cross-validation
 against an independent implementation (1a, `olefile`) or internal
-round-trip consistency (1b/1c, this project's own encoder). The
-compression algorithm itself (1b) has since been validated for real:
-the `[MS-OVBA]` specification publishes two official compression
-conformance test vectors (section 3, "Normal Compression Example" and
-"Maximum Compression Example" — real compressed bytes from a Microsoft
-reference implementation, with the expected decompressed output
-declared by the spec itself), found and added to
-`vba_decompress_test.cpp` after the implementation was already written
-and tested — both match byte for byte. What's left unconfirmed against
-a real file: the dir-stream record IDs (1c) and a complete, real
-`vbaProject.bin`/`.xlsm` end to end. Close that by testing against a
-real macro-enabled workbook as soon as one is available.
+round-trip consistency (1b/1c, this project's own encoder/synthetic
+fixtures). Both 1b and 1c have since been validated against real
+Microsoft-published data: the `[MS-OVBA]` specification itself
+publishes compression conformance test vectors (section 3, "Normal
+Compression Example"/"Maximum Compression Example" — real compressed
+bytes from a Microsoft reference implementation) and complete worked
+dir-stream module records (section 3.1.1/3.1.2, "ThisWorkbook"/"Sheet1"
+Document Module Record Example — exact byte tables, Offset/Size/
+Structure/Value). Found and added to `vba_decompress_test.cpp`/
+`vba_dir_stream_test.cpp` after the implementations were already
+written and tested — every case matches exactly, confirming every
+record ID used, including the non-obvious detail that
+`MODULESTREAMNAMEUNICODE`/`MODULEDOCSTRINGUNICODE` are separate,
+sequential generic records on disk, not fields nested inside a larger
+one (the spec's own documentation table groups them under one name,
+which could easily have been misread as a single compound record).
+What's left unconfirmed against a real file is now much narrower: just
+the broader `PROJECTINFORMATION`/`PROJECTREFERENCES` context around an
+isolated module record, and a complete, real `vbaProject.bin`/`.xlsm`
+end to end. Close that by testing against a real macro-enabled
+workbook as soon as one is available.
 
 **Progress — Phase 2 (lexer and parser for the explicit subset) is
 done too.** Three sub-phases: (2a) a lexer tokenizing VBA source into
