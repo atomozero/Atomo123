@@ -92,6 +92,50 @@ What shipped since v0.7.0 (in progress):
   `set_wrap_text` MCP tool, to keep a long free-text cell (a caveat
   note, an attribution line) inside its column instead of overflowing
   past the printable page width.
+- Goal Seek (roadmap Tier 3): "Ricerca obiettivo…" (Data menu) finds
+  the value a chosen "changing" cell needs so that another formula
+  cell reaches a target result — e.g. "how many units do I need to
+  sell for profit to hit zero?". Reuses the secant-method root finder
+  already proven by `RATE()`/`IRR()` (no new solver written from
+  scratch) and the substitute/recalculate/read technique already
+  established by What-if Data Tables, so the whole feature is new
+  wiring around two already-trusted mechanisms, not new numerical
+  code. Reports three distinct outcomes (converged / ran but didn't
+  converge / bad input up front, e.g. an empty field or a "set" cell
+  with no real formula) rather than a single success/failure flag, and
+  restores the changing cell's original content before ever touching
+  the undo stack, so Undo always recovers the true pre-Goal-Seek state,
+  never an intermediate solver guess. The core `MainWindow::
+  ApplyGoalSeek` entry point never shows a blocking alert (alerts are
+  isolated to a separate menu-only wrapper), so it's safely scriptable:
+  an eleventh `suite/vnd.Atomo-sheet` property, `GoalSeek` (SET takes
+  `"setCell|toValue|changingCell"`, GET reads back the outcome of the
+  last run), and a matching Pippo `goal_seek` MCP tool. 20 new unit
+  tests in `ui/tests/test_goal_seek.cpp` (linear and non-linear cases,
+  an intentionally unreachable target, Undo, and seven bad-input
+  cases).
+- Fixed a critical, previously-latent XLSX export bug found while
+  building a real currency-formatted demo to test Goal Seek against: a
+  literal `"` character written into an XML attribute value (e.g. a
+  currency `formatCode="..."` using Excel's own `"$"0`-style
+  literal-text-in-quotes syntax) was never escaped to `&quot;`. That
+  single unescaped quote closed the attribute early, leaving the rest
+  of `styles.xml` a malformed token — `XML_Parse` stops at the first
+  error, so parsing failed from that point on for the ENTIRE file, not
+  just the one cell. Every cell with any style at all (bold, color,
+  border — not only the currency one) silently reverted to the default
+  the next time the file was reopened, with no error shown anywhere.
+  This had nothing to do with Goal Seek itself; no prior session had
+  ever exercised a number format, font name, or formula string
+  containing a literal `"` before. Fixed by escaping `"` to `&quot;` in
+  `AppendXmlEscaped` (`translators/xlsx/XlsxTranslator.cpp`), the
+  shared helper used for both XML attribute values and element text.
+  New regression test in `translators/xlsx/tests/
+  test_xlsx_translator.cpp`: exports a currency-formatted cell, checks
+  `styles.xml` escapes the quotes correctly, then round-trips the file
+  back through the translator and confirms the number format survives
+  — confirmed to fail exactly as described (format lost entirely, not
+  just read back wrong) when the fix is reverted.
 
 What shipped in v0.7.0, on top of v0.6.0:
 - Font family/size picker in the toolbar, like Excel's own Home ribbon
