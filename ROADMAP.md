@@ -226,8 +226,30 @@ encoder, synthetic fixtures with the same record IDs), not confirmed
 against a real file. Close this gap by testing against a real macro-
 enabled workbook as soon as one is available.
 
-Next: Phase 2, a lexer and parser for the explicit VBA subset described
-in option (C) above, still ahead of any execution.
+**Progress — Phase 2 (lexer and parser for the explicit subset) is
+done too.** Three sub-phases: (2a) a lexer tokenizing VBA source into
+keywords/identifiers/numbers/strings/operators, handling the `""`
+string-escape convention, `_` line continuation, and `'` comments;
+(2b) a recursive-descent expression parser with real VBA operator
+precedence (including the documented quirk that unary minus binds
+*weaker* than exponentiation, so `-2^2` is -4, matching real VBA, not
+the C-like default); (2c) a statement parser for `Sub`/`Dim`/
+assignment/`Set`/`If`-`ElseIf`-`Else`-`End If` (both block and single-
+line forms)/`For`-`Next`/`Exit For`/`Exit Sub`. ~140 more test
+assertions, all passing. Two real bugs were caught by the test suite
+before being trusted: `=` is ambiguous between assignment and
+comparison in VBA and needed a dedicated primary-only expression entry
+point for statement left-hand sides; an `ElseIf` chain's outermost
+level wasn't consuming its own `End If` correctly. This part of the
+work — standard lexer/parser construction — carries much lower
+correctness risk than Phase 1's binary-format reconstruction; no
+similar "unconfirmed against a real file" gap applies here.
+
+Next: Phase 3, an interpreter walking the Phase 2c statement tree, plus
+binding the handful of Excel objects this subset actually needs
+(`Range`/`Cells`/`.Value`/`.Select`) onto the real `CContainer` API —
+still no execution wired into the app itself until the macro-enable
+trust gate from the decision above is built alongside it.
 
 ## Path to 100% XLSX standard compatibility
 
