@@ -1,4 +1,4 @@
-1	Chinese (Simplified)	application/x-vnd.Atomo-Atomo123	1829224689
+1	Chinese (Simplified)	application/x-vnd.Atomo-Atomo123	865844741
 Dividi	PasteSpecialWindow		除
 Nuovo documento	MainWindow		新建文档
 Sostituisci con:	FindWindow		替换为:
@@ -124,7 +124,6 @@ Media	Pivot		平均值
 Rimuovi commento	CommentWindow		删除批注
 Elimina	NameWindow		删除
 Nessuna anteprima	PageSetupWindow		无预览
-Se il valore e' uguale a	ConditionalFormatWindow		如果值等于
 A capo automatico	MainWindow		自动换行
 Il file non e' piu' disponibile nella posizione registrata.	MainWindow		文件在记录的位置已不可用。
 Tipo:	ChartWindow		类型：
@@ -150,7 +149,6 @@ Apri recenti	MainWindow		打开最近使用的文件
 Grassetto	MainWindow		加粗
 Nessun translator installato sa esportare in questo formato.	MainWindow		没有已安装的转换器可以导出为此格式。
 Somma	PivotWindow		求和
-Grafico a barre…	MainWindow		柱形图…
 Superiore:	PageSetupWindow		上：
 Ordina crescente	MainWindow		升序排序
 Una sola pagina	PageSetupWindow		缩至一页
@@ -284,7 +282,6 @@ Abilita il salvataggio automatico (backup)	PreferencesWindow		启用自动保存
 Vai a…	MainWindow		定位…
 Tipo:	ConditionalFormatWindow		类型：
 Ordina decrescente	MainWindow		降序排序
-Valore (solo per \"uguale a\"):	ConditionalFormatWindow		值（仅用于\"等于\"）：
 Copia	MainWindow		复制
 Cerca:	FindWindow		查找内容：
 Tutto (come Incolla)	PasteSpecialWindow		全部（等同于粘贴）
@@ -337,7 +334,6 @@ Lettura del file...	MainWindow		正在读取文件…
 Mostra formule	MainWindow		显示公式
 Proteggi foglio	MainWindow		保护工作表
 Ricalcolo in corso...	MainWindow		正在重新计算…
-Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		正在重新计算：第 %d 个工作表，共 %d 个（第 %d 轮）- %s
 Rimuovi	WatchWindow		删除
 Rimuovi frecce	MainWindow		删除箭头
 Sblocca celle selezionate	MainWindow		解除锁定选定单元格
@@ -394,3 +390,133 @@ Italiano	PreferencesWindow		意大利语
 English	PreferencesWindow		英语
 Lingua (al prossimo avvio):	PreferencesWindow		语言（下次启动时生效）：
 Riapri i file recenti all'avvio	PreferencesWindow		启动时重新打开最近的文件
+Password	PasswordWindow		密码
+Grassetto	NamedStyleWindow		加粗
+Testo:	NamedStyleWindow		文本：
+Trova il valore della cella da cambiare che porta la cella formula al valore voluto:	GoalSeekWindow		查找能使公式单元格达到目标值的变化单元格的值：
+Confronto numerico (vedi Operatore)	ConditionalFormatWindow		数值比较（参见运算符）
+Esiste gia' uno stile con questo nome.	MainWindow		已存在同名样式。
+Aggiorna	ChartWindow		刷新
+Ultimi (invece di primi)	ConditionalFormatWindow		最后几项（而非前几项）
+Colori tema	NamedStyleWindow		主题颜色
+Il numero di valori non corrisponde al numero di celle nell'intervallo.	MainWindow		值的数量与区域中的单元格数量不匹配。
+Quanti valori:	ConditionalFormatWindow		数量：
+E:	ConditionalFormatWindow		且：
+Serve un AutoFilter attivo per inserire uno slicer.	MainWindow		插入切片器需要启用自动筛选。
+Scambia righe/colonne	ChartWindow		切换行/列
+Continua comunque	MainWindow		仍然继续
+Nome (per \"Nuovo dalla selezione\"):	NamedStyleWindow		名称（用于\"根据所选内容新建\"）：
+Primi/ultimi N valori	ConditionalFormatWindow		前/后 N 个值
+Media mobile	ChartSeriesOptionsWindow		移动平均
+Contiene testo	ConditionalFormatWindow		包含文本
+Gestione stili cella	NamedStyleWindow		单元格样式管理
+Minore o uguale a	ConditionalFormatWindow		小于或等于
+Tra	ConditionalFormatWindow		介于
+Specifica la cella formula, il valore obiettivo e la cella da cambiare.	MainWindow		请指定公式单元格、目标值和要更改的单元格。
+Gestione scenari	ScenarioWindow		方案管理器
+Non tra	ConditionalFormatWindow		未介于
+Gestione scenari…	MainWindow		方案管理器…
+Questo foglio e' protetto da password:	PasswordWindow		此工作表已使用密码保护：
+Bordo	MainWindow		边框
+Non contiene errori	ConditionalFormatWindow		不包含错误
+Ricerca obiettivo	GoalSeekWindow		单变量求解
+Riferimento della cella input colonna non valido.	MainWindow		列输入单元格引用无效。
+Le due password non corrispondono.	PasswordWindow		两次输入的密码不一致。
+Nessun dato valido nell'intervallo per la combinazione di campo Colonne/misure scelta.	MainWindow		所选的列/度量字段组合在该区域内没有有效数据。
+Intervallo dati non valido: deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		数据区域无效：必须有两列（标签、数值），且至少有一行数值，例如 A1:B5。
+Percentuale (%):	ChartSeriesOptionsWindow		百分比 (%)：
+Grafico…	MainWindow		图表…
+Questo file era protetto da una password di apertura. Salvarlo con \"Salva\" rimuove la protezione: il file diventa leggibile senza password. Usa \"Salva con nome\" per mantenere l'originale cifrato intatto.	MainWindow		此文件原来受打开密码保护。使用\"保存\"保存会移除该保护：文件将变为无需密码即可读取。使用\"另存为\"可保留原始加密文件不变。
+Password	MainWindow		密码
+Password facoltativa per questo foglio (vuota = proteggi senza password):	PasswordWindow		此工作表的可选密码（留空 = 不设密码保护）：
+Valore fisso	ChartSeriesOptionsWindow		固定值
+Cella formula in alto a sinistra, valori a destra/sotto:	WhatIfWindow		左上角为公式单元格，右侧/下方为数值：
+Commento (facoltativo):	ScenarioWindow		注释（可选）：
+Non contiene celle vuote	ConditionalFormatWindow		不包含空单元格
+Finisce con	ConditionalFormatWindow		结尾为
+Asse 2	ChartWindow		轴 2
+Password errata: il foglio resta protetto.	MainWindow		密码错误：工作表仍处于保护状态。
+Ricerca obiettivo…	MainWindow		单变量求解…
+Slicer	MainWindow		切片器
+Percentuale	ChartSeriesOptionsWindow		百分比
+Cella input riga (opzionale):	WhatIfWindow		行输入单元格（可选）：
+Linea di tendenza:	ChartSeriesOptionsWindow		趋势线：
+Inizia con	ConditionalFormatWindow		开头为
+Barre orizzontali	ChartWindow		条形图
+Misure	PivotWindow		度量
+Nome:	ScenarioWindow		名称：
+Aggiorna	NamedStyleWindow		刷新
+Elimina	NamedStyleWindow		删除
+Applica	ChartSeriesOptionsWindow		应用
+Password:	PasswordWindow		密码：
+Uguale a	ConditionalFormatWindow		等于
+Percentuale	ConditionalFormatWindow		百分比
+Maggiore di	ConditionalFormatWindow		大于
+Imposta cella (deve contenere una formula):	GoalSeekWindow		目标单元格（必须包含公式）：
+Cambiando la cella:	GoalSeekWindow		可变单元格：
+Contiene errori	ConditionalFormatWindow		包含错误
+Al valore:	GoalSeekWindow		目标值：
+Nessuna	ChartSeriesOptionsWindow		无
+Stili cella…	MainWindow		单元格样式…
+Applica	NamedStyleWindow		应用
+Valore:	ConditionalFormatWindow		值：
+Punti media mobile:	ChartSeriesOptionsWindow		移动平均点数：
+Sottolineato	NamedStyleWindow		下划线
+Riferimento della cella \"Imposta\" non valido.	MainWindow		\"目标\"单元格引用无效。
+OK	PasswordWindow		确定
+Intervallo non valido: serve almeno una colonna numerica in ogni riga serie.	MainWindow		区域无效：每个系列行中至少需要一列数值。
+Nuovo dalla selezione	NamedStyleWindow		根据所选内容新建
+Elimina	ScenarioWindow		删除
+La ricerca obiettivo potrebbe non aver trovato una soluzione per %s. Valore più vicino ottenuto: %.6g (obiettivo: %.6g). %s non è stata modificata.	MainWindow		单变量求解可能未能找到 %s 的解。得到的最接近值为：%.6g（目标：%.6g）。%s 未被修改。
+Dimensione carattere	MainWindow		字号
+Celle variabili (un solo intervallo contiguo):	ScenarioWindow		可变单元格（仅限一个连续区域）：
+Lineare	ChartSeriesOptionsWindow		线性
+Nessuno	MainWindow		无
+Conferma password:	PasswordWindow		确认密码：
+Cella input colonna (opzionale):	WhatIfWindow		列输入单元格（可选）：
+Colore personalizzato	NamedStyleWindow		自定义颜色
+Famiglia carattere	MainWindow		字体
+Riprova	MainWindow		重试
+Nessun documento aperto.	MainWindow		没有打开的文档。
+Minore di	ConditionalFormatWindow		小于
+Ricerca obiettivo	MainWindow		单变量求解
+Sotto la media (invece di sopra)	ConditionalFormatWindow		低于平均值（而非高于）
+Intervallo delle celle variabili non valido.	MainWindow		可变单元格区域无效。
+Rileva colonne	PivotWindow		检测列
+Diverso da	ConditionalFormatWindow		不等于
+Riferimento della cella input riga non valido.	MainWindow		行输入单元格引用无效。
+La cella da cambiare e' protetta.	MainWindow		要更改的单元格已被保护。
+Colore tema	ColorWindow		主题颜色
+Valore:	ChartSeriesOptionsWindow		值：
+Tabella dati…	MainWindow		模拟运算表…
+Tabella dati	WhatIfWindow		模拟运算表
+Esegui	GoalSeekWindow		求解
+Mostra	ScenarioWindow		显示
+Operatore:	ConditionalFormatWindow		运算符：
+Sopra/sotto la media	ConditionalFormatWindow		高于/低于平均值
+Opzioni serie	ChartSeriesOptionsWindow		系列选项
+Corsivo	NamedStyleWindow		斜体
+Campo Colonne:	PivotWindow		列字段：
+Crea	WhatIfWindow		创建
+Password errata: impossibile aprire il file.	MainWindow		密码错误：无法打开文件。
+Aggiungi/Aggiorna	ScenarioWindow		添加/更新
+Stile tabella	MainWindow		表格样式
+(nessuna)	PivotWindow		（无）
+Sfondo:	NamedStyleWindow		背景：
+Seleziona una cella dentro una tabella strutturata.	MainWindow		请选择结构化表格内的一个单元格。
+Trovato un valore per %s che porta %s a %.6g (ottenuto: %.6g).	MainWindow		已找到 %s 的值，使 %s 达到 %.6g（实际得到：%.6g）。
+Seleziona...	ChartWindow		选择...
+Maggiore o uguale a	ConditionalFormatWindow		大于或等于
+Valori sostitutivi (uno per riga, stesso ordine dell'intervallo):	ScenarioWindow		替代值（每行一个，顺序与区域一致）：
+Il valore obiettivo non e' un numero.	MainWindow		目标值不是数字。
+Non contiene testo	ConditionalFormatWindow		不包含文本
+Contiene celle vuote	ConditionalFormatWindow		包含空单元格
+Barre d'errore:	ChartSeriesOptionsWindow		误差线：
+La cella \"Imposta\" deve contenere una formula.	MainWindow		\"目标\"单元格必须包含公式。
+Riferimento della cella da cambiare non valido.	MainWindow		要更改的单元格引用无效。
+Annulla	PasswordWindow		取消
+Opzioni...	ChartWindow		选项...
+Seleziona...	ScenarioWindow		选择...
+Specifica almeno una cella input (riga o colonna).	MainWindow		请至少指定一个输入单元格（行或列）。
+Colore serie	ColorWindow		系列颜色
+Filtro automatico	MainWindow		自动筛选

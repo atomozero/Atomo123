@@ -1,4 +1,4 @@
-1	Japanese	application/x-vnd.Atomo-Atomo123	1829224689
+1	Japanese	application/x-vnd.Atomo-Atomo123	865844741
 Dividi	PasteSpecialWindow		除算
 Nuovo documento	MainWindow		新規ドキュメント
 Sostituisci con:	FindWindow		置換後の文字列:
@@ -124,7 +124,6 @@ Media	Pivot		平均
 Rimuovi commento	CommentWindow		コメントの削除
 Elimina	NameWindow		削除
 Nessuna anteprima	PageSetupWindow		プレビューなし
-Se il valore e' uguale a	ConditionalFormatWindow		値が次の値に等しい場合
 A capo automatico	MainWindow		折り返して全体を表示する
 Il file non e' piu' disponibile nella posizione registrata.	MainWindow		記録されている場所にファイルが見つかりません。
 Tipo:	ChartWindow		種類:
@@ -150,7 +149,6 @@ Apri recenti	MainWindow		最近使ったファイルを開く
 Grassetto	MainWindow		太字
 Nessun translator installato sa esportare in questo formato.	MainWindow		この形式にエクスポートできるトランスレーターがインストールされていません。
 Somma	PivotWindow		合計
-Grafico a barre…	MainWindow		棒グラフ…
 Superiore:	PageSetupWindow		上:
 Ordina crescente	MainWindow		昇順で並べ替え
 Una sola pagina	PageSetupWindow		1 ページに収める
@@ -284,7 +282,6 @@ Abilita il salvataggio automatico (backup)	PreferencesWindow		自動保存を有
 Vai a…	MainWindow		ジャンプ…
 Tipo:	ConditionalFormatWindow		種類:
 Ordina decrescente	MainWindow		降順で並べ替え
-Valore (solo per \"uguale a\"):	ConditionalFormatWindow		値 (\"等しい場合\" のみ):
 Copia	MainWindow		コピー
 Cerca:	FindWindow		検索する文字列:
 Tutto (come Incolla)	PasteSpecialWindow		すべて (貼り付けと同じ)
@@ -337,7 +334,6 @@ Lettura del file...	MainWindow		ファイルを読み込んでいます...
 Mostra formule	MainWindow		数式の表示
 Proteggi foglio	MainWindow		シートの保護
 Ricalcolo in corso...	MainWindow		再計算しています...
-Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		再計算しています: シート %d/%d (パス %d) - %s
 Rimuovi	WatchWindow		削除
 Rimuovi frecce	MainWindow		トレース矢印の削除
 Sblocca celle selezionate	MainWindow		選択したセルのロックを解除
@@ -394,3 +390,133 @@ Italiano	PreferencesWindow		イタリア語
 English	PreferencesWindow		英語
 Lingua (al prossimo avvio):	PreferencesWindow		言語 (次回起動時に適用):
 Riapri i file recenti all'avvio	PreferencesWindow		起動時に最近使ったファイルを再度開く
+Password	PasswordWindow		パスワード
+Grassetto	NamedStyleWindow		太字
+Testo:	NamedStyleWindow		テキスト:
+Trova il valore della cella da cambiare che porta la cella formula al valore voluto:	GoalSeekWindow		数式セルを目的の値にする、変化させるセルの値を見つけます:
+Confronto numerico (vedi Operatore)	ConditionalFormatWindow		数値の比較 (演算子を参照)
+Esiste gia' uno stile con questo nome.	MainWindow		この名前のスタイルは既に存在します。
+Aggiorna	ChartWindow		更新
+Ultimi (invece di primi)	ConditionalFormatWindow		下位 (上位の代わりに)
+Colori tema	NamedStyleWindow		テーマの色
+Il numero di valori non corrisponde al numero di celle nell'intervallo.	MainWindow		値の数が範囲内のセルの数と一致しません。
+Quanti valori:	ConditionalFormatWindow		値の数:
+E:	ConditionalFormatWindow		かつ:
+Serve un AutoFilter attivo per inserire uno slicer.	MainWindow		スライサーを挿入するには、オートフィルターを有効にする必要があります。
+Scambia righe/colonne	ChartWindow		行/列の切り替え
+Continua comunque	MainWindow		続行する
+Nome (per \"Nuovo dalla selezione\"):	NamedStyleWindow		名前 (\"選択範囲から新規作成\" 用):
+Primi/ultimi N valori	ConditionalFormatWindow		上位/下位の N 個の値
+Media mobile	ChartSeriesOptionsWindow		移動平均
+Contiene testo	ConditionalFormatWindow		文字列を含む
+Gestione stili cella	NamedStyleWindow		セルのスタイルの管理
+Minore o uguale a	ConditionalFormatWindow		次の値以下
+Tra	ConditionalFormatWindow		次の値の間
+Specifica la cella formula, il valore obiettivo e la cella da cambiare.	MainWindow		数式セル、目標値、変化させるセルを指定してください。
+Gestione scenari	ScenarioWindow		シナリオの管理
+Non tra	ConditionalFormatWindow		次の値の間ではない
+Gestione scenari…	MainWindow		シナリオの管理…
+Questo foglio e' protetto da password:	PasswordWindow		このシートはパスワードで保護されています:
+Bordo	MainWindow		罫線
+Non contiene errori	ConditionalFormatWindow		エラーを含まない
+Ricerca obiettivo	GoalSeekWindow		ゴールシーク
+Riferimento della cella input colonna non valido.	MainWindow		列の入力セルの参照が正しくありません。
+Le due password non corrispondono.	PasswordWindow		2 つのパスワードが一致しません。
+Nessun dato valido nell'intervallo per la combinazione di campo Colonne/misure scelta.	MainWindow		選択した列フィールド/メジャーの組み合わせに対して、範囲内に有効なデータがありません。
+Intervallo dati non valido: deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		データ範囲が正しくありません。2 列 (ラベル、値) で、数値の行が 1 行以上必要です (例: A1:B5)。
+Percentuale (%):	ChartSeriesOptionsWindow		パーセンテージ (%):
+Grafico…	MainWindow		グラフ…
+Questo file era protetto da una password di apertura. Salvarlo con \"Salva\" rimuove la protezione: il file diventa leggibile senza password. Usa \"Salva con nome\" per mantenere l'originale cifrato intatto.	MainWindow		このファイルは開くためのパスワードで保護されていました。\"保存\" で保存すると保護が解除され、パスワードなしで読み取れるファイルになります。暗号化された元のファイルをそのまま残すには \"名前を付けて保存\" を使用してください。
+Password	MainWindow		パスワード
+Password facoltativa per questo foglio (vuota = proteggi senza password):	PasswordWindow		このシートのパスワード (省略可、空欄 = パスワードなしで保護):
+Valore fisso	ChartSeriesOptionsWindow		固定値
+Cella formula in alto a sinistra, valori a destra/sotto:	WhatIfWindow		左上に数式セル、右/下に値:
+Commento (facoltativo):	ScenarioWindow		コメント (省略可):
+Non contiene celle vuote	ConditionalFormatWindow		空白を含まない
+Finisce con	ConditionalFormatWindow		次の文字列で終わる
+Asse 2	ChartWindow		軸 2
+Password errata: il foglio resta protetto.	MainWindow		パスワードが正しくありません。シートは保護されたままです。
+Ricerca obiettivo…	MainWindow		ゴールシーク…
+Slicer	MainWindow		スライサー
+Percentuale	ChartSeriesOptionsWindow		パーセンテージ
+Cella input riga (opzionale):	WhatIfWindow		行の入力セル (省略可):
+Linea di tendenza:	ChartSeriesOptionsWindow		トレンドライン:
+Inizia con	ConditionalFormatWindow		次の文字列で始まる
+Barre orizzontali	ChartWindow		横棒
+Misure	PivotWindow		メジャー
+Nome:	ScenarioWindow		名前:
+Aggiorna	NamedStyleWindow		更新
+Elimina	NamedStyleWindow		削除
+Applica	ChartSeriesOptionsWindow		適用
+Password:	PasswordWindow		パスワード:
+Uguale a	ConditionalFormatWindow		次の値に等しい
+Percentuale	ConditionalFormatWindow		パーセンテージ
+Maggiore di	ConditionalFormatWindow		次の値より大きい
+Imposta cella (deve contenere una formula):	GoalSeekWindow		目標値を設定するセル (数式を含む必要があります):
+Cambiando la cella:	GoalSeekWindow		変化させるセル:
+Contiene errori	ConditionalFormatWindow		エラーを含む
+Al valore:	GoalSeekWindow		目標値:
+Nessuna	ChartSeriesOptionsWindow		なし
+Stili cella…	MainWindow		セルのスタイル…
+Applica	NamedStyleWindow		適用
+Valore:	ConditionalFormatWindow		値:
+Punti media mobile:	ChartSeriesOptionsWindow		移動平均の区間:
+Sottolineato	NamedStyleWindow		下線
+Riferimento della cella \"Imposta\" non valido.	MainWindow		\"目標値を設定するセル\" の参照が正しくありません。
+OK	PasswordWindow		OK
+Intervallo non valido: serve almeno una colonna numerica in ogni riga serie.	MainWindow		範囲が正しくありません。各系列の行に数値の列が 1 列以上必要です。
+Nuovo dalla selezione	NamedStyleWindow		選択範囲から新規作成
+Elimina	ScenarioWindow		削除
+La ricerca obiettivo potrebbe non aver trovato una soluzione per %s. Valore più vicino ottenuto: %.6g (obiettivo: %.6g). %s non è stata modificata.	MainWindow		ゴールシークは %s の解を見つけられなかった可能性があります。得られた最も近い値: %.6g (目標値: %.6g)。%s は変更されていません。
+Dimensione carattere	MainWindow		フォントサイズ
+Celle variabili (un solo intervallo contiguo):	ScenarioWindow		変化させるセル (連続した 1 つの範囲のみ):
+Lineare	ChartSeriesOptionsWindow		線形
+Nessuno	MainWindow		なし
+Conferma password:	PasswordWindow		パスワードの確認:
+Cella input colonna (opzionale):	WhatIfWindow		列の入力セル (省略可):
+Colore personalizzato	NamedStyleWindow		色をカスタマイズ
+Famiglia carattere	MainWindow		フォント
+Riprova	MainWindow		再試行
+Nessun documento aperto.	MainWindow		開いているドキュメントがありません。
+Minore di	ConditionalFormatWindow		次の値より小さい
+Ricerca obiettivo	MainWindow		ゴールシーク
+Sotto la media (invece di sopra)	ConditionalFormatWindow		平均より下 (平均より上の代わりに)
+Intervallo delle celle variabili non valido.	MainWindow		変化させるセルの範囲が正しくありません。
+Rileva colonne	PivotWindow		列を検出
+Diverso da	ConditionalFormatWindow		次の値に等しくない
+Riferimento della cella input riga non valido.	MainWindow		行の入力セルの参照が正しくありません。
+La cella da cambiare e' protetta.	MainWindow		変化させるセルは保護されています。
+Colore tema	ColorWindow		テーマの色
+Valore:	ChartSeriesOptionsWindow		値:
+Tabella dati…	MainWindow		データ テーブル…
+Tabella dati	WhatIfWindow		データ テーブル
+Esegui	GoalSeekWindow		実行
+Mostra	ScenarioWindow		表示
+Operatore:	ConditionalFormatWindow		演算子:
+Sopra/sotto la media	ConditionalFormatWindow		平均より上/下
+Opzioni serie	ChartSeriesOptionsWindow		系列のオプション
+Corsivo	NamedStyleWindow		斜体
+Campo Colonne:	PivotWindow		列フィールド:
+Crea	WhatIfWindow		作成
+Password errata: impossibile aprire il file.	MainWindow		パスワードが正しくありません。ファイルを開けませんでした。
+Aggiungi/Aggiorna	ScenarioWindow		追加/更新
+Stile tabella	MainWindow		テーブルスタイル
+(nessuna)	PivotWindow		(なし)
+Sfondo:	NamedStyleWindow		背景:
+Seleziona una cella dentro una tabella strutturata.	MainWindow		テーブル内のセルを選択してください。
+Trovato un valore per %s che porta %s a %.6g (ottenuto: %.6g).	MainWindow		%s を %.6g にする %s の値が見つかりました (結果: %.6g)。
+Seleziona...	ChartWindow		選択...
+Maggiore o uguale a	ConditionalFormatWindow		次の値以上
+Valori sostitutivi (uno per riga, stesso ordine dell'intervallo):	ScenarioWindow		置換する値 (1 行に 1 つ、範囲と同じ順序):
+Il valore obiettivo non e' un numero.	MainWindow		目標値が数値ではありません。
+Non contiene testo	ConditionalFormatWindow		文字列を含まない
+Contiene celle vuote	ConditionalFormatWindow		空白を含む
+Barre d'errore:	ChartSeriesOptionsWindow		誤差範囲:
+La cella \"Imposta\" deve contenere una formula.	MainWindow		\"目標値を設定するセル\" には数式が含まれている必要があります。
+Riferimento della cella da cambiare non valido.	MainWindow		変化させるセルの参照が正しくありません。
+Annulla	PasswordWindow		キャンセル
+Opzioni...	ChartWindow		オプション...
+Seleziona...	ScenarioWindow		選択...
+Specifica almeno una cella input (riga o colonna).	MainWindow		行または列の入力セルを少なくとも 1 つ指定してください。
+Colore serie	ColorWindow		系列の色
+Filtro automatico	MainWindow		オートフィルター

@@ -1,4 +1,4 @@
-1	Korean	application/x-vnd.Atomo-Atomo123	1829224689
+1	Korean	application/x-vnd.Atomo-Atomo123	865844741
 Dividi	PasteSpecialWindow		나누기
 Nuovo documento	MainWindow		새 문서
 Sostituisci con:	FindWindow		바꿀 내용:
@@ -124,7 +124,6 @@ Media	Pivot		평균
 Rimuovi commento	CommentWindow		메모 삭제
 Elimina	NameWindow		삭제
 Nessuna anteprima	PageSetupWindow		미리 보기 없음
-Se il valore e' uguale a	ConditionalFormatWindow		값이 다음과 같을 때
 A capo automatico	MainWindow		텍스트 줄 바꿈
 Il file non e' piu' disponibile nella posizione registrata.	MainWindow		기록된 위치에 파일이 더 이상 없습니다.
 Tipo:	ChartWindow		종류:
@@ -150,7 +149,6 @@ Apri recenti	MainWindow		최근 파일 열기
 Grassetto	MainWindow		굵게
 Nessun translator installato sa esportare in questo formato.	MainWindow		이 형식으로 내보낼 수 있는 변환기가 설치되어 있지 않습니다.
 Somma	PivotWindow		합계
-Grafico a barre…	MainWindow		막대형 차트…
 Superiore:	PageSetupWindow		위쪽:
 Ordina crescente	MainWindow		오름차순 정렬
 Una sola pagina	PageSetupWindow		한 페이지에 맞추기
@@ -284,7 +282,6 @@ Abilita il salvataggio automatico (backup)	PreferencesWindow		자동 저장 사�
 Vai a…	MainWindow		이동…
 Tipo:	ConditionalFormatWindow		유형:
 Ordina decrescente	MainWindow		내림차순 정렬
-Valore (solo per \"uguale a\"):	ConditionalFormatWindow		값(\"같을 때\"에만 해당):
 Copia	MainWindow		복사
 Cerca:	FindWindow		찾을 내용:
 Tutto (come Incolla)	PasteSpecialWindow		모두(붙여넣기와 동일)
@@ -337,7 +334,6 @@ Lettura del file...	MainWindow		파일을 읽는 중...
 Mostra formule	MainWindow		수식 표시
 Proteggi foglio	MainWindow		시트 보호
 Ricalcolo in corso...	MainWindow		다시 계산하는 중...
-Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		다시 계산하는 중: 시트 %d/%d(%d번째 패스) - %s
 Rimuovi	WatchWindow		제거
 Rimuovi frecce	MainWindow		연결선 제거
 Sblocca celle selezionate	MainWindow		선택한 셀 잠금 해제
@@ -394,3 +390,133 @@ Italiano	PreferencesWindow		이탈리아어
 English	PreferencesWindow		영어
 Lingua (al prossimo avvio):	PreferencesWindow		언어(다음 실행 시 적용):
 Riapri i file recenti all'avvio	PreferencesWindow		시작 시 최근 파일 다시 열기
+Password	PasswordWindow		비밀번호
+Grassetto	NamedStyleWindow		굵게
+Testo:	NamedStyleWindow		텍스트:
+Trova il valore della cella da cambiare che porta la cella formula al valore voluto:	GoalSeekWindow		수식 셀을 원하는 값으로 만드는 변경할 셀의 값을 찾습니다:
+Confronto numerico (vedi Operatore)	ConditionalFormatWindow		숫자 비교(연산자 참조)
+Esiste gia' uno stile con questo nome.	MainWindow		같은 이름의 스타일이 이미 있습니다.
+Aggiorna	ChartWindow		새로 고침
+Ultimi (invece di primi)	ConditionalFormatWindow		하위(상위 대신)
+Colori tema	NamedStyleWindow		테마 색
+Il numero di valori non corrisponde al numero di celle nell'intervallo.	MainWindow		값의 개수가 범위의 셀 개수와 일치하지 않습니다.
+Quanti valori:	ConditionalFormatWindow		값 개수:
+E:	ConditionalFormatWindow		끝:
+Serve un AutoFilter attivo per inserire uno slicer.	MainWindow		슬라이서를 삽입하려면 자동 필터가 활성화되어 있어야 합니다.
+Scambia righe/colonne	ChartWindow		행/열 전환
+Continua comunque	MainWindow		계속 진행
+Nome (per \"Nuovo dalla selezione\"):	NamedStyleWindow		이름(\"선택 영역에서 새로 만들기\"용):
+Primi/ultimi N valori	ConditionalFormatWindow		상위/하위 N개 값
+Media mobile	ChartSeriesOptionsWindow		이동 평균
+Contiene testo	ConditionalFormatWindow		텍스트 포함
+Gestione stili cella	NamedStyleWindow		셀 스타일 관리
+Minore o uguale a	ConditionalFormatWindow		다음 값보다 작거나 같음
+Tra	ConditionalFormatWindow		해당 범위 내
+Specifica la cella formula, il valore obiettivo e la cella da cambiare.	MainWindow		수식 셀, 목표값, 변경할 셀을 지정하세요.
+Gestione scenari	ScenarioWindow		시나리오 관리
+Non tra	ConditionalFormatWindow		해당 범위 외
+Gestione scenari…	MainWindow		시나리오 관리…
+Questo foglio e' protetto da password:	PasswordWindow		이 시트는 비밀번호로 보호되어 있습니다:
+Bordo	MainWindow		테두리
+Non contiene errori	ConditionalFormatWindow		오류 없음
+Ricerca obiettivo	GoalSeekWindow		목표값 찾기
+Riferimento della cella input colonna non valido.	MainWindow		열 입력 셀 참조가 올바르지 않습니다.
+Le due password non corrispondono.	PasswordWindow		두 비밀번호가 일치하지 않습니다.
+Nessun dato valido nell'intervallo per la combinazione di campo Colonne/misure scelta.	MainWindow		선택한 열/측정값 필드 조합에 대해 범위에 유효한 데이터가 없습니다.
+Intervallo dati non valido: deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		데이터 범위가 올바르지 않습니다. 두 열(레이블, 값)이어야 하며 숫자 행이 하나 이상 있어야 합니다(예: A1:B5).
+Percentuale (%):	ChartSeriesOptionsWindow		백분율(%):
+Grafico…	MainWindow		차트…
+Questo file era protetto da una password di apertura. Salvarlo con \"Salva\" rimuove la protezione: il file diventa leggibile senza password. Usa \"Salva con nome\" per mantenere l'originale cifrato intatto.	MainWindow		이 파일은 열기 비밀번호로 보호되어 있었습니다. \"저장\"으로 저장하면 보호가 제거되어 비밀번호 없이 읽을 수 있는 파일이 됩니다. 암호화된 원본을 그대로 유지하려면 \"다른 이름으로 저장\"을 사용하세요.
+Password	MainWindow		비밀번호
+Password facoltativa per questo foglio (vuota = proteggi senza password):	PasswordWindow		이 시트의 선택적 비밀번호(비워 두면 비밀번호 없이 보호):
+Valore fisso	ChartSeriesOptionsWindow		고정 값
+Cella formula in alto a sinistra, valori a destra/sotto:	WhatIfWindow		왼쪽 위에 수식 셀, 오른쪽/아래에 값:
+Commento (facoltativo):	ScenarioWindow		설명(선택 사항):
+Non contiene celle vuote	ConditionalFormatWindow		빈 셀 없음
+Finisce con	ConditionalFormatWindow		다음 문자로 끝남
+Asse 2	ChartWindow		보조 축
+Password errata: il foglio resta protetto.	MainWindow		비밀번호가 올바르지 않습니다. 시트는 계속 보호됩니다.
+Ricerca obiettivo…	MainWindow		목표값 찾기…
+Slicer	MainWindow		슬라이서
+Percentuale	ChartSeriesOptionsWindow		백분율
+Cella input riga (opzionale):	WhatIfWindow		행 입력 셀(선택 사항):
+Linea di tendenza:	ChartSeriesOptionsWindow		추세선:
+Inizia con	ConditionalFormatWindow		다음 문자로 시작함
+Barre orizzontali	ChartWindow		가로 막대형
+Misure	PivotWindow		측정값
+Nome:	ScenarioWindow		이름:
+Aggiorna	NamedStyleWindow		업데이트
+Elimina	NamedStyleWindow		삭제
+Applica	ChartSeriesOptionsWindow		적용
+Password:	PasswordWindow		비밀번호:
+Uguale a	ConditionalFormatWindow		다음 값과 같음
+Percentuale	ConditionalFormatWindow		백분율
+Maggiore di	ConditionalFormatWindow		다음 값보다 큼
+Imposta cella (deve contenere una formula):	GoalSeekWindow		수식 셀(수식을 포함해야 함):
+Cambiando la cella:	GoalSeekWindow		값을 바꿀 셀:
+Contiene errori	ConditionalFormatWindow		오류 포함
+Al valore:	GoalSeekWindow		목표값:
+Nessuna	ChartSeriesOptionsWindow		없음
+Stili cella…	MainWindow		셀 스타일…
+Applica	NamedStyleWindow		적용
+Valore:	ConditionalFormatWindow		값:
+Punti media mobile:	ChartSeriesOptionsWindow		이동 평균 구간:
+Sottolineato	NamedStyleWindow		밑줄
+Riferimento della cella \"Imposta\" non valido.	MainWindow		\"수식 셀\" 참조가 올바르지 않습니다.
+OK	PasswordWindow		확인
+Intervallo non valido: serve almeno una colonna numerica in ogni riga serie.	MainWindow		범위가 올바르지 않습니다. 각 계열 행에 숫자 열이 하나 이상 있어야 합니다.
+Nuovo dalla selezione	NamedStyleWindow		선택 영역에서 새로 만들기
+Elimina	ScenarioWindow		삭제
+La ricerca obiettivo potrebbe non aver trovato una soluzione per %s. Valore più vicino ottenuto: %.6g (obiettivo: %.6g). %s non è stata modificata.	MainWindow		목표값 찾기가 %s에 대한 해를 찾지 못했을 수 있습니다. 가장 근접한 값: %.6g(목표값: %.6g). %s은(는) 변경되지 않았습니다.
+Dimensione carattere	MainWindow		글꼴 크기
+Celle variabili (un solo intervallo contiguo):	ScenarioWindow		변경 셀(연속된 범위 하나):
+Lineare	ChartSeriesOptionsWindow		선형
+Nessuno	MainWindow		없음
+Conferma password:	PasswordWindow		비밀번호 확인:
+Cella input colonna (opzionale):	WhatIfWindow		열 입력 셀(선택 사항):
+Colore personalizzato	NamedStyleWindow		사용자 지정 색
+Famiglia carattere	MainWindow		글꼴
+Riprova	MainWindow		다시 시도
+Nessun documento aperto.	MainWindow		열려 있는 문서가 없습니다.
+Minore di	ConditionalFormatWindow		다음 값보다 작음
+Ricerca obiettivo	MainWindow		목표값 찾기
+Sotto la media (invece di sopra)	ConditionalFormatWindow		평균 미만(초과 대신)
+Intervallo delle celle variabili non valido.	MainWindow		변경 셀 범위가 올바르지 않습니다.
+Rileva colonne	PivotWindow		열 감지
+Diverso da	ConditionalFormatWindow		다음 값과 다름
+Riferimento della cella input riga non valido.	MainWindow		행 입력 셀 참조가 올바르지 않습니다.
+La cella da cambiare e' protetta.	MainWindow		변경할 셀이 보호되어 있습니다.
+Colore tema	ColorWindow		테마 색
+Valore:	ChartSeriesOptionsWindow		값:
+Tabella dati…	MainWindow		데이터 표…
+Tabella dati	WhatIfWindow		데이터 표
+Esegui	GoalSeekWindow		실행
+Mostra	ScenarioWindow		표시
+Operatore:	ConditionalFormatWindow		연산자:
+Sopra/sotto la media	ConditionalFormatWindow		평균 초과/미만
+Opzioni serie	ChartSeriesOptionsWindow		계열 옵션
+Corsivo	NamedStyleWindow		기울임꼴
+Campo Colonne:	PivotWindow		열 필드:
+Crea	WhatIfWindow		만들기
+Password errata: impossibile aprire il file.	MainWindow		비밀번호가 올바르지 않습니다. 파일을 열 수 없습니다.
+Aggiungi/Aggiorna	ScenarioWindow		추가/업데이트
+Stile tabella	MainWindow		표 스타일
+(nessuna)	PivotWindow		(없음)
+Sfondo:	NamedStyleWindow		배경:
+Seleziona una cella dentro una tabella strutturata.	MainWindow		표 안의 셀을 선택하세요.
+Trovato un valore per %s che porta %s a %.6g (ottenuto: %.6g).	MainWindow		%s을(를) %.6g(결과: %.6g)로 만드는 %s의 값을 찾았습니다.
+Seleziona...	ChartWindow		선택...
+Maggiore o uguale a	ConditionalFormatWindow		다음 값보다 크거나 같음
+Valori sostitutivi (uno per riga, stesso ordine dell'intervallo):	ScenarioWindow		대체 값(한 줄에 하나, 범위와 같은 순서):
+Il valore obiettivo non e' un numero.	MainWindow		목표값이 숫자가 아닙니다.
+Non contiene testo	ConditionalFormatWindow		텍스트 포함 안 함
+Contiene celle vuote	ConditionalFormatWindow		빈 셀 포함
+Barre d'errore:	ChartSeriesOptionsWindow		오차 막대:
+La cella \"Imposta\" deve contenere una formula.	MainWindow		\"수식 셀\"에는 수식이 있어야 합니다.
+Riferimento della cella da cambiare non valido.	MainWindow		변경할 셀 참조가 올바르지 않습니다.
+Annulla	PasswordWindow		취소
+Opzioni...	ChartWindow		옵션...
+Seleziona...	ScenarioWindow		선택...
+Specifica almeno una cella input (riga o colonna).	MainWindow		행 또는 열 입력 셀을 하나 이상 지정하세요.
+Colore serie	ColorWindow		계열 색
+Filtro automatico	MainWindow		자동 필터

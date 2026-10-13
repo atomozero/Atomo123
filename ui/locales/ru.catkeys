@@ -1,4 +1,4 @@
-1	Russian	application/x-vnd.Atomo-Atomo123	1829224689
+1	Russian	application/x-vnd.Atomo-Atomo123	865844741
 Dividi	PasteSpecialWindow		Разделить
 Nuovo documento	MainWindow		Новый документ
 Sostituisci con:	FindWindow		Заменить на:
@@ -124,7 +124,6 @@ Media	Pivot		Среднее
 Rimuovi commento	CommentWindow		Удалить примечание
 Elimina	NameWindow		Удалить
 Nessuna anteprima	PageSetupWindow		Нет предпросмотра
-Se il valore e' uguale a	ConditionalFormatWindow		Если значение равно
 A capo automatico	MainWindow		Переносить текст
 Il file non e' piu' disponibile nella posizione registrata.	MainWindow		Файл больше недоступен по сохранённому расположению.
 Tipo:	ChartWindow		Тип:
@@ -150,7 +149,6 @@ Apri recenti	MainWindow		Последние файлы
 Grassetto	MainWindow		Полужирный
 Nessun translator installato sa esportare in questo formato.	MainWindow		Ни один установленный транслятор не может экспортировать в этот формат.
 Somma	PivotWindow		Сумма
-Grafico a barre…	MainWindow		Гистограмма…
 Superiore:	PageSetupWindow		Верхнее:
 Ordina crescente	MainWindow		Сортировка по возрастанию
 Una sola pagina	PageSetupWindow		На одну страницу
@@ -284,7 +282,6 @@ Abilita il salvataggio automatico (backup)	PreferencesWindow		Включить �
 Vai a…	MainWindow		Перейти…
 Tipo:	ConditionalFormatWindow		Тип:
 Ordina decrescente	MainWindow		Сортировка по убыванию
-Valore (solo per \"uguale a\"):	ConditionalFormatWindow		Значение (только для «равно»):
 Copia	MainWindow		Копировать
 Cerca:	FindWindow		Поиск:
 Tutto (come Incolla)	PasteSpecialWindow		Всё (как обычная вставка)
@@ -337,7 +334,6 @@ Lettura del file...	MainWindow		Чтение файла...
 Mostra formule	MainWindow		Показать формулы
 Proteggi foglio	MainWindow		Защитить лист
 Ricalcolo in corso...	MainWindow		Пересчёт...
-Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		Пересчёт: лист %d из %d (проход %d) - %s
 Rimuovi	WatchWindow		Удалить
 Rimuovi frecce	MainWindow		Удалить стрелки
 Sblocca celle selezionate	MainWindow		Снять защиту с выделенных ячеек
@@ -394,3 +390,133 @@ Italiano	PreferencesWindow		Итальянский
 English	PreferencesWindow		Английский
 Lingua (al prossimo avvio):	PreferencesWindow		Язык (после следующего запуска):
 Riapri i file recenti all'avvio	PreferencesWindow		Открывать последние файлы при запуске
+Password	PasswordWindow		Пароль
+Grassetto	NamedStyleWindow		Полужирный
+Testo:	NamedStyleWindow		Текст:
+Trova il valore della cella da cambiare che porta la cella formula al valore voluto:	GoalSeekWindow		Найдите значение изменяемой ячейки, которое приводит ячейку формулы к нужному значению:
+Confronto numerico (vedi Operatore)	ConditionalFormatWindow		Числовое сравнение (см. Оператор)
+Esiste gia' uno stile con questo nome.	MainWindow		Стиль с таким именем уже существует.
+Aggiorna	ChartWindow		Обновить
+Ultimi (invece di primi)	ConditionalFormatWindow		Последние (вместо первых)
+Colori tema	NamedStyleWindow		Цвета темы
+Il numero di valori non corrisponde al numero di celle nell'intervallo.	MainWindow		Количество значений не совпадает с количеством ячеек в диапазоне.
+Quanti valori:	ConditionalFormatWindow		Сколько значений:
+E:	ConditionalFormatWindow		И:
+Serve un AutoFilter attivo per inserire uno slicer.	MainWindow		Для вставки срез нужен активный автофильтр.
+Scambia righe/colonne	ChartWindow		Поменять строки/столбцы
+Continua comunque	MainWindow		Продолжить всё равно
+Nome (per \"Nuovo dalla selezione\"):	NamedStyleWindow		Имя (для \"Создать из выделения\"):
+Primi/ultimi N valori	ConditionalFormatWindow		Первые/последние N значений
+Media mobile	ChartSeriesOptionsWindow		Скользящее среднее
+Contiene testo	ConditionalFormatWindow		Содержит текст
+Gestione stili cella	NamedStyleWindow		Управление стилями ячеек
+Minore o uguale a	ConditionalFormatWindow		Меньше или равно
+Tra	ConditionalFormatWindow		Между
+Specifica la cella formula, il valore obiettivo e la cella da cambiare.	MainWindow		Укажите ячейку формулы, целевое значение и изменяемую ячейку.
+Gestione scenari	ScenarioWindow		Диспетчер сценариев
+Non tra	ConditionalFormatWindow		Не между
+Gestione scenari…	MainWindow		Диспетчер сценариев…
+Questo foglio e' protetto da password:	PasswordWindow		Этот лист защищён паролем:
+Bordo	MainWindow		Граница
+Non contiene errori	ConditionalFormatWindow		Не содержит ошибок
+Ricerca obiettivo	GoalSeekWindow		Подбор параметра
+Riferimento della cella input colonna non valido.	MainWindow		Недопустимая ссылка на ячейку ввода столбца.
+Le due password non corrispondono.	PasswordWindow		Пароли не совпадают.
+Nessun dato valido nell'intervallo per la combinazione di campo Colonne/misure scelta.	MainWindow		Нет допустимых данных в диапазоне для выбранной комбинации поля «Столбцы»/показателей.
+Intervallo dati non valido: deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Неверный диапазон данных: нужно два столбца (подписи, значения) как минимум с одной числовой строкой, например A1:B5.
+Percentuale (%):	ChartSeriesOptionsWindow		Процент (%):
+Grafico…	MainWindow		Диаграмма…
+Questo file era protetto da una password di apertura. Salvarlo con \"Salva\" rimuove la protezione: il file diventa leggibile senza password. Usa \"Salva con nome\" per mantenere l'originale cifrato intatto.	MainWindow		Этот файл был защищён паролем на открытие. Сохранение с помощью \"Сохранить\" удаляет защиту: файл становится доступным для чтения без пароля. Используйте \"Сохранить как\", чтобы сохранить исходный зашифрованный файл без изменений.
+Password	MainWindow		Пароль
+Password facoltativa per questo foglio (vuota = proteggi senza password):	PasswordWindow		Необязательный пароль для этого листа (пусто = защитить без пароля):
+Valore fisso	ChartSeriesOptionsWindow		Фиксированное значение
+Cella formula in alto a sinistra, valori a destra/sotto:	WhatIfWindow		Ячейка формулы в левом верхнем углу, значения справа/снизу:
+Commento (facoltativo):	ScenarioWindow		Комментарий (необязательно):
+Non contiene celle vuote	ConditionalFormatWindow		Не содержит пустых ячеек
+Finisce con	ConditionalFormatWindow		Заканчивается на
+Asse 2	ChartWindow		Ось 2
+Password errata: il foglio resta protetto.	MainWindow		Неверный пароль: лист остаётся защищённым.
+Ricerca obiettivo…	MainWindow		Подбор параметра…
+Slicer	MainWindow		Срез
+Percentuale	ChartSeriesOptionsWindow		Процент
+Cella input riga (opzionale):	WhatIfWindow		Ячейка ввода строки (необязательно):
+Linea di tendenza:	ChartSeriesOptionsWindow		Линия тренда:
+Inizia con	ConditionalFormatWindow		Начинается на
+Barre orizzontali	ChartWindow		Линейчатая
+Misure	PivotWindow		Показатели
+Nome:	ScenarioWindow		Имя:
+Aggiorna	NamedStyleWindow		Обновить
+Elimina	NamedStyleWindow		Удалить
+Applica	ChartSeriesOptionsWindow		Применить
+Password:	PasswordWindow		Пароль:
+Uguale a	ConditionalFormatWindow		Равно
+Percentuale	ConditionalFormatWindow		Процент
+Maggiore di	ConditionalFormatWindow		Больше чем
+Imposta cella (deve contenere una formula):	GoalSeekWindow		Установить в ячейке (должна содержать формулу):
+Cambiando la cella:	GoalSeekWindow		Изменяя значение ячейки:
+Contiene errori	ConditionalFormatWindow		Содержит ошибки
+Al valore:	GoalSeekWindow		Значение:
+Nessuna	ChartSeriesOptionsWindow		Нет
+Stili cella…	MainWindow		Стили ячеек…
+Applica	NamedStyleWindow		Применить
+Valore:	ConditionalFormatWindow		Значение:
+Punti media mobile:	ChartSeriesOptionsWindow		Точки скользящего среднего:
+Sottolineato	NamedStyleWindow		Подчёркнутый
+Riferimento della cella \"Imposta\" non valido.	MainWindow		Недопустимая ссылка на ячейку \"Установить\".
+OK	PasswordWindow		ОК
+Intervallo non valido: serve almeno una colonna numerica in ogni riga serie.	MainWindow		Неверный диапазон: в каждой строке ряда нужен как минимум один числовой столбец.
+Nuovo dalla selezione	NamedStyleWindow		Создать из выделения
+Elimina	ScenarioWindow		Удалить
+La ricerca obiettivo potrebbe non aver trovato una soluzione per %s. Valore più vicino ottenuto: %.6g (obiettivo: %.6g). %s non è stata modificata.	MainWindow		Подбор параметра не смог найти точное решение для %s. Получено наиболее близкое значение: %.6g (цель: %.6g). %s не была изменена.
+Dimensione carattere	MainWindow		Размер шрифта
+Celle variabili (un solo intervallo contiguo):	ScenarioWindow		Изменяемые ячейки (только один смежный диапазон):
+Lineare	ChartSeriesOptionsWindow		Линейная
+Nessuno	MainWindow		Нет
+Conferma password:	PasswordWindow		Подтверждение пароля:
+Cella input colonna (opzionale):	WhatIfWindow		Ячейка ввода столбца (необязательно):
+Colore personalizzato	NamedStyleWindow		Настраиваемый цвет
+Famiglia carattere	MainWindow		Семейство шрифта
+Riprova	MainWindow		Повторить попытку
+Nessun documento aperto.	MainWindow		Нет открытого документа.
+Minore di	ConditionalFormatWindow		Меньше чем
+Ricerca obiettivo	MainWindow		Подбор параметра
+Sotto la media (invece di sopra)	ConditionalFormatWindow		Ниже среднего (вместо выше)
+Intervallo delle celle variabili non valido.	MainWindow		Неверный диапазон изменяемых ячеек.
+Rileva colonne	PivotWindow		Определить столбцы
+Diverso da	ConditionalFormatWindow		Не равно
+Riferimento della cella input riga non valido.	MainWindow		Недопустимая ссылка на ячейку ввода строки.
+La cella da cambiare e' protetta.	MainWindow		Изменяемая ячейка защищена.
+Colore tema	ColorWindow		Цвет темы
+Valore:	ChartSeriesOptionsWindow		Значение:
+Tabella dati…	MainWindow		Таблица данных…
+Tabella dati	WhatIfWindow		Таблица данных
+Esegui	GoalSeekWindow		Выполнить
+Mostra	ScenarioWindow		Показать
+Operatore:	ConditionalFormatWindow		Оператор:
+Sopra/sotto la media	ConditionalFormatWindow		Выше/ниже среднего
+Opzioni serie	ChartSeriesOptionsWindow		Параметры ряда
+Corsivo	NamedStyleWindow		Курсив
+Campo Colonne:	PivotWindow		Поле «Столбцы»:
+Crea	WhatIfWindow		Создать
+Password errata: impossibile aprire il file.	MainWindow		Неверный пароль: не удалось открыть файл.
+Aggiungi/Aggiorna	ScenarioWindow		Добавить/Обновить
+Stile tabella	MainWindow		Стиль таблицы
+(nessuna)	PivotWindow		(нет)
+Sfondo:	NamedStyleWindow		Фон:
+Seleziona una cella dentro una tabella strutturata.	MainWindow		Выберите ячейку внутри структурированной таблицы.
+Trovato un valore per %s che porta %s a %.6g (ottenuto: %.6g).	MainWindow		Найдено значение для %s, которое приводит %s к %.6g (получено: %.6g).
+Seleziona...	ChartWindow		Выбрать...
+Maggiore o uguale a	ConditionalFormatWindow		Больше или равно
+Valori sostitutivi (uno per riga, stesso ordine dell'intervallo):	ScenarioWindow		Заменяющие значения (по одному на строку, в том же порядке, что и диапазон):
+Il valore obiettivo non e' un numero.	MainWindow		Целевое значение не является числом.
+Non contiene testo	ConditionalFormatWindow		Не содержит текст
+Contiene celle vuote	ConditionalFormatWindow		Содержит пустые ячейки
+Barre d'errore:	ChartSeriesOptionsWindow		Планки погрешностей:
+La cella \"Imposta\" deve contenere una formula.	MainWindow		Ячейка \"Установить\" должна содержать формулу.
+Riferimento della cella da cambiare non valido.	MainWindow		Недопустимая ссылка на изменяемую ячейку.
+Annulla	PasswordWindow		Отмена
+Opzioni...	ChartWindow		Параметры...
+Seleziona...	ScenarioWindow		Выбрать...
+Specifica almeno una cella input (riga o colonna).	MainWindow		Укажите хотя бы одну ячейку ввода (строку или столбец).
+Colore serie	ColorWindow		Цвет ряда
+Filtro automatico	MainWindow		Автофильтр

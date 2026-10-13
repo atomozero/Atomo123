@@ -1,4 +1,4 @@
-1	Arabic	application/x-vnd.Atomo-Atomo123	1829224689
+1	Arabic	application/x-vnd.Atomo-Atomo123	865844741
 Dividi	PasteSpecialWindow		قسمة
 Nuovo documento	MainWindow		مستند جديد
 Sostituisci con:	FindWindow		استبدال بـ:
@@ -124,7 +124,6 @@ Media	Pivot		المتوسط
 Rimuovi commento	CommentWindow		إزالة التعليق
 Elimina	NameWindow		حذف
 Nessuna anteprima	PageSetupWindow		لا توجد معاينة
-Se il valore e' uguale a	ConditionalFormatWindow		إذا كانت القيمة تساوي
 A capo automatico	MainWindow		التفاف النص
 Il file non e' piu' disponibile nella posizione registrata.	MainWindow		الملف لم يعد متوفرًا في الموقع المسجل.
 Tipo:	ChartWindow		النوع:
@@ -150,7 +149,6 @@ Apri recenti	MainWindow		فتح الملفات الأخيرة
 Grassetto	MainWindow		غامق
 Nessun translator installato sa esportare in questo formato.	MainWindow		لا يوجد محوّل مثبت يمكنه التصدير بهذا التنسيق.
 Somma	PivotWindow		المجموع
-Grafico a barre…	MainWindow		مخطط أعمدة…
 Superiore:	PageSetupWindow		علوي:
 Ordina crescente	MainWindow		فرز تصاعدي
 Una sola pagina	PageSetupWindow		ملاءمة في صفحة واحدة
@@ -284,7 +282,6 @@ Abilita il salvataggio automatico (backup)	PreferencesWindow		تفعيل الح�
 Vai a…	MainWindow		الانتقال إلى…
 Tipo:	ConditionalFormatWindow		النوع:
 Ordina decrescente	MainWindow		فرز تنازلي
-Valore (solo per \"uguale a\"):	ConditionalFormatWindow		القيمة (فقط لـ \"يساوي\"):
 Copia	MainWindow		نسخ
 Cerca:	FindWindow		بحث عن:
 Tutto (come Incolla)	PasteSpecialWindow		الكل (مثل اللصق)
@@ -337,7 +334,6 @@ Lettura del file...	MainWindow		جارٍ قراءة الملف...
 Mostra formule	MainWindow		إظهار الصيغ
 Proteggi foglio	MainWindow		حماية الورقة
 Ricalcolo in corso...	MainWindow		جارٍ إعادة الحساب...
-Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		إعادة الحساب: الورقة %d من %d (المرور %d) - %s
 Rimuovi	WatchWindow		إزالة
 Rimuovi frecce	MainWindow		إزالة الأسهم
 Sblocca celle selezionate	MainWindow		إلغاء تأمين الخلايا المحددة
@@ -394,3 +390,133 @@ Italiano	PreferencesWindow		الإيطالية
 English	PreferencesWindow		الإنجليزية
 Lingua (al prossimo avvio):	PreferencesWindow		اللغة (عند التشغيل التالي):
 Riapri i file recenti all'avvio	PreferencesWindow		إعادة فتح الملفات الأخيرة عند التشغيل
+Password	PasswordWindow		كلمة المرور
+Grassetto	NamedStyleWindow		غامق
+Testo:	NamedStyleWindow		النص:
+Trova il valore della cella da cambiare che porta la cella formula al valore voluto:	GoalSeekWindow		البحث عن القيمة في الخلية المتغيرة التي تؤدي إلى القيمة المطلوبة في خلية الصيغة:
+Confronto numerico (vedi Operatore)	ConditionalFormatWindow		مقارنة رقمية (راجع المعامل)
+Esiste gia' uno stile con questo nome.	MainWindow		يوجد نمط بهذا الاسم بالفعل.
+Aggiorna	ChartWindow		تحديث
+Ultimi (invece di primi)	ConditionalFormatWindow		الأخيرة (بدلًا من الأولى)
+Colori tema	NamedStyleWindow		ألوان السمة
+Il numero di valori non corrisponde al numero di celle nell'intervallo.	MainWindow		عدد القيم لا يتطابق مع عدد الخلايا في النطاق.
+Quanti valori:	ConditionalFormatWindow		عدد القيم:
+E:	ConditionalFormatWindow		و:
+Serve un AutoFilter attivo per inserire uno slicer.	MainWindow		يلزم تفعيل التصفية التلقائية لإدراج شريحة تصفية.
+Scambia righe/colonne	ChartWindow		تبديل الصفوف/الأعمدة
+Continua comunque	MainWindow		المتابعة على أي حال
+Nome (per \"Nuovo dalla selezione\"):	NamedStyleWindow		الاسم (لـ \"جديد من التحديد\"):
+Primi/ultimi N valori	ConditionalFormatWindow		أول/آخر N من القيم
+Media mobile	ChartSeriesOptionsWindow		المتوسط المتحرك
+Contiene testo	ConditionalFormatWindow		يحتوي على نص
+Gestione stili cella	NamedStyleWindow		إدارة أنماط الخلايا
+Minore o uguale a	ConditionalFormatWindow		أصغر من أو يساوي
+Tra	ConditionalFormatWindow		بين
+Specifica la cella formula, il valore obiettivo e la cella da cambiare.	MainWindow		حدد خلية الصيغة والقيمة المطلوبة والخلية المتغيرة.
+Gestione scenari	ScenarioWindow		إدارة السيناريوهات
+Non tra	ConditionalFormatWindow		ليس بين
+Gestione scenari…	MainWindow		إدارة السيناريوهات…
+Questo foglio e' protetto da password:	PasswordWindow		هذه الورقة محمية بكلمة مرور:
+Bordo	MainWindow		الحد
+Non contiene errori	ConditionalFormatWindow		لا يحتوي على أخطاء
+Ricerca obiettivo	GoalSeekWindow		الوصول إلى الهدف
+Riferimento della cella input colonna non valido.	MainWindow		مرجع خلية إدخال العمود غير صالح.
+Le due password non corrispondono.	PasswordWindow		كلمتا المرور غير متطابقتين.
+Nessun dato valido nell'intervallo per la combinazione di campo Colonne/misure scelta.	MainWindow		لا توجد بيانات صالحة في النطاق لتركيبة حقل الأعمدة/المقاييس المحددة.
+Intervallo dati non valido: deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		نطاق بيانات غير صالح: يجب أن يحتوي على عمودين (تسميات، قيم) بصف رقمي واحد على الأقل، مثل A1:B5.
+Percentuale (%):	ChartSeriesOptionsWindow		النسبة المئوية (%):
+Grafico…	MainWindow		مخطط…
+Questo file era protetto da una password di apertura. Salvarlo con \"Salva\" rimuove la protezione: il file diventa leggibile senza password. Usa \"Salva con nome\" per mantenere l'originale cifrato intatto.	MainWindow		كان هذا الملف محميًا بكلمة مرور للفتح. حفظه باستخدام \"حفظ\" يزيل الحماية: يصبح الملف قابلًا للقراءة بدون كلمة مرور. استخدم \"حفظ باسم\" للحفاظ على النسخة الأصلية المشفرة سليمة.
+Password	MainWindow		كلمة المرور
+Password facoltativa per questo foglio (vuota = proteggi senza password):	PasswordWindow		كلمة مرور اختيارية لهذه الورقة (فارغة = حماية بدون كلمة مرور):
+Valore fisso	ChartSeriesOptionsWindow		قيمة ثابتة
+Cella formula in alto a sinistra, valori a destra/sotto:	WhatIfWindow		خلية الصيغة في الأعلى يسارًا، القيم إلى اليمين/الأسفل:
+Commento (facoltativo):	ScenarioWindow		تعليق (اختياري):
+Non contiene celle vuote	ConditionalFormatWindow		لا يحتوي على خلايا فارغة
+Finisce con	ConditionalFormatWindow		ينتهي بـ
+Asse 2	ChartWindow		المحور 2
+Password errata: il foglio resta protetto.	MainWindow		كلمة مرور خاطئة: تبقى الورقة محمية.
+Ricerca obiettivo…	MainWindow		الوصول إلى الهدف…
+Slicer	MainWindow		شريحة التصفية
+Percentuale	ChartSeriesOptionsWindow		نسبة مئوية
+Cella input riga (opzionale):	WhatIfWindow		خلية إدخال الصف (اختياري):
+Linea di tendenza:	ChartSeriesOptionsWindow		خط الاتجاه:
+Inizia con	ConditionalFormatWindow		يبدأ بـ
+Barre orizzontali	ChartWindow		أعمدة أفقية
+Misure	PivotWindow		المقاييس
+Nome:	ScenarioWindow		الاسم:
+Aggiorna	NamedStyleWindow		تحديث
+Elimina	NamedStyleWindow		حذف
+Applica	ChartSeriesOptionsWindow		تطبيق
+Password:	PasswordWindow		كلمة المرور:
+Uguale a	ConditionalFormatWindow		يساوي
+Percentuale	ConditionalFormatWindow		نسبة مئوية
+Maggiore di	ConditionalFormatWindow		أكبر من
+Imposta cella (deve contenere una formula):	GoalSeekWindow		خلية الصيغة (يجب أن تحتوي على صيغة):
+Cambiando la cella:	GoalSeekWindow		بتغيير الخلية:
+Contiene errori	ConditionalFormatWindow		يحتوي على أخطاء
+Al valore:	GoalSeekWindow		إلى القيمة:
+Nessuna	ChartSeriesOptionsWindow		بلا
+Stili cella…	MainWindow		أنماط الخلايا…
+Applica	NamedStyleWindow		تطبيق
+Valore:	ConditionalFormatWindow		القيمة:
+Punti media mobile:	ChartSeriesOptionsWindow		نقاط المتوسط المتحرك:
+Sottolineato	NamedStyleWindow		تسطير
+Riferimento della cella \"Imposta\" non valido.	MainWindow		مرجع خلية \"الصيغة\" غير صالح.
+OK	PasswordWindow		موافق
+Intervallo non valido: serve almeno una colonna numerica in ogni riga serie.	MainWindow		نطاق غير صالح: يلزم عمود رقمي واحد على الأقل في كل صف سلسلة.
+Nuovo dalla selezione	NamedStyleWindow		جديد من التحديد
+Elimina	ScenarioWindow		حذف
+La ricerca obiettivo potrebbe non aver trovato una soluzione per %s. Valore più vicino ottenuto: %.6g (obiettivo: %.6g). %s non è stata modificata.	MainWindow		قد لا تكون عملية الوصول إلى الهدف قد وجدت حلًا لـ %s. أقرب قيمة تم الحصول عليها: %.6g (الهدف: %.6g). لم يتم تعديل %s.
+Dimensione carattere	MainWindow		حجم الخط
+Celle variabili (un solo intervallo contiguo):	ScenarioWindow		الخلايا المتغيرة (نطاق متجاور واحد فقط):
+Lineare	ChartSeriesOptionsWindow		خطي
+Nessuno	MainWindow		بلا
+Conferma password:	PasswordWindow		تأكيد كلمة المرور:
+Cella input colonna (opzionale):	WhatIfWindow		خلية إدخال العمود (اختياري):
+Colore personalizzato	NamedStyleWindow		لون مخصص
+Famiglia carattere	MainWindow		نوع الخط
+Riprova	MainWindow		إعادة المحاولة
+Nessun documento aperto.	MainWindow		لا يوجد مستند مفتوح.
+Minore di	ConditionalFormatWindow		أصغر من
+Ricerca obiettivo	MainWindow		الوصول إلى الهدف
+Sotto la media (invece di sopra)	ConditionalFormatWindow		أقل من المتوسط (بدلًا من أعلى منه)
+Intervallo delle celle variabili non valido.	MainWindow		نطاق الخلايا المتغيرة غير صالح.
+Rileva colonne	PivotWindow		اكتشاف الأعمدة
+Diverso da	ConditionalFormatWindow		مختلف عن
+Riferimento della cella input riga non valido.	MainWindow		مرجع خلية إدخال الصف غير صالح.
+La cella da cambiare e' protetta.	MainWindow		الخلية المتغيرة محمية.
+Colore tema	ColorWindow		لون السمة
+Valore:	ChartSeriesOptionsWindow		القيمة:
+Tabella dati…	MainWindow		جدول البيانات…
+Tabella dati	WhatIfWindow		جدول البيانات
+Esegui	GoalSeekWindow		تشغيل
+Mostra	ScenarioWindow		إظهار
+Operatore:	ConditionalFormatWindow		المعامل:
+Sopra/sotto la media	ConditionalFormatWindow		أعلى/أقل من المتوسط
+Opzioni serie	ChartSeriesOptionsWindow		خيارات السلسلة
+Corsivo	NamedStyleWindow		مائل
+Campo Colonne:	PivotWindow		حقل الأعمدة:
+Crea	WhatIfWindow		إنشاء
+Password errata: impossibile aprire il file.	MainWindow		كلمة مرور خاطئة: تعذر فتح الملف.
+Aggiungi/Aggiorna	ScenarioWindow		إضافة/تحديث
+Stile tabella	MainWindow		نمط الجدول
+(nessuna)	PivotWindow		(بلا)
+Sfondo:	NamedStyleWindow		الخلفية:
+Seleziona una cella dentro una tabella strutturata.	MainWindow		حدد خلية داخل جدول منظم.
+Trovato un valore per %s che porta %s a %.6g (ottenuto: %.6g).	MainWindow		تم العثور على قيمة لـ %s تؤدي بـ %s إلى %.6g (تم الحصول على: %.6g).
+Seleziona...	ChartWindow		تحديد...
+Maggiore o uguale a	ConditionalFormatWindow		أكبر من أو يساوي
+Valori sostitutivi (uno per riga, stesso ordine dell'intervallo):	ScenarioWindow		القيم البديلة (قيمة واحدة لكل صف، بنفس ترتيب النطاق):
+Il valore obiettivo non e' un numero.	MainWindow		القيمة المطلوبة ليست رقمًا.
+Non contiene testo	ConditionalFormatWindow		لا يحتوي على نص
+Contiene celle vuote	ConditionalFormatWindow		يحتوي على خلايا فارغة
+Barre d'errore:	ChartSeriesOptionsWindow		أعمدة الخطأ:
+La cella \"Imposta\" deve contenere una formula.	MainWindow		يجب أن تحتوي خلية \"الصيغة\" على صيغة.
+Riferimento della cella da cambiare non valido.	MainWindow		مرجع الخلية المتغيرة غير صالح.
+Annulla	PasswordWindow		إلغاء
+Opzioni...	ChartWindow		خيارات...
+Seleziona...	ScenarioWindow		تحديد...
+Specifica almeno una cella input (riga o colonna).	MainWindow		حدد خلية إدخال واحدة على الأقل (صف أو عمود).
+Colore serie	ColorWindow		لون السلسلة
+Filtro automatico	MainWindow		تصفية تلقائية

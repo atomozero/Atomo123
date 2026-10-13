@@ -1,4 +1,4 @@
-1	German	application/x-vnd.Atomo-Atomo123	1829224689
+1	German	application/x-vnd.Atomo-Atomo123	865844741
 Dividi	PasteSpecialWindow		Dividieren
 Nuovo documento	MainWindow		Neues Dokument
 Sostituisci con:	FindWindow		Ersetzen durch:
@@ -124,7 +124,6 @@ Media	Pivot		Mittelwert
 Rimuovi commento	CommentWindow		Kommentar entfernen
 Elimina	NameWindow		Löschen
 Nessuna anteprima	PageSetupWindow		Keine Vorschau
-Se il valore e' uguale a	ConditionalFormatWindow		Wenn der Wert gleich ist
 A capo automatico	MainWindow		Textumbruch
 Il file non e' piu' disponibile nella posizione registrata.	MainWindow		Die Datei ist am gespeicherten Speicherort nicht mehr verfügbar.
 Tipo:	ChartWindow		Typ:
@@ -150,7 +149,6 @@ Apri recenti	MainWindow		Zuletzt geöffnet
 Grassetto	MainWindow		Fett
 Nessun translator installato sa esportare in questo formato.	MainWindow		Kein installierter Translator kann in dieses Format exportieren.
 Somma	PivotWindow		Summe
-Grafico a barre…	MainWindow		Balkendiagramm…
 Superiore:	PageSetupWindow		Oben:
 Ordina crescente	MainWindow		Aufsteigend sortieren
 Una sola pagina	PageSetupWindow		Auf eine Seite anpassen
@@ -284,7 +282,6 @@ Abilita il salvataggio automatico (backup)	PreferencesWindow		Automatisches Spei
 Vai a…	MainWindow		Gehe zu…
 Tipo:	ConditionalFormatWindow		Typ:
 Ordina decrescente	MainWindow		Absteigend sortieren
-Valore (solo per \"uguale a\"):	ConditionalFormatWindow		Wert (nur für \"gleich\"):
 Copia	MainWindow		Kopieren
 Cerca:	FindWindow		Suchen:
 Tutto (come Incolla)	PasteSpecialWindow		Alles (wie Einfügen)
@@ -337,7 +334,6 @@ Lettura del file...	MainWindow		Datei wird gelesen...
 Mostra formule	MainWindow		Formeln anzeigen
 Proteggi foglio	MainWindow		Blatt schützen
 Ricalcolo in corso...	MainWindow		Neuberechnung läuft...
-Ricalcolo: foglio %d di %d (passata %d) - %s	MainWindow		Neuberechnung: Blatt %d von %d (Durchlauf %d) - %s
 Rimuovi	WatchWindow		Entfernen
 Rimuovi frecce	MainWindow		Pfeile entfernen
 Sblocca celle selezionate	MainWindow		Ausgewählte Zellen entsperren
@@ -394,3 +390,133 @@ Italiano	PreferencesWindow		Italienisch
 English	PreferencesWindow		Englisch
 Lingua (al prossimo avvio):	PreferencesWindow		Sprache (beim nächsten Start):
 Riapri i file recenti all'avvio	PreferencesWindow		Zuletzt verwendete Dateien beim Start erneut öffnen
+Password	PasswordWindow		Passwort
+Grassetto	NamedStyleWindow		Fett
+Testo:	NamedStyleWindow		Text:
+Trova il valore della cella da cambiare che porta la cella formula al valore voluto:	GoalSeekWindow		Findet den Wert der veränderbaren Zelle, der die Formelzelle auf den gewünschten Wert bringt:
+Confronto numerico (vedi Operatore)	ConditionalFormatWindow		Numerischer Vergleich (siehe Operator)
+Esiste gia' uno stile con questo nome.	MainWindow		Es existiert bereits ein Stil mit diesem Namen.
+Aggiorna	ChartWindow		Aktualisieren
+Ultimi (invece di primi)	ConditionalFormatWindow		Letzte (statt Erste)
+Colori tema	NamedStyleWindow		Designfarben
+Il numero di valori non corrisponde al numero di celle nell'intervallo.	MainWindow		Die Anzahl der Werte stimmt nicht mit der Anzahl der Zellen im Bereich überein.
+Quanti valori:	ConditionalFormatWindow		Wie viele Werte:
+E:	ConditionalFormatWindow		Und:
+Serve un AutoFilter attivo per inserire uno slicer.	MainWindow		Zum Einfügen eines Slicers ist ein aktiver AutoFilter erforderlich.
+Scambia righe/colonne	ChartWindow		Zeilen/Spalten vertauschen
+Continua comunque	MainWindow		Trotzdem fortfahren
+Nome (per \"Nuovo dalla selezione\"):	NamedStyleWindow		Name (für \"Neu aus Auswahl\"):
+Primi/ultimi N valori	ConditionalFormatWindow		Erste/letzte N Werte
+Media mobile	ChartSeriesOptionsWindow		Gleitender Durchschnitt
+Contiene testo	ConditionalFormatWindow		Enthält Text
+Gestione stili cella	NamedStyleWindow		Zellenstile verwalten
+Minore o uguale a	ConditionalFormatWindow		Kleiner oder gleich
+Tra	ConditionalFormatWindow		Zwischen
+Specifica la cella formula, il valore obiettivo e la cella da cambiare.	MainWindow		Geben Sie die Formelzelle, den Zielwert und die veränderbare Zelle an.
+Gestione scenari	ScenarioWindow		Szenario-Manager
+Non tra	ConditionalFormatWindow		Nicht zwischen
+Gestione scenari…	MainWindow		Szenario-Manager…
+Questo foglio e' protetto da password:	PasswordWindow		Dieses Blatt ist durch ein Passwort geschützt:
+Bordo	MainWindow		Rahmen
+Non contiene errori	ConditionalFormatWindow		Enthält keine Fehler
+Ricerca obiettivo	GoalSeekWindow		Zielwertsuche
+Riferimento della cella input colonna non valido.	MainWindow		Ungültiger Bezug der Spalten-Eingabezelle.
+Le due password non corrispondono.	PasswordWindow		Die beiden Passwörter stimmen nicht überein.
+Nessun dato valido nell'intervallo per la combinazione di campo Colonne/misure scelta.	MainWindow		Keine gültigen Daten im Bereich für die gewählte Kombination aus Spaltenfeld/Werten.
+Intervallo dati non valido: deve avere due colonne (etichette, valori) con almeno una riga numerica, es. A1:B5.	MainWindow		Ungültiger Datenbereich: er muss zwei Spalten (Beschriftungen, Werte) mit mindestens einer numerischen Zeile haben, z. B. A1:B5.
+Percentuale (%):	ChartSeriesOptionsWindow		Prozent (%):
+Grafico…	MainWindow		Diagramm…
+Questo file era protetto da una password di apertura. Salvarlo con \"Salva\" rimuove la protezione: il file diventa leggibile senza password. Usa \"Salva con nome\" per mantenere l'originale cifrato intatto.	MainWindow		Diese Datei war durch ein Öffnen-Passwort geschützt. Wenn Sie sie mit \"Speichern\" sichern, wird der Schutz entfernt: die Datei wird ohne Passwort lesbar. Verwenden Sie \"Speichern unter\", um das verschlüsselte Original unverändert zu lassen.
+Password	MainWindow		Passwort
+Password facoltativa per questo foglio (vuota = proteggi senza password):	PasswordWindow		Optionales Passwort für dieses Blatt (leer = ohne Passwort schützen):
+Valore fisso	ChartSeriesOptionsWindow		Fester Wert
+Cella formula in alto a sinistra, valori a destra/sotto:	WhatIfWindow		Formelzelle oben links, Werte rechts/unten:
+Commento (facoltativo):	ScenarioWindow		Kommentar (optional):
+Non contiene celle vuote	ConditionalFormatWindow		Enthält keine leeren Zellen
+Finisce con	ConditionalFormatWindow		Endet mit
+Asse 2	ChartWindow		Achse 2
+Password errata: il foglio resta protetto.	MainWindow		Falsches Passwort: das Blatt bleibt geschützt.
+Ricerca obiettivo…	MainWindow		Zielwertsuche…
+Slicer	MainWindow		Slicer
+Percentuale	ChartSeriesOptionsWindow		Prozent
+Cella input riga (opzionale):	WhatIfWindow		Zeilen-Eingabezelle (optional):
+Linea di tendenza:	ChartSeriesOptionsWindow		Trendlinie:
+Inizia con	ConditionalFormatWindow		Beginnt mit
+Barre orizzontali	ChartWindow		Horizontale Balken
+Misure	PivotWindow		Werte
+Nome:	ScenarioWindow		Name:
+Aggiorna	NamedStyleWindow		Aktualisieren
+Elimina	NamedStyleWindow		Löschen
+Applica	ChartSeriesOptionsWindow		Übernehmen
+Password:	PasswordWindow		Passwort:
+Uguale a	ConditionalFormatWindow		Gleich
+Percentuale	ConditionalFormatWindow		Prozent
+Maggiore di	ConditionalFormatWindow		Größer als
+Imposta cella (deve contenere una formula):	GoalSeekWindow		Zielzelle (muss eine Formel enthalten):
+Cambiando la cella:	GoalSeekWindow		Veränderbare Zelle:
+Contiene errori	ConditionalFormatWindow		Enthält Fehler
+Al valore:	GoalSeekWindow		Zielwert:
+Nessuna	ChartSeriesOptionsWindow		Keine
+Stili cella…	MainWindow		Zellenstile…
+Applica	NamedStyleWindow		Übernehmen
+Valore:	ConditionalFormatWindow		Wert:
+Punti media mobile:	ChartSeriesOptionsWindow		Punkte des gleitenden Durchschnitts:
+Sottolineato	NamedStyleWindow		Unterstrichen
+Riferimento della cella \"Imposta\" non valido.	MainWindow		Ungültiger Bezug der Zielzelle.
+OK	PasswordWindow		OK
+Intervallo non valido: serve almeno una colonna numerica in ogni riga serie.	MainWindow		Ungültiger Bereich: in jeder Reihenzeile ist mindestens eine numerische Spalte erforderlich.
+Nuovo dalla selezione	NamedStyleWindow		Neu aus Auswahl
+Elimina	ScenarioWindow		Löschen
+La ricerca obiettivo potrebbe non aver trovato una soluzione per %s. Valore più vicino ottenuto: %.6g (obiettivo: %.6g). %s non è stata modificata.	MainWindow		Die Zielwertsuche hat für %s möglicherweise keine Lösung gefunden. Nächster erreichter Wert: %.6g (Ziel: %.6g). %s wurde nicht geändert.
+Dimensione carattere	MainWindow		Schriftgröße
+Celle variabili (un solo intervallo contiguo):	ScenarioWindow		Veränderbare Zellen (nur ein zusammenhängender Bereich):
+Lineare	ChartSeriesOptionsWindow		Linear
+Nessuno	MainWindow		Keine
+Conferma password:	PasswordWindow		Passwort bestätigen:
+Cella input colonna (opzionale):	WhatIfWindow		Spalten-Eingabezelle (optional):
+Colore personalizzato	NamedStyleWindow		Benutzerdefinierte Farbe
+Famiglia carattere	MainWindow		Schriftart
+Riprova	MainWindow		Erneut versuchen
+Nessun documento aperto.	MainWindow		Kein Dokument geöffnet.
+Minore di	ConditionalFormatWindow		Kleiner als
+Ricerca obiettivo	MainWindow		Zielwertsuche
+Sotto la media (invece di sopra)	ConditionalFormatWindow		Unter dem Durchschnitt (statt darüber)
+Intervallo delle celle variabili non valido.	MainWindow		Ungültiger Bereich der veränderbaren Zellen.
+Rileva colonne	PivotWindow		Spalten erkennen
+Diverso da	ConditionalFormatWindow		Ungleich
+Riferimento della cella input riga non valido.	MainWindow		Ungültiger Bezug der Zeilen-Eingabezelle.
+La cella da cambiare e' protetta.	MainWindow		Die veränderbare Zelle ist geschützt.
+Colore tema	ColorWindow		Designfarbe
+Valore:	ChartSeriesOptionsWindow		Wert:
+Tabella dati…	MainWindow		Datentabelle…
+Tabella dati	WhatIfWindow		Datentabelle
+Esegui	GoalSeekWindow		Ausführen
+Mostra	ScenarioWindow		Anzeigen
+Operatore:	ConditionalFormatWindow		Operator:
+Sopra/sotto la media	ConditionalFormatWindow		Über/unter dem Durchschnitt
+Opzioni serie	ChartSeriesOptionsWindow		Reihenoptionen
+Corsivo	NamedStyleWindow		Kursiv
+Campo Colonne:	PivotWindow		Spaltenfeld:
+Crea	WhatIfWindow		Erstellen
+Password errata: impossibile aprire il file.	MainWindow		Falsches Passwort: die Datei konnte nicht geöffnet werden.
+Aggiungi/Aggiorna	ScenarioWindow		Hinzufügen/Aktualisieren
+Stile tabella	MainWindow		Tabellenstil
+(nessuna)	PivotWindow		(keine)
+Sfondo:	NamedStyleWindow		Hintergrund:
+Seleziona una cella dentro una tabella strutturata.	MainWindow		Wählen Sie eine Zelle innerhalb einer strukturierten Tabelle aus.
+Trovato un valore per %s che porta %s a %.6g (ottenuto: %.6g).	MainWindow		Ein Wert für %s wurde gefunden, der %s auf %.6g bringt (erreicht: %.6g).
+Seleziona...	ChartWindow		Auswählen...
+Maggiore o uguale a	ConditionalFormatWindow		Größer oder gleich
+Valori sostitutivi (uno per riga, stesso ordine dell'intervallo):	ScenarioWindow		Ersatzwerte (einer pro Zeile, gleiche Reihenfolge wie im Bereich):
+Il valore obiettivo non e' un numero.	MainWindow		Der Zielwert ist keine Zahl.
+Non contiene testo	ConditionalFormatWindow		Enthält keinen Text
+Contiene celle vuote	ConditionalFormatWindow		Enthält leere Zellen
+Barre d'errore:	ChartSeriesOptionsWindow		Fehlerbalken:
+La cella \"Imposta\" deve contenere una formula.	MainWindow		Die Zielzelle muss eine Formel enthalten.
+Riferimento della cella da cambiare non valido.	MainWindow		Ungültiger Bezug der veränderbaren Zelle.
+Annulla	PasswordWindow		Abbrechen
+Opzioni...	ChartWindow		Optionen...
+Seleziona...	ScenarioWindow		Auswählen...
+Specifica almeno una cella input (riga o colonna).	MainWindow		Geben Sie mindestens eine Eingabezelle an (Zeile oder Spalte).
+Colore serie	ColorWindow		Reihenfarbe
+Filtro automatico	MainWindow		AutoFilter
