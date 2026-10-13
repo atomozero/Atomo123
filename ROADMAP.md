@@ -5,24 +5,41 @@ calculation engine and legacy XLS importer are extracted and
 modernized from the historical BeOS **Sum-It** project (community fork
 `OpenSumIt`); the UI is written from scratch on Interface/Layout Kit.
 
-**Status: v0.7.0 released** on GitHub (a font family/size picker in
-the toolbar, like Excel's own Home ribbon — explicit user request,
-positioned inline as the first two items of the "Formato" icon group,
-aligned with Bold/Italic/Underline on the same row. Required widening
-`ToolbarView` to accept any `BView`, not just icon buttons. Two
-follow-up fixes from live user feedback on the real rendered toolbar
-along the way: a clipped border/dropdown-arrow on the size field, and
-the initial positioning in its own separate row before being moved
-inline — see CHANGELOG.md for the full detail) — on top of v0.6.0,
-which closed the single largest remaining Tier 3 foundation, a real
+**Status: v0.7.0 released** on GitHub, with real OS-level BMessage
+scripting now in progress on top of it (not yet tagged — explicit user
+request, after checking that `hey Atomo123 get Suites of Window 0`
+showed only the generic BWindow/BView/BMenu suites every Haiku app
+gets for free, nothing app-specific). New `suite/vnd.Atomo-sheet` with
+ten DIRECT properties on `MainWindow` — `Selection`/`Value`/
+`FilePath`/`CellColor`/`ColumnWidth`/`Bold`/`Border`/`NumberFormat`/
+`Chart`/`WrapText` — enough to read/write cell values, move the
+selection, save/open files, and build a presentation-ready, print-ready
+sheet (colored cells, column widths, bold/bordered headers, number
+formats, an embedded live-updating chart, wrapped text) entirely from
+outside the app. Driven in parallel by matching new MCP tools in the
+separate Pippo project (`get_cell`/`set_cell`/`set_cell_color`/
+`set_column_width`/`set_cell_bold`/`set_cell_border`/
+`set_number_format`/`insert_chart`/`set_wrap_text`/`open_file`/
+`save_file`, among others), so an LLM agent can drive the real app
+through Haiku's native scripting protocol instead of the app needing
+any MCP-specific code of its own. Two real, unrelated bugs found and
+fixed while building a demo through this path: `ROUND()` rounded to
+one decimal too many for most real numbers, and XLSX export silently
+dropped custom column widths (see CHANGELOG.md for both). This is a
+distinct effort from the v4.0 "Scripting" item below (VBA/macro
+*execution* inside spreadsheet formulas) — this is OS-level automation
+of the running app from another process, already real and already
+shipping incrementally; v4.0 is still unstarted.
+This came on top of v0.7.0 itself (a font family/size picker in the
+toolbar, like Excel's own Home ribbon) and v0.6.0 before it, which
+closed the single largest remaining Tier 3 foundation, a real
 dependency graph for the calc engine (125x faster on a worst-case
 synthetic benchmark, cross-sheet circular reference detection as a
-free side effect, plus real correctness/performance fixes found along
-the way — see CHANGELOG.md for that detail too). What remains on
-Tier 3 is Goal Seek/Solver and VBA/macros (see below for what's next).
-This file tracks project-level status and forward plan only — the
-detailed, per-release history of what shipped and the real bugs found
-along the way lives in `CHANGELOG.md`.
+free side effect — see CHANGELOG.md for the full detail on all of
+this). What remains on Tier 3 is Goal Seek/Solver and VBA/macros (see
+below for what's next). This file tracks project-level status and
+forward plan only — the detailed, per-release history of what shipped
+and the real bugs found along the way lives in `CHANGELOG.md`.
 
 ## Phases
 
