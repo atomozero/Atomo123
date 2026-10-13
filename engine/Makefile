@@ -189,7 +189,15 @@ test-vba-decompress: $(LIB)
 	$(CXX) -o tests/vba_decompress_test $(OBJDIR)/vba_decompress_test.o -L. -lengine -lbe
 	./tests/vba_decompress_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test
+# Test dell'analisi dello stream "dir" di un progetto VBA (Path to full
+# Excel parity, VBA/macro execution, Fase 1c): vedi il commento in cima
+# a vba_dir_stream_test.cpp.
+test-vba-dir-stream: $(LIB)
+	$(CXX) -c tests/vba_dir_stream_test.cpp -o $(OBJDIR)/vba_dir_stream_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/vba_dir_stream_test $(OBJDIR)/vba_dir_stream_test.o -L. -lengine -lbe
+	./tests/vba_dir_stream_test
 
-.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test
+
+.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream
