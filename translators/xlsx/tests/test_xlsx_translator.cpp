@@ -42,6 +42,7 @@
 #include "CellIterator.h"
 #include "CellParser.h"
 #include "CellStyle.h"
+#include "Formatter.h"
 #include "FunctionUtils.h"
 #include "Globals.h"
 #include "Globals.h"
@@ -567,6 +568,75 @@ static status_t WriteASCDWithBorderColorForTest(CContainer* doc, const char* ref
 			|| dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
 			|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
 			|| dest->Write(&color, sizeof(color)) != (ssize_t)sizeof(color))
+			return B_IO_ERROR;
+	}
+
+	return B_OK;
+}
+
+// Same idea as WriteASCDWithBorderColorForTest above, but for a number
+// format instead: the number-format section comes right after fonts/
+// alignment/borders (all zero here), well before underline/wrapText/
+// mergedCells/images, see the real section order in the WriteASCD
+// function inside XlsxTranslator.cpp (just above
+// ResolveCellFormatForExport). "format" is a packed CFormatter::
+// FormatID() value (see Formatter.h): eCurrency with no decimals and
+// no thousands separator is just eCurrency itself (1).
+static status_t WriteASCDWithNumberFormatForTest(CContainer* doc, const char* ref,
+	int32 format, BPositionIO* dest)
+{
+	status_t err = WriteASCDForTest(doc, dest);
+	if (err != B_OK)
+		return err;
+
+	// Grafici incorporati: chartCount=0.
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// colWidths, cellColors, columnColors, rowHeights: quattro conteggi a zero.
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Blocca riquadri: due int32, sempre presenti.
+	{
+		int32 fr = 0, fc = 0;
+		if (dest->Write(&fr, sizeof(fr)) != (ssize_t)sizeof(fr)
+			|| dest->Write(&fc, sizeof(fc)) != (ssize_t)sizeof(fc))
+			return B_IO_ERROR;
+	}
+	// Font, allineamento, bordi: tre conteggi a zero.
+	for (int i = 0; i < 3; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
+			return B_IO_ERROR;
+	}
+	// Formato numero di cella: un record vero.
+	{
+		cell c;
+		c.Set(ref);
+		int32 formatCount = 1;
+		int16 row = c.v, col = c.h;
+		if (dest->Write(&formatCount, sizeof(formatCount)) != (ssize_t)sizeof(formatCount)
+			|| dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+			|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+			|| dest->Write(&format, sizeof(format)) != (ssize_t)sizeof(format))
+			return B_IO_ERROR;
+	}
+	// Sottolineato, interruzione testo, celle unite, immagini: quattro
+	// conteggi a zero -- tutto cio' che segue (visibilita' griglia,
+	// colore linguetta, ecc.) e' EOF-tollerante, nessun bisogno di
+	// scriverlo per questo test (vedi lo stesso principio in
+	// WriteASCDForTest sopra, usato da solo altrove).
+	for (int i = 0; i < 4; i++)
+	{
+		int32 zero = 0;
+		if (dest->Write(&zero, sizeof(zero)) != (ssize_t)sizeof(zero))
 			return B_IO_ERROR;
 	}
 
@@ -11839,6 +11909,157 @@ int main()
 			}
 			else
 				Check(false, "xl/worksheets/sheet1.xml e xl/styles.xml si leggono dall'archivio (senza regole)");
+		}
+	}
+
+	// Escape delle virgolette nei valori di attributo XML di
+	// styles.xml (bug reale, trovato costruendo una demo vera con un
+	// formato valuta): un formatCode come "$"0 (simbolo valuta
+	// letterale fra virgolette, sintassi di Excel stesso -- vedi
+	// ResolveCellFormatForExport in XlsxTranslator.cpp) scritto SENZA
+	// escape dentro formatCode="..." rompe il parse XML a meta'
+	// attributo. L'INTERO styles.xml falliva da quel punto in poi
+	// (XML_Parse si ferma al primo errore), quindi OGNI cella con
+	// QUALUNQUE stile -- non solo il formato valuta -- tornava
+	// silenziosamente al predefinito alla riapertura, perche' <fonts>/
+	// <borders>/<cellXfs> vengono tutti dopo <numFmts> nello schema
+	// OOXML. Verifica sia che l'output scappi le virgolette (controllo
+	// a livello di stringa su styles.xml), sia -- il segnale piu'
+	// forte -- che il formato numero stesso sopravviva a un round-trip
+	// XLSX->ASCD completo: se ParseStyles si fosse fermato a meta',
+	// A1 non avrebbe NESSUN formato dopo la rilettura, non solo quello
+	// sbagliato.
+	{
+		CContainer &quoteDoc = *new CContainer(NULL, NULL);
+		TryToParseString("1234", cell(1, 1), &quoteDoc, true); // A1
+
+		BMallocIO quoteAscdIn;
+		// eCurrency, zero cifre decimali, nessuna virgola di migliaia
+		// (FormatID() == eCurrency semplice) -> ResolveCellFormatForExport
+		// produce esattamente "\"$\"0", il formato che ha innescato il
+		// bug reale la prima volta.
+		status_t quoteSaveErr = WriteASCDWithNumberFormatForTest(&quoteDoc, "A1",
+			eCurrency, &quoteAscdIn);
+		Check(quoteSaveErr == B_OK,
+			"preparazione dell'ASCD di prova (formato valuta) riesce");
+		quoteDoc.Release();
+
+		quoteAscdIn.Seek(0, SEEK_SET);
+		translator_info quoteInfo;
+		err = translator->Identify(&quoteAscdIn, NULL, NULL, &quoteInfo, kAtomoXlsxFormat);
+		Check(err == B_OK, "Identify riconosce l'ASCD di prova (formato valuta)");
+
+		quoteAscdIn.Seek(0, SEEK_SET);
+		BMallocIO quoteXlsxOut;
+		err = translator->Translate(&quoteAscdIn, &quoteInfo, NULL, kAtomoXlsxFormat, &quoteXlsxOut);
+		Check(err == B_OK, "Translate ASCD -> XLSX riesce con un formato valuta");
+
+		if (err == B_OK)
+		{
+			quoteXlsxOut.Seek(0, SEEK_SET);
+			CZipReader quoteZip;
+			Check(quoteZip.Open(&quoteXlsxOut),
+				"il file XLSX (formato valuta) e' un vero archivio ZIP leggibile");
+
+			std::vector<unsigned char> stylesBytes;
+			bool readStyles = quoteZip.ReadEntry("xl/styles.xml", stylesBytes);
+			Check(readStyles, "xl/styles.xml si legge dall'archivio (formato valuta)");
+
+			if (readStyles)
+			{
+				std::string styles((const char *)&stylesBytes[0], stylesBytes.size());
+				Check(styles.find("&quot;$&quot;0") != std::string::npos,
+					"il formatCode della valuta scappa le virgolette letterali come &quot;, "
+					"non le scrive crude dentro formatCode=\"...\"");
+				Check(styles.find("formatCode=\"\"$\"0\"") == std::string::npos,
+					"nessuna virgoletta letterale non scappata rimane dentro il valore "
+					"dell'attributo formatCode");
+			}
+
+			// Rilegge il file appena scritto con lo stesso translator
+			// (round-trip XLSX -> ASCD): se styles.xml fosse ancora
+			// rotto, A1 non recupererebbe NESSUN formato numero.
+			quoteXlsxOut.Seek(0, SEEK_SET);
+			translator_info quoteReimportInfo;
+			err = translator->Identify(&quoteXlsxOut, NULL, NULL, &quoteReimportInfo, 0);
+			Check(err == B_OK && quoteReimportInfo.type == kAtomoXlsxFormat,
+				"il file XLSX (formato valuta) riscritto si riconosce rileggendolo");
+
+			quoteXlsxOut.Seek(0, SEEK_SET);
+			BMallocIO quoteAscdOut2;
+			err = translator->Translate(&quoteXlsxOut, &quoteReimportInfo, NULL,
+				kAtomoNativeFormat, &quoteAscdOut2);
+			Check(err == B_OK,
+				"il file XLSX (formato valuta) riscritto si rilegge correttamente (round-trip)");
+
+			if (err == B_OK)
+			{
+				const unsigned char *data = NULL;
+				size_t len = 0;
+				bool unwrapped = UnwrapFirstSheet((const unsigned char *)quoteAscdOut2.Buffer(),
+					quoteAscdOut2.BufferLength(), &data, &len);
+				Check(unwrapped, "il round-trip (formato valuta) produce un ASCD valido");
+
+				if (unwrapped)
+				{
+					size_t pos = 12;
+					int32 cnt;
+					memcpy(&cnt, data + 8, 4);
+
+					for (int32 i = 0; i < cnt && pos + 8 <= len; i++)
+					{
+						int16 row, col;
+						int32 tlen;
+						memcpy(&row, data + pos, 2); pos += 2;
+						memcpy(&col, data + pos, 2); pos += 2;
+						memcpy(&tlen, data + pos, 4); pos += 4;
+						pos += 1; // "kind" per cella
+						if (pos + (size_t)tlen > len)
+							break;
+						pos += tlen;
+					}
+
+					// Salta grafici/larghezze colonna/colori cella/colori
+					// colonna/altezze riga (sempre vuoti qui), poi blocca
+					// riquadri (8 byte fissi, mai un conteggio davanti),
+					// per arrivare alla sezione formato numero.
+					if (pos + 4 <= len) { int32 n; memcpy(&n, data + pos, 4); pos += 4; pos += n * (2 * 4 + 4 * 4); } // grafici
+					if (pos + 4 <= len) { int32 n; memcpy(&n, data + pos, 4); pos += 4; pos += n * (2 + 4); } // larghezze colonna
+					if (pos + 4 <= len) { int32 n; memcpy(&n, data + pos, 4); pos += 4; pos += n * (2 + 2 + 8); } // colori cella
+					if (pos + 4 <= len) { int32 n; memcpy(&n, data + pos, 4); pos += 4; pos += n * (2 + 8); } // colori colonna
+					if (pos + 4 <= len) { int32 n; memcpy(&n, data + pos, 4); pos += 4; pos += n * (2 + 2 + 4); } // altezze riga
+					if (pos + 8 <= len) pos += 8; // blocca riquadri
+
+					if (pos + 4 <= len) { int32 n; memcpy(&n, data + pos, 4); pos += 4; pos += n * (2 + 2 + (int32)sizeof(font_family) + (int32)sizeof(font_style) + 4); } // font
+					if (pos + 4 <= len) { int32 n; memcpy(&n, data + pos, 4); pos += 4; pos += n * (2 + 2 + 1); } // allineamento
+					if (pos + 4 <= len) { int32 n; memcpy(&n, data + pos, 4); pos += 4; pos += n * (2 + 2 + 4); } // bordi
+
+					bool haveFormatCount = false;
+					int32 formatCount = 0;
+					if (pos + 4 <= len)
+					{
+						memcpy(&formatCount, data + pos, 4); pos += 4;
+						haveFormatCount = true;
+					}
+					Check(haveFormatCount && formatCount == 1,
+						"dopo il round-trip, A1 ha ancora esattamente un formato numero esplicito "
+						"(il bug lo perderebbe del tutto)");
+
+					int32 foundFormat = -1;
+					for (int32 i = 0; i < formatCount && pos + 8 <= len; i++)
+					{
+						int16 row, col;
+						int32 format;
+						memcpy(&row, data + pos, 2); pos += 2;
+						memcpy(&col, data + pos, 2); pos += 2;
+						memcpy(&format, data + pos, 4); pos += 4;
+						if (row == 1 && col == 1)
+							foundFormat = format;
+					}
+					Check(foundFormat >= 0 && (foundFormat & 0x000F) == eCurrency,
+						"A1 mantiene un formato valuta dopo il round-trip completo");
+				}
+			}
 		}
 	}
 

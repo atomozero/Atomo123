@@ -3565,6 +3565,21 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	return B_OK;
 }
 
+// Usata sia per contenuto testo (fra tag) sia per valori di attributo
+// (fra virgolette, es. formatCode="..."): un '"' letterale e'
+// perfettamente valido in un nodo di testo XML, ma spezza un valore di
+// attributo se non sfuggito come &quot; -- bug reale trovato
+// costruendo una demo vera (formato valuta con un prefisso letterale
+// `"$"`, dallo stesso linguaggio dei modelli di formato numerico di
+// Excel): scritto crudo dentro formatCode="...", il '"' letterale
+// chiudeva l'attributo a meta', lasciando il resto un token XML non
+// valido -- l'intero styles.xml falliva il parse da quel punto in poi
+// (XML_Parse si ferma al primo errore), quindi OGNI cella con QUALUNQUE
+// stile (grassetto, colore, bordo, non solo il formato numerico)
+// tornava silenziosamente al predefinito alla riapertura, non solo
+// quella con il formato valuta. Sfuggire sempre '"' e' innocuo anche
+// nei nodi di testo (una sovra-escape valida, Excel/LibreOffice la
+// decodificano comunque allo stesso carattere).
 static void AppendXmlEscaped(std::string& out, const char* text)
 {
 	for (const char* p = text; *p; p++)
@@ -3574,6 +3589,7 @@ static void AppendXmlEscaped(std::string& out, const char* text)
 			case '&': out += "&amp;"; break;
 			case '<': out += "&lt;"; break;
 			case '>': out += "&gt;"; break;
+			case '"': out += "&quot;"; break;
 			default: out += *p;
 		}
 	}
