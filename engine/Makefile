@@ -229,7 +229,15 @@ test-vba-stmt-parser: $(LIB)
 	$(CXX) -o tests/vba_stmt_parser_test $(OBJDIR)/vba_stmt_parser_test.o -L. -lengine -lbe
 	./tests/vba_stmt_parser_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test tests/vba_token_test tests/vba_expr_parser_test tests/vba_stmt_parser_test
+# Test del valutatore di espressioni del sottoinsieme VBA (Path to full
+# Excel parity, VBA/macro execution, Fase 3a -- ancora nessun modello a
+# oggetti Excel): vedi il commento in cima a vba_evaluator_test.cpp.
+test-vba-evaluator: $(LIB)
+	$(CXX) -c tests/vba_evaluator_test.cpp -o $(OBJDIR)/vba_evaluator_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/vba_evaluator_test $(OBJDIR)/vba_evaluator_test.o -L. -lengine -lbe
+	./tests/vba_evaluator_test
 
-.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source test-vba-token test-vba-expr-parser test-vba-stmt-parser
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test tests/vba_token_test tests/vba_expr_parser_test tests/vba_stmt_parser_test tests/vba_evaluator_test
+
+.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source test-vba-token test-vba-expr-parser test-vba-stmt-parser test-vba-evaluator
