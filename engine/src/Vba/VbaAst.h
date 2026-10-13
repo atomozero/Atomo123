@@ -53,4 +53,55 @@ struct VbaExpr {
 	VbaExpr(VbaExprKind k) : kind(k), numberValue(0.0), boolValue(false), line(0) {}
 };
 
+// ---------------------------------------------------------------------
+// Istruzioni (Fase 2c, sopra le espressioni di VbaExpr): ancora il
+// sottoinsieme esplicito deciso in ROADMAP.md -- Sub/End Sub, Dim,
+// assegnazione/Set, If/ElseIf/Else/End If (anche la forma breve su una
+// sola riga), For/Next, Exit For/Sub, e un'espressione nuda usata come
+// istruzione (una chiamata di metodo per il suo effetto, es.
+// "Range(\"A1\").Select").
+// ---------------------------------------------------------------------
+
+enum VbaStmtKind {
+	vbaStmtAssign,   // target = expr -- vedi "target"/"expr"
+	vbaStmtSet,       // Set target = expr -- VBA distingue l'assegnazione di un riferimento
+	                   // a oggetto da un valore, ma qui si tratta allo stesso identico modo
+	                   // a livello di albero sintattico, solo "kind" li distingue
+	vbaStmtExprStmt, // un'espressione nuda usata come istruzione (una chiamata per il suo
+	                   // effetto, es. "Range(\"A1\").Select" o "Foo()") -- vedi "expr"
+	vbaStmtDim,       // Dim varName [As ...] -- il tipo (se presente) viene letto e scartato,
+	                   // questo sottoinsieme tratta ogni variabile come Variant
+	vbaStmtIf,        // If expr Then body [Else elseBody] End If -- un "ElseIf" si rappresenta
+	                   // come un singolo vbaStmtIf annidato dentro elseBody, vedi il parser
+	vbaStmtFor,       // For varName = expr To forEnd [Step forStep] body Next [varName]
+	vbaStmtExitFor,
+	vbaStmtExitSub,
+};
+
+struct VbaStmt {
+	VbaStmtKind kind;
+	std::unique_ptr<VbaExpr> target;  // Assign/Set: il lato sinistro (dove scrivere)
+	std::unique_ptr<VbaExpr> expr;     // Assign/Set: il lato destro; For: il valore iniziale;
+	                                     // ExprStmt: l'espressione stessa; If: la condizione
+	std::unique_ptr<VbaExpr> forEnd;   // solo For: il valore finale ("To ...")
+	std::unique_ptr<VbaExpr> forStep;  // solo For: l'incremento ("Step ..."), nullptr = 1 implicito
+	std::string varName;                // Dim/For: il nome della variabile
+	std::vector<std::unique_ptr<VbaStmt>> body;     // If (ramo Then) / For: il corpo
+	std::vector<std::unique_ptr<VbaStmt>> elseBody; // solo If: il ramo Else (eventualmente un
+	                                                   // solo vbaStmtIf annidato per un "ElseIf")
+	int line;
+
+	VbaStmt(VbaStmtKind k) : kind(k), line(0) {}
+};
+
+// Un'intera procedura: "Sub Nome()" ... "End Sub". Senza parametri in
+// questo sottoinsieme (una vera macro registrata non ne ha quasi mai).
+struct VbaSub {
+	std::string name;
+	std::vector<std::unique_ptr<VbaStmt>> body;
+	int line;
+
+	VbaSub() : line(0) {}
+};
+
 #endif

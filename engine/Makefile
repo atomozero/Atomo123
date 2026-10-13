@@ -221,7 +221,15 @@ test-vba-expr-parser: $(LIB)
 	$(CXX) -o tests/vba_expr_parser_test $(OBJDIR)/vba_expr_parser_test.o -L. -lengine -lbe
 	./tests/vba_expr_parser_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test tests/vba_token_test tests/vba_expr_parser_test
+# Test del parser delle istruzioni del sottoinsieme VBA (Path to full
+# Excel parity, VBA/macro execution, Fase 2c): vedi il commento in cima
+# a vba_stmt_parser_test.cpp.
+test-vba-stmt-parser: $(LIB)
+	$(CXX) -c tests/vba_stmt_parser_test.cpp -o $(OBJDIR)/vba_stmt_parser_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/vba_stmt_parser_test $(OBJDIR)/vba_stmt_parser_test.o -L. -lengine -lbe
+	./tests/vba_stmt_parser_test
 
-.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source test-vba-token test-vba-expr-parser
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test tests/vba_token_test tests/vba_expr_parser_test tests/vba_stmt_parser_test
+
+.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source test-vba-token test-vba-expr-parser test-vba-stmt-parser

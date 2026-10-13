@@ -21,6 +21,14 @@ public:
 		return ParseOr(); // "fPos" (riferimento al "pos" del chiamante) e' gia' aggiornato in place a ogni Advance()
 	}
 
+	// Punto di ingresso pubblico per ParseVbaPrimaryExpression, vedi il
+	// commento in VbaExprParser.h sul perche' serve un livello separato
+	// da ParseTop() (nessun consumo di "=" come operatore di confronto).
+	std::unique_ptr<VbaExpr> ParsePrimaryTop()
+	{
+		return ParsePrimary();
+	}
+
 private:
 	const std::vector<VbaToken>& fTokens;
 	size_t& fPos;
@@ -434,6 +442,16 @@ std::unique_ptr<VbaExpr> ParseVbaExpression(const std::vector<VbaToken>& tokens,
 {
 	Parser parser(tokens, pos, outError);
 	std::unique_ptr<VbaExpr> result = parser.ParseTop();
+	if (!result && outError->message.empty())
+		outError->message = "errore di sintassi";
+	return result;
+}
+
+std::unique_ptr<VbaExpr> ParseVbaPrimaryExpression(const std::vector<VbaToken>& tokens, size_t& pos,
+	VbaParseError* outError)
+{
+	Parser parser(tokens, pos, outError);
+	std::unique_ptr<VbaExpr> result = parser.ParsePrimaryTop();
 	if (!result && outError->message.empty())
 		outError->message = "errore di sintassi";
 	return result;

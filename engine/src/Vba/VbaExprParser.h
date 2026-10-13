@@ -50,4 +50,20 @@ struct VbaParseError {
 std::unique_ptr<VbaExpr> ParseVbaExpression(const std::vector<VbaToken>& tokens, size_t& pos,
 	VbaParseError* outError);
 
+// Analizza un singolo "termine primario" (literale, variabile,
+// Nome(argomenti), o un accesso a proprieta'/metodo incatenato:
+// Nome.Prop, Nome(args).Prop, ecc.) SENZA consumare nessun operatore
+// binario che segue -- in particolare mai un "=" che segue, lasciato
+// al chiamante. Usato dal parser delle istruzioni (VbaStmtParser.h)
+// per analizzare il lato sinistro di una possibile assegnazione: "=" e'
+// ambiguo in VBA fra assegnazione e confronto, e il vero VBA risolve
+// l'ambiguita' in base al CONTESTO (inizio di un'istruzione vs. dentro
+// un'espressione), non dentro la grammatica delle espressioni stessa
+// -- se ParseVbaExpression normale venisse usato qui, "x = 1" verrebbe
+// gia' interamente consumato come l'espressione di confronto "(x = 1)"
+// prima che il chiamante abbia la possibilita' di riconoscere
+// l'assegnazione.
+std::unique_ptr<VbaExpr> ParseVbaPrimaryExpression(const std::vector<VbaToken>& tokens, size_t& pos,
+	VbaParseError* outError);
+
 #endif
