@@ -8,21 +8,26 @@
 	byte noti, DecompressVba lo decodifica, e il risultato deve
 	combaciare esattamente con l'originale.
 
-	Questo e' l'unico controllo di correttezza disponibile in questo
-	ambiente: nessun campione compresso VERO prodotto da Microsoft
-	Excel era reperibile per una convalida indipendente (a differenza
-	di vba_project_test.cpp, dove invece il livello CFB e' stato
-	confrontato con `olefile`, un'implementazione Python indipendente).
-	L'algoritmo e il codificatore sono stati scritti e provati insieme
-	in un prototipo Python PRIMA di questa porting (vedi il commento in
-	cima a VbaDecompress.h), coprendo esplicitamente i confini critici
-	della larghezza di bit (posizione 16/17/32/33/64/65/256/257), il
-	reset del contesto a ogni cambio di chunk, e il fallback a un chunk
-	non compresso quando la codifica compressa supererebbe il campo di
-	dimensione a 12 bit -- tutti i casi qui sotto rispecchiano
-	esattamente quelli gia' passati li'. Limite noto, segnalato anche
-	in ROADMAP.md: round-trip con se stesso prova la coerenza interna,
-	non (ancora) la fedelta' a un vero encoder Microsoft.
+	La maggior parte dei casi qui sotto e' un controllo di coerenza
+	interna (compressore e decompressore scritti insieme, provati in un
+	prototipo Python PRIMA di questa porting -- vedi il commento in
+	cima a VbaDecompress.h -- coprendo esplicitamente i confini critici
+	della larghezza di bit, il reset del contesto a ogni cambio di
+	chunk, e il fallback a un chunk non compresso quando la codifica
+	compressa supererebbe il campo di dimensione a 12 bit).
+
+	I DUE casi "MS-OVBA ufficiale" in fondo a questo file invece NON
+	sono auto-coerenza: sono i vettori di test di conformita' pubblicati
+	da Microsoft stesso nella specifica [MS-OVBA] (sezione 3, pagine
+	https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-ovba/b6b8c482-a6bb-45e5-a476-098897a334cb
+	e
+	https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-ovba/22374b4a-8092-4281-b5af-66f56a27073c)
+	-- byte compressi REALI prodotti da un'implementazione Microsoft di
+	riferimento, con l'output decompresso atteso dichiarato dalla
+	specifica stessa. Chiudono il limite segnalato altrove in questo
+	file/in ROADMAP.md: non piu' solo coerenza interna, ma una
+	convalida indipendente autorevole, trovata ed estratta dopo che
+	l'implementazione era gia' stata scritta e provata.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).
@@ -365,6 +370,64 @@ int main()
 		Check(!DecompressVba(&data[0], data.size(), &out),
 			"un token di copia che punterebbe prima dell'inizio del chunk corrente "
 			"restituisce false, non legge dati spazzatura o va oltre il buffer");
+	}
+
+	// ---- Vettori di test ufficiali [MS-OVBA] (sezione 3), non auto-coerenza ----
+	// Vedi il commento in cima al file: byte compressi REALI pubblicati
+	// da Microsoft stesso, con l'output decompresso atteso dichiarato
+	// dalla specifica -- non prodotti da questo progetto in alcun modo.
+	{
+		// "Normal Compression Example": la stringa
+		// "#aaabcdefaaaaghijaaaaaklaaamnopqaaaaaaaaaaaarstuvwxyzaaa" (56
+		// caratteri ASCII) compressa da un'implementazione Microsoft di
+		// riferimento.
+		std::vector<uint8> compressed;
+		{
+			unsigned bytes[] = {
+				0x01,0x2F,0xB0,0x00,0x23,0x61,0x61,0x61,0x62,0x63,0x64,0x65,0x82,0x66,0x00,0x70,
+				0x61,0x67,0x68,0x69,0x6A,0x01,0x38,0x08,0x61,0x6B,0x6C,0x00,0x20,0x6D,0x6E,0x6F,
+				0x70,0x06,0x71,0x02,0x70,0x04,0x00,0x72,0x73,0x74,0x75,0x76,0x10,0x77,0x78,0x79,
+				0x7A,0x00,0x2C,
+			};
+			for (unsigned b : bytes)
+				compressed.push_back((uint8)b);
+		}
+		std::vector<uint8> expected;
+		{
+			unsigned bytes[] = {
+				0x23,0x61,0x61,0x61,0x62,0x63,0x64,0x65,0x66,0x61,0x61,0x61,0x61,0x67,0x68,0x69,
+				0x6A,0x61,0x61,0x61,0x61,0x61,0x6B,0x6C,0x61,0x61,0x61,0x6D,0x6E,0x6F,0x70,0x71,
+				0x61,0x61,0x61,0x61,0x61,0x61,0x61,0x61,0x61,0x61,0x61,0x61,0x72,0x73,0x74,0x75,
+				0x76,0x77,0x78,0x79,0x7A,0x61,0x61,0x61,
+			};
+			for (unsigned b : bytes)
+				expected.push_back((uint8)b);
+		}
+		std::vector<uint8> out;
+		bool ok = DecompressVba(&compressed[0], compressed.size(), &out);
+		Check(ok, "[MS-OVBA] vettore ufficiale \"Normal Compression Example\": decomprime senza errori");
+		Check(ok && out == expected,
+			"[MS-OVBA] vettore ufficiale \"Normal Compression Example\": l'output combacia "
+			"byte per byte con quello dichiarato dalla specifica Microsoft stessa");
+	}
+	{
+		// "Maximum Compression Example": 73 caratteri 'a' ripetuti,
+		// compressi da un'implementazione Microsoft di riferimento.
+		std::vector<uint8> compressed;
+		{
+			unsigned bytes[] = { 0x01,0x03,0xB0,0x02,0x61,0x45,0x00 };
+			for (unsigned b : bytes)
+				compressed.push_back((uint8)b);
+		}
+		std::vector<uint8> expected(73, (uint8)'a');
+
+		std::vector<uint8> out;
+		bool ok = DecompressVba(&compressed[0], compressed.size(), &out);
+		Check(ok, "[MS-OVBA] vettore ufficiale \"Maximum Compression Example\": decomprime senza errori");
+		Check(ok && out == expected,
+			"[MS-OVBA] vettore ufficiale \"Maximum Compression Example\": l'output combacia "
+			"byte per byte con quello dichiarato dalla specifica Microsoft stessa "
+			"(73 byte 0x61, il caso limite di compressione massima)");
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

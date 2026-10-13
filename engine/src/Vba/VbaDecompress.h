@@ -17,11 +17,17 @@
 	casi sintetici inclusi i confini critici della larghezza di bit a
 	posizione 16/17/32/33/64/65/256/257 e il reset del contesto a ogni
 	cambio di chunk) PRIMA di questa porting in C++ -- vedi il
-	prototipo Python usato per questo sviluppo. Nessun campione
-	compresso VERO prodotto da Microsoft Excel e' stato disponibile in
-	questo ambiente per una convalida indipendente: limite noto,
-	segnalato anche in ROADMAP.md, da chiudere non appena un file reale
-	con macro sara' reperibile.
+	prototipo Python usato per questo sviluppo. Convalidato DOPO anche
+	contro i due vettori di test di conformita' ufficiali pubblicati
+	dalla specifica [MS-OVBA] stessa (sezione 3, "Normal Compression
+	Example"/"Maximum Compression Example" -- byte compressi REALI,
+	non prodotti da questo progetto, con l'output decompresso atteso
+	dichiarato da Microsoft), vedi vba_decompress_test.cpp: entrambi
+	combaciano byte per byte. Il limite "nessun campione reale"
+	segnalato in precedenza (e ancora in ROADMAP.md) riguarda ormai
+	solo i formati a monte/a valle di questo (lo stream "dir" grezzo in
+	VbaDirStream.h, un intero vbaProject.bin reale) -- l'algoritmo di
+	compressione in se' e' confermato conforme alla specifica.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).

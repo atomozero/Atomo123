@@ -216,15 +216,22 @@ that turns a raw `vbaProject.bin` blob into real, readable VBA source
 text per module. ~60 test assertions across four files, all passing,
 no regressions in the rest of the engine suite.
 
-Known gap, honestly flagged rather than hidden: no real Microsoft-
-produced `.xlsm` with macros was available in this environment, so
-only the CFB container layer (1a) was cross-validated against an
-independent implementation — the MS-OVBA decompression (1b) and dir-
-stream record IDs (1c) were reconstructed from documentation and
-tested for internal consistency (round-trip against this project's own
-encoder, synthetic fixtures with the same record IDs), not confirmed
-against a real file. Close this gap by testing against a real macro-
-enabled workbook as soon as one is available.
+Known gap, honestly flagged rather than hidden — now partially closed.
+No real Microsoft-produced `.xlsm` with macros was available in this
+environment at first, so correctness rested on cross-validation
+against an independent implementation (1a, `olefile`) or internal
+round-trip consistency (1b/1c, this project's own encoder). The
+compression algorithm itself (1b) has since been validated for real:
+the `[MS-OVBA]` specification publishes two official compression
+conformance test vectors (section 3, "Normal Compression Example" and
+"Maximum Compression Example" — real compressed bytes from a Microsoft
+reference implementation, with the expected decompressed output
+declared by the spec itself), found and added to
+`vba_decompress_test.cpp` after the implementation was already written
+and tested — both match byte for byte. What's left unconfirmed against
+a real file: the dir-stream record IDs (1c) and a complete, real
+`vbaProject.bin`/`.xlsm` end to end. Close that by testing against a
+real macro-enabled workbook as soon as one is available.
 
 **Progress — Phase 2 (lexer and parser for the explicit subset) is
 done too.** Three sub-phases: (2a) a lexer tokenizing VBA source into
