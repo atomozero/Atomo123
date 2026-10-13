@@ -10,23 +10,28 @@ scripting now in progress on top of it (not yet tagged — explicit user
 request, after checking that `hey Atomo123 get Suites of Window 0`
 showed only the generic BWindow/BView/BMenu suites every Haiku app
 gets for free, nothing app-specific). New `suite/vnd.Atomo-sheet` with
-ten DIRECT properties on `MainWindow` — `Selection`/`Value`/
+eleven DIRECT properties on `MainWindow` — `Selection`/`Value`/
 `FilePath`/`CellColor`/`ColumnWidth`/`Bold`/`Border`/`NumberFormat`/
-`Chart`/`WrapText` — enough to read/write cell values, move the
-selection, save/open files, and build a presentation-ready, print-ready
+`Chart`/`WrapText`/`GoalSeek` — enough to read/write cell values, move
+the selection, save/open files, build a presentation-ready, print-ready
 sheet (colored cells, column widths, bold/bordered headers, number
-formats, an embedded live-updating chart, wrapped text) entirely from
-outside the app. Driven in parallel by matching new MCP tools in the
-separate Pippo project (`get_cell`/`set_cell`/`set_cell_color`/
-`set_column_width`/`set_cell_bold`/`set_cell_border`/
-`set_number_format`/`insert_chart`/`set_wrap_text`/`open_file`/
-`save_file`, among others), so an LLM agent can drive the real app
-through Haiku's native scripting protocol instead of the app needing
-any MCP-specific code of its own. Two real, unrelated bugs found and
-fixed while building a demo through this path: `ROUND()` rounded to
-one decimal too many for most real numbers, and XLSX export silently
-dropped custom column widths (see CHANGELOG.md for both). This is a
-distinct effort from the v4.0 "Scripting" item below (VBA/macro
+formats, an embedded live-updating chart, wrapped text), and run Goal
+Seek, entirely from outside the app. Driven in parallel by matching new
+MCP tools in the separate Pippo project (`get_cell`/`set_cell`/
+`set_cell_color`/`set_column_width`/`set_cell_bold`/`set_cell_border`/
+`set_number_format`/`insert_chart`/`set_wrap_text`/`goal_seek`/
+`open_file`/`save_file`, among others), so an LLM agent can drive the
+real app through Haiku's native scripting protocol instead of the app
+needing any MCP-specific code of its own. Real, unrelated bugs found
+and fixed while building demos through this path: `ROUND()` rounded to
+one decimal too many for most real numbers, XLSX export silently
+dropped custom column widths, and — the most serious — XLSX export
+left literal `"` characters unescaped inside XML attribute values
+(triggered by a currency number format, Excel's own `"$"0`-style
+literal-text-in-quotes syntax), which broke the whole `styles.xml`
+parse on reopen and silently reverted every styled cell in the file,
+not just the currency one (see CHANGELOG.md for all of these). This is
+a distinct effort from the v4.0 "Scripting" item below (VBA/macro
 *execution* inside spreadsheet formulas) — this is OS-level automation
 of the running app from another process, already real and already
 shipping incrementally; v4.0 is still unstarted.
@@ -36,10 +41,11 @@ closed the single largest remaining Tier 3 foundation, a real
 dependency graph for the calc engine (125x faster on a worst-case
 synthetic benchmark, cross-sheet circular reference detection as a
 free side effect — see CHANGELOG.md for the full detail on all of
-this). What remains on Tier 3 is Goal Seek/Solver and VBA/macros (see
-below for what's next). This file tracks project-level status and
-forward plan only — the detailed, per-release history of what shipped
-and the real bugs found along the way lives in `CHANGELOG.md`.
+this). Goal Seek has since closed too (see Tier 3 below). What remains
+on Tier 3 is VBA/macros (see below for what's next). This file tracks
+project-level status and forward plan only — the detailed, per-release
+history of what shipped and the real bugs found along the way lives in
+`CHANGELOG.md`.
 
 ## Phases
 
@@ -80,7 +86,6 @@ formatting.
 
 Not currently planned (large, self-contained efforts, no library or
 existing code to build on):
-- **Goal Seek / Solver** — needs a new iterative numeric solver
 - **Legacy XLS writing** (BIFF/OLE2) — import only today; writing BIFF8
   from scratch has no library to build on, deliberately excluded (XLSX
   already covers export to the Excel ecosystem)
@@ -832,8 +837,24 @@ list deliberately deviates from pure effort-sorting:
   columns together with either of those still write correct cells but
   no XLSX pivot parts, same limit as the pre-existing multi-level-row
   case)
-- **Goal Seek / Solver** — needs a new iterative numeric solver from
-  scratch, no existing code to build on
+- ~~**Goal Seek / Solver**~~ Fixed — see `CHANGELOG.md`. "Ricerca
+  obiettivo…" command (Data menu, `ui/src/GoalSeekWindow.h`) finds the
+  changing-cell value that drives a target formula cell to a chosen
+  result, reusing the secant-method root finder already proven by
+  `RATE()`/`IRR()` (no new solver written from scratch) together with
+  the substitute/recalculate/restore technique already established by
+  What-if Data Tables above. Never shows a blocking alert from its core
+  `MainWindow::ApplyGoalSeek` entry point (alerts are isolated to the
+  separate menu-only wrapper), so it is safely scriptable — also
+  exposed as an 11th `suite/vnd.Atomo-sheet` property and a matching
+  Pippo `goal_seek` MCP tool. A real, unrelated, previously-latent
+  silent-data-loss bug was found and fixed while testing this against
+  a live currency-formatted demo file: XLSX export left literal `"`
+  characters unescaped inside XML attribute values (e.g. a currency
+  `formatCode="..."` containing a literal quoted symbol), which broke
+  the whole `styles.xml` parse on reopen and silently reverted every
+  styled cell in the file back to its default, not just the one using
+  a currency format — see `CHANGELOG.md`.
 - **VBA / macros** — this is v4.0 already (see above), the largest
   single feature on the entire roadmap; listed here again only for
   relative-priority context against the rest of this list
