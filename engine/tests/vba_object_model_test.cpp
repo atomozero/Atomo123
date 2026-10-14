@@ -278,6 +278,14 @@ int main()
 		doc->Release();
 	}
 
+	// ---- IsEmpty su un Range (Fase 5c): distingue una cella VERAMENTE vuota da un letterale 0 ----
+	{
+		cell a1(1, 1);
+		CheckVar("Sub T()\nx = IsEmpty(Range(\"A1\"))\nEnd Sub", NULL, NULL, "x", "True");
+		CheckVar("Sub T()\nx = IsEmpty(Range(\"A1\"))\nEnd Sub", &a1, "0", "x", "False");
+		CheckVar("Sub T()\nx = IsEmpty(Cells(1, 1))\nEnd Sub", &a1, "42", "x", "False");
+	}
+
 	// ---- Errori: un messaggio chiaro, mai un crash o un dato sbagliato silenzioso ----
 	CheckError("Sub T()\nFor Each c In Range(\"A1\")\nx = 1\nNext\nEnd Sub", NULL,
 		"For Each senza un documento collegato produce un errore chiaro");

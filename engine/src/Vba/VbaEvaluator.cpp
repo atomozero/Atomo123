@@ -108,6 +108,25 @@ int VbaCompareValues(const Value& a, const Value& b)
 // "Foo" sarebbe accettato per coincidenza (cell::GetCell si ferma al
 // primo carattere che non riconosce, non richiede di arrivare alla
 // fine).
+// Fase 5c, IsNumeric: vero SOLO se l'intero testo (spazi iniziali/
+// finali ignorati, come il vero VBA) e' un numero valido -- a
+// differenza di VbaToNumber/atof, che si fermano silenziosamente al
+// primo carattere che non riconoscono e restituiscono comunque un
+// numero parziale (va bene per Val(), MAI per IsNumeric: "12abc" deve
+// dare False, non True col valore 12).
+static bool IsFullyNumericText(const std::string& text)
+{
+	size_t start = text.find_first_not_of(" \t");
+	if (start == std::string::npos)
+		return false; // vuoto o di soli spazi
+	size_t end = text.find_last_not_of(" \t");
+	std::string trimmed = text.substr(start, end - start + 1);
+
+	char* endPtr = NULL;
+	strtod(trimmed.c_str(), &endPtr);
+	return endPtr == trimmed.c_str() + trimmed.size() && endPtr != trimmed.c_str();
+}
+
 static bool ParseSimpleRangeRef(const std::string& text, range* outRange)
 {
 	size_t colon = text.find(':');
@@ -474,6 +493,164 @@ private:
 			int digits = args.size() == 2 ? (int)VbaToNumber(args[1]) : 0;
 			double factor = pow(10.0, digits);
 			return Value(floor(d * factor + 0.5) / factor);
+		}
+
+		// ---- Fase 5c: funzioni predefinite comuni nelle macro VBA reali ----
+
+		if (name == "isempty")
+		{
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			// Caso interessante: un intervallo (Range/Cells) bare, es.
+			// "IsEmpty(Range(\"A1\"))" -- ancora un Value eRangeData a
+			// questo punto (args[0] non e' passato per ".Value", quindi
+			// nessuna coercizione vuoto->0 e' ancora avvenuta), permette
+			// di distinguere una cella VERAMENTE vuota (eNoData) da una
+			// che contiene letteralmente 0. LIMITE ONESTO: "IsEmpty(
+			// Range(\"A1\").Value)" (CON ".Value" esplicito) non puo'
+			// distinguerle, perche' ".Value" ha gia' applicato quella
+			// stessa coercizione prima che IsEmpty vedesse il risultato
+			// -- scrivere la forma senza ".Value" per rilevare davvero
+			// una cella vuota, lo stesso idioma comune in una macro
+			// registrata. Una variabile normale non e' mai "vuota" in
+			// questo sottoinsieme (Dim/Set la inizializzano sempre a
+			// 0.0): restituisce sempre False in quel caso.
+			if (args[0].fType == eRangeData)
+			{
+				range r = (range)args[0];
+				if (r.TopLeft() != r.BotRight())
+				{
+					SetError("IsEmpty su un intervallo di piu' celle non e' supportato in "
+						"questa fase", expr->line);
+					return Value(0.0);
+				}
+				CContainer* doc = args[0].fRangeContainer;
+				if (!doc)
+				{
+					SetError("nessun foglio di calcolo collegato a questa esecuzione VBA",
+						expr->line);
+					return Value(0.0);
+				}
+				Value cellValue;
+				bool hasValue = doc->GetValue(r.TopLeft(), cellValue);
+				return Value(!hasValue || cellValue.fType == eNoData);
+			}
+			return Value(false);
+		}
+		if (name == "isnumeric")
+		{
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			if (args[0].fType == eNumData || args[0].fType == eBoolData)
+				return Value(true);
+			if (args[0].fType != eTextData)
+				return Value(false);
+			return Value(IsFullyNumericText(VbaToText(args[0])));
+		}
+		if (name == "cstr")
+		{
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			return Value(VbaToText(args[0]).c_str());
+		}
+		if (name == "cint" || name == "clng")
+		{
+			// Arrotonda (stessa regola "metà in su" di Round, non il
+			// "banker's rounding" del vero VBA) poi troncaa un intero
+			// -- nessun controllo di overflow (CInt reale e' a 16 bit,
+			// CLng a 32: qui Value e' sempre un double, non esiste un
+			// vero tipo intero da far traboccare).
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			double d = VbaToNumber(args[0]);
+			return Value(floor(d + 0.5));
+		}
+		if (name == "cdbl")
+		{
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			return Value(VbaToNumber(args[0]));
+		}
+		if (name == "cbool")
+		{
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			return Value(VbaToBool(args[0]));
+		}
+		if (name == "val")
+		{
+			// A differenza di CDbl, Val legge solo il PREFISSO numerico
+			// iniziale di un testo e si ferma al primo carattere che
+			// non riconosce, senza errore (Val("123abc") = 123,
+			// Val("abc") = 0) -- esattamente il comportamento di atof,
+			// gia' usato da VbaToNumber per il caso testo.
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			return Value(VbaToNumber(Value(VbaToText(args[0]).c_str())));
+		}
+		if (name == "space")
+		{
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			long long n = (long long)VbaToNumber(args[0]);
+			if (n < 0) n = 0;
+			return Value(std::string((size_t)n, ' ').c_str());
+		}
+		if (name == "instr")
+		{
+			// Solo le forme a 2 argomenti ("InStr(stringa1, stringa2)")
+			// e a 3 ("InStr(inizio, stringa1, stringa2)", inizio 1-based
+			// come in VBA) -- niente quarto argomento "compare", sempre
+			// un confronto sensibile a maiuscole/minuscole.
+			if (args.size() != 2 && args.size() != 3)
+			{
+				SetError("InStr richiede 2 argomenti (stringa1, stringa2) o 3 (inizio, "
+					"stringa1, stringa2)", expr->line);
+				return Value(0.0);
+			}
+			std::string haystack = VbaToText(args[args.size() == 3 ? 1 : 0]);
+			std::string needle = VbaToText(args[args.size() == 3 ? 2 : 1]);
+			size_t start = 0;
+			if (args.size() == 3)
+			{
+				long long startArg = (long long)VbaToNumber(args[0]);
+				if (startArg < 1) startArg = 1;
+				start = (size_t)(startArg - 1);
+			}
+			if (start > haystack.size())
+				return Value(0.0);
+			size_t pos = haystack.find(needle, start);
+			return Value(pos == std::string::npos ? 0.0 : (double)(pos + 1)); // 1-based come VBA
+		}
+		if (name == "replace")
+		{
+			// Solo la forma a 3 argomenti: sostituisce SEMPRE tutte le
+			// occorrenze (il vero VBA lo fa di default quando "count" e'
+			// omesso) -- niente "start"/"count"/"compare" facoltativi.
+			if (!CheckArgCount(expr, args, 3)) return Value(0.0);
+			std::string text = VbaToText(args[0]);
+			std::string find = VbaToText(args[1]);
+			std::string replacement = VbaToText(args[2]);
+			if (find.empty())
+				return Value(text.c_str()); // niente da sostituire, mai un ciclo infinito
+			std::string out;
+			size_t pos = 0;
+			for (;;)
+			{
+				size_t next = text.find(find, pos);
+				if (next == std::string::npos)
+				{
+					out += text.substr(pos);
+					break;
+				}
+				out += text.substr(pos, next - pos);
+				out += replacement;
+				pos = next + find.size();
+			}
+			return Value(out.c_str());
+		}
+		if (name == "strcomp")
+		{
+			// Solo la forma a 2 argomenti -- sempre un confronto come
+			// testo (a differenza di VbaCompareValues, che sceglie fra
+			// numerico e testuale in base al tipo: StrComp confronta
+			// SEMPRE come testo, anche se entrambi gli argomenti
+			// capitano a essere numeri).
+			if (!CheckArgCount(expr, args, 2)) return Value(0.0);
+			int cmp = VbaToText(args[0]).compare(VbaToText(args[1]));
+			return Value((double)((cmp < 0) ? -1 : (cmp > 0) ? 1 : 0));
 		}
 
 		SetError("funzione sconosciuta \"" + expr->name + "\" "

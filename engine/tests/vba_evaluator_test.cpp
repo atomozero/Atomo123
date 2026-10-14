@@ -2,11 +2,16 @@
 	vba_evaluator_test.cpp
 
 	Verifica EvaluateVbaExpression (VbaEvaluator.h -- Path to full
-	Excel parity, VBA/macro execution, Fase 3a dell'interprete):
-	literali, variabili, operatori con le regole di conversione
-	semplificate di questo sottoinsieme, e le funzioni predefinite
-	(Len/Left/Right/Mid/UCase/LCase/Trim/Abs/Int/Round). Ancora nessun
-	modello a oggetti Excel (Range/Cells), vedi Fase 3c.
+	Excel parity, VBA/macro execution, Fase 3a dell'interprete, con
+	l'aggiunta successiva di un gruppo di funzioni predefinite comuni
+	nelle macro reali alla Fase 5c -- vedi ROADMAP.md): literali,
+	variabili, operatori con le regole di conversione semplificate di
+	questo sottoinsieme, e le funzioni predefinite (Len/Left/Right/
+	Mid/UCase/LCase/Trim/Abs/Int/Round dalla Fase 3a; IsEmpty/
+	IsNumeric/CStr/CInt/CLng/CDbl/CBool/Val/Space/InStr/Replace/
+	StrComp dalla Fase 5c). IsEmpty su un Range senza un documento
+	collegato e' verificato in vba_object_model_test.cpp (richiede un
+	vero CContainer), non qui.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).
@@ -159,6 +164,32 @@ int main()
 	CheckEval("Int(-3.2)", "-4"); // Int() di VBA arrotonda verso il basso, non tronca verso zero
 	CheckEval("Round(3.14159, 2)", "3.14");
 	CheckEval("Round(2.5)", "3");
+
+	// ---- Funzioni predefinite: Fase 5c, comuni nelle macro reali ----
+	CheckEval("IsNumeric(\"123\")", "True");
+	CheckEval("IsNumeric(\"12.5\")", "True");
+	CheckEval("IsNumeric(\"12abc\")", "False"); // un prefisso numerico non basta, a differenza di Val
+	CheckEval("IsNumeric(\"abc\")", "False");
+	CheckEval("IsNumeric(42)", "True"); // un numero vero e' sempre numerico, nessun parsing di testo
+	CheckEval("IsEmpty(5)", "False"); // una variabile/un letterale non e' mai "vuoto" in questo sottoinsieme
+	CheckEval("CStr(42)", "\"42\"");
+	CheckEval("CStr(True)", "\"True\"");
+	CheckEval("CInt(3.6)", "4");
+	CheckEval("CInt(3.4)", "3");
+	CheckEval("CLng(-2.5)", "-2"); // stessa regola "meta' in su" di Round, non "verso zero"
+	CheckEval("CDbl(\"3.5\")", "3.5");
+	CheckEval("CBool(0)", "False");
+	CheckEval("CBool(1)", "True");
+	CheckEval("Val(\"123abc\")", "123"); // si ferma al primo carattere non numerico, nessun errore
+	CheckEval("Val(\"abc\")", "0");
+	CheckEval("Len(Space(3))", "3");
+	CheckEval("InStr(\"hello world\", \"world\")", "7"); // 1-based come VBA
+	CheckEval("InStr(\"hello\", \"xyz\")", "0"); // non trovato
+	CheckEval("InStr(5, \"ababab\", \"ab\")", "5"); // forma a 3 argomenti: cerca a partire dalla posizione 5
+	CheckEval("Replace(\"a-b-c\", \"-\", \"_\")", "\"a_b_c\""); // sostituisce TUTTE le occorrenze
+	CheckEval("StrComp(\"abc\", \"abc\")", "0");
+	CheckEval("StrComp(\"abc\", \"abd\")", "-1");
+	CheckEval("StrComp(\"abd\", \"abc\")", "1");
 
 	// ---- Errori di esecuzione: un messaggio chiaro, mai un crash ----
 	{
