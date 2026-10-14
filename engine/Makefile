@@ -253,7 +253,15 @@ test-vba-object-model: $(LIB)
 	$(CXX) -o tests/vba_object_model_test $(OBJDIR)/vba_object_model_test.o -L. -lengine -lbe
 	./tests/vba_object_model_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test tests/vba_token_test tests/vba_expr_parser_test tests/vba_stmt_parser_test tests/vba_evaluator_test tests/vba_executor_test tests/vba_object_model_test
+# Test del punto d'ingresso punta a punta dell'interprete VBA (Path
+# to full Excel parity, VBA/macro execution, Fase 3d -- l'ultima della
+# Fase 3): vedi il commento in cima a vba_macro_runner_test.cpp.
+test-vba-macro-runner: $(LIB)
+	$(CXX) -c tests/vba_macro_runner_test.cpp -o $(OBJDIR)/vba_macro_runner_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/vba_macro_runner_test $(OBJDIR)/vba_macro_runner_test.o -L. -lengine -lbe
+	./tests/vba_macro_runner_test
 
-.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source test-vba-token test-vba-expr-parser test-vba-stmt-parser test-vba-evaluator test-vba-executor test-vba-object-model
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test tests/vba_token_test tests/vba_expr_parser_test tests/vba_stmt_parser_test tests/vba_evaluator_test tests/vba_executor_test tests/vba_object_model_test tests/vba_macro_runner_test
+
+.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source test-vba-token test-vba-expr-parser test-vba-stmt-parser test-vba-evaluator test-vba-executor test-vba-object-model test-vba-macro-runner
