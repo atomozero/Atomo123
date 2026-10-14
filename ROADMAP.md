@@ -714,19 +714,59 @@ before it:
     both test files for each fix (parsing and real execution for
     multi-`Dim`; a broken-Sub-then-valid-Sub source for scan
     resilience) — all passing, no regressions.
-  - **Found but NOT fixed, flagged for a decision**: the real source
-    declares `Dim ThisVM As VM` at MODULE level (outside any Sub) —
-    every Sub references this one shared instance. Module-level
-    `Dim`/`Const` isn't part of Phase 6a-6f at all (today, every
-    `ExecuteVbaMacro` call gets a brand-new `VbaEnvironment`, so
-    module state can't persist from one "Esegui macro" click to the
-    next — real VBA module variables live for as long as the workbook
-    stays open, across any number of macro invocations). Making that
-    persist needs a session-scoped environment tied to the open
-    document, a different shape of problem than anything in 6a-6f
-    (which only ever needed state that lives for one macro call), so
-    it's deliberately left as an open decision rather than folded in
-    here.
+  - **Module-level persistent state, found and now done too.** The
+    real source declares `Dim ThisVM As VM` at MODULE level (outside
+    any Sub) — every Sub references this one shared instance. Flagged
+    first as an open architectural question (every `ExecuteVbaMacro`
+    call got a brand-new `VbaEnvironment`, so module state couldn't
+    survive one "Esegui macro" click to the next, unlike real VBA
+    module variables, which live as long as the workbook stays open)
+    rather than folded in silently — then actually built once decided
+    on, as a genuine two-tier scope chain, not a shortcut: `MainWindow`
+    now owns one `VbaEnvironment* fPersistentVbaModuleEnv`, created on
+    the FIRST "Esegui macro" click for an open file and discarded
+    (`delete` + `NULL`) every place a document gets replaced (a new
+    blank workbook, or either the sync or async file-open path) — a
+    different document is a different VBA project, same reasoning
+    real Excel resets module state on workbook close.
+    `ExecuteVbaMacro` gained an optional `VbaEnvironment*
+    persistentModuleEnv` parameter (default `NULL`, so every existing
+    caller/test keeps today's "always fresh" behavior unchanged): when
+    given, the per-call environment links it as a fallback via a new
+    `VbaEnvironment::SetModuleEnvironment`, and a new
+    `FindAllVbaModuleLevelDims` (same module-level scanning shape as
+    `FindAllVbaTypeDecls` — skips every Sub/Function/Type body, never
+    fails outright, skips one unparseable `Dim` group and keeps going)
+    pre-populates the persistent environment, but only variables not
+    ALREADY there (a second click must find `ThisVM` as the last
+    `Step()` left it, not zeroed again).
+    <br>
+    The design decision that actually mattered: NOT reusing the
+    persistent environment itself as the Sub's execution environment
+    (seemingly simpler, but wrong) — that would make every LOCAL
+    variable persist too, including ones never `Dim`'d at all, which
+    breaks real VBA scoping (a procedure-level variable must reset
+    every call; only module-level ones survive). Instead `Find`/`Set`/
+    `IsArray`/`IsStruct`/`GetStruct`/`*ArrayElement` on
+    `VbaEnvironment` now check the LOCAL (per-call) storage first and
+    only fall back to the linked module environment when a name isn't
+    found locally — `Set` additionally writes straight into the
+    module environment when a name exists ONLY there (so
+    `Counter = Counter + 1` on a module variable mutates the shared
+    one, visible to every Sub, matching real VBA), while an explicit
+    `Dim` inside a Sub always creates a fresh LOCAL entry regardless of
+    any same-named module variable, shadowing it for that call only —
+    also matching real VBA exactly. New coverage in
+    `vba_macro_runner_test.cpp` (`TestPersistentModuleState`): two
+    SEPARATE `ExecuteVbaMacro` calls (different `CContainer` each,
+    simulating two distinct "Esegui macro" clicks) sharing one
+    `VbaEnvironment` confirm real persistence; a local `Dim` shadowing
+    a same-named module variable confirms it doesn't touch the shared
+    one; and a variable assigned with no `Dim` at all confirms it
+    stays purely local even across calls on the same persistent
+    environment — all passing, no regressions, and the full UI build
+    (`ui/`, not just the engine) compiles clean with the `MainWindow`
+    wiring.
 - **(6g) Binary file I/O** (`Open ... For Binary Access Read`, `Get`,
   `LOF`, `Close`). Needs a security decision before a design, not
   after: a macro that can read arbitrary files from disk is a real
