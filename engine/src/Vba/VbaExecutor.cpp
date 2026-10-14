@@ -14,13 +14,17 @@
 namespace {
 
 // Come si e' appena fermata l'esecuzione di una lista di istruzioni:
-// in fondo normalmente, per un "Exit For" (il ciclo For piu' vicino lo
-// intercetta e lo trasforma in execNormal), per un "Exit Sub"
-// (propaga fino a ExecuteVbaSub, dove e' un normale completamento
-// anticipato), o per un errore di runtime (outError e' gia' popolato).
+// in fondo normalmente, per un "Exit For" (il ciclo For/For Each PIU'
+// VICINO lo intercetta e lo trasforma in execNormal -- vedi il
+// commento sotto su "propaga tutto cio' che non e' il MIO segnale di
+// uscita"), per un "Exit Do" (stesso principio, ma e' il ciclo Do
+// piu' vicino a intercettarlo), per un "Exit Sub" (propaga fino a
+// ExecuteVbaSub, dove e' un normale completamento anticipato), o per
+// un errore di runtime (outError e' gia' popolato).
 enum ExecResult {
 	execNormal,
 	execExitFor,
+	execExitDo,
 	execExitSub,
 	execError,
 };
@@ -100,8 +104,14 @@ private:
 			case vbaStmtSelectCase:
 				return ExecuteSelectCase(stmt);
 
+			case vbaStmtDoLoop:
+				return ExecuteDoLoop(stmt);
+
 			case vbaStmtExitFor:
 				return execExitFor;
+
+			case vbaStmtExitDo:
+				return execExitDo;
 
 			case vbaStmtExitSub:
 				return execExitSub;
@@ -227,8 +237,8 @@ private:
 			ExecResult r = ExecuteStmtList(stmt->body);
 			if (r == execExitFor)
 				break; // consumato da QUESTO ciclo: un normale completamento anticipato
-			if (r == execExitSub || r == execError)
-				return r; // propaga fino alla Sub chiamante
+			if (r != execNormal)
+				return r; // qualunque altra cosa (Exit Do/Sub, un errore) propaga fino al chiamante
 
 			current += step;
 			fEnv->Set(stmt->varName, Value(current));
@@ -275,8 +285,47 @@ private:
 				ExecResult res = ExecuteStmtList(stmt->body);
 				if (res == execExitFor)
 					return execNormal; // consumato: esce da ENTRAMBI i livelli del ciclo annidato
-				if (res == execExitSub || res == execError)
-					return res;
+				if (res != execNormal)
+					return res; // qualunque altra cosa (Exit Do/Sub, un errore) propaga fino al chiamante
+			}
+		}
+		return execNormal;
+	}
+
+	// "Do [While|Until expr] ... Loop" (controllo PRIMA, puo' non
+	// girare nemmeno una volta) oppure "Do ... Loop [While|Until
+	// expr]" (controllo DOPO, gira sempre almeno una volta) -- vedi
+	// doIsPreTest/doIsUntil in VbaAst.h. "expr" nullptr (nessuna
+	// condizione affatto) continua all'infinito, esce solo con
+	// "Exit Do"/"Exit Sub"/un errore.
+	ExecResult ExecuteDoLoop(const VbaStmt* stmt)
+	{
+		for (;;)
+		{
+			if (stmt->expr && stmt->doIsPreTest)
+			{
+				Value cond;
+				if (!Eval(stmt->expr.get(), &cond))
+					return execError;
+				bool condTrue = VbaToBool(cond);
+				if (stmt->doIsUntil ? condTrue : !condTrue)
+					break; // "Until" si ferma quando DIVENTA vera; "While" quando NON e' vera
+			}
+
+			ExecResult r = ExecuteStmtList(stmt->body);
+			if (r == execExitDo)
+				break; // consumato da QUESTO ciclo: un normale completamento anticipato
+			if (r != execNormal)
+				return r; // qualunque altra cosa (Exit For/Sub, un errore) propaga fino al chiamante
+
+			if (stmt->expr && !stmt->doIsPreTest)
+			{
+				Value cond;
+				if (!Eval(stmt->expr.get(), &cond))
+					return execError;
+				bool condTrue = VbaToBool(cond);
+				if (stmt->doIsUntil ? condTrue : !condTrue)
+					break;
 			}
 		}
 		return execNormal;
@@ -324,6 +373,10 @@ bool ExecuteVbaSub(const VbaSub* sub, VbaEnvironment* env, VbaRuntimeError* outE
 			return true; // "Exit Sub" e' un completamento anticipato, non un errore
 		case execExitFor:
 			outError->message = "\"Exit For\" fuori da un ciclo For";
+			outError->line = 0;
+			return false;
+		case execExitDo:
+			outError->message = "\"Exit Do\" fuori da un ciclo Do";
 			outError->line = 0;
 			return false;
 		case execError:

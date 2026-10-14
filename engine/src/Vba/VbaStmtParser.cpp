@@ -122,7 +122,7 @@ private:
 			return false;
 		return Current().text == "End" || Current().text == "Else"
 			|| Current().text == "ElseIf" || Current().text == "Next"
-			|| Current().text == "Case";
+			|| Current().text == "Case" || Current().text == "Loop";
 	}
 
 	// Una nuova riga O la fine del flusso chiudono un'istruzione in
@@ -170,6 +170,8 @@ private:
 			return ParseExit();
 		if (IsKeyword("Select"))
 			return ParseSelectCase();
+		if (IsKeyword("Do"))
+			return ParseDo();
 		return ParseAssignOrExprStmt();
 	}
 
@@ -552,6 +554,85 @@ private:
 		return stmt;
 	}
 
+	// "Do [While|Until expr]" ... "Loop [While|Until expr]" -- al
+	// massimo UNA delle due posizioni ha davvero una condizione
+	// (entrambe insieme sulla stessa istruzione e' un errore di
+	// sintassi, non un'ambiguita' risolta a caso scegliendone una).
+	// Nessuna delle due: un "Do...Loop" nudo, esce solo con
+	// "Exit Do"/"Exit Sub".
+	std::unique_ptr<VbaStmt> ParseDo()
+	{
+		int line = Current().line;
+		Advance(); // "Do"
+
+		bool hasPreCond = false, preIsUntil = false;
+		std::unique_ptr<VbaExpr> preCond;
+		if (IsKeyword("While") || IsKeyword("Until"))
+		{
+			hasPreCond = true;
+			preIsUntil = IsKeyword("Until");
+			Advance();
+			preCond = ParseVbaExpression(fTokens, fPos, fError);
+			if (!preCond)
+			{
+				fFailed = true;
+				return nullptr;
+			}
+		}
+		if (!ExpectStatementEnd())
+			return nullptr;
+
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtDoLoop));
+		stmt->line = line;
+
+		if (!ParseStatementList(&stmt->body))
+			return nullptr;
+
+		if (!ExpectKeyword("Loop"))
+			return nullptr;
+
+		bool hasPostCond = false, postIsUntil = false;
+		std::unique_ptr<VbaExpr> postCond;
+		if (IsKeyword("While") || IsKeyword("Until"))
+		{
+			hasPostCond = true;
+			postIsUntil = IsKeyword("Until");
+			Advance();
+			postCond = ParseVbaExpression(fTokens, fPos, fError);
+			if (!postCond)
+			{
+				fFailed = true;
+				return nullptr;
+			}
+		}
+		if (!ExpectStatementEnd())
+			return nullptr;
+
+		if (hasPreCond && hasPostCond)
+		{
+			SetError("una condizione sia su \"Do While/Until\" che su \"Loop While/Until\" "
+				"nella stessa istruzione non e' supportato in questa fase: scegline una sola "
+				"posizione");
+			return nullptr;
+		}
+
+		if (hasPreCond)
+		{
+			stmt->doIsPreTest = true;
+			stmt->doIsUntil = preIsUntil;
+			stmt->expr = std::move(preCond);
+		}
+		else if (hasPostCond)
+		{
+			stmt->doIsPreTest = false;
+			stmt->doIsUntil = postIsUntil;
+			stmt->expr = std::move(postCond);
+		}
+		// altrimenti: "Do...Loop" nudo, stmt->expr resta nullptr (vedi
+		// il commento su vbaStmtDoLoop in VbaAst.h).
+		return stmt;
+	}
+
 	std::unique_ptr<VbaStmt> ParseExit()
 	{
 		int line = Current().line;
@@ -567,9 +648,14 @@ private:
 			kind = vbaStmtExitSub;
 			Advance();
 		}
+		else if (IsKeyword("Do"))
+		{
+			kind = vbaStmtExitDo;
+			Advance();
+		}
 		else
 		{
-			SetError("atteso \"For\" o \"Sub\" dopo \"Exit\"");
+			SetError("atteso \"For\", \"Do\" o \"Sub\" dopo \"Exit\"");
 			return nullptr;
 		}
 		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(kind));

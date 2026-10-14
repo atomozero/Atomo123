@@ -85,6 +85,14 @@ enum VbaStmtKind {
 	                     // (come "="), NIENTE "Case 1 To 5" o "Case Is > 5" in questo
 	                     // sottoinsieme (limite onesto, non un dato sbagliato silenzioso: il
 	                     // parser rifiuta "To"/"Is" dopo "Case" con un errore chiaro).
+	vbaStmtDoLoop,     // Do [While|Until expr] body Loop  -- oppure --  Do body Loop [While|Until expr]
+	                     // -- vedi doIsPreTest/doIsUntil sotto. "expr" nullptr = nessuna
+	                     // condizione affatto ("Do ... Loop" nudo, esce solo con Exit Do/Exit
+	                     // Sub) -- in quel caso doIsPreTest/doIsUntil non contano. Avere
+	                     // ENTRAMBE le posizioni ("Do While..." E "...Loop While") sulla
+	                     // stessa istruzione e' un errore di sintassi, non un'ambiguita'
+	                     // risolta a caso.
+	vbaStmtExitDo,
 };
 
 struct VbaStmt; // completa piu' sotto -- serve solo per unique_ptr<VbaStmt> qui
@@ -119,9 +127,15 @@ struct VbaStmt {
 	                                                   // vbaStmtIf annidato per un "ElseIf");
 	                                                   // SelectCase: il ramo "Case Else"
 	std::vector<VbaCaseClause> cases;                 // solo SelectCase, nell'ordine scritto
+	bool doIsPreTest;  // solo DoLoop, e solo se "expr" non e' nullptr: vero = "Do While/Until
+	                     // ... Loop" (condizione controllata PRIMA di ogni giro, puo' non
+	                     // eseguire il corpo nemmeno una volta); falso = "Do ... Loop While/
+	                     // Until" (controllata DOPO, il corpo gira SEMPRE almeno una volta)
+	bool doIsUntil;    // solo DoLoop, e solo se "expr" non e' nullptr: vero = "Until" (continua
+	                     // finche' "expr" e' falsa); falso = "While" (continua finche' e' vera)
 	int line;
 
-	VbaStmt(VbaStmtKind k) : kind(k), line(0) {}
+	VbaStmt(VbaStmtKind k) : kind(k), doIsPreTest(true), doIsUntil(false), line(0) {}
 };
 
 // Un'intera procedura: "Sub Nome()" ... "End Sub". Senza parametri in

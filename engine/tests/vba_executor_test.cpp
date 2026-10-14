@@ -184,6 +184,36 @@ int main()
 		"Case 2\ny = y & \"b\"\nCase Else\ny = y & \"c\"\nEnd Select\nNext\nEnd Sub",
 		"y", "\"abc\"");
 
+	// ---- Do While/Until ... Loop: controllo PRIMA, puo' non girare mai ----
+	CheckVar("Sub T()\ni = 1\ntotal = 0\nDo While i <= 5\ntotal = total + i\ni = i + 1\nLoop\n"
+		"End Sub", "total", "15");
+	CheckVar("Sub T()\ni = 1\ntotal = 0\nDo Until i > 5\ntotal = total + i\ni = i + 1\nLoop\n"
+		"End Sub", "total", "15"); // "Until" e' l'opposto di "While": stesso risultato, condizione invertita
+	CheckVar("Sub T()\nx = 0\nDo While False\nx = 1\nLoop\nEnd Sub", "x", "0"); // il corpo non gira NEMMENO una volta
+
+	// ---- Do ... Loop While/Until: controllo DOPO, gira SEMPRE almeno una volta ----
+	CheckVar("Sub T()\nx = 0\nDo\nx = x + 1\nLoop While x < 5\nEnd Sub", "x", "5");
+	CheckVar("Sub T()\nx = 0\nDo\nx = x + 1\nLoop Until x = 5\nEnd Sub", "x", "5");
+	CheckVar("Sub T()\nx = 0\nDo\nx = x + 1\nLoop While False\nEnd Sub", "x", "1"); // una volta, anche se falsa subito
+
+	// ---- Exit Do interrompe SOLO il ciclo Do che lo contiene ----
+	CheckVar("Sub T()\ni = 0\ntotal = 0\nDo\ni = i + 1\nIf i = 4 Then Exit Do\n"
+		"total = total + i\nLoop\nEnd Sub", "total", "6"); // 1+2+3, i=4 esce prima di somma
+	CheckVar("Sub T()\nouter = 0\nFor i = 1 To 3\nj = 0\nDo\nj = j + 1\n"
+		"If j = 2 Then Exit Do\nouter = outer + 1\nLoop While j < 10\nNext i\nEnd Sub",
+		"outer", "3"); // Exit Do non esce anche dal For che lo contiene
+	// Exit For dentro un Do dentro un For: esce dal FOR, non dal Do (propagazione incrociata).
+	CheckVar("Sub T()\ncount = 0\nFor i = 1 To 5\nDo\ncount = count + 1\n"
+		"If i = 2 Then Exit For\nLoop While False\nNext i\nEnd Sub", "count", "2");
+
+	// ---- Errori di esecuzione: un messaggio chiaro, mai un crash ----
+	CheckError("Sub T()\nExit Do\nEnd Sub",
+		"\"Exit Do\" fuori da un ciclo Do produce un errore, non un comportamento indefinito");
+	// "x > 0" fallisce PRIMA che il corpo giri anche una sola volta (controllo "While" e'
+	// sempre PRIMA): nessun rischio di ciclo infinito in questo test.
+	CheckError("Sub T()\nDo While x > 0\ny = 1\nLoop\nEnd Sub",
+		"un errore di valutazione nella condizione di un Do While si propaga come errore della Sub");
+
 	// ---- Errori di sintassi: un messaggio chiaro, mai un "If" o un Select silenziosamente incompleto ----
 	CheckError("Sub T()\nSelect Case x\nCase 1 To 5\ny = 1\nEnd Select\nEnd Sub",
 		"\"Case 1 To 5\" (un intervallo) non e' supportato in questa fase, produce un errore chiaro");
