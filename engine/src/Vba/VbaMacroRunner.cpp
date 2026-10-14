@@ -38,14 +38,15 @@ bool FindVbaSubByName(const std::vector<VbaToken>& tokens, const std::string& su
 		if (pos >= tokens.size() || tokens[pos].type == vbaTokEnd)
 			break;
 
-		if (!(tokens[pos].type == vbaTokKeyword && tokens[pos].text == "Sub"))
+		if (!(tokens[pos].type == vbaTokKeyword
+			&& (tokens[pos].text == "Sub" || tokens[pos].text == "Function")))
 		{
 			// Contenuto a livello di modulo che questo sottoinsieme non
-			// riconosce come l'inizio di una Sub (es. "Attribute
-			// VB_Name = ...", "Option Explicit", una Function) -- si
-			// salta UN token e si riprova, cosi' una riga che questo
-			// sottoinsieme non capisce non blocca la ricerca delle Sub
-			// successive.
+			// riconosce come l'inizio di una Sub/Function (es.
+			// "Attribute VB_Name = ...", "Option Explicit") -- si salta
+			// UN token e si riprova, cosi' una riga che questo
+			// sottoinsieme non capisce non blocca la ricerca delle
+			// Sub/Function successive.
 			pos++;
 			continue;
 		}

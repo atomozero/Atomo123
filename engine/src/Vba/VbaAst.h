@@ -138,22 +138,36 @@ struct VbaStmt {
 	VbaStmt(VbaStmtKind k) : kind(k), doIsPreTest(true), doIsUntil(false), line(0) {}
 };
 
-// Un'intera procedura: "Sub Nome(...)" ... "End Sub". Fase 6a: i
-// parametri sono SOLO per valore ("ByVal", anche quando scritto senza
-// -- e' il default di questo sottoinsieme, non quello del vero VBA,
-// che userebbe "ByRef" -- vedi ROADMAP.md), quindi basta un elenco di
-// nomi: ogni chiamata lega un argomento valutato a una NUOVA variabile
-// locale con quel nome nell'ambiente della Sub chiamata, niente
-// aliasing col chiamante da rappresentare qui. Un eventuale "As Tipo"
-// dopo un parametro si legge e si scarta, stesso trattamento del tipo
-// su "Dim".
+// Un'intera procedura: "Sub Nome(...)" ... "End Sub", oppure (Fase 6b)
+// "Function Nome(...) [As Tipo]" ... "End Function" -- "isFunction"
+// distingue le due SOLO per sapere quale parola chiave chiudente
+// aspettarsi e se leggere un valore di ritorno dopo l'esecuzione
+// (VbaExecutor.cpp/VbaEvaluator.cpp): l'esecuzione del corpo e'
+// identica. Il valore di ritorno di una Function usa la stessa
+// convenzione del vero VBA -- una variabile con lo stesso nome della
+// Function, assegnata da una qualunque istruzione dentro il corpo
+// ("NomeFunzione = risultato"), Empty (qui: 0.0) se non mai assegnata
+// -- quindi non serve nessun nodo dedicato nell'albero: e' una normale
+// vbaStmtAssign su una variabile normale, dichiarata in anticipo da
+// ExecuteVbaSub prima di eseguire il corpo.
+//
+// Fase 6a: i parametri sono SOLO per valore ("ByVal", anche quando
+// scritto senza -- e' il default di questo sottoinsieme, non quello
+// del vero VBA, che userebbe "ByRef" -- vedi ROADMAP.md), quindi basta
+// un elenco di nomi: ogni chiamata lega un argomento valutato a una
+// NUOVA variabile locale con quel nome nell'ambiente della procedura
+// chiamata, niente aliasing col chiamante da rappresentare qui. Un
+// eventuale "As Tipo" dopo un parametro (o dopo l'intero elenco, per
+// il tipo di ritorno di una Function) si legge e si scarta, stesso
+// trattamento del tipo su "Dim".
 struct VbaSub {
 	std::string name;
 	std::vector<std::string> params;
 	std::vector<std::unique_ptr<VbaStmt>> body;
+	bool isFunction;
 	int line;
 
-	VbaSub() : line(0) {}
+	VbaSub() : isFunction(false), line(0) {}
 };
 
 #endif

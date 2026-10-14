@@ -13,23 +13,21 @@
 	    VbaEnvironment nuovo, legato a "doc" come documento attivo per
 	    Range/Cells.
 
-	Un modulo puo' contenere PIU' Sub una dopo l'altra (e contenuto a
-	livello di modulo che questo sottoinsieme non riconosce, es.
-	"Attribute VB_Name = ...", "Option Explicit", una Function --
-	fuori dal sottoinsieme deciso in ROADMAP.md): si scandisce il
-	flusso di token un "Sub ... End Sub" alla volta (ogni blocco si
-	analizza per intero con ParseVbaSub, anche quando non e' quello
-	cercato, cosi' il suo annidamento di If/For/ElseIf viene sempre
-	saltato correttamente invece di un secondo scanner ad hoc che
-	rischierebbe di perdersi in un blocco annidato), e si confronta il
-	nome con "macroName" senza distinguere maiuscole/minuscole.
+	Un modulo puo' contenere PIU' Sub/Function una dopo l'altra (e
+	contenuto a livello di modulo che questo sottoinsieme non
+	riconosce, es. "Attribute VB_Name = ...", "Option Explicit"): si
+	scandisce il flusso di token un "Sub ... End Sub"/"Function ... End
+	Function" alla volta (ogni blocco si analizza per intero con
+	ParseVbaSub, anche quando non e' quello cercato, cosi' il suo
+	annidamento di If/For/ElseIf viene sempre saltato correttamente
+	invece di un secondo scanner ad hoc che rischierebbe di perdersi in
+	un blocco annidato), e si confronta il nome con "macroName" senza
+	distinguere maiuscole/minuscole.
 
-	LIMITE NOTO di questa fase: se una Sub DIVERSA da quella cercata,
-	nello stesso modulo e PRIMA di essa, usa una sintassi che questo
-	sottoinsieme non analizza (una Function, "ByRef" su un parametro...
-	-- vedi Fase 6a in ROADMAP.md per cosa e' invece GIA' supportato,
-	come i parametri per valore e Select Case), l'intera scansione di
-	QUEL modulo si ferma con un
+	LIMITE NOTO di questa fase: se una Sub/Function DIVERSA da quella
+	cercata, nello stesso modulo e PRIMA di essa, usa una sintassi che
+	questo sottoinsieme non analizza ("ByRef" su un parametro...),
+	l'intera scansione di QUEL modulo si ferma con un
 	errore di sintassi, anche se la Sub cercata stessa sarebbe
 	perfettamente valida per questo sottoinsieme -- si passa comunque
 	al modulo SUCCESSIVO (non e' un errore fatale per l'intera
@@ -97,17 +95,20 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 // chiave consecutive, non una parola chiave seguita da un
 // identificatore) -- quindi non fallisce mai, nemmeno su un modulo
 // che contiene una Sub con una sintassi fuori da questo sottoinsieme
-// (una Function, "ByRef" su un parametro...): un nome puo' comparire in questo
+// ("ByRef" su un parametro...): un nome puo' comparire in questo
 // elenco ed essere comunque rifiutato da ExecuteVbaMacro quando
 // davvero eseguito, se la sua Sub (o una PRECEDENTE nello stesso
 // modulo, vedi il limite noto sopra) usa una sintassi che questo
 // sottoinsieme non analizza -- quell'errore arriva allora dalla vera
-// esecuzione, non da qui. Una "Private Sub" (il modificatore e' un
-// semplice identificatore per questo lessico, non una parola chiave)
-// e' esclusa, come il vero elenco Macro di Excel che nasconde le
-// Sub private. Vero sempre tranne quando "vbaProjectData" non e'
-// affatto un progetto VBA valido; "outNames" resta vuoto (non un
-// errore) se il progetto non contiene nessuna Sub pubblica.
+// esecuzione, non da qui. Una "Function" (cercata solo per "Sub", mai
+// per "Function") e' esclusa a proposito, come il vero elenco Macro
+// di Excel che non propone Function nella finestra "Esegui macro"; una
+// "Private Sub" (il modificatore e' un semplice identificatore per
+// questo lessico, non una parola chiave) e' esclusa per lo stesso
+// motivo, come le Sub private del vero Excel. Vero sempre tranne
+// quando "vbaProjectData" non e' affatto un progetto VBA valido;
+// "outNames" resta vuoto (non un errore) se il progetto non contiene
+// nessuna Sub pubblica.
 bool ListVbaMacroNames(const uint8* vbaProjectData, size_t vbaProjectLen,
 	std::vector<std::string>* outNames);
 

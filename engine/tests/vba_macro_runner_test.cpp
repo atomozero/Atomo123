@@ -494,11 +494,82 @@ static void TestSiblingSubCall()
 }
 
 // =======================================================================
+// Parte 2c (Fase 6b): una Function sorella, richiamata dentro
+// un'espressione (non come istruzione nuda) -- il valore di ritorno
+// (la variabile omonima della Function, vedi VbaAst.h/VbaExecutor.cpp)
+// deve arrivare davvero al chiamante, non solo eseguire senza errori.
+// =======================================================================
+
+static std::vector<uint8> BuildFunctionCallProject()
+{
+	const char* moduleSource =
+		"Sub Main()\r\n"
+		"    Cells(1, 1).Value = Double(21)\r\n"
+		"    Cells(2, 1).Value = Double(Double(5))\r\n" // annidata: 5*2*2 = 20
+		"End Sub\r\n"
+		"Function Double(ByVal n As Integer) As Integer\r\n"
+		"    Double = n * 2\r\n"
+		"End Function\r\n"
+		"Function NeverAssigns()\r\n" // non assegna mai il proprio nome: ritorna Empty (0.0)
+		"End Function\r\n"
+		"Sub UseNeverAssigns()\r\n"
+		"    Cells(1, 1).Value = NeverAssigns()\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(6, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestSiblingFunctionCall()
+{
+	std::vector<uint8> project = BuildFunctionCallProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per la chiamata a Function sorella si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "Main", doc, &err);
+	Check(ok, "\"Main\" usa \"Double(...)\" dentro un'espressione senza errori");
+
+	Value v1, v2;
+	doc->GetValue(cell(1, 1), v1);
+	doc->GetValue(cell(1, 2), v2);
+	Check((double)v1 == 42.0, "Double(21) torna davvero 42 al chiamante, non solo esegue");
+	Check((double)v2 == 20.0, "una Function sorella puo' richiamarne un'altra (Double(Double(5)) = 20)");
+	doc->Release();
+
+	{
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		bool ok2 = ExecuteVbaMacro(&project[0], project.size(), "UseNeverAssigns", doc2, &err2);
+		Check(ok2, "una Function che non assegna mai il proprio nome esegue comunque senza errori");
+		Value v;
+		doc2->GetValue(cell(1, 1), v);
+		Check((double)v == 0.0, "e il suo valore di ritorno e' Empty (0.0), come il vero VBA, "
+			"non un errore \"variabile non dichiarata\"");
+		doc2->Release();
+	}
+}
+
+// =======================================================================
 // Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
 // pensato apposta per provare che questa funzione NON chiama
-// ParseVbaSub (una "Function", fuori da questo sottoinsieme, non deve
-// far sparire NESSUN nome, nemmeno il proprio), e che una "Private Sub"
-// viene esclusa come il vero elenco Macro di Excel.
+// ParseVbaSub (un "ByRef" su un parametro, fuori da questo
+// sottoinsieme, non deve far sparire NESSUN nome, nemmeno il proprio),
+// e che una "Private Sub" viene esclusa come il vero elenco Macro di
+// Excel.
 // =======================================================================
 
 static std::vector<uint8> BuildMacroListProject()
@@ -575,6 +646,7 @@ int main()
 	TestFindVbaSubByName();
 	TestExecuteVbaMacro();
 	TestSiblingSubCall();
+	TestSiblingFunctionCall();
 	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

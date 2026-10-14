@@ -140,7 +140,8 @@ static std::string ParseAndDump(const char* source)
 			params += ", ";
 		params += sub->params[i];
 	}
-	return "Sub " + sub->name + "(" + params + ") [" + DumpStmtList(sub->body) + "]";
+	return std::string(sub->isFunction ? "Function " : "Sub ") + sub->name + "(" + params + ") ["
+		+ DumpStmtList(sub->body) + "]";
 }
 
 static void CheckSub(const char* source, const char* expected)
@@ -283,6 +284,21 @@ int main()
 	// ---- Fase 6a: "Call" e' zucchero sintattico, stessa istruzione nuda ----
 	CheckSub("Sub Foo()\r\nCall Bar(1, 2)\r\nEnd Sub\r\n",
 		"Sub Foo() [Bar(1, 2)]");
+
+	// ---- Fase 6b: "Function ... End Function", col valore di ritorno
+	// rappresentato come una normale assegnazione alla variabile
+	// omonima della Function (vedi VbaAst.h) -- nessun nodo dedicato ----
+	CheckSub("Function Foo(x)\r\nFoo = x * 2\r\nEnd Function\r\n",
+		"Function Foo(x) [Foo := (x * 2)]");
+	CheckSub("Function Foo(ByVal x As Integer) As Long\r\nFoo = x\r\nEnd Function\r\n",
+		"Function Foo(x) [Foo := x]"); // il tipo di ritorno dopo "As" si legge e si scarta
+	CheckSub("Function Foo()\r\nEnd Function\r\n", "Function Foo() []");
+	{
+		// "End Sub" per chiudere una "Function" (o viceversa) e' un
+		// errore chiaro, non una chiusura tollerata a caso.
+		std::string r = ParseAndDump("Function Foo()\r\nEnd Sub\r\n");
+		Check(r.substr(0, 8) == "<errore ", "\"Function\" chiusa con \"End Sub\" produce un errore");
+	}
 
 	// ---- Errori di sintassi: un messaggio chiaro, mai un crash ----
 	{

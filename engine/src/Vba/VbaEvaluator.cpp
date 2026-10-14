@@ -708,7 +708,18 @@ private:
 					SetError(callError.message, callError.line ? callError.line : expr->line);
 					return Value(0.0);
 				}
-				return Value(0.0); // una Sub non ha un valore di ritorno (Function e' Fase 6b)
+				// Fase 6b: una Function ha un valore di ritorno -- la
+				// stessa variabile col nome della Function, dichiarata da
+				// ExecuteVbaSub PRIMA di eseguire il corpo (vedi
+				// VbaExecutor.cpp), quindi sempre presente qui. Una Sub
+				// invece non ha alcun valore (Value(0.0) scartato dal
+				// chiamante quando usata come istruzione nuda).
+				if (callee->isFunction)
+				{
+					const Value* retVal = childEnv.Find(callee->name);
+					return retVal ? *retVal : Value(0.0);
+				}
+				return Value(0.0);
 			}
 		}
 

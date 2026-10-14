@@ -364,6 +364,15 @@ private:
 
 bool ExecuteVbaSub(const VbaSub* sub, VbaEnvironment* env, VbaRuntimeError* outError)
 {
+	// Fase 6b: il valore di ritorno di una Function e' una variabile
+	// normale con lo stesso nome della Function -- dichiararla ORA
+	// (Empty/0.0, come il vero VBA se il corpo non la assegna mai)
+	// fa si' che il chiamante (VbaEvaluator.cpp, EvalCall) la trovi
+	// sempre con "env->Find(sub->name)" dopo l'esecuzione, senza
+	// bisogno di un valore di ritorno dedicato in questa firma.
+	if (sub->isFunction)
+		env->Declare(sub->name);
+
 	Executor executor(env, outError);
 	ExecResult r = executor.ExecuteStmtList(sub->body);
 	switch (r)

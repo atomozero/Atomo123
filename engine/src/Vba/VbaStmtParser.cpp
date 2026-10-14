@@ -18,18 +18,25 @@ public:
 	Parser(const std::vector<VbaToken>& tokens, size_t& pos, VbaParseError* outError)
 		: fTokens(tokens), fPos(pos), fError(outError), fFailed(false) {}
 
+	// Fase 6b: "Sub Nome(...)" ... "End Sub" oppure "Function
+	// Nome(...) [As Tipo]" ... "End Function" -- stessa struttura,
+	// solo la parola chiave (e se c'e' un tipo di ritorno da leggere e
+	// scartare) cambia in base a "isFunction" -- vedi VbaSub in
+	// VbaAst.h sul perche' non serve altro per il valore di ritorno.
 	std::unique_ptr<VbaSub> ParseSub()
 	{
-		if (!IsKeyword("Sub"))
+		bool isFunction = IsKeyword("Function");
+		if (!isFunction && !IsKeyword("Sub"))
 		{
-			SetError("atteso \"Sub\"");
+			SetError("atteso \"Sub\" o \"Function\"");
 			return nullptr;
 		}
 		int line = Current().line;
 		Advance();
 		if (Current().type != vbaTokIdentifier)
 		{
-			SetError("atteso un nome di procedura dopo \"Sub\"");
+			SetError(std::string("atteso un nome di procedura dopo \"")
+				+ (isFunction ? "Function" : "Sub") + "\"");
 			return nullptr;
 		}
 		std::string name = Current().text;
@@ -38,18 +45,29 @@ public:
 		std::vector<std::string> params;
 		if (!ParseParamList(&params))
 			return nullptr;
+		if (isFunction && IsKeyword("As"))
+		{
+			Advance();
+			if (Current().type != vbaTokIdentifier)
+			{
+				SetError("atteso un nome di tipo dopo \"As\"");
+				return nullptr;
+			}
+			Advance();
+		}
 		if (!ExpectStatementEnd())
 			return nullptr;
 
 		auto sub = std::unique_ptr<VbaSub>(new VbaSub());
 		sub->name = name;
 		sub->params = params;
+		sub->isFunction = isFunction;
 		sub->line = line;
 
 		if (!ParseStatementList(&sub->body))
 			return nullptr;
 
-		if (!ExpectKeyword("End") || !ExpectKeyword("Sub"))
+		if (!ExpectKeyword("End") || !ExpectKeyword(isFunction ? "Function" : "Sub"))
 			return nullptr;
 		ExpectStatementEnd(); // facoltativo: puo' essere l'ultimo token del modulo
 
