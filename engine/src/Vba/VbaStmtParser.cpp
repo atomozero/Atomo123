@@ -275,6 +275,11 @@ private:
 		}
 		std::string varName = Current().text;
 		Advance();
+
+		std::vector<int> arrayDims;
+		if (!ParseArrayDimList(&arrayDims))
+			return nullptr;
+
 		if (IsKeyword("As"))
 		{
 			Advance();
@@ -287,10 +292,45 @@ private:
 		}
 		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtDim));
 		stmt->varName = varName;
+		stmt->arrayDims = arrayDims;
 		stmt->line = line;
 		if (!ExpectStatementEnd())
 			return nullptr;
 		return stmt;
+	}
+
+	// Fase 6c: "(" limiteSuperiore ("," limiteSuperiore)* ")" dopo il
+	// nome di variabile su un "Dim", oppure niente affatto (variabile
+	// scalare normale, "outDims" resta vuoto) -- SOLO un numero
+	// letterale per ogni limite (niente espressioni generiche: "limiti
+	// statici dichiarati al momento del Dim", vedi ROADMAP.md Fase 6c).
+	// Ogni limite e' quello SUPERIORE incluso, Option Base 0 implicito
+	// del vero VBA ("Dim x(10)" sono gli indici 0..10, 11 elementi) --
+	// gia' convertito in conteggio di elementi qui, cosi' il resto del
+	// programma (VbaEnvironment::DeclareArray) non deve rifare +1.
+	bool ParseArrayDimList(std::vector<int>* outDims)
+	{
+		if (!IsOp("("))
+			return true; // variabile scalare, nessun limite da leggere
+		Advance();
+		for (;;)
+		{
+			if (Current().type != vbaTokNumber || Current().numberValue < 0)
+			{
+				SetError("atteso un numero non negativo come limite superiore "
+					"della dimensione dell'array");
+				return false;
+			}
+			outDims->push_back((int)Current().numberValue + 1);
+			Advance();
+			if (IsOp(","))
+			{
+				Advance();
+				continue;
+			}
+			break;
+		}
+		return ExpectOp(")");
 	}
 
 	std::unique_ptr<VbaStmt> ParseSetStmt()

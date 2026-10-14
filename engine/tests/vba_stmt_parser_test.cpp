@@ -89,7 +89,18 @@ static std::string DumpStmt(const VbaStmt* s)
 		case vbaStmtExprStmt:
 			return DumpExpr(s->expr.get());
 		case vbaStmtDim:
-			return "Dim " + s->varName;
+		{
+			if (s->arrayDims.empty())
+				return "Dim " + s->varName;
+			std::string dims;
+			for (size_t i = 0; i < s->arrayDims.size(); i++)
+			{
+				if (i > 0)
+					dims += ", ";
+				dims += std::to_string(s->arrayDims[i]);
+			}
+			return "Dim " + s->varName + "(" + dims + ")"; // conteggio elementi, non il limite scritto
+		}
 		case vbaStmtIf:
 		{
 			std::string out = "If " + DumpExpr(s->expr.get()) + " Then [" + DumpStmtList(s->body) + "]";
@@ -284,6 +295,22 @@ int main()
 	// ---- Fase 6a: "Call" e' zucchero sintattico, stessa istruzione nuda ----
 	CheckSub("Sub Foo()\r\nCall Bar(1, 2)\r\nEnd Sub\r\n",
 		"Sub Foo() [Bar(1, 2)]");
+
+	// ---- Fase 6c: array a dimensione fissa su "Dim" -- il numero
+	// stampato da DumpStmt e' gia' il CONTEGGIO di elementi (limite
+	// superiore scritto + 1, Option Base 0 implicito) ----
+	CheckSub("Sub Foo()\r\nDim V(15) As Byte\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim V(16)]"); // 16 elementi, indici 0..15 -- i registri V0..VF del CHIP-8
+	CheckSub("Sub Foo()\r\nDim Screen(63, 31)\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim Screen(64, 32)]"); // 2D: 64x32, lo schermo del CHIP-8
+	CheckSub("Sub Foo()\r\nDim x\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim x]"); // nessuna parentesi: ancora una variabile scalare normale
+	CheckSub("Sub Foo(x)\r\nV(x) = 5\r\nEnd Sub\r\n",
+		"Sub Foo(x) [V(x) := 5]"); // una scrittura sembra sintatticamente una chiamata qualunque
+	{
+		std::string r = ParseAndDump("Sub Foo()\r\nDim V(-1)\r\nEnd Sub\r\n");
+		Check(r.substr(0, 8) == "<errore ", "un limite superiore negativo su un array produce un errore");
+	}
 
 	// ---- Fase 6b: "Function ... End Function", col valore di ritorno
 	// rappresentato come una normale assegnazione alla variabile

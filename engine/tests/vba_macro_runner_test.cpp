@@ -564,6 +564,92 @@ static void TestSiblingFunctionCall()
 }
 
 // =======================================================================
+// Parte 2d (Fase 6c): array a dimensione fissa dichiarati con "Dim",
+// in lettura/scrittura sia 1D che 2D, punta a punta tramite
+// ExecuteVbaMacro -- e un indice fuori dai limiti (lettura e
+// scrittura) che produce un errore di runtime pulito, non un accesso
+// fuori dai limiti del vettore sottostante.
+// =======================================================================
+
+static std::vector<uint8> BuildArrayProject()
+{
+	const char* moduleSource =
+		"Sub Main()\r\n"
+		"    Dim V(3) As Byte\r\n"          // 4 elementi, indici 0..3
+		"    Dim Screen(1, 1) As Byte\r\n"  // 2x2, indici 0..1 per asse
+		"    V(0) = 10\r\n"
+		"    V(1) = 20\r\n"
+		"    V(2) = V(0) + V(1)\r\n"
+		"    Screen(0, 0) = 100\r\n"
+		"    Screen(1, 1) = 200\r\n"
+		"    Cells(1, 1).Value = V(2)\r\n"
+		"    Cells(2, 1).Value = Screen(0, 0)\r\n"
+		"    Cells(3, 1).Value = Screen(1, 1)\r\n"
+		"End Sub\r\n"
+		"Sub WriteOutOfBounds()\r\n"
+		"    Dim V(3) As Byte\r\n"
+		"    V(10) = 1\r\n"
+		"End Sub\r\n"
+		"Sub ReadOutOfBounds()\r\n"
+		"    Dim V(3) As Byte\r\n"
+		"    Cells(1, 1).Value = V(10)\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(8, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestArrays()
+{
+	std::vector<uint8> project = BuildArrayProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per gli array si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "Main", doc, &err);
+	Check(ok, "\"Main\" legge e scrive array 1D e 2D senza errori");
+
+	Value v1, v2, v3;
+	doc->GetValue(cell(1, 1), v1);
+	doc->GetValue(cell(1, 2), v2);
+	doc->GetValue(cell(1, 3), v3);
+	Check((double)v1 == 30.0, "V(2) = V(0) + V(1) = 10 + 20 = 30, letto davvero dall'array");
+	Check((double)v2 == 100.0 && (double)v3 == 200.0,
+		"Screen(0,0)=100 e Screen(1,1)=200, due celle DISTINTE dell'array 2D");
+	doc->Release();
+
+	{
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "WriteOutOfBounds", doc2, &err2),
+			"scrivere V(10) su un array di 4 elementi produce un errore chiaro, "
+			"non un accesso fuori dai limiti del vettore sottostante");
+		doc2->Release();
+	}
+	{
+		CContainer* doc3 = new CContainer(NULL, NULL);
+		VbaRuntimeError err3;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "ReadOutOfBounds", doc3, &err3),
+			"leggere V(10) su un array di 4 elementi produce un errore chiaro, "
+			"non un accesso fuori dai limiti del vettore sottostante");
+		doc3->Release();
+	}
+}
+
+// =======================================================================
 // Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
 // pensato apposta per provare che questa funzione NON chiama
 // ParseVbaSub (un "ByRef" su un parametro, fuori da questo
@@ -647,6 +733,7 @@ int main()
 	TestExecuteVbaMacro();
 	TestSiblingSubCall();
 	TestSiblingFunctionCall();
+	TestArrays();
 	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

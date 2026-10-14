@@ -91,10 +91,42 @@ public:
 	void SetCallDepth(int depth) { fCallDepth = depth; }
 	int GetCallDepth() const { return fCallDepth; }
 
+	// Fase 6c: array a dimensione FISSA, dichiarati da "Dim
+	// nome(limiteSuperiore, ...)" (VbaStmtParser.cpp) -- una mappa
+	// SEPARATA da fVars (niente "Value" di tipo array: aggiungere un
+	// tipo array al motore di calcolo condiviso da tutto il resto del
+	// programma sarebbe un cambiamento enormemente piu' invasivo di
+	// quanto serva qui). "dims" e' il conteggio di elementi per ogni
+	// asse (gia' "limite superiore + 1"); gli elementi si appiattiscono
+	// in un unico vettore riga per riga (stesso ordine del vero VBA per
+	// un array multidimensionale), inizializzati a 0.0 (Empty), stesso
+	// valore iniziale di una variabile scalare dichiarata con "Dim".
+	//
+	// Un secondo "Dim" sullo stesso nome RIDIMENSIONA e azzera di nuovo
+	// l'array (niente "ReDim Preserve" in questo sottoinsieme -- vedi
+	// ROADMAP.md Fase 6c, scope limitato ai limiti statici dichiarati
+	// al momento del "Dim").
+	void DeclareArray(const std::string& name, const std::vector<int>& dims);
+	bool IsArray(const std::string& name) const;
+
+	// "indices" DEVE avere la stessa lunghezza delle dimensioni passate
+	// a DeclareArray, un valore per asse. NULL/falso se "name" non e'
+	// un array dichiarato, il numero di indici non combacia, o un
+	// indice e' fuori dai limiti di quell'asse -- MAI un accesso fuori
+	// dai limiti del vettore sottostante, qualunque sia "indices".
+	const Value* GetArrayElement(const std::string& name, const std::vector<int>& indices) const;
+	bool SetArrayElement(const std::string& name, const std::vector<int>& indices, const Value& value);
+
 private:
 	static std::string NormalizeName(const std::string& name);
 
+	struct VbaArrayStorage {
+		std::vector<int> dims;
+		std::vector<Value> elements;
+	};
+
 	std::map<std::string, Value> fVars; // chiave: nome normalizzato (minuscolo)
+	std::map<std::string, VbaArrayStorage> fArrays; // stessa normalizzazione, mappa separata
 	CContainer* fActiveDoc;
 	const std::vector<VbaToken>* fModuleTokens;
 	int fCallDepth;

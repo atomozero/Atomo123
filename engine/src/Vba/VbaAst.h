@@ -70,7 +70,9 @@ enum VbaStmtKind {
 	vbaStmtExprStmt, // un'espressione nuda usata come istruzione (una chiamata per il suo
 	                   // effetto, es. "Range(\"A1\").Select" o "Foo()") -- vedi "expr"
 	vbaStmtDim,       // Dim varName [As ...] -- il tipo (se presente) viene letto e scartato,
-	                   // questo sottoinsieme tratta ogni variabile come Variant
+	                   // questo sottoinsieme tratta ogni variabile come Variant. Fase 6c: Dim
+	                   // varName(limiteSuperiore[, limiteSuperiore...]) [As ...] dichiara invece
+	                   // un array a dimensione FISSA -- vedi "arrayDims" sotto e VbaEnvironment.h
 	vbaStmtIf,        // If expr Then body [Else elseBody] End If -- un "ElseIf" si rappresenta
 	                   // come un singolo vbaStmtIf annidato dentro elseBody, vedi il parser
 	vbaStmtFor,       // For varName = expr To forEnd [Step forStep] body Next [varName]
@@ -122,6 +124,10 @@ struct VbaStmt {
 	std::unique_ptr<VbaExpr> forEnd;   // solo For: il valore finale ("To ...")
 	std::unique_ptr<VbaExpr> forStep;  // solo For: l'incremento ("Step ..."), nullptr = 1 implicito
 	std::string varName;                // Dim/For: il nome della variabile
+	std::vector<int> arrayDims;         // solo Dim: vuoto = variabile scalare normale; non vuoto =
+	                                       // array, un elemento per asse, GIA' "limite superiore + 1"
+	                                       // (Option Base 0 implicito: "Dim x(10)" sono gli indici
+	                                       // 0..10, 11 elementi) -- vedi ParseDim in VbaStmtParser.cpp
 	std::vector<std::unique_ptr<VbaStmt>> body;     // If (ramo Then) / For: il corpo
 	std::vector<std::unique_ptr<VbaStmt>> elseBody; // If: il ramo Else (eventualmente un solo
 	                                                   // vbaStmtIf annidato per un "ElseIf");

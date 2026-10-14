@@ -407,6 +407,25 @@ private:
 				return Value(0.0);
 		}
 
+		// Fase 6c: "nomeArray(indici)" in lettura -- stesso controllo
+		// di IsArray usato in scrittura (VbaExecutor.cpp), PRIMA di
+		// qualunque funzione predefinita o Sub/Function sorella, cosi'
+		// un array dichiarato con "Dim" ha sempre la precedenza sul
+		// proprio nome.
+		if (fEnv->IsArray(expr->name))
+		{
+			std::vector<int> indices;
+			for (size_t i = 0; i < args.size(); i++)
+				indices.push_back((int)VbaToNumber(args[i]));
+			const Value* element = fEnv->GetArrayElement(expr->name, indices);
+			if (!element)
+			{
+				SetError("indice fuori dai limiti dell'array \"" + expr->name + "\"", expr->line);
+				return Value(0.0);
+			}
+			return *element;
+		}
+
 		if (name == "len")
 		{
 			if (!CheckArgCount(expr, args, 1)) return Value(0.0);

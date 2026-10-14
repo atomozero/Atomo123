@@ -67,12 +67,32 @@ private:
 		return false;
 	}
 
+	// Fase 6c: valuta ogni argomento di "nomeArray(indici)" (gia'
+	// sintatticamente un vbaExprCall, vedi ExecuteAssignOrSet/EvalCall)
+	// come un indice intero -- stessa conversione numerica di
+	// qualunque altra espressione, troncata verso zero come il vero
+	// VBA accederebbe a V(2.9) come V(2).
+	bool EvalArrayIndices(const VbaExpr* callExpr, std::vector<int>* outIndices)
+	{
+		for (size_t i = 0; i < callExpr->children.size(); i++)
+		{
+			Value v;
+			if (!Eval(callExpr->children[i].get(), &v))
+				return false;
+			outIndices->push_back((int)VbaToNumber(v));
+		}
+		return true;
+	}
+
 	ExecResult ExecuteStmt(const VbaStmt* stmt)
 	{
 		switch (stmt->kind)
 		{
 			case vbaStmtDim:
-				fEnv->Declare(stmt->varName);
+				if (stmt->arrayDims.empty())
+					fEnv->Declare(stmt->varName);
+				else
+					fEnv->DeclareArray(stmt->varName, stmt->arrayDims); // Fase 6c
 				return execNormal;
 
 			case vbaStmtAssign:
@@ -157,6 +177,38 @@ private:
 				rhs = scalar;
 			}
 			fEnv->Set(stmt->target->name, rhs);
+			return execNormal;
+		}
+
+		// Fase 6c: "nomeArray(indici) = valore" -- sintatticamente
+		// IDENTICO a una scrittura su Range/Cells o a una chiamata
+		// (vbaExprCall), distinto solo controllando se "name" e' stato
+		// dichiarato come array (VbaEnvironment::IsArray). Deve venire
+		// PRIMA del ramo generico sotto, che altrimenti proverebbe a
+		// valutare "nomeArray(indici)" come un intervallo.
+		if (stmt->target->kind == vbaExprCall && !stmt->target->target
+			&& fEnv->IsArray(stmt->target->name))
+		{
+			std::vector<int> indices;
+			if (!EvalArrayIndices(stmt->target.get(), &indices))
+				return execError;
+			if (stmt->kind == vbaStmtAssign && rhs.fType == eRangeData)
+			{
+				Value scalar;
+				VbaRuntimeError err;
+				if (!VbaReadRangeValue(rhs, &scalar, &err, stmt->line))
+				{
+					SetError(err.message, err.line);
+					return execError;
+				}
+				rhs = scalar;
+			}
+			if (!fEnv->SetArrayElement(stmt->target->name, indices, rhs))
+			{
+				SetError("indice fuori dai limiti dell'array \"" + stmt->target->name + "\"",
+					stmt->line);
+				return execError;
+			}
 			return execNormal;
 		}
 
