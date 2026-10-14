@@ -62,6 +62,12 @@ double VbaToNumber(const Value& v);
 std::string VbaToText(const Value& v);
 bool VbaToBool(const Value& v);
 
+// -1/0/1 (a<b, a==b, a>b), stessa regola semplificata di VbaToBool/
+// VbaToNumber -- condiviso da "=","<>","<",">","<=",">=" e dal
+// confronto per uguaglianza di Select Case (VbaExecutor.cpp), cosi'
+// Select Case usa la STESSA regola invece di una seconda copia.
+int VbaCompareValues(const Value& a, const Value& b);
+
 // Legge il valore scalare di un intervallo di UNA sola cella --
 // il "default member" di Range/Cells in VBA, usato sia per ".Value"
 // esplicito sia per la coercizione implicita di "x = Range(...)"

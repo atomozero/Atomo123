@@ -76,19 +76,45 @@ enum VbaStmtKind {
 	vbaStmtFor,       // For varName = expr To forEnd [Step forStep] body Next [varName]
 	vbaStmtExitFor,
 	vbaStmtExitSub,
+	vbaStmtSelectCase, // Select Case expr [Case v1, v2, ...  body]... [Case Else elseBody] End Select
+	                     // -- vedi "cases"/"elseBody" sotto. SOLO confronto per uguaglianza
+	                     // (come "="), NIENTE "Case 1 To 5" o "Case Is > 5" in questo
+	                     // sottoinsieme (limite onesto, non un dato sbagliato silenzioso: il
+	                     // parser rifiuta "To"/"Is" dopo "Case" con un errore chiaro).
+};
+
+struct VbaStmt; // completa piu' sotto -- serve solo per unique_ptr<VbaStmt> qui
+
+// Un singolo "Case v1, v2, ..." di un Select Case (vedi vbaStmtSelectCase
+// sopra): zero o piu' valori di confronto (separati da virgola, come
+// VBA vero) piu' il corpo da eseguire se uno qualunque combacia con
+// l'espressione del Select Case (stesso confronto di "=", vedi
+// VbaExecutor.cpp). "Case Else" si rappresenta a parte, in
+// VbaStmt::elseBody, non come un elemento di questa lista (deve
+// sempre essere l'ultimo, come nel vero VBA, e un corpo senza nessun
+// valore di confronto qui dentro non avrebbe senso).
+struct VbaCaseClause {
+	std::vector<std::unique_ptr<VbaExpr>> matchValues;
+	std::vector<std::unique_ptr<VbaStmt>> body;
+	int line;
+
+	VbaCaseClause() : line(0) {}
 };
 
 struct VbaStmt {
 	VbaStmtKind kind;
 	std::unique_ptr<VbaExpr> target;  // Assign/Set: il lato sinistro (dove scrivere)
 	std::unique_ptr<VbaExpr> expr;     // Assign/Set: il lato destro; For: il valore iniziale;
-	                                     // ExprStmt: l'espressione stessa; If: la condizione
+	                                     // ExprStmt: l'espressione stessa; If/SelectCase: la
+	                                     // condizione/l'espressione da confrontare
 	std::unique_ptr<VbaExpr> forEnd;   // solo For: il valore finale ("To ...")
 	std::unique_ptr<VbaExpr> forStep;  // solo For: l'incremento ("Step ..."), nullptr = 1 implicito
 	std::string varName;                // Dim/For: il nome della variabile
 	std::vector<std::unique_ptr<VbaStmt>> body;     // If (ramo Then) / For: il corpo
-	std::vector<std::unique_ptr<VbaStmt>> elseBody; // solo If: il ramo Else (eventualmente un
-	                                                   // solo vbaStmtIf annidato per un "ElseIf")
+	std::vector<std::unique_ptr<VbaStmt>> elseBody; // If: il ramo Else (eventualmente un solo
+	                                                   // vbaStmtIf annidato per un "ElseIf");
+	                                                   // SelectCase: il ramo "Case Else"
+	std::vector<VbaCaseClause> cases;                 // solo SelectCase, nell'ordine scritto
 	int line;
 
 	VbaStmt(VbaStmtKind k) : kind(k), line(0) {}

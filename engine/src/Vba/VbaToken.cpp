@@ -23,7 +23,7 @@
 static const char* const kKeywords[] = {
 	"Sub", "End", "Dim", "As", "If", "Then", "Else", "ElseIf",
 	"For", "To", "Step", "Next", "True", "False", "And", "Or", "Not",
-	"Mod", "Set", "Exit", "Call",
+	"Mod", "Set", "Exit", "Call", "Select", "Case",
 };
 static const int kKeywordCount = (int)(sizeof(kKeywords) / sizeof(kKeywords[0]));
 

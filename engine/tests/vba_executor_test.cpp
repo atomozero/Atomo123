@@ -2,11 +2,15 @@
 	vba_executor_test.cpp
 
 	Verifica ExecuteVbaSub (VbaExecutor.h -- Path to full Excel parity,
-	VBA/macro execution, Fase 3b dell'interprete): Dim, assegnazione/
-	Set, If/ElseIf/Else, For/Next con Step (anche negativo), Exit For/
-	Exit Sub. Ancora nessun modello a oggetti Excel (Range/Cells),
-	vedi Fase 3c -- un target di assegnazione che lo richiede produce
-	un errore chiaro, verificato qui.
+	VBA/macro execution, Fase 3b dell'interprete, con l'aggiunta
+	successiva di Select Case alla Fase 4 -- vedi ROADMAP.md): Dim,
+	assegnazione/Set, If/ElseIf/Else, For/Next con Step (anche
+	negativo), Exit For/Exit Sub, Select Case (solo confronto per
+	uguaglianza, niente "Case 1 To 5"/"Case Is > 5" -- limite onesto,
+	verificato qui come un errore chiaro). Ancora nessun modello a
+	oggetti Excel (Range/Cells), vedi Fase 3c -- un target di
+	assegnazione che lo richiede produce un errore chiaro, verificato
+	qui.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).
@@ -161,6 +165,32 @@ int main()
 	CheckVar("Sub T()\nx = 1\nExit Sub\nx = 2\nEnd Sub", "x", "1");
 	CheckVar("Sub T()\ntotal = 0\nFor i = 1 To 10\nIf i = 3 Then Exit Sub\n"
 		"total = total + i\nNext\nEnd Sub", "total", "3"); // 1+2, esce all'intera Sub con i=3
+
+	// ---- Select Case: un solo valore, piu' valori su un "Case", "Case Else" ----
+	CheckVar("Sub T()\nx = 2\nSelect Case x\nCase 1\ny = \"uno\"\nCase 2\ny = \"due\"\n"
+		"End Select\nEnd Sub", "y", "\"due\"");
+	CheckVar("Sub T()\nx = 3\nSelect Case x\nCase 1, 2, 3\ny = \"basso\"\nCase 4, 5\n"
+		"y = \"alto\"\nEnd Select\nEnd Sub", "y", "\"basso\"");
+	CheckVar("Sub T()\nx = 99\nSelect Case x\nCase 1\ny = \"uno\"\nCase Else\ny = \"altro\"\n"
+		"End Select\nEnd Sub", "y", "\"altro\"");
+	// Nessun Case combacia e non c'e' "Case Else": nessun corpo eseguito, non e' un errore.
+	CheckVar("Sub T()\ny = 0\nx = 99\nSelect Case x\nCase 1\ny = 1\nEnd Select\nEnd Sub",
+		"y", "0");
+	// Confronto come testo (stessa regola di "="): Select Case su una stringa.
+	CheckVar("Sub T()\nx = \"b\"\nSelect Case x\nCase \"a\"\ny = 1\nCase \"b\"\ny = 2\n"
+		"End Select\nEnd Sub", "y", "2");
+	// Dentro un For (il pattern reale: classificare ogni cella di un ciclo).
+	CheckVar("Sub T()\ny = \"\"\nFor i = 1 To 3\nSelect Case i\nCase 1\ny = y & \"a\"\n"
+		"Case 2\ny = y & \"b\"\nCase Else\ny = y & \"c\"\nEnd Select\nNext\nEnd Sub",
+		"y", "\"abc\"");
+
+	// ---- Errori di sintassi: un messaggio chiaro, mai un "If" o un Select silenziosamente incompleto ----
+	CheckError("Sub T()\nSelect Case x\nCase 1 To 5\ny = 1\nEnd Select\nEnd Sub",
+		"\"Case 1 To 5\" (un intervallo) non e' supportato in questa fase, produce un errore chiaro");
+	CheckError("Sub T()\nSelect Case x\nCase Is > 5\ny = 1\nEnd Select\nEnd Sub",
+		"\"Case Is > 5\" (un confronto) non e' supportato in questa fase, produce un errore chiaro");
+	CheckError("Sub T()\nSelect Case x\nCase Else\ny = 1\nCase 2\ny = 2\nEnd Select\nEnd Sub",
+		"un \"Case\" dopo \"Case Else\" produce un errore di sintassi, come nel vero VBA");
 
 	// ---- Errori di esecuzione: un messaggio chiaro, mai un crash ----
 	CheckError("Sub T()\ny = x + 1\nEnd Sub",

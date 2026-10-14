@@ -94,6 +94,9 @@ private:
 			case vbaStmtFor:
 				return ExecuteFor(stmt);
 
+			case vbaStmtSelectCase:
+				return ExecuteSelectCase(stmt);
+
 			case vbaStmtExitFor:
 				return execExitFor;
 
@@ -228,6 +231,34 @@ private:
 			fEnv->Set(stmt->varName, Value(current));
 		}
 		return execNormal;
+	}
+
+	// Valuta "stmt->expr" UNA sola volta, poi confronta con ogni
+	// valore di ogni "Case" nell'ordine scritto (VbaCompareValues,
+	// stessa regola di "=") -- il primo che combacia esegue il suo
+	// corpo e basta, come il vero Select Case (nessun fallthrough).
+	// Nessun Case combacia e "Case Else" c'e': esegue quello
+	// (stmt->elseBody). Nessuno dei due: nessun corpo eseguito, non e'
+	// un errore (come il vero VBA).
+	ExecResult ExecuteSelectCase(const VbaStmt* stmt)
+	{
+		Value testValue;
+		if (!Eval(stmt->expr.get(), &testValue))
+			return execError;
+
+		for (size_t i = 0; i < stmt->cases.size(); i++)
+		{
+			const VbaCaseClause& clause = stmt->cases[i];
+			for (size_t j = 0; j < clause.matchValues.size(); j++)
+			{
+				Value matchValue;
+				if (!Eval(clause.matchValues[j].get(), &matchValue))
+					return execError;
+				if (VbaCompareValues(testValue, matchValue) == 0)
+					return ExecuteStmtList(clause.body);
+			}
+		}
+		return ExecuteStmtList(stmt->elseBody); // vuoto se non c'e' "Case Else": execNormal
 	}
 };
 

@@ -74,6 +74,25 @@ bool VbaToBool(const Value& v)
 	}
 }
 
+// Confronto condiviso da "=","<>","<",">","<=",">=" (EvalBinary sotto)
+// E dal confronto per uguaglianza di Select Case (VbaExecutor.cpp) --
+// stessa regola semplificata di VbaToBool/VbaToNumber: numerico se
+// ENTRAMBI gli operandi sono numerici/booleani, altrimenti come testo.
+// -1/0/1, mai un errore.
+int VbaCompareValues(const Value& a, const Value& b)
+{
+	bool numericCompare = (a.fType == eNumData || a.fType == eBoolData)
+		&& (b.fType == eNumData || b.fType == eBoolData);
+	if (numericCompare)
+	{
+		double x = VbaToNumber(a), y = VbaToNumber(b);
+		return (x < y) ? -1 : (x > y) ? 1 : 0;
+	}
+	std::string x = VbaToText(a), y = VbaToText(b);
+	int cmp = x.compare(y);
+	return (cmp < 0) ? -1 : (cmp > 0) ? 1 : 0;
+}
+
 // ---------------------------------------------------------------------
 // Fase 3c, modello a oggetti Excel minimo: Range("A1")/Range("A1:B2")/
 // Cells(riga,colonna) producono un Value eRangeData legato al
@@ -321,24 +340,7 @@ private:
 
 		if (op == "=" || op == "<>" || op == "<" || op == ">" || op == "<=" || op == ">=")
 		{
-			// Se ENTRAMBI gli operandi sono numerici (o booleani, che
-			// si confrontano come numeri 0/1), confronto numerico;
-			// altrimenti confronto come testo -- stessa regola
-			// semplificata gia' documentata nell'header.
-			bool numericCompare = (left.fType == eNumData || left.fType == eBoolData)
-				&& (right.fType == eNumData || right.fType == eBoolData);
-			int cmp;
-			if (numericCompare)
-			{
-				double a = VbaToNumber(left), b = VbaToNumber(right);
-				cmp = (a < b) ? -1 : (a > b) ? 1 : 0;
-			}
-			else
-			{
-				std::string a = VbaToText(left), b = VbaToText(right);
-				cmp = a.compare(b);
-				cmp = (cmp < 0) ? -1 : (cmp > 0) ? 1 : 0;
-			}
+			int cmp = VbaCompareValues(left, right);
 			if (op == "=") return Value(cmp == 0);
 			if (op == "<>") return Value(cmp != 0);
 			if (op == "<") return Value(cmp < 0);

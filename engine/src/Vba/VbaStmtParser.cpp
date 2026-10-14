@@ -112,7 +112,8 @@ private:
 		if (Current().type != vbaTokKeyword)
 			return false;
 		return Current().text == "End" || Current().text == "Else"
-			|| Current().text == "ElseIf" || Current().text == "Next";
+			|| Current().text == "ElseIf" || Current().text == "Next"
+			|| Current().text == "Case";
 	}
 
 	// Una nuova riga O la fine del flusso chiudono un'istruzione in
@@ -158,6 +159,8 @@ private:
 			return ParseSetStmt();
 		if (IsKeyword("Exit"))
 			return ParseExit();
+		if (IsKeyword("Select"))
+			return ParseSelectCase();
 		return ParseAssignOrExprStmt();
 	}
 
@@ -387,6 +390,108 @@ private:
 			return nullptr;
 		if (Current().type == vbaTokIdentifier)
 			Advance(); // "Next i" -- il nome dopo Next e' facoltativo, letto e scartato
+		if (!ExpectStatementEnd())
+			return nullptr;
+		return stmt;
+	}
+
+	// "Select Case expr" seguito da zero o piu' "Case v1, v2, ..."
+	// (confronto per sola uguaglianza con "expr", vedi il commento su
+	// vbaStmtSelectCase in VbaAst.h) e un "Case Else" facoltativo,
+	// SEMPRE l'ultimo -- un "Case" dopo un "Case Else" e' un errore di
+	// sintassi, come nel vero VBA.
+	std::unique_ptr<VbaStmt> ParseSelectCase()
+	{
+		int line = Current().line;
+		Advance(); // "Select"
+		if (!ExpectKeyword("Case"))
+			return nullptr;
+
+		auto testExpr = ParseVbaExpression(fTokens, fPos, fError);
+		if (!testExpr)
+		{
+			fFailed = true;
+			return nullptr;
+		}
+		if (!ExpectStatementEnd())
+			return nullptr;
+
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtSelectCase));
+		stmt->expr = std::move(testExpr);
+		stmt->line = line;
+
+		bool sawCaseElse = false;
+		while (IsKeyword("Case"))
+		{
+			int caseLine = Current().line;
+			Advance(); // "Case"
+
+			if (sawCaseElse)
+			{
+				SetError("\"Case\" dopo \"Case Else\" non e' consentito "
+					"(\"Case Else\" deve essere l'ultimo)");
+				return nullptr;
+			}
+
+			if (IsKeyword("Else"))
+			{
+				Advance();
+				sawCaseElse = true;
+				if (!ExpectStatementEnd())
+					return nullptr;
+				if (!ParseStatementList(&stmt->elseBody))
+					return nullptr;
+				continue;
+			}
+
+			if (IsKeyword("To") || IsKeyword("Is"))
+			{
+				// "Is" non e' nemmeno una parola chiave di questo
+				// lessico (tokenizza come un identificatore), quindi
+				// questo ramo intercetta solo "Case To ..." (un errore
+				// comunque) -- il vero "Case Is > 5"/"Case 1 To 5" e'
+				// gestito dal messaggio sotto, dopo aver letto almeno
+				// un valore, per un errore piu' chiaro.
+				SetError("\"Case To\"/\"Case Is\" (un intervallo o un confronto) non e' "
+					"supportato in questa fase: solo un elenco di valori separati da virgola");
+				return nullptr;
+			}
+
+			VbaCaseClause clause;
+			clause.line = caseLine;
+			for (;;)
+			{
+				auto value = ParseVbaExpression(fTokens, fPos, fError);
+				if (!value)
+				{
+					fFailed = true;
+					return nullptr;
+				}
+				clause.matchValues.push_back(std::move(value));
+
+				if (IsKeyword("To") || (Current().type == vbaTokIdentifier && Current().text == "Is"))
+				{
+					SetError("\"Case 1 To 5\"/\"Case Is > 5\" (un intervallo o un confronto) "
+						"non e' supportato in questa fase: solo un elenco di valori separati "
+						"da virgola");
+					return nullptr;
+				}
+				if (IsOp(","))
+				{
+					Advance();
+					continue;
+				}
+				break;
+			}
+			if (!ExpectStatementEnd())
+				return nullptr;
+			if (!ParseStatementList(&clause.body))
+				return nullptr;
+			stmt->cases.push_back(std::move(clause));
+		}
+
+		if (!ExpectKeyword("End") || !ExpectKeyword("Select"))
+			return nullptr;
 		if (!ExpectStatementEnd())
 			return nullptr;
 		return stmt;
