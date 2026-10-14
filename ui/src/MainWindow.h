@@ -55,6 +55,7 @@ class ValidationWindow;
 class WhatIfWindow;
 class ScenarioWindow;
 class GoalSeekWindow;
+class MacroListWindow;
 class NamedStyleWindow;
 class ConditionalFormatWindow;
 class PasswordWindow;
@@ -622,6 +623,38 @@ public:
 	void HandleGoalSeekRequest(const char* setCellText, const char* toValueText,
 		const char* changingCellText);
 
+	// VBA/macro (v4.0, Fase 4 -- UI e il "trust gate"): il documento
+	// attivo contiene macro (vedi WorkbookVbaProject sopra) ma l'utente
+	// non le ha ancora abilitate per QUESTA sessione -- mai persistito
+	// in .ascd, resettato a false ad ogni apertura/nuovo documento,
+	// esattamente come la barra di sicurezza di Excel (non "fidati per
+	// sempre di questo file", solo "per questa volta che e' aperto").
+	// Mostra un BAlert bloccante (mai un bypass accidentale per un
+	// gate di sicurezza) e aggiorna fMacrosTrustedThisSession in base
+	// alla risposta; restituisce il nuovo valore per comodita' del
+	// chiamante.
+	bool PromptEnableMacros();
+	// Wrapper del comando di menu "Esegui macro...": se il documento
+	// non ha nessuna macro, un solo BAlert informativo; se non ancora
+	// abilitate per questa sessione, richiama PromptEnableMacros()
+	// PRIMA di mostrare l'elenco (l'utente puo' sempre cambiare idea
+	// senza dover richiudere e riaprire il file); altrimenti elenca le
+	// Sub pubbliche (ListVbaMacroNames) e mostra/aggiorna
+	// fMacroListWindow.
+	void ShowMacroListWindow();
+	// Esegue davvero "name" (ExecuteVbaMacro, legato al CContainer del
+	// foglio ATTIVO -- come Range/Cells senza qualificatore di foglio
+	// in VBA vero, che operano sull'ActiveSheet) e, in caso di
+	// successo, ricalcola l'intera cartella (nessun seme preciso: una
+	// macro puo' aver scritto un numero qualsiasi di celle non
+	// tracciate singolarmente, stesso principio "largo ma sempre
+	// corretto" di incolla/riempimento/ordinamento) e AZZERA le pile
+	// di Annulla/Ripeti -- lo stesso vero VBA/Excel considera
+	// l'esecuzione di una macro non annullabile, non e' un taglio di
+	// questa implementazione. In caso di errore, un solo BAlert con il
+	// messaggio di VbaRuntimeError.
+	void RunVbaMacro(const char* name);
+
 	// Formattazione condizionale VIVA (Fase 13): a differenza di
 	// SetCellValidation sopra (un primitivo per singola cella), qui
 	// non serve un doppio livello -- una regola si applica gia' a un
@@ -925,6 +958,8 @@ private:
 	WhatIfWindow* fWhatIfWindow;
 	ScenarioWindow* fScenarioWindow;
 	GoalSeekWindow* fGoalSeekWindow;
+	MacroListWindow* fMacroListWindow;
+	bool fMacrosTrustedThisSession;
 	// Esito dell'ultima ScriptedRunGoalSeek (vedi li'), letto da
 	// ScriptedGetGoalSeek -- "" se mai eseguita in questa sessione,
 	// altrimenti "true,<valore>" o "false,<valore>".

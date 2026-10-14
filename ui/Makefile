@@ -36,7 +36,8 @@ ENGINE_SRCDIRS := $(ENGINE_DIR)/src/Cell $(ENGINE_DIR)/src/Formula \
 	$(ENGINE_DIR)/src/FileSys $(ENGINE_DIR)/src/Collections \
 	$(ENGINE_DIR)/src/Misc-Classes $(ENGINE_DIR)/src/Utils \
 	$(ENGINE_DIR)/src/Config $(ENGINE_DIR)/src/bsl \
-	$(ENGINE_DIR)/src/Metrowerks $(ENGINE_DIR)/src/Stubs
+	$(ENGINE_DIR)/src/Metrowerks $(ENGINE_DIR)/src/Stubs \
+	$(ENGINE_DIR)/src/Vba
 INCLUDES := $(addprefix -I, $(ENGINE_SRCDIRS)) -Isrc
 
 # -lcrypto (OpenSSL, prima vera dipendenza di crittografia di questo
@@ -63,6 +64,7 @@ SOURCES := src/App.cpp src/MainWindow.cpp src/SheetView.cpp src/SheetTabView.cpp
 	src/WhatIfWindow.cpp \
 	src/ScenarioWindow.cpp \
 	src/GoalSeekWindow.cpp \
+	src/MacroListWindow.cpp \
 	src/NamedStyleWindow.cpp \
 	src/ConditionalFormatWindow.cpp \
 	src/PasswordWindow.cpp \

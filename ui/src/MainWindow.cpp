@@ -31,6 +31,8 @@
 #include "WhatIfWindow.h"
 #include "ScenarioWindow.h"
 #include "GoalSeekWindow.h"
+#include "MacroListWindow.h"
+#include "VbaMacroRunner.h"
 #include "NamedStyleWindow.h"
 #include "ConditionalFormatWindow.h"
 #include "PasswordWindow.h"
@@ -183,6 +185,7 @@ static const uint32 kMsgShowValidationWindow = 'shvw';
 static const uint32 kMsgShowWhatIfWindow = 'shwi';
 static const uint32 kMsgShowScenarioWindow = 'shsc';
 static const uint32 kMsgShowGoalSeekWindow = 'shgs';
+static const uint32 kMsgShowMacroWindow = 'shvb';
 static const uint32 kMsgShowNamedStyleWindow = 'shns';
 static const uint32 kMsgShowConditionalFormatWindow = 'shcf';
 // Tier 4 "named table styles": "style" (int32) e' l'indice in
@@ -1286,6 +1289,12 @@ MainWindow::MainWindow()
 	// ApplyGoalSeek/HandleGoalSeekRequest.
 	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Ricerca obiettivo" B_UTF8_ELLIPSIS),
 		new BMessage(kMsgShowGoalSeekWindow)));
+	// Esegui macro (v4.0 "Scripting", Fase 4 -- UI dell'interprete VBA):
+	// sempre disponibile, il controllo vero (il documento ha davvero
+	// macro? l'utente le ha abilitate per questa sessione?) avviene al
+	// clic, in MainWindow::ShowMacroListWindow, non qui.
+	dataMenu->AddItem(new BMenuItem(B_TRANSLATE("Esegui macro" B_UTF8_ELLIPSIS),
+		new BMessage(kMsgShowMacroWindow)));
 	dataMenu->AddSeparatorItem();
 	// Filtro automatico (revisione dei menu: prima non esisteva NESSUN
 	// comando per attivarlo su un foglio nativo/nuovo -- SetAutoFilter
@@ -1622,6 +1631,8 @@ MainWindow::MainWindow()
 	fWhatIfWindow = NULL;
 	fScenarioWindow = NULL;
 	fGoalSeekWindow = NULL;
+	fMacroListWindow = NULL;
+	fMacrosTrustedThisSession = false;
 	fNamedStyleWindow = NULL;
 	fConditionalFormatWindow = NULL;
 	fPasswordWindow = NULL;
@@ -1799,6 +1810,10 @@ void MainWindow::ResetWorkbook(const char* name)
 	for (size_t i = 0; i < fSheets.size(); i++)
 		fSheets[i].doc->Release();
 	fSheets.clear();
+
+	// Un documento nuovo non ha mai macro da fidarsi: vedi il commento
+	// su fMacrosTrustedThisSession in MainWindow.h.
+	fMacrosTrustedThisSession = false;
 
 	AscdSheet sheet;
 	sheet.name = name;
@@ -2779,6 +2794,10 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	for (size_t i = 0; i < fSheets.size(); i++)
 		fSheets[i].doc->Release();
 	fSheets = newSheets;
+	// Vedi il commento gemello in HandleFileLoadResult (il percorso
+	// asincrono) su fMacrosTrustedThisSession: un documento DIVERSO,
+	// mai fiducia nelle macro riportata da prima.
+	fMacrosTrustedThisSession = false;
 	fActiveSheetIndex = 0;
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
@@ -2902,6 +2921,14 @@ void MainWindow::OpenFile(const entry_ref& ref)
 			B_TRANSLATE("OK"));
 		alert->Go();
 	}
+
+	// Macro VBA (v4.0, Fase 4 -- il "trust gate" di ROADMAP.md): un
+	// dialogo mostrato QUI, dopo che il file e' gia' aperto con
+	// successo -- stesso principio del dialogo sui grafici appena
+	// sopra. Un file senza macro non mostra nulla.
+	const std::vector<unsigned char>* vbaProject = WorkbookVbaProject();
+	if (vbaProject && !vbaProject->empty())
+		PromptEnableMacros();
 }
 
 // Apertura file su un thread separato, con finestra di avanzamento
@@ -3098,6 +3125,13 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 		fSheets[i].doc->Release();
 	fSheets = *newSheets;
 	delete newSheets; // solo il vettore: i CContainer sono ora posseduti da fSheets
+	// Il file appena aperto e' un documento DIVERSO da quello di prima
+	// (anche se e' lo stesso percorso riaperto): la fiducia nelle
+	// macro non attraversa mai una chiusura/riapertura, vedi il
+	// commento su fMacrosTrustedThisSession in MainWindow.h. Resettato
+	// qui, PRIMA del prompt piu' sotto che lo imposta a true se
+	// l'utente accetta.
+	fMacrosTrustedThisSession = false;
 	fActiveSheetIndex = 0;
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
@@ -3204,6 +3238,14 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 			B_TRANSLATE("OK"));
 		alert->Go();
 	}
+
+	// Macro VBA (v4.0, Fase 4 -- il "trust gate" di ROADMAP.md): stesso
+	// principio del dialogo sui grafici appena sopra, vedi il commento
+	// gemello nel percorso sincrono (OpenFile), l'altro chiamante reale
+	// di questo stesso prompt.
+	const std::vector<unsigned char>* vbaProject = WorkbookVbaProject();
+	if (vbaProject && !vbaProject->empty())
+		PromptEnableMacros();
 }
 
 // Nome senza estensione, usato per precompilare il pannello di
@@ -6130,6 +6172,93 @@ void MainWindow::HandleGoalSeekRequest(const char* setCellText, const char* toVa
 			break;
 		}
 	}
+}
+
+// Vedi il commento su fMacrosTrustedThisSession in MainWindow.h: un
+// BAlert BLOCCANTE (mai un bypass accidentale per un gate di
+// sicurezza -- a differenza di una finestra non modale, l'utente non
+// puo' continuare a usare il documento ignorando la domanda), con
+// "Disabilita" come scorciatoia predefinita (B_ESCAPE, lo stesso
+// principio prudente del dialogo sul file cifrato in Save()
+// sopra -- la scelta piu' sicura e' quella che capita premendo Invio/
+// Escape per sbaglio).
+bool MainWindow::PromptEnableMacros()
+{
+	BAlert* alert = new BAlert(B_TRANSLATE("Macro VBA"),
+		B_TRANSLATE("Questo file contiene macro VBA. Le macro possono eseguire codice con "
+			"pieno accesso al documento: abilitale solo se ti fidi della provenienza del "
+			"file.\n\nVuoi abilitarle per questa sessione?"),
+		B_TRANSLATE("Disabilita"), B_TRANSLATE("Abilita"));
+	alert->SetShortcut(0, B_ESCAPE);
+	fMacrosTrustedThisSession = (alert->Go() == 1);
+	return fMacrosTrustedThisSession;
+}
+
+void MainWindow::ShowMacroListWindow()
+{
+	const std::vector<unsigned char>* vbaProject = WorkbookVbaProject();
+	if (!vbaProject || vbaProject->empty())
+	{
+		BAlert* alert = new BAlert(B_TRANSLATE("Esegui macro"),
+			B_TRANSLATE("Questo documento non contiene macro VBA."), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+	// Il comando di menu e' sempre disponibile (niente stato "grigio"
+	// da tenere sincronizzato a ogni apertura/cambio foglio, visto che
+	// qui sopra si controlla gia' il contenuto vero al momento del
+	// clic) -- se l'utente non ha ancora risposto al prompt automatico
+	// (o lo aveva rifiutato e ha cambiato idea), lo si richiede ORA,
+	// invece di bloccare silenziosamente senza spiegazione.
+	if (!fMacrosTrustedThisSession && !PromptEnableMacros())
+		return;
+
+	std::vector<std::string> names;
+	ListVbaMacroNames(&(*vbaProject)[0], vbaProject->size(), &names);
+
+	if (!fMacroListWindow)
+		fMacroListWindow = new MacroListWindow(BMessenger(this));
+	fMacroListWindow->SetMacroNames(names);
+	if (fMacroListWindow->IsHidden())
+		fMacroListWindow->Show();
+	fMacroListWindow->Activate();
+}
+
+void MainWindow::RunVbaMacro(const char* name)
+{
+	const std::vector<unsigned char>* vbaProject = WorkbookVbaProject();
+	if (!vbaProject || vbaProject->empty() || !fMacrosTrustedThisSession)
+		return; // non dovrebbe capitare: ShowMacroListWindow gia' controlla entrambi
+
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&(*vbaProject)[0], vbaProject->size(), name, fDoc, &err);
+	if (!ok)
+	{
+		BString msg;
+		msg.SetToFormat(B_TRANSLATE("Errore nell'esecuzione della macro \"%s\":\n%s"),
+			name, err.message.c_str());
+		BAlert* alert = new BAlert(B_TRANSLATE("Esegui macro"), msg.String(), B_TRANSLATE("OK"));
+		alert->Go();
+		return;
+	}
+
+	// Una macro VBA puo' aver scritto un numero qualsiasi di celle non
+	// tracciate singolarmente (vedi ExecuteVbaMacro/VbaWriteRangeValue):
+	// stesso principio "largo ma sempre corretto" gia' usato da
+	// incolla/riempimento/ordinamento/inserimento riga o colonna --
+	// RecalculateActiveWorkbook() senza seme ricalcola ogni cella
+	// formula di ogni foglio aperto in una sola passata topologica.
+	// L'esecuzione di una macro non e' annullabile: il vero VBA/Excel
+	// considera questo normale (eseguire una macro svuota la cronologia
+	// Annulla), non e' un taglio di questa implementazione -- le pile
+	// di Annulla/Ripeti si azzerano invece di restare riferite a uno
+	// stato di documento incoerente con cio' che la macro ha appena
+	// scritto.
+	fSheetView->ClearUndoRedo();
+	RecalculateActiveWorkbook();
+	fModified = true;
+	UpdateTitle();
+	fSheetView->Invalidate();
 }
 
 // "type" e' l'indice posizionale del menu di ConditionalFormatWindow
@@ -9268,6 +9397,18 @@ void MainWindow::MessageReceived(BMessage* message)
 			message->FindString("toValue", &toValue);
 			message->FindString("changingCell", &changingCell);
 			HandleGoalSeekRequest(setCell.String(), toValue.String(), changingCell.String());
+			break;
+		}
+
+		case kMsgShowMacroWindow:
+			ShowMacroListWindow();
+			break;
+
+		case kMsgRunVbaMacro:
+		{
+			BString macroName;
+			message->FindString("macroName", &macroName);
+			RunVbaMacro(macroName.String());
 			break;
 		}
 

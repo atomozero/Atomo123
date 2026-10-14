@@ -220,6 +220,12 @@ public:
 	bool CanRedo() const { return !fRedoStack.empty(); }
 	void Undo();
 	void Redo();
+	// Svuota entrambe le pile senza applicare nessuna istantanea --
+	// usato da MainWindow::RunVbaMacro dopo l'esecuzione di una macro
+	// VBA (il vero Excel considera l'esecuzione di una macro non
+	// annullabile, svuota la cronologia Annulla allo stesso modo), non
+	// dal normale flusso di modifica di questa view.
+	void ClearUndoRedo() { fUndoStack.clear(); fRedoStack.clear(); }
 
 	// Logica di navigazione/modifica da tastiera, con i modificatori
 	// (Ctrl/Maiusc) gia' risolti -- KeyDown() li legge dal vero
