@@ -46,4 +46,13 @@ struct VbaRuntimeError {
 bool EvaluateVbaExpression(const VbaExpr* expr, VbaEnvironment* env, Value* outResult,
 	VbaRuntimeError* outError);
 
+// Le stesse conversioni Variant-style usate internamente per gli
+// operatori (mai un errore, vedi il commento in VbaEvaluator.cpp) --
+// esposte cosi' l'esecutore di istruzioni (Fase 3b, If/For) valuta
+// una condizione con la STESSA regola di coercizione a booleano
+// invece di duplicarla.
+double VbaToNumber(const Value& v);
+std::string VbaToText(const Value& v);
+bool VbaToBool(const Value& v);
+
 #endif

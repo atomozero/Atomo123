@@ -26,7 +26,7 @@
 // qui un secondo stile di segnalazione errori per le sole conversioni.
 // ---------------------------------------------------------------------
 
-static double ToNumber(const Value& v)
+double VbaToNumber(const Value& v)
 {
 	switch (v.fType)
 	{
@@ -37,7 +37,7 @@ static double ToNumber(const Value& v)
 	}
 }
 
-static std::string ToText(const Value& v)
+std::string VbaToText(const Value& v)
 {
 	switch (v.fType)
 	{
@@ -57,7 +57,7 @@ static std::string ToText(const Value& v)
 	}
 }
 
-static bool ToBool(const Value& v)
+bool VbaToBool(const Value& v)
 {
 	switch (v.fType)
 	{
@@ -65,7 +65,7 @@ static bool ToBool(const Value& v)
 		case eNumData: return (double)v != 0.0;
 		case eTextData:
 		{
-			std::string s = ToText(v);
+			std::string s = VbaToText(v);
 			return s == "True" || s == "true" || s == "TRUE";
 		}
 		default: return false;
@@ -149,9 +149,9 @@ private:
 		if (fFailed)
 			return Value(0.0);
 		if (expr->op == "-")
-			return Value(-ToNumber(operand));
+			return Value(-VbaToNumber(operand));
 		if (expr->op == "Not")
-			return Value(!ToBool(operand));
+			return Value(!VbaToBool(operand));
 		SetError("operatore unario sconosciuto \"" + expr->op + "\"", expr->line);
 		return Value(0.0);
 	}
@@ -168,11 +168,11 @@ private:
 		const std::string& op = expr->op;
 
 		if (op == "&")
-			return Value((ToText(left) + ToText(right)).c_str());
+			return Value((VbaToText(left) + VbaToText(right)).c_str());
 
 		if (op == "+" || op == "-" || op == "*" || op == "/" || op == "^")
 		{
-			double a = ToNumber(left), b = ToNumber(right);
+			double a = VbaToNumber(left), b = VbaToNumber(right);
 			if (op == "+") return Value(a + b);
 			if (op == "-") return Value(a - b);
 			if (op == "*") return Value(a * b);
@@ -190,7 +190,7 @@ private:
 
 		if (op == "Mod")
 		{
-			long long a = (long long)ToNumber(left), b = (long long)ToNumber(right);
+			long long a = (long long)VbaToNumber(left), b = (long long)VbaToNumber(right);
 			if (b == 0)
 			{
 				SetError("divisione per zero (Mod)", expr->line);
@@ -200,9 +200,9 @@ private:
 		}
 
 		if (op == "And")
-			return Value(ToBool(left) && ToBool(right));
+			return Value(VbaToBool(left) && VbaToBool(right));
 		if (op == "Or")
-			return Value(ToBool(left) || ToBool(right));
+			return Value(VbaToBool(left) || VbaToBool(right));
 
 		if (op == "=" || op == "<>" || op == "<" || op == ">" || op == "<=" || op == ">=")
 		{
@@ -215,12 +215,12 @@ private:
 			int cmp;
 			if (numericCompare)
 			{
-				double a = ToNumber(left), b = ToNumber(right);
+				double a = VbaToNumber(left), b = VbaToNumber(right);
 				cmp = (a < b) ? -1 : (a > b) ? 1 : 0;
 			}
 			else
 			{
-				std::string a = ToText(left), b = ToText(right);
+				std::string a = VbaToText(left), b = VbaToText(right);
 				cmp = a.compare(b);
 				cmp = (cmp < 0) ? -1 : (cmp > 0) ? 1 : 0;
 			}
@@ -261,13 +261,13 @@ private:
 		if (name == "len")
 		{
 			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
-			return Value((double)ToText(args[0]).size());
+			return Value((double)VbaToText(args[0]).size());
 		}
 		if (name == "left")
 		{
 			if (!CheckArgCount(expr, args, 2)) return Value(0.0);
-			std::string s = ToText(args[0]);
-			long long n = (long long)ToNumber(args[1]);
+			std::string s = VbaToText(args[0]);
+			long long n = (long long)VbaToNumber(args[1]);
 			if (n < 0) n = 0;
 			if ((size_t)n > s.size()) n = (long long)s.size();
 			return Value(s.substr(0, (size_t)n).c_str());
@@ -275,8 +275,8 @@ private:
 		if (name == "right")
 		{
 			if (!CheckArgCount(expr, args, 2)) return Value(0.0);
-			std::string s = ToText(args[0]);
-			long long n = (long long)ToNumber(args[1]);
+			std::string s = VbaToText(args[0]);
+			long long n = (long long)VbaToNumber(args[1]);
 			if (n < 0) n = 0;
 			if ((size_t)n > s.size()) n = (long long)s.size();
 			return Value(s.substr(s.size() - (size_t)n).c_str());
@@ -288,13 +288,13 @@ private:
 				SetError("Mid richiede 2 o 3 argomenti", expr->line);
 				return Value(0.0);
 			}
-			std::string s = ToText(args[0]);
-			long long start = (long long)ToNumber(args[1]); // Mid e' 1-based in VBA
+			std::string s = VbaToText(args[0]);
+			long long start = (long long)VbaToNumber(args[1]); // Mid e' 1-based in VBA
 			if (start < 1) start = 1;
 			if ((size_t)start > s.size())
 				return Value("");
 			size_t startIdx = (size_t)(start - 1);
-			size_t len = args.size() == 3 ? (size_t)ToNumber(args[2]) : (s.size() - startIdx);
+			size_t len = args.size() == 3 ? (size_t)VbaToNumber(args[2]) : (s.size() - startIdx);
 			if (startIdx + len > s.size())
 				len = s.size() - startIdx;
 			return Value(s.substr(startIdx, len).c_str());
@@ -302,7 +302,7 @@ private:
 		if (name == "ucase")
 		{
 			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
-			std::string s = ToText(args[0]);
+			std::string s = VbaToText(args[0]);
 			for (size_t i = 0; i < s.size(); i++)
 				s[i] = (char)toupper((unsigned char)s[i]);
 			return Value(s.c_str());
@@ -310,7 +310,7 @@ private:
 		if (name == "lcase")
 		{
 			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
-			std::string s = ToText(args[0]);
+			std::string s = VbaToText(args[0]);
 			for (size_t i = 0; i < s.size(); i++)
 				s[i] = (char)tolower((unsigned char)s[i]);
 			return Value(s.c_str());
@@ -318,7 +318,7 @@ private:
 		if (name == "trim")
 		{
 			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
-			std::string s = ToText(args[0]);
+			std::string s = VbaToText(args[0]);
 			size_t start = s.find_first_not_of(" \t");
 			size_t end = s.find_last_not_of(" \t");
 			if (start == std::string::npos)
@@ -328,12 +328,12 @@ private:
 		if (name == "abs")
 		{
 			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
-			return Value(fabs(ToNumber(args[0])));
+			return Value(fabs(VbaToNumber(args[0])));
 		}
 		if (name == "int")
 		{
 			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
-			return Value(floor(ToNumber(args[0]))); // Int() di VBA arrotonda verso il basso, non tronca
+			return Value(floor(VbaToNumber(args[0]))); // Int() di VBA arrotonda verso il basso, non tronca
 		}
 		if (name == "round")
 		{
@@ -342,8 +342,8 @@ private:
 				SetError("Round richiede 1 o 2 argomenti", expr->line);
 				return Value(0.0);
 			}
-			double d = ToNumber(args[0]);
-			int digits = args.size() == 2 ? (int)ToNumber(args[1]) : 0;
+			double d = VbaToNumber(args[0]);
+			int digits = args.size() == 2 ? (int)VbaToNumber(args[1]) : 0;
 			double factor = pow(10.0, digits);
 			return Value(floor(d * factor + 0.5) / factor);
 		}
