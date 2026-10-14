@@ -530,14 +530,33 @@ before it:
   assigns its own name correctly returning `0.0`/Empty instead of an
   "undeclared variable" error) — all passing, no regressions anywhere
   else in the VBA suite.
-- **(6c) Fixed-size arrays.** `Dim` (`VbaStmtParser.cpp:178`) only
-  accepts a bare scalar name today — no `(n)` bound, 1-D or 2-D,
-  anywhere in the grammar. Every piece of real state in the CHIP-8
-  macro (`Memory(2047)`, `Screen(63,31)`, `V(15)`, `Stack(15)`) is an
-  array; without this, 6a-6b can pass scalars around but nothing can
-  hold a real program's data. Scope to static bounds declared at `Dim`
-  time (`ReDim` and dynamic resizing stay a separate, later gap — the
-  binary file read in 6g needs it, but nothing else here does).
+- **(6c) Fixed-size arrays is done.** `Dim name(upperBound[, ...])`
+  parses 1-D/2-D/N-D arrays — a literal, non-negative integer per
+  axis, Option Base 0 (`Dim V(15)` is indices `0..15`, 16 elements,
+  matching the CHIP-8 macro's own 16 `V` registers), no general
+  expression as a bound (matches "static bounds declared at `Dim`
+  time" — a runtime-sized bound needs `ReDim`, still out of scope).
+  Storage is deliberately **not** `Value` growing an array variant:
+  that would touch the same `Value` type every cell in the whole
+  calc engine uses. Instead `VbaEnvironment` gained a second map,
+  `name -> {dims, flattened Value vector}`, entirely separate from the
+  scalar-variable map. The read/write syntax needed no new grammar at
+  all — `V(2) = 5` and `x = V(2)` were already parsed as an ordinary
+  `vbaExprCall`/assignment target, indistinguishable at parse time
+  from `Cells(r, c)` or a sibling-Sub call (6a). Both `ExecuteAssignOrSet`
+  (write) and `EvalCall` (read) now check `VbaEnvironment::IsArray`
+  first — before the Range/Cells object-model path on write, before
+  the built-in-function table and the 6a/6b sibling-call fallback on
+  read — so a `Dim`-declared array always wins over a same-named
+  built-in or procedure. An out-of-range index (either axis) is a
+  clean runtime error, never a native out-of-bounds access on the
+  underlying `std::vector`. New coverage: `vba_stmt_parser_test.cpp`
+  (1-D/2-D bound parsing, a negative bound rejected, a bare name still
+  a scalar) and `vba_macro_runner_test.cpp` (`TestArrays`: a real
+  `ExecuteVbaMacro` run writing and reading both a 1-D and a 2-D array
+  and checking the actual cell values, plus both an out-of-bounds
+  write and read producing clean errors) — all passing, no
+  regressions anywhere else in the VBA suite.
 - **(6d) User-defined types (`Private Type ... End Type`)**, plus
   field access (`ThisVM.PC`) and arrays of a UDT (`Screen(63,31) As
   ScreenPixel`). Depends on 6c for the array-of-UDT case. This is what
