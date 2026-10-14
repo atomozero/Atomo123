@@ -681,6 +681,52 @@ before it:
   since `engine/src/Vba` can't depend on `ui/` by design. That
   relocation is its own refactor, with its own review, before any
   VBA-side work here starts.
+- **Two gaps found by actually checking the real trigger macro against
+  everything 6a-6f shipped, both fixed.** With 6a-6f done, the natural
+  next check was: does the *real* `chip-8-vba` source
+  (github.com/rndtrash/chip-8-vba) actually get any further now? It
+  surfaced two real, load-bearing gaps neither original sub-phase
+  anticipated:
+  - **Module-scan resilience.** `FindVbaSubByName`'s documented
+    "LIMITE NOTO" — one unparseable Sub/Function aborts the ENTIRE
+    module scan, not just that one Sub — turned out to block far more
+    than intended: the real source's `CommandButton1_Click` (file
+    I/O, 6g below) sits at line 318, BEFORE nine otherwise-valid Subs
+    including `Step`/`ProcessVM`/`DrawSprite`/`Redraw` — none of them
+    were reachable AT ALL, even by name, even though each one might
+    parse perfectly fine on its own. Fixed by having `FindVbaSubByName`
+    skip just the broken block (find "End Sub"/"End Function" — never
+    produced by a nested If/For/Do, same trick `ListVbaMacroNames`
+    already used — and resume scanning from there) instead of giving
+    up on the whole module. A Sub/Function that's itself broken is
+    still correctly unreachable by name; only Subs *after* it stopped
+    being collateral damage.
+  - **Multi-declarator `Dim`** (`Dim i, lastN As Long`, from the real
+    source's `InitConstants`). `ParseDim` only ever read one variable;
+    a comma after the first name was a syntax error. Real VBA's own
+    rule is a common gotcha worth getting right, not assumed: `As
+    Type` binds ONLY to the declarator immediately before it — `Dim a,
+    b As Long` is `a As Variant, b As Long`, not "both Long". Fixed by
+    a new `ParseDimStatementList` (called directly from
+    `ParseStatementList`, since this is the one statement that can
+    expand into more than one `VbaStmt` — no new AST node, each
+    declarator becomes its own ordinary `vbaStmtDim`). New coverage in
+    both test files for each fix (parsing and real execution for
+    multi-`Dim`; a broken-Sub-then-valid-Sub source for scan
+    resilience) — all passing, no regressions.
+  - **Found but NOT fixed, flagged for a decision**: the real source
+    declares `Dim ThisVM As VM` at MODULE level (outside any Sub) —
+    every Sub references this one shared instance. Module-level
+    `Dim`/`Const` isn't part of Phase 6a-6f at all (today, every
+    `ExecuteVbaMacro` call gets a brand-new `VbaEnvironment`, so
+    module state can't persist from one "Esegui macro" click to the
+    next — real VBA module variables live for as long as the workbook
+    stays open, across any number of macro invocations). Making that
+    persist needs a session-scoped environment tied to the open
+    document, a different shape of problem than anything in 6a-6f
+    (which only ever needed state that lives for one macro call), so
+    it's deliberately left as an open decision rather than folded in
+    here.
 - **(6g) Binary file I/O** (`Open ... For Binary Access Read`, `Get`,
   `LOF`, `Close`). Needs a security decision before a design, not
   after: a macro that can read arbitrary files from disk is a real
