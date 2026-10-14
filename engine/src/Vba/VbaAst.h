@@ -138,10 +138,18 @@ struct VbaStmt {
 	VbaStmt(VbaStmtKind k) : kind(k), doIsPreTest(true), doIsUntil(false), line(0) {}
 };
 
-// Un'intera procedura: "Sub Nome()" ... "End Sub". Senza parametri in
-// questo sottoinsieme (una vera macro registrata non ne ha quasi mai).
+// Un'intera procedura: "Sub Nome(...)" ... "End Sub". Fase 6a: i
+// parametri sono SOLO per valore ("ByVal", anche quando scritto senza
+// -- e' il default di questo sottoinsieme, non quello del vero VBA,
+// che userebbe "ByRef" -- vedi ROADMAP.md), quindi basta un elenco di
+// nomi: ogni chiamata lega un argomento valutato a una NUOVA variabile
+// locale con quel nome nell'ambiente della Sub chiamata, niente
+// aliasing col chiamante da rappresentare qui. Un eventuale "As Tipo"
+// dopo un parametro si legge e si scarta, stesso trattamento del tipo
+// su "Dim".
 struct VbaSub {
 	std::string name;
+	std::vector<std::string> params;
 	std::vector<std::unique_ptr<VbaStmt>> body;
 	int line;
 

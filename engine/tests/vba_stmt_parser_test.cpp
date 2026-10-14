@@ -133,7 +133,14 @@ static std::string ParseAndDump(const char* source)
 	std::unique_ptr<VbaSub> sub = ParseVbaSub(tokens, pos, &error);
 	if (!sub)
 		return "<errore riga " + std::to_string(error.line) + ": " + error.message + ">";
-	return "Sub " + sub->name + "() [" + DumpStmtList(sub->body) + "]";
+	std::string params;
+	for (size_t i = 0; i < sub->params.size(); i++)
+	{
+		if (i > 0)
+			params += ", ";
+		params += sub->params[i];
+	}
+	return "Sub " + sub->name + "(" + params + ") [" + DumpStmtList(sub->body) + "]";
 }
 
 static void CheckSub(const char* source, const char* expected)
@@ -264,6 +271,19 @@ int main()
 		"End Sub\r\n",
 		"Sub Foo() [For i = 1 To 3 [If (i = 2) Then [y := 1]]]");
 
+	// ---- Fase 6a: parametri su Sub (solo per valore in questo
+	// sottoinsieme -- vedi VbaAst.h) ----
+	CheckSub("Sub Foo(x)\r\nEnd Sub\r\n", "Sub Foo(x) []");
+	CheckSub("Sub Foo(x, y)\r\nEnd Sub\r\n", "Sub Foo(x, y) []");
+	CheckSub("Sub Foo(ByVal x As Integer, y As Long)\r\nEnd Sub\r\n",
+		"Sub Foo(x, y) []"); // "ByVal" e il tipo dopo "As" si leggono e si scartano
+	CheckSub("Sub Foo(x)\r\nResult = x * 2\r\nEnd Sub\r\n",
+		"Sub Foo(x) [Result := (x * 2)]");
+
+	// ---- Fase 6a: "Call" e' zucchero sintattico, stessa istruzione nuda ----
+	CheckSub("Sub Foo()\r\nCall Bar(1, 2)\r\nEnd Sub\r\n",
+		"Sub Foo() [Bar(1, 2)]");
+
 	// ---- Errori di sintassi: un messaggio chiaro, mai un crash ----
 	{
 		std::string r = ParseAndDump("Sub Foo()\r\nIf x > 0 Then\r\ny = 1\r\nEnd Sub\r\n");
@@ -281,6 +301,11 @@ int main()
 	{
 		std::string r = ParseAndDump("NotASub\r\n");
 		Check(r.substr(0, 8) == "<errore ", "un sorgente che non inizia con \"Sub\" produce un errore");
+	}
+	{
+		std::string r = ParseAndDump("Sub Foo(ByRef x)\r\nEnd Sub\r\n");
+		Check(r.substr(0, 8) == "<errore ", "\"ByRef\" su un parametro produce un errore chiaro "
+			"(solo ByVal e' supportato in questo sottoinsieme)");
 	}
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

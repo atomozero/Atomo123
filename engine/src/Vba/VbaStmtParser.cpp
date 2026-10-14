@@ -9,6 +9,8 @@
 
 #include "VbaStmtParser.h"
 
+#include <cctype>
+
 namespace {
 
 class Parser {
@@ -32,13 +34,16 @@ public:
 		}
 		std::string name = Current().text;
 		Advance();
-		if (!ExpectOp("(") || !ExpectOp(")")) // nessun parametro in questo sottoinsieme
+
+		std::vector<std::string> params;
+		if (!ParseParamList(&params))
 			return nullptr;
 		if (!ExpectStatementEnd())
 			return nullptr;
 
 		auto sub = std::unique_ptr<VbaSub>(new VbaSub());
 		sub->name = name;
+		sub->params = params;
 		sub->line = line;
 
 		if (!ParseStatementList(&sub->body))
@@ -108,6 +113,72 @@ private:
 	{
 		while (IsNewlineTok())
 			Advance();
+	}
+
+	static bool EqualsNoCase(const std::string& a, const char* b)
+	{
+		size_t i = 0;
+		for (; a[i] && b[i]; i++)
+		{
+			if (tolower((unsigned char)a[i]) != tolower((unsigned char)b[i]))
+				return false;
+		}
+		return a[i] == b[i]; // entrambi finiti alla stessa posizione
+	}
+
+	// Fase 6a: elenco parametri di una Sub, "(" [ [ByVal] nome [As
+	// Tipo] ("," [ByVal] nome [As Tipo])* ] ")" -- SOLO per valore in
+	// questo sottoinsieme (vedi VbaSub::params in VbaAst.h): "ByVal" e'
+	// un semplice identificatore per questo lessico (non una parola
+	// chiave), si legge e si scarta se presente; "ByRef" e' invece un
+	// errore di parsing esplicito e chiaro, non trattato silenziosamente
+	// come ByVal -- l'aliasing col chiamante che richiederebbe non e'
+	// supportato da questo interprete. Il tipo dopo "As" (se presente)
+	// si legge e si scarta, stesso trattamento di "Dim".
+	bool ParseParamList(std::vector<std::string>* outParams)
+	{
+		if (!ExpectOp("("))
+			return false;
+		if (IsOp(")"))
+		{
+			Advance();
+			return true;
+		}
+		for (;;)
+		{
+			if (Current().type == vbaTokIdentifier && EqualsNoCase(Current().text, "byref"))
+			{
+				SetError("\"ByRef\" non e' supportato in questo sottoinsieme "
+					"(solo il passaggio per valore, il default implicito -- vedi ROADMAP.md)");
+				return false;
+			}
+			if (Current().type == vbaTokIdentifier && EqualsNoCase(Current().text, "byval"))
+				Advance();
+			if (Current().type != vbaTokIdentifier)
+			{
+				SetError("atteso un nome di parametro");
+				return false;
+			}
+			outParams->push_back(Current().text);
+			Advance();
+			if (IsKeyword("As"))
+			{
+				Advance();
+				if (Current().type != vbaTokIdentifier)
+				{
+					SetError("atteso un nome di tipo dopo \"As\"");
+					return false;
+				}
+				Advance();
+			}
+			if (IsOp(","))
+			{
+				Advance();
+				continue;
+			}
+			break;
+		}
+		return ExpectOp(")");
 	}
 
 	// Vero se il token corrente segnala la fine plausibile di un blocco
@@ -244,6 +315,13 @@ private:
 	std::unique_ptr<VbaStmt> ParseAssignOrExprStmt()
 	{
 		int line = Current().line;
+		// Fase 6a: "Call NomeProcedura(argomenti)" e' solo zucchero
+		// sintattico del vero VBA sopra la stessa identica forma di
+		// "NomeProcedura(argomenti)" usata come istruzione nuda (vedi
+		// vbaStmtExprStmt) -- "Call" si legge e si scarta, nessun nodo
+		// dedicato nell'albero.
+		if (IsKeyword("Call"))
+			Advance();
 		auto expr = ParseVbaPrimaryExpression(fTokens, fPos, fError);
 		if (!expr)
 		{

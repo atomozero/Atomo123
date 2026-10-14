@@ -410,11 +410,95 @@ static void TestExecuteVbaMacro()
 }
 
 // =======================================================================
+// Parte 2b (Fase 6a): una Sub che richiama una Sub SORELLA dello stesso
+// modulo passandole argomenti (SOLO ByVal in questo sottoinsieme -- vedi
+// VbaAst.h), risolta a runtime da EvalCall tramite i token di modulo
+// collegati da ExecuteVbaMacro (VbaEnvironment::SetModuleTokens).
+// =======================================================================
+
+static std::vector<uint8> BuildSiblingCallProject()
+{
+	// Solo la forma con parentesi e' legata a una chiamata in questo
+	// sottoinsieme (vbaExprCall, via ParsePostfix): la forma SENZA
+	// parentesi del vero VBA ("DrawCell 1, 10") resta fuori scopo, la
+	// stessa grammatica di qualunque altra chiamata gia' supportata
+	// (Range(...), Cells(...), le funzioni predefinite...).
+	const char* moduleSource =
+		"Sub Main()\r\n"
+		"    DrawCell(1, 10)\r\n"
+		"    DrawCell(2, 20)\r\n"
+		"    Call DrawCell(3, 30)\r\n"
+		"End Sub\r\n"
+		"Sub DrawCell(ByVal r As Integer, ByVal v As Integer)\r\n"
+		"    Cells(r, 1).Value = v\r\n"
+		"End Sub\r\n"
+		"Sub WrongArgCount()\r\n"
+		"    DrawCell(1)\r\n"
+		"End Sub\r\n"
+		"Sub Recurse()\r\n"
+		"    Recurse()\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(4, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestSiblingSubCall()
+{
+	std::vector<uint8> project = BuildSiblingCallProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per la chiamata a Sub sorella si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "Main", doc, &err);
+	Check(ok, "\"Main\" richiama \"DrawCell\" (una Sub sorella con parametri) senza errori");
+
+	Value v1, v2, v3;
+	doc->GetValue(cell(1, 1), v1);
+	doc->GetValue(cell(1, 2), v2);
+	doc->GetValue(cell(1, 3), v3);
+	Check((double)v1 == 10.0 && (double)v2 == 20.0 && (double)v3 == 30.0,
+		"ogni chiamata (con o senza \"Call\") lega r/v alla SUA nuova copia, "
+		"scrivendo davvero A1=10, A2=20, A3=30 sul documento vero collegato");
+	doc->Release();
+
+	{
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "WrongArgCount", doc2, &err2),
+			"richiamare \"DrawCell\" con un numero di argomenti sbagliato produce un errore chiaro");
+		doc2->Release();
+	}
+
+	{
+		CContainer* doc3 = new CContainer(NULL, NULL);
+		VbaRuntimeError err3;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "Recurse", doc3, &err3),
+			"una Sub che richiama se stessa senza condizione di uscita produce un errore di runtime "
+			"pulito (guardia sulla profondita') invece di esaurire lo stack nativo");
+		doc3->Release();
+	}
+}
+
+// =======================================================================
 // Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
 // pensato apposta per provare che questa funzione NON chiama
-// ParseVbaSub (una Sub con parametri, fuori da questo sottoinsieme,
-// non deve far sparire NESSUN nome, nemmeno il proprio), e che una
-// "Private Sub" viene esclusa come il vero elenco Macro di Excel.
+// ParseVbaSub (una "Function", fuori da questo sottoinsieme, non deve
+// far sparire NESSUN nome, nemmeno il proprio), e che una "Private Sub"
+// viene esclusa come il vero elenco Macro di Excel.
 // =======================================================================
 
 static std::vector<uint8> BuildMacroListProject()
@@ -426,7 +510,7 @@ static std::vector<uint8> BuildMacroListProject()
 		"Private Sub Hidden()\r\n"
 		"    y = 2\r\n"
 		"End Sub\r\n"
-		"Sub Pub2(n As Integer)\r\n" // parametro: fuori dal sottoinsieme, ParseVbaSub la rifiuterebbe
+		"Sub Pub2(ByRef n As Integer)\r\n" // "ByRef": fuori dal sottoinsieme, ParseVbaSub la rifiuterebbe
 		"    z = n\r\n"
 		"End Sub\r\n";
 	const char* module2Source =
@@ -471,7 +555,7 @@ static void TestListVbaMacroNames()
 	{
 		Check(names[0] == "Pub1", "la prima e' Pub1 (ordine di dichiarazione nel modulo)");
 		Check(names[1] == "Pub2",
-			"Pub2 compare NONOSTANTE il suo parametro sia fuori da questo sottoinsieme -- "
+			"Pub2 compare NONOSTANTE il suo parametro \"ByRef\" sia fuori da questo sottoinsieme -- "
 			"ListVbaMacroNames non chiama ParseVbaSub, solo una scansione lessicale");
 		Check(names[2] == "FromModule2", "la terza viene dal SECONDO modulo, nell'ordine giusto");
 	}
@@ -490,6 +574,7 @@ int main()
 {
 	TestFindVbaSubByName();
 	TestExecuteVbaMacro();
+	TestSiblingSubCall();
 	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

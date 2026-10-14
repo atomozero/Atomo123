@@ -122,6 +122,13 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 
 		VbaEnvironment env;
 		env.SetActiveDocument(doc);
+		// Fase 6a: collega i token di QUESTO modulo all'ambiente, cosi'
+		// EvalCall (VbaEvaluator.cpp) puo' risolvere una chiamata a una
+		// Sub sorella con FindVbaSubByName invece di fermarsi al solo
+		// elenco di funzioni predefinite -- "tokens" resta valido per
+		// tutta la durata di questa chiamata sincrona, anche attraverso
+		// chiamate a Sub annidate.
+		env.SetModuleTokens(&tokens);
 		return ExecuteVbaSub(sub.get(), &env, outError);
 	}
 

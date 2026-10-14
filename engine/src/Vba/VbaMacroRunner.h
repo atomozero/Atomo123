@@ -26,8 +26,10 @@
 
 	LIMITE NOTO di questa fase: se una Sub DIVERSA da quella cercata,
 	nello stesso modulo e PRIMA di essa, usa una sintassi che questo
-	sottoinsieme non analizza (parametri sulla Sub, Select Case,
-	Function...), l'intera scansione di QUEL modulo si ferma con un
+	sottoinsieme non analizza (una Function, "ByRef" su un parametro...
+	-- vedi Fase 6a in ROADMAP.md per cosa e' invece GIA' supportato,
+	come i parametri per valore e Select Case), l'intera scansione di
+	QUEL modulo si ferma con un
 	errore di sintassi, anche se la Sub cercata stessa sarebbe
 	perfettamente valida per questo sottoinsieme -- si passa comunque
 	al modulo SUCCESSIVO (non e' un errore fatale per l'intera
@@ -95,7 +97,7 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 // chiave consecutive, non una parola chiave seguita da un
 // identificatore) -- quindi non fallisce mai, nemmeno su un modulo
 // che contiene una Sub con una sintassi fuori da questo sottoinsieme
-// (parametri, Select Case...): un nome puo' comparire in questo
+// (una Function, "ByRef" su un parametro...): un nome puo' comparire in questo
 // elenco ed essere comunque rifiutato da ExecuteVbaMacro quando
 // davvero eseguito, se la sua Sub (o una PRECEDENTE nello stesso
 // modulo, vedi il limite noto sopra) usa una sintassi che questo

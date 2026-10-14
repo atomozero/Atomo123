@@ -17,6 +17,8 @@
 #include <vector>
 
 #include "Container.h"
+#include "VbaExecutor.h"
+#include "VbaMacroRunner.h"
 
 // ---------------------------------------------------------------------
 // Conversioni di tipo stile VBA (Variant): piu' permissive del C++,
@@ -651,6 +653,63 @@ private:
 			if (!CheckArgCount(expr, args, 2)) return Value(0.0);
 			int cmp = VbaToText(args[0]).compare(VbaToText(args[1]));
 			return Value((double)((cmp < 0) ? -1 : (cmp > 0) ? 1 : 0));
+		}
+
+		// Fase 6a: non e' una funzione predefinita -- prova a
+		// risolverla come chiamata a una Sub SORELLA dello stesso
+		// modulo (es. "DrawSprite(a, x, y, n)" dentro un'altra Sub).
+		// "args" e' gia' valutato sopra, con le stesse regole di
+		// qualunque altra chiamata. Richiede che l'esecuzione sia
+		// legata a un modulo vero (VbaEnvironment::SetModuleTokens,
+		// collegato da ExecuteVbaMacro) -- fEnv->GetModuleTokens() e'
+		// NULL nei test che costruiscono una Sub a mano, dove questo
+		// ramo semplicemente non si applica e si cade nell'errore
+		// "funzione sconosciuta" sotto, come prima di questa fase.
+		if (fEnv->GetModuleTokens())
+		{
+			std::unique_ptr<VbaSub> callee;
+			VbaParseError parseErr;
+			if (FindVbaSubByName(*fEnv->GetModuleTokens(), expr->name, &callee, &parseErr))
+			{
+				if (callee->params.size() != args.size())
+				{
+					char buf[160];
+					snprintf(buf, sizeof(buf), "\"%s\" richiede %zu argomento/i, ricevuti %zu",
+						expr->name.c_str(), callee->params.size(), args.size());
+					SetError(buf, expr->line);
+					return Value(0.0);
+				}
+				// Guardia anti-ricorsione infinita: senza questo, una Sub
+				// che richiama se stessa (direttamente o tramite altre)
+				// senza una condizione di uscita esauribbe lo stack C++
+				// nativo invece di produrre un errore di runtime pulito.
+				const int kMaxVbaCallDepth = 200;
+				if (fEnv->GetCallDepth() >= kMaxVbaCallDepth)
+				{
+					SetError("troppi livelli di chiamata annidata tra Sub "
+						"(possibile ricorsione infinita)", expr->line);
+					return Value(0.0);
+				}
+				VbaEnvironment childEnv;
+				childEnv.SetActiveDocument(fEnv->GetActiveDocument());
+				childEnv.SetModuleTokens(fEnv->GetModuleTokens());
+				childEnv.SetCallDepth(fEnv->GetCallDepth() + 1);
+				for (size_t i = 0; i < args.size(); i++)
+				{
+					// SOLO ByVal in questo sottoinsieme (vedi VbaAst.h):
+					// "args[i]" e' una COPIA del valore dell'argomento,
+					// nessun aliasing con la variabile del chiamante.
+					childEnv.Declare(callee->params[i]);
+					childEnv.Set(callee->params[i], args[i]);
+				}
+				VbaRuntimeError callError;
+				if (!ExecuteVbaSub(callee.get(), &childEnv, &callError))
+				{
+					SetError(callError.message, callError.line ? callError.line : expr->line);
+					return Value(0.0);
+				}
+				return Value(0.0); // una Sub non ha un valore di ritorno (Function e' Fase 6b)
+			}
 		}
 
 		SetError("funzione sconosciuta \"" + expr->name + "\" "

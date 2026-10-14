@@ -29,14 +29,16 @@
 
 #include <map>
 #include <string>
+#include <vector>
 
 #include "Value.h"
 
 class CContainer;
+struct VbaToken;
 
 class VbaEnvironment {
 public:
-	VbaEnvironment() : fActiveDoc(NULL) {}
+	VbaEnvironment() : fActiveDoc(NULL), fModuleTokens(NULL), fCallDepth(0) {}
 
 	// Il foglio di calcolo (CContainer) su cui questa esecuzione lavora
 	// -- Fase 3c, modello a oggetti Excel: Range/Cells lo usano per
@@ -66,11 +68,36 @@ public:
 	// supporta "Option Explicit" ne' la verifica che richiederebbe).
 	void Set(const std::string& name, const Value& value);
 
+	// Fase 6a: i token del MODULO (non solo della singola Sub) a cui
+	// appartiene l'esecuzione corrente -- un puntatore in prestito,
+	// mai posseduto, stesso principio di fActiveDoc. Permette
+	// all'evaluator (VbaEvaluator.cpp, EvalCall) di risolvere una
+	// chiamata a una Sub "sorella" dello stesso modulo con
+	// FindVbaSubByName (VbaMacroRunner.h) invece di fermarsi al solo
+	// elenco di funzioni predefinite. NULL se l'esecuzione non e'
+	// legata a un modulo vero (es. nei test che costruiscono una Sub a
+	// mano): in quel caso una chiamata non riconosciuta resta un
+	// errore "funzione sconosciuta", come prima di questa fase.
+	void SetModuleTokens(const std::vector<VbaToken>* tokens) { fModuleTokens = tokens; }
+	const std::vector<VbaToken>* GetModuleTokens() const { return fModuleTokens; }
+
+	// Quante chiamate a Sub annidate hanno portato a QUESTA esecuzione
+	// (0 per la macro top-level lanciata da ExecuteVbaMacro) -- cresce
+	// di uno per ogni VbaEnvironment creato per una chiamata a Sub
+	// sorella (EvalCall), cosi' una ricorsione infinita diventa un
+	// errore di runtime pulito ("troppi livelli di chiamata annidata")
+	// invece di uno stack overflow nativo -- vedi kMaxVbaCallDepth in
+	// VbaEvaluator.cpp.
+	void SetCallDepth(int depth) { fCallDepth = depth; }
+	int GetCallDepth() const { return fCallDepth; }
+
 private:
 	static std::string NormalizeName(const std::string& name);
 
 	std::map<std::string, Value> fVars; // chiave: nome normalizzato (minuscolo)
 	CContainer* fActiveDoc;
+	const std::vector<VbaToken>* fModuleTokens;
+	int fCallDepth;
 };
 
 #endif
