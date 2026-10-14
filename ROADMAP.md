@@ -497,12 +497,39 @@ before it:
   on a live `CContainer`, plus the wrong-arg-count and infinite-
   recursion error paths) — all passing, no regressions in the rest of
   the VBA suite.
-- **(6b) The `Function` statement.** Not parsed at all today — only
-  `Sub`. Needs a return-type slot and the VBA idiom of assigning the
-  function's own name as its return value (`DrawSprite = result`)
-  inside the body, plus threading a real value back out of
-  `ExecuteVbaMacro`'s call path instead of the `Sub`-only "runs, no
-  result" model.
+- **(6b) The `Function` statement is done.** `"Function"` joined the
+  tokenizer's keyword table (it was a plain identifier before, since
+  nothing needed to recognize it); `ParseVbaSub` now accepts either
+  `"Sub"` or `"Function"` as the opening keyword (one shared parser,
+  not a separate one — the body grammar is identical either way),
+  parses an optional `"As" type` after the parameter list for a
+  Function only (discarded, same treatment as every other type
+  annotation in this subset), and requires the matching `"End Sub"`/
+  `"End Function"` instead of accepting either for both. The return
+  value needed no dedicated AST node at all: `VbaSub::isFunction` is
+  the only addition, and `ExecuteVbaSub` declares a variable with the
+  Function's own name (`VbaEnvironment::Declare`, defaulting to
+  `0.0`/Empty) *before* running the body — exactly the real VBA idiom
+  (`FuncName = result` inside the body is then just an ordinary
+  `vbaStmtAssign` onto an ordinary variable), so a Function that never
+  assigns its own name correctly returns Empty rather than erroring.
+  `EvalCall`'s 6a sibling-call path now checks `callee->isFunction`
+  after a successful `ExecuteVbaSub` and reads that same variable back
+  out of the (otherwise-discarded) child `VbaEnvironment` as the call's
+  value — a plain Sub still returns a dummy `Value(0.0)` that the
+  caller ignores. `FindVbaSubByName`'s module scan recognizes
+  `"Function"` as a valid starting keyword too (it used to only match
+  `"Sub"`, silently never finding a Function at all); `ListVbaMacroNames`
+  deliberately still only lists Subs, matching Excel's own "Run Macro"
+  dialog, which never lists Functions either. New coverage in both
+  test files: `vba_stmt_parser_test.cpp` (parsing with/without a return
+  type, an empty Function, `"End Sub"` closing a `"Function"` rejected)
+  and `vba_macro_runner_test.cpp` (`TestSiblingFunctionCall`: a Function
+  used inside an expression — not as a bare statement — including one
+  Function call nested inside another, and a Function that never
+  assigns its own name correctly returning `0.0`/Empty instead of an
+  "undeclared variable" error) — all passing, no regressions anywhere
+  else in the VBA suite.
 - **(6c) Fixed-size arrays.** `Dim` (`VbaStmtParser.cpp:178`) only
   accepts a bare scalar name today — no `(n)` bound, 1-D or 2-D,
   anywhere in the grammar. Every piece of real state in the CHIP-8
