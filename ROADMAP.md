@@ -261,11 +261,52 @@ work — standard lexer/parser construction — carries much lower
 correctness risk than Phase 1's binary-format reconstruction; no
 similar "unconfirmed against a real file" gap applies here.
 
-Next: Phase 3, an interpreter walking the Phase 2c statement tree, plus
-binding the handful of Excel objects this subset actually needs
-(`Range`/`Cells`/`.Value`/`.Select`) onto the real `CContainer` API —
-still no execution wired into the app itself until the macro-enable
-trust gate from the decision above is built alongside it.
+**Progress — Phase 3 (the interpreter itself) is done.** Four
+sub-phases: (3a) an expression evaluator over the Phase 2b AST,
+reusing the engine's existing `Value` type (number/text/bool/range)
+as the VBA runtime value instead of a parallel Variant type, with the
+ten built-in functions this subset needs (`Len`/`Left`/`Right`/`Mid`/
+`UCase`/`LCase`/`Trim`/`Abs`/`Int`/`Round`); (3b) a statement executor
+walking the Phase 2c tree (`Dim`/assignment/`Set`/`If`-`ElseIf`-`Else`/
+`For`-`Next` with `Step`/`Exit For`/`Exit Sub`), unwinding `Exit For`/
+`Exit Sub` through nested loops via a small internal result enum
+rather than a C++ exception; (3c) the minimal Excel object model —
+`Range("A1")`, `Range("A1:B2")`, `Cells(row, col)`, `.Value` (read and
+write, both explicit and via VBA's implicit default-member form —
+`Range("A1") = 5` works without `.Value`, matching real VBA),
+`.Offset(rows, cols)`, and `.Select` (a deliberate no-op at this
+layer: no selection concept exists in a pure engine/`CContainer`
+context without a UI; real on-screen selection is a later
+UI-integration concern) — all bound onto a real `CContainer` via the
+same `NewCell(cell, Value, NULL)` substitution Goal Seek and What-if
+Data Tables already use elsewhere; (3d) `ExecuteVbaMacro`, the single
+end-to-end entry point tying Phases 1 through 3c together: given a raw
+`vbaProject.bin` blob and a macro name, it extracts every module's
+real source, scans each module's token stream one `Sub`/`End Sub`
+block at a time for a name match (skipping unrecognized module-level
+content like `Attribute` lines or an out-of-subset `Function`), and
+executes the matching `Sub` against a real document. ~80 more test
+assertions across four files, all passing, including a `For`+`Cells`+
+`.Value` fill-loop test as the first genuinely macro-shaped program
+run end to end, and a full synthetic two-module `vbaProject.bin` round
+trip proving the whole pipeline is actually wired together, not just
+each phase in isolation.
+
+Known, honestly-scoped limit in 3d: if a module contains an earlier
+`Sub` this subset's grammar can't parse (parameters, `Select Case`,
+`Function`...) before the one being searched for, the scan of that
+*module* stops at the parse error — `ExecuteVbaMacro` still tries the
+next module, but won't skip past the error within the same one. A
+documented tradeoff for this phase, not a silent wrong result.
+
+Next: Phase 4/5 — UI integration (a "Run Macro" menu entry, a module
+list, and critically the macro-enable trust gate from the decision
+above, disabled by default per file with explicit per-file consent)
+is what actually lets a user run a macro from a real `.xlsm`; nothing
+in Phase 3 is wired into the app yet. Widening the explicit subset
+itself (parameters, `Select Case`, `Function`, more built-ins) is a
+separate, later decision, not required for a first usable release of
+this interpreter.
 
 ## Path to 100% XLSX standard compatibility
 
