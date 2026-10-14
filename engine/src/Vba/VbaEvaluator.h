@@ -130,4 +130,22 @@ Value* ResolveStructScalarField(const VbaExpr* expr, VbaEnvironment* env, std::s
 VbaStructInstance* ResolveStructInstanceStep(const VbaExpr* expr, VbaEnvironment* env,
 	std::string* outError);
 
+// Fase 6f: ".Interior.Color"/".Interior.ColorIndex" su un intervallo
+// di UNA sola cella -- "fLowColor" (CellStyle.h) e' gia' un vero
+// "rgb_color" nel motore di calcolo, non un indice che richiederebbe
+// lo strato UI (a differenza di ".Font.Bold", ancora fuori scopo,
+// vedi la nota "investigated and deliberately deferred" di Fase 5 in
+// ROADMAP.md). "asColorIndex" sceglie la forma: "Color" e' un Long in
+// formato &H00BBGGRR (stesso ordine di byte della vera funzione VBA
+// RGB()); "ColorIndex" e' 1-56, un indice nella tavolozza standard di
+// Excel gia' esistente in questo codice (Excel.colors.h,
+// kExcelColorTable, usata anche dall'importatore XLS). Condivise fra
+// lettura (VbaEvaluator.cpp, EvalPropertyAccess) e scrittura
+// (VbaExecutor.cpp, ExecuteAssignOrSet), stesso principio di
+// VbaReadRangeValue/VbaWriteRangeValue sopra.
+bool VbaGetInteriorColor(const Value& rangeValue, bool asColorIndex, Value* outResult,
+	VbaRuntimeError* outError, int line);
+bool VbaSetInteriorColor(const Value& rangeValue, bool asColorIndex, const Value& newValue,
+	VbaRuntimeError* outError, int line);
+
 #endif

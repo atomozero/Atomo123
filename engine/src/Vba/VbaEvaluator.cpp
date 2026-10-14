@@ -16,7 +16,9 @@
 #include <cstring>
 #include <vector>
 
+#include "CellStyle.h"
 #include "Container.h"
+#include "Excel.colors.h"
 #include "VbaExecutor.h"
 #include "VbaMacroRunner.h"
 
@@ -226,6 +228,112 @@ bool VbaWriteRangeValue(const Value& rangeValue, const Value& newValue, VbaRunti
 	// tecnica gia' usata da Ricerca Obiettivo/Tabelle di simulazione
 	// altrove in questo codice.
 	doc->NewCell(r.TopLeft(), newValue, NULL);
+	return true;
+}
+
+// Stesso controllo di VbaReadRangeValue/VbaWriteRangeValue sopra
+// (un intervallo di UNA sola cella con un documento vero collegato),
+// fattorizzato qui perche' sia la lettura sia la scrittura del colore
+// (sotto) ne hanno bisogno prima di toccare CellStyle.
+static bool GetSingleCellForStyle(const Value& rangeValue, cell* outCell, CContainer** outDoc,
+	VbaRuntimeError* outError, int line)
+{
+	if (rangeValue.fType != eRangeData)
+	{
+		outError->message = "qui serve un intervallo (Range/Cells)";
+		outError->line = line;
+		return false;
+	}
+	range r = (range)rangeValue;
+	if (r.TopLeft() != r.BotRight())
+	{
+		outError->message = "un intervallo di piu' celle non e' ancora supportato in questa fase "
+			"dell'interprete (solo celle singole)";
+		outError->line = line;
+		return false;
+	}
+	if (!rangeValue.fRangeContainer)
+	{
+		outError->message = "nessun foglio di calcolo collegato a questa esecuzione VBA";
+		outError->line = line;
+		return false;
+	}
+	*outCell = r.TopLeft();
+	*outDoc = rangeValue.fRangeContainer;
+	return true;
+}
+
+bool VbaGetInteriorColor(const Value& rangeValue, bool asColorIndex, Value* outResult,
+	VbaRuntimeError* outError, int line)
+{
+	cell c;
+	CContainer* doc;
+	if (!GetSingleCellForStyle(rangeValue, &c, &doc, outError, line))
+		return false;
+
+	CellStyle cs;
+	doc->GetCellStyle(c, cs);
+
+	if (asColorIndex)
+	{
+		// Ricerca per corrispondenza ESATTA nella tavolozza standard --
+		// un colore che non vi appartiene (es. scritto da ".Color" con
+		// un RGB qualunque) non ha un ColorIndex valido: 0 (come
+		// xlColorIndexNone del vero VBA) e' l'esito onesto, non una
+		// corrispondenza approssimata a caso.
+		for (int i = 0; i < 56; i++)
+		{
+			const rgb_color& k = kExcelColorTable[i];
+			if (k.red == cs.fLowColor.red && k.green == cs.fLowColor.green && k.blue == cs.fLowColor.blue)
+			{
+				*outResult = Value((double)(i + 1));
+				return true;
+			}
+		}
+		*outResult = Value(0.0);
+		return true;
+	}
+
+	// ".Color": un Long in formato &H00BBGGRR, stesso ordine di byte
+	// della vera funzione VBA RGB(r, g, b) = r + g*256 + b*65536.
+	*outResult = Value((double)cs.fLowColor.red + (double)cs.fLowColor.green * 256.0
+		+ (double)cs.fLowColor.blue * 65536.0);
+	return true;
+}
+
+bool VbaSetInteriorColor(const Value& rangeValue, bool asColorIndex, const Value& newValue,
+	VbaRuntimeError* outError, int line)
+{
+	cell c;
+	CContainer* doc;
+	if (!GetSingleCellForStyle(rangeValue, &c, &doc, outError, line))
+		return false;
+
+	rgb_color color;
+	if (asColorIndex)
+	{
+		int idx = (int)VbaToNumber(newValue);
+		if (idx < 1 || idx > 56)
+		{
+			outError->message = "ColorIndex deve essere compreso tra 1 e 56";
+			outError->line = line;
+			return false;
+		}
+		color = kExcelColorTable[idx - 1];
+	}
+	else
+	{
+		long long v = (long long)VbaToNumber(newValue);
+		color.red = (uchar)(v & 0xFF);
+		color.green = (uchar)((v >> 8) & 0xFF);
+		color.blue = (uchar)((v >> 16) & 0xFF);
+		color.alpha = 255;
+	}
+
+	CellStyle cs;
+	doc->GetCellStyle(c, cs);
+	cs.fLowColor = color;
+	doc->SetCellStyle(c, cs);
 	return true;
 }
 
@@ -470,6 +578,19 @@ private:
 
 	Value EvalVariable(const VbaExpr* expr)
 	{
+		// "DoEvents" si scrive SENZA parentesi nel vero VBA (una Sub a
+		// zero argomenti chiamata senza "()"), quindi arriva qui come
+		// una variabile mai dichiarata, non come un vbaExprCall --
+		// no-op deliberato (restituisce 0.0 e basta), STESSO principio
+		// di ".Select" in EvalPropertyAccess: nessun event loop/message
+		// pump reale a questo livello (motore puro, nessuna UI
+		// collegata). Diverso da un vero "Application.OnTime"
+		// ri-entrante (ancora fuori scopo, vedi ROADMAP.md Fase 6h) --
+		// qui serve solo perche' una macro reale lo scrive dentro un
+		// ciclo stretto per restare reattiva, non per schedulare nulla.
+		if (Lowercase(expr->name) == "doevents")
+			return Value(0.0);
+
 		if (fEnv->IsStruct(expr->name))
 		{
 			// Fase 6d: un'istanza di Type non e' un valore scalare --
@@ -1111,6 +1232,28 @@ private:
 		}
 
 		std::string name = Lowercase(expr->name);
+
+		// Fase 6f: "Range(...).Interior.Color"/".ColorIndex" -- DUE
+		// livelli di PropertyAccess (diverso da ".value", un livello
+		// solo), riconosciuti direttamente qui senza che "Interior"
+		// sia a sua volta una proprieta' valutabile da sola.
+		if ((name == "color" || name == "colorindex")
+			&& expr->target->kind == vbaExprPropertyAccess
+			&& Lowercase(expr->target->name) == "interior")
+		{
+			Value rangeValue = EvalNode(expr->target->target.get());
+			if (fFailed)
+				return Value(0.0);
+			Value result;
+			VbaRuntimeError err;
+			if (!VbaGetInteriorColor(rangeValue, name == "colorindex", &result, &err, expr->line))
+			{
+				SetError(err.message, err.line);
+				return Value(0.0);
+			}
+			return result;
+		}
+
 		if (name == "select")
 		{
 			// No-op deliberato: nessun concetto di selezione a questo

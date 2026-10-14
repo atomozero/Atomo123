@@ -365,6 +365,33 @@ private:
 			}
 		}
 
+		// Fase 6f: "Range(...).Interior.Color = valore" o
+		// "...Interior.ColorIndex = valore" -- DUE livelli di
+		// PropertyAccess (diverso da ".Value", un livello solo), deve
+		// venire PRIMA del ramo generico sotto, che altrimenti
+		// proverebbe a trattare ".Interior" come il vero target di
+		// scrittura (sbagliato: "Interior" non e' affatto una cella).
+		if (stmt->target->kind == vbaExprPropertyAccess)
+		{
+			std::string outerName = Lowercase(stmt->target->name);
+			const VbaExpr* innerTarget = stmt->target->target.get();
+			if ((outerName == "color" || outerName == "colorindex")
+				&& innerTarget->kind == vbaExprPropertyAccess
+				&& Lowercase(innerTarget->name) == "interior")
+			{
+				Value rangeValue;
+				if (!Eval(innerTarget->target.get(), &rangeValue))
+					return execError;
+				VbaRuntimeError colorErr;
+				if (!VbaSetInteriorColor(rangeValue, outerName == "colorindex", rhs, &colorErr, stmt->line))
+				{
+					SetError(colorErr.message, colorErr.line);
+					return execError;
+				}
+				return execNormal;
+			}
+		}
+
 		// Il target e' un riferimento al modello a oggetti Excel: una
 		// scrittura diretta ("Range(\"A1\") = 5"/"Cells(1,1) = 5",
 		// dove il default member si applica anche in SCRITTURA, non

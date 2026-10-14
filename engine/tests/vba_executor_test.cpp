@@ -206,6 +206,12 @@ int main()
 	CheckVar("Sub T()\ncount = 0\nFor i = 1 To 5\nDo\ncount = count + 1\n"
 		"If i = 2 Then Exit For\nLoop While False\nNext i\nEnd Sub", "count", "2");
 
+	// ---- "DoEvents" (scritto senza parentesi, come nel vero VBA):
+	// no-op deliberato, non un errore "variabile non dichiarata" --
+	// una macro reale lo scrive dentro un ciclo stretto per restare
+	// reattiva, niente da pompare a questo livello (motore puro) ----
+	CheckVar("Sub T()\nx = 0\nFor i = 1 To 3\nDoEvents\nx = x + 1\nNext i\nEnd Sub", "x", "3");
+
 	// ---- Fase 6e: "With" -- i casi funzionali veri (su un Range/una
 	// struct) vivono in vba_macro_runner_test.cpp, dove un documento e
 	// un registro di Type sono davvero collegati; qui solo i percorsi

@@ -20,7 +20,9 @@
 #include <string>
 #include <vector>
 
+#include "CellStyle.h"
 #include "Container.h"
+#include "Excel.colors.h"
 #include "VbaMacroRunner.h"
 
 static int gFailures = 0;
@@ -946,6 +948,116 @@ static void TestWith()
 }
 
 // =======================================================================
+// Parte 2g (Fase 6f): ".Interior.Color"/".Interior.ColorIndex" -- la
+// scrittura del colore vero di una cella, esattamente come il CHIP-8
+// reale colora lo schermo ("Cells(...).Interior.ColorIndex = 2 ' WHITE"/
+// "= 1 ' BLACK"), punta a punta tramite ExecuteVbaMacro, verificato
+// anche leggendo il VERO CellStyle (non solo rileggendo tramite ".Color"/
+// ".ColorIndex", che potrebbe confermare un bug a vicenda).
+// =======================================================================
+
+static std::vector<uint8> BuildInteriorColorProject()
+{
+	const char* moduleSource =
+		"Sub Main()\r\n"
+		"    Cells(1, 1).Interior.Color = 1971210\r\n" // RGB(10,20,30) = 10 + 20*256 + 30*65536
+		"    Cells(2, 1).Interior.ColorIndex = 3\r\n"   // rosso standard
+		"    Cells(3, 1).Value = Cells(1, 1).Interior.Color\r\n"
+		"    Cells(4, 1).Value = Cells(2, 1).Interior.ColorIndex\r\n"
+		"    Cells(5, 1).Value = Cells(1, 1).Interior.ColorIndex\r\n" // nessuna corrispondenza esatta: 0
+		"End Sub\r\n"
+		"Sub ChipStylePixels()\r\n"
+		"    Cells(1, 1).Interior.ColorIndex = 2\r\n" // WHITE, esattamente come il CHIP-8 reale
+		"    Cells(2, 1).Interior.ColorIndex = 1\r\n" // BLACK
+		"End Sub\r\n"
+		"Sub BadColorIndexTooHigh()\r\n"
+		"    Cells(1, 1).Interior.ColorIndex = 57\r\n"
+		"End Sub\r\n"
+		"Sub BadColorIndexTooLow()\r\n"
+		"    Cells(1, 1).Interior.ColorIndex = 0\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(14, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestInteriorColor()
+{
+	std::vector<uint8> project = BuildInteriorColorProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per \".Interior.Color\" si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "Main", doc, &err);
+	Check(ok, "\"Main\" legge e scrive \".Interior.Color\"/\".ColorIndex\" senza errori");
+
+	CellStyle cs1, cs2;
+	doc->GetCellStyle(cell(1, 1), cs1);
+	doc->GetCellStyle(cell(1, 2), cs2);
+	Check(cs1.fLowColor.red == 10 && cs1.fLowColor.green == 20 && cs1.fLowColor.blue == 30,
+		"\".Interior.Color = 1971210\" scrive DAVVERO rgb(10,20,30) nel vero CellStyle della cella "
+		"(non solo in una contabilita' parallela)");
+	Check(cs2.fLowColor.red == kExcelColorTable[2].red && cs2.fLowColor.green == kExcelColorTable[2].green
+		&& cs2.fLowColor.blue == kExcelColorTable[2].blue,
+		"\".Interior.ColorIndex = 3\" scrive DAVVERO il rosso standard (kExcelColorTable[2]) "
+		"nel vero CellStyle della cella");
+
+	Value v3, v4, v5;
+	doc->GetValue(cell(1, 3), v3);
+	doc->GetValue(cell(1, 4), v4);
+	doc->GetValue(cell(1, 5), v5);
+	Check((double)v3 == 1971210.0, "\".Interior.Color\" in lettura torna lo stesso Long scritto");
+	Check((double)v4 == 3.0, "\".Interior.ColorIndex\" in lettura torna lo stesso indice scritto");
+	Check((double)v5 == 0.0, "un colore scritto via \".Color\" che non e' nella tavolozza standard "
+		"non ha un ColorIndex valido: 0, l'esito onesto, non una corrispondenza approssimata a caso");
+	doc->Release();
+
+	{
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		bool ok2 = ExecuteVbaMacro(&project[0], project.size(), "ChipStylePixels", doc2, &err2);
+		Check(ok2, "\"ChipStylePixels\" usa lo stesso identico pattern del CHIP-8 reale "
+			"(\"Interior.ColorIndex = 2\" per il bianco, \"= 1\" per il nero) senza errori");
+		CellStyle white, black;
+		doc2->GetCellStyle(cell(1, 1), white);
+		doc2->GetCellStyle(cell(1, 2), black);
+		Check(white.fLowColor.red == 0xFF && white.fLowColor.green == 0xFF && white.fLowColor.blue == 0xFF,
+			"ColorIndex 2 e' davvero bianco (255,255,255) sulla cella vera");
+		Check(black.fLowColor.red == 0 && black.fLowColor.green == 0 && black.fLowColor.blue == 0,
+			"ColorIndex 1 e' davvero nero (0,0,0) sulla cella vera");
+		doc2->Release();
+	}
+
+	{
+		CContainer* doc3 = new CContainer(NULL, NULL);
+		VbaRuntimeError err3;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "BadColorIndexTooHigh", doc3, &err3),
+			"ColorIndex 57 (fuori dall'intervallo 1-56) produce un errore chiaro");
+		doc3->Release();
+	}
+	{
+		CContainer* doc4 = new CContainer(NULL, NULL);
+		VbaRuntimeError err4;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "BadColorIndexTooLow", doc4, &err4),
+			"ColorIndex 0 (fuori dall'intervallo 1-56) produce un errore chiaro");
+		doc4->Release();
+	}
+}
+
+// =======================================================================
 // Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
 // pensato apposta per provare che questa funzione NON chiama
 // ParseVbaSub (un "ByRef" su un parametro, fuori da questo
@@ -1032,6 +1144,7 @@ int main()
 	TestArrays();
 	TestStructs();
 	TestWith();
+	TestInteriorColor();
 	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
