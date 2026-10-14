@@ -409,6 +409,42 @@ property coverage like `.Font.Bold`/`.Interior.Color`) are each a
 separate, later decision, not required for this interpreter to be
 useful against a real recorded macro today.
 
+**Investigated and deliberately deferred, not forgotten** — both
+turned out to need a real design decision, not just another function
+added to a dispatch table, so neither was started without the
+scope/approach being reviewed first:
+- **The `With` statement.** VBA's leading-dot shorthand inside a
+  `With` block (`.Value = 5` meaning `With`'s own target `.Value`) is
+  context-sensitive: today's expression grammar only recognizes a
+  `.Name` continuation as a *postfix* onto an already-parsed primary
+  (`VbaExprParser.cpp`'s `ParsePostfix`), never as a primary by
+  itself. Supporting it for real needs: a new `VbaExpr`/`VbaStmt`
+  clone utility (each statement inside the block needs its own
+  independent copy of the `With` target, since a `unique_ptr` can't
+  be shared across uses); a "current `With` target" stack threaded
+  from the statement parser into the expression parser; and touching
+  roughly every statement-parsing call site that invokes
+  `ParseVbaExpression`/`ParseVbaPrimaryExpression` (assignment,
+  `Set`, `If`, `For`, `For Each`, `Select Case`'s `Case` values,
+  `Do`) so each one passes that context through. Each of this
+  session's other Phase 5 additions stayed inside one file's dispatch
+  plus a focused executor change; `With` is a different shape of
+  work, not just a bigger version of the same shape.
+- **Deeper `Range` property coverage** (`.Font.Bold`,
+  `.Interior.Color`, …). Investigated by finding how the app's own
+  Bold/Italic toolbar buttons actually mutate a cell
+  (`MainWindow::ToggleBold`, `ui/src/MainWindow.cpp`): real font
+  changes go through `GetCellFontInfo`/`ApplyFontToRange`, both
+  **UI-layer** helpers, not `CContainer`/engine methods —
+  `CellStyle::fFont` is only an index into a font table those
+  UI-layer functions resolve. Since `engine/src/Vba` (where
+  `VbaEvaluator.cpp` lives) cannot depend on `ui/` — a real,
+  deliberate architectural boundary in this codebase, not an
+  oversight — reaching real font/fill formatting from VBA would mean
+  first relocating that font-table logic down into the engine layer,
+  a separate refactor with its own blast radius, not something to
+  start as a side effect of a VBA increment.
+
 ## Path to 100% XLSX standard compatibility
 
 This is a different axis from "Path to full Excel parity" below: that
