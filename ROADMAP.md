@@ -308,6 +308,41 @@ itself (parameters, `Select Case`, `Function`, more built-ins) is a
 separate, later decision, not required for a first usable release of
 this interpreter.
 
+**Progress — Phase 4 (UI integration + the macro-enable trust gate)
+is done.** `ExecuteVbaMacro`/`ListVbaMacroNames` are now reachable
+from the real app, not just from tests. The trust gate is
+session-only by design, never written to `.ascd`: a blocking `BAlert`
+("Disabilita"/"Abilita", the former as the default/Escape choice) is
+shown automatically right after opening a file whose `vbaProject`
+blob is non-empty — in both the synchronous and background-thread
+`OpenFile` paths — and the decision resets on every new file open or
+brand-new document. Declining only disables execution, never the
+file itself; clicking "Esegui macro…" later re-prompts instead of
+refusing silently. `MacroListWindow` (a `NameWindow`-style list +
+button) is populated via a new `ListVbaMacroNames` (`VbaMacroRunner.h`
+— a pure lexical scan for "`Sub` keyword followed by an identifier",
+deliberately never calling `ParseVbaSub`, so a Sub using syntax
+outside this subset still appears in the list; a `Private Sub` is
+excluded, matching Excel's own macro list). Running a macro binds
+`ExecuteVbaMacro` to the *active* sheet's `CContainer` (Range/Cells
+without a sheet qualifier target whichever sheet is active, same as
+real VBA's `ActiveSheet`), then runs a full
+`RecalculateActiveWorkbook()` (same "broad but always correct"
+fallback already used by paste/fill/sort — a macro can write any
+number of cells not tracked individually) and clears the undo/redo
+stacks — real VBA/Excel treats a macro run as not undoable and empties
+the Undo history too, this isn't a corner cut here. Smoke-tested (the
+real binary builds, links, launches, and quits cleanly) but not
+verified interactively against a real macro-enabled file — none was
+available in this environment, same limitation already flagged for
+Phase 1's container-access work; close this the same way, against a
+real `.xlsm` as soon as one is available.
+
+This closes the "Run Macro" half of v4.0's macro-execution goal for
+the explicit subset decided above. Widening the subset itself
+(parameters, `Select Case`, `Function`, more built-ins) remains a
+separate, later decision, same as noted after Phase 3.
+
 ## Path to 100% XLSX standard compatibility
 
 This is a different axis from "Path to full Excel parity" below: that
