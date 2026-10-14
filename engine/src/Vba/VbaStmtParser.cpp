@@ -60,6 +60,15 @@ private:
 	const VbaToken& Current() const { return fTokens[fPos]; }
 	void Advance() { if (fPos + 1 < fTokens.size()) fPos++; }
 	bool IsKeyword(const char* text) const { return Current().type == vbaTokKeyword && Current().text == text; }
+	// Guarda il token SUCCESSIVO senza consumarlo -- serve solo per
+	// distinguere "For Each" da un "For" normale appena dopo aver
+	// visto "For" (ParseOneStatement), senza dover rianalizzare da
+	// capo.
+	bool NextIsKeyword(const char* text) const
+	{
+		return fPos + 1 < fTokens.size() && fTokens[fPos + 1].type == vbaTokKeyword
+			&& fTokens[fPos + 1].text == text;
+	}
 	bool IsOp(const char* text) const { return Current().type == vbaTokOperator && Current().text == text; }
 	bool IsNewlineTok() const { return Current().type == vbaTokNewline; }
 	bool IsEndTok() const { return Current().type == vbaTokEnd; }
@@ -154,7 +163,7 @@ private:
 		if (IsKeyword("If"))
 			return ParseIf();
 		if (IsKeyword("For"))
-			return ParseFor();
+			return NextIsKeyword("Each") ? ParseForEach() : ParseFor();
 		if (IsKeyword("Set"))
 			return ParseSetStmt();
 		if (IsKeyword("Exit"))
@@ -390,6 +399,52 @@ private:
 			return nullptr;
 		if (Current().type == vbaTokIdentifier)
 			Advance(); // "Next i" -- il nome dopo Next e' facoltativo, letto e scartato
+		if (!ExpectStatementEnd())
+			return nullptr;
+		return stmt;
+	}
+
+	// "For Each varName In expr" ... "Next [varName]" -- il token
+	// corrente e' gia' "For" (NON ancora consumato, a differenza di
+	// ParseFor: il chiamante ha solo GUARDATO avanti con
+	// NextIsKeyword, mai avanzato). "expr" deve valutare a un
+	// intervallo (Range/Cells) a runtime, verificato dall'esecutore,
+	// non qui -- questo sottoinsieme non ha array/Collection generici
+	// da iterare.
+	std::unique_ptr<VbaStmt> ParseForEach()
+	{
+		int line = Current().line;
+		Advance(); // "For"
+		Advance(); // "Each"
+		if (Current().type != vbaTokIdentifier)
+		{
+			SetError("atteso un nome di variabile dopo \"For Each\"");
+			return nullptr;
+		}
+		std::string varName = Current().text;
+		Advance();
+		if (!ExpectKeyword("In"))
+			return nullptr;
+
+		auto collectionExpr = ParseVbaExpression(fTokens, fPos, fError);
+		if (!collectionExpr)
+		{
+			fFailed = true;
+			return nullptr;
+		}
+
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtForEach));
+		stmt->varName = varName;
+		stmt->expr = std::move(collectionExpr);
+		stmt->line = line;
+
+		if (!ParseStatementList(&stmt->body))
+			return nullptr;
+
+		if (!ExpectKeyword("Next"))
+			return nullptr;
+		if (Current().type == vbaTokIdentifier)
+			Advance(); // "Next cell" -- facoltativo, come nel For normale
 		if (!ExpectStatementEnd())
 			return nullptr;
 		return stmt;

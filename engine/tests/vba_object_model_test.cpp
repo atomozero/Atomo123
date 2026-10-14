@@ -6,9 +6,10 @@
 	Range("A1")/Range("A1:B2")/Cells(riga,colonna), ".Value" (lettura
 	e scrittura, anche implicita senza ".Value" -- il "default member"
 	di VBA), ".Offset(righe,colonne)", ".Select" (no-op deliberato a
-	questo livello, nessuna UI collegata). Scrive/legge celle VERE su
-	un CContainer costruito direttamente, stesso schema di
-	newcell_test.cpp.
+	questo livello, nessuna UI collegata), e "For Each ... In" su un
+	intervallo (Fase 5b, vedi ROADMAP.md -- ordine riga per riga).
+	Scrive/legge celle VERE su un CContainer costruito direttamente,
+	stesso schema di newcell_test.cpp.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).
@@ -217,7 +218,75 @@ int main()
 	// ---- .Select e' un no-op deliberato in questa fase, ma non deve fermare l'esecuzione ----
 	CheckVar("Sub T()\nRange(\"A1\").Select\nx = 1\nEnd Sub", NULL, NULL, "x", "1");
 
+	// ---- For Each su un intervallo (Fase 5b): lettura, scrittura, ordine riga per riga ----
+	{
+		CContainer* doc = new CContainer(NULL, NULL);
+		doc->NewCell(cell(1, 1), Value(1.0), NULL); // A1
+		doc->NewCell(cell(2, 1), Value(2.0), NULL); // B1
+		doc->NewCell(cell(1, 2), Value(3.0), NULL); // A2
+		doc->NewCell(cell(2, 2), Value(4.0), NULL); // B2
+
+		VbaEnvironment env;
+		std::string error;
+		bool ok = RunSub("Sub T()\norder = \"\"\nFor Each c In Range(\"A1:B2\")\n"
+			"order = order & c.Value & \",\"\nNext\nEnd Sub", doc, &env, &error);
+		Check(ok, "For Each su Range(\"A1:B2\") esegue senza errori");
+		const Value* order = env.Find("order");
+		Check(order && FormatValue(*order) == "\"1,2,3,4,\"",
+			"For Each visita A1,B1,A2,B2 in quest'ordine -- riga per riga, come il vero VBA "
+			"per un intervallo rettangolare");
+		doc->Release();
+	}
+	{
+		// Scrivere attraverso la variabile del ciclo: ogni "c" e' un
+		// vero riferimento a UNA cella (c.Value = ... scrive davvero
+		// nel documento, non in una copia).
+		CContainer* doc = new CContainer(NULL, NULL);
+		doc->NewCell(cell(1, 1), Value(1.0), NULL);
+		doc->NewCell(cell(1, 2), Value(2.0), NULL);
+		doc->NewCell(cell(1, 3), Value(3.0), NULL);
+
+		VbaEnvironment env;
+		std::string error;
+		bool ok = RunSub("Sub T()\nFor Each c In Range(\"A1:A3\")\n"
+			"c.Value = c.Value * 10\nNext\nEnd Sub", doc, &env, &error);
+		Check(ok, "For Each con scrittura attraverso la variabile del ciclo esegue senza errori");
+		Value v1, v2, v3;
+		doc->GetValue(cell(1, 1), v1);
+		doc->GetValue(cell(1, 2), v2);
+		doc->GetValue(cell(1, 3), v3);
+		Check(FormatValue(v1) == "10" && FormatValue(v2) == "20" && FormatValue(v3) == "30",
+			"ogni \"c\" e' un riferimento VERO alla propria cella: A1=10, A2=20, A3=30");
+		doc->Release();
+	}
+	{
+		// Exit For dentro un For Each: esce dal ciclo, non e' un errore.
+		CContainer* doc = new CContainer(NULL, NULL);
+		doc->NewCell(cell(1, 1), Value(1.0), NULL);
+		doc->NewCell(cell(1, 2), Value(2.0), NULL);
+		doc->NewCell(cell(1, 3), Value(3.0), NULL);
+
+		VbaEnvironment env;
+		std::string error;
+		bool ok = RunSub("Sub T()\ntotal = 0\nFor Each c In Range(\"A1:A3\")\n"
+			"If c.Value = 2 Then Exit For\ntotal = total + c.Value\nNext\nEnd Sub",
+			doc, &env, &error);
+		Check(ok, "Exit For dentro un For Each esegue senza errori");
+		const Value* total = env.Find("total");
+		Check(total && FormatValue(*total) == "1",
+			"Exit For interrompe il For Each non appena c.Value = 2, prima di sommarlo");
+		doc->Release();
+	}
+
 	// ---- Errori: un messaggio chiaro, mai un crash o un dato sbagliato silenzioso ----
+	CheckError("Sub T()\nFor Each c In Range(\"A1\")\nx = 1\nNext\nEnd Sub", NULL,
+		"For Each senza un documento collegato produce un errore chiaro");
+	{
+		CContainer* doc = new CContainer(NULL, NULL);
+		CheckError("Sub T()\nFor Each c In 5\nx = 1\nNext\nEnd Sub", doc,
+			"For Each su un valore che non e' un intervallo (Range/Cells) produce un errore chiaro");
+		doc->Release();
+	}
 	CheckError("Sub T()\nx = Range(\"A1\").Value\nEnd Sub", NULL,
 		"Range/Cells senza un documento collegato (nessun CContainer attivo) produce un errore chiaro");
 	{

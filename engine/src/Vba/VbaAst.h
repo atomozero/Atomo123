@@ -74,6 +74,10 @@ enum VbaStmtKind {
 	vbaStmtIf,        // If expr Then body [Else elseBody] End If -- un "ElseIf" si rappresenta
 	                   // come un singolo vbaStmtIf annidato dentro elseBody, vedi il parser
 	vbaStmtFor,       // For varName = expr To forEnd [Step forStep] body Next [varName]
+	vbaStmtForEach,   // For Each varName In expr body Next [varName] -- "expr" deve valutare
+	                   // a un intervallo (Range/Cells), vedi VbaExecutor.cpp; SOLO Range in
+	                   // questo sottoinsieme, niente array/Collection generici (coerente col
+	                   // resto del modello a oggetti, che ha solo Range/Cells)
 	vbaStmtExitFor,
 	vbaStmtExitSub,
 	vbaStmtSelectCase, // Select Case expr [Case v1, v2, ...  body]... [Case Else elseBody] End Select

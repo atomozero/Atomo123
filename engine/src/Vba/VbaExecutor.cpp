@@ -94,6 +94,9 @@ private:
 			case vbaStmtFor:
 				return ExecuteFor(stmt);
 
+			case vbaStmtForEach:
+				return ExecuteForEach(stmt);
+
 			case vbaStmtSelectCase:
 				return ExecuteSelectCase(stmt);
 
@@ -229,6 +232,52 @@ private:
 
 			current += step;
 			fEnv->Set(stmt->varName, Value(current));
+		}
+		return execNormal;
+	}
+
+	// "For Each varName In expr": "expr" deve valutare a un intervallo
+	// (Range/Cells) -- questo sottoinsieme non ha array/Collection
+	// generici da iterare, vedi il commento su vbaStmtForEach in
+	// VbaAst.h. Ordine riga per riga (tutte le colonne della prima
+	// riga, poi tutte quelle della seconda, ecc. -- lo stesso ordine
+	// "a libro" del vero VBA per un Range rettangolare), un ciclo
+	// annidato appiattito in un solo "return" invece di un "goto" per
+	// uscire da entrambi i livelli insieme su "Exit For".
+	ExecResult ExecuteForEach(const VbaStmt* stmt)
+	{
+		Value collectionValue;
+		if (!Eval(stmt->expr.get(), &collectionValue))
+			return execError;
+		if (collectionValue.fType != eRangeData)
+		{
+			SetError("For Each richiede un intervallo (Range/Cells), non un valore semplice",
+				stmt->line);
+			return execError;
+		}
+		CContainer* doc = collectionValue.fRangeContainer;
+		if (!doc)
+		{
+			SetError("nessun foglio di calcolo collegato a questa esecuzione VBA", stmt->line);
+			return execError;
+		}
+		range r = (range)collectionValue;
+
+		for (int row = r.top; row <= r.bottom; row++)
+		{
+			for (int col = r.left; col <= r.right; col++)
+			{
+				Value cellValue;
+				cellValue = range(col, row, col, row); // Value::operator=(const range&)
+				cellValue.fRangeContainer = doc;
+				fEnv->Set(stmt->varName, cellValue);
+
+				ExecResult res = ExecuteStmtList(stmt->body);
+				if (res == execExitFor)
+					return execNormal; // consumato: esce da ENTRAMBI i livelli del ciclo annidato
+				if (res == execExitSub || res == execError)
+					return res;
+			}
 		}
 		return execNormal;
 	}
