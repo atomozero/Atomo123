@@ -206,6 +206,12 @@ int main()
 	CheckVar("Sub T()\ncount = 0\nFor i = 1 To 5\nDo\ncount = count + 1\n"
 		"If i = 2 Then Exit For\nLoop While False\nNext i\nEnd Sub", "count", "2");
 
+	// ---- "Dim a, b, c" -- un solo "Dim" del vero VBA dichiara PIU'
+	// variabili indipendenti, non solo la prima (trovato indagando il
+	// sorgente reale del CHIP-8) ----
+	CheckVar("Sub T()\nDim a, b, c\na = 1\nb = 2\nc = a + b\nEnd Sub", "c", "3");
+	CheckVar("Sub T()\nDim i, lastN As Long\ni = 5\nlastN = i * 2\nEnd Sub", "lastN", "10");
+
 	// ---- "DoEvents" (scritto senza parentesi, come nel vero VBA):
 	// no-op deliberato, non un errore "variabile non dichiarata" --
 	// una macro reale lo scrive dentro un ciclo stretto per restare

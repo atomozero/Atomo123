@@ -88,6 +88,30 @@ static void TestFindVbaSubByName()
 		Check(!FindVbaSubByName(tokens, "DoesNotExist", &sub, &err),
 			"una Sub che non esiste nel modulo produce un errore, non un crash");
 	}
+
+	// ---- Resilienza della scansione: una Sub con sintassi fuori da
+	// questo sottoinsieme (qui: "ByRef" su un parametro) NON blocca
+	// piu' la ricerca di una Sub valida che la segue -- trovato
+	// indagando un vero vbaProject.bin reale (chip-8-vba) dove
+	// "CommandButton1_Click" (file I/O non supportato) precedeva nove
+	// altre Sub altrimenti valide, rendendole tutte irraggiungibili
+	// con la vecchia regola "un errore ferma l'intera scansione" ----
+	{
+		const char* srcWithBrokenSub =
+			"Sub Broken(ByRef x)\r\n" // "ByRef": fuori da questo sottoinsieme, non analizzabile
+			"    y = 1\r\n"
+			"End Sub\r\n"
+			"Sub ReachableAfter()\r\n"
+			"    z = 2\r\n"
+			"End Sub\r\n";
+		std::string name2;
+		Check(FindSub(srcWithBrokenSub, "ReachableAfter", &name2) && name2 == "ReachableAfter",
+			"una Sub valida DOPO una Sub rotta (sintassi fuori da questo sottoinsieme) resta "
+			"raggiungibile: si salta solo il blocco rotto, non l'intera scansione del modulo");
+		Check(!FindSub(srcWithBrokenSub, "Broken", &name2),
+			"la Sub rotta stessa resta comunque irraggiungibile per nome (non e' analizzabile "
+			"per davvero, solo saltata): un errore onesto, non un dato inventato");
+	}
 }
 
 // =======================================================================

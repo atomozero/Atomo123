@@ -51,9 +51,33 @@ bool FindVbaSubByName(const std::vector<VbaToken>& tokens, const std::string& su
 			continue;
 		}
 
-		std::unique_ptr<VbaSub> sub = ParseVbaSub(tokens, pos, outError);
+		std::string startKeyword = tokens[pos].text; // "Sub" o "Function", prima di avanzare
+		size_t blockStart = pos;
+		VbaParseError localError;
+		std::unique_ptr<VbaSub> sub = ParseVbaSub(tokens, pos, &localError);
 		if (!sub)
-			return false; // vedi il LIMITE NOTO in VbaMacroRunner.h
+		{
+			// Non si abortisce piu' l'INTERA scansione del modulo per
+			// UNA Sub/Function con una sintassi fuori da questo
+			// sottoinsieme (es. "Open ... For Binary", "ByRef" su un
+			// parametro): si salta SOLO questo blocco, cercando "End
+			// Sub"/"End Function" -- la stessa coppia di parole chiave
+			// consecutive MAI prodotta da un If/For/Do annidato (che
+			// userebbe "End If"/"Next"/"Loop"), stesso trucco di
+			// ListVbaMacroNames -- e si riprende la ricerca con la
+			// Sub/Function SUCCESSIVA. Si riparte da "blockStart + 1",
+			// non da dove si e' fermato "ParseVbaSub" (che potrebbe
+			// essere ovunque dentro il blocco rotto): una posizione
+			// nota e sicura da cui scandire in avanti, non quella di
+			// un parser che ha appena fallito.
+			pos = blockStart + 1;
+			while (pos + 1 < tokens.size() && !(tokens[pos].type == vbaTokKeyword
+				&& tokens[pos].text == "End" && tokens[pos + 1].type == vbaTokKeyword
+				&& tokens[pos + 1].text == startKeyword))
+				pos++;
+			pos = (pos + 1 < tokens.size()) ? pos + 2 : tokens.size(); // oltre "End Sub"/"End Function"
+			continue;
+		}
 
 		if (NormalizeSubName(sub->name) == normalizedTarget)
 		{

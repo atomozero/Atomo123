@@ -350,6 +350,18 @@ int main()
 	CheckSub("Sub Foo()\r\nCall Bar(1, 2)\r\nEnd Sub\r\n",
 		"Sub Foo() [Bar(1, 2)]");
 
+	// ---- "Dim a, b, c" -- un SOLO "Dim" del vero VBA, ma PIU' di un
+	// vbaStmtDim qui (nessun nodo "lista" dedicato, vedi
+	// ParseDimStatementList) -- trovato indagando il sorgente reale
+	// del CHIP-8 ("Dim i, lastN As Long" in InitConstants) ----
+	CheckSub("Sub Foo()\r\nDim a, b, c\r\nEnd Sub\r\n", "Sub Foo() [Dim a; Dim b; Dim c]");
+	CheckSub("Sub Foo()\r\nDim i, lastN As Long\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim i; Dim lastN As Long]"); // SOLO l'ultimo dichiaratore prende "As Long"
+	CheckSub("Sub Foo()\r\nDim a As Integer, b As String\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim a As Integer; Dim b As String]"); // ogni dichiaratore puo' avere il proprio tipo
+	CheckSub("Sub Foo()\r\nDim V(3), W(1, 1)\r\nx = 1\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim V(4); Dim W(2, 2); x := 1]"); // anche array, mischiati con variabili dopo
+
 	// ---- Fase 6c: array a dimensione fissa su "Dim" -- il numero
 	// stampato da DumpStmt e' gia' il CONTEGGIO di elementi (limite
 	// superiore scritto + 1, Option Base 0 implicito) ----

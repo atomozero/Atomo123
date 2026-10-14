@@ -301,6 +301,18 @@ private:
 		SkipNewlines();
 		while (!fFailed && !IsBlockTerminator() && !IsEndTok())
 		{
+			// "Dim" e' l'unica istruzione che puo' espandersi in PIU' di
+			// un VbaStmt (un "Dim a, b, c" con piu' dichiaratori) --
+			// gestita qui direttamente invece che tramite
+			// ParseOneStatement, che ha il contratto di restituire
+			// esattamente un nodo.
+			if (IsKeyword("Dim"))
+			{
+				if (!ParseDimStatementList(outStmts))
+					return false;
+				SkipNewlines();
+				continue;
+			}
 			auto stmt = ParseOneStatement();
 			if (!stmt)
 				return false;
@@ -363,10 +375,15 @@ private:
 		return fFailed ? nullptr : std::move(stmt);
 	}
 
-	std::unique_ptr<VbaStmt> ParseDim()
+	// Un SOLO dichiaratore "nome[(limiti)] [As Tipo]" -- il "Dim" stesso
+	// e' gia' stato consumato dal chiamante, "line" e' la riga di
+	// QUELLA parola chiave (cosi' ogni dichiaratore di un "Dim a, b, c"
+	// riporta la stessa riga, come il vero VBA tratterebbe un errore
+	// su una qualunque di esse). Riusato sia da ParseDim (un solo
+	// dichiaratore, per i contesti a istruzione singola come un "If"
+	// su una riga) sia da ParseDimStatementList sotto (piu' di uno).
+	std::unique_ptr<VbaStmt> ParseOneDimDeclarator(int line)
 	{
-		int line = Current().line;
-		Advance(); // "Dim"
 		if (Current().type != vbaTokIdentifier)
 		{
 			SetError("atteso un nome di variabile dopo \"Dim\"");
@@ -396,9 +413,57 @@ private:
 		stmt->arrayDims = arrayDims;
 		stmt->asTypeName = asTypeName;
 		stmt->line = line;
+		return stmt;
+	}
+
+	// Un "Dim" con un SOLO dichiaratore -- usato dove il resto della
+	// grammatica si aspetta una singola istruzione (es. il corpo di un
+	// "If" su una riga, "If x Then Dim a"): il vero VBA non permette
+	// comunque una lista multipla li', quindi non e' un limite in
+	// piu' di questo sottoinsieme.
+	std::unique_ptr<VbaStmt> ParseDim()
+	{
+		int line = Current().line;
+		Advance(); // "Dim"
+		auto stmt = ParseOneDimDeclarator(line);
+		if (!stmt)
+			return nullptr;
 		if (!ExpectStatementEnd())
 			return nullptr;
 		return stmt;
+	}
+
+	// "Dim nome1[(limiti)] [As Tipo1], nome2[(limiti)] [As Tipo2], ..."
+	// -- un'istruzione sola nel vero VBA, ma PIU' di un VbaStmt qui
+	// (nessun nodo "lista" dedicato: ogni dichiaratore diventa un
+	// vbaStmtDim indipendente, appeso direttamente a "outStmts"), dato
+	// che il resto dell'interprete (VbaExecutor.cpp) tratta ogni "Dim"
+	// come un'istruzione singola. SOLO l'ultimo dichiaratore senza
+	// "As" esplicito e' davvero "senza tipo" nel vero VBA -- ogni
+	// dichiaratore PRECEDENTE senza "As" e' implicitamente Variant,
+	// MAI il tipo del dichiaratore che segue (un errore comune di chi
+	// legge "Dim a, b As Long" come "entrambi Long"): questo
+	// sottoinsieme tratta comunque ogni variabile come Variant quando
+	// "As" e' assente, quindi il comportamento osservabile e' identico
+	// senza bisogno di spiegare la distinzione al runtime.
+	bool ParseDimStatementList(std::vector<std::unique_ptr<VbaStmt>>* outStmts)
+	{
+		int line = Current().line;
+		Advance(); // "Dim"
+		for (;;)
+		{
+			auto stmt = ParseOneDimDeclarator(line);
+			if (!stmt)
+				return false;
+			outStmts->push_back(std::move(stmt));
+			if (IsOp(","))
+			{
+				Advance();
+				continue;
+			}
+			break;
+		}
+		return ExpectStatementEnd();
 	}
 
 	// Fase 6c: "(" limiteSuperiore ("," limiteSuperiore)* ")" dopo il

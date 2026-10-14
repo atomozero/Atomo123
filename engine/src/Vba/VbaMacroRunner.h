@@ -24,17 +24,19 @@
 	un blocco annidato), e si confronta il nome con "macroName" senza
 	distinguere maiuscole/minuscole.
 
-	LIMITE NOTO di questa fase: se una Sub/Function DIVERSA da quella
-	cercata, nello stesso modulo e PRIMA di essa, usa una sintassi che
-	questo sottoinsieme non analizza ("ByRef" su un parametro...),
-	l'intera scansione di QUEL modulo si ferma con un
-	errore di sintassi, anche se la Sub cercata stessa sarebbe
-	perfettamente valida per questo sottoinsieme -- si passa comunque
-	al modulo SUCCESSIVO (non e' un errore fatale per l'intera
-	ricerca), ma non si salta oltre il punto di errore all'interno
-	dello STESSO modulo. Un limite onesto, non un dato sbagliato
-	silenzioso: la Fase 4 (se mai servira' andare oltre questo
-	sottoinsieme esplicito) e' il posto giusto per superarlo.
+	Resilienza della scansione: se una Sub/Function DIVERSA da quella
+	cercata, nello stesso modulo, usa una sintassi che questo
+	sottoinsieme non analizza ("Open ... For Binary", "ByRef" su un
+	parametro...), SOLO quel singolo blocco si salta (cercando "End
+	Sub"/"End Function" -- mai prodotta da un If/For/Do annidato,
+	stesso trucco di ListVbaMacroNames sotto), non l'intera scansione
+	del modulo: una Sub cercata DOPO quella rotta resta comunque
+	raggiungibile. Trovato indagando un vero vbaProject.bin reale
+	(github.com/rndtrash/chip-8-vba) dove una Sub con sintassi non
+	supportata PRECEDEVA diverse altre altrimenti perfettamente valide
+	-- con la vecchia regola ("l'intera scansione si ferma"), nessuna
+	di quelle sarebbe mai stata raggiungibile, anche eseguendole per
+	nome individualmente.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).
@@ -98,8 +100,7 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 // che contiene una Sub con una sintassi fuori da questo sottoinsieme
 // ("ByRef" su un parametro...): un nome puo' comparire in questo
 // elenco ed essere comunque rifiutato da ExecuteVbaMacro quando
-// davvero eseguito, se la sua Sub (o una PRECEDENTE nello stesso
-// modulo, vedi il limite noto sopra) usa una sintassi che questo
+// davvero eseguito, se la sua stessa Sub usa una sintassi che questo
 // sottoinsieme non analizza -- quell'errore arriva allora dalla vera
 // esecuzione, non da qui. Una "Function" (cercata solo per "Sub", mai
 // per "Function") e' esclusa a proposito, come il vero elenco Macro
