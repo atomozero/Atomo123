@@ -372,6 +372,20 @@ private:
 	{
 		const VbaToken& tok = Current();
 
+		if (tok.type == vbaTokOperator && tok.text == ".")
+		{
+			// Fase 6e: ".Nome" dentro un "With" -- un segnaposto senza
+			// nome (vbaExprWithImplicitTarget, risolto a RUNTIME in
+			// base al "With" piu' vicino, vedi VbaAst.h) usato come
+			// "base" di ParsePostfix esattamente come un qualunque
+			// altro primario: il "." corrente non si consuma qui,
+			// resta per il ciclo "while (IsOp(\".\"))" di ParsePostfix,
+			// che lo tratta come la prima (e in questo caso unica)
+			// propieta'/chiamata della catena.
+			auto marker = MakeNode(vbaExprWithImplicitTarget);
+			return ParsePostfix(std::move(marker));
+		}
+
 		if (tok.type == vbaTokNumber)
 		{
 			auto node = MakeNode(vbaExprNumber);

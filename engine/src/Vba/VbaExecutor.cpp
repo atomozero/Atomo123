@@ -244,6 +244,9 @@ private:
 			case vbaStmtDoLoop:
 				return ExecuteDoLoop(stmt);
 
+			case vbaStmtWith:
+				return ExecuteWith(stmt);
+
 			case vbaStmtExitFor:
 				return execExitFor;
 
@@ -531,6 +534,50 @@ private:
 			}
 		}
 		return execNormal;
+	}
+
+	// Fase 6e: "With expr" ... "End With" -- "expr" si valuta/risolve
+	// UNA SOLA VOLTA qui, mai di nuovo per ogni ".Nome" dentro "body"
+	// (vedi VbaWithTarget/EvalWithImplicitTarget). Prova PRIMA a
+	// risolvere "expr" come un'ISTANZA di struct (riusando
+	// ResolveStructInstanceStep -- stessa funzione che risolve un
+	// passo INTERMEDIO di una catena di campi, Fase 6d, qui applicata
+	// all'INTERA espressione del "With": "With ThisVM.Screen(X,Y)" si
+	// risolve esattamente come se "Screen(X,Y)" fosse un passo
+	// intermedio, perche' STRUTTURALMENTE lo e'); se non e' affatto un
+	// accesso a struct (es. "With Range(\"A1\")"), valuta "expr" come
+	// un Value normale. "PushWithTarget"/"PopWithTarget" sono SEMPRE
+	// in coppia, anche quando "body" termina con un errore o un Exit
+	// For/Do/Sub -- un "With" rimasto a meta' impilato sporcherebbe
+	// l'esecuzione di cio' che segue.
+	ExecResult ExecuteWith(const VbaStmt* stmt)
+	{
+		VbaWithTarget withTarget;
+		std::string structErr;
+		VbaStructInstance* structTarget = ResolveStructInstanceStep(stmt->target.get(), fEnv, &structErr);
+		if (structTarget)
+		{
+			withTarget.isStruct = true;
+			withTarget.structInstance = structTarget;
+		}
+		else if (!structErr.empty())
+		{
+			SetError(structErr, stmt->line);
+			return execError;
+		}
+		else
+		{
+			Value v;
+			if (!Eval(stmt->target.get(), &v))
+				return execError;
+			withTarget.isStruct = false;
+			withTarget.value = v;
+		}
+
+		fEnv->PushWithTarget(withTarget);
+		ExecResult r = ExecuteStmtList(stmt->body);
+		fEnv->PopWithTarget();
+		return r;
 	}
 
 	// Valuta "stmt->expr" UNA sola volta, poi confronta con ogni

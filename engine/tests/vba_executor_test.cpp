@@ -206,6 +206,19 @@ int main()
 	CheckVar("Sub T()\ncount = 0\nFor i = 1 To 5\nDo\ncount = count + 1\n"
 		"If i = 2 Then Exit For\nLoop While False\nNext i\nEnd Sub", "count", "2");
 
+	// ---- Fase 6e: "With" -- i casi funzionali veri (su un Range/una
+	// struct) vivono in vba_macro_runner_test.cpp, dove un documento e
+	// un registro di Type sono davvero collegati; qui solo i percorsi
+	// di errore, dato che questo file non collega affatto il modello a
+	// oggetti Excel ----
+	CheckError("Sub T()\nWith Range(\"A1\")\n.Value = 5\nEnd With\nEnd Sub",
+		"un \"With\" su un Range propaga lo stesso errore \"nessun foglio collegato\" "
+		"di una scrittura diretta senza With");
+	CheckError("Sub T()\n.Foo = 5\nEnd Sub",
+		"un \".\" fuori da qualunque \"With\" produce un errore di runtime pulito, non un crash");
+	CheckError("Sub T()\nWith Range(\"A1\")\nx = 1\nEnd Sub", // "End With" mancante
+		"un \"With\" senza \"End With\" produce un errore di sintassi");
+
 	// ---- Errori di esecuzione: un messaggio chiaro, mai un crash ----
 	CheckError("Sub T()\nExit Do\nEnd Sub",
 		"\"Exit Do\" fuori da un ciclo Do produce un errore, non un comportamento indefinito");

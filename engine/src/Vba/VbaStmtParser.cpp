@@ -326,7 +326,41 @@ private:
 			return ParseSelectCase();
 		if (IsKeyword("Do"))
 			return ParseDo();
+		if (IsKeyword("With"))
+			return ParseWith();
 		return ParseAssignOrExprStmt();
+	}
+
+	// Fase 6e: "With expr" ... "End With" -- "expr" e' il target, mai
+	// ri-valutato (vedi VbaStmtWith in VbaAst.h): il parser NON deve
+	// sapere nulla sul contesto "With" attivo, la risoluzione di ogni
+	// ".Nome" dentro "body" avviene interamente a runtime
+	// (VbaEvaluator.cpp/VbaExecutor.cpp).
+	std::unique_ptr<VbaStmt> ParseWith()
+	{
+		int line = Current().line;
+		Advance(); // "With"
+		auto target = ParseVbaExpression(fTokens, fPos, fError);
+		if (!target)
+		{
+			fFailed = true;
+			return nullptr;
+		}
+		if (!ExpectStatementEnd())
+			return nullptr;
+
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtWith));
+		stmt->target = std::move(target);
+		stmt->line = line;
+
+		if (!ParseStatementList(&stmt->body))
+			return nullptr;
+
+		if (!ExpectKeyword("End") || !ExpectKeyword("With"))
+			return nullptr;
+		ExpectStatementEnd(); // facoltativo: puo' essere l'ultimo token del modulo
+
+		return fFailed ? nullptr : std::move(stmt);
 	}
 
 	std::unique_ptr<VbaStmt> ParseDim()

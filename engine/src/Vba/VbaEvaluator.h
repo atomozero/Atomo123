@@ -113,4 +113,21 @@ bool VbaWriteRangeValue(const Value& rangeValue, const Value& newValue, VbaRunti
 //    in VbaEnvironment.h).
 Value* ResolveStructScalarField(const VbaExpr* expr, VbaEnvironment* env, std::string* outError);
 
+// Fase 6e: lo stesso passo di risoluzione usato INTERNAMENTE da
+// ResolveStructScalarField sopra (es. "ThisVM" in "ThisVM.PC", o
+// "ThisVM.Screen(x,y)" nell'accesso "ThisVM.Screen(x,y).value"), ma
+// esposto qui perche' ExecuteWith (VbaExecutor.cpp) ne ha bisogno
+// DIRETTAMENTE sull'INTERA espressione target di un "With" (es. "With
+// ThisVM.Screen(X,Y)") -- quella Sub deve risolvere a un'ISTANZA, mai
+// a un Value scalare (non esiste alcun campo "finale" da leggere, il
+// "With" stesso e' il passo finale). NULL con "outError" vuoto se
+// "expr" non e' affatto un accesso a struct (es. "With Range(...)",
+// il chiamante allora valuta "expr" come un Value qualunque); NULL
+// con "outError" popolato se ERA un accesso a struct ma non porta a
+// un'istanza valida (es. "With ThisVM.PC", che referenzia un campo
+// scalare, non un'altra struct -- un With su un valore non-oggetto
+// non ha senso neanche nel vero VBA).
+VbaStructInstance* ResolveStructInstanceStep(const VbaExpr* expr, VbaEnvironment* env,
+	std::string* outError);
+
 #endif

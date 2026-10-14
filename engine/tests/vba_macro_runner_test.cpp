@@ -791,6 +791,161 @@ static void TestStructs()
 }
 
 // =======================================================================
+// Parte 2f (Fase 6e): "With" -- esattamente il pattern del CHIP-8 che
+// ha dato il via a questa fase intera ("With ThisVM.Screen(X, Y)" per
+// ogni scrittura di pixel), punta a punta tramite ExecuteVbaMacro: un
+// "With" su una struct, uno su un elemento di un array-di-struct, un
+// "With" ANNIDATO dentro un altro (".Screen(x,y)" che si riferisce al
+// "With" esterno), un "With" su un Range/Cells, e i due errori onesti
+// (un "With" su un campo scalare, non un oggetto; un "." fuori da
+// qualunque "With").
+// =======================================================================
+
+static std::vector<uint8> BuildWithProject()
+{
+	const char* moduleSource =
+		"Private Type ScreenPixel\r\n"
+		"    value As Byte\r\n"
+		"    Dirty As Byte\r\n"
+		"End Type\r\n"
+		"Private Type VM\r\n"
+		"    PC As Long\r\n"
+		"    V(15) As Byte\r\n"
+		"    Screen(63, 31) As ScreenPixel\r\n"
+		"End Type\r\n"
+		"Sub Main()\r\n"
+		"    Dim ThisVM As VM\r\n"
+		"    With ThisVM\r\n"
+		"        .PC = 100\r\n"
+		"        .V(0) = 42\r\n"
+		"    End With\r\n"
+		"    With ThisVM.Screen(2, 3)\r\n"
+		"        .value = 1\r\n"
+		"        .Dirty = 1\r\n"
+		"    End With\r\n"
+		"    With ThisVM.Screen(5, 5)\r\n"
+		"        .value = 9\r\n"
+		"    End With\r\n"
+		"    Cells(1, 1).Value = ThisVM.PC\r\n"
+		"    Cells(2, 1).Value = ThisVM.V(0)\r\n"
+		"    Cells(3, 1).Value = ThisVM.Screen(2, 3).value\r\n"
+		"    Cells(4, 1).Value = ThisVM.Screen(2, 3).Dirty\r\n"
+		"    Cells(5, 1).Value = ThisVM.Screen(5, 5).value\r\n"
+		"    Cells(6, 1).Value = ThisVM.Screen(5, 5).Dirty\r\n" // mai scritta qui: resta 0 (Empty)
+		"End Sub\r\n"
+		"Sub NestedWith()\r\n"
+		"    Dim ThisVM As VM\r\n"
+		"    With ThisVM\r\n"
+		"        .PC = 1\r\n"
+		"        With .Screen(0, 0)\r\n" // ".Screen" si riferisce al With ESTERNO (ThisVM)
+		"            .value = 7\r\n"
+		"        End With\r\n"
+		"    End With\r\n"
+		"    Cells(1, 1).Value = ThisVM.PC\r\n"
+		"    Cells(2, 1).Value = ThisVM.Screen(0, 0).value\r\n"
+		"End Sub\r\n"
+		"Sub WithOnRange()\r\n"
+		"    With Cells(1, 1)\r\n"
+		"        .Value = 55\r\n"
+		"    End With\r\n"
+		"End Sub\r\n"
+		"Sub WithOnScalarFieldIsError()\r\n"
+		"    Dim ThisVM As VM\r\n"
+		"    With ThisVM.PC\r\n"
+		"        x = 1\r\n"
+		"    End With\r\n"
+		"End Sub\r\n"
+		"Sub DotOutsideWithIsError()\r\n"
+		"    .Foo = 1\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(12, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestWith()
+{
+	std::vector<uint8> project = BuildWithProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per \"With\" si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "Main", doc, &err);
+	Check(ok, "\"Main\" usa \"With\" su una struct e su un elemento di un array-di-struct "
+		"(esattamente \"With ThisVM.Screen(X, Y)\" del CHIP-8) senza errori");
+
+	Value v1, v2, v3, v4, v5, v6;
+	doc->GetValue(cell(1, 1), v1);
+	doc->GetValue(cell(1, 2), v2);
+	doc->GetValue(cell(1, 3), v3);
+	doc->GetValue(cell(1, 4), v4);
+	doc->GetValue(cell(1, 5), v5);
+	doc->GetValue(cell(1, 6), v6);
+	Check((double)v1 == 100.0 && (double)v2 == 42.0,
+		"\"With ThisVM\" scrive davvero .PC e .V(0) sulla STESSA istanza dichiarata con Dim");
+	Check((double)v3 == 1.0 && (double)v4 == 1.0,
+		"\"With ThisVM.Screen(2, 3)\" scrive DUE campi sullo stesso elemento risolto una sola volta");
+	Check((double)v5 == 9.0 && (double)v6 == 0.0,
+		"un \"With\" su un ALTRO elemento (5, 5) scrive un pixel DISTINTO, senza toccare (2, 3)");
+	doc->Release();
+
+	{
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		bool ok2 = ExecuteVbaMacro(&project[0], project.size(), "NestedWith", doc2, &err2);
+		Check(ok2, "un \"With\" ANNIDATO dentro un altro esegue senza errori");
+		Value nv1, nv2;
+		doc2->GetValue(cell(1, 1), nv1);
+		doc2->GetValue(cell(1, 2), nv2);
+		Check((double)nv1 == 1.0, "il \"With\" esterno (ThisVM) resta valido durante quello annidato");
+		Check((double)nv2 == 7.0, "\".Screen(0, 0)\" dentro il \"With\" annidato si riferisce "
+			"al target ESTERNO (ThisVM), risolvendo correttamente l'elemento giusto");
+		doc2->Release();
+	}
+
+	{
+		CContainer* doc3 = new CContainer(NULL, NULL);
+		VbaRuntimeError err3;
+		bool ok3 = ExecuteVbaMacro(&project[0], project.size(), "WithOnRange", doc3, &err3);
+		Check(ok3, "un \"With\" su \"Cells(1, 1)\" (un Range, non una struct) esegue senza errori");
+		Value rv;
+		doc3->GetValue(cell(1, 1), rv);
+		Check((double)rv == 55.0, "e \".Value = 55\" scrive davvero sulla cella vera");
+		doc3->Release();
+	}
+
+	{
+		CContainer* doc4 = new CContainer(NULL, NULL);
+		VbaRuntimeError err4;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "WithOnScalarFieldIsError", doc4, &err4),
+			"un \"With\" su un campo SCALARE (\"ThisVM.PC\", non un oggetto) produce un errore "
+			"chiaro, come nel vero VBA");
+		doc4->Release();
+	}
+
+	{
+		CContainer* doc5 = new CContainer(NULL, NULL);
+		VbaRuntimeError err5;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "DotOutsideWithIsError", doc5, &err5),
+			"un \".\" fuori da qualunque \"With\" produce un errore di runtime pulito, non un crash");
+		doc5->Release();
+	}
+}
+
+// =======================================================================
 // Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
 // pensato apposta per provare che questa funzione NON chiama
 // ParseVbaSub (un "ByRef" su un parametro, fuori da questo
@@ -876,6 +1031,7 @@ int main()
 	TestSiblingFunctionCall();
 	TestArrays();
 	TestStructs();
+	TestWith();
 	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

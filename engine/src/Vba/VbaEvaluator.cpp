@@ -286,11 +286,25 @@ static bool EvalStructFieldFlatIndex(const VbaExpr* expr, VbaEnvironment* env,
 // un tentativo di accesso a struct poi fallito, mai per un "non e'
 // questo il caso" silenzioso (il chiamante lo distingue controllando se
 // "outError" e' vuoto).
-static VbaStructInstance* ResolveStructInstanceStep(const VbaExpr* expr, VbaEnvironment* env,
+VbaStructInstance* ResolveStructInstanceStep(const VbaExpr* expr, VbaEnvironment* env,
 	std::string* outError)
 {
 	if (expr->kind == vbaExprVariable)
 		return env->GetStruct(expr->name); // caso base, NULL se non e' affatto una struct dichiarata
+
+	if (expr->kind == vbaExprWithImplicitTarget)
+	{
+		// Fase 6e: ".Nome" dentro un "With" -- caso base alternativo,
+		// stesso principio di vbaExprVariable sopra ma leggendo dalla
+		// pila dei "With" attivi invece che da una variabile per nome.
+		const VbaWithTarget* top = env->GetCurrentWithTarget();
+		if (!top)
+		{
+			*outError = "\".\" fuori da un blocco \"With\"";
+			return NULL;
+		}
+		return top->isStruct ? top->structInstance : NULL; // NULL (nessun errore) se il With e' su un Value
+	}
 
 	const VbaExpr* stepTarget = NULL;
 	if (expr->kind == vbaExprCall && expr->target)
@@ -447,6 +461,8 @@ private:
 				return EvalCall(expr);
 			case vbaExprPropertyAccess:
 				return EvalPropertyAccess(expr);
+			case vbaExprWithImplicitTarget:
+				return EvalWithImplicitTarget(expr);
 		}
 		SetError("tipo di espressione sconosciuto", expr->line);
 		return Value(0.0);
@@ -473,6 +489,34 @@ private:
 			return Value(0.0);
 		}
 		return *v;
+	}
+
+	// Fase 6e: un ".Nome" dentro un "With" si risolve PRIMA come
+	// possibile accesso a struct (ResolveStructScalarField/
+	// ResolveStructInstanceStep, chiamati da EvalCall/EvalPropertyAccess
+	// prima di arrivare qui) -- se "expr" (il segnaposto nudo) arriva
+	// fino a EvalNode, vuol dire che il "With" attivo e' su un Value
+	// semplice (es. "With Range(\"A1\")"), non su una struct: si legge
+	// il valore cacheato una volta sola all'ingresso del blocco (vedi
+	// ExecuteWith in VbaExecutor.cpp), MAI ri-valutando il target.
+	Value EvalWithImplicitTarget(const VbaExpr* expr)
+	{
+		const VbaWithTarget* top = fEnv->GetCurrentWithTarget();
+		if (!top)
+		{
+			SetError("\".\" fuori da un blocco \"With\"", expr->line);
+			return Value(0.0);
+		}
+		if (top->isStruct)
+		{
+			// Difensivo, non dovrebbe capitare mai in pratica: se il
+			// target e' una struct, ResolveStructInstanceStep l'avrebbe
+			// gia' intercettato prima di arrivare qui (vedi sopra).
+			SetError("il target di \"With\" e' un'istanza di tipo definito dall'utente, "
+				"non un valore scalare -- accedi a un suo campo con \".\"", expr->line);
+			return Value(0.0);
+		}
+		return top->value;
 	}
 
 	Value EvalUnary(const VbaExpr* expr)

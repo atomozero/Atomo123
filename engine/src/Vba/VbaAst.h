@@ -35,6 +35,18 @@ enum VbaExprKind {
 	                        // (es. Range("A1").Value): per una chiamata CON argomenti dopo il punto
 	                        // (rara in questo sottoinsieme) il chiamante compone un vbaExprCall con
 	                        // target come proprio "target" invece
+	vbaExprWithImplicitTarget, // Fase 6e: un "." SENZA niente prima (es. ".Value" dentro un blocco
+	                            // "With") -- un segnaposto senza nome/figli, risolto a RUNTIME
+	                            // (VbaEvaluator.cpp) in base al "With" piu' vicino ancora attivo
+	                            // (VbaEnvironment::GetCurrentWithTarget), non clonando l'albero del
+	                            // target del "With" al momento del parsing: compare SEMPRE come
+	                            // "target" di un vbaExprCall/vbaExprPropertyAccess che lo avvolge
+	                            // (ParsePostfix in VbaExprParser.cpp lo tratta come una "base"
+	                            // qualunque), mai da solo. Un "." fuori da qualunque "With" e' un
+	                            // errore di RUNTIME pulito (nessun "With" attivo), non un errore di
+	                            // sintassi -- vedi ROADMAP.md Fase 6e sul perche' questa scelta
+	                            // evita di dover far attraversare un contesto "With" corrente a
+	                            // ogni punto di chiamata del parser delle espressioni.
 };
 
 struct VbaExpr {
@@ -95,6 +107,16 @@ enum VbaStmtKind {
 	                     // stessa istruzione e' un errore di sintassi, non un'ambiguita'
 	                     // risolta a caso.
 	vbaStmtExitDo,
+	vbaStmtWith,       // With expr body End With -- "expr" in "target", il corpo in "body" (stessi
+	                     // campi di If/For, nessun campo nuovo). ".Nome" dentro "body" e' un
+	                     // vbaExprPropertyAccess/vbaExprCall con "target" = vbaExprWithImplicitTarget
+	                     // (vedi sopra); l'esecutore (VbaExecutor.cpp) valuta "target" UNA VOLTA
+	                     // sola all'ingresso (Range/scalare) O lo risolve a un'istanza di struct
+	                     // (Fase 6d, es. "With ThisVM.Screen(X,Y)"), lo mette in cima alla pila dei
+	                     // With attivi di VbaEnvironment per tutta la durata di "body", poi lo
+	                     // rimuove in uscita -- annidare piu' "With" funziona per costruzione
+	                     // (una pila), un "." fa sempre riferimento al PIU' VICINO, mai a uno
+	                     // esterno, come nel vero VBA.
 };
 
 struct VbaStmt; // completa piu' sotto -- serve solo per unique_ptr<VbaStmt> qui

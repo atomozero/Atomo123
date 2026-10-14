@@ -80,6 +80,30 @@ struct VbaStructInstance {
 	VbaStructField* FindField(const std::string& name);
 };
 
+// Fase 6e: il target di UN "With" attivo -- valutato UNA SOLA VOLTA
+// all'ingresso del blocco (VbaExecutor.cpp, ExecuteWith), non ad ogni
+// ".Nome" al suo interno, esattamente come il vero VBA. "isStruct"
+// scegie quale dei due campi e' valido, stesso principio di
+// VbaStructField sopra:
+//   !isStruct -> value            (es. "With Range(\"A1\")", un
+//                                   Range/scalare qualunque)
+//    isStruct -> structInstance   (es. "With ThisVM" o "With
+//                                   ThisVM.Screen(X,Y)", un puntatore
+//                                   in prestito dentro lo storage GIA'
+//                                   esistente di una variabile struct
+//                                   -- mai posseduto qui, stabile per
+//                                   tutta la durata del blocco perche'
+//                                   questo sottoinsieme non supporta
+//                                   ridimensionare/sovrascrivere un
+//                                   array-di-struct a meta' esecuzione)
+struct VbaWithTarget {
+	bool isStruct;
+	Value value;
+	VbaStructInstance* structInstance;
+
+	VbaWithTarget() : isStruct(false), value(0.0), structInstance(NULL) {}
+};
+
 class VbaEnvironment {
 public:
 	VbaEnvironment() : fActiveDoc(NULL), fModuleTokens(NULL), fCallDepth(0), fTypeRegistry(NULL) {}
@@ -192,6 +216,24 @@ public:
 	VbaStructInstance* GetStruct(const std::string& name);
 	const VbaStructInstance* GetStruct(const std::string& name) const;
 
+	// Fase 6e: la pila dei "With" ancora attivi -- "PushWithTarget" si
+	// chiama all'ingresso del blocco, "PopWithTarget" all'uscita
+	// (ExecuteWith in VbaExecutor.cpp), SEMPRE in coppia, anche quando
+	// il corpo del "With" termina con un errore (altrimenti un "With"
+	// rimasto a meta' sporcherebbe l'esecuzione di cio' che segue).
+	// Annidare piu' "With" funziona per costruzione: ogni nuovo blocco
+	// si impila sul precedente, "GetCurrentWithTarget" legge sempre
+	// quello in CIMA (il piu' vicino), mai uno esterno -- stesso
+	// comportamento del vero VBA. NULL se nessun "With" e' attivo (un
+	// "." fuori da qualunque "With" e' allora un errore di runtime
+	// pulito, vedi VbaEvaluator.cpp).
+	void PushWithTarget(const VbaWithTarget& target) { fWithStack.push_back(target); }
+	void PopWithTarget() { fWithStack.pop_back(); }
+	const VbaWithTarget* GetCurrentWithTarget() const
+	{
+		return fWithStack.empty() ? NULL : &fWithStack.back();
+	}
+
 private:
 	static std::string NormalizeName(const std::string& name);
 
@@ -207,6 +249,7 @@ private:
 	const std::vector<VbaToken>* fModuleTokens;
 	int fCallDepth;
 	const std::map<std::string, VbaTypeDecl>* fTypeRegistry;
+	std::vector<VbaWithTarget> fWithStack;
 };
 
 #endif
