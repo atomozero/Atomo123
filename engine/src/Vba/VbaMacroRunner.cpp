@@ -165,8 +165,66 @@ bool FindAllVbaTypeDecls(const std::vector<VbaToken>& tokens,
 	return true;
 }
 
+void FindAllVbaModuleLevelDims(const std::vector<VbaToken>& tokens,
+	std::vector<std::unique_ptr<VbaStmt>>* outStmts)
+{
+	outStmts->clear();
+	size_t pos = 0;
+	while (pos < tokens.size())
+	{
+		while (pos < tokens.size() && tokens[pos].type == vbaTokNewline)
+			pos++;
+		if (pos >= tokens.size() || tokens[pos].type == vbaTokEnd)
+			break;
+
+		if (tokens[pos].type == vbaTokKeyword
+			&& (tokens[pos].text == "Sub" || tokens[pos].text == "Function"
+				|| tokens[pos].text == "Type"))
+		{
+			// Una variabile di modulo non puo' comparire dentro una
+			// Sub/Function/Type: si salta l'intero blocco SENZA
+			// analizzarlo, stesso trucco "End" + parola chiave
+			// corrispondente di FindAllVbaTypeDecls sopra (i Type
+			// stessi sono gia' raccolti a parte da quella funzione,
+			// qui si salta solo per non confondere un loro campo con
+			// una variabile di modulo).
+			std::string endKeyword = tokens[pos].text;
+			pos++;
+			while (pos + 1 < tokens.size() && !(tokens[pos].type == vbaTokKeyword
+				&& tokens[pos].text == "End" && tokens[pos + 1].type == vbaTokKeyword
+				&& tokens[pos + 1].text == endKeyword))
+				pos++;
+			pos = (pos + 1 < tokens.size()) ? pos + 2 : tokens.size();
+			continue;
+		}
+		if (tokens[pos].type == vbaTokKeyword && tokens[pos].text == "Dim")
+		{
+			size_t before = pos;
+			VbaParseError localError;
+			std::vector<std::unique_ptr<VbaStmt>> group;
+			if (ParseVbaDimStatementList(tokens, pos, &localError, &group))
+			{
+				for (size_t i = 0; i < group.size(); i++)
+					outStmts->push_back(std::move(group[i]));
+			}
+			else
+			{
+				// Sintassi fuori da questo sottoinsieme su UN gruppo
+				// "Dim" di modulo -- si salta solo in avanti di un
+				// token dal punto di partenza e si riprova (questa
+				// funzione non fallisce MAI, vedi VbaMacroRunner.h),
+				// stesso spirito di "Attribute VB_Name = ..." sotto.
+				pos = before + 1;
+			}
+			continue;
+		}
+		pos++; // "Attribute VB_Name = ...", "Private"/"Public" davanti, "Option Explicit", ecc.
+	}
+}
+
 bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
-	const std::string& macroName, CContainer* doc, VbaRuntimeError* outError)
+	const std::string& macroName, CContainer* doc, VbaRuntimeError* outError,
+	VbaEnvironment* persistentModuleEnv)
 {
 	std::vector<VbaModuleSource> modules;
 	if (!ExtractVbaModuleSources(vbaProjectData, vbaProjectLen, &modules))
@@ -200,6 +258,21 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 		if (!FindAllVbaTypeDecls(tokens, &types, &typeError))
 			continue;
 
+		// Stato di modulo persistente (trovato controllando il
+		// sorgente reale del CHIP-8 -- vedi ROADMAP.md): "env" e'
+		// SEMPRE nuovo a ogni chiamata (le variabili LOCALI di una Sub
+		// -- comprese quelle mai dichiarate con "Dim", solo assegnate
+		// -- non devono MAI persistere da una chiamata all'altra,
+		// esattamente come nel vero VBA, dove sono "procedure-level").
+		// Solo se il chiamante passa un ambiente ESTERNO, "env" lo
+		// collega come proprio FALLBACK (VbaEnvironment::
+		// SetModuleEnvironment): Find/Set/IsArray/IsStruct/GetStruct/
+		// *ArrayElement cercano prima qui, localmente, e SOLO se
+		// assente ricadono su quell'ambiente -- una variabile di
+		// modulo come "ThisVM" resta quindi visibile e modificabile
+		// da ogni Sub, ma una variabile locale con lo stesso nome di
+		// una di modulo la oscura comunque per tutta la chiamata,
+		// come dovrebbe.
 		VbaEnvironment env;
 		env.SetActiveDocument(doc);
 		// Fase 6a: collega i token di QUESTO modulo all'ambiente, cosi'
@@ -210,6 +283,45 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 		// chiamate a Sub annidate.
 		env.SetModuleTokens(&tokens);
 		env.SetTypeRegistry(&types); // Fase 6d, stesso principio di SetModuleTokens
+		env.SetCallDepth(0);
+
+		if (persistentModuleEnv)
+		{
+			env.SetModuleEnvironment(persistentModuleEnv);
+			// ExecuteDimDeclaration (sotto) legge GetTypeRegistry() per
+			// risolvere un eventuale "As NomeTipo" -- "persistentModuleEnv"
+			// non ha il SUO (vive piu' a lungo di "types", che e' locale
+			// a QUESTA chiamata): glielo si presta per la durata di questa
+			// sola chiamata, stesso "types" gia' collegato a "env" sopra.
+			persistentModuleEnv->SetTypeRegistry(&types);
+
+			// "Dim ThisVM As VM" a livello di modulo si inizializza
+			// una SOLA volta per sessione (non a ogni "Esegui macro"):
+			// DIRETTAMENTE dentro "persistentModuleEnv" (mai "env",
+			// che e' locale e sparisce con questa chiamata), e SOLO se
+			// non e' gia' presente LI' -- un secondo "Esegui macro"
+			// sullo stesso modulo deve trovare la variabile come l'ha
+			// lasciata l'esecuzione precedente, mai azzerata di nuovo
+			// (a differenza di un "Dim" dentro una Sub, che azzera
+			// sempre, vedi ExecuteDimDeclaration/VbaExecutor.cpp --
+			// qui si evita di richiamarlo affatto quando gia' presente
+			// a livello di modulo).
+			std::vector<std::unique_ptr<VbaStmt>> moduleDims;
+			FindAllVbaModuleLevelDims(tokens, &moduleDims);
+			for (size_t d = 0; d < moduleDims.size(); d++)
+			{
+				const VbaStmt* dimStmt = moduleDims[d].get();
+				bool alreadyDeclared = persistentModuleEnv->Find(dimStmt->varName) != NULL
+					|| persistentModuleEnv->IsArray(dimStmt->varName)
+					|| persistentModuleEnv->IsStruct(dimStmt->varName);
+				if (!alreadyDeclared)
+				{
+					VbaRuntimeError dimErr; // un errore qui non e' fatale per QUESTA macro: si
+					ExecuteDimDeclaration(dimStmt, persistentModuleEnv, &dimErr); // ignora, vedi .h
+				}
+			}
+		}
+
 		return ExecuteVbaSub(sub.get(), &env, outError);
 	}
 

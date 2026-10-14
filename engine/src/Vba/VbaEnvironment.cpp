@@ -29,13 +29,32 @@ void VbaEnvironment::Declare(const std::string& name)
 
 const Value* VbaEnvironment::Find(const std::string& name) const
 {
-	std::map<std::string, Value>::const_iterator it = fVars.find(NormalizeName(name));
-	return it == fVars.end() ? NULL : &it->second;
+	std::string key = NormalizeName(name);
+	std::map<std::string, Value>::const_iterator it = fVars.find(key);
+	if (it != fVars.end())
+		return &it->second;
+	// Stato di modulo persistente: ricade sul modulo SOLO se "name"
+	// non esiste affatto qui a livello locale -- un "Dim" locale (o
+	// una prima assegnazione locale) nasconde sempre una variabile di
+	// modulo omonima per tutta la chiamata, come nel vero VBA.
+	return fModuleEnv ? fModuleEnv->Find(name) : NULL;
 }
 
 void VbaEnvironment::Set(const std::string& name, const Value& value)
 {
-	fVars[NormalizeName(name)] = value;
+	std::string key = NormalizeName(name);
+	if (fVars.find(key) == fVars.end() && fModuleEnv
+		&& fModuleEnv->fVars.find(key) != fModuleEnv->fVars.end())
+	{
+		// Esiste SOLO a livello di modulo (nessun "Dim" locale
+		// l'ha mai oscurata in questa chiamata): scrive LI', non in
+		// una nuova variabile locale -- "x = 5" su una variabile di
+		// modulo la modifica davvero, visibile anche dalle altre
+		// Sub, esattamente come nel vero VBA.
+		fModuleEnv->fVars[key] = value;
+		return;
+	}
+	fVars[key] = value; // esiste gia' localmente, o non esiste in nessuno dei due: locale (nuova se serve)
 }
 
 // Appiattisce "indices" (uno per asse) in un unico indice nel vettore
@@ -72,7 +91,13 @@ void VbaEnvironment::DeclareArray(const std::string& name, const std::vector<int
 
 bool VbaEnvironment::IsArray(const std::string& name) const
 {
-	return fArrays.find(NormalizeName(name)) != fArrays.end();
+	if (fArrays.find(NormalizeName(name)) != fArrays.end())
+		return true;
+	// Un array si dichiara SEMPRE con "Dim" (mai implicitamente, a
+	// differenza di una variabile scalare): se non e' qui, non c'e'
+	// alcuna ambiguita' locale/modulo da risolvere, si delega di
+	// peso al modulo.
+	return fModuleEnv && fModuleEnv->IsArray(name);
 }
 
 const Value* VbaEnvironment::GetArrayElement(const std::string& name,
@@ -80,7 +105,7 @@ const Value* VbaEnvironment::GetArrayElement(const std::string& name,
 {
 	std::map<std::string, VbaArrayStorage>::const_iterator it = fArrays.find(NormalizeName(name));
 	if (it == fArrays.end())
-		return NULL;
+		return fModuleEnv ? fModuleEnv->GetArrayElement(name, indices) : NULL;
 	size_t flat;
 	if (!ComputeFlatArrayIndex(it->second.dims, indices, &flat))
 		return NULL;
@@ -92,7 +117,7 @@ bool VbaEnvironment::SetArrayElement(const std::string& name, const std::vector<
 {
 	std::map<std::string, VbaArrayStorage>::iterator it = fArrays.find(NormalizeName(name));
 	if (it == fArrays.end())
-		return false;
+		return fModuleEnv ? fModuleEnv->SetArrayElement(name, indices, value) : false;
 	size_t flat;
 	if (!ComputeFlatArrayIndex(it->second.dims, indices, &flat))
 		return false;
@@ -116,17 +141,26 @@ void VbaEnvironment::DeclareStruct(const std::string& name, VbaStructInstance&& 
 
 bool VbaEnvironment::IsStruct(const std::string& name) const
 {
-	return fStructs.find(NormalizeName(name)) != fStructs.end();
+	if (fStructs.find(NormalizeName(name)) != fStructs.end())
+		return true;
+	// Stessa ragione di IsArray sopra: una struct si dichiara SEMPRE
+	// con "Dim", mai implicitamente -- nessuna ambiguita' locale/
+	// modulo da risolvere, si delega di peso al modulo.
+	return fModuleEnv && fModuleEnv->IsStruct(name);
 }
 
 VbaStructInstance* VbaEnvironment::GetStruct(const std::string& name)
 {
 	std::map<std::string, VbaStructInstance>::iterator it = fStructs.find(NormalizeName(name));
-	return it == fStructs.end() ? NULL : &it->second;
+	if (it != fStructs.end())
+		return &it->second;
+	return fModuleEnv ? fModuleEnv->GetStruct(name) : NULL;
 }
 
 const VbaStructInstance* VbaEnvironment::GetStruct(const std::string& name) const
 {
 	std::map<std::string, VbaStructInstance>::const_iterator it = fStructs.find(NormalizeName(name));
-	return it == fStructs.end() ? NULL : &it->second;
+	if (it != fStructs.end())
+		return &it->second;
+	return fModuleEnv ? fModuleEnv->GetStruct(name) : NULL;
 }

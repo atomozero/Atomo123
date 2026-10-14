@@ -1633,6 +1633,7 @@ MainWindow::MainWindow()
 	fGoalSeekWindow = NULL;
 	fMacroListWindow = NULL;
 	fMacrosTrustedThisSession = false;
+	fPersistentVbaModuleEnv = NULL;
 	fNamedStyleWindow = NULL;
 	fConditionalFormatWindow = NULL;
 	fPasswordWindow = NULL;
@@ -1654,6 +1655,7 @@ MainWindow::~MainWindow()
 	delete fFooterProgressPulseRunner;
 	delete fOpenPanel;
 	delete fSavePanel;
+	delete fPersistentVbaModuleEnv;
 	if (fFindWindow)
 	{
 		// FindWindow::QuitRequested() la nasconde soltanto (per
@@ -1814,6 +1816,11 @@ void MainWindow::ResetWorkbook(const char* name)
 	// Un documento nuovo non ha mai macro da fidarsi: vedi il commento
 	// su fMacrosTrustedThisSession in MainWindow.h.
 	fMacrosTrustedThisSession = false;
+	// Un documento nuovo e' anche un progetto VBA NUOVO: lo stato di
+	// modulo persistente di quello precedente (vedi il commento su
+	// fPersistentVbaModuleEnv sopra) non ha alcun senso qui.
+	delete fPersistentVbaModuleEnv;
+	fPersistentVbaModuleEnv = NULL;
 
 	AscdSheet sheet;
 	sheet.name = name;
@@ -2798,6 +2805,11 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	// asincrono) su fMacrosTrustedThisSession: un documento DIVERSO,
 	// mai fiducia nelle macro riportata da prima.
 	fMacrosTrustedThisSession = false;
+	// Stesso principio per lo stato di modulo persistente (vedi il
+	// commento su fPersistentVbaModuleEnv in MainWindow.h): un
+	// documento diverso e' un progetto VBA diverso.
+	delete fPersistentVbaModuleEnv;
+	fPersistentVbaModuleEnv = NULL;
 	fActiveSheetIndex = 0;
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
@@ -3132,6 +3144,10 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	// qui, PRIMA del prompt piu' sotto che lo imposta a true se
 	// l'utente accetta.
 	fMacrosTrustedThisSession = false;
+	// Stesso principio per lo stato di modulo persistente (vedi il
+	// commento su fPersistentVbaModuleEnv in MainWindow.h).
+	delete fPersistentVbaModuleEnv;
+	fPersistentVbaModuleEnv = NULL;
 	fActiveSheetIndex = 0;
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
@@ -6230,8 +6246,18 @@ void MainWindow::RunVbaMacro(const char* name)
 	if (!vbaProject || vbaProject->empty() || !fMacrosTrustedThisSession)
 		return; // non dovrebbe capitare: ShowMacroListWindow gia' controlla entrambi
 
+	// Stato di modulo persistente (vedi il commento su
+	// fPersistentVbaModuleEnv in MainWindow.h): creato alla PRIMA
+	// "Esegui macro" di questa cartella, riusato cosi' com'e' per ogni
+	// chiamata successiva -- "Dim ThisVM As VM" a livello di modulo in
+	// un vero vbaProject.bin si inizializza quindi una SOLA volta per
+	// sessione, non a ogni clic, esattamente come il vero VBA.
+	if (!fPersistentVbaModuleEnv)
+		fPersistentVbaModuleEnv = new VbaEnvironment();
+
 	VbaRuntimeError err;
-	bool ok = ExecuteVbaMacro(&(*vbaProject)[0], vbaProject->size(), name, fDoc, &err);
+	bool ok = ExecuteVbaMacro(&(*vbaProject)[0], vbaProject->size(), name, fDoc, &err,
+		fPersistentVbaModuleEnv);
 	if (!ok)
 	{
 		BString msg;

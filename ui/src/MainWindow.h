@@ -56,6 +56,7 @@ class WhatIfWindow;
 class ScenarioWindow;
 class GoalSeekWindow;
 class MacroListWindow;
+class VbaEnvironment;
 class NamedStyleWindow;
 class ConditionalFormatWindow;
 class PasswordWindow;
@@ -960,6 +961,19 @@ private:
 	GoalSeekWindow* fGoalSeekWindow;
 	MacroListWindow* fMacroListWindow;
 	bool fMacrosTrustedThisSession;
+	// Stato di modulo VBA PERSISTENTE (trovato controllando un vero
+	// progetto reale che dichiara "Dim ThisVM As VM" a livello di
+	// modulo, condiviso da ogni Sub -- vedi ROADMAP.md): un secondo
+	// "Esegui macro" deve trovare le variabili di modulo come le ha
+	// lasciate l'esecuzione precedente, non azzerate di nuovo (vero
+	// VBA: una variabile di modulo vive quanto la cartella aperta, non
+	// quanto UNA chiamata a macro). Puntatore (non un valore diretto:
+	// VbaEnvironment non e' completo qui, solo dichiarato in avanti --
+	// vedi RunVbaMacro in MainWindow.cpp per dove si crea/ricrea),
+	// azzerato ogni volta che si apre un file NUOVO (OpenFile) -- un
+	// nuovo "progetto VBA", stesso principio del vero Excel che
+	// ripulisce lo stato dei moduli alla (ri)apertura di una cartella.
+	VbaEnvironment* fPersistentVbaModuleEnv;
 	// Esito dell'ultima ScriptedRunGoalSeek (vedi li'), letto da
 	// ScriptedGetGoalSeek -- "" se mai eseguita in questa sessione,
 	// altrimenti "true,<valore>" o "false,<valore>".

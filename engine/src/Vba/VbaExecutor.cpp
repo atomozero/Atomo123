@@ -96,6 +96,52 @@ static bool BuildVbaStructInstance(const std::string& typeName,
 	return true;
 }
 
+} // namespace
+
+// Esegue UN "Dim" (un singolo vbaStmtDim, gia' espanso da "Dim a, b,
+// c" se serve -- vedi ParseDimStatementList) dentro "env": scalare,
+// array (Fase 6c) o istanza di Type (Fase 6d), a seconda di
+// "asTypeName"/"arrayDims". Esposta (non piu' solo il corpo del
+// "case vbaStmtDim" dentro Executor::ExecuteStmt) perche' serve anche
+// a chi inizializza le variabili dichiarate a LIVELLO DI MODULO prima
+// di eseguire una Sub (ExecuteVbaMacro, stato persistente -- vedi
+// ROADMAP.md), non solo all'esecutore delle istruzioni dentro una Sub.
+bool ExecuteDimDeclaration(const VbaStmt* stmt, VbaEnvironment* env, VbaRuntimeError* outError)
+{
+	const std::map<std::string, VbaTypeDecl>* registry = env->GetTypeRegistry();
+	bool isUserType = registry && !stmt->asTypeName.empty()
+		&& registry->find(LowercaseTypeName(stmt->asTypeName)) != registry->end();
+	if (isUserType)
+	{
+		if (!stmt->arrayDims.empty())
+		{
+			// Limite onesto (vedi ROADMAP.md Fase 6d): un array di UDT
+			// e' supportato SOLO come campo di un altro Type (es.
+			// "Screen(63,31) As ScreenPixel"), non come "Dim" diretto.
+			outError->message = "un array di un tipo definito dall'utente via \"Dim\" non e' "
+				"supportato in questo sottoinsieme (solo come campo di un altro Type)";
+			outError->line = stmt->line;
+			return false;
+		}
+		VbaStructInstance instance;
+		std::string buildErr;
+		if (!BuildVbaStructInstance(stmt->asTypeName, *registry, &instance, 0, &buildErr))
+		{
+			outError->message = buildErr;
+			outError->line = stmt->line;
+			return false;
+		}
+		env->DeclareStruct(stmt->varName, std::move(instance));
+	}
+	else if (stmt->arrayDims.empty())
+		env->Declare(stmt->varName);
+	else
+		env->DeclareArray(stmt->varName, stmt->arrayDims); // Fase 6c
+	return true;
+}
+
+namespace {
+
 // Come si e' appena fermata l'esecuzione di una lista di istruzioni:
 // in fondo normalmente, per un "Exit For" (il ciclo For/For Each PIU'
 // VICINO lo intercetta e lo trasforma in execNormal -- vedi il
@@ -173,42 +219,12 @@ private:
 		{
 			case vbaStmtDim:
 			{
-				// Fase 6d: "Dim nome As NomeTipo" dove "NomeTipo" e' un
-				// Type definito dall'utente (non un tipo scalare
-				// incorporato come Byte/Long/Integer/...) -- risolto a
-				// RUNTIME, non al parsing (il registro dei tipi del
-				// modulo non e' ancora pronto quando si analizza la
-				// singola Sub, vedi ExecuteVbaMacro/FindAllVbaTypeDecls
-				// in VbaMacroRunner.cpp).
-				const std::map<std::string, VbaTypeDecl>* registry = fEnv->GetTypeRegistry();
-				bool isUserType = registry && !stmt->asTypeName.empty()
-					&& registry->find(LowercaseTypeName(stmt->asTypeName)) != registry->end();
-				if (isUserType)
+				VbaRuntimeError dimErr;
+				if (!ExecuteDimDeclaration(stmt, fEnv, &dimErr))
 				{
-					if (!stmt->arrayDims.empty())
-					{
-						// Limite onesto (vedi ROADMAP.md Fase 6d): un
-						// array di UDT e' supportato SOLO come campo di
-						// un altro Type (es. "Screen(63,31) As
-						// ScreenPixel"), non come "Dim" diretto.
-						SetError("un array di un tipo definito dall'utente via \"Dim\" non e' "
-							"supportato in questo sottoinsieme (solo come campo di un altro Type)",
-							stmt->line);
-						return execError;
-					}
-					VbaStructInstance instance;
-					std::string buildErr;
-					if (!BuildVbaStructInstance(stmt->asTypeName, *registry, &instance, 0, &buildErr))
-					{
-						SetError(buildErr, stmt->line);
-						return execError;
-					}
-					fEnv->DeclareStruct(stmt->varName, std::move(instance));
+					SetError(dimErr.message, dimErr.line);
+					return execError;
 				}
-				else if (stmt->arrayDims.empty())
-					fEnv->Declare(stmt->varName);
-				else
-					fEnv->DeclareArray(stmt->varName, stmt->arrayDims); // Fase 6c
 				return execNormal;
 			}
 

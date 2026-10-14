@@ -39,4 +39,14 @@
 // questo e' l'unico posto dove la verifica puo' avvenire).
 bool ExecuteVbaSub(const VbaSub* sub, VbaEnvironment* env, VbaRuntimeError* outError);
 
+// Esegue UN "Dim" (scalare, array -- Fase 6c, o istanza di Type --
+// Fase 6d) dentro "env", lo stesso codice usato internamente da
+// ExecuteVbaSub per ogni vbaStmtDim del corpo di una Sub -- esposta
+// qui perche' serve anche a chi inizializza le variabili dichiarate a
+// LIVELLO DI MODULO prima di eseguire una macro (VbaMacroRunner.cpp,
+// stato persistente), non solo all'interno dell'esecuzione di una
+// singola Sub. Vero in caso di successo; falso con "outError"
+// popolato altrimenti -- stesse categorie di ExecuteVbaSub.
+bool ExecuteDimDeclaration(const VbaStmt* stmt, VbaEnvironment* env, VbaRuntimeError* outError);
+
 #endif

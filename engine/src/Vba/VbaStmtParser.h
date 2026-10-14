@@ -38,4 +38,16 @@ std::unique_ptr<VbaSub> ParseVbaSub(const std::vector<VbaToken>& tokens, size_t&
 std::unique_ptr<VbaTypeDecl> ParseVbaTypeDecl(const std::vector<VbaToken>& tokens, size_t& pos,
 	VbaParseError* outError);
 
+// Stesso principio, per "Dim nome1[(limiti)] [As Tipo1], nome2...,
+// ..." a partire da tokens[pos] (che deve gia' essere la parola
+// chiave "Dim"). Un solo "Dim" del vero VBA, ma PIU' di un VbaStmt
+// qui (uno per dichiaratore, nessun nodo "lista" dedicato -- vedi
+// VbaStmtParser.cpp): "outStmts" riceve ogni dichiaratore come un
+// vbaStmtDim indipendente, nell'ordine scritto. Esposta separatamente
+// dall'uso normale dentro ParseStatementList perche' serve anche a
+// chi scandisce le variabili dichiarate a LIVELLO DI MODULO
+// (VbaMacroRunner.h, stato persistente), fuori da qualunque Sub.
+bool ParseVbaDimStatementList(const std::vector<VbaToken>& tokens, size_t& pos,
+	VbaParseError* outError, std::vector<std::unique_ptr<VbaStmt>>* outStmts);
+
 #endif

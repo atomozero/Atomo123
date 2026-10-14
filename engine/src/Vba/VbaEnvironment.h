@@ -106,7 +106,8 @@ struct VbaWithTarget {
 
 class VbaEnvironment {
 public:
-	VbaEnvironment() : fActiveDoc(NULL), fModuleTokens(NULL), fCallDepth(0), fTypeRegistry(NULL) {}
+	VbaEnvironment()
+		: fActiveDoc(NULL), fModuleTokens(NULL), fCallDepth(0), fTypeRegistry(NULL), fModuleEnv(NULL) {}
 
 	// Il foglio di calcolo (CContainer) su cui questa esecuzione lavora
 	// -- Fase 3c, modello a oggetti Excel: Range/Cells lo usano per
@@ -234,6 +235,28 @@ public:
 		return fWithStack.empty() ? NULL : &fWithStack.back();
 	}
 
+	// Stato di modulo persistente (trovato controllando il sorgente
+	// reale del CHIP-8, "Dim ThisVM As VM" a LIVELLO DI MODULO --
+	// vedi ROADMAP.md e VbaMacroRunner.h su ExecuteVbaMacro): un
+	// puntatore in prestito, mai posseduto, a un ALTRO VbaEnvironment
+	// che vive PIU' a lungo di questo (una sessione intera, non una
+	// singola chiamata) e contiene SOLO le variabili dichiarate a
+	// livello di modulo. Find/IsArray/IsStruct/GetStruct/
+	// GetArrayElement cercano PRIMA in questo ambiente (le variabili
+	// LOCALI, incluse quelle dichiarate con un "Dim" dentro la Sub, che
+	// oscurano sempre una di modulo omonima per tutta la chiamata, come
+	// nel vero VBA) e SOLO se assenti qui ricadono su "fModuleEnv";
+	// Set/SetArrayElement scrivono LOCALMENTE se il nome esiste gia'
+	// localmente, altrimenti nel modulo se esiste LI', altrimenti
+	// creano una nuova variabile locale (mai promossa per sbaglio a
+	// modulo) -- esattamente la stessa regola del vero VBA.
+	// "Declare"/"DeclareArray"/"DeclareStruct" (un "Dim" vero e proprio)
+	// restano SEMPRE e SOLO locali, NON consultano "fModuleEnv": un
+	// "Dim" dentro una Sub crea sempre una variabile locale nuova,
+	// anche quando oscura una di modulo con lo stesso nome.
+	void SetModuleEnvironment(VbaEnvironment* moduleEnv) { fModuleEnv = moduleEnv; }
+	VbaEnvironment* GetModuleEnvironment() const { return fModuleEnv; }
+
 private:
 	static std::string NormalizeName(const std::string& name);
 
@@ -250,6 +273,7 @@ private:
 	int fCallDepth;
 	const std::map<std::string, VbaTypeDecl>* fTypeRegistry;
 	std::vector<VbaWithTarget> fWithStack;
+	VbaEnvironment* fModuleEnv;
 };
 
 #endif

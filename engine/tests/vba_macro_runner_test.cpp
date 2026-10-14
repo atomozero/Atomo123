@@ -1082,6 +1082,160 @@ static void TestInteriorColor()
 }
 
 // =======================================================================
+// Parte 2h: stato di modulo PERSISTENTE -- trovato controllando il
+// sorgente reale del CHIP-8 (github.com/rndtrash/chip-8-vba), che
+// dichiara "Dim ThisVM As VM" a LIVELLO DI MODULO, condiviso da ogni
+// Sub. Punta a punta tramite ExecuteVbaMacro con lo stesso
+// VbaEnvironment passato a chiamate SEPARATE (simula due clic
+// successivi su "Esegui macro"): la variabile di modulo deve
+// persistere; una variabile LOCALE (con o senza "Dim" esplicito) non
+// deve MAI farlo, nemmeno quando oscura una di modulo omonima.
+// =======================================================================
+
+static std::vector<uint8> BuildPersistentStateProject()
+{
+	const char* moduleSource =
+		"Private Type ScreenPixel\r\n"
+		"    value As Byte\r\n"
+		"End Type\r\n"
+		"Private Type VM\r\n"
+		"    PC As Long\r\n"
+		"    Screen(3, 3) As ScreenPixel\r\n"
+		"End Type\r\n"
+		"Dim ThisVM As VM\r\n"       // livello di modulo, FUORI da qualunque Sub
+		"Dim Counter As Long\r\n"    // idem
+		"Sub Increment()\r\n"
+		"    Counter = Counter + 1\r\n"
+		"    ThisVM.PC = ThisVM.PC + 10\r\n"
+		"    Cells(1, 1).Value = Counter\r\n"
+		"    Cells(2, 1).Value = ThisVM.PC\r\n"
+		"End Sub\r\n"
+		"Sub LocalShadowTest()\r\n"
+		"    Dim Counter As Long\r\n" // oscura quella di modulo SOLO per questa chiamata
+		"    Counter = 999\r\n"
+		"    Cells(1, 1).Value = Counter\r\n"
+		"End Sub\r\n"
+		"Sub SetImplicitTemp()\r\n"
+		"    Temp = 42\r\n" // nessun "Dim": implicita LOCALE, mai promossa a modulo
+		"End Sub\r\n"
+		"Sub ReadImplicitTemp()\r\n"
+		"    Cells(1, 1).Value = Temp\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(16, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestPersistentModuleState()
+{
+	std::vector<uint8> project = BuildPersistentStateProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per lo stato di modulo persistente si costruisce");
+
+	VbaEnvironment moduleEnv; // UNA sola istanza, riusata fra chiamate SEPARATE sotto
+
+	{
+		CContainer* doc1 = new CContainer(NULL, NULL);
+		VbaRuntimeError err1;
+		bool ok1 = ExecuteVbaMacro(&project[0], project.size(), "Increment", doc1, &err1, &moduleEnv);
+		Check(ok1, "la PRIMA chiamata a \"Increment\" (con un ambiente di modulo persistente) "
+			"esegue senza errori");
+		Value c1, pc1;
+		doc1->GetValue(cell(1, 1), c1);
+		doc1->GetValue(cell(1, 2), pc1);
+		Check((double)c1 == 1.0 && (double)pc1 == 10.0,
+			"Counter=1 e ThisVM.PC=10 dopo la prima chiamata: entrambe le variabili di modulo "
+			"erano Empty/0.0 all'inizio, come un \"Dim\" normale");
+		doc1->Release();
+	}
+
+	{
+		// SECONDA chiamata, un documento DIVERSO (stesso principio di
+		// due clic separati su "Esegui macro" nella UI vera) -- se lo
+		// stato di modulo persiste DAVVERO (non per coincidenza
+		// legata al documento), Counter/ThisVM.PC continuano da dove
+		// erano rimaste, non ripartono da zero.
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		bool ok2 = ExecuteVbaMacro(&project[0], project.size(), "Increment", doc2, &err2, &moduleEnv);
+		Check(ok2, "la SECONDA chiamata (stesso ambiente di modulo, nuovo documento) esegue senza errori");
+		Value c2, pc2;
+		doc2->GetValue(cell(1, 1), c2);
+		doc2->GetValue(cell(1, 2), pc2);
+		Check((double)c2 == 2.0 && (double)pc2 == 20.0,
+			"Counter=2 e ThisVM.PC=20: lo stato di modulo e' DAVVERO persistito dalla chiamata "
+			"precedente, non ripartito da zero come farebbe un ambiente nuovo ogni volta");
+		doc2->Release();
+	}
+
+	{
+		// Una variabile LOCALE con lo stesso nome di una di modulo
+		// (dichiarata con "Dim" DENTRO la Sub) la oscura per questa
+		// sola chiamata -- non deve toccare il "Counter" di modulo.
+		CContainer* doc3 = new CContainer(NULL, NULL);
+		VbaRuntimeError err3;
+		bool ok3 = ExecuteVbaMacro(&project[0], project.size(), "LocalShadowTest", doc3, &err3, &moduleEnv);
+		Check(ok3, "\"LocalShadowTest\" (un \"Dim Counter\" locale che oscura quello di modulo) "
+			"esegue senza errori");
+		Value shadowed;
+		doc3->GetValue(cell(1, 1), shadowed);
+		Check((double)shadowed == 999.0, "il \"Counter\" LOCALE vale 999 dentro questa chiamata, "
+			"come scritto, non il valore di modulo");
+		doc3->Release();
+	}
+
+	{
+		// Il "Counter" di MODULO non deve essere stato toccato dalla
+		// chiamata precedente (che ha scritto in un "Counter" locale,
+		// diverso): la chiamata successiva a "Increment" deve
+		// continuare da 2 (-> 3), non da 999 (-> 1000) o da 0 (-> 1).
+		CContainer* doc4 = new CContainer(NULL, NULL);
+		VbaRuntimeError err4;
+		bool ok4 = ExecuteVbaMacro(&project[0], project.size(), "Increment", doc4, &err4, &moduleEnv);
+		Check(ok4, "\"Increment\" dopo \"LocalShadowTest\" esegue senza errori");
+		Value c4;
+		doc4->GetValue(cell(1, 1), c4);
+		Check((double)c4 == 3.0, "il \"Counter\" di MODULO vale ancora 3 (continua da 2), "
+			"NON toccato dal \"Counter\" locale di \"LocalShadowTest\" (che ne oscurava "
+			"uno diverso, non lo stesso)");
+		doc4->Release();
+	}
+
+	{
+		// Una variabile MAI dichiarata con "Dim" (implicita, solo
+		// assegnata) e' SEMPRE locale in questo sottoinsieme -- non
+		// deve persistere nell'ambiente di modulo nemmeno per sbaglio.
+		CContainer* doc5 = new CContainer(NULL, NULL);
+		VbaRuntimeError err5;
+		bool ok5 = ExecuteVbaMacro(&project[0], project.size(), "SetImplicitTemp", doc5, &err5, &moduleEnv);
+		Check(ok5, "\"SetImplicitTemp\" (una variabile implicita, \"Temp = 42\", nessun \"Dim\") "
+			"esegue senza errori");
+		doc5->Release();
+
+		CContainer* doc6 = new CContainer(NULL, NULL);
+		VbaRuntimeError err6;
+		bool ok6 = ExecuteVbaMacro(&project[0], project.size(), "ReadImplicitTemp", doc6, &err6, &moduleEnv);
+		Check(!ok6, "\"ReadImplicitTemp\" (chiamata DOPO, stesso ambiente di modulo) produce un "
+			"errore \"variabile non dichiarata\": \"Temp\" NON e' stata promossa a modulo "
+			"solo perche' l'ambiente e' persistente -- una variabile implicita resta sempre "
+			"locale, esattamente come nel vero VBA (\"procedure-level\")");
+		doc6->Release();
+	}
+}
+
+// =======================================================================
 // Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
 // pensato apposta per provare che questa funzione NON chiama
 // ParseVbaSub (un "ByRef" su un parametro, fuori da questo
@@ -1169,6 +1323,7 @@ int main()
 	TestStructs();
 	TestWith();
 	TestInteriorColor();
+	TestPersistentModuleState();
 	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

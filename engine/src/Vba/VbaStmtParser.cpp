@@ -446,6 +446,11 @@ private:
 	// sottoinsieme tratta comunque ogni variabile come Variant quando
 	// "As" e' assente, quindi il comportamento osservabile e' identico
 	// senza bisogno di spiegare la distinzione al runtime.
+public:
+	// Pubblico (a differenza del resto dei parser di singole istruzioni
+	// qui sotto): serve anche al wrapper ParseVbaDimStatementList, che
+	// chi scandisce le variabili a LIVELLO DI MODULO usa direttamente
+	// (VbaMacroRunner.h), non solo ParseStatementList qui sotto.
 	bool ParseDimStatementList(std::vector<std::unique_ptr<VbaStmt>>* outStmts)
 	{
 		int line = Current().line;
@@ -465,6 +470,7 @@ private:
 		}
 		return ExpectStatementEnd();
 	}
+private:
 
 	// Fase 6c: "(" limiteSuperiore ("," limiteSuperiore)* ")" dopo il
 	// nome di variabile su un "Dim", oppure niente affatto (variabile
@@ -989,4 +995,14 @@ std::unique_ptr<VbaTypeDecl> ParseVbaTypeDecl(const std::vector<VbaToken>& token
 	if (!result && outError->message.empty())
 		outError->message = "errore di sintassi";
 	return result;
+}
+
+bool ParseVbaDimStatementList(const std::vector<VbaToken>& tokens, size_t& pos,
+	VbaParseError* outError, std::vector<std::unique_ptr<VbaStmt>>* outStmts)
+{
+	Parser parser(tokens, pos, outError);
+	bool ok = parser.ParseDimStatementList(outStmts);
+	if (!ok && outError->message.empty())
+		outError->message = "errore di sintassi";
+	return ok;
 }

@@ -85,8 +85,23 @@ bool FindVbaSubByName(const std::vector<VbaToken>& tokens, const std::string& su
 // esecuzione della Sub stessa (stesse categorie di ExecuteVbaSub).
 // Mai un crash, qualunque sia il contenuto di "vbaProjectData" o il
 // sorgente dei moduli.
+//
+// "persistentModuleEnv" (facoltativo, NULL di default -- il
+// comportamento di sempre, un VbaEnvironment nuovo a ogni chiamata)
+// e' lo stato di modulo PERSISTENTE (trovato controllando il
+// sorgente reale del CHIP-8, "Dim ThisVM As VM" a livello di modulo
+// -- vedi ROADMAP.md): quando non-NULL, questa chiamata lo RIUSA cosi'
+// com'e' invece di crearne uno nuovo -- le sue variabili gia' presenti
+// (da una chiamata PRECEDENTE a qualunque macro di questo stesso
+// modulo) restano quelle che sono, e le variabili dichiarate a
+// livello di modulo (FindAllVbaModuleLevelDims) si inizializzano
+// SOLO la prima volta che mancano, mai azzerate di nuovo in seguito.
+// Il chiamante possiede "persistentModuleEnv" e decide quando
+// scartarlo (es. alla chiusura del file, un nuovo "progetto VBA" nel
+// vero VBA) -- questa funzione non lo fa mai da sola.
 bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
-	const std::string& macroName, CContainer* doc, VbaRuntimeError* outError);
+	const std::string& macroName, CContainer* doc, VbaRuntimeError* outError,
+	VbaEnvironment* persistentModuleEnv = NULL);
 
 // Elenca ogni Sub "eseguibile" (vedi sotto) di ogni modulo del
 // progetto, nell'ordine in cui compaiono -- per un elenco a scelta
@@ -130,5 +145,30 @@ bool ListVbaMacroNames(const uint8* vbaProjectData, size_t vbaProjectLen,
 // Type con una sintassi fuori da questo sottoinsieme).
 bool FindAllVbaTypeDecls(const std::vector<VbaToken>& tokens,
 	std::map<std::string, VbaTypeDecl>* outTypes, VbaParseError* outError);
+
+// Stato di modulo persistente (trovato controllando il sorgente reale
+// del CHIP-8, github.com/rndtrash/chip-8-vba: "Dim ThisVM As VM" a
+// LIVELLO DI MODULO, condiviso da ogni Sub -- vedi ROADMAP.md):
+// scandisce "tokens" per ogni "Dim nome[(limiti)] [As Tipo], ..."
+// scritto FUORI da qualunque Sub/Function (che vengono saltati per
+// intero senza analizzarli, stesso trucco "End" + parola chiave
+// corrispondente di FindAllVbaTypeDecls sopra -- un "Type ... End
+// Type" si salta allo stesso modo, gia' raccolto a parte da
+// FindAllVbaTypeDecls). "outStmts" riceve un vbaStmtDim per ogni
+// dichiaratore trovato, nell'ordine scritto -- eseguirli UNA SOLA
+// VOLTA per sessione (non a ogni "Esegui macro") spetta al chiamante
+// (ExecuteVbaMacro, quando gli viene passato un "VbaEnvironment"
+// esterno da riusare fra chiamate diverse).
+//
+// A differenza di FindVbaSubByName/FindAllVbaTypeDecls, questa
+// funzione NON fallisce MAI: un singolo gruppo "Dim" con una sintassi
+// fuori da questo sottoinsieme si salta (un token alla volta, stesso
+// trattamento di "Attribute VB_Name = ..."), non abortisce l'intera
+// scansione -- una variabile di modulo che non si riesce a
+// pre-dichiarare qui produrra' comunque un errore onesto
+// "variabile non dichiarata" quando una Sub la usa davvero, non un
+// dato inventato.
+void FindAllVbaModuleLevelDims(const std::vector<VbaToken>& tokens,
+	std::vector<std::unique_ptr<VbaStmt>>* outStmts);
 
 #endif
