@@ -628,13 +628,52 @@ before it:
   array-of-struct field all read/written and checked on a live
   `CContainer`, plus every error boundary above) — all passing, no
   regressions anywhere else in the VBA suite.
-- **(6e) The `With` statement.** Already scoped in Phase 5's
-  "investigated and deliberately deferred" note above — the design
-  (a `With`-target stack threaded from the statement parser into
-  `ParseVbaExpression`/`ParseVbaPrimaryExpression`, a clone utility
-  since each statement in the block needs its own copy of the target)
-  doesn't change by waiting; this phase is where it actually gets
-  built, now that 6a-6d give it something worth targeting.
+- **(6e) The `With` statement is done — and turned out simpler than
+  Phase 5's own note predicted.** That note assumed the hard part was
+  parse-time: a `VbaExpr`/`VbaStmt` clone utility plus a "current
+  `With` target" threaded through every `ParseVbaExpression`/
+  `ParseVbaPrimaryExpression` call site. Building it revealed a
+  cheaper option: resolve the target at **runtime** instead of
+  cloning an AST at **parse time**. `"With"` joined the tokenizer's
+  keywords; `ParseWith` (mirroring `ParseIf`/`ParseFor`) needs no
+  context at all — a leading `.` (e.g. `.Value` inside the block) now
+  parses in `VbaExprParser.cpp::ParsePrimary` as a brand-new
+  `vbaExprWithImplicitTarget` placeholder node, handed straight to the
+  EXISTING `ParsePostfix` as its base exactly like any other primary
+  (confirmed, not assumed, by re-reading that function first — see the
+  6d entry above for why that habit paid off twice now). The parser
+  stays completely unaware of the surrounding `With`; a leading `.`
+  outside any `With` still parses fine and only turns into an error at
+  *execution* time (an honest, deliberate trade: a few malformed
+  sources that real VBA would reject at compile time instead get a
+  clean runtime error here, in exchange for touching zero existing
+  parser call sites).
+  `VbaExecutor.cpp`'s new `ExecuteWith` evaluates the `With` target
+  exactly ONCE on entry (matching real VBA semantics, not an
+  approximation of them) and pushes it onto a new stack on
+  `VbaEnvironment` (`VbaWithTarget`, holding either a `Value` for a
+  Range/scalar target or a borrowed `VbaStructInstance*` for a Phase
+  6d struct target), popping on exit — nesting works for free, since
+  the innermost `With`'s target is always the top of the stack, same
+  as the real thing. The struct case reuses Phase 6d's own
+  `ResolveStructInstanceStep` (exported from `VbaEvaluator.cpp`,
+  previously file-local) directly on the FULL target expression — e.g.
+  `With ThisVM.Screen(X, Y)` resolves exactly as if `Screen(X, Y)`
+  were a mid-chain step, because structurally it is one. Reading/
+  writing `.Name` inside the block needed no new logic at all: the
+  placeholder node is just one more case `ResolveStructInstanceStep`/
+  `ResolveStructScalarField` recognize as a base step, right alongside
+  Phase 6d's `vbaExprVariable` case, pulling from the environment's
+  `With`-stack instead of a named variable. A `With` on a plain scalar
+  field (`With ThisVM.PC`) is a clean error, matching real VBA
+  rejecting a non-object `With` target. New coverage: error paths in
+  `vba_executor_test.cpp` (no object model connected in that file) and
+  the full functional surface in `vba_macro_runner_test.cpp`
+  (`TestWith`) — `With` on a struct, on an array-of-struct element
+  (the EXACT `With ThisVM.Screen(X, Y)` shape from the real CHIP-8
+  source), nested `With` blocks, `With` on `Cells(...)`, and both
+  error boundaries — all passing, no regressions anywhere else in the
+  VBA suite.
 - **(6f) Deeper `Range`/`Cells` formatting** (`.Interior.Color`/
   `.ColorIndex`, `.Font.Bold`). Also already scoped in Phase 5's
   deferred note: blocked on relocating `GetCellFontInfo`/
