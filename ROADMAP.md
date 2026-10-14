@@ -557,11 +557,77 @@ before it:
   and checking the actual cell values, plus both an out-of-bounds
   write and read producing clean errors) — all passing, no
   regressions anywhere else in the VBA suite.
-- **(6d) User-defined types (`Private Type ... End Type`)**, plus
-  field access (`ThisVM.PC`) and arrays of a UDT (`Screen(63,31) As
-  ScreenPixel`). Depends on 6c for the array-of-UDT case. This is what
-  turns "a pile of parallel arrays" into the actual struct shape real
-  macros use for anything non-trivial.
+- **(6d) User-defined types is done.** `"Type"` joined the tokenizer's
+  keyword table, parsed by a new `ParseVbaTypeDecl` (a field list only,
+  no executable body unlike `ParseSub`) mirroring `VbaSub`'s own
+  design: `VbaTypeField` (`name`, `typeName`, `arrayDims` — reusing the
+  exact 6c convention) and `VbaTypeDecl` (`name` + a field list) in
+  `VbaAst.h`. A module can declare several Types one after another,
+  each possibly referencing another declared *later* in the same
+  module (`VM` uses `ScreenPixel`, declared first in the real CHIP-8
+  source, but nothing in this subset requires that order) — so
+  `FindAllVbaTypeDecls` (`VbaMacroRunner.h`) scans the WHOLE module
+  for every Type up front into a registry, rather than resolving one
+  by name on demand like `FindVbaSubByName`; it skips every Sub/
+  Function body outright (a Type can't appear inside one) with the
+  same "`End` + matching keyword is never produced by a nested
+  If/For" trick `ListVbaMacroNames` already used. `ExecuteVbaMacro`
+  builds this registry once per module and threads it through
+  `VbaEnvironment` exactly like 6a's module-tokens pointer, including
+  propagation into a sibling call's child environment.
+  Storage is a THIRD, separate `VbaEnvironment` map (`VbaStructInstance`:
+  a field-name → `VbaStructField` map), not a third `Value` variant —
+  same reasoning as 6c's array map. Each `VbaStructField` holds
+  exactly one of four shapes chosen once at construction (scalar,
+  scalar array, nested struct, array-of-struct) — `Dim ThisVM As VM`
+  recursively builds a full zero-initialized tree via a new
+  `BuildVbaStructInstance` (`VbaExecutor.cpp`), instantiating a real
+  `ScreenPixel` for each of `VM.Screen`'s 2048 elements, depth-capped
+  at 20 to turn a circular `Type A` containing `Type A` into a clean
+  error instead of a native stack overflow (impossible in real VBA
+  for a finite-size struct, but this interpreter still must never
+  crash on a source written to try).
+  Field access (`ThisVM.PC`, `ThisVM.V(2)`, `ThisVM.Screen(x,y).value`)
+  needed NO new expression grammar at all: a chain of dots/calls after
+  an identifier already parses into nested `vbaExprPropertyAccess`/
+  `vbaExprCall` nodes (confirmed by re-reading `VbaExprParser.cpp`'s
+  `ParsePostfix` before writing a single line here, rather than
+  guessing the tree shape). One new shared resolver,
+  `ResolveStructScalarField` (`VbaEvaluator.h`, used by BOTH
+  `EvalPropertyAccess`/`EvalCall` for reads and `ExecuteAssignOrSet`
+  for writes, so the two directions can't drift apart), walks that
+  chain down to a real `Value*` — three outcomes: a valid scalar slot;
+  "not a struct chain at all" (falls through to Range/Cells/6a-6c as
+  before); or a struct chain that hit a real error (unknown field, bad
+  index, or landing on an entire struct/array-of-struct instead of a
+  scalar — whole-struct values aren't representable here at all, a
+  deliberate scope boundary below). Must run BEFORE the existing
+  `.value`-means-Range-property special case in both of those
+  functions, or `ThisVM.Screen(x,y).value` would misfire as a Range
+  read/write attempt on the inner `Screen(x,y)` call.
+  Two scope boundaries, chosen deliberately and enforced with a clear
+  error rather than silently mishandled: **no whole-struct value or
+  assignment** (`x = ThisVM`, `ThisVM = Other`, or passing a struct as
+  a Sub/Function parameter) — avoids needing a deep-copy routine and
+  matches how VBA UDT parameters aren't needed by the CHIP-8 source
+  this phase is modeled on; and **no array-of-UDT via a direct `Dim`**
+  (`Dim arr(5) As VM`) — only as a Type's OWN field (`Screen(63,31) As
+  ScreenPixel`), which is the only shape real macros in this corpus
+  actually need. A THIRD thing is honestly NOT a limitation of this
+  phase at all, just worth naming: a type name after `As` that isn't a
+  declared Type is treated exactly like `As Integer`/`As Byte` always
+  were — a harmless, unvalidated scalar — since this subset never
+  validated built-in type keywords either; a typo'd Type name and a
+  genuinely scalar type are indistinguishable by design, not an
+  oversight. New coverage in both test files: `vba_stmt_parser_test.cpp`
+  (Type parsing — scalar/array/nested-type fields, a missing `End
+  Type`, a field without `As`, `Dim ThisVM As VM`) and
+  `vba_macro_runner_test.cpp` (`TestStructs`: the EXACT `ScreenPixel`/
+  `VM` shape from the real CHIP-8 source end to end through
+  `ExecuteVbaMacro` — scalar field, array-of-scalar field, and
+  array-of-struct field all read/written and checked on a live
+  `CContainer`, plus every error boundary above) — all passing, no
+  regressions anywhere else in the VBA suite.
 - **(6e) The `With` statement.** Already scoped in Phase 5's
   "investigated and deliberately deferred" note above — the design
   (a `With`-target stack threaded from the statement parser into
