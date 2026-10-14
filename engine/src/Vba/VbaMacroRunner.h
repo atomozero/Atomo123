@@ -85,4 +85,28 @@ bool FindVbaSubByName(const std::vector<VbaToken>& tokens, const std::string& su
 bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 	const std::string& macroName, CContainer* doc, VbaRuntimeError* outError);
 
+// Elenca ogni Sub "eseguibile" (vedi sotto) di ogni modulo del
+// progetto, nell'ordine in cui compaiono -- per un elenco a scelta
+// nella UI (Fase 4, "Esegui macro..."), MAI per eseguirle: a
+// differenza di FindVbaSubByName/ExecuteVbaMacro sopra, questa
+// funzione NON chiama ParseVbaSub su nessun blocco -- cerca solo la
+// sequenza lessicale "parola chiave Sub" + "identificatore" (che
+// "End Sub" non produce mai, dato che "End"/"Sub" sono due parole
+// chiave consecutive, non una parola chiave seguita da un
+// identificatore) -- quindi non fallisce mai, nemmeno su un modulo
+// che contiene una Sub con una sintassi fuori da questo sottoinsieme
+// (parametri, Select Case...): un nome puo' comparire in questo
+// elenco ed essere comunque rifiutato da ExecuteVbaMacro quando
+// davvero eseguito, se la sua Sub (o una PRECEDENTE nello stesso
+// modulo, vedi il limite noto sopra) usa una sintassi che questo
+// sottoinsieme non analizza -- quell'errore arriva allora dalla vera
+// esecuzione, non da qui. Una "Private Sub" (il modificatore e' un
+// semplice identificatore per questo lessico, non una parola chiave)
+// e' esclusa, come il vero elenco Macro di Excel che nasconde le
+// Sub private. Vero sempre tranne quando "vbaProjectData" non e'
+// affatto un progetto VBA valido; "outNames" resta vuoto (non un
+// errore) se il progetto non contiene nessuna Sub pubblica.
+bool ListVbaMacroNames(const uint8* vbaProjectData, size_t vbaProjectLen,
+	std::vector<std::string>* outNames);
+
 #endif

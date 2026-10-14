@@ -68,6 +68,36 @@ bool FindVbaSubByName(const std::vector<VbaToken>& tokens, const std::string& su
 	return false;
 }
 
+bool ListVbaMacroNames(const uint8* vbaProjectData, size_t vbaProjectLen,
+	std::vector<std::string>* outNames)
+{
+	outNames->clear();
+
+	std::vector<VbaModuleSource> modules;
+	if (!ExtractVbaModuleSources(vbaProjectData, vbaProjectLen, &modules))
+		return false;
+
+	for (size_t m = 0; m < modules.size(); m++)
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba(modules[m].sourceText.c_str(), &tokens);
+
+		for (size_t i = 0; i + 1 < tokens.size(); i++)
+		{
+			if (tokens[i].type != vbaTokKeyword || tokens[i].text != "Sub")
+				continue;
+			if (tokens[i + 1].type != vbaTokIdentifier)
+				continue; // "End Sub": "End" e "Sub" sono due parole chiave, mai una Sub vera qui
+
+			bool isPrivate = i > 0 && tokens[i - 1].type == vbaTokIdentifier
+				&& NormalizeSubName(tokens[i - 1].text) == "private";
+			if (!isPrivate)
+				outNames->push_back(tokens[i + 1].text);
+		}
+	}
+	return true;
+}
+
 bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 	const std::string& macroName, CContainer* doc, VbaRuntimeError* outError)
 {

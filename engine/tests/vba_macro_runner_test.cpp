@@ -409,10 +409,88 @@ static void TestExecuteVbaMacro()
 	}
 }
 
+// =======================================================================
+// Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
+// pensato apposta per provare che questa funzione NON chiama
+// ParseVbaSub (una Sub con parametri, fuori da questo sottoinsieme,
+// non deve far sparire NESSUN nome, nemmeno il proprio), e che una
+// "Private Sub" viene esclusa come il vero elenco Macro di Excel.
+// =======================================================================
+
+static std::vector<uint8> BuildMacroListProject()
+{
+	const char* module1Source =
+		"Sub Pub1()\r\n"
+		"    x = 1\r\n"
+		"End Sub\r\n"
+		"Private Sub Hidden()\r\n"
+		"    y = 2\r\n"
+		"End Sub\r\n"
+		"Sub Pub2(n As Integer)\r\n" // parametro: fuori dal sottoinsieme, ParseVbaSub la rifiuterebbe
+		"    z = n\r\n"
+		"End Sub\r\n";
+	const char* module2Source =
+		"Sub FromModule2()\r\n"
+		"    w = 3\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache1(3, 0xCC);
+	std::vector<uint8> fakePCache2(7, 0xDD);
+	std::vector<uint8> module1Compressed = CompressStr(module1Source);
+	std::vector<uint8> module2Compressed = CompressStr(module2Source);
+
+	std::vector<uint8> module1Stream = fakePCache1;
+	module1Stream.insert(module1Stream.end(), module1Compressed.begin(), module1Compressed.end());
+	std::vector<uint8> module2Stream = fakePCache2;
+	module2Stream.insert(module2Stream.end(), module2Compressed.begin(), module2Compressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache1.size());
+	AppendModuleRecord(dirRaw, "Module2", "Module2", (uint32)fakePCache2.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", module1Stream});
+	streams.push_back(TestStream{"Module2", module2Stream});
+	return BuildTestCfb(streams);
+}
+
+static void TestListVbaMacroNames()
+{
+	std::vector<uint8> project = BuildMacroListProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per l'elenco macro si costruisce");
+
+	std::vector<std::string> names;
+	bool ok = ListVbaMacroNames(&project[0], project.size(), &names);
+	Check(ok, "ListVbaMacroNames riesce su un progetto valido");
+	Check(names.size() == 3, "trova esattamente 3 Sub pubbliche (Hidden e' privata, esclusa)");
+	if (names.size() == 3)
+	{
+		Check(names[0] == "Pub1", "la prima e' Pub1 (ordine di dichiarazione nel modulo)");
+		Check(names[1] == "Pub2",
+			"Pub2 compare NONOSTANTE il suo parametro sia fuori da questo sottoinsieme -- "
+			"ListVbaMacroNames non chiama ParseVbaSub, solo una scansione lessicale");
+		Check(names[2] == "FromModule2", "la terza viene dal SECONDO modulo, nell'ordine giusto");
+	}
+
+	// ---- vbaProject.bin non valido ----
+	{
+		std::vector<uint8> notVba(32, 0x41);
+		std::vector<std::string> badNames;
+		Check(!ListVbaMacroNames(&notVba[0], notVba.size(), &badNames),
+			"dati che non sono affatto un progetto VBA producono false, non un crash");
+		Check(badNames.empty(), "l'elenco resta vuoto quando il progetto non e' valido");
+	}
+}
+
 int main()
 {
 	TestFindVbaSubByName();
 	TestExecuteVbaMacro();
+	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
