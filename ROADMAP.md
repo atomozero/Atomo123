@@ -367,6 +367,23 @@ rectangular range; each loop-variable binding is a true single-cell
 value, so writing through it (`c.Value = c.Value * 10`) changes the
 real cell.
 
+`IsEmpty`/`IsNumeric`/`CStr`/`CInt`/`CLng`/`CDbl`/`CBool`/`Val`/
+`Space`/`InStr`/`Replace`/`StrComp` (5c) widen the built-in function
+library with twelve functions genuinely common in real macros.
+`IsEmpty(Range("A1"))` (the bare form, no `.Value`) can tell a
+genuinely empty cell apart from one that literally holds `0`, since
+the Range value hasn't yet gone through the empty-cell-becomes-0
+coercion `.Value` applies — `IsEmpty(Range("A1").Value)` *with*
+`.Value` written explicitly can't make that distinction any more,
+an honest, narrow limit rather than a silent wrong answer.
+`IsNumeric` needed its own strict whole-string check, deliberately
+separate from `Val`'s permissive leading-prefix parsing (`Val(
+"12abc")` is correctly `123`; `IsNumeric("12abc")` must be `False`).
+`CInt`/`CLng` round like the existing `Round()` (half rounds up), not
+real VBA's banker's rounding, and do no overflow checking — `Value`
+is always a double, there's no genuine 16/32-bit integer to overflow
+against.
+
 ## Path to 100% XLSX standard compatibility
 
 This is a different axis from "Path to full Excel parity" below: that
