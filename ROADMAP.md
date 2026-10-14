@@ -384,6 +384,31 @@ real VBA's banker's rounding, and do no overflow checking — `Value`
 is always a double, there's no genuine 16/32-bit integer to overflow
 against.
 
+`Do While/Until ... Loop` and `Do ... Loop While/Until` (5d) close out
+the common looping constructs, both the pre-test form (may not run
+the body at all) and the post-test form (always runs at least once),
+plus a bare `Do ... Loop` that only ends via `Exit Do`/`Exit Sub` —
+writing a condition on both `Do` and `Loop` in the same statement is a
+parse-time error, not an ambiguity resolved by guessing. Adding
+`Exit Do` surfaced a real propagation bug in the existing loop
+executors: `ExecuteFor`/`ExecuteForEach` checked only for
+`execExitSub`/`execError` and fell through silently on anything else,
+which would have let a new `execExitDo` get swallowed by an enclosing
+`For` instead of reaching the `Do` it actually belonged to. Fixed by
+switching both to "consume only my own exit signal, propagate
+everything else unchanged" — now verified in both directions: `Exit
+Do` inside a `Do` nested in a `For` only breaks the `Do`, and `Exit
+For` inside a `Do` nested in a `For` breaks the `For`, not just the
+`Do` around it.
+
+This closes Phase 5's "common real-macro constructs" push: `Select
+Case`, `For Each`, a dozen common built-in functions, and now every
+common looping construct are all supported. Remaining, larger subset
+gaps (the `With` statement, `Sub` parameters, deeper object-model
+property coverage like `.Font.Bold`/`.Interior.Color`) are each a
+separate, later decision, not required for this interpreter to be
+useful against a real recorded macro today.
+
 ## Path to 100% XLSX standard compatibility
 
 This is a different axis from "Path to full Excel parity" below: that
