@@ -1,4 +1,4 @@
-1	Korean	application/x-vnd.Atomo-Atomo123	865844741
+1	Korean	application/x-vnd.Atomo-Atomo123	4029355918
 Dividi	PasteSpecialWindow		나누기
 Nuovo documento	MainWindow		새 문서
 Sostituisci con:	FindWindow		바꿀 내용:
@@ -520,3 +520,14 @@ Seleziona...	ScenarioWindow		선택...
 Specifica almeno una cella input (riga o colonna).	MainWindow		행 또는 열 입력 셀을 하나 이상 지정하세요.
 Colore serie	ColorWindow		계열 색
 Filtro automatico	MainWindow		자동 필터
+Esegui macro…	MainWindow		매크로 실행…
+Esegui macro	MainWindow		매크로 실행
+Questo file contiene macro VBA. Le macro possono eseguire codice con pieno accesso al documento: abilitale solo se ti fidi della provenienza del file.\n\nVuoi abilitarle per questa sessione?	MainWindow		이 파일에는 VBA 매크로가 포함되어 있습니다. 매크로는 문서에 대한 전체 액세스 권한으로 코드를 실행할 수 있습니다. 파일의 출처를 신뢰하는 경우에만 활성화하세요.\n\n이번 세션에서 매크로를 활성화하시겠습니까?
+Scegli una macro da eseguire:	MacroListWindow		실행할 매크로를 선택하세요:
+Esegui	MacroListWindow		실행
+Disabilita	MainWindow		비활성화
+Macro VBA	MainWindow		VBA 매크로
+Abilita	MainWindow		활성화
+Esegui macro	MacroListWindow		매크로 실행
+Questo documento non contiene macro VBA.	MainWindow		이 문서에는 VBA 매크로가 없습니다.
+Errore nell'esecuzione della macro \"%s\":\n%s	MainWindow		매크로 \"%s\" 실행 오류:\n%s

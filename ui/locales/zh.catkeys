@@ -1,4 +1,4 @@
-1	Chinese (Simplified)	application/x-vnd.Atomo-Atomo123	865844741
+1	Chinese (Simplified)	application/x-vnd.Atomo-Atomo123	4029355918
 Dividi	PasteSpecialWindow		除
 Nuovo documento	MainWindow		新建文档
 Sostituisci con:	FindWindow		替换为:
@@ -520,3 +520,14 @@ Seleziona...	ScenarioWindow		选择...
 Specifica almeno una cella input (riga o colonna).	MainWindow		请至少指定一个输入单元格（行或列）。
 Colore serie	ColorWindow		系列颜色
 Filtro automatico	MainWindow		自动筛选
+Esegui macro…	MainWindow		运行宏…
+Esegui macro	MainWindow		运行宏
+Questo file contiene macro VBA. Le macro possono eseguire codice con pieno accesso al documento: abilitale solo se ti fidi della provenienza del file.\n\nVuoi abilitarle per questa sessione?	MainWindow		此文件包含 VBA 宏。宏可以运行对文档具有完全访问权限的代码——只有在您信任此文件来源时才启用它们。\n\n是否为本次会话启用宏？
+Scegli una macro da eseguire:	MacroListWindow		选择要运行的宏：
+Esegui	MacroListWindow		运行
+Disabilita	MainWindow		禁用
+Macro VBA	MainWindow		VBA 宏
+Abilita	MainWindow		启用
+Esegui macro	MacroListWindow		运行宏
+Questo documento non contiene macro VBA.	MainWindow		此文档不包含 VBA 宏。
+Errore nell'esecuzione della macro \"%s\":\n%s	MainWindow		运行宏 \"%s\" 时出错：\n%s

@@ -1,4 +1,4 @@
-1	Arabic	application/x-vnd.Atomo-Atomo123	865844741
+1	Arabic	application/x-vnd.Atomo-Atomo123	4029355918
 Dividi	PasteSpecialWindow		قسمة
 Nuovo documento	MainWindow		مستند جديد
 Sostituisci con:	FindWindow		استبدال بـ:
@@ -520,3 +520,14 @@ Seleziona...	ScenarioWindow		تحديد...
 Specifica almeno una cella input (riga o colonna).	MainWindow		حدد خلية إدخال واحدة على الأقل (صف أو عمود).
 Colore serie	ColorWindow		لون السلسلة
 Filtro automatico	MainWindow		تصفية تلقائية
+Esegui macro…	MainWindow		تشغيل الماكرو…
+Esegui macro	MainWindow		تشغيل الماكرو
+Questo file contiene macro VBA. Le macro possono eseguire codice con pieno accesso al documento: abilitale solo se ti fidi della provenienza del file.\n\nVuoi abilitarle per questa sessione?	MainWindow		يحتوي هذا الملف على ماكرو VBA. يمكن للماكرو تشغيل تعليمات برمجية بوصول كامل إلى المستند — فعّلها فقط إذا كنت تثق في مصدر هذا الملف.\n\nهل تريد تفعيلها لهذه الجلسة؟
+Scegli una macro da eseguire:	MacroListWindow		اختر ماكرو لتشغيله:
+Esegui	MacroListWindow		تشغيل
+Disabilita	MainWindow		تعطيل
+Macro VBA	MainWindow		ماكرو VBA
+Abilita	MainWindow		تفعيل
+Esegui macro	MacroListWindow		تشغيل الماكرو
+Questo documento non contiene macro VBA.	MainWindow		لا يحتوي هذا المستند على ماكرو VBA.
+Errore nell'esecuzione della macro \"%s\":\n%s	MainWindow		خطأ في تشغيل الماكرو \"%s\":\n%s

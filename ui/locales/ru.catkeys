@@ -1,4 +1,4 @@
-1	Russian	application/x-vnd.Atomo-Atomo123	865844741
+1	Russian	application/x-vnd.Atomo-Atomo123	4029355918
 Dividi	PasteSpecialWindow		Разделить
 Nuovo documento	MainWindow		Новый документ
 Sostituisci con:	FindWindow		Заменить на:
@@ -520,3 +520,14 @@ Seleziona...	ScenarioWindow		Выбрать...
 Specifica almeno una cella input (riga o colonna).	MainWindow		Укажите хотя бы одну ячейку ввода (строку или столбец).
 Colore serie	ColorWindow		Цвет ряда
 Filtro automatico	MainWindow		Автофильтр
+Esegui macro…	MainWindow		Выполнить макрос…
+Esegui macro	MainWindow		Выполнить макрос
+Questo file contiene macro VBA. Le macro possono eseguire codice con pieno accesso al documento: abilitale solo se ti fidi della provenienza del file.\n\nVuoi abilitarle per questa sessione?	MainWindow		Этот файл содержит VBA-макросы. Макросы могут выполнять код с полным доступом к документу — включайте их только если вы доверяете источнику этого файла.\n\nВключить макросы для этого сеанса?
+Scegli una macro da eseguire:	MacroListWindow		Выберите макрос для выполнения:
+Esegui	MacroListWindow		Выполнить
+Disabilita	MainWindow		Отключить
+Macro VBA	MainWindow		Макросы VBA
+Abilita	MainWindow		Включить
+Esegui macro	MacroListWindow		Выполнить макрос
+Questo documento non contiene macro VBA.	MainWindow		Этот документ не содержит VBA-макросов.
+Errore nell'esecuzione della macro \"%s\":\n%s	MainWindow		Ошибка при выполнении макроса \"%s\":\n%s

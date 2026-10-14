@@ -1,4 +1,4 @@
-1	Japanese	application/x-vnd.Atomo-Atomo123	865844741
+1	Japanese	application/x-vnd.Atomo-Atomo123	4029355918
 Dividi	PasteSpecialWindow		除算
 Nuovo documento	MainWindow		新規ドキュメント
 Sostituisci con:	FindWindow		置換後の文字列:
@@ -520,3 +520,14 @@ Seleziona...	ScenarioWindow		選択...
 Specifica almeno una cella input (riga o colonna).	MainWindow		行または列の入力セルを少なくとも 1 つ指定してください。
 Colore serie	ColorWindow		系列の色
 Filtro automatico	MainWindow		オートフィルター
+Esegui macro…	MainWindow		マクロの実行…
+Esegui macro	MainWindow		マクロの実行
+Questo file contiene macro VBA. Le macro possono eseguire codice con pieno accesso al documento: abilitale solo se ti fidi della provenienza del file.\n\nVuoi abilitarle per questa sessione?	MainWindow		このファイルにはVBAマクロが含まれています。マクロはドキュメントへの完全なアクセス権を持つコードを実行できます。ファイルの入手元を信頼できる場合のみ有効にしてください。\n\nこのセッションでマクロを有効にしますか?
+Scegli una macro da eseguire:	MacroListWindow		実行するマクロを選択してください:
+Esegui	MacroListWindow		実行
+Disabilita	MainWindow		無効にする
+Macro VBA	MainWindow		VBAマクロ
+Abilita	MainWindow		有効にする
+Esegui macro	MacroListWindow		マクロの実行
+Questo documento non contiene macro VBA.	MainWindow		このドキュメントにはVBAマクロがありません。
+Errore nell'esecuzione della macro \"%s\":\n%s	MainWindow		マクロ \"%s\" の実行エラー:\n%s

@@ -1,4 +1,4 @@
-1	German	application/x-vnd.Atomo-Atomo123	865844741
+1	German	application/x-vnd.Atomo-Atomo123	4029355918
 Dividi	PasteSpecialWindow		Dividieren
 Nuovo documento	MainWindow		Neues Dokument
 Sostituisci con:	FindWindow		Ersetzen durch:
@@ -520,3 +520,14 @@ Seleziona...	ScenarioWindow		Auswählen...
 Specifica almeno una cella input (riga o colonna).	MainWindow		Geben Sie mindestens eine Eingabezelle an (Zeile oder Spalte).
 Colore serie	ColorWindow		Reihenfarbe
 Filtro automatico	MainWindow		AutoFilter
+Esegui macro…	MainWindow		Makro ausführen…
+Esegui macro	MainWindow		Makro ausführen
+Questo file contiene macro VBA. Le macro possono eseguire codice con pieno accesso al documento: abilitale solo se ti fidi della provenienza del file.\n\nVuoi abilitarle per questa sessione?	MainWindow		Diese Datei enthält VBA-Makros. Makros können Code mit vollem Zugriff auf das Dokument ausführen – aktivieren Sie sie nur, wenn Sie der Quelle dieser Datei vertrauen.\n\nMakros für diese Sitzung aktivieren?
+Scegli una macro da eseguire:	MacroListWindow		Wählen Sie ein auszuführendes Makro:
+Esegui	MacroListWindow		Ausführen
+Disabilita	MainWindow		Deaktivieren
+Macro VBA	MainWindow		VBA-Makros
+Abilita	MainWindow		Aktivieren
+Esegui macro	MacroListWindow		Makro ausführen
+Questo documento non contiene macro VBA.	MainWindow		Dieses Dokument enthält keine VBA-Makros.
+Errore nell'esecuzione della macro \"%s\":\n%s	MainWindow		Fehler beim Ausführen des Makros \"%s\":\n%s
