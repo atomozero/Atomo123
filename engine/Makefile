@@ -245,7 +245,15 @@ test-vba-executor: $(LIB)
 	$(CXX) -o tests/vba_executor_test $(OBJDIR)/vba_executor_test.o -L. -lengine -lbe
 	./tests/vba_executor_test
 
-clean:
-	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test tests/vba_token_test tests/vba_expr_parser_test tests/vba_stmt_parser_test tests/vba_evaluator_test tests/vba_executor_test
+# Test del modello a oggetti Excel minimo del sottoinsieme VBA (Path
+# to full Excel parity, VBA/macro execution, Fase 3c): vedi il
+# commento in cima a vba_object_model_test.cpp.
+test-vba-object-model: $(LIB)
+	$(CXX) -c tests/vba_object_model_test.cpp -o $(OBJDIR)/vba_object_model_test.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/vba_object_model_test $(OBJDIR)/vba_object_model_test.o -L. -lengine -lbe
+	./tests/vba_object_model_test
 
-.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source test-vba-token test-vba-expr-parser test-vba-stmt-parser test-vba-evaluator test-vba-executor
+clean:
+	rm -rf $(OBJDIR) $(LIB) $(TESTBIN) $(FUNC_TEST_RSRC) tests/named_functions_test tests/xsheet_test tests/named_ranges_test tests/table_refs_test tests/dynamic_range_test tests/vba_project_test tests/vba_decompress_test tests/vba_dir_stream_test tests/vba_module_source_test tests/vba_token_test tests/vba_expr_parser_test tests/vba_stmt_parser_test tests/vba_evaluator_test tests/vba_executor_test tests/vba_object_model_test
+
+.PHONY: all clean test test-functions test-xsheet test-names test-tables test-vba-project test-vba-decompress test-vba-dir-stream test-vba-module-source test-vba-token test-vba-expr-parser test-vba-stmt-parser test-vba-evaluator test-vba-executor test-vba-object-model

@@ -9,6 +9,8 @@
 
 #include "VbaExecutor.h"
 
+#include <cctype>
+
 namespace {
 
 // Come si e' appena fermata l'esecuzione di una lista di istruzioni:
@@ -71,20 +73,7 @@ private:
 
 			case vbaStmtAssign:
 			case vbaStmtSet:
-			{
-				Value v;
-				if (!Eval(stmt->expr.get(), &v))
-					return execError;
-				if (stmt->target->kind != vbaExprVariable)
-				{
-					SetError("l'assegnazione a \"" + stmt->target->name + "\" richiede il modello a "
-						"oggetti Excel (una proprieta' come Range(\"A1\").Value), non ancora "
-						"supportato in questa fase dell'interprete", stmt->line);
-					return execError;
-				}
-				fEnv->Set(stmt->target->name, v);
-				return execNormal;
-			}
+				return ExecuteAssignOrSet(stmt);
 
 			case vbaStmtExprStmt:
 			{
@@ -113,6 +102,92 @@ private:
 		}
 		SetError("tipo di istruzione sconosciuto", stmt->line);
 		return execError;
+	}
+
+	static std::string Lowercase(const std::string& s)
+	{
+		std::string out = s;
+		for (size_t i = 0; i < out.size(); i++)
+			out[i] = (char)tolower((unsigned char)out[i]);
+		return out;
+	}
+
+	// Assegnazione ("=") o Set: condividono tutta la logica del
+	// target -- solo la lettura del RHS differisce quando il target e'
+	// una variabile semplice, vedi sotto.
+	ExecResult ExecuteAssignOrSet(const VbaStmt* stmt)
+	{
+		Value rhs;
+		if (!Eval(stmt->expr.get(), &rhs))
+			return execError;
+
+		if (stmt->target->kind == vbaExprVariable)
+		{
+			// Solo "=" (non "Set") de-referenzia implicitamente un
+			// intervallo al suo valore scalare -- lo stesso "default
+			// member" che il vero VBA applica a un'assegnazione Let,
+			// MAI a un'assegnazione Set (che memorizza il riferimento
+			// stesso, cosi' "rng.Offset(...)"/"rng.Value" restano
+			// utilizzabili in seguito tramite la variabile "rng").
+			if (stmt->kind == vbaStmtAssign && rhs.fType == eRangeData)
+			{
+				Value scalar;
+				VbaRuntimeError err;
+				if (!VbaReadRangeValue(rhs, &scalar, &err, stmt->line))
+				{
+					SetError(err.message, err.line);
+					return execError;
+				}
+				rhs = scalar;
+			}
+			fEnv->Set(stmt->target->name, rhs);
+			return execNormal;
+		}
+
+		// Il target e' un riferimento al modello a oggetti Excel: una
+		// scrittura diretta ("Range(\"A1\") = 5"/"Cells(1,1) = 5",
+		// dove il default member si applica anche in SCRITTURA, non
+		// solo in lettura) oppure tramite la proprieta' esplicita
+		// (".Value = 5", dove si scrive nel VERO target sotto
+		// ".Value", non nella property-access stessa). In entrambi i
+		// casi si scrive uno scalare in una cella vera, quindi qui il
+		// RHS si de-referenzia SEMPRE, Assign o Set che sia -- non ha
+		// senso "Impostare" una cella a "essere" un intervallo.
+		if (rhs.fType == eRangeData)
+		{
+			Value scalar;
+			VbaRuntimeError err;
+			if (!VbaReadRangeValue(rhs, &scalar, &err, stmt->line))
+			{
+				SetError(err.message, err.line);
+				return execError;
+			}
+			rhs = scalar;
+		}
+
+		const VbaExpr* destExpr = stmt->target.get();
+		if (destExpr->kind == vbaExprPropertyAccess)
+		{
+			if (Lowercase(destExpr->name) != "value")
+			{
+				SetError("l'assegnazione alla proprieta' \"" + destExpr->name + "\" non e' "
+					"supportata in questa fase dell'interprete", stmt->line);
+				return execError;
+			}
+			destExpr = destExpr->target.get(); // scrivi nel VERO target sotto ".Value"
+		}
+
+		Value destRange;
+		if (!Eval(destExpr, &destRange))
+			return execError;
+
+		VbaRuntimeError err;
+		if (!VbaWriteRangeValue(destRange, rhs, &err, stmt->line))
+		{
+			SetError(err.message, err.line);
+			return execError;
+		}
+		return execNormal;
 	}
 
 	ExecResult ExecuteFor(const VbaStmt* stmt)

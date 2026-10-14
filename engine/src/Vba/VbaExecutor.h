@@ -3,17 +3,17 @@
 
 	Esegue un albero VbaStmt (Fase 2c) usando il valutatore di
 	espressioni della Fase 3a (Fase 3b dell'interprete -- vedi la
-	decisione del sottoinsieme in ROADMAP.md): Dim, assegnazione/Set
-	(solo verso una variabile semplice in questa fase -- un target che
-	e' un accesso al modello a oggetti, es. "Range(\"A1\").Value = 5",
-	produce un errore chiaro invece di un crash, vedi Fase 3c), If/
-	ElseIf/Else, For/Next con Step, Exit For/Exit Sub.
+	decisione del sottoinsieme in ROADMAP.md): Dim, assegnazione/Set,
+	If/ElseIf/Else, For/Next con Step, Exit For/Exit Sub.
 
-	ANCORA NESSUN modello a oggetti Excel qui, esattamente come
-	VbaEvaluator.h: questo file esegue SOLO programmi con variabili
-	pure, nessuna cella del foglio di calcolo. Il legame con
-	Range/Cells (Fase 3c) estendera' sia questo file sia
-	VbaEvaluator.cpp, non li sostituira'.
+	Fase 3c, modello a oggetti Excel minimo: un'assegnazione verso
+	Range("A1")/Cells(riga,colonna)/".Value" scrive davvero nella
+	cella (CContainer::NewCell tramite VbaEvaluator::VbaWriteRangeValue
+	-- vedi il commento in VbaEvaluator.h), mentre "Set x = Range(...)"
+	memorizza il riferimento stesso nella variabile invece del suo
+	valore scalare (lo stesso Set-vs-Let del vero VBA). Qualunque altro
+	target non riconosciuto produce ancora un errore chiaro, non un
+	crash.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).

@@ -10,6 +10,10 @@
 	dichiarata "Dim Total" e usata come "total = 5" e' la STESSA
 	variabile).
 
+	Porta anche il documento attivo (Fase 3c, modello a oggetti Excel
+	minimo): Range/Cells lo leggono per sapere su quale CContainer
+	risolvere una cella vera.
+
 	Riusa Value (engine/src/Cell/Value.h), lo stesso tipo gia' usato in
 	tutto il motore di calcolo per il valore di una cella -- non un
 	tipo Variant separato scritto da zero: numero/stringa/booleano/
@@ -28,8 +32,21 @@
 
 #include "Value.h"
 
+class CContainer;
+
 class VbaEnvironment {
 public:
+	VbaEnvironment() : fActiveDoc(NULL) {}
+
+	// Il foglio di calcolo (CContainer) su cui questa esecuzione lavora
+	// -- Fase 3c, modello a oggetti Excel: Range/Cells lo usano per
+	// leggere/scrivere celle vere. Puntatore in prestito, MAI
+	// posseduto da VbaEnvironment (stesso principio di
+	// Value::fRangeContainer); NULL di default, cosi' un programma
+	// fatto solo di variabili (Fase 3a/3b) continua a funzionare senza
+	// che il chiamante debba collegare nulla.
+	void SetActiveDocument(CContainer* doc) { fActiveDoc = doc; }
+	CContainer* GetActiveDocument() const { return fActiveDoc; }
 	// Dim: assicura che la variabile esista, inizializzata a vuoto
 	// (0.0, come una variabile Variant VBA appena dichiarata) se non
 	// gia' presente -- NON reimposta un valore gia' assegnato in
@@ -53,6 +70,7 @@ private:
 	static std::string NormalizeName(const std::string& name);
 
 	std::map<std::string, Value> fVars; // chiave: nome normalizzato (minuscolo)
+	CContainer* fActiveDoc;
 };
 
 #endif

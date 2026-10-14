@@ -16,6 +16,8 @@
 #include <cstring>
 #include <vector>
 
+#include "Container.h"
+
 // ---------------------------------------------------------------------
 // Conversioni di tipo stile VBA (Variant): piu' permissive del C++,
 // MAI un errore qui -- una conversione impossibile (es. testo non
@@ -72,6 +74,121 @@ bool VbaToBool(const Value& v)
 	}
 }
 
+// ---------------------------------------------------------------------
+// Fase 3c, modello a oggetti Excel minimo: Range("A1")/Range("A1:B2")/
+// Cells(riga,colonna) producono un Value eRangeData legato al
+// CContainer attivo (vedi Value::fRangeContainer); ".Value"/la
+// coercizione implicita leggono/scrivono la cella vera attraverso
+// quel puntatore. Solo celle SINGOLE in questa fase -- un intervallo
+// di piu' celle e' un errore chiaro, non un dato sbagliato silenzioso.
+// ---------------------------------------------------------------------
+
+// "A1" o "A1:B2" (MAI un nome definito/una tabella in questa fase,
+// solo un riferimento letterale) -- entrambe le meta' devono
+// consumare l'INTERA sottostringa, altrimenti un testo come "A1X" o
+// "Foo" sarebbe accettato per coincidenza (cell::GetCell si ferma al
+// primo carattere che non riconosce, non richiede di arrivare alla
+// fine).
+static bool ParseSimpleRangeRef(const std::string& text, range* outRange)
+{
+	size_t colon = text.find(':');
+	std::string leftPart = (colon == std::string::npos) ? text : text.substr(0, colon);
+	std::string rightPart = (colon == std::string::npos) ? text : text.substr(colon + 1);
+
+	cell topLeft, botRight;
+	int leftConsumed = cell::GetCell(leftPart.c_str(), topLeft);
+	int rightConsumed = cell::GetCell(rightPart.c_str(), botRight);
+	if (leftConsumed != (int)leftPart.size() || rightConsumed != (int)rightPart.size())
+		return false;
+	if (!topLeft.IsValid() || !botRight.IsValid())
+		return false;
+
+	int left = topLeft.h < botRight.h ? topLeft.h : botRight.h;
+	int right = topLeft.h > botRight.h ? topLeft.h : botRight.h;
+	int top = topLeft.v < botRight.v ? topLeft.v : botRight.v;
+	int bottom = topLeft.v > botRight.v ? topLeft.v : botRight.v;
+	*outRange = range(left, top, right, bottom);
+	return true;
+}
+
+static Value MakeRangeValue(const range& r, CContainer* doc)
+{
+	Value v;
+	v = r; // Value::operator=(const range&): fType = eRangeData, fRange = r
+	v.fRangeContainer = doc; // vedi il commento su Value::fRangeContainer in Value.h
+	return v;
+}
+
+bool VbaReadRangeValue(const Value& rangeValue, Value* outResult, VbaRuntimeError* outError, int line)
+{
+	if (rangeValue.fType != eRangeData)
+	{
+		outError->message = "qui serve un intervallo (Range/Cells)";
+		outError->line = line;
+		return false;
+	}
+	range r = (range)rangeValue;
+	if (r.TopLeft() != r.BotRight())
+	{
+		outError->message = "un intervallo di piu' celle non e' ancora supportato in questa fase "
+			"dell'interprete (solo celle singole)";
+		outError->line = line;
+		return false;
+	}
+	CContainer* doc = rangeValue.fRangeContainer;
+	if (!doc)
+	{
+		outError->message = "nessun foglio di calcolo collegato a questa esecuzione VBA";
+		outError->line = line;
+		return false;
+	}
+	Value cellValue;
+	if (!doc->GetValue(r.TopLeft(), cellValue) || cellValue.fType == eNoData)
+	{
+		*outResult = Value(0.0); // cella vuota: 0, come una Variant vuota di VBA
+		return true;
+	}
+	if (cellValue.fType == eNumData || cellValue.fType == eTextData || cellValue.fType == eBoolData)
+	{
+		*outResult = cellValue;
+		return true;
+	}
+	*outResult = Value(0.0); // altri tipi di cella (es. un errore di formula) non ancora gestiti qui
+	return true;
+}
+
+bool VbaWriteRangeValue(const Value& rangeValue, const Value& newValue, VbaRuntimeError* outError, int line)
+{
+	if (rangeValue.fType != eRangeData)
+	{
+		outError->message = "il target dell'assegnazione richiede un intervallo (Range/Cells)";
+		outError->line = line;
+		return false;
+	}
+	range r = (range)rangeValue;
+	if (r.TopLeft() != r.BotRight())
+	{
+		outError->message = "la scrittura su un intervallo di piu' celle non e' ancora supportata "
+			"in questa fase dell'interprete (solo celle singole)";
+		outError->line = line;
+		return false;
+	}
+	CContainer* doc = rangeValue.fRangeContainer;
+	if (!doc)
+	{
+		outError->message = "nessun foglio di calcolo collegato a questa esecuzione VBA";
+		outError->line = line;
+		return false;
+	}
+	// NewCell, non SetValue: una scrittura da VBA sostituisce
+	// interamente il contenuto della cella (come l'utente che digita
+	// sopra), cancellando un'eventuale formula precedente -- stessa
+	// tecnica gia' usata da Ricerca Obiettivo/Tabelle di simulazione
+	// altrove in questo codice.
+	doc->NewCell(r.TopLeft(), newValue, NULL);
+	return true;
+}
+
 namespace {
 
 class Evaluator {
@@ -124,9 +241,7 @@ private:
 			case vbaExprCall:
 				return EvalCall(expr);
 			case vbaExprPropertyAccess:
-				SetError("il modello a oggetti Excel (Range/Cells/proprieta') "
-					"non e' ancora supportato in questa fase dell'interprete", expr->line);
-				return Value(0.0);
+				return EvalPropertyAccess(expr);
 		}
 		SetError("tipo di espressione sconosciuto", expr->line);
 		return Value(0.0);
@@ -236,15 +351,30 @@ private:
 		return Value(0.0);
 	}
 
+	static std::string Lowercase(const std::string& s)
+	{
+		std::string out = s;
+		for (size_t i = 0; i < out.size(); i++)
+			out[i] = (char)tolower((unsigned char)out[i]);
+		return out;
+	}
+
 	Value EvalCall(const VbaExpr* expr)
 	{
 		if (expr->target)
 		{
-			SetError("il modello a oggetti Excel (una chiamata di metodo su un target, "
-				"es. Range(...).Offset(...)) non e' ancora supportato in questa fase "
-				"dell'interprete", expr->line);
+			if (Lowercase(expr->name) == "offset")
+				return EvalOffsetCall(expr);
+			SetError("il metodo \"" + expr->name + "\" del modello a oggetti Excel "
+				"non e' ancora supportato in questa fase dell'interprete", expr->line);
 			return Value(0.0);
 		}
+
+		std::string name = Lowercase(expr->name);
+		if (name == "range")
+			return EvalRangeFunction(expr);
+		if (name == "cells")
+			return EvalCellsFunction(expr);
 
 		std::vector<Value> args;
 		for (size_t i = 0; i < expr->children.size(); i++)
@@ -253,10 +383,6 @@ private:
 			if (fFailed)
 				return Value(0.0);
 		}
-
-		std::string name = expr->name;
-		for (size_t i = 0; i < name.size(); i++)
-			name[i] = (char)tolower((unsigned char)name[i]);
 
 		if (name == "len")
 		{
@@ -363,6 +489,137 @@ private:
 			expr->name.c_str(), expected, args.size());
 		SetError(buf, expr->line);
 		return false;
+	}
+
+	// Fase 3c, modello a oggetti Excel minimo -- vedi il commento in
+	// cima al file.
+
+	CContainer* RequireActiveDocument(int line)
+	{
+		CContainer* doc = fEnv->GetActiveDocument();
+		if (!doc)
+			SetError("nessun foglio di calcolo collegato a questa esecuzione VBA", line);
+		return doc;
+	}
+
+	Value EvalRangeFunction(const VbaExpr* expr)
+	{
+		if (expr->children.size() != 1)
+		{
+			SetError("Range richiede esattamente 1 argomento (un testo come \"A1\" o \"A1:B2\")",
+				expr->line);
+			return Value(0.0);
+		}
+		Value arg = EvalNode(expr->children[0].get());
+		if (fFailed)
+			return Value(0.0);
+		std::string text = VbaToText(arg);
+		range r;
+		if (!ParseSimpleRangeRef(text, &r))
+		{
+			SetError("riferimento di intervallo non valido: \"" + text + "\"", expr->line);
+			return Value(0.0);
+		}
+		CContainer* doc = RequireActiveDocument(expr->line);
+		if (fFailed)
+			return Value(0.0);
+		return MakeRangeValue(r, doc);
+	}
+
+	Value EvalCellsFunction(const VbaExpr* expr)
+	{
+		if (expr->children.size() != 2)
+		{
+			SetError("Cells richiede esattamente 2 argomenti (riga, colonna)", expr->line);
+			return Value(0.0);
+		}
+		Value rowValue = EvalNode(expr->children[0].get());
+		if (fFailed)
+			return Value(0.0);
+		Value colValue = EvalNode(expr->children[1].get());
+		if (fFailed)
+			return Value(0.0);
+		int row = (int)VbaToNumber(rowValue);
+		int col = (int)VbaToNumber(colValue);
+		cell c(col, row);
+		if (!c.IsValid())
+		{
+			SetError("Cells(riga, colonna) e' fuori dai limiti del foglio di calcolo", expr->line);
+			return Value(0.0);
+		}
+		CContainer* doc = RequireActiveDocument(expr->line);
+		if (fFailed)
+			return Value(0.0);
+		return MakeRangeValue(range(c.h, c.v, c.h, c.v), doc);
+	}
+
+	// "target.Offset(righe, colonne)": sposta un intervallo esistente
+	// di un numero di righe/colonne, conservando larghezza e altezza
+	// -- stesso comportamento di range::OffsetBy, gia' usato altrove
+	// nel motore (es. Fase 15, riferimenti di formula).
+	Value EvalOffsetCall(const VbaExpr* expr)
+	{
+		Value targetValue = EvalNode(expr->target.get());
+		if (fFailed)
+			return Value(0.0);
+		if (targetValue.fType != eRangeData)
+		{
+			SetError("Offset richiede un intervallo (Range/Cells), non un valore semplice", expr->line);
+			return Value(0.0);
+		}
+		if (expr->children.size() != 2)
+		{
+			SetError("Offset richiede esattamente 2 argomenti (righe, colonne)", expr->line);
+			return Value(0.0);
+		}
+		Value rowOffsetValue = EvalNode(expr->children[0].get());
+		if (fFailed)
+			return Value(0.0);
+		Value colOffsetValue = EvalNode(expr->children[1].get());
+		if (fFailed)
+			return Value(0.0);
+
+		range r = (range)targetValue;
+		r.OffsetBy((int)VbaToNumber(colOffsetValue), (int)VbaToNumber(rowOffsetValue));
+		if (!r.IsValid())
+		{
+			SetError("Offset porta fuori dai limiti del foglio di calcolo", expr->line);
+			return Value(0.0);
+		}
+		return MakeRangeValue(r, targetValue.fRangeContainer);
+	}
+
+	Value EvalPropertyAccess(const VbaExpr* expr)
+	{
+		std::string name = Lowercase(expr->name);
+		if (name == "select")
+		{
+			// No-op deliberato: nessun concetto di selezione a questo
+			// livello (motore puro, nessuna UI collegata) -- vedi il
+			// commento in VbaEvaluator.h. Si valuta comunque "target"
+			// per propagare un eventuale errore (es. un riferimento
+			// fuori dai limiti), ma il risultato si scarta sempre:
+			// "Select" si usa solo come istruzione nuda.
+			EvalNode(expr->target.get());
+			return Value(0.0);
+		}
+		if (name == "value")
+		{
+			Value target = EvalNode(expr->target.get());
+			if (fFailed)
+				return Value(0.0);
+			Value result;
+			VbaRuntimeError err;
+			if (!VbaReadRangeValue(target, &result, &err, expr->line))
+			{
+				SetError(err.message, err.line);
+				return Value(0.0);
+			}
+			return result;
+		}
+		SetError("la proprieta'/il metodo \"" + expr->name + "\" del modello a oggetti Excel "
+			"non e' ancora supportato in questa fase dell'interprete", expr->line);
+		return Value(0.0);
 	}
 };
 
