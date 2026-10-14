@@ -356,6 +356,17 @@ inline inside the `=` operator; extracted into a shared
 `VbaCompareValues` (`VbaEvaluator.h`) so `Select Case` reuses the
 exact same rule instead of risking a second copy drifting from it.
 
+`For Each ... Next` (5b) is done too: another construct common in
+real macros that touch every cell in a selection or table column.
+Scoped to `Range`/`Cells` only — this subset has no array or
+`Collection` type to iterate, same boundary as the rest of the object
+model. Iteration order is row by row (every column of the first row,
+then the second, and so on), matching real VBA's own order for a
+rectangular range; each loop-variable binding is a true single-cell
+`Range` reference to the live document, not a detached copy of its
+value, so writing through it (`c.Value = c.Value * 10`) changes the
+real cell.
+
 ## Path to 100% XLSX standard compatibility
 
 This is a different axis from "Path to full Excel parity" below: that
