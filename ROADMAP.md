@@ -445,6 +445,128 @@ scope/approach being reviewed first:
   a separate refactor with its own blast radius, not something to
   start as a side effect of a VBA increment.
 
+**Phase 6 (underway) — widening the subset toward general-purpose VBA
+programs.** Triggered by checking a real third-party macro (a CHIP-8
+emulator written entirely in Excel VBA, github.com/rndtrash/chip-8-vba)
+against today's interpreter: it uses almost nothing Phase 1-5 already
+covers, which makes it a useful stand-in for "a real program, not a
+recorded click-macro." Ordered so each sub-phase only depends on ones
+before it:
+
+- **(6a) `Sub` parameters, `ByVal` only, is done** — and turned out to
+  need a bigger prerequisite than the parameter list itself. Parsing:
+  `ParseVbaSub` (`VbaStmtParser.cpp`) used to hard-require empty
+  parentheses ("nessun parametro in questo sottoinsieme", enforced not
+  just undocumented); it now parses `(["ByVal"] name ["As" type]
+  [, ...])`, discarding `ByVal`/the type same as `Dim` already does,
+  and rejecting `ByRef` with a clear parse error rather than silently
+  treating it as `ByVal` (the aliasing it would need isn't
+  supported by a `Value`-as-double-only runtime). But parameters are
+  useless without a way to call a parameterized procedure, and
+  checking turned up that **no mechanism to call a user-defined Sub at
+  all existed before this** — `VbaEnvironment`'s own header comment
+  said so outright ("non supporta funzioni/procedure annidate"):
+  `ExecuteVbaMacro` only ever ran exactly one named Sub to completion,
+  and `EvalCall`'s fallback for any unrecognized name was unconditionally
+  "funzione sconosciuta". Closing that gap was most of the actual work:
+  `VbaEnvironment` gained a borrowed pointer to its module's token
+  stream (`SetModuleTokens`, set by `ExecuteVbaMacro`) plus a call-depth
+  counter; `EvalCall`'s fallback now re-scans those tokens with the
+  existing `FindVbaSubByName` (Phase 3d) to resolve a sibling Sub by
+  name, evaluates each argument once (same as any other call), binds
+  each into a **brand-new** `VbaEnvironment` under the parameter name
+  (a real copy, no aliasing — `ByVal` end to end), and runs it via the
+  existing `ExecuteVbaSub`. Capped at 200 nested calls so a Sub that
+  recurses without a base case gets a clean runtime error ("troppi
+  livelli di chiamata annidata") instead of a native stack overflow.
+  `Call Foo(...)` is also now accepted as pure syntax sugar for the
+  bare `Foo(...)` statement form — "Call" has been a tokenized keyword
+  since Phase 2 but nothing ever consumed it until now. Two honestly-
+  scoped boundaries, not silently mishandled: only the *parenthesized*
+  call form is recognized as a statement (real VBA's paren-less `Foo a,
+  b` stays unsupported, same grammar boundary every other call in this
+  subset already has); and a sibling call only resolves within the
+  SAME module whose tokens are attached to the environment — calling a
+  Sub defined in a *different* module of the same project is a known,
+  separate gap, the same shape as the existing "known limit" already
+  documented for `ExecuteVbaMacro`'s own top-level lookup. New coverage
+  in `vba_stmt_parser_test.cpp` (parameter-list parsing, `ByRef`
+  rejection, `Call` stripping) and `vba_macro_runner_test.cpp`
+  (`TestSiblingSubCall`: a real `ExecuteVbaMacro` run where one Sub
+  calls another with arguments and the written cell values are checked
+  on a live `CContainer`, plus the wrong-arg-count and infinite-
+  recursion error paths) — all passing, no regressions in the rest of
+  the VBA suite.
+- **(6b) The `Function` statement.** Not parsed at all today — only
+  `Sub`. Needs a return-type slot and the VBA idiom of assigning the
+  function's own name as its return value (`DrawSprite = result`)
+  inside the body, plus threading a real value back out of
+  `ExecuteVbaMacro`'s call path instead of the `Sub`-only "runs, no
+  result" model.
+- **(6c) Fixed-size arrays.** `Dim` (`VbaStmtParser.cpp:178`) only
+  accepts a bare scalar name today — no `(n)` bound, 1-D or 2-D,
+  anywhere in the grammar. Every piece of real state in the CHIP-8
+  macro (`Memory(2047)`, `Screen(63,31)`, `V(15)`, `Stack(15)`) is an
+  array; without this, 6a-6b can pass scalars around but nothing can
+  hold a real program's data. Scope to static bounds declared at `Dim`
+  time (`ReDim` and dynamic resizing stay a separate, later gap — the
+  binary file read in 6g needs it, but nothing else here does).
+- **(6d) User-defined types (`Private Type ... End Type`)**, plus
+  field access (`ThisVM.PC`) and arrays of a UDT (`Screen(63,31) As
+  ScreenPixel`). Depends on 6c for the array-of-UDT case. This is what
+  turns "a pile of parallel arrays" into the actual struct shape real
+  macros use for anything non-trivial.
+- **(6e) The `With` statement.** Already scoped in Phase 5's
+  "investigated and deliberately deferred" note above — the design
+  (a `With`-target stack threaded from the statement parser into
+  `ParseVbaExpression`/`ParseVbaPrimaryExpression`, a clone utility
+  since each statement in the block needs its own copy of the target)
+  doesn't change by waiting; this phase is where it actually gets
+  built, now that 6a-6d give it something worth targeting.
+- **(6f) Deeper `Range`/`Cells` formatting** (`.Interior.Color`/
+  `.ColorIndex`, `.Font.Bold`). Also already scoped in Phase 5's
+  deferred note: blocked on relocating `GetCellFontInfo`/
+  `ApplyFontToRange` out of `ui/` and into the engine layer first,
+  since `engine/src/Vba` can't depend on `ui/` by design. That
+  relocation is its own refactor, with its own review, before any
+  VBA-side work here starts.
+- **(6g) Binary file I/O** (`Open ... For Binary Access Read`, `Get`,
+  `LOF`, `Close`). Needs a security decision before a design, not
+  after: a macro that can read arbitrary files from disk is a real
+  capability expansion on top of "macros disabled by default" (the
+  existing trust-bar posture), not just another statement. Likely
+  scope: restrict `Open` to paths inside the workbook's own directory
+  (matching the ROM-loading pattern in the trigger macro, which reads
+  a `.ch8` file next to the `.xlsm`), reject absolute paths elsewhere
+  outright rather than prompting per-call. `ReDim` off `LOF(file)` is
+  the one dynamic-sizing case worth covering alongside 6c's static
+  arrays, scoped narrowly to "resize right after reading a file length"
+  rather than general dynamic arrays.
+- **(6h) `Application.OnTime` and `DoEvents`.** The biggest shape-change
+  in this phase: `ExecuteVbaMacro` today runs one named macro
+  synchronously to completion. `OnTime` schedules a *future*,
+  independent invocation, which means the interpreter needs to
+  integrate with the app's own idle/message loop (likely a
+  `BMessageRunner`-backed re-entry into `ExecuteVbaMacro` by name,
+  same trust/enablement rules as the initial run) instead of being a
+  one-shot call from the "Run Macro" menu item. `DoEvents` is small by
+  comparison — pump that same loop mid-macro — but has no meaning
+  without this re-entrant model existing first, so it rides along in
+  the same sub-phase rather than being its own.
+
+**Deliberately not in Phase 6, flagged as its own future decision**:
+ActiveX controls embedded directly on a worksheet (`CommandButton`,
+and `Image`/`Label` controls wired up as a 4x4 on-sheet keypad via
+`_Click`/`_MouseDown`/`_MouseUp` event subs — exactly how the trigger
+macro's keyboard works). This isn't a VBA-interpreter gap at all; it's
+new UI surface — placing, rendering, and hit-testing floating controls
+on `SheetView`, then routing input events into named event-sub
+lookups — closer in shape to the chart/image-object work already done
+than to anything in `engine/src/Vba`. Even after every other sub-phase
+above ships, the specific trigger macro still wouldn't run end to end
+without this, same honest framing as `With`/deeper `Range` properties
+being flagged in Phase 5 rather than silently treated as covered.
+
 ## Path to 100% XLSX standard compatibility
 
 This is a different axis from "Path to full Excel parity" below: that
