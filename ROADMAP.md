@@ -693,17 +693,29 @@ before it:
   the one dynamic-sizing case worth covering alongside 6c's static
   arrays, scoped narrowly to "resize right after reading a file length"
   rather than general dynamic arrays.
-- **(6h) `Application.OnTime` and `DoEvents`.** The biggest shape-change
-  in this phase: `ExecuteVbaMacro` today runs one named macro
-  synchronously to completion. `OnTime` schedules a *future*,
-  independent invocation, which means the interpreter needs to
-  integrate with the app's own idle/message loop (likely a
-  `BMessageRunner`-backed re-entry into `ExecuteVbaMacro` by name,
-  same trust/enablement rules as the initial run) instead of being a
-  one-shot call from the "Run Macro" menu item. `DoEvents` is small by
-  comparison — pump that same loop mid-macro — but has no meaning
-  without this re-entrant model existing first, so it rides along in
-  the same sub-phase rather than being its own.
+- **(6h) `Application.OnTime`, planned; `DoEvents` is done as a
+  deliberate no-op, split off early.** The original plan rode
+  `DoEvents` along with `OnTime` on the theory that pumping a message
+  loop mid-macro "has no meaning" without the re-entrant model below —
+  true for *actually pumping a real loop*, but `DoEvents` turned out
+  to have a cheaper, still-honest reading: real macros write it inside
+  a tight loop purely to stay responsive, and this is a motor puro
+  with no UI loop to pump at all (same reasoning as `.Select` being a
+  deliberate no-op). Written bare, with no parentheses (the real VBA
+  form — `ExecuteVbaMacro` found it reaching `EvalVariable` as an
+  undeclared-variable read, not a call), it now short-circuits to
+  `0.0` there, same spirit as `.Select`'s no-op in `EvalPropertyAccess`.
+  This closes the one real parse-time blocker the real CHIP-8 source
+  had in `Step()`/`ProcessVM()` (both call it inside their main loop)
+  without touching the harder problem below. `Application.OnTime`
+  itself remains the biggest shape-change left in this phase:
+  `ExecuteVbaMacro` today runs one named macro synchronously to
+  completion. `OnTime` schedules a *future*, independent invocation,
+  which means the interpreter needs to integrate with the app's own
+  idle/message loop (likely a `BMessageRunner`-backed re-entry into
+  `ExecuteVbaMacro` by name, same trust/enablement rules as the
+  initial run) instead of being a one-shot call from the "Run Macro"
+  menu item.
 
 **Deliberately not in Phase 6, flagged as its own future decision**:
 ActiveX controls embedded directly on a worksheet (`CommandButton`,
