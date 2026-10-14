@@ -31,4 +31,11 @@
 std::unique_ptr<VbaSub> ParseVbaSub(const std::vector<VbaToken>& tokens, size_t& pos,
 	VbaParseError* outError);
 
+// Fase 6d: stesso principio, ma per un intero "Type Nome" ... "End
+// Type" a partire da tokens[pos] (che deve gia' essere la parola
+// chiave "Type" -- un eventuale "Private"/"Public" davanti va saltato
+// dal CHIAMANTE prima, vedi VbaMacroRunner.h).
+std::unique_ptr<VbaTypeDecl> ParseVbaTypeDecl(const std::vector<VbaToken>& tokens, size_t& pos,
+	VbaParseError* outError);
+
 #endif

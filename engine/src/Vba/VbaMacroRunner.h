@@ -43,6 +43,7 @@
 #ifndef VBA_MACRO_RUNNER_H
 #define VBA_MACRO_RUNNER_H
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -111,5 +112,22 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 // nessuna Sub pubblica.
 bool ListVbaMacroNames(const uint8* vbaProjectData, size_t vbaProjectLen,
 	std::vector<std::string>* outNames);
+
+// Fase 6d: scandisce "tokens" (il sorgente GIA' tokenizzato di UN
+// modulo) per TUTTI i blocchi "[Private|Public] Type Nome ... End
+// Type" (a differenza di FindVbaSubByName, qui non si cerca UN nome
+// -- serve l'intero registro in anticipo, perche' un Type puo'
+// referenziarne un altro dichiarato PIU' IN BASSO nello stesso modulo,
+// vedi VbaTypeField in VbaAst.h). Il corpo di ogni Sub/Function viene
+// SALTATO per intero senza analizzarlo (un Type non puo' comparire al
+// suo interno) individuando la coppia di parole chiave consecutive
+// "End Sub"/"End Function" -- MAI prodotta da un If/For annidato
+// (che userebbe "End If"/"Next"), stesso trucco di ListVbaMacroNames.
+// Vero se ogni Type del modulo e' analizzabile per intero, con
+// "outTypes" popolato (vuoto, non un errore, se il modulo non ne
+// dichiara nessuno); falso con "outError" popolato altrimenti (un
+// Type con una sintassi fuori da questo sottoinsieme).
+bool FindAllVbaTypeDecls(const std::vector<VbaToken>& tokens,
+	std::map<std::string, VbaTypeDecl>* outTypes, VbaParseError* outError);
 
 #endif

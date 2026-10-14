@@ -21,7 +21,7 @@
 // confrontare stringhe esatte invece di rifare ogni volta un confronto
 // senza distinzione di maiuscole.
 static const char* const kKeywords[] = {
-	"Sub", "Function", "End", "Dim", "As", "If", "Then", "Else", "ElseIf",
+	"Sub", "Function", "Type", "End", "Dim", "As", "If", "Then", "Else", "ElseIf",
 	"For", "To", "Step", "Next", "True", "False", "And", "Or", "Not",
 	"Mod", "Set", "Exit", "Call", "Select", "Case", "Each", "In",
 	"Do", "Loop", "While", "Until",

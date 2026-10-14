@@ -90,16 +90,20 @@ static std::string DumpStmt(const VbaStmt* s)
 			return DumpExpr(s->expr.get());
 		case vbaStmtDim:
 		{
-			if (s->arrayDims.empty())
-				return "Dim " + s->varName;
 			std::string dims;
-			for (size_t i = 0; i < s->arrayDims.size(); i++)
+			if (!s->arrayDims.empty())
 			{
-				if (i > 0)
-					dims += ", ";
-				dims += std::to_string(s->arrayDims[i]);
+				dims += "(";
+				for (size_t i = 0; i < s->arrayDims.size(); i++)
+				{
+					if (i > 0)
+						dims += ", ";
+					dims += std::to_string(s->arrayDims[i]); // conteggio elementi, non il limite scritto
+				}
+				dims += ")";
 			}
-			return "Dim " + s->varName + "(" + dims + ")"; // conteggio elementi, non il limite scritto
+			std::string asType = s->asTypeName.empty() ? "" : (" As " + s->asTypeName);
+			return "Dim " + s->varName + dims + asType;
 		}
 		case vbaStmtIf:
 		{
@@ -165,6 +169,54 @@ static void CheckSub(const char* source, const char* expected)
 	Check(ok, what.c_str());
 }
 
+// ---- Fase 6d: "Type ... End Type" ----
+
+static std::string DumpTypeField(const VbaTypeField& f)
+{
+	std::string out = f.name;
+	if (!f.arrayDims.empty())
+	{
+		out += "(";
+		for (size_t i = 0; i < f.arrayDims.size(); i++)
+		{
+			if (i > 0)
+				out += ", ";
+			out += std::to_string(f.arrayDims[i]);
+		}
+		out += ")";
+	}
+	return out + " As " + f.typeName;
+}
+
+static std::string ParseAndDumpType(const char* source)
+{
+	std::vector<VbaToken> tokens;
+	TokenizeVba(source, &tokens);
+	size_t pos = 0;
+	VbaParseError error;
+	std::unique_ptr<VbaTypeDecl> decl = ParseVbaTypeDecl(tokens, pos, &error);
+	if (!decl)
+		return "<errore riga " + std::to_string(error.line) + ": " + error.message + ">";
+	std::string out = "Type " + decl->name + " [";
+	for (size_t i = 0; i < decl->fields.size(); i++)
+	{
+		if (i > 0)
+			out += "; ";
+		out += DumpTypeField(decl->fields[i]);
+	}
+	return out + "]";
+}
+
+static void CheckType(const char* source, const char* expected)
+{
+	std::string actual = ParseAndDumpType(source);
+	bool ok = actual == expected;
+	std::string what = std::string(source) + " -> " + actual;
+	if (!ok)
+		what += " (atteso: " + std::string(expected) + ")";
+	Check(ok, what.c_str());
+}
+
 int main()
 {
 	// ---- Sub vuota ----
@@ -174,7 +226,9 @@ int main()
 	CheckSub("Sub Foo()\r\nDim x\r\nx = 5\r\nEnd Sub\r\n",
 		"Sub Foo() [Dim x; x := 5]");
 	CheckSub("Sub Foo()\r\nDim x As Integer\r\nEnd Sub\r\n",
-		"Sub Foo() [Dim x]"); // il tipo si legge e si scarta
+		"Sub Foo() [Dim x As Integer]"); // Fase 6d: il nome del tipo si CATTURA (non si scarta piu'
+		                                   // al parsing) -- se e' uno scalare incorporato o un Type
+		                                   // lo decide VbaExecutor.cpp a runtime, vedi VbaAst.h
 
 	// ---- Assegnazione a una proprieta' (il caso piu' comune in una macro reale) ----
 	CheckSub("Sub Foo()\r\nRange(\"A1\").Value = 42\r\nEnd Sub\r\n",
@@ -268,7 +322,7 @@ int main()
 		"        End If\r\n"
 		"    Next i\r\n"
 		"End Sub\r\n",
-		"Sub FillRange() [Dim i; For i = 1 To 10 "
+		"Sub FillRange() [Dim i As Integer; For i = 1 To 10 "
 		"[If ((i Mod 2) = 0) Then [Cells(i, 1).Value := \"even\"] "
 		"Else [Cells(i, 1).Value := \"odd\"]]]");
 
@@ -300,7 +354,7 @@ int main()
 	// stampato da DumpStmt e' gia' il CONTEGGIO di elementi (limite
 	// superiore scritto + 1, Option Base 0 implicito) ----
 	CheckSub("Sub Foo()\r\nDim V(15) As Byte\r\nEnd Sub\r\n",
-		"Sub Foo() [Dim V(16)]"); // 16 elementi, indici 0..15 -- i registri V0..VF del CHIP-8
+		"Sub Foo() [Dim V(16) As Byte]"); // 16 elementi, indici 0..15 -- i registri V0..VF del CHIP-8
 	CheckSub("Sub Foo()\r\nDim Screen(63, 31)\r\nEnd Sub\r\n",
 		"Sub Foo() [Dim Screen(64, 32)]"); // 2D: 64x32, lo schermo del CHIP-8
 	CheckSub("Sub Foo()\r\nDim x\r\nEnd Sub\r\n",
@@ -311,6 +365,37 @@ int main()
 		std::string r = ParseAndDump("Sub Foo()\r\nDim V(-1)\r\nEnd Sub\r\n");
 		Check(r.substr(0, 8) == "<errore ", "un limite superiore negativo su un array produce un errore");
 	}
+
+	// ---- Fase 6d: "Type Nome ... End Type" -- un elenco di campi,
+	// scalari o array (stessa convenzione "conteggio elementi" di
+	// VbaStmt::arrayDims sopra), senza corpo eseguibile ----
+	CheckType("Type ScreenPixel\r\nvalue As Byte\r\nDirty As Byte\r\nEnd Type\r\n",
+		"Type ScreenPixel [value As Byte; Dirty As Byte]");
+	CheckType(
+		"Type VM\r\n"
+		"Running As Boolean\r\n"
+		"PC As Long\r\n"
+		"V(15) As Byte\r\n"
+		"Screen(63, 31) As ScreenPixel\r\n"
+		"End Type\r\n",
+		"Type VM [Running As Boolean; PC As Long; V(16) As Byte; Screen(64, 32) As ScreenPixel]");
+	CheckType("Type Empty\r\nEnd Type\r\n", "Type Empty []");
+	{
+		std::string r = ParseAndDumpType("Type VM\r\nPC As Long\r\n");
+		Check(r.substr(0, 8) == "<errore ", "\"End Type\" mancante produce un errore, non una lettura "
+			"oltre la fine del flusso di token");
+	}
+	{
+		std::string r = ParseAndDumpType("Type VM\r\nPC\r\nEnd Type\r\n"); // campo senza "As Tipo"
+		Check(r.substr(0, 8) == "<errore ", "un campo senza \"As Tipo\" produce un errore");
+	}
+
+	// ---- Fase 6d: "Dim nome As NomeTipo" -- il parser CATTURA sempre
+	// il nome (vedi il test su "Dim x As Integer" sopra): se sia uno
+	// scalare incorporato o un Type lo decide VbaExecutor.cpp a
+	// runtime, non ParseVbaSub, che non ha alcun registro da
+	// consultare qui ----
+	CheckSub("Sub Foo()\r\nDim ThisVM As VM\r\nEnd Sub\r\n", "Sub Foo() [Dim ThisVM As VM]");
 
 	// ---- Fase 6b: "Function ... End Function", col valore di ritorno
 	// rappresentato come una normale assegnazione alla variabile

@@ -99,6 +99,48 @@ bool ListVbaMacroNames(const uint8* vbaProjectData, size_t vbaProjectLen,
 	return true;
 }
 
+bool FindAllVbaTypeDecls(const std::vector<VbaToken>& tokens,
+	std::map<std::string, VbaTypeDecl>* outTypes, VbaParseError* outError)
+{
+	outTypes->clear();
+	size_t pos = 0;
+	while (pos < tokens.size())
+	{
+		while (pos < tokens.size() && tokens[pos].type == vbaTokNewline)
+			pos++;
+		if (pos >= tokens.size() || tokens[pos].type == vbaTokEnd)
+			break;
+
+		if (tokens[pos].type == vbaTokKeyword
+			&& (tokens[pos].text == "Sub" || tokens[pos].text == "Function"))
+		{
+			// Un Type non puo' comparire dentro una Sub/Function: si
+			// salta l'intero corpo SENZA analizzarlo, cercando la coppia
+			// di parole chiave consecutive "End Sub"/"End Function" --
+			// MAI prodotta da un If/For annidato (che userebbe "End
+			// If"/"Next"), stesso trucco di ListVbaMacroNames sopra.
+			std::string endKeyword = tokens[pos].text;
+			pos++;
+			while (pos + 1 < tokens.size() && !(tokens[pos].type == vbaTokKeyword
+				&& tokens[pos].text == "End" && tokens[pos + 1].type == vbaTokKeyword
+				&& tokens[pos + 1].text == endKeyword))
+				pos++;
+			pos = (pos + 1 < tokens.size()) ? pos + 2 : tokens.size(); // oltre "End Sub"/"End Function"
+			continue;
+		}
+		if (tokens[pos].type == vbaTokKeyword && tokens[pos].text == "Type")
+		{
+			std::unique_ptr<VbaTypeDecl> decl = ParseVbaTypeDecl(tokens, pos, outError);
+			if (!decl)
+				return false;
+			(*outTypes)[NormalizeSubName(decl->name)] = *decl; // chiave normalizzata, vedi VbaAst.h
+			continue;
+		}
+		pos++; // "Attribute VB_Name = ...", "Private"/"Public" davanti a "Type", ecc.
+	}
+	return true;
+}
+
 bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 	const std::string& macroName, CContainer* doc, VbaRuntimeError* outError)
 {
@@ -121,6 +163,19 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 			continue; // non in QUESTO modulo (o un errore di sintassi al suo interno):
 			          // si prova il modulo successivo, vedi il LIMITE NOTO in VbaMacroRunner.h
 
+		// Fase 6d: il registro dei Type di QUESTO STESSO modulo --
+		// serve PRIMA di eseguire, non durante (un Type puo'
+		// referenziarne un altro dichiarato piu' in basso, vedi
+		// VbaTypeField in VbaAst.h). Un errore di sintassi in un Type
+		// e' trattato come in FindVbaSubByName sopra: si rinuncia a
+		// QUESTO modulo (la Sub cercata potrebbe benissimo essere
+		// valida, ma non si puo' separare "i suoi Type" dal resto senza
+		// un secondo scanner ad hoc) e si prova il successivo.
+		std::map<std::string, VbaTypeDecl> types;
+		VbaParseError typeError;
+		if (!FindAllVbaTypeDecls(tokens, &types, &typeError))
+			continue;
+
 		VbaEnvironment env;
 		env.SetActiveDocument(doc);
 		// Fase 6a: collega i token di QUESTO modulo all'ambiente, cosi'
@@ -130,6 +185,7 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 		// tutta la durata di questa chiamata sincrona, anche attraverso
 		// chiamate a Sub annidate.
 		env.SetModuleTokens(&tokens);
+		env.SetTypeRegistry(&types); // Fase 6d, stesso principio di SetModuleTokens
 		return ExecuteVbaSub(sub.get(), &env, outError);
 	}
 

@@ -650,6 +650,147 @@ static void TestArrays()
 }
 
 // =======================================================================
+// Parte 2e (Fase 6d): tipi definiti dall'utente -- esattamente la forma
+// "ScreenPixel"/"VM" del CHIP-8 che ha dato il via a questa fase intera
+// (vedi ROADMAP.md), punta a punta tramite ExecuteVbaMacro: campi
+// scalari, un array scalare, un array-di-struct annidato
+// ("Screen(x,y).value"/".Dirty"), e un pugno di errori onesti (tipo
+// inesistente, campo inesistente, array-di-UDT via Dim diretto, indice
+// fuori dai limiti, assegnazione di un'intera struct).
+// =======================================================================
+
+static std::vector<uint8> BuildStructProject()
+{
+	const char* moduleSource =
+		"Private Type ScreenPixel\r\n"
+		"    value As Byte\r\n"
+		"    Dirty As Byte\r\n"
+		"End Type\r\n"
+		"Private Type VM\r\n"
+		"    PC As Long\r\n"
+		"    V(15) As Byte\r\n"
+		"    Screen(63, 31) As ScreenPixel\r\n"
+		"End Type\r\n"
+		"Sub Main()\r\n"
+		"    Dim ThisVM As VM\r\n"
+		"    ThisVM.PC = 512\r\n"
+		"    ThisVM.V(0) = 10\r\n"
+		"    ThisVM.V(1) = 20\r\n"
+		"    ThisVM.Screen(0, 0).value = 1\r\n"
+		"    ThisVM.Screen(1, 1).value = 1\r\n"
+		"    ThisVM.Screen(1, 1).Dirty = 1\r\n"
+		"    Cells(1, 1).Value = ThisVM.PC\r\n"
+		"    Cells(2, 1).Value = ThisVM.V(0) + ThisVM.V(1)\r\n"
+		"    Cells(3, 1).Value = ThisVM.Screen(0, 0).value\r\n"
+		"    Cells(4, 1).Value = ThisVM.Screen(1, 1).Dirty\r\n"
+		"    Cells(5, 1).Value = ThisVM.Screen(0, 1).value\r\n" // mai scritta: resta 0 (Empty)
+		"End Sub\r\n"
+		"Sub UnrecognizedTypeNameIsJustScalar()\r\n"
+		"    Dim x As NoSuchType\r\n" // nessun errore: stesso trattamento di "As Integer"/"As Byte"
+		"    Cells(1, 1).Value = 7\r\n" // prima di questa Fase, OGNI nome dopo "As" si scartava
+		"End Sub\r\n"                  // allo stesso modo -- questo sottoinsieme non convalida MAI
+		"Sub UnknownField()\r\n"       // il nome, un typo in un Type reale e in un tipo scalare
+		                                // inesistente sono indistinguibili, vedi il commento sotto
+		"    Dim ThisVM As VM\r\n"
+		"    ThisVM.NoSuchField = 1\r\n"
+		"End Sub\r\n"
+		"Sub ArrayOfUdtViaDim()\r\n"
+		"    Dim Many(5) As VM\r\n"
+		"End Sub\r\n"
+		"Sub OutOfBoundsStructArray()\r\n"
+		"    Dim ThisVM As VM\r\n"
+		"    ThisVM.Screen(100, 100).value = 1\r\n"
+		"End Sub\r\n"
+		"Sub WholeStructAssign()\r\n"
+		"    Dim ThisVM As VM\r\n"
+		"    Dim Other As VM\r\n"
+		"    ThisVM = Other\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(10, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestStructs()
+{
+	std::vector<uint8> project = BuildStructProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per i tipi definiti dall'utente si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "Main", doc, &err);
+	Check(ok, "\"Main\" legge e scrive campi scalari, un array scalare, e un array-di-struct "
+		"annidato (\"ThisVM.Screen(x,y).value\") senza errori");
+
+	Value v1, v2, v3, v4, v5;
+	doc->GetValue(cell(1, 1), v1);
+	doc->GetValue(cell(1, 2), v2);
+	doc->GetValue(cell(1, 3), v3);
+	doc->GetValue(cell(1, 4), v4);
+	doc->GetValue(cell(1, 5), v5);
+	Check((double)v1 == 512.0, "ThisVM.PC torna davvero 512, un campo scalare semplice");
+	Check((double)v2 == 30.0, "ThisVM.V(0) + ThisVM.V(1) = 10 + 20 = 30, un campo array scalare");
+	Check((double)v3 == 1.0 && (double)v4 == 1.0,
+		"ThisVM.Screen(0,0).value e ThisVM.Screen(1,1).Dirty sono DUE campi distinti "
+		"di DUE elementi distinti dell'array-di-struct \"Screen\"");
+	Check((double)v5 == 0.0,
+		"ThisVM.Screen(0,1).value non e' mai stata scritta: Empty (0.0), come un campo Dim normale");
+	doc->Release();
+
+	{
+		// Limite onesto, non un errore di questa fase: un nome dopo
+		// "As" che non e' un Type dichiarato si tratta come un tipo
+		// scalare incorporato QUALUNQUE (stesso trattamento, pre-Fase
+		// 6d, di "As Integer"/"As Byte" -- nessuno di questi nomi era
+		// mai convalidato). Un vero "tipo inesistente" e un typo su un
+		// vero nome di Type sono indistinguibili con questa regola:
+		// aggiungere un elenco di parole chiave scalari riconosciute
+		// (Byte/Integer/Long/...) per distinguerli e' fuori scopo qui.
+		CContainer* okDoc = new CContainer(NULL, NULL);
+		VbaRuntimeError okErr;
+		bool unknownTypeOk = ExecuteVbaMacro(&project[0], project.size(),
+			"UnrecognizedTypeNameIsJustScalar", okDoc, &okErr);
+		Check(unknownTypeOk, "\"Dim x As NoSuchType\" NON produce un errore -- stesso trattamento "
+			"onesto di qualunque tipo scalare incorporato, mai convalidato da questo sottoinsieme");
+		Value v;
+		okDoc->GetValue(cell(1, 1), v);
+		Check((double)v == 7.0, "e il resto della Sub esegue normalmente dopo quel \"Dim\"");
+		okDoc->Release();
+	}
+
+	struct { const char* macro; const char* what; } errorCases[] = {
+		{"UnknownField", "\"ThisVM.NoSuchField\" (campo inesistente su VM) produce un errore chiaro"},
+		{"ArrayOfUdtViaDim", "un array di un tipo definito dall'utente via \"Dim\" diretto produce "
+			"un errore chiaro (limite onesto, solo come campo di un altro Type -- vedi ROADMAP.md)"},
+		{"OutOfBoundsStructArray", "un indice fuori dai limiti su un array-di-struct produce un "
+			"errore chiaro, non un accesso fuori dai limiti del vettore sottostante"},
+		{"WholeStructAssign", "\"ThisVM = Other\" (assegnazione di un'intera struct) produce un "
+			"errore chiaro, non supportata in questo sottoinsieme"},
+	};
+	for (size_t i = 0; i < sizeof(errorCases) / sizeof(errorCases[0]); i++)
+	{
+		CContainer* errDoc = new CContainer(NULL, NULL);
+		VbaRuntimeError errOut;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), errorCases[i].macro, errDoc, &errOut),
+			errorCases[i].what);
+		errDoc->Release();
+	}
+}
+
+// =======================================================================
 // Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
 // pensato apposta per provare che questa funzione NON chiama
 // ParseVbaSub (un "ByRef" su un parametro, fuori da questo
@@ -734,6 +875,7 @@ int main()
 	TestSiblingSubCall();
 	TestSiblingFunctionCall();
 	TestArrays();
+	TestStructs();
 	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

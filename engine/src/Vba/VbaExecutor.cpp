@@ -10,8 +10,91 @@
 #include "VbaExecutor.h"
 
 #include <cctype>
+#include <map>
+#include <utility>
 
 namespace {
+
+static std::string LowercaseTypeName(const std::string& s)
+{
+	std::string out = s;
+	for (size_t i = 0; i < out.size(); i++)
+		out[i] = (char)tolower((unsigned char)out[i]);
+	return out;
+}
+
+// Fase 6d: costruisce una NUOVA istanza di struct azzerata a partire
+// dal suo VbaTypeDecl (VbaAst.h), risolvendo RECURSIVAMENTE i campi
+// che sono a loro volta un tipo definito dall'utente (es.
+// "Screen(63,31) As ScreenPixel" dentro "VM") tramite lo stesso
+// registro -- "registry" e' l'INTERO modulo (VbaMacroRunner.h,
+// FindAllVbaTypeDecls), non solo i tipi gia' visti finora, perche' un
+// Type puo' referenziarne un altro dichiarato PIU' IN BASSO nello
+// stesso modulo. "depth" e' una guardia anti-ricorsione (Type A che
+// contiene un campo di Type A, direttamente o tramite una catena --
+// strutturalmente impossibile nel vero VBA per una dimensione finita,
+// ma questo interprete non deve mai andare in stack overflow nemmeno
+// su un sorgente scritto apposta per romperlo). Falso con un
+// messaggio chiaro se un campo referenzia un tipo inesistente o la
+// ricorsione supera il limite -- MAI un crash.
+static bool BuildVbaStructInstance(const std::string& typeName,
+	const std::map<std::string, VbaTypeDecl>& registry, VbaStructInstance* out,
+	int depth, std::string* outErr)
+{
+	if (depth > 20)
+	{
+		*outErr = "troppi livelli di annidamento fra tipi definiti dall'utente "
+			"(possibile riferimento circolare fra Type)";
+		return false;
+	}
+	std::map<std::string, VbaTypeDecl>::const_iterator typeIt = registry.find(LowercaseTypeName(typeName));
+	if (typeIt == registry.end())
+	{
+		*outErr = "tipo \"" + typeName + "\" non dichiarato (nessun \"Type ... End Type\" con questo nome)";
+		return false;
+	}
+	const VbaTypeDecl& decl = typeIt->second;
+	for (size_t i = 0; i < decl.fields.size(); i++)
+	{
+		const VbaTypeField& f = decl.fields[i];
+		VbaStructField sf;
+		sf.isArray = !f.arrayDims.empty();
+		sf.isStruct = registry.find(LowercaseTypeName(f.typeName)) != registry.end();
+		sf.dims = f.arrayDims;
+
+		size_t total = 1;
+		for (size_t d = 0; d < f.arrayDims.size(); d++)
+			total *= (size_t)f.arrayDims[d];
+
+		if (!sf.isArray && !sf.isStruct)
+		{
+			sf.scalarValue = Value(0.0);
+		}
+		else if (sf.isArray && !sf.isStruct)
+		{
+			sf.scalarArray.assign(total, Value(0.0));
+		}
+		else if (!sf.isArray && sf.isStruct)
+		{
+			sf.structValue.reset(new VbaStructInstance());
+			if (!BuildVbaStructInstance(f.typeName, registry, sf.structValue.get(), depth + 1, outErr))
+				return false;
+		}
+		else // isArray && isStruct
+		{
+			sf.structArray.resize(total);
+			for (size_t e = 0; e < total; e++)
+			{
+				sf.structArray[e].reset(new VbaStructInstance());
+				if (!BuildVbaStructInstance(f.typeName, registry, sf.structArray[e].get(),
+					depth + 1, outErr))
+					return false;
+			}
+		}
+		out->fields[LowercaseTypeName(f.name)] = std::move(sf);
+	}
+	return true;
+}
 
 // Come si e' appena fermata l'esecuzione di una lista di istruzioni:
 // in fondo normalmente, per un "Exit For" (il ciclo For/For Each PIU'
@@ -89,11 +172,45 @@ private:
 		switch (stmt->kind)
 		{
 			case vbaStmtDim:
-				if (stmt->arrayDims.empty())
+			{
+				// Fase 6d: "Dim nome As NomeTipo" dove "NomeTipo" e' un
+				// Type definito dall'utente (non un tipo scalare
+				// incorporato come Byte/Long/Integer/...) -- risolto a
+				// RUNTIME, non al parsing (il registro dei tipi del
+				// modulo non e' ancora pronto quando si analizza la
+				// singola Sub, vedi ExecuteVbaMacro/FindAllVbaTypeDecls
+				// in VbaMacroRunner.cpp).
+				const std::map<std::string, VbaTypeDecl>* registry = fEnv->GetTypeRegistry();
+				bool isUserType = registry && !stmt->asTypeName.empty()
+					&& registry->find(LowercaseTypeName(stmt->asTypeName)) != registry->end();
+				if (isUserType)
+				{
+					if (!stmt->arrayDims.empty())
+					{
+						// Limite onesto (vedi ROADMAP.md Fase 6d): un
+						// array di UDT e' supportato SOLO come campo di
+						// un altro Type (es. "Screen(63,31) As
+						// ScreenPixel"), non come "Dim" diretto.
+						SetError("un array di un tipo definito dall'utente via \"Dim\" non e' "
+							"supportato in questo sottoinsieme (solo come campo di un altro Type)",
+							stmt->line);
+						return execError;
+					}
+					VbaStructInstance instance;
+					std::string buildErr;
+					if (!BuildVbaStructInstance(stmt->asTypeName, *registry, &instance, 0, &buildErr))
+					{
+						SetError(buildErr, stmt->line);
+						return execError;
+					}
+					fEnv->DeclareStruct(stmt->varName, std::move(instance));
+				}
+				else if (stmt->arrayDims.empty())
 					fEnv->Declare(stmt->varName);
 				else
 					fEnv->DeclareArray(stmt->varName, stmt->arrayDims); // Fase 6c
 				return execNormal;
+			}
 
 			case vbaStmtAssign:
 			case vbaStmtSet:
@@ -210,6 +327,39 @@ private:
 				return execError;
 			}
 			return execNormal;
+		}
+
+		// Fase 6d: "ThisVM.PC = valore", "ThisVM.V(2) = valore", o
+		// "ThisVM.Screen(x,y).value = valore" -- STESSA risoluzione
+		// della catena usata in lettura (VbaEvaluator.cpp,
+		// EvalPropertyAccess/EvalCall), cosi' le due direzioni non
+		// rischiano di divergere. Deve venire PRIMA del ramo generico
+		// sotto, che altrimenti proverebbe a trattare il target come
+		// un intervallo Range/Cells.
+		{
+			std::string structErr;
+			Value* fieldSlot = ResolveStructScalarField(stmt->target.get(), fEnv, &structErr);
+			if (fieldSlot)
+			{
+				if (stmt->kind == vbaStmtAssign && rhs.fType == eRangeData)
+				{
+					Value scalar;
+					VbaRuntimeError err;
+					if (!VbaReadRangeValue(rhs, &scalar, &err, stmt->line))
+					{
+						SetError(err.message, err.line);
+						return execError;
+					}
+					rhs = scalar;
+				}
+				*fieldSlot = rhs;
+				return execNormal;
+			}
+			if (!structErr.empty())
+			{
+				SetError(structErr, stmt->line);
+				return execError;
+			}
 		}
 
 		// Il target e' un riferimento al modello a oggetti Excel: una

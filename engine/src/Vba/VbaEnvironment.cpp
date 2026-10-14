@@ -10,6 +10,7 @@
 #include "VbaEnvironment.h"
 
 #include <cctype>
+#include <utility>
 
 std::string VbaEnvironment::NormalizeName(const std::string& name)
 {
@@ -97,4 +98,35 @@ bool VbaEnvironment::SetArrayElement(const std::string& name, const std::vector<
 		return false;
 	it->second.elements[flat] = value;
 	return true;
+}
+
+VbaStructField* VbaStructInstance::FindField(const std::string& name)
+{
+	std::string key = name;
+	for (size_t i = 0; i < key.size(); i++)
+		key[i] = (char)tolower((unsigned char)key[i]);
+	std::map<std::string, VbaStructField>::iterator it = fields.find(key);
+	return it == fields.end() ? NULL : &it->second;
+}
+
+void VbaEnvironment::DeclareStruct(const std::string& name, VbaStructInstance&& instance)
+{
+	fStructs[NormalizeName(name)] = std::move(instance);
+}
+
+bool VbaEnvironment::IsStruct(const std::string& name) const
+{
+	return fStructs.find(NormalizeName(name)) != fStructs.end();
+}
+
+VbaStructInstance* VbaEnvironment::GetStruct(const std::string& name)
+{
+	std::map<std::string, VbaStructInstance>::iterator it = fStructs.find(NormalizeName(name));
+	return it == fStructs.end() ? NULL : &it->second;
+}
+
+const VbaStructInstance* VbaEnvironment::GetStruct(const std::string& name) const
+{
+	std::map<std::string, VbaStructInstance>::const_iterator it = fStructs.find(NormalizeName(name));
+	return it == fStructs.end() ? NULL : &it->second;
 }

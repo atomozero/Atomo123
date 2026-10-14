@@ -229,6 +229,171 @@ bool VbaWriteRangeValue(const Value& rangeValue, const Value& newValue, VbaRunti
 	return true;
 }
 
+// ---------------------------------------------------------------------
+// Fase 6d: accesso a un campo di un tipo definito dall'utente (es.
+// "ThisVM.PC", "ThisVM.V(2)", "ThisVM.Screen(x,y).value"). Vedi il
+// commento su ResolveStructScalarField in VbaEvaluator.h per i tre
+// esiti possibili e perche' e' condivisa fra lettura e scrittura.
+// ---------------------------------------------------------------------
+
+// Calcola l'indice appiattito di "expr->children" (gia' valutati come
+// numeri) dentro "field->dims" -- stessa idea di ComputeFlatArrayIndex
+// in VbaEnvironment.cpp, ma qui serve anche valutare le espressioni
+// indice (quella funzione le riceve gia' pronte), quindi non si riusa
+// direttamente: duplicazione minima, non vale la pena esporre una
+// terza firma solo per questo.
+static bool EvalStructFieldFlatIndex(const VbaExpr* expr, VbaEnvironment* env,
+	const VbaStructField* field, size_t* outFlat, std::string* outError)
+{
+	std::vector<int> indices;
+	for (size_t i = 0; i < expr->children.size(); i++)
+	{
+		Value v;
+		VbaRuntimeError err;
+		if (!EvaluateVbaExpression(expr->children[i].get(), env, &v, &err))
+		{
+			*outError = err.message;
+			return false;
+		}
+		indices.push_back((int)VbaToNumber(v));
+	}
+	if (indices.size() != field->dims.size())
+	{
+		*outError = "numero di indici errato per l'array \"" + expr->name + "\"";
+		return false;
+	}
+	size_t flat = 0;
+	for (size_t i = 0; i < field->dims.size(); i++)
+	{
+		if (indices[i] < 0 || indices[i] >= field->dims[i])
+		{
+			*outError = "indice fuori dai limiti dell'array \"" + expr->name + "\"";
+			return false;
+		}
+		flat = flat * (size_t)field->dims[i] + (size_t)indices[i];
+	}
+	*outFlat = flat;
+	return true;
+}
+
+// Risolve "expr" a un'ISTANZA di struct -- un passo INTERMEDIO di una
+// catena, mai il campo finale (quello lo risolve ResolveStructScalarField
+// sotto). "expr" deve essere "NomeVariabile" (caso base: una struct
+// dichiarata con "Dim ... As NomeTipo") oppure un altro passo di catena
+// (Call-con-target o PropertyAccess) che porta a un campo che e' ESSO
+// STESSO un tipo definito dall'utente. NULL se "expr" non e' risolvibile
+// a una struct -- "outError" si popola SOLO se "expr" era chiaramente
+// un tentativo di accesso a struct poi fallito, mai per un "non e'
+// questo il caso" silenzioso (il chiamante lo distingue controllando se
+// "outError" e' vuoto).
+static VbaStructInstance* ResolveStructInstanceStep(const VbaExpr* expr, VbaEnvironment* env,
+	std::string* outError)
+{
+	if (expr->kind == vbaExprVariable)
+		return env->GetStruct(expr->name); // caso base, NULL se non e' affatto una struct dichiarata
+
+	const VbaExpr* stepTarget = NULL;
+	if (expr->kind == vbaExprCall && expr->target)
+		stepTarget = expr->target.get();
+	else if (expr->kind == vbaExprPropertyAccess)
+		stepTarget = expr->target.get();
+	else
+		return NULL; // non e' affatto un nodo di catena (una chiamata nuda, un letterale, ...)
+
+	VbaStructInstance* base = ResolveStructInstanceStep(stepTarget, env, outError);
+	if (!base)
+		return NULL; // il passo precedente non porta a una struct -- propaga (outError gia' impostato se serve)
+
+	VbaStructField* field = base->FindField(expr->name);
+	if (!field)
+	{
+		*outError = "il tipo non ha un campo \"" + expr->name + "\"";
+		return NULL;
+	}
+	if (!field->isStruct)
+	{
+		*outError = "\"" + expr->name + "\" non e' un campo di tipo definito dall'utente";
+		return NULL;
+	}
+
+	if (expr->kind == vbaExprPropertyAccess)
+	{
+		if (field->isArray)
+		{
+			*outError = "\"" + expr->name + "\" e' un array: serve un indice";
+			return NULL;
+		}
+		return field->structValue.get();
+	}
+
+	// vbaExprCall con target: accesso indicizzato a un array-di-struct
+	// (es. "ThisVM.Screen(x,y)" come passo intermedio di ".value")
+	if (!field->isArray)
+	{
+		*outError = "\"" + expr->name + "\" non e' un array";
+		return NULL;
+	}
+	size_t flat;
+	if (!EvalStructFieldFlatIndex(expr, env, field, &flat, outError))
+		return NULL;
+	return field->structArray[flat].get();
+}
+
+Value* ResolveStructScalarField(const VbaExpr* expr, VbaEnvironment* env, std::string* outError)
+{
+	const VbaExpr* stepTarget = NULL;
+	if (expr->kind == vbaExprCall && expr->target)
+		stepTarget = expr->target.get();
+	else if (expr->kind == vbaExprPropertyAccess)
+		stepTarget = expr->target.get();
+	else
+		return NULL; // "expr" stesso non e' un nodo di catena -- non e' affatto un accesso a struct
+
+	std::string chainErr;
+	VbaStructInstance* base = ResolveStructInstanceStep(stepTarget, env, &chainErr);
+	if (!base)
+	{
+		if (!chainErr.empty())
+			*outError = chainErr;
+		return NULL; // "stepTarget" non porta a una struct: non e' questo il caso (outError vuoto)
+	}
+
+	VbaStructField* field = base->FindField(expr->name);
+	if (!field)
+	{
+		*outError = "il tipo non ha un campo \"" + expr->name + "\"";
+		return NULL;
+	}
+
+	if (expr->kind == vbaExprPropertyAccess)
+	{
+		if (field->isArray || field->isStruct)
+		{
+			*outError = "\"" + expr->name + "\" non e' un campo scalare (l'assegnazione di "
+				"un'intera struct/di un intero array non e' supportata in questo sottoinsieme)";
+			return NULL;
+		}
+		return &field->scalarValue;
+	}
+
+	// vbaExprCall con target: "ThisVM.V(indici)" -- un array SCALARE
+	if (field->isStruct)
+	{
+		*outError = "\"" + expr->name + "\" e' un array di tipo definito dall'utente, "
+			"serve ancora un campo dopo l'indice (es. \".value\")";
+		return NULL;
+	}
+	if (!field->isArray)
+	{
+		*outError = "\"" + expr->name + "\" non e' un array";
+		return NULL;
+	}
+	size_t flat;
+	if (!EvalStructFieldFlatIndex(expr, env, field, &flat, outError))
+		return NULL;
+	return &field->scalarArray[flat];
+}
+
 namespace {
 
 class Evaluator {
@@ -289,6 +454,18 @@ private:
 
 	Value EvalVariable(const VbaExpr* expr)
 	{
+		if (fEnv->IsStruct(expr->name))
+		{
+			// Fase 6d: un'istanza di Type non e' un valore scalare --
+			// niente assegnazione di un'intera struct in questo
+			// sottoinsieme (vedi VbaEnvironment.h). Un errore chiaro
+			// invece del generico "usata prima di essere assegnata"
+			// sotto (tecnicamente vero: non e' MAI in fVars), che
+			// confonderebbe la causa reale.
+			SetError("\"" + expr->name + "\" e' un'istanza di tipo definito dall'utente, "
+				"non un valore scalare -- accedi a un suo campo con \".\"", expr->line);
+			return Value(0.0);
+		}
 		const Value* v = fEnv->Find(expr->name);
 		if (v == NULL)
 		{
@@ -386,6 +563,21 @@ private:
 	{
 		if (expr->target)
 		{
+			// Fase 6d: "ThisVM.V(indici)" o un passo intermedio come
+			// "ThisVM.Screen(x,y)" (array di un campo di struct) --
+			// DEVE venire prima di "Offset"/dell'errore generico sotto,
+			// che altrimenti lo tratterebbero come un metodo del
+			// modello a oggetti Excel.
+			std::string structErr;
+			Value* fieldSlot = ResolveStructScalarField(expr, fEnv, &structErr);
+			if (fieldSlot)
+				return *fieldSlot;
+			if (!structErr.empty())
+			{
+				SetError(structErr, expr->line);
+				return Value(0.0);
+			}
+
 			if (Lowercase(expr->name) == "offset")
 				return EvalOffsetCall(expr);
 			SetError("il metodo \"" + expr->name + "\" del modello a oggetti Excel "
@@ -713,6 +905,7 @@ private:
 				childEnv.SetActiveDocument(fEnv->GetActiveDocument());
 				childEnv.SetModuleTokens(fEnv->GetModuleTokens());
 				childEnv.SetCallDepth(fEnv->GetCallDepth() + 1);
+				childEnv.SetTypeRegistry(fEnv->GetTypeRegistry()); // Fase 6d
 				for (size_t i = 0; i < args.size(); i++)
 				{
 					// SOLO ByVal in questo sottoinsieme (vedi VbaAst.h):
@@ -859,6 +1052,20 @@ private:
 
 	Value EvalPropertyAccess(const VbaExpr* expr)
 	{
+		// Fase 6d: un accesso a un campo di struct (es. "ThisVM.PC", o
+		// "ThisVM.Screen(x,y).value") DEVE essere controllato PRIMA del
+		// caso speciale ".value" sotto, che altrimenti lo tratterebbe
+		// come l'accessore ".Value" di un Range.
+		std::string structErr;
+		Value* fieldSlot = ResolveStructScalarField(expr, fEnv, &structErr);
+		if (fieldSlot)
+			return *fieldSlot;
+		if (!structErr.empty())
+		{
+			SetError(structErr, expr->line);
+			return Value(0.0);
+		}
+
 		std::string name = Lowercase(expr->name);
 		if (name == "select")
 		{

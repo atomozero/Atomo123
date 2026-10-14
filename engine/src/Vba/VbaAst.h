@@ -128,6 +128,12 @@ struct VbaStmt {
 	                                       // array, un elemento per asse, GIA' "limite superiore + 1"
 	                                       // (Option Base 0 implicito: "Dim x(10)" sono gli indici
 	                                       // 0..10, 11 elementi) -- vedi ParseDim in VbaStmtParser.cpp
+	std::string asTypeName;             // solo Dim: il nome dopo "As" (vuoto se assente). Fase 6d:
+	                                       // a differenza delle fasi precedenti, qui NON si scarta --
+	                                       // VbaExecutor.cpp decide a runtime se e' un Type definito
+	                                       // dall'utente (VbaEnvironment::GetTypeRegistry) o un tipo
+	                                       // scalare incorporato (Byte/Long/Integer/..., trattato
+	                                       // come prima: una variabile/array Variant normale)
 	std::vector<std::unique_ptr<VbaStmt>> body;     // If (ramo Then) / For: il corpo
 	std::vector<std::unique_ptr<VbaStmt>> elseBody; // If: il ramo Else (eventualmente un solo
 	                                                   // vbaStmtIf annidato per un "ElseIf");
@@ -174,6 +180,35 @@ struct VbaSub {
 	int line;
 
 	VbaSub() : isFunction(false), line(0) {}
+};
+
+// Fase 6d: un campo dichiarato dentro un blocco "Type ... End Type"
+// -- "campo [(limiteSuperiore[, ...])] As NomeTipo". "arrayDims" vuoto
+// = campo scalare; non vuoto = campo array (stessa convenzione "limite
+// superiore + 1" di VbaStmt::arrayDims sopra). "typeName" e' il nome
+// scritto dopo "As": uno scalare incorporato (Byte/Long/Integer/...,
+// trattati tutti come Variant/double in questo sottoinsieme, vedi
+// VbaStmtParser.cpp su "Dim") OPPURE il nome di un ALTRO Type, risolto
+// a runtime guardando se compare nel registro dei tipi del modulo
+// (VbaEnvironment::GetTypeRegistry) -- non c'e' modo di saperlo gia'
+// al momento del parsing di QUESTO campo, un Type puo' referenziarne
+// un altro dichiarato PIU' IN BASSO nello stesso modulo (come "VM" che
+// usa "ScreenPixel" nell'esempio del CHIP-8).
+struct VbaTypeField {
+	std::string name;
+	std::string typeName;
+	std::vector<int> arrayDims;
+};
+
+// Un intero blocco "[Private|Public] Type Nome" ... "End Type" --
+// "Private"/"Public" sono semplici identificatori per questo lessico
+// (non parole chiave), letti e scartati dal chiamante che scandisce i
+// Type di un modulo (VbaMacroRunner.h), stesso trattamento di "Private
+// Sub". Un Type non eseguibile da solo: serve solo a dare forma a
+// "Dim nome As NomeTipo" (VbaEnvironment.h, VbaStructInstance).
+struct VbaTypeDecl {
+	std::string name;
+	std::vector<VbaTypeField> fields;
 };
 
 #endif

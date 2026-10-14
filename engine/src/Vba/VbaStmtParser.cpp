@@ -74,6 +74,71 @@ public:
 		return fFailed ? nullptr : std::move(sub);
 	}
 
+	// Fase 6d: "Type Nome" ... "End Type" -- un elenco di campi, MAI
+	// codice eseguibile (niente corpo di istruzioni, a differenza di
+	// ParseSub sopra). Il chiamante (VbaMacroRunner.h) si aspetta di
+	// essere gia' posizionato sulla parola chiave "Type" -- un
+	// eventuale "Private"/"Public" davanti e' un semplice
+	// identificatore per questo lessico, letto e scartato DAL
+	// CHIAMANTE durante la scansione del modulo, stesso trattamento di
+	// "Private Sub".
+	std::unique_ptr<VbaTypeDecl> ParseTypeDecl()
+	{
+		if (!ExpectKeyword("Type"))
+			return nullptr;
+		if (Current().type != vbaTokIdentifier)
+		{
+			SetError("atteso un nome di tipo dopo \"Type\"");
+			return nullptr;
+		}
+		auto decl = std::unique_ptr<VbaTypeDecl>(new VbaTypeDecl());
+		decl->name = Current().text;
+		Advance();
+		if (!ExpectStatementEnd())
+			return nullptr;
+
+		while (!IsKeyword("End"))
+		{
+			if (IsEndTok())
+			{
+				SetError("\"End Type\" mancante");
+				return nullptr;
+			}
+			if (IsNewlineTok())
+			{
+				Advance(); // riga vuota tra due campi
+				continue;
+			}
+			if (Current().type != vbaTokIdentifier)
+			{
+				SetError("atteso un nome di campo o \"End Type\"");
+				return nullptr;
+			}
+			VbaTypeField field;
+			field.name = Current().text;
+			Advance();
+			if (!ParseArrayDimList(&field.arrayDims))
+				return nullptr;
+			if (!ExpectKeyword("As"))
+				return nullptr;
+			if (Current().type != vbaTokIdentifier)
+			{
+				SetError("atteso un nome di tipo dopo \"As\"");
+				return nullptr;
+			}
+			field.typeName = Current().text;
+			Advance();
+			if (!ExpectStatementEnd())
+				return nullptr;
+			decl->fields.push_back(field);
+		}
+		if (!ExpectKeyword("End") || !ExpectKeyword("Type"))
+			return nullptr;
+		ExpectStatementEnd(); // facoltativo: puo' essere l'ultimo token del modulo
+
+		return fFailed ? nullptr : std::move(decl);
+	}
+
 private:
 	const std::vector<VbaToken>& fTokens;
 	size_t& fPos;
@@ -280,6 +345,7 @@ private:
 		if (!ParseArrayDimList(&arrayDims))
 			return nullptr;
 
+		std::string asTypeName;
 		if (IsKeyword("As"))
 		{
 			Advance();
@@ -288,11 +354,13 @@ private:
 				SetError("atteso un nome di tipo dopo \"As\"");
 				return nullptr;
 			}
-			Advance(); // il tipo si legge e si scarta -- vedi VbaStmt::kind == vbaStmtDim nell'header
+			asTypeName = Current().text; // Fase 6d: NON si scarta piu' -- vedi VbaStmt::asTypeName
+			Advance();
 		}
 		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtDim));
 		stmt->varName = varName;
 		stmt->arrayDims = arrayDims;
+		stmt->asTypeName = asTypeName;
 		stmt->line = line;
 		if (!ExpectStatementEnd())
 			return nullptr;
@@ -809,6 +877,16 @@ std::unique_ptr<VbaSub> ParseVbaSub(const std::vector<VbaToken>& tokens, size_t&
 {
 	Parser parser(tokens, pos, outError);
 	std::unique_ptr<VbaSub> result = parser.ParseSub();
+	if (!result && outError->message.empty())
+		outError->message = "errore di sintassi";
+	return result;
+}
+
+std::unique_ptr<VbaTypeDecl> ParseVbaTypeDecl(const std::vector<VbaToken>& tokens, size_t& pos,
+	VbaParseError* outError)
+{
+	Parser parser(tokens, pos, outError);
+	std::unique_ptr<VbaTypeDecl> result = parser.ParseTypeDecl();
 	if (!result && outError->message.empty())
 		outError->message = "errore di sintassi";
 	return result;

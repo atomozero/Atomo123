@@ -28,6 +28,7 @@
 #define VBA_ENVIRONMENT_H
 
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -35,10 +36,53 @@
 
 class CContainer;
 struct VbaToken;
+struct VbaTypeDecl;
+
+// Fase 6d: un'istanza di un tipo definito dall'utente ("Private Type
+// ... End Type", VbaAst.h) -- una mappa nome-campo normalizzato (come
+// VbaEnvironment stesso) -> VbaStructField. Volutamente NON copiabile
+// (il costruttore di copia e' implicitamente eliminato dagli
+// std::unique_ptr nei campi che sono a loro volta una struct, vedi
+// VbaStructField sotto): questo sottoinsieme non supporta l'assegnazione
+// di un'intera struct ("b = a" dove entrambe sono UDT) ne' il passaggio
+// di una struct come parametro di Sub/Function -- limiti onesti, non
+// dimenticati, vedi ROADMAP.md Fase 6d.
+struct VbaStructInstance;
+
+// Un singolo campo di una VbaStructInstance -- esattamente UNO dei
+// quattro membri di storage sotto e' valido, scelto da isArray/isStruct
+// al momento della costruzione (VbaExecutor.cpp, BuildVbaStructInstance):
+//   !isArray && !isStruct -> scalarValue       (es. "PC As Long")
+//    isArray && !isStruct -> scalarArray       (es. "V(15) As Byte")
+//   !isArray &&  isStruct -> structValue       (un campo che e' esso
+//                                                stesso un altro Type)
+//    isArray &&  isStruct -> structArray       (es. "Screen(63,31)
+//                                                As ScreenPixel")
+struct VbaStructField {
+	bool isArray;
+	bool isStruct;
+	std::vector<int> dims; // solo se isArray: conteggio elementi per asse, come VbaArrayStorage
+	Value scalarValue;
+	std::vector<Value> scalarArray;
+	std::unique_ptr<VbaStructInstance> structValue;
+	std::vector<std::unique_ptr<VbaStructInstance>> structArray;
+
+	VbaStructField() : isArray(false), isStruct(false), scalarValue(0.0) {}
+};
+
+struct VbaStructInstance {
+	std::map<std::string, VbaStructField> fields; // chiave: nome campo normalizzato (minuscolo)
+
+	// NULL se "name" non e' un campo di questa istanza -- il chiamante
+	// (VbaEvaluator.cpp/VbaExecutor.cpp) decide poi se isArray/isStruct
+	// combaciano con la forma di accesso tentata (scalare, indicizzato,
+	// struct annidata...).
+	VbaStructField* FindField(const std::string& name);
+};
 
 class VbaEnvironment {
 public:
-	VbaEnvironment() : fActiveDoc(NULL), fModuleTokens(NULL), fCallDepth(0) {}
+	VbaEnvironment() : fActiveDoc(NULL), fModuleTokens(NULL), fCallDepth(0), fTypeRegistry(NULL) {}
 
 	// Il foglio di calcolo (CContainer) su cui questa esecuzione lavora
 	// -- Fase 3c, modello a oggetti Excel: Range/Cells lo usano per
@@ -117,6 +161,37 @@ public:
 	const Value* GetArrayElement(const std::string& name, const std::vector<int>& indices) const;
 	bool SetArrayElement(const std::string& name, const std::vector<int>& indices, const Value& value);
 
+	// Fase 6d: il registro dei Type del MODULO a cui appartiene questa
+	// esecuzione -- stesso principio di fModuleTokens (puntatore in
+	// prestito, costruito una volta da ExecuteVbaMacro scandendo il
+	// modulo per intero, propagato cosi' com'e' a ogni VbaEnvironment
+	// creato per una chiamata a Sub/Function sorella). NULL se
+	// l'esecuzione non e' legata a un modulo vero (es. nei test che
+	// costruiscono una Sub a mano): in quel caso "Dim x As NomeTipo"
+	// tratta sempre "NomeTipo" come uno scalare incorporato, non
+	// essendoci alcun registro da consultare.
+	void SetTypeRegistry(const std::map<std::string, VbaTypeDecl>* registry) { fTypeRegistry = registry; }
+	const std::map<std::string, VbaTypeDecl>* GetTypeRegistry() const { return fTypeRegistry; }
+
+	// Una ISTANZA di un Type, dichiarata da "Dim nome As NomeTipo"
+	// (VbaExecutor.cpp costruisce il valore vero via
+	// BuildVbaStructInstance usando il registro sopra, poi la passa
+	// qui) -- mappa SEPARATA sia da fVars sia da fArrays, stesso
+	// principio. Un secondo "Dim" sullo stesso nome sovrascrive
+	// l'istanza con una nuova, azzerata (nessuna preservazione dei
+	// valori precedenti, stesso comportamento di DeclareArray).
+	void DeclareStruct(const std::string& name, VbaStructInstance&& instance);
+	bool IsStruct(const std::string& name) const;
+
+	// NULL se "name" non e' stato dichiarato con "Dim ... As
+	// NomeTipo". La versione non-const serve a VbaExecutor.cpp per
+	// scrivere dentro un campo (es. "ThisVM.PC = 5"): VbaStructField
+	// stesso non e' un Value, quindi non c'e' un "SetStructField"
+	// separato da scrivere/mantenere in sincronia -- il chiamante
+	// prende il puntatore al campo giusto e lo modifica direttamente.
+	VbaStructInstance* GetStruct(const std::string& name);
+	const VbaStructInstance* GetStruct(const std::string& name) const;
+
 private:
 	static std::string NormalizeName(const std::string& name);
 
@@ -127,9 +202,11 @@ private:
 
 	std::map<std::string, Value> fVars; // chiave: nome normalizzato (minuscolo)
 	std::map<std::string, VbaArrayStorage> fArrays; // stessa normalizzazione, mappa separata
+	std::map<std::string, VbaStructInstance> fStructs; // stessa normalizzazione, mappa separata
 	CContainer* fActiveDoc;
 	const std::vector<VbaToken>* fModuleTokens;
 	int fCallDepth;
+	const std::map<std::string, VbaTypeDecl>* fTypeRegistry;
 };
 
 #endif

@@ -86,4 +86,31 @@ bool VbaReadRangeValue(const Value& rangeValue, Value* outResult, VbaRuntimeErro
 // di chiamare questa funzione, mai qui dentro.
 bool VbaWriteRangeValue(const Value& rangeValue, const Value& newValue, VbaRuntimeError* outError, int line);
 
+// Fase 6d: risolve "expr" come un accesso a un campo SCALARE (non un
+//'intera struct, non un campo array-di-struct da solo) di un tipo
+// definito dall'utente -- es. "ThisVM.PC", "ThisVM.V(2)", o
+// "ThisVM.Screen(x,y).value" (la catena intermedia "ThisVM.Screen(x,y)"
+// si risolve internamente all'istanza ScreenPixel giusta, mai esposta
+// a parte). Condiviso fra la lettura (VbaEvaluator.cpp, EvalCall/
+// EvalPropertyAccess) e la scrittura (VbaExecutor.cpp,
+// ExecuteAssignOrSet), cosi' le due direzioni usano ESATTAMENTE la
+// stessa risoluzione della catena invece di due copie che rischiano
+// di divergere.
+//
+// Tre esiti possibili:
+//  - puntatore non-NULL, "outError" vuoto: "expr" e' davvero un
+//    accesso a struct che porta a un campo scalare valido -- il
+//    puntatore e' la vera cella di memoria, scrivibile.
+//  - NULL, "outError" vuoto: "expr" NON e' affatto un accesso a
+//    struct (es. "Range(\"A1\").Value", una variabile normale, un
+//    array del Fase 6c) -- il chiamante deve trattarlo con le regole
+//    normali, non e' un errore di questa fase.
+//  - NULL, "outError" popolato: "expr" E' un accesso a struct, ma non
+//    porta a un campo scalare valido (nome di campo sconosciuto,
+//    indice fuori dai limiti, o il campo e' esso stesso un'intera
+//    struct/un array-di-struct -- non rappresentabile come singolo
+//    Value, vedi il limite "niente assegnazione di un'intera struct"
+//    in VbaEnvironment.h).
+Value* ResolveStructScalarField(const VbaExpr* expr, VbaEnvironment* env, std::string* outError);
+
 #endif
