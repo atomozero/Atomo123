@@ -343,6 +343,19 @@ the explicit subset decided above. Widening the subset itself
 (parameters, `Select Case`, `Function`, more built-ins) remains a
 separate, later decision, same as noted after Phase 3.
 
+**Progress — Phase 5 (widening the explicit subset for real-world
+macro compatibility) is underway.** `Select Case` (5a) is done: one
+of the most common VBA constructs that the interpreter couldn't parse
+at all before this. Scoped to equality comparison — "`Case v1, v2,
+...`" (comma-separated values, compared like "`=`") and a trailing
+"`Case Else`" — with "`Case 1 To 5`"/"`Case Is > 5`" explicitly
+rejected as a clear parse error rather than silently mishandled; the
+range/relational `Case` forms are a real, honestly-flagged gap, not
+pretended support. The equality rule itself was already duplicated
+inline inside the `=` operator; extracted into a shared
+`VbaCompareValues` (`VbaEvaluator.h`) so `Select Case` reuses the
+exact same rule instead of risking a second copy drifting from it.
+
 ## Path to 100% XLSX standard compatibility
 
 This is a different axis from "Path to full Excel parity" below: that
