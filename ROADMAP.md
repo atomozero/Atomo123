@@ -832,48 +832,94 @@ before it:
   the VBA suite, and the full `ui/` build links clean with the new
   `BFilePanel` wiring.
 - **Checking the REAL file end to end (not just `CommandButton1_Click`
-  in isolation) surfaced several more real gaps, still open**: tokenizing
-  and attempting to resolve-by-name every Sub/Function in the actual
-  `code.vba` (not a synthetic excerpt) shows `CommandButton1_Click`
-  and the two `Type` blocks (`ScreenPixel`, `VM`) now parse and the
-  former now executes correctly end to end, but `ClearScreen`,
-  `InitVM`, `cbStep_Click`, `DrawSprite`, `Step`, and `ProcessVM` still
-  fail to resolve. Root causes, not yet fixed:
+  in isolation) surfaced several more real gaps.** Tokenizing and
+  attempting to resolve-by-name every Sub/Function in the actual
+  `code.vba` (not a synthetic excerpt) showed `CommandButton1_Click`
+  and the two `Type` blocks (`ScreenPixel`, `VM`) parsing and the
+  former executing correctly end to end, but `ClearScreen`, `InitVM`,
+  `cbStep_Click`, `DrawSprite`, `Step`, and `ProcessVM` all still
+  failing to resolve. A first batch of root causes is now fixed:
   - **`&HFF&`-style hex integer literals** (used ~80 times in `InitVM`
-    for the built-in font sprite data) aren't tokenized at all —
-    `VbaToken.cpp` only recognizes decimal numbers.
-  - **Paren-less Sub calls WITH arguments** (`SetScreenPixel i, j, 0`,
-    `VMSetRunning False`) — the exact boundary 6a already documented as
-    deliberately unsupported ("real VBA's paren-less `Foo a, b` stays
-    unsupported"). Lifting it needs care: a bare identifier at
-    statement-start already means three different things today
-    (an assignment target before `=`, a property-access/method call
-    used for effect, or — new — a call with a trailing comma-separated
-    argument list and no parens at all), and the grammar has to tell
-    them apart without new ambiguity.
-  - **Paren-less calls to a SIBLING Sub with ZERO arguments**
-    (`InitConstants`, `Redraw`, `Step` as a bare statement) aren't
-    resolved either — today only two zero-arg bare identifiers are
-    special-cased at all (`DoEvents`, `FreeFile` in 6g above), both as
-    engine-internal behavior, never as a dispatch to a user-defined
-    Sub by name.
-  - **`Randomize`** (seeds the RNG, called once from `InitVM`) isn't
-    recognized in any form — likely another deliberate no-op in the
-    `DoEvents`/`.Select` family, *if* nothing downstream actually
-    depends on `Rnd()` producing different sequences (needs checking
-    against `Step()`'s own opcode handling before assuming so).
-  - **`Sub Step()` collides with the reserved keyword `Step`** (`For ...
-    Step ...`): the tokenizer has no notion of a context-sensitive
+    for the built-in font sprite data, declared "rare" and out of
+    scope back in Fase 2a — wrong, per this count) are now tokenized:
+    `&H` immediately followed by at least one hex digit, with an
+    optional trailing `&` (Long suffix, read and discarded). Checked
+    explicitly before the ordinary `&` operator/number paths, since
+    they share the same opening character.
+  - **`And`/`Or` were logical-only, a real pre-existing bug**, not a
+    gap found by 6g: VBA's bitwise operators always operate on the bit
+    pattern (coercing two true Booleans is just the degenerate 1-bit
+    case, not the general rule), but this engine reduced both operands
+    to `VbaToBool` first, so any real bitmask (`instruction And
+    &HF000&`, used everywhere in `Step`) always collapsed to 0 or 1.
+    Fixed to real bit-level `&`/`|`/new `Xor` (`^`) on the truncated
+    integer value of both operands — still returns a genuine Boolean
+    (not 1.0/0.0) when both operands already are one, so no existing
+    boolean-condition test or macro changes behavior. `Not` gets the
+    same treatment (bitwise `~` unless the operand is already a
+    Boolean). New `\` operator (integer division, binds tighter than
+    `Mod`, looser than `*`/`/`, matching real VBA precedence) and
+    `Xor` (binds weaker than `Or`) extend `VbaExprParser.cpp`'s
+    precedence chain by one level each.
+  - **`While expr ... Wend`**, a loop form distinct from `Do...Loop`
+    in real VBA (no `Exit While` at all) but behaviorally identical to
+    `Do While expr ... Loop` — parses straight into the *existing*
+    `vbaStmtDoLoop` node (`doIsPreTest=true`, `doIsUntil=false`), no
+    new AST or executor code needed, just a new `Wend` block
+    terminator recognized by the statement parser.
+  - **`Hex`/`CByte` functions and `Rnd`/`Randomize`** added — `Hex`
+    returns the real VBA string form (uppercase, no padding); `CByte`
+    reuses `CInt`/`CLng`'s rounding then wraps mod 256 (no overflow
+    error, matching this subset's existing no-overflow-checking
+    stance); `Rnd`/`Randomize` are real (not no-ops like `DoEvents`),
+    backed by the C library `rand`/`srand`. Both `Rnd` *and* `Randomize`
+    had to be special-cased in `EvalVariable`, not `EvalCall`: the real
+    source writes `Rnd` bare, with no parentheses, **inside an
+    expression** (`Int(PowerOfTwo(8) * Rnd)`), not just as a standalone
+    statement — the same "paren-less zero-arg builtin" shape as
+    `DoEvents`/`FreeFile`, caught only by testing with a real
+    `VbaEnvironment` instead of a null one (a null environment hangs,
+    rather than erroring, on any unmatched bare-identifier lookup —
+    a test-construction mistake caught before it shipped, not a
+    product bug: every real caller always provides a real
+    environment).
+  Confirmed against the real file after this batch: all 6 Subs above
+  *still* fail to resolve by name, but now purely for the two gaps
+  below, not any token/operator/function issue — tracked as their own
+  items:
+  - **Paren-less Sub calls, with arguments (`SetScreenPixel i, j, 0`,
+    `VMSetRunning False`) and zero arguments to a sibling Sub
+    (`InitConstants`, `Redraw`, `Step` as a bare statement)** — the
+    exact boundary 6a already documented as deliberately unsupported
+    ("real VBA's paren-less `Foo a, b` stays unsupported"), plus a
+    zero-arg variant of the same gap (today only `DoEvents`/
+    `FreeFile`/`Rnd`/`Randomize` are special-cased as zero-arg bare
+    identifiers, all engine-internal, never a dispatch to a
+    user-defined Sub by name). Lifting it needs care: a bare
+    identifier at statement-start already means three different
+    things today (an assignment target before `=`, a property-
+    access/method call used for effect, or — new — a call with a
+    trailing comma-separated argument list and no parens at all), and
+    the grammar has to tell them apart without new ambiguity.
+  - **`Sub Step()` collides with the reserved keyword `Step`** (`For
+    ... Step ...`): the tokenizer has no notion of a context-sensitive
     keyword, so the procedure name itself never tokenizes as an
     identifier, making it unparseable and unreachable by name no
-    matter what else gets fixed above — a real VBA parser resolves this
-    contextually; this subset's single flat keyword table does not,
-    and needs a decision (context-sensitive re-classification, or
+    matter what else gets fixed above — a real VBA parser resolves
+    this contextually; this subset's single flat keyword table does
+    not, and needs a decision (context-sensitive re-classification, or
     narrowly special-casing `Step` specifically) before a fix.
-  Not yet scoped into a lettered sub-phase; `PowerOfTwo` (a
-  module-level array indexed in `InitConstants`) has not yet been
-  separately confirmed to round-trip through `FindAllVbaModuleLevelDims`
-  now that 6c-style array Dims are involved there too.
+  Still not separately confirmed: `PowerOfTwo` (a module-level array
+  indexed in `InitConstants`) round-tripping through
+  `FindAllVbaModuleLevelDims` now that 6c-style array Dims are
+  involved there too. New coverage in `vba_token_test.cpp` (hex
+  literals including the `&`-vs-`&H` disambiguation, `\`, `Xor`,
+  `Wend`), `vba_expr_parser_test.cpp` (the two new precedence levels),
+  `vba_evaluator_test.cpp` (bitwise vs. boolean And/Or/Xor/Not on both
+  operand shapes, integer division including divide-by-zero, Hex/
+  CByte/Rnd), and `vba_executor_test.cpp` (While/Wend inside and
+  outside a For, integer division and a bitmask inside a real Sub) —
+  all passing, no regressions anywhere else in the VBA suite.
 - **(6h) `Application.OnTime`, planned; `DoEvents` is done as a
   deliberate no-op, split off early.** The original plan rode
   `DoEvents` along with `OnTime` on the theory that pumping a message
