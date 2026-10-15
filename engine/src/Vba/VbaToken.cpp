@@ -33,7 +33,7 @@
 // principio di "Binary"/"Access"/"Read" in "Open ... For Binary
 // Access Read", mai parole chiave vere, solo abbinate per testo).
 static const char* const kKeywords[] = {
-	"Sub", "Function", "Type", "With", "End", "Dim", "As", "If", "Then", "Else", "ElseIf",
+	"Sub", "Function", "Type", "With", "End", "Dim", "Const", "As", "If", "Then", "Else", "ElseIf",
 	"For", "To", "Next", "True", "False", "And", "Or", "Not", "Xor",
 	"Mod", "Set", "Exit", "Call", "Select", "Case", "Each", "In",
 	"Do", "Loop", "While", "Until", "Wend",

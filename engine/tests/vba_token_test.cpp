@@ -389,6 +389,17 @@ int main()
 			"vero, non un errore");
 	}
 
+	// ---- Fase 6h: "Const" e' una parola chiave riservata (trovato
+	// controllando il vero sorgente chip-8-vba, "Const Millisecond As
+	// Double = 0.000000011574" a livello di modulo -- prerequisito di
+	// "Application.OnTime", vedi ROADMAP.md) ----
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("Const Millisecond As Double = 0.000000011574", &tokens);
+		Check(tokens.size() >= 1 && tokens[0].type == vbaTokKeyword && tokens[0].text == "Const",
+			"\"Const\" e' una parola chiave");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

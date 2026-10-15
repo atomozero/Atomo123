@@ -33,6 +33,18 @@
 // qui un secondo stile di segnalazione errori per le sole conversioni.
 // ---------------------------------------------------------------------
 
+// Fase 6h: numero seriale VBA/Excel per l'istante corrente, in GIORNI
+// (epoca 1899-12-30, costante 25569 condivisa con Excel.pass1.cpp/
+// XlsxTranslator.cpp per il caso non-1904) -- condiviso fra "Now"
+// (EvalVariable sotto) e "Application.OnTime" (EvalCall sotto), che
+// deve confrontare il proprio primo argomento con QUESTO stesso
+// istante per calcolare un ritardo. Vedi il commento su "Now" sotto
+// sul perche' NON e' la variante taggata "time_t" di Value.
+static double CurrentVbaSerialNow()
+{
+	return (double)time(NULL) / 86400.0 + 25569.0;
+}
+
 double VbaToNumber(const Value& v)
 {
 	switch (v.fType)
@@ -529,6 +541,15 @@ void VbaSetOpenFileDialogHook(VbaOpenFileDialogFn fn)
 	gOpenFileDialogHook = fn;
 }
 
+// Fase 6h: stesso principio di gOpenFileDialogHook sopra, per
+// VbaOnTimeFn/VbaSetOnTimeHook (vedi VbaEvaluator.h).
+static VbaOnTimeFn gOnTimeHook = NULL;
+
+void VbaSetOnTimeHook(VbaOnTimeFn fn)
+{
+	gOnTimeHook = fn;
+}
+
 namespace {
 
 class Evaluator {
@@ -632,6 +653,26 @@ private:
 		// vero sorgente), stesso principio di "FreeFile" sopra.
 		if (Lowercase(expr->name) == "rnd")
 			return Value((double)rand() / ((double)RAND_MAX + 1.0));
+
+		// Fase 6h: "Now" e' un'altra Sub/funzione incorporata del vero
+		// VBA scritta SENZA parentesi (stesso motivo di "DoEvents"/
+		// "FreeFile"/"Rnd" sopra), stavolta serve a calcolare un ritardo
+		// per "Application.OnTime" (vedi EvalCall sotto). Restituisce un
+		// numero seriale in GIORNI (la convenzione VBA/Excel vera, epoca
+		// 1899-12-30 -- 25569 e' la stessa costante di
+		// Excel.pass1.cpp/XlsxTranslator.cpp per l'epoca non-1904),
+		// DELIBERATAMENTE un Value(double) normale, NON la variante
+		// taggata "time_t" di Value (Value.h) usata da NOWFunction per
+		// le celle (Functions.date-time.cpp): quella variante arrotonda
+		// un'addizione al SECONDO intero (Value.cpp,
+		// "static_cast<time_t>"), troncando a zero una frazione di
+		// giorno piccola come "0.000000011574" (~1ms) -- esattamente il
+		// valore che il vero sorgente chip-8-vba aggiunge a "Now" per
+		// programmare il prossimo "Application.OnTime". Un Value(double)
+		// normale fa l'addizione in virgola mobile vera, come il vero
+		// VBA.
+		if (Lowercase(expr->name) == "now")
+			return Value(CurrentVbaSerialNow());
 
 		if (fEnv->IsStruct(expr->name))
 		{
@@ -856,6 +897,48 @@ private:
 
 			if (Lowercase(expr->name) == "offset")
 				return EvalOffsetCall(expr);
+
+			// Fase 6h: "Application.OnTime EarliestTime, Procedure" --
+			// arriva qui (non a EvalPropertyAccess) perche' il parser
+			// (VbaStmtParser.cpp, ParseAssignOrExprStmt) lo riscrive in
+			// un vbaExprCall con "target" non appena vede un elenco di
+			// argomenti dopo il "." -- stesso principio di
+			// "Application.GetOpenFilename" in EvalPropertyAccess, ma
+			// quello non ha mai argomenti. Solo la forma a 2 argomenti
+			// del vero VBA (niente "LatestTime"/"Schedule:=False" -- il
+			// vero sorgente chip-8-vba non li usa mai, vedi ROADMAP.md
+			// Fase 6h).
+			if (Lowercase(expr->name) == "ontime" && expr->target->kind == vbaExprVariable
+				&& Lowercase(expr->target->name) == "application" && expr->children.size() == 2)
+			{
+				Value earliestTime = EvalNode(expr->children[0].get());
+				if (fFailed)
+					return Value(0.0);
+				Value procedureValue = EvalNode(expr->children[1].get());
+				if (fFailed)
+					return Value(0.0);
+
+				double delaySeconds = (VbaToNumber(earliestTime) - CurrentVbaSerialNow()) * 86400.0;
+				if (delaySeconds < 0.0)
+					delaySeconds = 0.0;
+
+				// Il vero sorgente chip-8-vba chiama "Application.OnTime
+				// Count, "CHIP8List.ProcessVM"" -- un nome QUALIFICATO
+				// col modulo, mai riconosciuto da FindVbaSubByName/
+				// ExecuteVbaMacro (solo nomi di Sub nudi, a prescindere
+				// dal modulo): si tiene solo la parte dopo l'ULTIMO "."
+				// prima di passarlo al gancio sotto, normalizzazione
+				// minima, non una vera risoluzione per modulo.
+				std::string macroName = VbaToText(procedureValue);
+				size_t dot = macroName.find_last_of('.');
+				if (dot != std::string::npos)
+					macroName = macroName.substr(dot + 1);
+
+				if (gOnTimeHook)
+					gOnTimeHook(fEnv->GetHostContext(), delaySeconds, macroName);
+				return Value(0.0);
+			}
+
 			SetError("il metodo \"" + expr->name + "\" del modello a oggetti Excel "
 				"non e' ancora supportato in questa fase dell'interprete", expr->line);
 			return Value(0.0);

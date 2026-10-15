@@ -524,6 +524,36 @@ int main()
 		Check(r.substr(0, 8) == "<errore ", "\"Function\" chiusa con \"End Sub\" produce un errore");
 	}
 
+	// ---- Fase 6h: "Const nome [As Tipo] = espr" -- si riscrive in DUE
+	// VbaStmt gia' esistenti (Dim + Assign), trovato controllando il
+	// vero sorgente chip-8-vba ("Const Millisecond As Double =
+	// 0.000000011574" a livello di modulo) ----
+	CheckSub("Sub Foo()\r\nConst X = 5\r\nEnd Sub\r\n", "Sub Foo() [Dim X; X := 5]");
+	CheckSub("Sub Foo()\r\nConst X As Double = 2.5\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim X As Double; X := 2.5]");
+	CheckSub("Sub Foo()\r\nConst A = 1, B = 2\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim A; A := 1; Dim B; B := 2]");
+	{
+		std::string r = ParseAndDump("Sub Foo()\r\nConst X\r\nEnd Sub\r\n");
+		Check(r.substr(0, 8) == "<errore ", "\"Const\" senza \"= espr\" produce un errore (il vero "
+			"VBA richiede sempre un inizializzatore)");
+	}
+
+	// ---- Fase 6h: "Application.OnTime Count, \"Nome\"" -- la stessa
+	// forma a comando di sopra ("NomeSub arg1, arg2"), ma con un
+	// bersaglio punteggiato invece di un identificatore nudo -- riscritta
+	// nello stesso identico albero che "Application.OnTime(Count,
+	// \"Nome\")" avrebbe prodotto ----
+	CheckSub("Sub Foo()\r\nApplication.OnTime Count, \"Nome\"\r\nEnd Sub\r\n",
+		"Sub Foo() [Application.OnTime(Count, \"Nome\")]");
+	// Non deve rompere "obj.Metodo" nudo (nessun argomento dopo) --
+	// resta un vbaExprPropertyAccess semplice, mai una chiamata.
+	CheckSub("Sub Foo()\r\nApplication.GetOpenFilename\r\nEnd Sub\r\n",
+		"Sub Foo() [Application.GetOpenFilename]");
+	// Ne' "obj.Metodo()" con parentesi esplicite e zero argomenti.
+	CheckSub("Sub Foo()\r\nRange(\"A1\").Offset(1, 0).Select\r\nEnd Sub\r\n",
+		"Sub Foo() [Range(\"A1\").Offset(1, 0).Select]");
+
 	// ---- Errori di sintassi: un messaggio chiaro, mai un crash ----
 	{
 		std::string r = ParseAndDump("Sub Foo()\r\nIf x > 0 Then\r\ny = 1\r\nEnd Sub\r\n");

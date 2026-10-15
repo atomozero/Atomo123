@@ -440,6 +440,12 @@ int main()
 
 	TestFileIO();
 
+	// ---- Fase 6h: "Const" dentro una Sub -- si esegue gratis (si
+	// riscrive in Dim+Assign a tempo di parsing, VbaStmtParser.cpp,
+	// nessun codice nuovo qui in VbaExecutor.cpp) ----
+	CheckVar("Sub T()\nConst X = 5\ny = X * 2\nEnd Sub", "y", "10");
+	CheckVar("Sub T()\nConst X As Double = 2.5, Y = 3\nz = X + Y\nEnd Sub", "z", "5.5");
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

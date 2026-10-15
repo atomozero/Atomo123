@@ -314,6 +314,17 @@ private:
 				SkipNewlines();
 				continue;
 			}
+			// Fase 6h: "Const" si espande in PIU' di un VbaStmt esattamente
+			// come "Dim" sopra (due per dichiaratore, non uno) -- stesso
+			// motivo, gestito qui direttamente invece che tramite
+			// ParseOneStatement.
+			if (IsKeyword("Const"))
+			{
+				if (!ParseConstStatementList(outStmts))
+					return false;
+				SkipNewlines();
+				continue;
+			}
 			auto stmt = ParseOneStatement();
 			if (!stmt)
 				return false;
@@ -436,6 +447,69 @@ private:
 		return stmt;
 	}
 
+	// Un SOLO dichiaratore "Const nome [As Tipo] = espr" -- a differenza
+	// di "Dim", il vero VBA richiede SEMPRE un inizializzatore e non
+	// ammette un array. Nessun nodo/esecutore dedicato: si riscrive in
+	// DUE vbaStmt gia' esistenti, appesi entrambi a "outStmts" -- un
+	// vbaStmtDim (stessa forma di ParseOneDimDeclarator sopra, senza
+	// limiti d'array) seguito da un vbaStmtAssign che lo inizializza.
+	// ExecuteStmt sa gia' eseguire entrambi in sequenza dentro qualunque
+	// Sub, quindi "Const" funziona li' senza toccare VbaExecutor.cpp.
+	// Trovato controllando il vero sorgente chip-8-vba ("Const
+	// Millisecond As Double = 0.000000011574" a livello di modulo, Fase
+	// 6h -- vedi ROADMAP.md).
+	bool ParseOneConstDeclarator(int line, std::vector<std::unique_ptr<VbaStmt>>* outStmts)
+	{
+		if (Current().type != vbaTokIdentifier)
+		{
+			SetError("atteso un nome di variabile dopo \"Const\"");
+			return false;
+		}
+		std::string varName = Current().text;
+		Advance();
+
+		std::string asTypeName;
+		if (IsKeyword("As"))
+		{
+			Advance();
+			if (Current().type != vbaTokIdentifier)
+			{
+				SetError("atteso un nome di tipo dopo \"As\"");
+				return false;
+			}
+			asTypeName = Current().text;
+			Advance();
+		}
+		if (!IsOp("="))
+		{
+			SetError("atteso \"=\" dopo il nome di una costante");
+			return false;
+		}
+		Advance();
+		auto initExpr = ParseVbaExpression(fTokens, fPos, fError);
+		if (!initExpr)
+		{
+			fFailed = true;
+			return false;
+		}
+
+		auto dimStmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtDim));
+		dimStmt->varName = varName;
+		dimStmt->asTypeName = asTypeName;
+		dimStmt->line = line;
+		outStmts->push_back(std::move(dimStmt));
+
+		auto target = std::unique_ptr<VbaExpr>(new VbaExpr(vbaExprVariable));
+		target->name = varName;
+		target->line = line;
+		auto assignStmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtAssign));
+		assignStmt->target = std::move(target);
+		assignStmt->expr = std::move(initExpr);
+		assignStmt->line = line;
+		outStmts->push_back(std::move(assignStmt));
+		return true;
+	}
+
 	// Un "Dim" con un SOLO dichiaratore -- usato dove il resto della
 	// grammatica si aspetta una singola istruzione (es. il corpo di un
 	// "If" su una riga, "If x Then Dim a"): il vero VBA non permette
@@ -481,6 +555,31 @@ public:
 			if (!stmt)
 				return false;
 			outStmts->push_back(std::move(stmt));
+			if (IsOp(","))
+			{
+				Advance();
+				continue;
+			}
+			break;
+		}
+		return ExpectStatementEnd();
+	}
+
+	// "Const nome1 [As Tipo1] = espr1, nome2 [As Tipo2] = espr2, ..." --
+	// stesso principio di ParseDimStatementList sopra (un'istruzione
+	// sola nel vero VBA, piu' di un VbaStmt qui), ma ogni dichiaratore
+	// ora produce DUE statement (vedi ParseOneConstDeclarator). Pubblico
+	// per lo stesso motivo di ParseDimStatementList: serve anche al
+	// wrapper ParseVbaConstStatementList, usato da chi scandisce le
+	// costanti a LIVELLO DI MODULO (VbaMacroRunner.h).
+	bool ParseConstStatementList(std::vector<std::unique_ptr<VbaStmt>>* outStmts)
+	{
+		int line = Current().line;
+		Advance(); // "Const"
+		for (;;)
+		{
+			if (!ParseOneConstDeclarator(line, outStmts))
+				return false;
 			if (IsOp(","))
 			{
 				Advance();
@@ -634,6 +733,65 @@ private:
 				return stmt;
 			}
 			fPos = savedPos; // non e' questo caso: si riparte da capo con la strada di sempre
+		}
+
+		// Fase 6h: "Application.OnTime Count, "Nome"" -- la stessa forma
+		// a comando di sopra, ma con un bersaglio punteggiato
+		// (proprieta'/metodo su un oggetto) invece di un identificatore
+		// nudo. Il tentativo sopra si ferma apposta su un "." (serve a
+		// "Range(...).Select" ecc., che NON e' questa forma): qui si
+		// analizza invece l'INTERA catena ".Nome" con
+		// ParseVbaPrimaryExpression (la stessa chiamata usata piu' sotto
+		// per il percorso normale -- i punti sono quindi gia' consumati
+		// da quella, non serve piu' escluderli) e si guarda SOLO se cio'
+		// che segue e' l'inizio di un elenco di argomenti, esattamente
+		// lo stesso test di sopra. Un risultato "vbaExprPropertyAccess"
+		// (es. "Application.OnTime" senza parentesi) diventa il
+		// vbaExprCall sintetizzato qui sotto -- lo stesso albero che
+		// "Application.OnTime(Count, "Nome")" avrebbe prodotto comunque,
+		// riusando "target"/"name" cosi' com'erano. Si torna indietro
+		// (ripristinando ANCHE "fError", mai sporcato da un tentativo
+		// speculativo abbandonato) se non e' davvero questo caso -- es.
+		// "Range("A1").Select" nudo (nessun argomento dopo) resta
+		// intatto, o un semplice "x = 1" (gia' gestito sopra, qui
+		// "ParseVbaPrimaryExpression" si fermerebbe comunque su "=").
+		{
+			size_t savedPos2 = fPos;
+			auto postfix = ParseVbaPrimaryExpression(fTokens, fPos, fError);
+			bool isDottedCallee = postfix && (postfix->kind == vbaExprPropertyAccess
+				|| (postfix->kind == vbaExprCall && postfix->target));
+			if (isDottedCallee && !IsOp("(") && !IsOp("=") && !IsNewlineTok() && !IsEndTok()
+				&& !IsBlockTerminator())
+			{
+				auto call = std::unique_ptr<VbaExpr>(new VbaExpr(vbaExprCall));
+				call->name = postfix->name;
+				call->target = std::move(postfix->target);
+				call->line = postfix->line;
+				for (;;)
+				{
+					auto arg = ParseVbaExpression(fTokens, fPos, fError);
+					if (!arg)
+					{
+						fFailed = true;
+						return nullptr;
+					}
+					call->children.push_back(std::move(arg));
+					if (IsOp(","))
+					{
+						Advance();
+						continue;
+					}
+					break;
+				}
+				auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtExprStmt));
+				stmt->expr = std::move(call);
+				stmt->line = line;
+				if (!ExpectStatementEnd())
+					return nullptr;
+				return stmt;
+			}
+			fPos = savedPos2; // non e' questo caso: si riparte da capo con la strada di sempre
+			fError->message.clear(); // un tentativo speculativo abbandonato non deve sporcare l'errore vero
 		}
 
 		auto expr = ParseVbaPrimaryExpression(fTokens, fPos, fError);
@@ -1377,6 +1535,16 @@ bool ParseVbaDimStatementList(const std::vector<VbaToken>& tokens, size_t& pos,
 {
 	Parser parser(tokens, pos, outError);
 	bool ok = parser.ParseDimStatementList(outStmts);
+	if (!ok && outError->message.empty())
+		outError->message = "errore di sintassi";
+	return ok;
+}
+
+bool ParseVbaConstStatementList(const std::vector<VbaToken>& tokens, size_t& pos,
+	VbaParseError* outError, std::vector<std::unique_ptr<VbaStmt>>* outStmts)
+{
+	Parser parser(tokens, pos, outError);
+	bool ok = parser.ParseConstStatementList(outStmts);
 	if (!ok && outError->message.empty())
 		outError->message = "errore di sintassi";
 	return ok;

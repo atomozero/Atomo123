@@ -267,6 +267,34 @@ int main()
 			"produce un errore chiaro, non un crash");
 	}
 
+	// ---- Fase 6h: "Now" -- numero seriale in GIORNI, epoca 1899-12-30
+	// (serve a "Application.OnTime", vedi VbaMacroRunner.cpp). Un
+	// controllo di PLAUSIBILITA' (non un valore esatto, ovviamente
+	// dipendente dall'orologio): 43000..80000 copre comodamente qualunque
+	// data fra il 2017 e il 2119, ben oltre la vita di questo test ----
+	{
+		VbaEnvironment localEnv;
+		std::string r = EvalToString("Now", &localEnv);
+		double serial = atof(r.c_str());
+		Check(serial > 43000.0 && serial < 80000.0,
+			("\"Now\" restituisce un numero seriale plausibile (epoca 1899-12-30): " + r).c_str());
+	}
+	// La stessa frazione di giorno che il vero sorgente chip-8-vba
+	// aggiunge a "Now" (~1ms, "0.000000011574") deve sopravvivere
+	// all'addizione in virgola mobile -- la regressione che questo
+	// test previene e' riusare la variante "time_t" di Value (che
+	// arrotonda al secondo intero, vedi il commento su "Now" in
+	// VbaEvaluator.cpp), non la matematica in se'. Una variabile FISSA
+	// (non una seconda chiamata vera a "Now", che rischierebbe un
+	// risultato instabile se l'orologio scatta al secondo successivo
+	// proprio fra le due valutazioni) isola la cosa che conta davvero:
+	// l'aritmetica di Value su un numero di questa grandezza.
+	{
+		VbaEnvironment localEnv;
+		localEnv.Set("x", Value(46000.0)); // una data plausibile, non serve che sia "oggi"
+		CheckEval("(x + 0.000000011574) > x", "True", &localEnv);
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

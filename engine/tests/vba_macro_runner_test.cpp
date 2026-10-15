@@ -1429,6 +1429,114 @@ static void TestPersistentModuleState()
 }
 
 // =======================================================================
+// Parte 2i (Fase 6h): "Const" a LIVELLO DI MODULO + "Application.
+// OnTime" -- trovato controllando il vero sorgente chip-8-vba ("Const
+// Millisecond As Double = 0.000000011574" e "Application.OnTime Count,
+// "CHIP8List.ProcessVM""). Un gancio di test (VbaSetOnTimeHook)
+// registra cio' che "Application.OnTime" gli passa invece di
+// programmare un vero BMessageRunner (che vive solo in ui/, non qui).
+// =======================================================================
+
+static void* gLastOnTimeHostContext = NULL;
+static double gLastOnTimeDelaySeconds = -1.0;
+static std::string gLastOnTimeMacroName;
+static int gOnTimeHookCallCount = 0;
+
+static void TestOnTimeHook(void* hostContext, double delaySeconds, const std::string& macroName)
+{
+	gLastOnTimeHostContext = hostContext;
+	gLastOnTimeDelaySeconds = delaySeconds;
+	gLastOnTimeMacroName = macroName;
+	gOnTimeHookCallCount++;
+}
+
+static std::vector<uint8> BuildModuleConstOnTimeProject()
+{
+	const char* moduleSource =
+		"Const Millisecond As Double = 0.000000011574\r\n" // livello di modulo, come il vero file
+		"Dim Ticks As Long\r\n"                              // idem
+		"Sub Tick()\r\n"
+		"    Ticks = Ticks + 1\r\n"
+		"    Cells(1, 1).Value = Ticks\r\n"
+		// Nome QUALIFICATO col modulo, esattamente come il vero sorgente
+		// chip-8-vba scrive "CHIP8List.ProcessVM" -- EvalCall deve
+		// tenere solo la parte dopo l'ultimo "." prima di passarla al
+		// gancio sotto.
+		"    Application.OnTime Now + Millisecond, \"Module1.Tick\"\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(5, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestModuleLevelConstAndOnTime()
+{
+	std::vector<uint8> project = BuildModuleConstOnTimeProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per Const di modulo + OnTime si costruisce");
+
+	VbaSetOnTimeHook(&TestOnTimeHook);
+	int fakeHostContext = 42; // un puntatore qualunque, mai dereferenziato dal gancio di test
+
+	VbaEnvironment moduleEnv; // UNA sola istanza, riusata fra chiamate SEPARATE sotto, come Parte 2h
+
+	{
+		CContainer* doc1 = new CContainer(NULL, NULL);
+		VbaRuntimeError err1;
+		moduleEnv.SetHostContext(&fakeHostContext);
+		bool ok1 = ExecuteVbaMacro(&project[0], project.size(), "Tick", doc1, &err1, &moduleEnv);
+		Check(ok1, "la PRIMA chiamata a \"Tick\" (Const di modulo + Application.OnTime) "
+			"esegue senza errori");
+		Value ticks1;
+		doc1->GetValue(cell(1, 1), ticks1);
+		Check((double)ticks1 == 1.0, "Ticks=1 dopo la prima chiamata: \"Millisecond\" (una "
+			"\"Const\" di modulo) si e' inizializzata correttamente, l'aritmetica con \"Now\" "
+			"non ha sollevato nessun errore");
+		Check(gOnTimeHookCallCount == 1, "\"Application.OnTime\" ha chiamato il gancio esattamente "
+			"una volta");
+		Check(gLastOnTimeHostContext == &fakeHostContext, "il gancio ha ricevuto lo stesso "
+			"\"hostContext\" impostato su \"moduleEnv\" via SetHostContext");
+		Check(gLastOnTimeMacroName == "Tick", "il nome macro qualificato col modulo "
+			"(\"Module1.Tick\") arriva al gancio GIA' normalizzato alla sola Sub (\"Tick\")");
+		Check(gLastOnTimeDelaySeconds >= 0.0 && gLastOnTimeDelaySeconds < 1.0,
+			"il ritardo calcolato (Now + Millisecond - Now, circa 1ms) e' piccolo e non negativo");
+		doc1->Release();
+	}
+
+	{
+		// SECONDA chiamata, stesso ambiente di modulo: "Millisecond" NON
+		// deve essere re-inizializzata (sarebbe comunque lo stesso
+		// valore qui, ma il punto e' lo stesso principio di idempotenza
+		// di "Dim ThisVM" nella Parte 2h sopra) e "Ticks" deve
+		// continuare da 1, non ripartire da 0.
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		bool ok2 = ExecuteVbaMacro(&project[0], project.size(), "Tick", doc2, &err2, &moduleEnv);
+		Check(ok2, "la SECONDA chiamata (stesso ambiente di modulo) esegue senza errori");
+		Value ticks2;
+		doc2->GetValue(cell(1, 1), ticks2);
+		Check((double)ticks2 == 2.0, "Ticks=2: lo stato di modulo persiste, \"Millisecond\" non "
+			"e' stata toccata di nuovo");
+		Check(gOnTimeHookCallCount == 2, "il gancio e' stato richiamato una seconda volta");
+		doc2->Release();
+	}
+
+	VbaSetOnTimeHook(NULL); // non lasciare il gancio di test installato per gli altri test di questo file
+}
+
+// =======================================================================
 // Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
 // pensato apposta per provare che questa funzione NON chiama
 // ParseVbaSub (un "ByRef" su un parametro, fuori da questo
@@ -1519,6 +1627,7 @@ int main()
 	TestWith();
 	TestInteriorColor();
 	TestPersistentModuleState();
+	TestModuleLevelConstAndOnTime();
 	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

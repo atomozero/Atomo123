@@ -123,7 +123,8 @@ struct VbaOpenFile {
 class VbaEnvironment {
 public:
 	VbaEnvironment()
-		: fActiveDoc(NULL), fModuleTokens(NULL), fCallDepth(0), fTypeRegistry(NULL), fModuleEnv(NULL) {}
+		: fActiveDoc(NULL), fHostContext(NULL), fModuleTokens(NULL), fCallDepth(0),
+		  fTypeRegistry(NULL), fModuleEnv(NULL) {}
 
 	// Il foglio di calcolo (CContainer) su cui questa esecuzione lavora
 	// -- Fase 3c, modello a oggetti Excel: Range/Cells lo usano per
@@ -134,6 +135,23 @@ public:
 	// che il chiamante debba collegare nulla.
 	void SetActiveDocument(CContainer* doc) { fActiveDoc = doc; }
 	CContainer* GetActiveDocument() const { return fActiveDoc; }
+
+	// Fase 6h: chi possiede questa esecuzione dal lato UI (in pratica
+	// SEMPRE un "MainWindow*", ma engine/ non puo' linkare ui/ -- stesso
+	// motivo di VbaSetOpenFileDialogHook in VbaEvaluator.h -- quindi
+	// resta un puntatore grezzo opaco, mai dereferenziato qui dentro).
+	// Serve a "Application.OnTime" (VbaEvaluator.cpp, EvalCall) per far
+	// arrivare il gancio di pianificazione alla finestra GIUSTA, dato
+	// che l'app supporta piu' MainWindow aperte insieme: a differenza di
+	// "Application.GetOpenFilename" (un selettore di file generico, non
+	// legato a nessuna finestra), un timer ri-entrante deve rieseguire
+	// la macro sulla STESSA finestra/documento che lo ha programmato.
+	// Puntatore in prestito, stesso principio di "fActiveDoc" sopra: MAI
+	// posseduto, NULL di default (es. nei test, dove non c'e' nessuna UI
+	// collegata affatto).
+	void SetHostContext(void* context) { fHostContext = context; }
+	void* GetHostContext() const { return fHostContext; }
+
 	// Dim: assicura che la variabile esista, inizializzata a vuoto
 	// (0.0, come una variabile Variant VBA appena dichiarata) se non
 	// gia' presente -- NON reimposta un valore gia' assegnato in
@@ -336,6 +354,7 @@ private:
 	std::map<std::string, VbaArrayStorage> fArrays; // stessa normalizzazione, mappa separata
 	std::map<std::string, VbaStructInstance> fStructs; // stessa normalizzazione, mappa separata
 	CContainer* fActiveDoc;
+	void* fHostContext;
 	const std::vector<VbaToken>* fModuleTokens;
 	int fCallDepth;
 	const std::map<std::string, VbaTypeDecl>* fTypeRegistry;

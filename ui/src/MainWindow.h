@@ -655,6 +655,12 @@ public:
 	// questa implementazione. In caso di errore, un solo BAlert con il
 	// messaggio di VbaRuntimeError.
 	void RunVbaMacro(const char* name);
+	// Fase 6h: chiamata dal gancio libero ScheduleVbaOnTimeHook
+	// (MainWindow.cpp, installato via VbaSetOnTimeHook) quando
+	// "Application.OnTime" viene valutato -- pubblica per questo
+	// (quella funzione non e' un metodo, non puo' toccare un privato).
+	// Vedi fVbaOnTimeRunner sotto per i dettagli del timer stesso.
+	void ScheduleVbaOnTime(double delaySeconds, const std::string& macroName);
 
 	// Formattazione condizionale VIVA (Fase 13): a differenza di
 	// SetCellValidation sopra (un primitivo per singola cella), qui
@@ -1131,6 +1137,17 @@ private:
 
 	void StartOrUpdateAutoSaveRunner();
 	void StopAutoSaveRunner();
+
+	// Fase 6h: "Application.OnTime" -- UN SOLO timer pendente alla
+	// volta (come fAutoSaveRunner sopra, ma monocolpo: "count=1"), mai
+	// posseduto da nessun altro che questa finestra. Il vero sorgente
+	// chip-8-vba riprogramma se stesso un colpo alla volta (mai due
+	// "Application.OnTime" in sospeso insieme), quindi un solo slot
+	// basta -- piu' timer contemporanei sono fuori scopo, vedi
+	// ROADMAP.md Fase 6h. Fermato (delete+NULL) ovunque
+	// fPersistentVbaModuleEnv sopra lo sia gia': un timer non deve MAI
+	// scattare su un documento chiuso/sostituito.
+	BMessageRunner* fVbaOnTimeRunner;
 
 	void UpdateTitle();
 	void MarkModified();

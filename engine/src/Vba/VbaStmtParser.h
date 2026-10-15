@@ -50,4 +50,14 @@ std::unique_ptr<VbaTypeDecl> ParseVbaTypeDecl(const std::vector<VbaToken>& token
 bool ParseVbaDimStatementList(const std::vector<VbaToken>& tokens, size_t& pos,
 	VbaParseError* outError, std::vector<std::unique_ptr<VbaStmt>>* outStmts);
 
+// Fase 6h: stesso principio, per "Const nome1 [As Tipo1] = espr1,
+// nome2..., ..." a partire da tokens[pos] (che deve gia' essere la
+// parola chiave "Const"). Ogni dichiaratore produce DUE VbaStmt (un
+// vbaStmtDim seguito dal vbaStmtAssign che lo inizializza, vedi
+// VbaStmtParser.cpp) -- esposta separatamente per lo stesso motivo di
+// ParseVbaDimStatementList: chi scandisce le costanti a LIVELLO DI
+// MODULO (VbaMacroRunner.h, stato persistente) la usa direttamente.
+bool ParseVbaConstStatementList(const std::vector<VbaToken>& tokens, size_t& pos,
+	VbaParseError* outError, std::vector<std::unique_ptr<VbaStmt>>* outStmts);
+
 #endif

@@ -218,6 +218,32 @@ void FindAllVbaModuleLevelDims(const std::vector<VbaToken>& tokens,
 			}
 			continue;
 		}
+		// Fase 6h: "Const" si riscrive (ParseOneConstDeclarator,
+		// VbaStmtParser.cpp) in una coppia vbaStmtDim+vbaStmtAssign per
+		// dichiaratore -- ENTRAMBI appesi qui, nello stesso ordine, cosi'
+		// il chiamante (sotto in ExecuteVbaMacro) puo' riconoscere la
+		// coppia e inizializzare la costante una SOLA volta per sessione
+		// esattamente come un "Dim" di modulo, invece di lasciarla
+		// Empty/0.0 finche' qualcosa non la assegna (il vero VBA non
+		// ammette "Const" senza inizializzatore: trovato controllando il
+		// vero sorgente chip-8-vba, "Const Millisecond As Double =
+		// 0.000000011574" -- vedi ROADMAP.md).
+		if (tokens[pos].type == vbaTokKeyword && tokens[pos].text == "Const")
+		{
+			size_t before = pos;
+			VbaParseError localError;
+			std::vector<std::unique_ptr<VbaStmt>> group;
+			if (ParseVbaConstStatementList(tokens, pos, &localError, &group))
+			{
+				for (size_t i = 0; i < group.size(); i++)
+					outStmts->push_back(std::move(group[i]));
+			}
+			else
+			{
+				pos = before + 1;
+			}
+			continue;
+		}
 		pos++; // "Attribute VB_Name = ...", "Private"/"Public" davanti, "Option Explicit", ecc.
 	}
 }
@@ -275,6 +301,15 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 		// come dovrebbe.
 		VbaEnvironment env;
 		env.SetActiveDocument(doc);
+		// Fase 6h: "env" (non "persistentModuleEnv") e' quello che
+		// EvalCall vede davvero (fEnv dentro VbaEvaluator.cpp) -- senza
+		// questo, "Application.OnTime" leggerebbe sempre un
+		// "hostContext" nullo, anche quando il chiamante lo ha impostato
+		// su "persistentModuleEnv" (MainWindow::RunVbaMacro). NULL
+		// (nessun ambiente esterno collegato, es. nei test che non lo
+		// usano) e' comunque sicuro: il gancio stesso tratta un
+		// "hostContext" nullo come "nessuna UI collegata", mai un crash.
+		env.SetHostContext(persistentModuleEnv ? persistentModuleEnv->GetHostContext() : NULL);
 		// Fase 6a: collega i token di QUESTO modulo all'ambiente, cosi'
 		// EvalCall (VbaEvaluator.cpp) puo' risolvere una chiamata a una
 		// Sub sorella con FindVbaSubByName invece di fermarsi al solo
@@ -311,13 +346,34 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 			for (size_t d = 0; d < moduleDims.size(); d++)
 			{
 				const VbaStmt* dimStmt = moduleDims[d].get();
+				if (dimStmt->kind != vbaStmtDim)
+					continue; // un vbaStmtAssign di una Const: gestito insieme al suo Dim, sotto
 				bool alreadyDeclared = persistentModuleEnv->Find(dimStmt->varName) != NULL
 					|| persistentModuleEnv->IsArray(dimStmt->varName)
 					|| persistentModuleEnv->IsStruct(dimStmt->varName);
+				// Fase 6h: una "Const" di modulo e' questa stessa coppia
+				// Dim+Assign (vedi FindAllVbaModuleLevelDims sopra) --
+				// riconosciuta guardando SOLO la voce immediatamente
+				// successiva (l'ordine e' sempre Dim poi il suo Assign,
+				// mai interallacciato con un'altra variabile).
+				const VbaStmt* initStmt = NULL;
+				if (d + 1 < moduleDims.size() && moduleDims[d + 1]->kind == vbaStmtAssign
+					&& moduleDims[d + 1]->target
+					&& moduleDims[d + 1]->target->kind == vbaExprVariable
+					&& moduleDims[d + 1]->target->name == dimStmt->varName)
+					initStmt = moduleDims[d + 1].get();
 				if (!alreadyDeclared)
 				{
 					VbaRuntimeError dimErr; // un errore qui non e' fatale per QUESTA macro: si
 					ExecuteDimDeclaration(dimStmt, persistentModuleEnv, &dimErr); // ignora, vedi .h
+					if (initStmt)
+					{
+						Value initValue;
+						VbaRuntimeError initErr; // stesso principio: mai fatale per questa macro
+						if (EvaluateVbaExpression(initStmt->expr.get(), persistentModuleEnv,
+							&initValue, &initErr))
+							persistentModuleEnv->Set(dimStmt->varName, initValue);
+					}
 				}
 			}
 		}

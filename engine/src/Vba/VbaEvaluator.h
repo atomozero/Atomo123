@@ -163,4 +163,25 @@ bool VbaSetInteriorColor(const Value& rangeValue, bool asColorIndex, const Value
 typedef bool (*VbaOpenFileDialogFn)(std::string* outPath);
 void VbaSetOpenFileDialogHook(VbaOpenFileDialogFn fn);
 
+// Fase 6h: lo stesso principio di VbaOpenFileDialogFn sopra, per
+// "Application.OnTime EarliestTime, Procedure" -- un vero timer
+// ri-entrante (BMessageRunner in ui/, MainWindow.cpp) che engine/ non
+// puo' linkare direttamente. A differenza del selettore di file sopra
+// (generico, nessuna finestra specifica), questo gancio DEVE sapere
+// QUALE finestra/documento ha programmato la chiamata (l'app supporta
+// piu' MainWindow aperte insieme) -- "hostContext" e' il puntatore
+// opaco impostato da VbaEnvironment::SetHostContext (in pratica sempre
+// un "MainWindow*", ma mai dereferenziato qui in engine/). NULL finche'
+// ui/ non lo imposta UNA volta all'avvio: in quel caso "Application.
+// OnTime" non fa nulla (nessun timer, nessun crash), comportamento
+// onesto nei test/contesti senza UI collegata, stesso principio del
+// selettore di file che restituisce "annullato". "delaySeconds" e'
+// GIA' calcolato (differenza rispetto a "Now", non negativo) --
+// VbaEvaluator.cpp fa quella matematica, il gancio si limita a
+// programmare il timer. "macroName" e' GIA' normalizzato (senza un
+// eventuale prefisso "NomeModulo." -- vedi ROADMAP.md Fase 6h).
+typedef void (*VbaOnTimeFn)(void* hostContext, double delaySeconds,
+	const std::string& macroName);
+void VbaSetOnTimeHook(VbaOnTimeFn fn);
+
 #endif

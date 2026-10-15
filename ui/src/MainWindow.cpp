@@ -206,6 +206,11 @@ static const uint32 kMsgShowTextColor = 'shtc';
 static const uint32 kMsgShowBgColor = 'shbc';
 static const uint32 kMsgShowPreferences = 'shpr';
 static const uint32 kMsgAutoSaveTick = 'atck';
+// Fase 6h: inviato da fVbaOnTimeRunner (MainWindow.h) quando un
+// "Application.OnTime" programmato scatta -- vedi ScheduleVbaOnTime/
+// ScheduleVbaOnTimeHook sotto. Porta il nome della macro da rieseguire
+// in un campo stringa "macroName" (vedi MessageReceived).
+static const uint32 kMsgRunScheduledVbaMacro = 'rsvm';
 // Apertura file su un thread separato (Fase 31): inviato dal thread di
 // lavoro a fine caricamento, vedi _OpenFileWorker/OpenFile sotto.
 static const uint32 kMsgFileLoadResult = 'flrs';
@@ -422,6 +427,12 @@ static void DrawReplaceIcon(BView* view);
 // delle macro) e' usato dal costruttore di MainWindow, scritto piu' in
 // alto in questo file.
 static bool ShowVbaOpenFilePanel(std::string* outPath);
+
+// Fase 6h (VBA): stesso principio, per il gancio di
+// "Application.OnTime" -- il corpo (vicino a RunVbaMacro) chiama
+// ScheduleVbaOnTime sulla finestra giusta via "hostContext".
+static void ScheduleVbaOnTimeHook(void* hostContext, double delaySeconds,
+	const std::string& macroName);
 
 // Le etichette qui sotto sono marcate con B_TRANSLATE_MARK (identita' a
 // tempo di compilazione, vedi Catalog.h) invece che tradotte sul posto
@@ -1014,6 +1025,7 @@ MainWindow::MainWindow()
 		fAutoSaveIntervalMinutes = 120;
 	fAutoSaveDir = gPrefs ? gPrefs->GetPrefString("autoSaveDir", "") : "";
 	fAutoSaveRunner = NULL;
+	fVbaOnTimeRunner = NULL;
 	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
 	ResetWorkbook("Foglio1");
 	fModified = false;
@@ -1628,6 +1640,9 @@ MainWindow::MainWindow()
 	// stessa funzione libera ogni volta, nessuno stato legato a QUESTA
 	// istanza) -- vedi ShowVbaOpenFilePanel sopra.
 	VbaSetOpenFileDialogHook(&ShowVbaOpenFilePanel);
+	// Fase 6h: stesso principio, per "Application.OnTime" -- vedi
+	// ScheduleVbaOnTimeHook sotto.
+	VbaSetOnTimeHook(&ScheduleVbaOnTimeHook);
 	fFindWindow = NULL;
 	fChartWindow = NULL;
 	fPivotWindow = NULL;
@@ -1664,6 +1679,7 @@ MainWindow::~MainWindow()
 {
 	delete fAutoSaveRunner;
 	delete fFooterProgressPulseRunner;
+	delete fVbaOnTimeRunner;
 	delete fOpenPanel;
 	delete fSavePanel;
 	delete fPersistentVbaModuleEnv;
@@ -1832,6 +1848,11 @@ void MainWindow::ResetWorkbook(const char* name)
 	// fPersistentVbaModuleEnv sopra) non ha alcun senso qui.
 	delete fPersistentVbaModuleEnv;
 	fPersistentVbaModuleEnv = NULL;
+	// Un "Application.OnTime" pendente non deve MAI scattare contro un
+	// documento/progetto VBA appena sostituito -- vedi il commento su
+	// fVbaOnTimeRunner in MainWindow.h.
+	delete fVbaOnTimeRunner;
+	fVbaOnTimeRunner = NULL;
 
 	AscdSheet sheet;
 	sheet.name = name;
@@ -2821,6 +2842,11 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	// documento diverso e' un progetto VBA diverso.
 	delete fPersistentVbaModuleEnv;
 	fPersistentVbaModuleEnv = NULL;
+	// Un "Application.OnTime" pendente non deve MAI scattare contro un
+	// documento/progetto VBA appena sostituito -- vedi il commento su
+	// fVbaOnTimeRunner in MainWindow.h.
+	delete fVbaOnTimeRunner;
+	fVbaOnTimeRunner = NULL;
 	fActiveSheetIndex = 0;
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
@@ -3159,6 +3185,11 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	// commento su fPersistentVbaModuleEnv in MainWindow.h).
 	delete fPersistentVbaModuleEnv;
 	fPersistentVbaModuleEnv = NULL;
+	// Un "Application.OnTime" pendente non deve MAI scattare contro un
+	// documento/progetto VBA appena sostituito -- vedi il commento su
+	// fVbaOnTimeRunner in MainWindow.h.
+	delete fVbaOnTimeRunner;
+	fVbaOnTimeRunner = NULL;
 	fActiveSheetIndex = 0;
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
@@ -6353,6 +6384,14 @@ void MainWindow::RunVbaMacro(const char* name)
 	// sessione, non a ogni clic, esattamente come il vero VBA.
 	if (!fPersistentVbaModuleEnv)
 		fPersistentVbaModuleEnv = new VbaEnvironment();
+	// Fase 6h: "Application.OnTime" (VbaEvaluator.cpp, EvalCall) deve
+	// rieseguire la macro sulla finestra GIUSTA (l'app supporta piu'
+	// MainWindow aperte insieme) -- vedi il commento su "fHostContext"
+	// in VbaEnvironment.h. Impostato a ogni chiamata (non solo alla
+	// creazione sopra): economico, e cosi' resta sempre corretto anche
+	// se "fPersistentVbaModuleEnv" venisse mai condiviso fra finestre in
+	// futuro (oggi non succede, ma costa zero essere onesti comunque).
+	fPersistentVbaModuleEnv->SetHostContext(this);
 
 	VbaRuntimeError err;
 	bool ok = ExecuteVbaMacro(&(*vbaProject)[0], vbaProject->size(), name, fDoc, &err,
@@ -6384,6 +6423,39 @@ void MainWindow::RunVbaMacro(const char* name)
 	fModified = true;
 	UpdateTitle();
 	fSheetView->Invalidate();
+}
+
+// Il vero gancio installato in VbaSetOnTimeHook (VbaEvaluator.h, Fase
+// 6h) -- firma fissa, nessun "this": "hostContext" e' il
+// "MainWindow*" che VbaEnvironment::SetHostContext ha legato
+// (RunVbaMacro sopra), MAI nullo in pratica (ogni esecuzione reale
+// passa da li'), ma controllato comunque per onesta' con l'ambiente
+// nudo usato da engine/tests (nessuna UI collegata affatto).
+static void ScheduleVbaOnTimeHook(void* hostContext, double delaySeconds,
+	const std::string& macroName)
+{
+	if (!hostContext)
+		return;
+	((MainWindow*)hostContext)->ScheduleVbaOnTime(delaySeconds, macroName);
+}
+
+// Programma (o RI-programma, sostituendo un timer gia' pendente --
+// vedi il commento su fVbaOnTimeRunner in MainWindow.h) la riesecuzione
+// di "macroName" dopo "delaySeconds" secondi, tramite un
+// BMessageRunner MONOCOLPO ("count=1", a differenza di fAutoSaveRunner
+// che si ripete) -- stessa forma di StartOrUpdateAutoSaveRunner sopra.
+// Il nome della macro viaggia nel messaggio stesso ("macroName"),
+// letto da MessageReceived quando il timer scatta e passato pari pari
+// a RunVbaMacro: stesso percorso del clic manuale "Esegui macro"
+// (controllo di fiducia, ambiente di modulo persistente, ricalcolo,
+// svuotamento Annulla/Ripeti, tutto gratis per riuso).
+void MainWindow::ScheduleVbaOnTime(double delaySeconds, const std::string& macroName)
+{
+	delete fVbaOnTimeRunner;
+	BMessage* msg = new BMessage(kMsgRunScheduledVbaMacro);
+	msg->AddString("macroName", macroName.c_str());
+	fVbaOnTimeRunner = new BMessageRunner(BMessenger(this), msg,
+		(bigtime_t)(delaySeconds * 1000000.0), 1);
 }
 
 // "type" e' l'indice posizionale del menu di ConditionalFormatWindow
@@ -9755,6 +9827,21 @@ void MainWindow::MessageReceived(BMessage* message)
 		case kMsgAutoSaveTick:
 			AutoSaveBackup();
 			break;
+
+		case kMsgRunScheduledVbaMacro:
+		{
+			// Il timer e' MONOCOLPO (vedi ScheduleVbaOnTime): e' gia'
+			// scattato, "fVbaOnTimeRunner" non serve piu' tenerlo in
+			// vita (la macro stessa, sotto, puo' riprogrammarne subito
+			// un altro -- vedi il vero sorgente chip-8-vba,
+			// "ProcessVM" si richiama cosi' indefinitamente).
+			delete fVbaOnTimeRunner;
+			fVbaOnTimeRunner = NULL;
+			const char* name;
+			if (message->FindString("macroName", &name) == B_OK)
+				RunVbaMacro(name);
+			break;
+		}
 
 		case kMsgFileLoadResult:
 			HandleFileLoadResult(message);
