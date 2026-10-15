@@ -583,6 +583,59 @@ private:
 		// dedicato nell'albero.
 		if (IsKeyword("Call"))
 			Advance();
+
+		// Fase 6g (seguito): "NomeSub arg1, arg2" -- la "forma a comando"
+		// del vero VBA, una chiamata SENZA parentesi con almeno un
+		// argomento (trovata controllando il vero sorgente chip-8-vba:
+		// "SetScreenPixel i, j, 0", "VMSetRunning False", "TODO
+		// stringa"), SOLO in posizione di istruzione (il vero VBA non la
+		// permette affatto dentro un'espressione, quindi non serve
+		// toccare VbaExprParser.cpp). Riconosciuta guardando avanti UN
+		// token dopo un identificatore: se cio' che segue NON e' "(" /
+		// "=" / "." / una fine istruzione o un terminatore di blocco,
+		// e' l'inizio di un elenco di argomenti, non un errore di
+		// sintassi ("Foo" seguito da un token spurio). Si torna indietro
+		// (fPos ripristinato) se non e' davvero questo caso, cosi' ogni
+		// altra forma (nome solo, "nome(args)", "nome.Proprieta'",
+		// un'assegnazione...) segue la strada di sempre, immutata.
+		if (Current().type == vbaTokIdentifier)
+		{
+			size_t savedPos = fPos;
+			std::string name = Current().text;
+			int nameLine = Current().line;
+			Advance();
+			if (!IsOp("(") && !IsOp("=") && !IsOp(".") && !IsNewlineTok() && !IsEndTok()
+				&& !IsBlockTerminator())
+			{
+				auto call = std::unique_ptr<VbaExpr>(new VbaExpr(vbaExprCall));
+				call->name = name;
+				call->line = nameLine;
+				for (;;)
+				{
+					auto arg = ParseVbaExpression(fTokens, fPos, fError);
+					if (!arg)
+					{
+						fFailed = true;
+						return nullptr;
+					}
+					call->children.push_back(std::move(arg));
+					if (IsOp(","))
+					{
+						Advance();
+						continue;
+					}
+					break;
+				}
+				auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtExprStmt));
+				stmt->expr = std::move(call);
+				stmt->line = line;
+				if (!ExpectStatementEnd())
+					return nullptr;
+				return stmt;
+			}
+			fPos = savedPos; // non e' questo caso: si riparte da capo con la strada di sempre
+		}
+
 		auto expr = ParseVbaPrimaryExpression(fTokens, fPos, fError);
 		if (!expr)
 		{
@@ -1020,8 +1073,17 @@ private:
 			kind = vbaStmtExitFor;
 			Advance();
 		}
-		else if (IsKeyword("Sub"))
+		else if (IsKeyword("Sub") || IsKeyword("Function"))
 		{
+			// Fase 6g (seguito): "Exit Function" era rimasta scoperta da
+			// quando le Function sono arrivate (Fase 6b) -- trovata
+			// controllando il vero sorgente chip-8-vba ("If bytes = 0
+			// Then / Exit Function / End If" in DrawSprite). Nessun nodo
+			// nuovo nell'albero: l'esecuzione di "Exit Function" e'
+			// IDENTICA a "Exit Sub" (interrompe la procedura corrente,
+			// il valore di ritorno e' comunque gia' quello scritto
+			// nella variabile omonima della Function finora -- vedi
+			// VbaAst.h), stesso vbaStmtExitSub riusato cosi' com'e'.
 			kind = vbaStmtExitSub;
 			Advance();
 		}
@@ -1032,7 +1094,7 @@ private:
 		}
 		else
 		{
-			SetError("atteso \"For\", \"Do\" o \"Sub\" dopo \"Exit\"");
+			SetError("atteso \"For\", \"Do\", \"Sub\" o \"Function\" dopo \"Exit\"");
 			return nullptr;
 		}
 		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(kind));

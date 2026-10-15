@@ -540,6 +540,21 @@ static std::vector<uint8> BuildFunctionCallProject()
 		"End Function\r\n"
 		"Sub UseNeverAssigns()\r\n"
 		"    Cells(1, 1).Value = NeverAssigns()\r\n"
+		"End Sub\r\n"
+		// Fase 6g (seguito): "Exit Function" -- trovata controllando il
+		// vero sorgente chip-8-vba (DrawSprite). Il valore di ritorno e'
+		// comunque quello scritto PRIMA dell'uscita anticipata (99, non
+		// Empty): "Exit Function" interrompe la Sub, non azzera nulla.
+		"Function EarlyExit(ByVal n As Integer) As Integer\r\n"
+		"    EarlyExit = 99\r\n"
+		"    If n > 0 Then\r\n"
+		"        Exit Function\r\n"
+		"    End If\r\n"
+		"    EarlyExit = -1\r\n"
+		"End Function\r\n"
+		"Sub UseEarlyExit()\r\n"
+		"    Cells(1, 1).Value = EarlyExit(1)\r\n"
+		"    Cells(2, 1).Value = EarlyExit(0)\r\n"
 		"End Sub\r\n";
 
 	std::vector<uint8> fakePCache(6, 0xCC);
@@ -586,6 +601,119 @@ static void TestSiblingFunctionCall()
 		Check((double)v == 0.0, "e il suo valore di ritorno e' Empty (0.0), come il vero VBA, "
 			"non un errore \"variabile non dichiarata\"");
 		doc2->Release();
+	}
+
+	{
+		CContainer* doc3 = new CContainer(NULL, NULL);
+		VbaRuntimeError err3;
+		bool ok3 = ExecuteVbaMacro(&project[0], project.size(), "UseEarlyExit", doc3, &err3);
+		Check(ok3, "\"Exit Function\" (dentro un \"If\") non produce errori");
+		Value v1, v2;
+		doc3->GetValue(cell(1, 1), v1);
+		doc3->GetValue(cell(1, 2), v2);
+		Check(ok3 && (double)v1 == 99.0, "EarlyExit(1) esce PRIMA di \"EarlyExit = -1\": torna 99");
+		Check(ok3 && (double)v2 == -1.0, "EarlyExit(0) non prende il ramo \"Exit Function\": "
+			"torna -1, l'ULTIMA assegnazione eseguita");
+		doc3->Release();
+	}
+}
+
+// =======================================================================
+// Fase 6g (seguito): chiamate a Sub sorelle SENZA parentesi -- sia a
+// zero argomenti (una variabile mai assegnata che si risolve a RUNTIME
+// come una Sub sorella, VbaEvaluator.cpp/EvalVariable) sia con uno o
+// piu' argomenti (la "forma a comando" del vero VBA, riscritta
+// nell'albero come l'equivalente "nome(argomenti)" dal parser --
+// VbaStmtParser.cpp/ParseAssignOrExprStmt). Trovato controllando il
+// vero sorgente chip-8-vba ("SetScreenPixel i, j, 0", "VMSetRunning
+// False", "Redraw"/"InitConstants" da sole).
+// =======================================================================
+
+static std::vector<uint8> BuildParenlessCallProject()
+{
+	const char* moduleSource =
+		"Sub Main()\r\n"
+		"    ZeroArg\r\n"
+		"    WithArgs 10, 20, -5\r\n"
+		"End Sub\r\n"
+		"Sub ZeroArg()\r\n"
+		"    Cells(1, 1).Value = 42\r\n"
+		"End Sub\r\n"
+		"Sub WithArgs(a, b, c)\r\n"
+		"    Cells(2, 1).Value = a\r\n"
+		"    Cells(2, 2).Value = b\r\n"
+		"    Cells(2, 3).Value = c\r\n"
+		"End Sub\r\n"
+		"Sub WrongArgCount()\r\n"
+		"    WithArgs 1, 2\r\n"
+		"End Sub\r\n"
+		"Sub CallZeroArgInsideExpr()\r\n"
+		"    Dim x\r\n"
+		"    x = ZeroArg\r\n" // "ZeroArg" dentro un'espressione, non solo come istruzione nuda
+		"    Cells(3, 1).Value = x\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(10, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestParenlessSiblingCall()
+{
+	std::vector<uint8> project = BuildParenlessCallProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per le chiamate senza parentesi si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "Main", doc, &err);
+	Check(ok, "\"Main\" richiama \"ZeroArg\" (zero argomenti, senza parentesi) e \"WithArgs\" "
+		"(con argomenti, senza parentesi) senza errori");
+
+	// "cell(h, v)" e' (colonna, riga) -- l'ordine INVERSO di "Cells(riga,
+	// colonna)" scritto nel sorgente VBA sopra, vedi Cell.h.
+	Value v1, v2, v3, v4;
+	doc->GetValue(cell(1, 1), v1); // Cells(1, 1) -- "ZeroArg"
+	doc->GetValue(cell(1, 2), v2); // Cells(2, 1) -- "a"
+	doc->GetValue(cell(2, 2), v3); // Cells(2, 2) -- "b"
+	doc->GetValue(cell(3, 2), v4); // Cells(2, 3) -- "c"
+	Check((double)v1 == 42.0, "\"ZeroArg\" (bare, zero argomenti) scrive davvero A1=42");
+	Check((double)v2 == 10.0 && (double)v3 == 20.0,
+		"\"WithArgs 10, 20, -5\" (senza parentesi) lega i primi due argomenti ad A2/B2");
+	Check((double)v4 == -5.0, "...e il terzo argomento negativo (\"-5\") arriva corretto, non troncato "
+		"a un token spurio");
+	doc->Release();
+
+	{
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "WrongArgCount", doc2, &err2),
+			"\"WithArgs 1, 2\" (senza parentesi, con un argomento mancante) produce un errore "
+			"chiaro sul numero di argomenti, stessa regola della forma con parentesi");
+		doc2->Release();
+	}
+
+	{
+		CContainer* doc3 = new CContainer(NULL, NULL);
+		VbaRuntimeError err3;
+		bool ok3 = ExecuteVbaMacro(&project[0], project.size(), "CallZeroArgInsideExpr", doc3, &err3);
+		Check(ok3, "\"x = ZeroArg\" (bare, DENTRO un'espressione di assegnazione) non produce errori");
+		Value v;
+		doc3->GetValue(cell(1, 3), v); // Cells(3, 1) -- "x"
+		Check(ok3 && (double)v == 0.0, "...e il risultato e' Empty (0.0): \"ZeroArg\" e' una Sub, "
+			"non una Function, stessa regola di una chiamata sorella con parentesi (Fase 6a)");
+		doc3->Release();
 	}
 }
 
@@ -1319,6 +1447,7 @@ int main()
 	TestExecuteVbaMacro();
 	TestSiblingSubCall();
 	TestSiblingFunctionCall();
+	TestParenlessSiblingCall();
 	TestArrays();
 	TestStructs();
 	TestWith();

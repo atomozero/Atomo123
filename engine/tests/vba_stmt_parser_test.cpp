@@ -327,6 +327,17 @@ int main()
 		"y = 1\r\n"
 		"End Sub\r\n",
 		"Sub Foo() [If (x = 0) Then [Exit Sub]; y := 1]");
+	// Fase 6g (seguito): "Exit Function" era rimasta scoperta da quando
+	// le Function sono arrivate (Fase 6b) -- trovata controllando il
+	// vero sorgente chip-8-vba ("If bytes = 0 Then / Exit Function /
+	// End If" in DrawSprite). Stesso nodo "Exit Sub" (DumpStmt non
+	// distingue le due forme, l'esecuzione e' identica, vedi VbaAst.h).
+	CheckSub(
+		"Function Foo()\r\n"
+		"If x = 0 Then Exit Function\r\n"
+		"y = 1\r\n"
+		"End Function\r\n",
+		"Function Foo() [If (x = 0) Then [Exit Sub]; y := 1]");
 
 	// ---- Uno spezzone realistico completo, lo stesso visto nel test del lexer ----
 	CheckSub(
@@ -429,6 +440,28 @@ int main()
 	// ---- Fase 6g: "MsgBox expr" -- un caso unico hardcoded, riscritto
 	// come una chiamata-istruzione nuda (vedi ParseMsgBox) ----
 	CheckSub("Sub Foo()\r\nMsgBox \"ciao\"\r\nEnd Sub\r\n", "Sub Foo() [MsgBox(\"ciao\")]");
+
+	// ---- Fase 6g (seguito): "NomeSub arg1, arg2" -- la "forma a
+	// comando" del vero VBA, senza parentesi (trovata controllando il
+	// vero sorgente chip-8-vba: "SetScreenPixel i, j, 0", "VMSetRunning
+	// False", "TODO stringa") -- riscritta nell'ALBERO esattamente come
+	// la forma con parentesi equivalente, nessuna differenza a valle ----
+	CheckSub("Sub Foo()\r\nSetScreenPixel i, j, 0\r\nEnd Sub\r\n",
+		"Sub Foo() [SetScreenPixel(i, j, 0)]");
+	CheckSub("Sub Foo()\r\nVMSetRunning False\r\nEnd Sub\r\n", "Sub Foo() [VMSetRunning(False)]");
+	CheckSub("Sub Foo()\r\nTODO \"errore\"\r\nEnd Sub\r\n", "Sub Foo() [TODO(\"errore\")]");
+	CheckSub("Sub Foo()\r\nFoo -1\r\nEnd Sub\r\n", "Sub Foo() [Foo((- 1))]"); // un argomento negativo
+	// Zero argomenti (nessun token dopo il nome sulla stessa riga):
+	// resta la forma di SEMPRE, una variabile nuda, non una chiamata --
+	// l'eventuale risoluzione come Sub sorella avviene a RUNTIME
+	// (VbaEvaluator.cpp, EvalVariable), non qui.
+	CheckSub("Sub Foo()\r\nRedraw\r\nEnd Sub\r\n", "Sub Foo() [Redraw]");
+	// Non deve rompere nessuna forma esistente: nome solo con parentesi,
+	// assegnazione, accesso a proprieta', "Call".
+	CheckSub("Sub Foo()\r\nRedraw()\r\nEnd Sub\r\n", "Sub Foo() [Redraw()]");
+	CheckSub("Sub Foo()\r\nx = 5\r\nEnd Sub\r\n", "Sub Foo() [x := 5]");
+	CheckSub("Sub Foo()\r\nRange(\"A1\").Select\r\nEnd Sub\r\n", "Sub Foo() [Range(\"A1\").Select]");
+	CheckSub("Sub Foo()\r\nCall Redraw\r\nEnd Sub\r\n", "Sub Foo() [Redraw]"); // "Call" su zero argomenti
 
 	// ---- Fase 6g: "Dim file As Integer: file = FreeFile" -- ":" separa
 	// due istruzioni sulla stessa riga esattamente come un newline (gia'

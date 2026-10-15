@@ -648,6 +648,31 @@ private:
 		const Value* v = fEnv->Find(expr->name);
 		if (v == NULL)
 		{
+			// Fase 6g (seguito): un nome mai assegnato potrebbe essere una
+			// chiamata a una Sub/Function SORELLA SENZA argomenti scritta
+			// senza parentesi (es. "Redraw" da sola come istruzione, o
+			// "InitConstants" dentro un'altra Sub) -- trovato controllando
+			// il vero sorgente chip-8-vba, che lo scrive pesantemente,
+			// stesso principio di "DoEvents"/"FreeFile"/"Rnd" sopra ma per
+			// una Sub DEFINITA DALL'UTENTE invece che incorporata nel
+			// motore. Si prova PRIMA di arrendersi con l'errore "usata
+			// prima di essere assegnata" sotto, cosi' un vero errore di
+			// battitura (nessuna Sub con quel nome) resta comunque
+			// quell'errore, non un comportamento diverso per sbaglio --
+			// "FindVbaSubByName" fallisce pulito in quel caso, si cade
+			// attraverso senza alcun effetto collaterale.
+			if (fEnv->GetModuleTokens())
+			{
+				std::unique_ptr<VbaSub> callee;
+				VbaParseError parseErr;
+				if (FindVbaSubByName(*fEnv->GetModuleTokens(), expr->name, &callee, &parseErr))
+				{
+					VbaExpr syntheticCall(vbaExprCall);
+					syntheticCall.name = expr->name;
+					syntheticCall.line = expr->line;
+					return EvalCall(&syntheticCall);
+				}
+			}
 			SetError("variabile \"" + expr->name + "\" usata prima di essere assegnata", expr->line);
 			return Value(0.0);
 		}
