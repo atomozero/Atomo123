@@ -884,31 +884,53 @@ before it:
     product bug: every real caller always provides a real
     environment).
   Confirmed against the real file after this batch: all 6 Subs above
-  *still* fail to resolve by name, but now purely for the two gaps
-  below, not any token/operator/function issue — tracked as their own
-  items:
+  *still* failed to resolve by name, but now purely for two gaps, not
+  any token/operator/function issue — both now also fixed:
   - **Paren-less Sub calls, with arguments (`SetScreenPixel i, j, 0`,
-    `VMSetRunning False`) and zero arguments to a sibling Sub
-    (`InitConstants`, `Redraw`, `Step` as a bare statement)** — the
-    exact boundary 6a already documented as deliberately unsupported
-    ("real VBA's paren-less `Foo a, b` stays unsupported"), plus a
-    zero-arg variant of the same gap (today only `DoEvents`/
-    `FreeFile`/`Rnd`/`Randomize` are special-cased as zero-arg bare
-    identifiers, all engine-internal, never a dispatch to a
-    user-defined Sub by name). Lifting it needs care: a bare
-    identifier at statement-start already means three different
-    things today (an assignment target before `=`, a property-
-    access/method call used for effect, or — new — a call with a
-    trailing comma-separated argument list and no parens at all), and
-    the grammar has to tell them apart without new ambiguity.
+    `VMSetRunning False`, `TODO "..."`) and zero arguments to a
+    sibling Sub (`InitConstants`, `Redraw`, `Step` as a bare
+    statement)** — the exact boundary 6a already documented as
+    deliberately unsupported ("real VBA's paren-less `Foo a, b` stays
+    unsupported"), plus a zero-arg variant of the same gap (previously
+    only `DoEvents`/`FreeFile`/`Rnd`/`Randomize` were special-cased as
+    zero-arg bare identifiers, all engine-internal, never a dispatch
+    to a user-defined Sub by name). Fixed with a one-token lookahead
+    in `ParseAssignOrExprStmt` (`VbaStmtParser.cpp`): after a bare
+    identifier, if what follows is anything other than `(`/`=`/`.`/a
+    statement end/a block terminator, it's treated as the start of a
+    comma-separated argument list and rewritten into the exact same
+    tree shape as the parenthesized form (`name(args)`) — nothing
+    downstream needs to know which syntax was used. Backtracks
+    (restores the saved position) the moment the lookahead doesn't
+    match, so every existing form (bare name, `name(args)`,
+    `name.Property`, an assignment, `Call name`) parses exactly as
+    before. Deliberately still out of scope: `obj.Method arg1, arg2`
+    (a property-access target, not a bare name) — needed by
+    `Application.OnTime Count, "..."` in `ProcessVM`, tied to 6h
+    below, not handled here. The zero-arg half needed a *runtime*
+    fix, not a parser one: `EvalVariable` now tries
+    `FindVbaSubByName`/`EvalCall` on any name that resolves to neither
+    a variable nor a struct before falling back to "used before being
+    assigned" — exactly the DoEvents/FreeFile/Rnd precedent, but for a
+    user-defined Sub instead of an engine builtin, and only when
+    `GetModuleTokens()` is actually linked (every unit test that
+    constructs a bare `Sub` by hand keeps today's behavior unchanged).
+    Found and fixed *two* real pre-existing bugs while building the
+    test for this: the test itself used `cell(row, col)` where the
+    real signature is `cell(col, row)` (opposite order from VBA's own
+    `Cells(row, col)`) — caught immediately by checking actual values,
+    not by trusting the first run; and `Exit Function` (missing since
+    Functions arrived in 6b — only `Exit For/Do/Sub` were ever
+    accepted) blocked `DrawSprite` from parsing at all, found by
+    extracting it in isolation and reading the real syntax error
+    instead of guessing from the "not found" message `FindVbaSubByName`
+    gives for any broken block. Fixed by accepting `Function` wherever
+    `Sub` was accepted after `Exit`, reusing the identical
+    `vbaStmtExitSub` node — the two forms execute identically (stop
+    the current procedure; a Function's return value is whatever its
+    name variable already holds).
   - **`Sub Step()` collides with the reserved keyword `Step`** (`For
-    ... Step ...`): the tokenizer has no notion of a context-sensitive
-    keyword, so the procedure name itself never tokenizes as an
-    identifier, making it unparseable and unreachable by name no
-    matter what else gets fixed above — a real VBA parser resolves
-    this contextually; this subset's single flat keyword table does
-    not, and needs a decision (context-sensitive re-classification, or
-    narrowly special-casing `Step` specifically) before a fix.
+    ... Step ...`) — still open, tracked below.
   Still not separately confirmed: `PowerOfTwo` (a module-level array
   indexed in `InitConstants`) round-tripping through
   `FindAllVbaModuleLevelDims` now that 6c-style array Dims are
