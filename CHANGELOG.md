@@ -5,6 +5,29 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- `Application.OnTime`, closing VBA Phase 6 (see ROADMAP.md): a real
+  re-entrant, scheduled macro call, needed by the CHIP-8-in-VBA trigger
+  file's own auto-step timer. Fetching that real source directly
+  (instead of assuming a generic VBA shape) surfaced two prerequisite
+  gaps — `Const` (rewritten at parse time into the existing Dim+Assign
+  statement pair, no new AST node) and `Now` (deliberately a plain
+  `Value(double)` day-serial, not the engine's `time_t`-tagged `Value`
+  variant used by the spreadsheet `NOW()` function, which rounds
+  addition to whole seconds and would have silently dropped the
+  sub-second delay the real macro adds to it) — plus a parser gap for
+  a paren-less command-style call whose callee is a dotted property
+  chain (`Application.OnTime Count, "Name"`, not a bare identifier).
+  `MainWindow` schedules the re-entry with a one-shot `BMessageRunner`,
+  the same shape already used for autosave/the footer progress pulse,
+  torn down at every site the persistent VBA module environment itself
+  already is, so a pending callback can never fire against a
+  replaced/closed document. Real bug caught by the new
+  `vba_macro_runner_test.cpp` coverage before it shipped: the host
+  window context was only threaded onto the long-lived persistent
+  module environment, not `ExecuteVbaMacro`'s own short-lived per-call
+  one that the evaluator actually reads from — `Application.OnTime`
+  would have silently done nothing in the real app despite every other
+  piece working.
 - Real BMessage scripting (explicit user request, after checking that
   `hey Atomo123 get Suites of Window 0` only showed the generic
   BWindow/BView/BMenu suites every Haiku app gets for free — nothing

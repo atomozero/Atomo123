@@ -965,29 +965,103 @@ before it:
   real `Sub Step()` called bare by a sibling while `For ... Step ...`
   keeps working inside that exact same Sub) — all passing, no
   regressions anywhere else in the VBA suite.
-- **(6h) `Application.OnTime`, planned; `DoEvents` is done as a
-  deliberate no-op, split off early.** The original plan rode
-  `DoEvents` along with `OnTime` on the theory that pumping a message
-  loop mid-macro "has no meaning" without the re-entrant model below —
-  true for *actually pumping a real loop*, but `DoEvents` turned out
-  to have a cheaper, still-honest reading: real macros write it inside
-  a tight loop purely to stay responsive, and this is a motor puro
-  with no UI loop to pump at all (same reasoning as `.Select` being a
-  deliberate no-op). Written bare, with no parentheses (the real VBA
-  form — `ExecuteVbaMacro` found it reaching `EvalVariable` as an
-  undeclared-variable read, not a call), it now short-circuits to
-  `0.0` there, same spirit as `.Select`'s no-op in `EvalPropertyAccess`.
-  This closes the one real parse-time blocker the real CHIP-8 source
-  had in `Step()`/`ProcessVM()` (both call it inside their main loop)
-  without touching the harder problem below. `Application.OnTime`
-  itself remains the biggest shape-change left in this phase:
-  `ExecuteVbaMacro` today runs one named macro synchronously to
-  completion. `OnTime` schedules a *future*, independent invocation,
-  which means the interpreter needs to integrate with the app's own
-  idle/message loop (likely a `BMessageRunner`-backed re-entry into
-  `ExecuteVbaMacro` by name, same trust/enablement rules as the
-  initial run) instead of being a one-shot call from the "Run Macro"
-  menu item.
+- **(6h) `Application.OnTime` — done, closing Phase 6.** `DoEvents` had
+  already shipped early as a deliberate no-op (real macros write it
+  inside a tight loop purely to stay responsive, and this is a motor
+  puro with no UI loop to pump at all). `OnTime` itself needed the
+  `BMessageRunner`-backed re-entry into `ExecuteVbaMacro` this section
+  originally anticipated, PLUS two prerequisite gaps found only by
+  fetching the real chip-8-vba source (`code.vba`) and reading
+  `ProcessVM`'s actual body, not by assuming a generic VBA shape:
+  - **`Const`**, used at module level (`Const Millisecond As Double =
+    0.000000011574`) — not in `kKeywords` at all before this. Reuse
+    trick: no new AST node or executor case. `Const Name [As Type] =
+    Expr` rewrites at PARSE time into two statements the interpreter
+    already knows how to run, a `vbaStmtDim` immediately followed by a
+    `vbaStmtAssign` with the same name as target — `ExecuteStmt` runs
+    both in sequence inside any Sub for free. The module-level
+    persistent-env scanner (`FindAllVbaModuleLevelDims`,
+    `VbaMacroRunner.cpp`) got a sibling `Const` branch producing the
+    same Dim+Assign pair, recognized by the consuming loop (same
+    `Find`/`IsArray`/`IsStruct` idempotency check Dims already use) by
+    looking at the very next entry — Dim always immediately precedes
+    its own Assign for a Const, never interleaved with another
+    variable.
+  - **`Now`**, needed by `Count = Now + Millisecond`. A real subtlety
+    caught before it shipped: the engine's `Value` class already has a
+    `time_t`-tagged variant (used by the spreadsheet `NOW()` function),
+    but its arithmetic adds doubles as whole SECONDS
+    (`static_cast<time_t>`, `Value.cpp`) — truncating a tiny day-
+    fraction like `0.000000011574` (~1ms) straight to zero. VBA's
+    `Now` is deliberately an ordinary `Value(double)` instead
+    (`time(NULL) / 86400.0 + 25569.0`, the same Excel-epoch constant
+    already used by `Excel.pass1.cpp`/`XlsxTranslator.cpp`), so real
+    floating-point addition survives.
+  - The real call is also **module-qualified**:
+    `Application.OnTime Count, "CHIP8List.ProcessVM"`, which
+    `FindVbaSubByName`/`ExecuteVbaMacro` never resolve (bare Sub names
+    only) — `EvalCall` strips everything up to the last `.` before
+    calling the scheduling hook, a deliberate minimal normalization,
+    not real per-module resolution.
+
+  The parser gap: `Application.OnTime Count, "Name"` is a paren-less
+  command-form call (like 6g's `SetScreenPixel i, j, 0`) whose callee
+  is a property-access CHAIN, not a bare identifier — the existing
+  lookahead in `ParseAssignOrExprStmt` explicitly excludes a following
+  `.` (it's needed for `Range(...).Select`, a different shape
+  entirely). Fixed by trying a second, fully speculative parse of the
+  whole postfix chain when the bare-identifier attempt doesn't apply,
+  and promoting a resulting `vbaExprPropertyAccess` into the same
+  `vbaExprCall`-with-`target` shape a parenthesized call would have
+  produced — no new AST node, same backtracking discipline (including
+  resetting the shared error state so an abandoned speculative attempt
+  never leaks a confusing message into the real failure).
+
+  `EvalCall` dispatches `Application.OnTime` the same way `Application.
+  GetOpenFilename` already does (`expr->target` is the literal
+  identifier `Application`), computing the delay against `Now` and
+  calling a new `VbaSetOnTimeHook` — same "engine can't link ui/"
+  pattern as `VbaSetOpenFileDialogHook`, but this one needs to know
+  WHICH `MainWindow` scheduled it (the app supports several at once),
+  so `VbaEnvironment` gained a borrowed `void* fHostContext`
+  (`SetHostContext`/`GetHostContext`, same ownership contract as
+  `fActiveDoc`). **Real bug caught by the macro-runner test**: the
+  host context was only ever set on `persistentModuleEnv`, but
+  `EvalCall` actually runs against `ExecuteVbaMacro`'s own ephemeral
+  per-call `env` — without threading it through there too (right next
+  to the existing `env.SetActiveDocument(doc)`), `Application.OnTime`
+  would have silently done nothing in the real app despite every other
+  piece working. `MainWindow` implements the hook with a one-shot
+  `BMessageRunner` (`fVbaOnTimeRunner`), the exact same shape as the
+  existing `fAutoSaveRunner`/`fFooterProgressPulseRunner` timers, torn
+  down at the identical four sites `fPersistentVbaModuleEnv` already
+  is — a scheduled callback must never fire against a replaced/closed
+  document. Re-entry reuses `RunVbaMacro` itself (trust flag,
+  persistent env, recalculation, undo-clear, all free). Only the
+  2-argument form is in scope (`LatestTime`/`Schedule:=False`
+  cancellation are unused by the real file, same narrow-scope
+  convention as the rest of this phase); only one `OnTime` call can be
+  pending at a time per window (the real file always reschedules
+  itself one shot at a time, never two in flight).
+
+  New coverage: `vba_token_test.cpp` (`Const` tokenizes as a keyword),
+  `vba_stmt_parser_test.cpp` (`Const`'s Dim+Assign rewrite including
+  comma lists and the missing-initializer error; the dotted paren-less
+  call, including that a bare `obj.Method`/`obj.Method()` with no args
+  still parses as plain property access), `vba_evaluator_test.cpp`
+  (`Now`'s plausible range and that a tiny fractional addition survives
+  — against a fixed value, not a second real-time call, to avoid a
+  flaky result if the clock ticks over between two evaluations),
+  `vba_executor_test.cpp` (`Const` executing inside a Sub),
+  `vba_macro_runner_test.cpp` (module-level `Const` seeding +
+  `Application.OnTime` end to end against a test-installed hook stub —
+  this is the test that caught the host-context bug above). Manually
+  confirmed against the real app up to (but not through) its own
+  pre-existing, unconditional macro-trust prompt: a hand-built `.xlsm`
+  with a module-level `Const` loads correctly through the real
+  `XlsxTranslator`/`ExecuteVbaMacro` path, not just engine test
+  harnesses — the live `BMessageRunner` round-trip itself still awaits
+  a session with interactive GUI access to click past that dialog.
 
 **Deliberately not in Phase 6, flagged as its own future decision**:
 ActiveX controls embedded directly on a worksheet (`CommandButton`,
