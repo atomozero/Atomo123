@@ -20,9 +20,21 @@
 // normalizzato alla grafia qui sotto, cosi' il parser (Fase 2b) puo'
 // confrontare stringhe esatte invece di rifare ogni volta un confronto
 // senza distinzione di maiuscole.
+// "Step" NON e' qui (vedi ParseFor in VbaStmtParser.cpp): e' una
+// parola chiave SOLO dentro "For ... To ... Step ...", ma anche un
+// nome di procedura legittimo nel vero VBA (es. una vera "Sub Step()"
+// che avanza l'esecuzione di una macchina virtuale, trovata
+// controllando il vero sorgente chip-8-vba) -- il vero VBA la
+// riconosce dal CONTESTO, non riservandola affatto a livello lessicale.
+// Riservarla qui come ogni altra parola chiave la renderebbe per
+// sempre inaccessibile come nome di Sub (il tokenizer non produrrebbe
+// mai un vbaTokIdentifier con quel testo): invece resta SEMPRE un
+// identificatore normale, e ParseFor la riconosce per TESTO (stesso
+// principio di "Binary"/"Access"/"Read" in "Open ... For Binary
+// Access Read", mai parole chiave vere, solo abbinate per testo).
 static const char* const kKeywords[] = {
 	"Sub", "Function", "Type", "With", "End", "Dim", "As", "If", "Then", "Else", "ElseIf",
-	"For", "To", "Step", "Next", "True", "False", "And", "Or", "Not", "Xor",
+	"For", "To", "Next", "True", "False", "And", "Or", "Not", "Xor",
 	"Mod", "Set", "Exit", "Call", "Select", "Case", "Each", "In",
 	"Do", "Loop", "While", "Until", "Wend",
 	// Fase 6g: "Open"/"Close"/"Get"/"ReDim" aprono ciascuno la propria

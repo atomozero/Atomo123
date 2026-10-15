@@ -365,6 +365,30 @@ int main()
 		Check(hasWend, "\"Wend\" e' una parola chiave");
 	}
 
+	// ---- Fase 6g (seguito): "Step" NON e' una parola chiave riservata
+	// (trovato controllando il vero sorgente chip-8-vba, che dichiara
+	// una vera "Sub Step()") -- resta SEMPRE un identificatore, anche
+	// dentro "For ... Step ...", dove ParseFor (VbaStmtParser.cpp) lo
+	// riconosce per TESTO invece che per tipo di token ----
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("For i = 1 To 10 Step 2", &tokens);
+		bool stepIsIdentifier = false;
+		for (size_t i = 0; i < tokens.size(); i++)
+			if (tokens[i].text == "Step")
+				stepIsIdentifier = (tokens[i].type == vbaTokIdentifier);
+		Check(stepIsIdentifier, "\"Step\" dentro \"For ... To ... Step ...\" tokenizza come un "
+			"identificatore, non una parola chiave");
+	}
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("Sub Step()\r\nEnd Sub\r\n", &tokens);
+		Check(tokens.size() >= 2 && tokens[0].type == vbaTokKeyword && tokens[0].text == "Sub"
+			&& tokens[1].type == vbaTokIdentifier && tokens[1].text == "Step",
+			"\"Sub Step()\" -- \"Step\" come nome di procedura tokenizza come un identificatore "
+			"vero, non un errore");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

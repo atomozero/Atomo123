@@ -718,6 +718,71 @@ static void TestParenlessSiblingCall()
 }
 
 // =======================================================================
+// Fase 6g (seguito): "Step" NON e' una parola chiave riservata -- una
+// vera "Sub Step()" (trovata controllando il vero sorgente chip-8-vba,
+// dove il trigger "cbStep_Click" chiama "Step" seguita da "Redraw",
+// entrambe senza parentesi) si dichiara, si richiama come sorella SENZA
+// parentesi, e "For ... Step ..." continua a funzionare nella STESSA
+// Sub che la chiama, senza nessuna ambiguita' residua.
+// =======================================================================
+
+static std::vector<uint8> BuildStepCollisionProject()
+{
+	const char* moduleSource =
+		"Sub cbStepClick()\r\n"
+		"    Step\r\n"
+		"    Redraw\r\n"
+		"End Sub\r\n"
+		"Sub Step()\r\n"
+		"    Dim total\r\n"
+		"    total = 0\r\n"
+		"    For i = 10 To 1 Step -1\r\n" // "Step" qui e' ancora la parola chiave del For
+		"        total = total + i\r\n"
+		"    Next i\r\n"
+		"    Cells(1, 1).Value = total\r\n"
+		"End Sub\r\n"
+		"Sub Redraw()\r\n"
+		"    Cells(2, 1).Value = 1\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(3, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestStepKeywordCollision()
+{
+	std::vector<uint8> project = BuildStepCollisionProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico con una vera \"Sub Step()\" si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "cbStepClick", doc, &err);
+	Check(ok, "\"cbStepClick\" richiama \"Step\" e \"Redraw\" (entrambe sorelle, senza parentesi, "
+		"\"Step\" nonostante il nome) senza errori");
+
+	Value v1, v2;
+	doc->GetValue(cell(1, 1), v1); // Cells(1, 1) dentro "Step"
+	doc->GetValue(cell(1, 2), v2); // Cells(2, 1) dentro "Redraw"
+	Check((double)v1 == 55.0, "\"Step\" esegue davvero il SUO corpo (1+2+...+10 = 55), "
+		"non un errore \"Sub non trovata\"");
+	Check((double)v2 == 1.0, "...e \"Redraw\", chiamata DOPO, esegue anch'essa");
+	doc->Release();
+}
+
+// =======================================================================
 // Parte 2d (Fase 6c): array a dimensione fissa dichiarati con "Dim",
 // in lettura/scrittura sia 1D che 2D, punta a punta tramite
 // ExecuteVbaMacro -- e un indice fuori dai limiti (lettura e
@@ -1448,6 +1513,7 @@ int main()
 	TestSiblingSubCall();
 	TestSiblingFunctionCall();
 	TestParenlessSiblingCall();
+	TestStepKeywordCollision();
 	TestArrays();
 	TestStructs();
 	TestWith();

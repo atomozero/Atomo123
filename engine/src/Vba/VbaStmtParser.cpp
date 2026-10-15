@@ -768,7 +768,10 @@ private:
 			return nullptr;
 		}
 		std::unique_ptr<VbaExpr> stepExpr;
-		if (IsKeyword("Step"))
+		// Fase 6g (seguito): "Step" non e' una parola chiave riservata
+		// (vedi il commento su kKeywords in VbaToken.cpp) -- riconosciuta
+		// qui per TESTO, stesso principio di "Binary"/"Access"/"Read".
+		if (Current().type == vbaTokIdentifier && EqualsNoCase(Current().text, "Step"))
 		{
 			Advance();
 			stepExpr = ParseVbaExpression(fTokens, fPos, fError);

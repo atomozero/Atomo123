@@ -437,6 +437,14 @@ int main()
 			"produce un errore chiaro");
 	}
 
+	// ---- Fase 6g (seguito): "Step" NON e' una parola chiave riservata
+	// -- una vera "Sub Step()" (trovata controllando il vero sorgente
+	// chip-8-vba) analizza senza errori, e "For ... Step ..." continua
+	// a funzionare esattamente come prima ----
+	CheckSub("Sub Step()\r\nx = 1\r\nEnd Sub\r\n", "Sub Step() [x := 1]");
+	CheckSub("Sub Foo()\r\nFor i = 10 To 1 Step -1\r\nx = i\r\nNext i\r\nEnd Sub\r\n",
+		"Sub Foo() [For i = 10 To 1 Step (- 1) [x := i]]");
+
 	// ---- Fase 6g: "MsgBox expr" -- un caso unico hardcoded, riscritto
 	// come una chiamata-istruzione nuda (vedi ParseMsgBox) ----
 	CheckSub("Sub Foo()\r\nMsgBox \"ciao\"\r\nEnd Sub\r\n", "Sub Foo() [MsgBox(\"ciao\")]");
