@@ -1537,6 +1537,87 @@ static void TestModuleLevelConstAndOnTime()
 }
 
 // =======================================================================
+// Parte 2j (Fase 6i): una Sub/Function SORELLA deve vedere/modificare
+// le variabili (e struct) di MODULO del chiamante, non solo i propri
+// argomenti/variabili locali -- trovato eseguendo dal vivo "Step" del
+// vero chip-8-vba, che chiama "VMGetShort" (sorella, zero argomenti,
+// SENZA parentesi: "instruction = VMGetShort") e quest'ultima legge
+// "ThisVM.Memory(ThisVM.PC)". Causa reale: il "childEnv" creato per
+// QUALUNQUE sibling call (VbaEvaluator.cpp, EvalCall) non collegava
+// mai VbaEnvironment::SetModuleEnvironment -- "ThisVM" (dichiarata A
+// LIVELLO DI MODULO, mai nell'ambiente locale di nessuna singola Sub)
+// risultava quindi "non dichiarata" per qualunque Sub chiamata come
+// sorella, anche se la Sub chiamante DIRETTAMENTE dal menu la vedeva
+// benissimo -- un gap reale e ad ampio impatto (qualunque progetto VBA
+// con stato di modulo e una sibling call che lo referenzia), non
+// specifico di "Memory". Un SOLO punto nel motore crea quel
+// "childEnv" (condiviso da ogni forma di sibling call: con/senza
+// argomenti, con/senza parentesi -- il parser riscrive tutte le forme
+// "senza parentesi" nello stesso identico albero vbaExprCall prima che
+// l'esecuzione le veda), quindi un fix li' chiude il gap ovunque.
+// =======================================================================
+
+static std::vector<uint8> BuildSiblingModuleVarProject()
+{
+	const char* moduleSource =
+		"Dim Counter As Long\r\n"
+		"Sub Outer()\r\n"
+		"    Counter = Counter + 1\r\n"
+		"    Inner\r\n" // sibling call senza parentesi, zero argomenti -- stessa forma di "VMGetShort"
+		"    AddTo 100\r\n" // sibling call senza parentesi, CON un argomento
+		"    Cells(2, 1).Value = Counter\r\n"
+		"End Sub\r\n"
+		"Sub Inner()\r\n"
+		"    Counter = Counter + 10\r\n"
+		"    Cells(1, 1).Value = Counter\r\n"
+		"End Sub\r\n"
+		"Sub AddTo(n As Long)\r\n"
+		"    Counter = Counter + n\r\n"
+		"    Cells(3, 1).Value = Counter\r\n"
+		"End Sub\r\n";
+	std::vector<uint8> fakePCache(3, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestSiblingCallSeesModuleVariable()
+{
+	std::vector<uint8> project = BuildSiblingModuleVarProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per sorella+variabile di modulo si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaEnvironment moduleEnv;
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "Outer", doc, &err, &moduleEnv);
+	Check(ok, "\"Outer\" chiama due sorelle (\"Inner\" senza argomenti, \"AddTo\" con un "
+		"argomento, entrambe senza parentesi) che leggono/scrivono \"Counter\" di modulo, "
+		"senza errori");
+
+	Value v1, v2, v3;
+	doc->GetValue(cell(1, 1), v1); // Cells(1,1), scritta da Inner
+	doc->GetValue(cell(1, 3), v2); // Cells(3,1), scritta da AddTo
+	doc->GetValue(cell(1, 2), v3); // Cells(2,1), scritta da Outer DOPO entrambe le chiamate
+	Check((double)v1 == 11.0, "\"Inner\" (sorella, zero argomenti) vede \"Counter\"=1 "
+		"(gia' scritto da Outer) e lo porta a 11, non \"usata prima di essere assegnata\"");
+	Check((double)v2 == 111.0, "\"AddTo 100\" (sorella, un argomento) vede il Counter=11 "
+		"lasciato da Inner (non riparte da 0) e lo porta a 111");
+	Check((double)v3 == 111.0, "\"Outer\", DOPO entrambe le chiamate, rilegge lo STESSO "
+		"\"Counter\"=111 che le sue sorelle hanno modificato -- condiviso per davvero, non "
+		"una copia locale di nessuno dei tre");
+	doc->Release();
+}
+
+// =======================================================================
 // Parte 3: ListVbaMacroNames -- stesso costruttore CFB, ma un progetto
 // pensato apposta per provare che questa funzione NON chiama
 // ParseVbaSub (un "ByRef" su un parametro, fuori da questo
@@ -1628,6 +1709,7 @@ int main()
 	TestInteriorColor();
 	TestPersistentModuleState();
 	TestModuleLevelConstAndOnTime();
+	TestSiblingCallSeesModuleVariable();
 	TestListVbaMacroNames();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");

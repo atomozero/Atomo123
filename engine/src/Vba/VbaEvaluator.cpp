@@ -1365,6 +1365,16 @@ private:
 				childEnv.SetModuleTokens(fEnv->GetModuleTokens());
 				childEnv.SetCallDepth(fEnv->GetCallDepth() + 1);
 				childEnv.SetTypeRegistry(fEnv->GetTypeRegistry()); // Fase 6d
+				// Senza questo, una Sub/Function sorella non vedrebbe
+				// NESSUNA variabile/Const/struct di MODULO (es. "ThisVM"
+				// nel vero chip-8-vba) -- un bug reale trovato eseguendo
+				// dal vivo "Step" (chiama "VMGetShort" come sorella, che
+				// legge "ThisVM.Memory"): propaga lo STESSO
+				// fModuleEnv del chiamante (lo stesso persistentModuleEnv
+				// in cima alla catena, mai un nuovo livello di fallback),
+				// cosi' "Inner" vede/modifica le STESSE variabili di
+				// modulo di "Outer", come nel vero VBA.
+				childEnv.SetModuleEnvironment(fEnv->GetModuleEnvironment());
 				for (size_t i = 0; i < args.size(); i++)
 				{
 					// SOLO ByVal in questo sottoinsieme (vedi VbaAst.h):
