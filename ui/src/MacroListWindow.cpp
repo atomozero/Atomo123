@@ -51,11 +51,23 @@ MacroListWindow::MacroListWindow(BMessenger target)
 
 void MacroListWindow::SetMacroNames(const std::vector<std::string>& names)
 {
+	// Chiamato da MainWindow (un thread/Looper DIVERSO dal nostro, vedi
+	// MacroListWindow.h) -- senza questo Lock(), toccare fMacroList da
+	// li' e' una corsa critica vera: di solito "funziona" perche' il
+	// nostro thread e' inattivo nell'istante giusto, ma una riapertura
+	// rapida di "Esegui macro" (il nostro thread nel mezzo di un
+	// ridisegno, es. da una Show()/Activate() precedente) la perde
+	// davvero, facendo scattare l'assert di Haiku "Looper must be
+	// locked" dentro BListView::MakeEmpty -- crash reale, riprodotto
+	// riaprendo la finestra piu' volte in rapida successione.
+	if (!Lock())
+		return;
 	fMacroList->MakeEmpty();
 	for (size_t i = 0; i < names.size(); i++)
 		fMacroList->AddItem(new BStringItem(names[i].c_str()));
 	if (names.size() > 0)
 		fMacroList->Select(0);
+	Unlock();
 }
 
 void MacroListWindow::RunSelected()
