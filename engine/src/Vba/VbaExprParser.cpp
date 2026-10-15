@@ -18,7 +18,7 @@ public:
 
 	std::unique_ptr<VbaExpr> ParseTop()
 	{
-		return ParseOr(); // "fPos" (riferimento al "pos" del chiamante) e' gia' aggiornato in place a ogni Advance()
+		return ParseXor(); // "fPos" (riferimento al "pos" del chiamante) e' gia' aggiornato in place a ogni Advance()
 	}
 
 	// Punto di ingresso pubblico per ParseVbaPrimaryExpression, vedi il
@@ -81,6 +81,32 @@ private:
 	}
 
 	// ---- livelli di precedenza, dal piu' debole al piu' forte ----
+
+	// Fase 6g (seguito): "Xor" e' bit a bit come "And"/"Or" (vedi
+	// VbaEvaluator.cpp), ma si lega PIU' DEBOLMENTE di entrambi nel vero
+	// VBA (ordine: Not, And, Or, Xor, dal piu' forte al piu' debole) --
+	// un livello a parte SOPRA ParseOr, non dentro, cosi' "a And b Xor c"
+	// si legge come "(a And b) Xor c", non "a And (b Xor c)".
+	std::unique_ptr<VbaExpr> ParseXor()
+	{
+		auto left = ParseOr();
+		if (!left)
+			return nullptr;
+		while (IsKeyword("Xor"))
+		{
+			Advance();
+			auto right = ParseOr();
+			if (!right)
+				return nullptr;
+			auto node = std::unique_ptr<VbaExpr>(new VbaExpr(vbaExprBinary));
+			node->op = "Xor";
+			node->line = left->line;
+			node->children.push_back(std::move(left));
+			node->children.push_back(std::move(right));
+			left = std::move(node);
+		}
+		return left;
+	}
 
 	std::unique_ptr<VbaExpr> ParseOr()
 	{
@@ -214,17 +240,43 @@ private:
 
 	std::unique_ptr<VbaExpr> ParseMod()
 	{
-		auto left = ParseMultiplicative();
+		auto left = ParseIntDiv();
 		if (!left)
 			return nullptr;
 		while (IsKeyword("Mod"))
+		{
+			Advance();
+			auto right = ParseIntDiv();
+			if (!right)
+				return nullptr;
+			auto node = std::unique_ptr<VbaExpr>(new VbaExpr(vbaExprBinary));
+			node->op = "Mod";
+			node->line = left->line;
+			node->children.push_back(std::move(left));
+			node->children.push_back(std::move(right));
+			left = std::move(node);
+		}
+		return left;
+	}
+
+	// Fase 6g (seguito): "\" e' la divisione INTERA di VBA (diversa da
+	// "/", vera divisione) -- si lega PIU' DEBOLMENTE di "*"/"/" ma PIU'
+	// FORTEMENTE di "Mod" nel vero VBA (ordine: * e /, poi \, poi Mod),
+	// trovata controllando il vero sorgente chip-8-vba (estrae bit da
+	// un'istruzione a 16 bit, es. "(instruction And &HF00&) \ 256").
+	std::unique_ptr<VbaExpr> ParseIntDiv()
+	{
+		auto left = ParseMultiplicative();
+		if (!left)
+			return nullptr;
+		while (IsOp("\\"))
 		{
 			Advance();
 			auto right = ParseMultiplicative();
 			if (!right)
 				return nullptr;
 			auto node = std::unique_ptr<VbaExpr>(new VbaExpr(vbaExprBinary));
-			node->op = "Mod";
+			node->op = "\\";
 			node->line = left->line;
 			node->children.push_back(std::move(left));
 			node->children.push_back(std::move(right));
@@ -313,7 +365,7 @@ private:
 		}
 		while (true)
 		{
-			auto arg = ParseOr();
+			auto arg = ParseXor();
 			if (!arg)
 				return false;
 			outArgs->push_back(std::move(arg));
@@ -410,7 +462,7 @@ private:
 		if (tok.type == vbaTokOperator && tok.text == "(")
 		{
 			Advance();
-			auto inner = ParseOr();
+			auto inner = ParseXor();
 			if (!inner)
 				return nullptr;
 			if (!Expect(")"))

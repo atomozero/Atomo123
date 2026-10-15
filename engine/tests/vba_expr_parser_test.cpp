@@ -149,6 +149,20 @@ int main()
 	CheckExpr("x And y Or z", "((x And y) Or z)"); // "And" si lega piu' stretto di "Or"
 	CheckExpr("x Or y And z", "(x Or (y And z))"); // stessa cosa, ordine invertito nel sorgente
 
+	// ---- Fase 6g (seguito): "Xor" si lega PIU' DEBOLMENTE di "Or" (ordine
+	// reale di VBA: Not, And, Or, Xor, dal piu' forte al piu' debole) ----
+	CheckExpr("x Xor y", "(x Xor y)");
+	CheckExpr("x And y Xor z", "((x And y) Xor z)"); // "And" si lega piu' stretto di "Xor"
+	CheckExpr("x Or y Xor z", "((x Or y) Xor z)"); // "Or" si lega piu' stretto di "Xor"
+
+	// ---- Fase 6g (seguito): "\" (divisione INTERA) si lega piu' forte
+	// di "Mod" ma piu' debole di "*"/"/" -- trovato controllando il vero
+	// sorgente chip-8-vba, che lo usa per estrarre bit da un'istruzione
+	// a 16 bit ----
+	CheckExpr("x \\ 2", "(x \\ 2)");
+	CheckExpr("x \\ 2 Mod 3", "((x \\ 2) Mod 3)"); // "\\" si lega piu' stretto di "Mod"
+	CheckExpr("x * 2 \\ 3", "((x * 2) \\ 3)"); // "*" si lega piu' stretto di "\\"
+
 	// ---- Chiamate a funzione, con zero, uno, e piu' argomenti ----
 	CheckExpr("Foo()", "Foo()");
 	CheckExpr("Len(x)", "Len(x)");

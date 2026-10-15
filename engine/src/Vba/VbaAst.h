@@ -56,7 +56,8 @@ struct VbaExpr {
 	bool boolValue;
 	std::string name;   // nome variabile, nome funzione/proprieta', o testo dell'operatore (op)
 	std::string op;      // solo per vbaExprBinary/vbaExprUnary: "+","-","*","/","^","&","=","<>",
-	                      // "<",">","<=",">=","And","Or","Not","Mod"
+	                      // "<",">","<=",">=","And","Or","Xor","Not","Mod","\" (quest'ultimo, Fase
+	                      // 6g: la divisione INTERA di VBA, diversa da "/")
 	std::unique_ptr<VbaExpr> target; // solo per vbaExprPropertyAccess, e opzionalmente vbaExprCall
 	                                   // (una chiamata di metodo su un target, es. Range("A1").Select)
 	std::vector<std::unique_ptr<VbaExpr>> children; // operandi (binario: 2, unario: 1) o argomenti di chiamata

@@ -22,9 +22,9 @@
 // senza distinzione di maiuscole.
 static const char* const kKeywords[] = {
 	"Sub", "Function", "Type", "With", "End", "Dim", "As", "If", "Then", "Else", "ElseIf",
-	"For", "To", "Step", "Next", "True", "False", "And", "Or", "Not",
+	"For", "To", "Step", "Next", "True", "False", "And", "Or", "Not", "Xor",
 	"Mod", "Set", "Exit", "Call", "Select", "Case", "Each", "In",
-	"Do", "Loop", "While", "Until",
+	"Do", "Loop", "While", "Until", "Wend",
 	// Fase 6g: "Open"/"Close"/"Get"/"ReDim" aprono ciascuno la propria
 	// istruzione dedicata (VbaStmtParser.cpp) -- "Binary"/"Access"/
 	// "Read" dentro "Open ... For Binary Access Read" restano invece
@@ -178,9 +178,41 @@ void TokenizeVba(const std::string& source, std::vector<VbaToken>* outTokens)
 			continue;
 		}
 
-		// Numero: cifre, un punto decimale opzionale. &H/&O (esadecimale/
-		// ottale VBA) non supportati in questo sottoinsieme -- raro in
-		// una vera macro registrata, limite dichiarato.
+		// "&H<cifre esadecimali>[&]" -- un letterale esadecimale VBA, con
+		// un eventuale "&" finale come suffisso di tipo Long (letto e
+		// scartato, questo sottoinsieme tratta comunque ogni numero come
+		// double). Controllato ESPLICITAMENTE qui, prima del normale "&"
+		// di concatenamento/degli altri operatori a un carattere sotto,
+		// perche' il carattere di apertura e' lo stesso: solo "&" seguito
+		// IMMEDIATAMENTE da "H"/"h" e almeno una cifra esadecimale e' un
+		// numero, non un "&" vero. Trovato controllando il vero sorgente
+		// chip-8-vba (github.com/rndtrash/chip-8-vba), che lo usa circa
+		// 80 volte solo per i dati dello sprite dei caratteri integrati
+		// -- un limite dichiarato qui sotto come "raro", in realta'
+		// sbagliato. "&O" (ottale) resta fuori scopo, non usato da
+		// nessuna macro reale controllata finora.
+		if (c == '&' && pos + 1 < len && (source[pos + 1] == 'H' || source[pos + 1] == 'h')
+			&& pos + 2 < len && isxdigit((unsigned char)source[pos + 2]))
+		{
+			size_t start = pos;
+			pos += 2; // "&H"
+			size_t digitsStart = pos;
+			while (pos < len && isxdigit((unsigned char)source[pos]))
+				pos++;
+			std::string hexDigits = source.substr(digitsStart, pos - digitsStart);
+			if (pos < len && source[pos] == '&')
+				pos++; // suffisso di tipo Long, letto e scartato
+			VbaToken tok;
+			tok.type = vbaTokNumber;
+			tok.text = source.substr(start, pos - start);
+			tok.numberValue = (double)strtoll(hexDigits.c_str(), NULL, 16);
+			tok.line = line;
+			outTokens->push_back(tok);
+			atLineStart = false;
+			continue;
+		}
+
+		// Numero: cifre, un punto decimale opzionale.
 		if (isdigit((unsigned char)c) || (c == '.' && pos + 1 < len && isdigit((unsigned char)source[pos + 1])))
 		{
 			size_t start = pos;
@@ -249,7 +281,10 @@ void TokenizeVba(const std::string& source, std::vector<VbaToken>* outTokens)
 
 		// Fase 6g: "#" solo per "Open ... As #n"/"Close #n"/"Get #n, ...",
 		// mai ambiguo con un letterale data (non in questo sottoinsieme).
-		static const char kOneCharOps[] = "+-*/^&=<>(),.#";
+		// "\" e' la divisione intera di VBA (diversa da "/", vera
+		// divisione) -- trovata controllando il vero sorgente chip-8-vba,
+		// che la usa per estrarre bit da un'istruzione a 16 bit.
+		static const char kOneCharOps[] = "+-*/^&=<>(),.#\\";
 		if (strchr(kOneCharOps, c) != NULL)
 		{
 			VbaToken tok;

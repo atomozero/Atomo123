@@ -276,7 +276,8 @@ private:
 			return false;
 		return Current().text == "End" || Current().text == "Else"
 			|| Current().text == "ElseIf" || Current().text == "Next"
-			|| Current().text == "Case" || Current().text == "Loop";
+			|| Current().text == "Case" || Current().text == "Loop"
+			|| Current().text == "Wend";
 	}
 
 	// Una nuova riga O la fine del flusso chiudono un'istruzione in
@@ -338,6 +339,8 @@ private:
 			return ParseSelectCase();
 		if (IsKeyword("Do"))
 			return ParseDo();
+		if (IsKeyword("While"))
+			return ParseWhileWend();
 		if (IsKeyword("With"))
 			return ParseWith();
 		if (IsKeyword("Open"))
@@ -966,6 +969,44 @@ private:
 		}
 		// altrimenti: "Do...Loop" nudo, stmt->expr resta nullptr (vedi
 		// il commento su vbaStmtDoLoop in VbaAst.h).
+		return stmt;
+	}
+
+	// Fase 6g (seguito): "While expr" ... "Wend" -- il vero VBA lo
+	// tratta come un costrutto di ciclo A PARTE da "Do...Loop" (niente
+	// "Exit While", solo la condizione), ma e' esattamente equivalente
+	// a "Do While expr ... Loop" (controllo PRIMA, puo' non girare
+	// nemmeno una volta): nessun nuovo nodo nell'albero, si costruisce
+	// direttamente un vbaStmtDoLoop con doIsPreTest=true/doIsUntil=false,
+	// stesso esecutore di VbaExecutor.cpp riusato senza modifiche.
+	// Trovato controllando il vero sorgente chip-8-vba ("While
+	// ThisVM.CurrentKey = -1 / DoEvents / Wend" nell'opcode FX0A).
+	std::unique_ptr<VbaStmt> ParseWhileWend()
+	{
+		int line = Current().line;
+		Advance(); // "While"
+		auto cond = ParseVbaExpression(fTokens, fPos, fError);
+		if (!cond)
+		{
+			fFailed = true;
+			return nullptr;
+		}
+		if (!ExpectStatementEnd())
+			return nullptr;
+
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtDoLoop));
+		stmt->doIsPreTest = true;
+		stmt->doIsUntil = false;
+		stmt->expr = std::move(cond);
+		stmt->line = line;
+
+		if (!ParseStatementList(&stmt->body))
+			return nullptr;
+
+		if (!ExpectKeyword("Wend"))
+			return nullptr;
+		if (!ExpectStatementEnd())
+			return nullptr;
 		return stmt;
 	}
 

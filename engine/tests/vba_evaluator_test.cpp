@@ -131,6 +131,52 @@ int main()
 	CheckEval("True Or False", "True");
 	CheckEval("(5 > 3) And (2 > 1)", "True");
 
+	// ---- Fase 6g (seguito): "And"/"Or"/"Xor"/"Not" sono bit a bit su
+	// operandi NUMERICI (un bug reale prima di questa fase: restituiva
+	// solo 0/1 come se fossero sempre booleani) -- trovato controllando
+	// il vero sorgente chip-8-vba, che li usa per mascherare
+	// un'istruzione a 16 bit ----
+	CheckEval("&HF000& And &H1234&", "4096"); // 0xF000 And 0x1234 = 0x1000 = 4096
+	CheckEval("&HF0& Or &H0F&", "255"); // 0xF0 Or 0x0F = 0xFF = 255
+	CheckEval("&HFF& Xor &H0F&", "240"); // 0xFF Xor 0x0F = 0xF0 = 240
+	CheckEval("Not 0", "-1"); // complemento bit a bit di 0, non un booleano
+	// ...ma resta un vero Boolean quando ENTRAMBI gli operandi lo sono
+	// gia' (stesso esito logico, nessuna regressione sull'output atteso
+	// altrove in questo stesso file o nell'esecutore).
+	CheckEval("True And True", "True");
+	CheckEval("False Or False", "False");
+
+	// ---- Fase 6g (seguito): "\" (divisione INTERA, diversa da "/") ----
+	CheckEval("7 \\ 2", "3");
+	CheckEval("-7 \\ 2", "-3"); // tronca verso zero, come Mod
+	{
+		std::string result = EvalToString("5 \\ 0", NULL);
+		Check(result.substr(0, 9) == "<errore: ", "\"5 \\ 0\" (divisione intera per zero) produce "
+			"un errore, non Inf/NaN silenzioso");
+	}
+
+	// ---- Fase 6g (seguito): Hex/CByte/Rnd ----
+	CheckEval("Hex(255)", "\"FF\"");
+	CheckEval("Hex(0)", "\"0\"");
+	CheckEval("CByte(255)", "255");
+	CheckEval("CByte(256)", "0"); // Mod 256, stesso principio del vero macro trigger ("... Mod 256")
+	CheckEval("CByte(-1)", "255");
+	{
+		// "Rnd" (senza parentesi, come lo scrive il vero sorgente
+		// chip-8-vba dentro un'espressione -- vedi EvalVariable, non
+		// EvalCall): nessun valore esatto da verificare (e' pseudo-
+		// casuale per definizione), solo che resta un numero dentro
+		// [0, 1) e non produce un errore. Un VbaEnvironment VERO qui
+		// (non NULL): "Rnd" senza parentesi e' sintatticamente una
+		// variabile, e un nome non riconosciuto ricadrebbe altrimenti
+		// su VbaEnvironment::Find, che richiede un ambiente vero, non
+		// un puntatore NULL (stesso principio di ogni altro test qui
+		// che legge/scrive variabili).
+		VbaEnvironment env;
+		std::string result = EvalToString("Rnd", &env);
+		Check(result.substr(0, 1) != "<", "\"Rnd\" produce un numero, non un errore");
+	}
+
 	// ---- Variabili: lettura dopo assegnazione, condivise fra due chiamate ----
 	{
 		VbaEnvironment env;

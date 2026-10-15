@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <vector>
 
 #include "CellStyle.h"
@@ -612,6 +613,26 @@ private:
 		if (Lowercase(expr->name) == "freefile")
 			return Value((double)fEnv->AllocateFreeFileNumber());
 
+		// Fase 6g (seguito): "Randomize" e' un'altra Sub incorporata del
+		// vero VBA scritta SENZA parentesi a zero argomenti (stesso
+		// motivo di "DoEvents"/"FreeFile" sopra) -- a differenza di
+		// "DoEvents" questa ha un effetto vero (reinizializza il seme di
+		// "Rnd" sopra con l'orologio di sistema, stesso principio del
+		// vero VBA), non un no-op deliberato.
+		if (Lowercase(expr->name) == "randomize")
+		{
+			srand((unsigned)time(NULL));
+			return Value(0.0);
+		}
+
+		// Fase 6g (seguito): il vero sorgente chip-8-vba scrive "Rnd"
+		// SENZA parentesi anche DENTRO un'espressione ("Int(PowerOfTwo(8)
+		// * Rnd)", non solo come istruzione nuda) -- arriva quindi qui,
+		// non a EvalCall (che gestirebbe solo "Rnd()", mai scritto dal
+		// vero sorgente), stesso principio di "FreeFile" sopra.
+		if (Lowercase(expr->name) == "rnd")
+			return Value((double)rand() / ((double)RAND_MAX + 1.0));
+
 		if (fEnv->IsStruct(expr->name))
 		{
 			// Fase 6d: un'istanza di Type non e' un valore scalare --
@@ -669,7 +690,20 @@ private:
 		if (expr->op == "-")
 			return Value(-VbaToNumber(operand));
 		if (expr->op == "Not")
-			return Value(!VbaToBool(operand));
+		{
+			// Fase 6g (seguito): "Not" e' bit a bit nel vero VBA (~x), non
+			// solo logico -- su un vero Boolean i due letture coincidono
+			// (il motore rappresenta True/False come 1.0/0.0, non -1/0
+			// come il vero VBA internamente, ma il bit 0 e' l'unico che
+			// conta quando il valore e' gia' 0 o 1), quindi questo ramo
+			// resta per compatibilita' con l'output booleano atteso dai
+			// test esistenti; su un numero generico (es. una maschera di
+			// bit) e' un vero complemento bit a bit, mai una
+			// semplificazione booleana.
+			if (operand.fType == eBoolData)
+				return Value(!VbaToBool(operand));
+			return Value((double)(~(long long)VbaToNumber(operand)));
+		}
 		SetError("operatore unario sconosciuto \"" + expr->op + "\"", expr->line);
 		return Value(0.0);
 	}
@@ -717,10 +751,41 @@ private:
 			return Value((double)(a % b));
 		}
 
-		if (op == "And")
-			return Value(VbaToBool(left) && VbaToBool(right));
-		if (op == "Or")
-			return Value(VbaToBool(left) || VbaToBool(right));
+		// Fase 6g (seguito): "\" e' la divisione INTERA di VBA (diversa
+		// da "/"), trovata controllando il vero sorgente chip-8-vba per
+		// estrarre bit da un'istruzione a 16 bit (es. "x \ 256").
+		if (op == "\\")
+		{
+			long long a = (long long)VbaToNumber(left), b = (long long)VbaToNumber(right);
+			if (b == 0)
+			{
+				SetError("divisione per zero (\\)", expr->line);
+				return Value(0.0);
+			}
+			return Value((double)(a / b));
+		}
+
+		if (op == "And" || op == "Or" || op == "Xor")
+		{
+			// Fase 6g (seguito): "And"/"Or"/"Xor" sono SEMPRE bit a bit in
+			// VBA, non logici -- un bug reale di questo motore prima di
+			// questa fase (restituiva solo 0/1 via VbaToBool, come se
+			// fossero puramente booleani), trovato controllando il vero
+			// sorgente chip-8-vba, che li usa pesantemente per mascherare
+			// un'istruzione a 16 bit (es. "instruction And &HF000&").
+			// Risultato ancora un Boolean (True/False, non 1/0) SOLO
+			// quando ENTRAMBI gli operandi sono gia' un vero Boolean --
+			// bit a bit sul solo bit 0 da' comunque lo stesso esito
+			// logico in quel caso, nessuna conversione speciale serve,
+			// ma preserva il tipo di Value atteso da ogni test/macro che
+			// usa questi operatori su condizioni (es. "If a > 0 And b > 0
+			// Then").
+			long long a = (long long)VbaToNumber(left), b = (long long)VbaToNumber(right);
+			long long r = (op == "And") ? (a & b) : (op == "Or") ? (a | b) : (a ^ b);
+			if (left.fType == eBoolData && right.fType == eBoolData)
+				return Value(r != 0);
+			return Value((double)r);
+		}
 
 		if (op == "=" || op == "<>" || op == "<" || op == ">" || op == "<=" || op == ">=")
 		{
@@ -949,6 +1014,35 @@ private:
 			double factor = pow(10.0, digits);
 			return Value(floor(d * factor + 0.5) / factor);
 		}
+		if (name == "hex")
+		{
+			// Fase 6g (seguito): restituisce una STRINGA esadecimale
+			// (maiuscola, senza zeri iniziali), come il vero VBA Hex() --
+			// usata dal vero sorgente chip-8-vba solo nei messaggi di
+			// errore ("Nessuna operazione " & Hex(n) & ...). Un numero
+			// negativo si legge a 32 bit (come un vero Long del vero VBA
+			// farebbe in complemento a due), non con un segno meno
+			// davanti -- nessun uso reale controllato finora lo richiede
+			// comunque, essendo sempre applicato a maschere di bit gia'
+			// non negative.
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			long long v = (long long)VbaToNumber(args[0]);
+			unsigned long u = (unsigned long)(v & 0xFFFFFFFFLL);
+			char buf[16];
+			snprintf(buf, sizeof(buf), "%lX", u);
+			return Value(buf);
+		}
+		if (name == "rnd")
+		{
+			// Fase 6g (seguito): solo la forma SENZA argomenti (l'unica
+			// usata dal vero sorgente chip-8-vba, nell'opcode CXNN) --
+			// un numero pseudo-casuale in [0,1), stesso generatore C
+			// standard di "Randomize" (EvalVariable sotto), nessuna
+			// pretesa di qualita' statistica superiore a quella di
+			// rand(): sufficiente per un CHIP-8 che non ha bisogno di
+			// altro.
+			return Value((double)rand() / ((double)RAND_MAX + 1.0));
+		}
 
 		// ---- Fase 5c: funzioni predefinite comuni nelle macro VBA reali ----
 
@@ -1015,6 +1109,21 @@ private:
 			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
 			double d = VbaToNumber(args[0]);
 			return Value(floor(d + 0.5));
+		}
+		if (name == "cbyte")
+		{
+			// Fase 6g (seguito): stessa regola di arrotondamento di
+			// CInt/CLng sopra, poi un modulo 256 per restare
+			// nell'intervallo di un vero Byte (0-255) -- nessun
+			// controllo di overflow reale come il vero VBA fuori da
+			// quell'intervallo: l'unico uso controllato (chip-8-vba)
+			// chiama sempre CByte su un valore GIA' portato in [0,255]
+			// con un "Mod 256" esplicito prima.
+			if (!CheckArgCount(expr, args, 1)) return Value(0.0);
+			double d = VbaToNumber(args[0]);
+			long long v = (long long)floor(d + 0.5);
+			v = ((v % 256) + 256) % 256;
+			return Value((double)v);
 		}
 		if (name == "cdbl")
 		{

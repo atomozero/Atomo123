@@ -367,6 +367,22 @@ int main()
 	CheckVar("Sub T()\ncount = 0\nFor i = 1 To 5\nDo\ncount = count + 1\n"
 		"If i = 2 Then Exit For\nLoop While False\nNext i\nEnd Sub", "count", "2");
 
+	// ---- Fase 6g (seguito): "While expr ... Wend" -- stesso esecutore
+	// di "Do While expr ... Loop" (nessun nodo nuovo nell'albero, vedi
+	// ParseWhileWend in VbaStmtParser.cpp), trovato controllando il
+	// vero sorgente chip-8-vba ("While ThisVM.CurrentKey = -1 /
+	// DoEvents / Wend" nell'opcode FX0A) ----
+	CheckVar("Sub T()\ni = 1\ntotal = 0\nWhile i <= 5\ntotal = total + i\ni = i + 1\nWend\n"
+		"End Sub", "total", "15");
+	CheckVar("Sub T()\nx = 0\nWhile False\nx = 1\nWend\nEnd Sub", "x", "0"); // non gira nemmeno una volta
+	CheckVar("Sub T()\ncount = 0\nFor i = 1 To 3\nj = 0\nWhile j < 2\nj = j + 1\n"
+		"count = count + 1\nWend\nNext i\nEnd Sub", "count", "6"); // While dentro For, nessuna interferenza
+
+	// ---- Fase 6g (seguito): divisione intera e bit a bit dentro un
+	// vero programma, non solo nell'evaluator isolato ----
+	CheckVar("Sub T()\nx = 7 \\ 2\nEnd Sub", "x", "3");
+	CheckVar("Sub T()\nx = &HF000& And &H1234&\nEnd Sub", "x", "4096");
+
 	// ---- "Dim a, b, c" -- un solo "Dim" del vero VBA dichiara PIU'
 	// variabili indipendenti, non solo la prima (trovato indagando il
 	// sorgente reale del CHIP-8) ----

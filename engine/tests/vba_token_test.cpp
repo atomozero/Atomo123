@@ -306,6 +306,65 @@ int main()
 			"\"ReDim\" e' una parola chiave");
 	}
 
+	// ---- Fase 6g (seguito): letterali esadecimali "&H..."/"&H...&" ----
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("&HFF", &tokens);
+		Check(tokens.size() >= 1 && tokens[0].type == vbaTokNumber && tokens[0].numberValue == 255.0,
+			"\"&HFF\" e' un numero, 255");
+	}
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("&HF000&", &tokens);
+		Check(tokens.size() >= 1 && tokens[0].type == vbaTokNumber && tokens[0].numberValue == 61440.0,
+			"\"&HF000&\" (col suffisso Long) e' un numero, 61440 -- il suffisso si legge e si scarta");
+	}
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("x & y", &tokens);
+		std::vector<std::string> expected;
+		expected.push_back("Identifier:x");
+		expected.push_back("Operator:&");
+		expected.push_back("Identifier:y");
+		expected.push_back("Newline");
+		expected.push_back("End");
+		Check(MatchSequence(tokens, expected),
+			"un \"&\" NON seguito da \"H\" resta il normale operatore di concatenamento");
+	}
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("&HFF& & x", &tokens);
+		Check(tokens.size() >= 3 && tokens[0].type == vbaTokNumber && tokens[0].numberValue == 255.0
+			&& tokens[1].type == vbaTokOperator && tokens[1].text == "&",
+			"\"&HFF& & x\": il letterale esadecimale col suo suffisso Long, poi un vero "
+			"\"&\" di concatenamento separato");
+	}
+
+	// ---- Fase 6g (seguito): "\" (divisione intera), "Xor", "Wend" ----
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("x \\ y", &tokens);
+		Check(tokens.size() >= 3 && tokens[1].type == vbaTokOperator && tokens[1].text == "\\",
+			"\"\\\" (divisione intera) e' un operatore a parte da \"/\"");
+	}
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("x Xor y", &tokens);
+		Check(tokens.size() >= 2 && tokens[1].type == vbaTokKeyword && tokens[1].text == "Xor",
+			"\"Xor\" e' una parola chiave");
+	}
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("While x\r\nWend", &tokens);
+		Check(tokens.size() >= 1 && tokens[0].type == vbaTokKeyword && tokens[0].text == "While",
+			"\"While\" e' una parola chiave (gia' lo era per \"Do While\")");
+		bool hasWend = false;
+		for (size_t i = 0; i < tokens.size(); i++)
+			if (tokens[i].type == vbaTokKeyword && tokens[i].text == "Wend")
+				hasWend = true;
+		Check(hasWend, "\"Wend\" e' una parola chiave");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }
