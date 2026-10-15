@@ -123,6 +123,24 @@ static std::string DumpStmt(const VbaStmt* s)
 		}
 		case vbaStmtExitFor: return "Exit For";
 		case vbaStmtExitSub: return "Exit Sub";
+		case vbaStmtOpen:
+			return "Open " + DumpExpr(s->expr.get()) + " As #" + DumpExpr(s->fileNumber.get());
+		case vbaStmtClose:
+			return s->fileNumber ? ("Close #" + DumpExpr(s->fileNumber.get())) : "Close";
+		case vbaStmtGet:
+			return "Get #" + DumpExpr(s->fileNumber.get()) + ", "
+				+ (s->expr ? DumpExpr(s->expr.get()) : "") + ", " + s->varName;
+		case vbaStmtReDim:
+		{
+			std::string dims;
+			for (size_t i = 0; i < s->reDimDims.size(); i++)
+			{
+				if (i > 0)
+					dims += ", ";
+				dims += DumpExpr(s->reDimDims[i].get());
+			}
+			return "ReDim " + s->varName + "(" + dims + ")";
+		}
 	}
 	return "?";
 }
@@ -377,6 +395,47 @@ int main()
 		std::string r = ParseAndDump("Sub Foo()\r\nDim V(-1)\r\nEnd Sub\r\n");
 		Check(r.substr(0, 8) == "<errore ", "un limite superiore negativo su un array produce un errore");
 	}
+	CheckSub("Sub Foo()\r\nDim rom() As Byte\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim rom As Byte]"); // Fase 6g: parentesi vuote, array DINAMICO non ancora
+		                                  // dimensionato -- indistinguibile da uno scalare (stesso
+		                                  // "arrayDims" vuoto) finche' un "ReDim" vero non arriva
+
+	// ---- Fase 6g: Open/Close/Get/ReDim (I/O binario in lettura, vedi
+	// ROADMAP.md sul vero macro trigger chip-8-vba che li usa tutti e
+	// quattro in sequenza dentro CommandButton1_Click) ----
+	CheckSub("Sub Foo()\r\nOpen filePath For Binary Access Read As #file\r\nEnd Sub\r\n",
+		"Sub Foo() [Open filePath As #file]");
+	CheckSub("Sub Foo()\r\nClose #file\r\nEnd Sub\r\n", "Sub Foo() [Close #file]");
+	CheckSub("Sub Foo()\r\nClose\r\nEnd Sub\r\n", "Sub Foo() [Close]"); // nudo: chiude TUTTI i file
+	CheckSub("Sub Foo()\r\nGet #file, , rom\r\nEnd Sub\r\n", "Sub Foo() [Get #file, , rom]");
+	CheckSub("Sub Foo()\r\nReDim rom(0 To n)\r\nEnd Sub\r\n", "Sub Foo() [ReDim rom(n)]");
+	CheckSub("Sub Foo()\r\nReDim V(15)\r\nEnd Sub\r\n",
+		"Sub Foo() [ReDim V(15)]"); // "espressione" da sola: limite inferiore 0 implicito, come Dim
+	{
+		std::string r = ParseAndDump("Sub Foo()\r\nOpen x For Output As #1\r\nEnd Sub\r\n");
+		Check(r.substr(0, 8) == "<errore ", "\"Open ... For Output\" (un modo diverso da "
+			"Binary/Read) produce un errore chiaro, non un dato sbagliato silenzioso");
+	}
+	{
+		std::string r = ParseAndDump("Sub Foo()\r\nReDim Preserve rom(10)\r\nEnd Sub\r\n");
+		Check(r.substr(0, 8) == "<errore ", "\"ReDim Preserve\" non e' supportato, errore chiaro");
+	}
+	{
+		std::string r = ParseAndDump("Sub Foo()\r\nReDim rom(1 To n)\r\nEnd Sub\r\n");
+		Check(r.substr(0, 8) == "<errore ", "\"ReDim\" con un limite inferiore diverso da zero "
+			"produce un errore chiaro");
+	}
+
+	// ---- Fase 6g: "MsgBox expr" -- un caso unico hardcoded, riscritto
+	// come una chiamata-istruzione nuda (vedi ParseMsgBox) ----
+	CheckSub("Sub Foo()\r\nMsgBox \"ciao\"\r\nEnd Sub\r\n", "Sub Foo() [MsgBox(\"ciao\")]");
+
+	// ---- Fase 6g: "Dim file As Integer: file = FreeFile" -- ":" separa
+	// due istruzioni sulla stessa riga esattamente come un newline (gia'
+	// cosi' dalla tokenizzazione, Fase 2a: nessuna modifica al parser
+	// e' servita per questo) ----
+	CheckSub("Sub Foo()\r\nDim file As Integer: file = FreeFile\r\nEnd Sub\r\n",
+		"Sub Foo() [Dim file As Integer; file := FreeFile]");
 
 	// ---- Fase 6d: "Type Nome ... End Type" -- un elenco di campi,
 	// scalari o array (stessa convenzione "conteggio elementi" di

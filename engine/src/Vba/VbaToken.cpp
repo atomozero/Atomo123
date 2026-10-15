@@ -25,6 +25,13 @@ static const char* const kKeywords[] = {
 	"For", "To", "Step", "Next", "True", "False", "And", "Or", "Not",
 	"Mod", "Set", "Exit", "Call", "Select", "Case", "Each", "In",
 	"Do", "Loop", "While", "Until",
+	// Fase 6g: "Open"/"Close"/"Get"/"ReDim" aprono ciascuno la propria
+	// istruzione dedicata (VbaStmtParser.cpp) -- "Binary"/"Access"/
+	// "Read" dentro "Open ... For Binary Access Read" restano invece
+	// semplici identificatori abbinati per testo, stesso trattamento
+	// di "Private"/"Public"/"ByVal" altrove in questo lessico (non
+	// servono altrove nella grammatica, non serve riservarli).
+	"Open", "Close", "Get", "ReDim",
 };
 static const int kKeywordCount = (int)(sizeof(kKeywords) / sizeof(kKeywords[0]));
 
@@ -240,7 +247,9 @@ void TokenizeVba(const std::string& source, std::vector<VbaToken>* outTokens)
 			}
 		}
 
-		static const char kOneCharOps[] = "+-*/^&=<>(),.";
+		// Fase 6g: "#" solo per "Open ... As #n"/"Close #n"/"Get #n, ...",
+		// mai ambiguo con un letterale data (non in questo sottoinsieme).
+		static const char kOneCharOps[] = "+-*/^&=<>(),.#";
 		if (strchr(kOneCharOps, c) != NULL)
 		{
 			VbaToken tok;

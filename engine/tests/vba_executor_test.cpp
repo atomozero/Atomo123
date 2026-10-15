@@ -122,6 +122,167 @@ static void CheckError(const char* source, const char* what)
 	Check(!ok, what);
 }
 
+// =======================================================================
+// Fase 6g: I/O binario in lettura (Open/Get/LOF/Close/ReDim/FreeFile) e
+// il gancio di dialogo nativo per "Application.GetOpenFilename" -- vedi
+// ROADMAP.md sul vero macro trigger chip-8-vba (github.com/rndtrash/
+// chip-8-vba) che li usa tutti e sei in sequenza dentro
+// CommandButton1_Click per caricare una ROM scelta dall'utente.
+// =======================================================================
+
+#ifndef P_tmpdir
+#define P_tmpdir "/tmp"
+#endif
+
+static std::string WriteTestRomFile(const unsigned char* bytes, size_t count)
+{
+	std::string path = std::string(P_tmpdir) + "/atomo123_vba_6g_test_rom.bin";
+	FILE* f = fopen(path.c_str(), "wb");
+	if (!f)
+		return "";
+	fwrite(bytes, 1, count, f);
+	fclose(f);
+	return path;
+}
+
+// Stub di VbaOpenFileDialogFn (VbaEvaluator.h) per i test: NESSUN vero
+// BFilePanel qui (quello e' solo in ui/MainWindow.cpp), solo un valore
+// fisso -- esattamente cosi' questo sottoinsieme resta testabile senza
+// una UI collegata, stesso principio del gancio restituire "annullato"
+// quando e' NULL.
+static std::string gTestDialogPath;
+static bool gTestDialogCancel = false;
+
+static bool TestOpenFileDialogHook(std::string* outPath)
+{
+	if (gTestDialogCancel)
+		return false;
+	*outPath = gTestDialogPath;
+	return true;
+}
+
+static void TestFileIO()
+{
+	unsigned char romBytes[] = { 0x10, 0x20, 0x30 }; // somma = 0x60 = 96
+	std::string path = WriteTestRomFile(romBytes, sizeof(romBytes));
+	Check(!path.empty(), "il file ROM di prova si scrive su disco");
+
+	// ---- "Open" su un percorso MAI approvato -- la decisione di
+	// sicurezza di Fase 6g (nessun prefisso cartella, solo un consenso
+	// esplicito per-file via Application.GetOpenFilename) ----
+	{
+		std::string src = "Sub T()\nOpen \"" + path + "\" For Binary Access Read As #1\nEnd Sub";
+		CheckError(src.c_str(), "\"Open\" su un percorso non approvato dall'utente in questa "
+			"esecuzione produce un errore (decisione di sicurezza di Fase 6g)");
+	}
+
+	// ---- Pipeline completa Open/ReDim/Get/Close/UBound, stessa forma
+	// esatta del vero CommandButton1_Click (percorso approvato A MANO
+	// qui, come se Application.GetOpenFilename l'avesse appena
+	// restituito -- il gancio vero si verifica a parte sotto) ----
+	{
+		VbaEnvironment env;
+		env.ApproveOpenFilePath(path);
+		std::string src = "Sub T()\n"
+			"Dim rom() As Byte\n"
+			"Dim file As Integer: file = FreeFile\n"
+			"Open \"" + path + "\" For Binary Access Read As #file\n"
+			"ReDim rom(0 To LOF(file) - 1)\n"
+			"Get #file, , rom\n"
+			"Close #file\n"
+			"total = 0\n"
+			"For i = 0 To UBound(rom)\n"
+			"total = total + rom(i)\n"
+			"Next i\n"
+			"End Sub";
+		std::string error;
+		bool ok = RunSub(src.c_str(), &env, &error);
+		Check(ok, ("la pipeline Open/FreeFile/ReDim/LOF/Get/Close/UBound si esegue senza "
+			"errori (" + error + ")").c_str());
+		const Value* total = env.Find("total");
+		Check(ok && total && (double)*total == 96.0,
+			"legge davvero i byte del file (0x10+0x20+0x30 = 96), UBound combacia con "
+			"la dimensione reale meno uno");
+	}
+
+	// ---- "Close" su un file non aperto: nessun errore, stesso
+	// comportamento permissivo del vero VBA ----
+	CheckVar("Sub T()\nClose #99\nx = 1\nEnd Sub", "x", "1");
+
+	// ---- "Get"/"LOF" su un numero di file non aperto: errore chiaro ----
+	CheckError("Sub T()\nDim rom(3) As Byte\nGet #1, , rom\nEnd Sub",
+		"\"Get\" su un file non aperto produce un errore");
+	CheckError("Sub T()\nx = LOF(1)\nEnd Sub", "\"LOF\" su un file non aperto produce un errore");
+
+	// ---- "MsgBox": no-op deliberato, l'esecuzione continua dopo ----
+	CheckVar("Sub T()\nMsgBox \"ciao\"\nx = 1\nEnd Sub", "x", "1");
+
+	// ---- "Application.GetOpenFilename": senza nessun gancio installato
+	// (comportamento di default, come nei test che precedono questo
+	// file nella sessione di compilazione) restituisce False, come un
+	// annullamento -- MAI un crash per l'assenza di UI collegata ----
+	CheckVar("Sub T()\nfilePath = Application.GetOpenFilename\nIf filePath = False Then\n"
+		"x = \"annullato\"\nElse\nx = \"scelto\"\nEnd If\nEnd Sub", "x", "\"annullato\"");
+
+	// ---- Lo stesso gancio, ma installato: il vero percorso scelto si
+	// APPROVA automaticamente per un "Open" successivo nella stessa
+	// esecuzione (nessuna "ApproveOpenFilePath" manuale qui, a
+	// differenza del test sopra) -- questa e' l'integrazione end-to-end
+	// decisa per Fase 6g (vedi ROADMAP.md). ----
+	VbaSetOpenFileDialogHook(&TestOpenFileDialogHook);
+	gTestDialogPath = path;
+	gTestDialogCancel = false;
+	{
+		VbaEnvironment env;
+		std::string src = "Sub T()\n"
+			"Dim rom() As Byte\n"
+			"Dim file As Integer: file = FreeFile\n"
+			"filePath = Application.GetOpenFilename\n"
+			"If filePath = False Then\n"
+			"Exit Sub\n"
+			"End If\n"
+			"Open filePath For Binary Access Read As #file\n"
+			"ReDim rom(0 To LOF(file) - 1)\n"
+			"Get #file, , rom\n"
+			"Close #file\n"
+			"total = 0\n"
+			"For i = 0 To UBound(rom)\n"
+			"total = total + rom(i)\n"
+			"Next i\n"
+			"End Sub";
+		std::string error;
+		bool ok = RunSub(src.c_str(), &env, &error);
+		const Value* total = env.Find("total");
+		Check(ok && total && (double)*total == 96.0,
+			"la forma REALE del trigger macro chip-8-vba (Application.GetOpenFilename -> "
+			"Open -> ReDim -> Get -> Close, nessuna approvazione manuale) carica davvero "
+			"la ROM tramite il gancio nativo installato da ui/MainWindow.cpp");
+	}
+
+	// ---- Lo stesso gancio, ma l'utente annulla: il ramo "Exit Sub" si
+	// prende, "total" non viene mai dichiarata ----
+	gTestDialogCancel = true;
+	{
+		VbaEnvironment env;
+		std::string src = "Sub T()\n"
+			"filePath = Application.GetOpenFilename\n"
+			"If filePath = False Then\n"
+			"MsgBox \"annullato\"\n"
+			"Exit Sub\n"
+			"End If\n"
+			"total = 1\n"
+			"End Sub";
+		std::string error;
+		bool ok = RunSub(src.c_str(), &env, &error);
+		Check(ok && !env.Find("total"),
+			"annullando il selettore nativo (gancio che restituisce falso) si prende il "
+			"ramo \"Exit Sub\" senza mai aprire alcun file");
+	}
+	VbaSetOpenFileDialogHook(NULL); // non contaminare i test che seguono in questo stesso binario
+
+	remove(path.c_str());
+}
+
 int main()
 {
 	// ---- Dim, assegnazione, Set ----
@@ -260,6 +421,8 @@ int main()
 
 	// ---- Un errore di sintassi si propaga con lo stesso meccanismo ----
 	CheckError("Sub T(\nEnd Sub", "un errore di sintassi nella Sub produce un errore, non un crash");
+
+	TestFileIO();
 
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;

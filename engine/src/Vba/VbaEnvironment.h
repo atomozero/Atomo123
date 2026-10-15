@@ -29,6 +29,7 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -102,6 +103,21 @@ struct VbaWithTarget {
 	VbaStructInstance* structInstance;
 
 	VbaWithTarget() : isStruct(false), value(0.0), structInstance(NULL) {}
+};
+
+// Fase 6g: un file binario aperto in lettura ("Open ... For Binary
+// Access Read As #fileNumber", VbaExecutor.cpp) -- l'INTERO contenuto
+// si legge in memoria in un colpo solo al momento dell'Open (niente
+// I/O posizionato/a pezzi in questo sottoinsieme: l'unico "Get"
+// supportato legge sempre dall'inizio, vedi vbaStmtGet in VbaAst.h),
+// "position" avanza comunque a ogni "Get" per restare onesto se un
+// giorno si aggiungesse una seconda lettura sequenziale sullo stesso
+// file.
+struct VbaOpenFile {
+	std::vector<unsigned char> data;
+	size_t position;
+
+	VbaOpenFile() : position(0) {}
 };
 
 class VbaEnvironment {
@@ -186,6 +202,13 @@ public:
 	const Value* GetArrayElement(const std::string& name, const std::vector<int>& indices) const;
 	bool SetArrayElement(const std::string& name, const std::vector<int>& indices, const Value& value);
 
+	// Fase 6g: le dimensioni di un array GIA' dichiarato (da "Dim" o da
+	// un "ReDim" successivo) -- "outDims" e' lo stesso formato di
+	// DeclareArray sopra (un conteggio di elementi per asse, GIA'
+	// "limite superiore + 1"). Falso se "name" non e' affatto un array
+	// dichiarato (stesso fallback sul modulo di IsArray sopra).
+	bool GetArrayDims(const std::string& name, std::vector<int>* outDims) const;
+
 	// Fase 6d: il registro dei Type del MODULO a cui appartiene questa
 	// esecuzione -- stesso principio di fModuleTokens (puntatore in
 	// prestito, costruito una volta da ExecuteVbaMacro scandendo il
@@ -257,6 +280,50 @@ public:
 	void SetModuleEnvironment(VbaEnvironment* moduleEnv) { fModuleEnv = moduleEnv; }
 	VbaEnvironment* GetModuleEnvironment() const { return fModuleEnv; }
 
+	// Fase 6g: file binari aperti ("Open ... As #fileNumber") --
+	// DELIBERATAMENTE locali a QUESTA esecuzione, MAI delegati al
+	// modulo persistente (a differenza di variabili/array/struct
+	// sopra): il vero macro trigger (chip-8-vba) apre, legge e chiude
+	// un file sempre dentro la STESSA Sub, mai a cavallo di due
+	// chiamate separate -- aprire un file in una Sub e leggerlo da una
+	// sorella e' un limite onesto non ancora servito da nessuna macro
+	// reale controllata, non un dimenticanza.
+	//
+	// "OpenBinaryFileForReading" legge l'INTERO file in memoria SUBITO
+	// (vedi VbaOpenFile sopra); falso con "outError" popolato se
+	// "fileNumber" e' gia' aperto in questo stesso ambiente o il file
+	// non si riesce ad aprire/leggere -- MAI un crash qualunque sia
+	// "path".
+	bool OpenBinaryFileForReading(int fileNumber, const std::string& path, std::string* outError);
+	bool IsFileOpen(int fileNumber) const { return fOpenFiles.find(fileNumber) != fOpenFiles.end(); }
+	const VbaOpenFile* FindOpenFile(int fileNumber) const;
+	VbaOpenFile* FindOpenFile(int fileNumber);
+	// Nessun errore a chiudere un numero di file non aperto (stesso
+	// comportamento permissivo del vero VBA) -- il chiamante
+	// (VbaExecutor.cpp) non ha bisogno di controllare prima.
+	void CloseFile(int fileNumber) { fOpenFiles.erase(fileNumber); }
+	void CloseAllFiles() { fOpenFiles.clear(); }
+	// "FreeFile" del vero VBA: il piu' piccolo intero >= 1 non ancora
+	// usato da nessun file aperto in QUESTO ambiente.
+	int AllocateFreeFileNumber() const;
+
+	// Fase 6g: decisione di sicurezza (vedi ROADMAP.md) -- "Open" in
+	// VbaExecutor.cpp accetta SOLO un percorso che l'UTENTE ha scelto
+	// esplicitamente in questa esecuzione tramite un vero selettore di
+	// file nativo (Application.GetOpenFilename, VbaEvaluator.cpp:
+	// "ApproveOpenFilePath" si chiama SOLO quando il selettore
+	// restituisce davvero un percorso, mai sull'annullamento). Nessun
+	// prefisso "cartella del documento" in questo sottoinsieme: il vero
+	// macro trigger lascia scegliere il file all'utente a OGNI
+	// esecuzione invece di leggere un percorso fisso, quindi un
+	// consenso esplicito per-file e' la regola giusta, non una
+	// generica cartella considerata attendibile.
+	void ApproveOpenFilePath(const std::string& path) { fApprovedOpenPaths.insert(path); }
+	bool IsOpenFilePathApproved(const std::string& path) const
+	{
+		return fApprovedOpenPaths.find(path) != fApprovedOpenPaths.end();
+	}
+
 private:
 	static std::string NormalizeName(const std::string& name);
 
@@ -274,6 +341,8 @@ private:
 	const std::map<std::string, VbaTypeDecl>* fTypeRegistry;
 	std::vector<VbaWithTarget> fWithStack;
 	VbaEnvironment* fModuleEnv;
+	std::map<int, VbaOpenFile> fOpenFiles; // Fase 6g, SEMPRE locale -- vedi il commento sopra
+	std::set<std::string> fApprovedOpenPaths; // Fase 6g, SEMPRE locale, stesso motivo
 };
 
 #endif

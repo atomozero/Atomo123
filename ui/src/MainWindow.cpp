@@ -78,6 +78,7 @@
 #include <Font.h>
 #include <GroupView.h>
 #include <LayoutBuilder.h>
+#include <Looper.h>
 #include <Menu.h>
 #include <MenuBar.h>
 #include <MenuField.h>
@@ -415,6 +416,12 @@ static void DrawAlignTopIcon(BView* view);
 static void DrawAlignMiddleIcon(BView* view);
 static void DrawAlignBottomIcon(BView* view);
 static void DrawReplaceIcon(BView* view);
+
+// Fase 6g (VBA): dichiarazione soltanto -- il corpo (vicino a
+// PromptEnableMacros, dove vive il resto della logica di sicurezza
+// delle macro) e' usato dal costruttore di MainWindow, scritto piu' in
+// alto in questo file.
+static bool ShowVbaOpenFilePanel(std::string* outPath);
 
 // Le etichette qui sotto sono marcate con B_TRANSLATE_MARK (identita' a
 // tempo di compilazione, vedi Catalog.h) invece che tradotte sul posto
@@ -1617,6 +1624,10 @@ MainWindow::MainWindow()
 
 	fOpenPanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this));
 	fSavePanel = new BFilePanel(B_SAVE_PANEL, new BMessenger(this));
+	// Fase 6g: idempotente se piu' di una MainWindow viene creata (la
+	// stessa funzione libera ogni volta, nessuno stato legato a QUESTA
+	// istanza) -- vedi ShowVbaOpenFilePanel sopra.
+	VbaSetOpenFileDialogHook(&ShowVbaOpenFilePanel);
 	fFindWindow = NULL;
 	fChartWindow = NULL;
 	fPivotWindow = NULL;
@@ -6188,6 +6199,94 @@ void MainWindow::HandleGoalSeekRequest(const char* setCellText, const char* toVa
 			break;
 		}
 	}
+}
+
+// Fase 6g (VBA, Open/Get/LOF/Close + "Application.GetOpenFilename"):
+// un vero selettore di file nativo, BLOCCANTE per il thread chiamante
+// -- stesso principio di BAlert::Go() poco sotto (PromptEnableMacros),
+// cosi' l'interprete VBA (engine/src/Vba, che non puo' linkare questo
+// layer per design: vedi ROADMAP.md) puo' chiedere all'utente di
+// scegliere un file a META' dell'esecuzione sincrona di una macro, non
+// solo prima/dopo.
+//
+// Un BFilePanel e' esso stesso un BWindow con un thread proprio: non
+// si puo' bloccare QUESTO thread (quello della finestra che ha
+// lanciato "Esegui macro") aspettando sulla SUA stessa coda di
+// messaggi -- si impallerebbe per sempre, nessuno dispaccerebbe mai
+// quel messaggio mentre e' fermo su un semaforo. Serve un BLooper
+// SEPARATO, con un thread indipendente, come UNICO target del
+// BFilePanel: questo thread puo' allora restare bloccato su un
+// semaforo mentre sia il BFilePanel sia questo looper dedicato
+// continuano a girare, ciascuno sul proprio thread.
+class VbaOpenFilePanelWaiter : public BLooper {
+public:
+	VbaOpenFilePanelWaiter(sem_id sem, BString* outPath, bool* outPicked)
+		: fSem(sem), fOutPath(outPath), fOutPicked(outPicked) {}
+
+	virtual void MessageReceived(BMessage* message)
+	{
+		switch (message->what)
+		{
+			case B_REFS_RECEIVED:
+			{
+				entry_ref ref;
+				if (message->FindRef("refs", &ref) == B_OK)
+				{
+					BPath path(&ref);
+					*fOutPath = path.Path();
+					*fOutPicked = true;
+				}
+				release_sem(fSem);
+				break;
+			}
+			case B_CANCEL:
+				*fOutPicked = false;
+				release_sem(fSem);
+				break;
+			default:
+				BLooper::MessageReceived(message);
+		}
+	}
+
+private:
+	sem_id fSem;
+	BString* fOutPath;
+	bool* fOutPicked;
+};
+
+// Il vero gancio installato in VbaSetOpenFileDialogHook (VbaEvaluator.h,
+// Fase 6g) -- firma fissa (bool (*)(std::string*)), nessun "this": un
+// BFilePanel NUOVO a ogni chiamata (mai riusato come fOpenPanel/
+// fSavePanel sopra, che restano invece legati al ciclo di vita di
+// QUESTA finestra e al suo stesso target), distrutto subito dopo.
+// Falso ("annullato", mai un crash) se il semaforo non si riesce a
+// creare -- non dovrebbe mai capitare in pratica, ma VbaEvaluator.cpp
+// tratta comunque questo gancio come "puo' sempre restituire falso",
+// stesso trattamento di un vero annullamento dell'utente.
+static bool ShowVbaOpenFilePanel(std::string* outPath)
+{
+	sem_id sem = create_sem(0, "vba_open_file_panel");
+	if (sem < B_OK)
+		return false;
+
+	BString path;
+	bool picked = false;
+	VbaOpenFilePanelWaiter* waiter = new VbaOpenFilePanelWaiter(sem, &path, &picked);
+	waiter->Run();
+
+	BFilePanel* panel = new BFilePanel(B_OPEN_PANEL, new BMessenger(waiter));
+	panel->Show();
+
+	acquire_sem(sem);
+	delete_sem(sem);
+
+	delete panel; // l'utente ha gia' risposto (il semaforo e' stato rilasciato): sicuro da chiudere ora
+	waiter->Lock();
+	waiter->Quit(); // si elimina da solo sul proprio thread, nessuna "delete waiter" qui
+
+	if (picked)
+		*outPath = path.String();
+	return picked;
 }
 
 // Vedi il commento su fMacrosTrustedThisSession in MainWindow.h: un

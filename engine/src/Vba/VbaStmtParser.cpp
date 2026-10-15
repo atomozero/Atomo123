@@ -340,6 +340,23 @@ private:
 			return ParseDo();
 		if (IsKeyword("With"))
 			return ParseWith();
+		if (IsKeyword("Open"))
+			return ParseOpen();
+		if (IsKeyword("Close"))
+			return ParseClose();
+		if (IsKeyword("Get"))
+			return ParseGet();
+		if (IsKeyword("ReDim"))
+			return ParseReDim();
+		// Fase 6g: "MsgBox expr" -- un caso UNICO, hardcoded (non una
+		// generalizzazione della chiamata-istruzione senza parentesi,
+		// che resta fuori scopo, vedi il commento su "Call" piu' sopra
+		// nel file): serve solo a far analizzare per intero il ramo di
+		// annullamento del vero trigger macro del CHIP-8
+		// ("Application.GetOpenFilename" + "MsgBox" + "Exit Sub"),
+		// vedi ROADMAP.md.
+		if (Current().type == vbaTokIdentifier && EqualsNoCase(Current().text, "msgbox"))
+			return ParseMsgBox();
 		return ParseAssignOrExprStmt();
 	}
 
@@ -486,6 +503,16 @@ private:
 		if (!IsOp("("))
 			return true; // variabile scalare, nessun limite da leggere
 		Advance();
+		if (IsOp(")"))
+		{
+			// Fase 6g: "Dim nome() As Tipo" -- parentesi vuote, un array
+			// DINAMICO non ancora dimensionato (indistinguibile da una
+			// variabile scalare finche' un "ReDim" vero non lo
+			// dimensiona, vedi VbaStmt::arrayDims): "outDims" resta
+			// vuoto, esattamente come il caso scalare sopra.
+			Advance();
+			return true;
+		}
 		for (;;)
 		{
 			if (Current().type != vbaTokNumber || Current().numberValue < 0)
@@ -968,6 +995,248 @@ private:
 			return nullptr;
 		}
 		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(kind));
+		stmt->line = line;
+		if (!ExpectStatementEnd())
+			return nullptr;
+		return stmt;
+	}
+
+	// Un identificatore (NON una parola chiave di questo lessico) che
+	// deve avere esattamente questo testo, senza distinguere
+	// maiuscole/minuscole -- stesso trattamento di "ByVal"/"Private" in
+	// altri punti del parser, usato per "Binary"/"Access"/"Read" dentro
+	// "Open ... For Binary Access Read" (Fase 6g): nessuno dei tre
+	// merita una vera parola chiave riservata, dato che non compaiono
+	// altrove nella grammatica.
+	bool ExpectIdentifierText(const char* text)
+	{
+		if (Current().type != vbaTokIdentifier || !EqualsNoCase(Current().text, text))
+		{
+			SetError(std::string("atteso \"") + text + "\"");
+			return false;
+		}
+		Advance();
+		return true;
+	}
+
+	// Fase 6g: "Open percorso For Binary Access Read As #numeroFile" --
+	// SOLO questa forma fissa (vedi vbaStmtOpen in VbaAst.h): un modo
+	// d'accesso diverso da "Binary"/"Read" e' un errore di sintassi
+	// chiaro invece di un dato silenziosamente sbagliato, dato che
+	// questo interprete non gestirebbe comunque un file apribile in
+	// scrittura.
+	std::unique_ptr<VbaStmt> ParseOpen()
+	{
+		int line = Current().line;
+		Advance(); // "Open"
+		auto pathExpr = ParseVbaExpression(fTokens, fPos, fError);
+		if (!pathExpr)
+		{
+			fFailed = true;
+			return nullptr;
+		}
+		if (!ExpectKeyword("For"))
+			return nullptr;
+		if (!ExpectIdentifierText("Binary"))
+			return nullptr;
+		if (!ExpectIdentifierText("Access"))
+			return nullptr;
+		if (!ExpectIdentifierText("Read"))
+			return nullptr;
+		if (!ExpectKeyword("As"))
+			return nullptr;
+		if (!ExpectOp("#"))
+			return nullptr;
+		auto fileNumExpr = ParseVbaExpression(fTokens, fPos, fError);
+		if (!fileNumExpr)
+		{
+			fFailed = true;
+			return nullptr;
+		}
+
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtOpen));
+		stmt->expr = std::move(pathExpr);
+		stmt->fileNumber = std::move(fileNumExpr);
+		stmt->line = line;
+		if (!ExpectStatementEnd())
+			return nullptr;
+		return stmt;
+	}
+
+	// Fase 6g: "Close [#numeroFile]" -- "#numeroFile" facoltativo, vedi
+	// vbaStmtClose in VbaAst.h.
+	std::unique_ptr<VbaStmt> ParseClose()
+	{
+		int line = Current().line;
+		Advance(); // "Close"
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtClose));
+		stmt->line = line;
+		if (IsOp("#"))
+		{
+			Advance();
+			auto fileNumExpr = ParseVbaExpression(fTokens, fPos, fError);
+			if (!fileNumExpr)
+			{
+				fFailed = true;
+				return nullptr;
+			}
+			stmt->fileNumber = std::move(fileNumExpr);
+		}
+		if (!ExpectStatementEnd())
+			return nullptr;
+		return stmt;
+	}
+
+	// Fase 6g: "Get #numeroFile, [posizione], nomeArray" -- la
+	// posizione si ANALIZZA comunque quando presente (per non
+	// rifiutare a torto una sintassi valida del vero VBA), ma solo la
+	// forma con la posizione OMESSA si esegue davvero (ExecuteGet in
+	// VbaExecutor.cpp produce un errore di runtime onesto altrimenti,
+	// vedi vbaStmtGet in VbaAst.h).
+	std::unique_ptr<VbaStmt> ParseGet()
+	{
+		int line = Current().line;
+		Advance(); // "Get"
+		if (!ExpectOp("#"))
+			return nullptr;
+		auto fileNumExpr = ParseVbaExpression(fTokens, fPos, fError);
+		if (!fileNumExpr)
+		{
+			fFailed = true;
+			return nullptr;
+		}
+		if (!ExpectOp(","))
+			return nullptr;
+
+		std::unique_ptr<VbaExpr> posExpr; // nullptr = posizione omessa ("Get #f, , var")
+		if (!IsOp(","))
+		{
+			posExpr = ParseVbaExpression(fTokens, fPos, fError);
+			if (!posExpr)
+			{
+				fFailed = true;
+				return nullptr;
+			}
+		}
+		if (!ExpectOp(","))
+			return nullptr;
+
+		if (Current().type != vbaTokIdentifier)
+		{
+			SetError("atteso il nome dell'array di destinazione dopo \"Get #..., ...,\"");
+			return nullptr;
+		}
+		std::string varName = Current().text;
+		Advance();
+
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtGet));
+		stmt->fileNumber = std::move(fileNumExpr);
+		stmt->expr = std::move(posExpr);
+		stmt->varName = varName;
+		stmt->line = line;
+		if (!ExpectStatementEnd())
+			return nullptr;
+		return stmt;
+	}
+
+	// Fase 6g: "ReDim nomeArray(limite[, limite...])" -- ogni "limite"
+	// e' "espressione" (limite inferiore 0 implicito) oppure "0 To
+	// espressione" (limite inferiore 0 ESPLICITO, mai un altro numero
+	// -- vedi vbaStmtReDim in VbaAst.h). "Preserve" e' un errore di
+	// sintassi chiaro, non un limite silenziosamente ignorato: questo
+	// sottoinsieme ridimensiona SEMPRE azzerando, stesso comportamento
+	// di un secondo "Dim" sullo stesso nome (Fase 6c).
+	std::unique_ptr<VbaStmt> ParseReDim()
+	{
+		int line = Current().line;
+		Advance(); // "ReDim"
+		if (Current().type == vbaTokIdentifier && EqualsNoCase(Current().text, "preserve"))
+		{
+			SetError("\"ReDim Preserve\" non e' supportato in questo sottoinsieme (un "
+				"ridimensionamento azzera sempre l'array, stesso limite di un secondo "
+				"\"Dim\" sullo stesso nome -- vedi ROADMAP.md)");
+			return nullptr;
+		}
+		if (Current().type != vbaTokIdentifier)
+		{
+			SetError("atteso un nome di variabile dopo \"ReDim\"");
+			return nullptr;
+		}
+		std::string varName = Current().text;
+		Advance();
+		if (!ExpectOp("("))
+			return nullptr;
+
+		std::vector<std::unique_ptr<VbaExpr>> dims;
+		for (;;)
+		{
+			auto boundExpr = ParseVbaExpression(fTokens, fPos, fError);
+			if (!boundExpr)
+			{
+				fFailed = true;
+				return nullptr;
+			}
+			if (IsKeyword("To"))
+			{
+				if (boundExpr->kind != vbaExprNumber || boundExpr->numberValue != 0.0)
+				{
+					SetError("\"ReDim\" supporta solo un limite inferiore letterale 0 "
+						"(es. \"ReDim x(0 To n)\"), mai un limite inferiore diverso da zero");
+					return nullptr;
+				}
+				Advance(); // "To"
+				boundExpr = ParseVbaExpression(fTokens, fPos, fError);
+				if (!boundExpr)
+				{
+					fFailed = true;
+					return nullptr;
+				}
+			}
+			dims.push_back(std::move(boundExpr));
+			if (IsOp(","))
+			{
+				Advance();
+				continue;
+			}
+			break;
+		}
+		if (!ExpectOp(")"))
+			return nullptr;
+
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtReDim));
+		stmt->varName = varName;
+		stmt->reDimDims = std::move(dims);
+		stmt->line = line;
+		if (!ExpectStatementEnd())
+			return nullptr;
+		return stmt;
+	}
+
+	// Fase 6g: "MsgBox espressione" -- un UNICO argomento posizionale
+	// (il vero VBA accetta anche pulsanti/titolo separati da virgola,
+	// fuori scopo qui: nessuna macro reale controllata finora ne ha
+	// bisogno), riscritto come la stessa identica forma ad albero di
+	// una chiamata-istruzione nuda ("vbaStmtExprStmt" su un
+	// "vbaExprCall" sintetico) cosi' l'esecutore non ha bisogno di un
+	// caso dedicato -- vedi EvalCall in VbaEvaluator.cpp sul perche'
+	// resta poi un no-op deliberato a runtime.
+	std::unique_ptr<VbaStmt> ParseMsgBox()
+	{
+		int line = Current().line;
+		Advance(); // "MsgBox"
+		auto arg = ParseVbaExpression(fTokens, fPos, fError);
+		if (!arg)
+		{
+			fFailed = true;
+			return nullptr;
+		}
+		auto call = std::unique_ptr<VbaExpr>(new VbaExpr(vbaExprCall));
+		call->name = "MsgBox";
+		call->line = line;
+		call->children.push_back(std::move(arg));
+
+		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtExprStmt));
+		stmt->expr = std::move(call);
 		stmt->line = line;
 		if (!ExpectStatementEnd())
 			return nullptr;

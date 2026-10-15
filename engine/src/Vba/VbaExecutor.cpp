@@ -263,6 +263,18 @@ private:
 			case vbaStmtWith:
 				return ExecuteWith(stmt);
 
+			case vbaStmtOpen:
+				return ExecuteOpen(stmt);
+
+			case vbaStmtClose:
+				return ExecuteClose(stmt);
+
+			case vbaStmtGet:
+				return ExecuteGet(stmt);
+
+			case vbaStmtReDim:
+				return ExecuteReDim(stmt);
+
 			case vbaStmtExitFor:
 				return execExitFor;
 
@@ -621,6 +633,136 @@ private:
 		ExecResult r = ExecuteStmtList(stmt->body);
 		fEnv->PopWithTarget();
 		return r;
+	}
+
+	// Fase 6g: "Open percorso For Binary Access Read As #fileNumber" --
+	// "percorso" deve GIA' essere stato approvato dall'utente in questa
+	// esecuzione (vedi VbaEnvironment::ApproveOpenFilePath, scritto da
+	// "Application.GetOpenFilename" in VbaEvaluator.cpp): e' questa la
+	// decisione di sicurezza di Fase 6g, non un prefisso di cartella.
+	ExecResult ExecuteOpen(const VbaStmt* stmt)
+	{
+		Value pathValue;
+		if (!Eval(stmt->expr.get(), &pathValue))
+			return execError;
+		std::string path = VbaToText(pathValue);
+
+		Value fileNumValue;
+		if (!Eval(stmt->fileNumber.get(), &fileNumValue))
+			return execError;
+		int fileNumber = (int)VbaToNumber(fileNumValue);
+
+		if (!fEnv->IsOpenFilePathApproved(path))
+		{
+			SetError("\"Open\" puo' leggere solo un file che l'utente ha scelto "
+				"esplicitamente in questa esecuzione tramite un selettore di file "
+				"nativo (Application.GetOpenFilename) -- decisione di sicurezza, vedi "
+				"ROADMAP.md Fase 6g", stmt->line);
+			return execError;
+		}
+
+		std::string openErr;
+		if (!fEnv->OpenBinaryFileForReading(fileNumber, path, &openErr))
+		{
+			SetError(openErr, stmt->line);
+			return execError;
+		}
+		return execNormal;
+	}
+
+	// Fase 6g: "Close [#fileNumber]" -- "fileNumber" assente chiude
+	// TUTTI i file aperti in questo VbaEnvironment, stesso
+	// comportamento del vero VBA.
+	ExecResult ExecuteClose(const VbaStmt* stmt)
+	{
+		if (!stmt->fileNumber)
+		{
+			fEnv->CloseAllFiles();
+			return execNormal;
+		}
+		Value fileNumValue;
+		if (!Eval(stmt->fileNumber.get(), &fileNumValue))
+			return execError;
+		fEnv->CloseFile((int)VbaToNumber(fileNumValue));
+		return execNormal;
+	}
+
+	// Fase 6g: "Get #fileNumber, , nomeArray" -- SOLO la posizione
+	// omessa (vedi ParseGet in VbaStmtParser.cpp e vbaStmtGet in
+	// VbaAst.h): legge l'INTERO array di destinazione (gia'
+	// dimensionato da un "ReDim" precedente) a partire dalla posizione
+	// corrente del file, un byte per elemento -- oltre la fine del
+	// file legge 0, mai un accesso fuori dai limiti del buffer letto
+	// dall'Open.
+	ExecResult ExecuteGet(const VbaStmt* stmt)
+	{
+		if (stmt->expr)
+		{
+			SetError("\"Get\" con un numero di record esplicito non e' supportato in "
+				"questo sottoinsieme (solo \"Get #file, , variabile\", una lettura "
+				"sequenziale dell'intero array)", stmt->line);
+			return execError;
+		}
+		Value fileNumValue;
+		if (!Eval(stmt->fileNumber.get(), &fileNumValue))
+			return execError;
+		int fileNumber = (int)VbaToNumber(fileNumValue);
+
+		VbaOpenFile* file = fEnv->FindOpenFile(fileNumber);
+		if (!file)
+		{
+			SetError("\"Get\" su un numero di file non aperto", stmt->line);
+			return execError;
+		}
+		if (!fEnv->IsArray(stmt->varName))
+		{
+			SetError("\"Get\" richiede un array di destinazione (es. \"Dim rom() As Byte\" "
+				"ridimensionato con \"ReDim\" prima di questo \"Get\")", stmt->line);
+			return execError;
+		}
+		std::vector<int> dims;
+		if (!fEnv->GetArrayDims(stmt->varName, &dims) || dims.size() != 1)
+		{
+			SetError("\"Get\" supporta solo un array a UNA dimensione in questo "
+				"sottoinsieme", stmt->line);
+			return execError;
+		}
+
+		int count = dims[0];
+		for (int i = 0; i < count; i++)
+		{
+			unsigned char byteValue = (file->position < file->data.size())
+				? file->data[file->position] : 0;
+			file->position++;
+			std::vector<int> index(1, i);
+			fEnv->SetArrayElement(stmt->varName, index, Value((double)byteValue));
+		}
+		return execNormal;
+	}
+
+	// Fase 6g: "ReDim nomeArray(limiti)" -- ogni limite si valuta a
+	// RUNTIME (a differenza di "Dim", sempre un letterale), poi
+	// ridimensiona e azzera esattamente come DeclareArray farebbe per
+	// un "Dim" con quegli stessi limiti (niente "Preserve" in questo
+	// sottoinsieme, vedi ParseReDim).
+	ExecResult ExecuteReDim(const VbaStmt* stmt)
+	{
+		std::vector<int> dims;
+		for (size_t i = 0; i < stmt->reDimDims.size(); i++)
+		{
+			Value v;
+			if (!Eval(stmt->reDimDims[i].get(), &v))
+				return execError;
+			int upper = (int)VbaToNumber(v);
+			if (upper < 0)
+			{
+				SetError("\"ReDim\" con un limite superiore negativo non e' valido", stmt->line);
+				return execError;
+			}
+			dims.push_back(upper + 1);
+		}
+		fEnv->DeclareArray(stmt->varName, dims);
+		return execNormal;
 	}
 
 	// Valuta "stmt->expr" UNA sola volta, poi confronta con ogni

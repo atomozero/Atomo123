@@ -117,6 +117,28 @@ enum VbaStmtKind {
 	                     // rimuove in uscita -- annidare piu' "With" funziona per costruzione
 	                     // (una pila), un "." fa sempre riferimento al PIU' VICINO, mai a uno
 	                     // esterno, come nel vero VBA.
+	// Fase 6g: I/O binario in lettura -- "expr"/"fileNumber"/"varName"
+	// sotto sono condivisi dalle quattro varianti, vedi i commenti sui
+	// singoli campi in VbaStmt.
+	vbaStmtOpen,       // Open expr(percorso) For Binary Access Read As #fileNumber -- SOLO questa
+	                     // forma fissa ("For Binary Access Read"), non analizzata come token
+	                     // dedicati (letta per testo in VbaStmtParser.cpp, stesso trattamento di
+	                     // "Private"/"ByVal"): "Output"/"Append"/altri modi d'accesso sono un
+	                     // errore di sintassi chiaro, non silenziosamente trattati come Read.
+	vbaStmtClose,      // Close [#fileNumber] -- "fileNumber" nullptr = "Close" nudo, chiude TUTTI
+	                     // i file aperti in questo VbaEnvironment (stesso comportamento del vero
+	                     // VBA).
+	vbaStmtGet,        // Get #fileNumber, [posizione], varName -- "expr" sotto e' la posizione
+	                     // (nullptr = omessa, l'UNICA forma eseguita davvero in questa fase, vedi
+	                     // ExecuteGet in VbaExecutor.cpp: una posizione esplicita si analizza ma
+	                     // produce un errore di runtime onesto, non un dato sbagliato), "varName"
+	                     // e' l'array di BYTE di destinazione (l'INTERO array, mai un elemento
+	                     // singolo -- "Get" senza parentesi dopo il nome, a differenza di
+	                     // "nomeArray(indice)").
+	vbaStmtReDim,      // ReDim varName(limiti) -- SOLO "0 To espressione" (o "espressione" da
+	                     // sola, stesso limite inferiore 0 implicito) per asse, mai "Preserve"
+	                     // (un secondo "ReDim" azzera l'array, stesso comportamento di un secondo
+	                     // "Dim" sullo stesso nome, Fase 6c) -- vedi "reDimDims" sotto.
 };
 
 struct VbaStmt; // completa piu' sotto -- serve solo per unique_ptr<VbaStmt> qui
@@ -145,11 +167,17 @@ struct VbaStmt {
 	                                     // condizione/l'espressione da confrontare
 	std::unique_ptr<VbaExpr> forEnd;   // solo For: il valore finale ("To ...")
 	std::unique_ptr<VbaExpr> forStep;  // solo For: l'incremento ("Step ..."), nullptr = 1 implicito
-	std::string varName;                // Dim/For: il nome della variabile
-	std::vector<int> arrayDims;         // solo Dim: vuoto = variabile scalare normale; non vuoto =
-	                                       // array, un elemento per asse, GIA' "limite superiore + 1"
-	                                       // (Option Base 0 implicito: "Dim x(10)" sono gli indici
-	                                       // 0..10, 11 elementi) -- vedi ParseDim in VbaStmtParser.cpp
+	std::string varName;                // Dim/For/Get/ReDim: il nome della variabile (per Get/ReDim,
+	                                       // sempre il nome di un array, Fase 6g)
+	std::vector<int> arrayDims;         // solo Dim: vuoto = variabile scalare normale OPPURE (Fase
+	                                       // 6g) un array DINAMICO non ancora dimensionato ("Dim
+	                                       // rom() As Byte", parentesi vuote -- indistinguibile da
+	                                       // una variabile scalare finche' un "ReDim" non lo
+	                                       // dimensiona davvero, vedi ParseArrayDimList); non vuoto =
+	                                       // array a dimensione FISSA, un elemento per asse, GIA'
+	                                       // "limite superiore + 1" (Option Base 0 implicito: "Dim
+	                                       // x(10)" sono gli indici 0..10, 11 elementi) -- vedi
+	                                       // ParseDim in VbaStmtParser.cpp
 	std::string asTypeName;             // solo Dim: il nome dopo "As" (vuoto se assente). Fase 6d:
 	                                       // a differenza delle fasi precedenti, qui NON si scarta --
 	                                       // VbaExecutor.cpp decide a runtime se e' un Type definito
@@ -167,6 +195,16 @@ struct VbaStmt {
 	                     // Until" (controllata DOPO, il corpo gira SEMPRE almeno una volta)
 	bool doIsUntil;    // solo DoLoop, e solo se "expr" non e' nullptr: vero = "Until" (continua
 	                     // finche' "expr" e' falsa); falso = "While" (continua finche' e' vera)
+	// Fase 6g: Open/Close/Get -- il numero di file dopo "#". Open/Get lo richiedono sempre
+	// (mai nullptr se il parsing e' andato a buon fine); Close lo ha SOLO quando scritto come
+	// "Close #n" (nullptr per un "Close" nudo, vedi vbaStmtClose sopra). Per Open "expr" sopra
+	// e' il percorso, per Get e' la posizione facoltativa.
+	std::unique_ptr<VbaExpr> fileNumber;
+	// Fase 6g: solo ReDim -- un'espressione di limite SUPERIORE per asse (gia' risolto "0 To"
+	// se scritto, vedi ParseReDim in VbaStmtParser.cpp), valutata a RUNTIME ogni volta (a
+	// differenza di "arrayDims" sopra, che e' sempre un letterale fissato al momento del
+	// parsing) -- e' esattamente questa la differenza fra Dim e ReDim in questo sottoinsieme.
+	std::vector<std::unique_ptr<VbaExpr>> reDimDims;
 	int line;
 
 	VbaStmt(VbaStmtKind k) : kind(k), doIsPreTest(true), doIsUntil(false), line(0) {}

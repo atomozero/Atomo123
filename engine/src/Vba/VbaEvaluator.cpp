@@ -516,6 +516,18 @@ Value* ResolveStructScalarField(const VbaExpr* expr, VbaEnvironment* env, std::s
 	return &field->scalarArray[flat];
 }
 
+// Fase 6g: vedi il commento su VbaOpenFileDialogFn in VbaEvaluator.h --
+// NULL finche' ui/ (MainWindow.cpp) non chiama VbaSetOpenFileDialogHook
+// una sola volta all'avvio. Variabile di file, non di classe: la legge
+// l'Evaluator dentro il namespace anonimo sotto, la scrive solo questo
+// setter.
+static VbaOpenFileDialogFn gOpenFileDialogHook = NULL;
+
+void VbaSetOpenFileDialogHook(VbaOpenFileDialogFn fn)
+{
+	gOpenFileDialogHook = fn;
+}
+
 namespace {
 
 class Evaluator {
@@ -590,6 +602,15 @@ private:
 		// ciclo stretto per restare reattiva, non per schedulare nulla.
 		if (Lowercase(expr->name) == "doevents")
 			return Value(0.0);
+
+		// Fase 6g: "FreeFile" e' un'altra funzione del vero VBA scritta
+		// SENZA parentesi quando chiamata a zero argomenti (stesso
+		// motivo di "DoEvents" sopra), ma qui NON e' un no-op: deve
+		// restituire un numero di file davvero libero (VbaEnvironment::
+		// AllocateFreeFileNumber), serve a "Open ... As #file" subito
+		// dopo per sapere quale canale usare.
+		if (Lowercase(expr->name) == "freefile")
+			return Value((double)fEnv->AllocateFreeFileNumber());
 
 		if (fEnv->IsStruct(expr->name))
 		{
@@ -756,6 +777,37 @@ private:
 		if (name == "cells")
 			return EvalCellsFunction(expr);
 
+		// Fase 6g: "UBound(nomeArray)" -- l'argomento e' il NOME di un
+		// array, mai un valore normale (un array non e' affatto una
+		// variabile scalare in fVars, vedi VbaEnvironment.h): va
+		// intercettato PRIMA del ciclo generico di valutazione degli
+		// argomenti sotto, stesso principio di "Range"/"Cells" appena
+		// sopra. Solo un array a UNA dimensione in questo sottoinsieme
+		// (Option Base 0 implicito, come ogni array di questo motore):
+		// "UBound" con un secondo argomento per l'asse (il vero VBA
+		// multidimensionale) non e' supportato, nessuna macro reale
+		// controllata finora ne ha bisogno.
+		if (name == "ubound" && expr->children.size() == 1
+			&& expr->children[0]->kind == vbaExprVariable
+			&& fEnv->IsArray(expr->children[0]->name))
+		{
+			std::vector<int> dims;
+			if (!fEnv->GetArrayDims(expr->children[0]->name, &dims) || dims.empty())
+			{
+				SetError("\"UBound\" su un array non ancora dimensionato (manca un \"ReDim\")",
+					expr->line);
+				return Value(0.0);
+			}
+			if (dims.size() != 1)
+			{
+				SetError("\"UBound\" su un array multidimensionale non e' supportato in "
+					"questo sottoinsieme (serve un secondo argomento per indicare l'asse, "
+					"qui assente)", expr->line);
+				return Value(0.0);
+			}
+			return Value((double)(dims[0] - 1));
+		}
+
 		std::vector<Value> args;
 		for (size_t i = 0; i < expr->children.size(); i++)
 		{
@@ -782,6 +834,31 @@ private:
 			}
 			return *element;
 		}
+
+		// Fase 6g: "LOF(fileNumber)" -- la lunghezza (in byte) di un
+		// file GIA' aperto con "Open" (VbaExecutor.cpp), usata dal vero
+		// macro trigger per dimensionare l'array di destinazione con
+		// "ReDim rom(0 To LOF(file) - 1)" prima del "Get" che segue.
+		if (name == "lof" && args.size() == 1)
+		{
+			const VbaOpenFile* file = fEnv->FindOpenFile((int)VbaToNumber(args[0]));
+			if (!file)
+			{
+				SetError("\"LOF\" su un numero di file non aperto", expr->line);
+				return Value(0.0);
+			}
+			return Value((double)file->data.size());
+		}
+
+		// Fase 6g: "MsgBox espressione" -- no-op deliberato (l'argomento
+		// e' comunque gia' stato valutato sopra, cosi' un eventuale
+		// errore al suo interno si propaga normalmente), stesso
+		// principio di ".Select"/"DoEvents": nessuna vera finestra di
+		// dialogo a questo livello dell'interprete. Vedi ParseMsgBox in
+		// VbaStmtParser.cpp sul perche' questa e' una forma dedicata,
+		// non una chiamata-istruzione generica.
+		if (name == "msgbox")
+			return Value(0.0);
 
 		if (name == "len")
 		{
@@ -1264,6 +1341,34 @@ private:
 			// "Select" si usa solo come istruzione nuda.
 			EvalNode(expr->target.get());
 			return Value(0.0);
+		}
+
+		// Fase 6g: "Application.GetOpenFilename" -- il vero macro
+		// trigger (chip-8-vba) lo chiama cosi' (nessuna parentesi,
+		// nessun argomento: la sintassi del vero VBA accetterebbe
+		// anche filtro/titolo, fuori scopo qui, nessuna macro reale
+		// controllata finora ne ha bisogno), assegnando il risultato a
+		// una variabile e confrontandola con "False" per riconoscere
+		// l'annullamento -- vedi VbaCompareValues sul perche' quel
+		// confronto funziona GIA' correttamente sia nel caso testo
+		// (percorso scelto) sia nel caso booleano (annullato), senza
+		// bisogno di nessuna logica speciale qui.
+		//
+		// Delega a un vero selettore nativo via VbaSetOpenFileDialogHook
+		// (ui/MainWindow.cpp, BFilePanel) -- NULL (nessuna UI collegata,
+		// es. nei test) si comporta come un annullamento, mai un
+		// crash. Solo un percorso DAVVERO scelto dall'utente si
+		// approva per un "Open" successivo nella stessa esecuzione
+		// (VbaEnvironment::ApproveOpenFilePath) -- la decisione di
+		// sicurezza di Fase 6g, vedi ROADMAP.md.
+		if (name == "getopenfilename" && expr->target->kind == vbaExprVariable
+			&& Lowercase(expr->target->name) == "application")
+		{
+			std::string path;
+			if (!gOpenFileDialogHook || !gOpenFileDialogHook(&path))
+				return Value(false);
+			fEnv->ApproveOpenFilePath(path);
+			return Value(path.c_str());
 		}
 		if (name == "value")
 		{

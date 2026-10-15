@@ -10,6 +10,8 @@
 #include "VbaEnvironment.h"
 
 #include <cctype>
+#include <fstream>
+#include <iterator>
 #include <utility>
 
 std::string VbaEnvironment::NormalizeName(const std::string& name)
@@ -123,6 +125,55 @@ bool VbaEnvironment::SetArrayElement(const std::string& name, const std::vector<
 		return false;
 	it->second.elements[flat] = value;
 	return true;
+}
+
+bool VbaEnvironment::GetArrayDims(const std::string& name, std::vector<int>* outDims) const
+{
+	std::map<std::string, VbaArrayStorage>::const_iterator it = fArrays.find(NormalizeName(name));
+	if (it == fArrays.end())
+		return fModuleEnv ? fModuleEnv->GetArrayDims(name, outDims) : false;
+	*outDims = it->second.dims;
+	return true;
+}
+
+bool VbaEnvironment::OpenBinaryFileForReading(int fileNumber, const std::string& path,
+	std::string* outError)
+{
+	if (fOpenFiles.find(fileNumber) != fOpenFiles.end())
+	{
+		*outError = "il numero di file #" + std::to_string(fileNumber) + " e' gia' aperto";
+		return false;
+	}
+	std::ifstream in(path.c_str(), std::ios::in | std::ios::binary);
+	if (!in)
+	{
+		*outError = "impossibile aprire il file \"" + path + "\"";
+		return false;
+	}
+	VbaOpenFile file;
+	file.data.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+	fOpenFiles[fileNumber] = file;
+	return true;
+}
+
+const VbaOpenFile* VbaEnvironment::FindOpenFile(int fileNumber) const
+{
+	std::map<int, VbaOpenFile>::const_iterator it = fOpenFiles.find(fileNumber);
+	return it == fOpenFiles.end() ? NULL : &it->second;
+}
+
+VbaOpenFile* VbaEnvironment::FindOpenFile(int fileNumber)
+{
+	std::map<int, VbaOpenFile>::iterator it = fOpenFiles.find(fileNumber);
+	return it == fOpenFiles.end() ? NULL : &it->second;
+}
+
+int VbaEnvironment::AllocateFreeFileNumber() const
+{
+	int n = 1;
+	while (fOpenFiles.find(n) != fOpenFiles.end())
+		n++;
+	return n;
 }
 
 VbaStructField* VbaStructInstance::FindField(const std::string& name)

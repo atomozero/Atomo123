@@ -266,6 +266,46 @@ int main()
 		Check(cellsCount == 2, "\"Cells\" compare due volte (un ramo Then, un ramo Else)");
 	}
 
+	// ---- Fase 6g: Open/Close/Get/ReDim come parole chiave, "#" come operatore ----
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("Open path For Binary Access Read As #file", &tokens);
+		std::vector<std::string> expected;
+		expected.push_back("Keyword:Open");
+		expected.push_back("Identifier:path");
+		expected.push_back("Keyword:For");
+		expected.push_back("Identifier:Binary"); // non una parola chiave, solo "Open"/"Close"/"Get"/"ReDim" lo sono
+		expected.push_back("Identifier:Access");
+		expected.push_back("Identifier:Read");
+		expected.push_back("Keyword:As");
+		expected.push_back("Operator:#");
+		expected.push_back("Identifier:file");
+		expected.push_back("Newline");
+		expected.push_back("End");
+		Check(MatchSequence(tokens, expected),
+			"\"Open ... For Binary Access Read As #file\": Open/For/As parole chiave, "
+			"Binary/Access/Read semplici identificatori, \"#\" un operatore a parte");
+	}
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("Close #file", &tokens);
+		Check(tokens.size() >= 3 && tokens[0].type == vbaTokKeyword && tokens[0].text == "Close"
+			&& tokens[1].type == vbaTokOperator && tokens[1].text == "#",
+			"\"Close\" e' una parola chiave, \"#\" il suo stesso operatore");
+	}
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("Get #file, , rom", &tokens);
+		Check(tokens.size() >= 1 && tokens[0].type == vbaTokKeyword && tokens[0].text == "Get",
+			"\"Get\" e' una parola chiave");
+	}
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba("ReDim rom(0 To n)", &tokens);
+		Check(tokens.size() >= 1 && tokens[0].type == vbaTokKeyword && tokens[0].text == "ReDim",
+			"\"ReDim\" e' una parola chiave");
+	}
+
 	printf("\n%s\n", gFailures == 0 ? "TUTTI I TEST SONO PASSATI" : "ALCUNI TEST SONO FALLITI");
 	return gFailures == 0 ? 0 : 1;
 }

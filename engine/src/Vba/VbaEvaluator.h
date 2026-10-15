@@ -148,4 +148,19 @@ bool VbaGetInteriorColor(const Value& rangeValue, bool asColorIndex, Value* outR
 bool VbaSetInteriorColor(const Value& rangeValue, bool asColorIndex, const Value& newValue,
 	VbaRuntimeError* outError, int line);
 
+// Fase 6g: un gancio opzionale verso il layer UI per "Application.
+// GetOpenFilename" -- un vero selettore di file nativo (BFilePanel in
+// ui/, MainWindow.cpp), che engine/ non puo' linkare direttamente per
+// design (stesso principio di VbaGetInteriorColor/VbaSetInteriorColor
+// sopra, che restano invece dentro l'engine perche' toccano solo
+// CContainer/CellStyle). NULL finche' ui/ non lo imposta UNA volta
+// all'avvio (VbaSetOpenFileDialogHook): in quel caso "Application.
+// GetOpenFilename" restituisce semplicemente Value(false), come se
+// l'utente avesse annullato -- comportamento onesto nei test/contesti
+// senza UI collegata (es. engine/tests), non un crash ne' un percorso
+// finto. "outPath" e' scritto SOLO quando la funzione restituisce
+// vero (l'utente ha davvero scelto un file, non annullato).
+typedef bool (*VbaOpenFileDialogFn)(std::string* outPath);
+void VbaSetOpenFileDialogHook(VbaOpenFileDialogFn fn);
+
 #endif
