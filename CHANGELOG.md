@@ -5,6 +5,17 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Fixed a real, pre-existing crash in the "Run Macro" list (found live
+  while manually verifying `Application.OnTime` below against the real
+  CHIP-8-in-VBA trigger file, unrelated to that feature itself):
+  `MacroListWindow::SetMacroNames` mutated its `BListView` from
+  `MainWindow`'s thread without locking the window that owns it. The
+  race usually goes unnoticed (the list window's own thread is idle at
+  that instant), but reopening "Esegui macro" quickly in succession
+  loses it for real and trips Haiku's own "Looper must be locked"
+  assert, crashing the app. Reproducible on demand by reopening the
+  dialog a handful of times in a row; fixed with a `Lock()`/`Unlock()`
+  pair around the mutation.
 - `Application.OnTime`, closing VBA Phase 6 (see ROADMAP.md): a real
   re-entrant, scheduled macro call, needed by the CHIP-8-in-VBA trigger
   file's own auto-step timer. Fetching that real source directly
