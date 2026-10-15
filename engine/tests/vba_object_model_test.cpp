@@ -168,6 +168,13 @@ int main()
 	CheckVar("Sub T()\nx = Range(\"A1\").Value\nEnd Sub", &a1, "42", "x", "42");
 	CheckVar("Sub T()\nx = Range(\"A1\").Value\nEnd Sub", NULL, NULL, "x", "0"); // cella vuota: 0
 
+	// ---- Fase 6j: riferimento ASSOLUTO in stile formula ("$A$1") --
+	// identico a quello nudo per Range(), mai relativo a nulla (a
+	// differenza di una formula di foglio) -- trovato controllando il
+	// vero sorgente chip-8-vba, "Range(\"$BO$3\").value = ..." ----
+	CheckVar("Sub T()\nx = Range(\"$A$1\").Value\nEnd Sub", &a1, "42", "x", "42");
+	CheckCell("Sub T()\nRange(\"$A$1\").Value = 7\nEnd Sub", a1, "7");
+
 	// ---- Lettura implicita (default member), solo con "=" non "Set" ----
 	CheckVar("Sub T()\nx = Range(\"A1\")\nEnd Sub", &a1, "42", "x", "42");
 	CheckVar("Sub T()\nx = Cells(1, 1)\nEnd Sub", &a1, "42", "x", "42");

@@ -144,8 +144,23 @@ static bool IsFullyNumericText(const std::string& text)
 	return endPtr == trimmed.c_str() + trimmed.size() && endPtr != trimmed.c_str();
 }
 
-static bool ParseSimpleRangeRef(const std::string& text, range* outRange)
+static bool ParseSimpleRangeRef(const std::string& rawText, range* outRange)
 {
+	// Un riferimento assoluto in stile formula ("$BO$3", trovato nel
+	// vero sorgente chip-8-vba: "Range(\"$BO$3\").value = ...") e'
+	// IDENTICO a quello nudo ("BO3") per Range()/Cells() -- a
+	// differenza di una formula di foglio (cell::GetFormulaCell, che
+	// gestisce "$" per davvero), Range() non ha mai un riferimento di
+	// cella BASE a cui essere "relativo", quindi il simbolo non cambia
+	// alcun significato: solo lo stile di scrittura del vero VBA.
+	// cell::GetCell (sotto) non lo riconosce affatto, quindi va
+	// scartato qui PRIMA, non passato cosi' com'e'.
+	std::string text;
+	text.reserve(rawText.size());
+	for (size_t i = 0; i < rawText.size(); i++)
+		if (rawText[i] != '$')
+			text.push_back(rawText[i]);
+
 	size_t colon = text.find(':');
 	std::string leftPart = (colon == std::string::npos) ? text : text.substr(0, colon);
 	std::string rightPart = (colon == std::string::npos) ? text : text.substr(colon + 1);
