@@ -5,6 +5,25 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Fixed another real, pre-existing VBA engine bug, found continuing the
+  same live investigation: `Range("$A$1")` (an absolute, formula-style
+  reference) failed with "invalid range reference", even though it's
+  completely ordinary VBA. `cell::GetCell` (VBA's own range-reference
+  parser) never handled `$` at all — a separate, simpler parser than
+  `cell::GetFormulaCell`, which sheet formulas use and does. For
+  `Range()`/`Cells()` the relative-vs-absolute distinction formulas
+  care about doesn't apply at all (a VBA range literal has no base
+  cell to be relative to), so `"$A$1"` and `"A1"` mean exactly the
+  same thing — fixed by stripping `$` before parsing. Found loading a
+  real ROM into the CHIP-8 emulator: `InitVM` calls `RedrawDebug`,
+  which writes `Range("$BO$3").value = Hex(ThisVM.PC)` — real content
+  only visible once an actual file is loaded (earlier verification had
+  only run `Step` against an empty, never-loaded VM). With this and
+  the sibling-call fix below, the real file's ROM-loading chain
+  (`CommandButton1_Click` → `Open`/`Get`/`Close` → `InitVM`) now runs
+  all the way to the project's own already-known, deliberate boundary:
+  an embedded ActiveX `CommandButton`'s `.Caption` property, which
+  this phase was never scoped to support.
 - Fixed a real, pre-existing VBA engine bug (also found live-testing
   `Application.OnTime` against the real CHIP-8-in-VBA file, also
   unrelated to that feature): a Sub/Function called as a SIBLING
