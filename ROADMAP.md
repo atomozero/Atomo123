@@ -930,18 +930,41 @@ before it:
     the current procedure; a Function's return value is whatever its
     name variable already holds).
   - **`Sub Step()` collides with the reserved keyword `Step`** (`For
-    ... Step ...`) — still open, tracked below.
-  Still not separately confirmed: `PowerOfTwo` (a module-level array
-  indexed in `InitConstants`) round-tripping through
+    ... Step ...`) — also now fixed. Rather than adding real
+    context-sensitive keyword resolution (the architecturally
+    "correct" answer, but invasive for a flat keyword table built
+    around "a token is always exactly one kind"), `Step` turned out to
+    have exactly ONE call site treating it as a keyword at all
+    (`ParseFor`'s optional `Step` clause) — so it's no longer in
+    `VbaToken.cpp`'s keyword table, full stop, and `ParseFor` matches
+    it by TEXT instead (`EqualsNoCase`, the same technique already
+    used for `Binary`/`Access`/`Read` in `Open`). `Step` is now always
+    a plain identifier — usable as a Sub name (`Sub Step()`) or a
+    variable — and still recognized as the For-loop clause at the one
+    grammar position where real VBA itself would recognize it too,
+    by position rather than lexical class.
+  Confirmed against the real file: of the 6 originally-unreachable
+  Subs, **all but `ProcessVM` now resolve and `CommandButton1_Click`
+  (the file-I/O trigger this whole phase was about) executes
+  correctly end to end** — `ProcessVM` is blocked purely by
+  `Application.OnTime`, tracked under 6h below, not a new gap. Still
+  not separately confirmed: `PowerOfTwo` (a module-level array indexed
+  in `InitConstants`) round-tripping through
   `FindAllVbaModuleLevelDims` now that 6c-style array Dims are
   involved there too. New coverage in `vba_token_test.cpp` (hex
   literals including the `&`-vs-`&H` disambiguation, `\`, `Xor`,
-  `Wend`), `vba_expr_parser_test.cpp` (the two new precedence levels),
+  `Wend`, `Step` tokenizing as an identifier in both positions),
+  `vba_expr_parser_test.cpp` (the two new precedence levels),
   `vba_evaluator_test.cpp` (bitwise vs. boolean And/Or/Xor/Not on both
   operand shapes, integer division including divide-by-zero, Hex/
-  CByte/Rnd), and `vba_executor_test.cpp` (While/Wend inside and
-  outside a For, integer division and a bitmask inside a real Sub) —
-  all passing, no regressions anywhere else in the VBA suite.
+  CByte/Rnd), `vba_executor_test.cpp` (While/Wend inside and outside a
+  For, integer division and a bitmask inside a real Sub), and
+  `vba_macro_runner_test.cpp` (paren-less calls with and without
+  arguments including a negative argument and a wrong-arg-count error,
+  `Exit Function` returning the value set before the early exit, and a
+  real `Sub Step()` called bare by a sibling while `For ... Step ...`
+  keeps working inside that exact same Sub) — all passing, no
+  regressions anywhere else in the VBA suite.
 - **(6h) `Application.OnTime`, planned; `DoEvents` is done as a
   deliberate no-op, split off early.** The original plan rode
   `DoEvents` along with `OnTime` on the theory that pumping a message
