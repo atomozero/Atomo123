@@ -767,18 +767,113 @@ before it:
     environment — all passing, no regressions, and the full UI build
     (`ui/`, not just the engine) compiles clean with the `MainWindow`
     wiring.
-- **(6g) Binary file I/O** (`Open ... For Binary Access Read`, `Get`,
-  `LOF`, `Close`). Needs a security decision before a design, not
-  after: a macro that can read arbitrary files from disk is a real
-  capability expansion on top of "macros disabled by default" (the
-  existing trust-bar posture), not just another statement. Likely
-  scope: restrict `Open` to paths inside the workbook's own directory
-  (matching the ROM-loading pattern in the trigger macro, which reads
-  a `.ch8` file next to the `.xlsm`), reject absolute paths elsewhere
-  outright rather than prompting per-call. `ReDim` off `LOF(file)` is
-  the one dynamic-sizing case worth covering alongside 6c's static
-  arrays, scoped narrowly to "resize right after reading a file length"
-  rather than general dynamic arrays.
+- **(6g) Binary file I/O is done** (`Open ... For Binary Access Read`,
+  `Get`, `LOF`, `Close`, `FreeFile`, a narrowly-scoped `ReDim`, and —
+  widened from the original plan below — a real
+  `Application.GetOpenFilename`). The original plan assumed the
+  trigger macro read a fixed `.ch8` path next to the `.xlsm`; actually
+  pulling up `CommandButton1_Click` showed that was wrong — it calls
+  `Application.GetOpenFilename` to let the user pick ANY file via a
+  native dialog, then opens whatever absolute path comes back. That
+  changes the right security answer: instead of a workbook-directory
+  prefix, `Open` now accepts only a path the user has explicitly
+  approved in *this* execution by picking it through that same native
+  dialog (`VbaEnvironment::ApproveOpenFilePath`/
+  `IsOpenFilePathApproved`, written only on a real pick, never on
+  cancel) — explicit per-file consent, which is arguably safer than
+  any fixed-directory allowlist, not a more permissive bypass of one.
+  `Open path For Binary Access Read As #n` reads the whole file into
+  memory immediately (no partial/positioned I/O in this subset); `Get
+  #n, , arrayVar` (position must be blank — an explicit record number
+  parses but is a clean runtime "not supported" error, not silently
+  mishandled) fills a 1-D array one byte per element; `LOF`/`FreeFile`
+  are ordinary/paren-less builtins; `Close [#n]` (bare form closes
+  every open file, matching real VBA); `ReDim name(0 To expr)` (or
+  `expr` alone, lower bound always 0) reuses `DeclareArray` under the
+  hood — same "second Dim always re-zeros" behavior as 6c, no
+  `Preserve`, a clear parse error if written. `Dim name() As Type`
+  (empty parens) is now valid syntax, indistinguishable from a scalar
+  Dim until a real `ReDim` sizes it — no new storage needed, `IsArray`
+  is already checked before any scalar fallback everywhere that
+  matters. New `UBound(arrayVar)` (1-D only, no axis argument) had to
+  special-case its argument the same way `Range`/`Cells` already do:
+  the argument is the *name* of an array, never a value to evaluate
+  generically. `MsgBox expr` got one dedicated hardcoded statement
+  form (not a generalization of the paren-less-call boundary from 6a,
+  which stays closed, see the gaps found below) purely so the trigger
+  macro's cancellation branch parses; it's a deliberate no-op at
+  runtime, same spirit as `.Select`/`DoEvents`.
+  `Application.GetOpenFilename` itself is a real cross-layer feature,
+  not a pure-engine one: `VbaEvaluator.h` exposes an optional function
+  pointer hook (`VbaSetOpenFileDialogHook`, NULL by default — returns
+  `Value(false)`, i.e. "cancelled," with no UI connected, same honest
+  behavior as every other UI-less context in this interpreter, never a
+  crash); `ui/MainWindow.cpp` installs a real one backed by a genuine
+  `BFilePanel`. That dialog is itself its own small design problem:
+  `ExecuteVbaMacro` runs synchronously on the window's own thread, and
+  a `BFilePanel` is a `BWindow` with its own thread — blocking the
+  calling thread on a semaphore released by a message sent *to that
+  same window* would deadlock (nothing would ever dispatch it). Fixed
+  with a tiny dedicated `BLooper` (`VbaOpenFilePanelWaiter`) as the
+  panel's sole target: the calling thread blocks on a semaphore while
+  both the panel and this dedicated looper keep running on their own
+  threads, same blocking-dialog principle as `BAlert::Go()` elsewhere
+  in this file. New coverage in `vba_token_test.cpp` (the four new
+  keywords, `#`), `vba_stmt_parser_test.cpp` (every new statement form
+  plus the syntax-error boundaries: `Open ... For Output`, `ReDim
+  Preserve`, a nonzero `ReDim` lower bound), and `vba_executor_test.cpp`
+  (a real temp file written to disk and read back byte-for-byte through
+  the whole `FreeFile`/`Open`/`ReDim`/`LOF`/`Get`/`Close`/`UBound`
+  pipeline, the security rejection of an unapproved path, and — with a
+  stub hook installed via `VbaSetOpenFileDialogHook` — the *exact*
+  `Application.GetOpenFilename` → `Open` → ... shape of the real
+  trigger macro end to end, both the successful pick and the
+  cancellation branch) — all passing, no regressions anywhere else in
+  the VBA suite, and the full `ui/` build links clean with the new
+  `BFilePanel` wiring.
+- **Checking the REAL file end to end (not just `CommandButton1_Click`
+  in isolation) surfaced several more real gaps, still open**: tokenizing
+  and attempting to resolve-by-name every Sub/Function in the actual
+  `code.vba` (not a synthetic excerpt) shows `CommandButton1_Click`
+  and the two `Type` blocks (`ScreenPixel`, `VM`) now parse and the
+  former now executes correctly end to end, but `ClearScreen`,
+  `InitVM`, `cbStep_Click`, `DrawSprite`, `Step`, and `ProcessVM` still
+  fail to resolve. Root causes, not yet fixed:
+  - **`&HFF&`-style hex integer literals** (used ~80 times in `InitVM`
+    for the built-in font sprite data) aren't tokenized at all —
+    `VbaToken.cpp` only recognizes decimal numbers.
+  - **Paren-less Sub calls WITH arguments** (`SetScreenPixel i, j, 0`,
+    `VMSetRunning False`) — the exact boundary 6a already documented as
+    deliberately unsupported ("real VBA's paren-less `Foo a, b` stays
+    unsupported"). Lifting it needs care: a bare identifier at
+    statement-start already means three different things today
+    (an assignment target before `=`, a property-access/method call
+    used for effect, or — new — a call with a trailing comma-separated
+    argument list and no parens at all), and the grammar has to tell
+    them apart without new ambiguity.
+  - **Paren-less calls to a SIBLING Sub with ZERO arguments**
+    (`InitConstants`, `Redraw`, `Step` as a bare statement) aren't
+    resolved either — today only two zero-arg bare identifiers are
+    special-cased at all (`DoEvents`, `FreeFile` in 6g above), both as
+    engine-internal behavior, never as a dispatch to a user-defined
+    Sub by name.
+  - **`Randomize`** (seeds the RNG, called once from `InitVM`) isn't
+    recognized in any form — likely another deliberate no-op in the
+    `DoEvents`/`.Select` family, *if* nothing downstream actually
+    depends on `Rnd()` producing different sequences (needs checking
+    against `Step()`'s own opcode handling before assuming so).
+  - **`Sub Step()` collides with the reserved keyword `Step`** (`For ...
+    Step ...`): the tokenizer has no notion of a context-sensitive
+    keyword, so the procedure name itself never tokenizes as an
+    identifier, making it unparseable and unreachable by name no
+    matter what else gets fixed above — a real VBA parser resolves this
+    contextually; this subset's single flat keyword table does not,
+    and needs a decision (context-sensitive re-classification, or
+    narrowly special-casing `Step` specifically) before a fix.
+  Not yet scoped into a lettered sub-phase; `PowerOfTwo` (a
+  module-level array indexed in `InitConstants`) has not yet been
+  separately confirmed to round-trip through `FindAllVbaModuleLevelDims`
+  now that 6c-style array Dims are involved there too.
 - **(6h) `Application.OnTime`, planned; `DoEvents` is done as a
   deliberate no-op, split off early.** The original plan rode
   `DoEvents` along with `OnTime` on the theory that pumping a message
