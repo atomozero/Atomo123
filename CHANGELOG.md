@@ -5,6 +5,26 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Fixed a real, pre-existing VBA engine bug (also found live-testing
+  `Application.OnTime` against the real CHIP-8-in-VBA file, also
+  unrelated to that feature): a Sub/Function called as a SIBLING
+  (`Inner` from inside `Outer`, any spelling — with/without arguments,
+  with/without parentheses) never saw the caller's module-level
+  state — any `Dim`/`Const`/struct declared outside every Sub looked
+  "never declared" the moment it was read from inside a sibling call,
+  even though the Sub that triggered the whole chain (called directly
+  from "Esegui macro") saw it fine. Real-world impact: the CHIP-8
+  emulator's own `Step` calls `VMGetShort` (a sibling Function, called
+  bare) which reads `ThisVM.Memory` — a struct declared at module
+  level — and failed instantly with "method not supported", even
+  though the exact same struct access works when called directly.
+  Root cause: a single spot in `VbaEvaluator.cpp` builds the
+  environment for any sibling call, and never linked
+  `SetModuleEnvironment` to the caller's — every sibling call form
+  funnels through that one spot, so a single missing propagation call
+  fixed every one of them at once. Verified both by a new automated
+  test and live against the real file (confirmed `Step` now runs past
+  that point without error).
 - Fixed a real, pre-existing crash in the "Run Macro" list (found live
   while manually verifying `Application.OnTime` below against the real
   CHIP-8-in-VBA trigger file, unrelated to that feature itself):
