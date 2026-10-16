@@ -418,6 +418,26 @@ private:
 				}
 				return execNormal;
 			}
+
+			// "Range(...).Font.Bold = valore" (e Italic/Size/Name) --
+			// stesso principio esatto del blocco Interior sopra, su
+			// "Font" invece di "Interior".
+			if ((outerName == "bold" || outerName == "italic" || outerName == "size"
+					|| outerName == "name")
+				&& innerTarget->kind == vbaExprPropertyAccess
+				&& Lowercase(innerTarget->name) == "font")
+			{
+				Value rangeValue;
+				if (!Eval(innerTarget->target.get(), &rangeValue))
+					return execError;
+				VbaRuntimeError fontErr;
+				if (!VbaSetFontProperty(rangeValue, outerName, rhs, &fontErr, stmt->line))
+				{
+					SetError(fontErr.message, fontErr.line);
+					return execError;
+				}
+				return execNormal;
+			}
 		}
 
 		// Il target e' un riferimento al modello a oggetti Excel: una

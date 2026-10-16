@@ -133,9 +133,7 @@ VbaStructInstance* ResolveStructInstanceStep(const VbaExpr* expr, VbaEnvironment
 // Fase 6f: ".Interior.Color"/".Interior.ColorIndex" su un intervallo
 // di UNA sola cella -- "fLowColor" (CellStyle.h) e' gia' un vero
 // "rgb_color" nel motore di calcolo, non un indice che richiederebbe
-// lo strato UI (a differenza di ".Font.Bold", ancora fuori scopo,
-// vedi la nota "investigated and deliberately deferred" di Fase 5 in
-// ROADMAP.md). "asColorIndex" sceglie la forma: "Color" e' un Long in
+// lo strato UI. "asColorIndex" sceglie la forma: "Color" e' un Long in
 // formato &H00BBGGRR (stesso ordine di byte della vera funzione VBA
 // RGB()); "ColorIndex" e' 1-56, un indice nella tavolozza standard di
 // Excel gia' esistente in questo codice (Excel.colors.h,
@@ -147,6 +145,25 @@ bool VbaGetInteriorColor(const Value& rangeValue, bool asColorIndex, Value* outR
 	VbaRuntimeError* outError, int line);
 bool VbaSetInteriorColor(const Value& rangeValue, bool asColorIndex, const Value& newValue,
 	VbaRuntimeError* outError, int line);
+
+// ".Font.Bold"/".Font.Italic"/".Font.Size"/".Font.Name" su un
+// intervallo di UNA sola cella -- "CellStyle::fFont" e' un indice
+// (non un valore diretto come "fLowColor" sopra), ma la tabella che lo
+// risolve (gFontSizeTable, FontMetrics.h) e' GIA' interamente
+// nell'engine (usata gia' da Container.cpp per lo stesso scopo in
+// importazione): non serve affatto lo strato UI, a differenza di
+// quanto una nota precedente in ROADMAP.md (Fase 5, "investigated and
+// deliberately deferred") lasciava credere -- quella nota riguardava
+// solo i wrapper UI (GetCellFontInfo/ApplyFontToRange), sottili
+// involucri attorno a questa stessa tabella, non un vero limite
+// architetturale. "propName" gia' minuscolo (bold/italic/size/name).
+// Stesso principio esatto di MainWindow::ToggleBold/ToggleItalic (lo
+// stile si ricompone sempre per intero da zero, "Bold Italic" incluso,
+// mai un flag separato) ma generalizzato a un valore ESPLICITO.
+bool VbaGetFontProperty(const Value& rangeValue, const std::string& propName, Value* outResult,
+	VbaRuntimeError* outError, int line);
+bool VbaSetFontProperty(const Value& rangeValue, const std::string& propName,
+	const Value& newValue, VbaRuntimeError* outError, int line);
 
 // Fase 6g: un gancio opzionale verso il layer UI per "Application.
 // GetOpenFilename" -- un vero selettore di file nativo (BFilePanel in

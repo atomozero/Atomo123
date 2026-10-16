@@ -20,9 +20,13 @@
 #include <string>
 #include <vector>
 
+#include <Application.h>
+#include <String.h>
+
 #include "CellStyle.h"
 #include "Container.h"
 #include "Excel.colors.h"
+#include "FontMetrics.h"
 #include "VbaMacroRunner.h"
 
 static int gFailures = 0;
@@ -1275,6 +1279,134 @@ static void TestInteriorColor()
 }
 
 // =======================================================================
+// Parte 2g-bis: ".Font.Bold"/".Font.Italic"/".Font.Size"/".Font.Name" --
+// stesso principio esatto di TestInteriorColor sopra, su "Font" invece
+// di "Interior": "CellStyle::fFont" e' un indice (non un valore
+// diretto), risolto tramite gFontSizeTable (FontMetrics.h, gia'
+// nell'engine, usata anche da Container.cpp in importazione) -- NON
+// serve lo strato UI, a differenza di quanto una nota precedente in
+// ROADMAP.md lasciava credere (vedi il commento su VbaGetFontProperty
+// in VbaEvaluator.h). Verificato leggendo il VERO CellStyle/
+// gFontSizeTable, non solo rileggendo tramite ".Bold"/".Italic", che
+// potrebbe confermare un bug a vicenda.
+// =======================================================================
+
+static std::vector<uint8> BuildFontPropertyProject()
+{
+	const char* moduleSource =
+		"Sub Main()\r\n"
+		"    Cells(1, 1).Font.Bold = True\r\n"
+		"    Cells(2, 1).Font.Italic = True\r\n"
+		"    Cells(3, 1).Font.Bold = True\r\n"
+		"    Cells(3, 1).Font.Italic = True\r\n"
+		"    Cells(4, 1).Font.Size = 18\r\n"
+		"    Cells(5, 1).Font.Name = \"Noto Sans\"\r\n"
+		"    Cells(6, 1).Value = Cells(1, 1).Font.Bold\r\n"
+		"    Cells(7, 1).Value = Cells(3, 1).Font.Italic\r\n"
+		"    Cells(8, 1).Value = Cells(4, 1).Font.Size\r\n"
+		"    Cells(9, 1).Value = Cells(5, 1).Font.Name\r\n"
+		"End Sub\r\n"
+		"Sub ToggleOff()\r\n"
+		"    Cells(1, 1).Font.Bold = True\r\n"
+		"    Cells(1, 1).Font.Bold = False\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache(14, 0xCC);
+	std::vector<uint8> moduleCompressed = CompressStr(moduleSource);
+	std::vector<uint8> moduleStream = fakePCache;
+	moduleStream.insert(moduleStream.end(), moduleCompressed.begin(), moduleCompressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", moduleStream});
+	return BuildTestCfb(streams);
+}
+
+static void TestFontProperties()
+{
+	std::vector<uint8> project = BuildFontPropertyProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per \".Font.*\" si costruisce");
+
+	CContainer* doc = new CContainer(NULL, NULL);
+	VbaRuntimeError err;
+	bool ok = ExecuteVbaMacro(&project[0], project.size(), "Main", doc, &err);
+	Check(ok, "\"Main\" legge e scrive \".Font.Bold/Italic/Size/Name\" senza errori");
+
+	CellStyle cs1, cs2, cs3, cs4, cs5;
+	doc->GetCellStyle(cell(1, 1), cs1);
+	doc->GetCellStyle(cell(1, 2), cs2);
+	doc->GetCellStyle(cell(1, 3), cs3);
+	doc->GetCellStyle(cell(1, 4), cs4);
+	doc->GetCellStyle(cell(1, 5), cs5);
+
+	font_family family;
+	font_style style;
+	float size;
+
+	gFontSizeTable.GetFontInfo(cs1.fFont, &family, &style, &size);
+	BString style1(style);
+	Check(style1.IFindFirst("Bold") >= 0 && style1.IFindFirst("Italic") < 0,
+		"\".Font.Bold = True\" scrive DAVVERO uno stile \"Bold\" nel vero CellStyle della cella "
+		"(non solo in una contabilita' parallela)");
+
+	gFontSizeTable.GetFontInfo(cs2.fFont, &family, &style, &size);
+	BString style2(style);
+	Check(style2.IFindFirst("Italic") >= 0 && style2.IFindFirst("Bold") < 0,
+		"\".Font.Italic = True\" scrive DAVVERO uno stile \"Italic\" nel vero CellStyle della cella");
+
+	gFontSizeTable.GetFontInfo(cs3.fFont, &family, &style, &size);
+	BString style3(style);
+	Check(style3.IFindFirst("Bold") >= 0 && style3.IFindFirst("Italic") >= 0,
+		"\".Font.Bold = True\" seguito da \".Font.Italic = True\" sulla STESSA cella ricompone "
+		"\"Bold Italic\" per intero, mai solo l'ultimo dei due impostato");
+
+	gFontSizeTable.GetFontInfo(cs4.fFont, &family, &style, &size);
+	Check(size == 18.0f, "\".Font.Size = 18\" scrive DAVVERO la dimensione nel vero CellStyle della cella");
+
+	gFontSizeTable.GetFontInfo(cs5.fFont, &family, &style, &size);
+	Check(strcmp(family, "Noto Sans") == 0,
+		"\".Font.Name = \\\"Noto Sans\\\"\" scrive DAVVERO la famiglia nel vero CellStyle della cella");
+
+	Value v6, v7, v8, v9;
+	doc->GetValue(cell(1, 6), v6);
+	doc->GetValue(cell(1, 7), v7);
+	doc->GetValue(cell(1, 8), v8);
+	doc->GetValue(cell(1, 9), v9);
+	Check(v6.fType == eBoolData && (bool)v6 == true, "\".Font.Bold\" in lettura torna True dopo averlo impostato");
+	Check(v7.fType == eBoolData && (bool)v7 == true,
+		"\".Font.Italic\" in lettura torna True sulla cella con \"Bold Italic\" (verifica che Italic "
+		"sopravviva alla ricomposizione COMBINATA con Bold, non solo da sola)");
+	Check((double)v8 == 18.0, "\".Font.Size\" in lettura torna la stessa dimensione scritta");
+	Check(strcmp((const char*)v9, "Noto Sans") == 0,
+		"\".Font.Name\" in lettura torna la stessa famiglia scritta");
+	doc->Release();
+
+	{
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		bool ok2 = ExecuteVbaMacro(&project[0], project.size(), "ToggleOff", doc2, &err2);
+		Check(ok2, "\"ToggleOff\" imposta e poi rimuove Bold senza errori");
+		CellStyle csOff;
+		doc2->GetCellStyle(cell(1, 1), csOff);
+		font_family familyOff;
+		font_style styleOff;
+		float sizeOff;
+		gFontSizeTable.GetFontInfo(csOff.fFont, &familyOff, &styleOff, &sizeOff);
+		BString styleOffStr(styleOff);
+		Check(styleOffStr.IFindFirst("Bold") < 0,
+			"\".Font.Bold = False\" DOPO \".Font.Bold = True\" sulla stessa cella rimuove DAVVERO il "
+			"grassetto (stile ricomposto da zero, mai un semplice OR coi bit precedenti)");
+		doc2->Release();
+	}
+}
+
+// =======================================================================
 // Parte 2h: stato di modulo PERSISTENTE -- trovato controllando il
 // sorgente reale del CHIP-8 (github.com/rndtrash/chip-8-vba), che
 // dichiara "Dim ThisVM As VM" a LIVELLO DI MODULO, condiviso da ogni
@@ -1697,6 +1829,19 @@ static void TestListVbaMacroNames()
 
 int main()
 {
+	// Serve SOLO da TestFontProperties() in poi: gFontSizeTable.
+	// GetFontID() (FontMetrics.cpp, usata da VbaGetFontProperty/
+	// VbaSetFontProperty) costruisce un vero CFontMetrics, che chiama
+	// BFont::SetFamilyAndStyle() -- una vera chiamata IPC ad app_server
+	// per validare la famiglia/lo stile contro i font installati.
+	// Senza un BApplication registrato quella chiamata resta bloccata
+	// in attesa di una risposta che non arriva mai (stesso identico
+	// motivo gia' documentato in cima a ui/tests/test_ascd_io.cpp per
+	// BFont::StringWidth) -- ogni altro test in questo file non ne ha
+	// mai avuto bisogno prima d'ora, essendo il primo a toccare
+	// davvero la risoluzione di un font.
+	BApplication app("application/x-vnd.Atomo-TestVbaMacroRunner");
+
 	TestFindVbaSubByName();
 	TestExecuteVbaMacro();
 	TestSiblingSubCall();
@@ -1707,6 +1852,7 @@ int main()
 	TestStructs();
 	TestWith();
 	TestInteriorColor();
+	TestFontProperties();
 	TestPersistentModuleState();
 	TestModuleLevelConstAndOnTime();
 	TestSiblingCallSeesModuleVariable();

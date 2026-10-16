@@ -20,6 +20,7 @@
 #include "CellStyle.h"
 #include "Container.h"
 #include "Excel.colors.h"
+#include "FontMetrics.h"
 #include "VbaExecutor.h"
 #include "VbaMacroRunner.h"
 
@@ -361,6 +362,117 @@ bool VbaSetInteriorColor(const Value& rangeValue, bool asColorIndex, const Value
 	CellStyle cs;
 	doc->GetCellStyle(c, cs);
 	cs.fLowColor = color;
+	doc->SetCellStyle(c, cs);
+	return true;
+}
+
+// Sottostringa case-insensitive minima, serve solo a questa sezione
+// (stessa ricerca che MainWindow::ToggleBold/ToggleItalic gia' fanno
+// con BString::IFindFirst sullo stile corrente) -- un piccolo
+// duplicato locale invece di dipendere da BString qui, che l'engine
+// non usa altrove in questo file.
+static bool StyleNameContains(const char* style, const char* needleLower)
+{
+	std::string s(style);
+	for (size_t i = 0; i < s.size(); i++)
+		s[i] = (char)tolower((unsigned char)s[i]);
+	return s.find(needleLower) != std::string::npos;
+}
+
+// ".Font.Bold"/".Font.Italic"/".Font.Size"/".Font.Name" -- a differenza
+// di ".Interior.Color" sopra, "CellStyle::fFont" E' un indice (non un
+// valore diretto come "fLowColor"), ma la tabella che lo risolve
+// (gFontSizeTable, FontMetrics.h) e' GIA' interamente nell'engine,
+// usata gia' da Container.cpp per lo stesso identico scopo in
+// importazione -- NON serve affatto lo strato UI qui, a differenza di
+// quanto una lettura superficiale di ROADMAP.md (nota "deliberately
+// deferred" di Fase 5) lascerebbe credere: quella nota riguardava la
+// UI toolbar (GetCellFontInfo/ApplyFontToRange, solo wrapper sottili
+// attorno a QUESTA stessa tabella), non un vero limite architetturale.
+// Stesso principio esatto di MainWindow::ToggleBold/ToggleItalic (lo
+// stile si ricompone sempre per intero da zero, "Bold Italic" incluso,
+// mai un flag separato) ma generalizzato a un valore ESPLICITO invece
+// che un semplice inversione.
+bool VbaGetFontProperty(const Value& rangeValue, const std::string& propName, Value* outResult,
+	VbaRuntimeError* outError, int line)
+{
+	cell c;
+	CContainer* doc;
+	if (!GetSingleCellForStyle(rangeValue, &c, &doc, outError, line))
+		return false;
+
+	CellStyle cs;
+	doc->GetCellStyle(c, cs);
+	font_family family;
+	font_style style;
+	float size;
+	gFontSizeTable.GetFontInfo(cs.fFont, &family, &style, &size);
+
+	if (propName == "bold")
+		*outResult = Value(StyleNameContains(style, "bold"));
+	else if (propName == "italic")
+		*outResult = Value(StyleNameContains(style, "italic"));
+	else if (propName == "size")
+		*outResult = Value((double)size);
+	else if (propName == "name")
+		*outResult = Value(family);
+	else
+	{
+		outError->message = "proprieta' \"" + propName + "\" di Font non supportata in questa fase";
+		outError->line = line;
+		return false;
+	}
+	return true;
+}
+
+bool VbaSetFontProperty(const Value& rangeValue, const std::string& propName,
+	const Value& newValue, VbaRuntimeError* outError, int line)
+{
+	cell c;
+	CContainer* doc;
+	if (!GetSingleCellForStyle(rangeValue, &c, &doc, outError, line))
+		return false;
+
+	CellStyle cs;
+	doc->GetCellStyle(c, cs);
+	font_family family;
+	font_style style;
+	float size;
+	rgb_color color;
+	gFontSizeTable.GetFontInfo(cs.fFont, &family, &style, &size, &color);
+
+	bool isBold = StyleNameContains(style, "bold");
+	bool isItalic = StyleNameContains(style, "italic");
+
+	if (propName == "bold")
+		isBold = VbaToBool(newValue);
+	else if (propName == "italic")
+		isItalic = VbaToBool(newValue);
+	else if (propName == "size")
+		size = (float)VbaToNumber(newValue);
+	else if (propName == "name")
+	{
+		std::string n = VbaToText(newValue);
+		strlcpy(family, n.c_str(), sizeof(font_family));
+	}
+	else
+	{
+		outError->message = "proprieta' \"" + propName + "\" di Font non supportata in questa fase";
+		outError->line = line;
+		return false;
+	}
+
+	font_style newStyle;
+	if (isBold && isItalic)
+		strlcpy(newStyle, "Bold Italic", sizeof(font_style));
+	else if (isBold)
+		strlcpy(newStyle, "Bold", sizeof(font_style));
+	else if (isItalic)
+		strlcpy(newStyle, "Italic", sizeof(font_style));
+	else
+		strlcpy(newStyle, "Regular", sizeof(font_style));
+
+	cs.fFont = (int)gFontSizeTable.GetFontID(family, newStyle, size, color);
 	doc->SetCellStyle(c, cs);
 	return true;
 }
@@ -1566,6 +1678,26 @@ private:
 			Value result;
 			VbaRuntimeError err;
 			if (!VbaGetInteriorColor(rangeValue, name == "colorindex", &result, &err, expr->line))
+			{
+				SetError(err.message, err.line);
+				return Value(0.0);
+			}
+			return result;
+		}
+
+		// ".Font.Bold"/".Font.Italic"/".Font.Size"/".Font.Name" -- stesso
+		// principio esatto del blocco Interior sopra, su "Font" invece
+		// di "Interior".
+		if ((name == "bold" || name == "italic" || name == "size" || name == "name")
+			&& expr->target->kind == vbaExprPropertyAccess
+			&& Lowercase(expr->target->name) == "font")
+		{
+			Value rangeValue = EvalNode(expr->target->target.get());
+			if (fFailed)
+				return Value(0.0);
+			Value result;
+			VbaRuntimeError err;
+			if (!VbaGetFontProperty(rangeValue, name, &result, &err, expr->line))
 			{
 				SetError(err.message, err.line);
 				return Value(0.0);
