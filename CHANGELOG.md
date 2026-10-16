@@ -5,6 +5,22 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Added cross-module VBA Sub/Function calls, closing the gap Phase 6a
+  explicitly flagged when sibling-call support first shipped ("a
+  sibling call only resolves within the SAME module"). `VbaEnvironment`
+  gained `SetAllModules`/`GetAllModules` (a borrowed pointer to every
+  module's source, collected once by `ExecuteVbaMacro`); a new
+  `FindVbaSubAcrossModules` tries the current module first (unchanged,
+  zero extra cost for the common same-module case), then re-tokenizes
+  each other module's already-available source on the fly only if not
+  found there. Same-module priority is real: a name defined in both
+  the caller's own module and another resolves to the caller's own
+  version, verified with a dedicated two-module test rather than
+  assumed. One honestly-scoped gap left: the Type registry and
+  persistent module-environment still propagate from the original
+  caller even across a module boundary — correct for the common case,
+  not yet resolved for a callee needing a different module's own
+  `Type` declarations.
 - Added `Select Case` range/relational forms (`Case 1 To 5`/`Case
   Is > 5`), closing the gap Phase 5a explicitly deferred when
   `Select Case` first shipped. `VbaCaseClause` now holds a tagged

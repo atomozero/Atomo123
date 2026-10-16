@@ -477,11 +477,9 @@ before it:
   scoped boundaries, not silently mishandled: only the *parenthesized*
   call form is recognized as a statement (real VBA's paren-less `Foo a,
   b` stays unsupported, same grammar boundary every other call in this
-  subset already has); and a sibling call only resolves within the
-  SAME module whose tokens are attached to the environment — calling a
-  Sub defined in a *different* module of the same project is a known,
-  separate gap, the same shape as the existing "known limit" already
-  documented for `ExecuteVbaMacro`'s own top-level lookup. New coverage
+  subset already has). Sibling resolution across a DIFFERENT module —
+  flagged here as a known gap when 6a first shipped — closed later
+  (see the cross-module entry near the end of this section). New coverage
   in `vba_stmt_parser_test.cpp` (parameter-list parsing, `ByRef`
   rejection, `Call` stripping) and `vba_macro_runner_test.cpp`
   (`TestSiblingSubCall`: a real `ExecuteVbaMacro` run where one Sub
@@ -1095,6 +1093,28 @@ too, same odd-but-real behavior, verified rather than assumed. `Case
 Is <op>` reuses the exact same `VbaCompareValues` table every other
 comparison operator in this interpreter already shares, so a text
 `Case Is <> "a"` behaves identically to the existing `<>` operator.
+
+**Cross-module Sub/Function calls: shipped.** Closes the gap Phase 6a
+explicitly flagged ("a sibling call only resolves within the SAME
+module"). `VbaEnvironment` gained `SetAllModules`/`GetAllModules` (a
+borrowed pointer to every module's source, collected once by
+`ExecuteVbaMacro`, same ownership shape as `SetModuleTokens`); a new
+`FindVbaSubAcrossModules` (`VbaEvaluator.cpp`) tries the current
+module first (unchanged, same-module calls still resolve exactly as
+before with zero extra cost), then — only if not found there —
+re-tokenizes each OTHER module's already-available source on the fly
+and tries again. Same-module priority is real, not incidental: a name
+defined in BOTH the caller's own module and another one resolves to
+the caller's own version, matching real VBA (verified with a
+dedicated test, not assumed). The child `VbaEnvironment` for a
+cross-module call links the CALLEE's own module tokens (so a further
+sibling call from inside it resolves in ITS module, not the
+original caller's) — one honestly-scoped gap left: the Type registry
+and persistent module-environment still propagate from the ORIGINAL
+caller even across a module boundary, correct for the common
+same-module case, not yet resolved for a callee needing a different
+module's own `Type` declarations (narrower, separate from name
+resolution itself, not attempted here).
 
 ## Path to 100% XLSX standard compatibility
 
