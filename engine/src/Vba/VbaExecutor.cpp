@@ -760,11 +760,17 @@ private:
 		return execNormal;
 	}
 
-	// Fase 6g: "ReDim nomeArray(limiti)" -- ogni limite si valuta a
-	// RUNTIME (a differenza di "Dim", sempre un letterale), poi
+	// Fase 6g (poi estesa con "Preserve"): "ReDim [Preserve]
+	// nomeArray(limiti)" -- ogni limite si valuta a RUNTIME (a
+	// differenza di "Dim", sempre un letterale). Senza "Preserve",
 	// ridimensiona e azzera esattamente come DeclareArray farebbe per
-	// un "Dim" con quegli stessi limiti (niente "Preserve" in questo
-	// sottoinsieme, vedi ParseReDim).
+	// un "Dim" con quegli stessi limiti. CON "Preserve" su un array
+	// GIA' dichiarato (IsArray), mantiene il contenuto esistente
+	// tramite VbaEnvironment::PreserveResizeArray -- su un array MAI
+	// dichiarato prima, "Preserve" non ha nulla da preservare: ricade
+	// sullo stesso comportamento di un ReDim normale, onesto (non un
+	// errore: il vero VBA stesso non si lamenta se l'array era gia'
+	// "Dim x()" senza limiti, solo mai dimensionato).
 	ExecResult ExecuteReDim(const VbaStmt* stmt)
 	{
 		std::vector<int> dims;
@@ -780,6 +786,16 @@ private:
 				return execError;
 			}
 			dims.push_back(upper + 1);
+		}
+		if (stmt->reDimPreserve && fEnv->IsArray(stmt->varName))
+		{
+			std::string preserveErr;
+			if (!fEnv->PreserveResizeArray(stmt->varName, dims, &preserveErr))
+			{
+				SetError(preserveErr, stmt->line);
+				return execError;
+			}
+			return execNormal;
 		}
 		fEnv->DeclareArray(stmt->varName, dims);
 		return execNormal;

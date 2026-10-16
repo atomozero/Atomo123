@@ -136,6 +136,63 @@ bool VbaEnvironment::GetArrayDims(const std::string& name, std::vector<int>* out
 	return true;
 }
 
+bool VbaEnvironment::PreserveResizeArray(const std::string& name, const std::vector<int>& newDims,
+	std::string* outError)
+{
+	std::map<std::string, VbaArrayStorage>::iterator it = fArrays.find(NormalizeName(name));
+	if (it == fArrays.end())
+	{
+		// Stesso principio di GetArrayDims/SetArrayElement sopra: se
+		// non e' qui, prova il modulo -- il CHIAMANTE ha gia' verificato
+		// IsArray() prima di arrivare qui, quindi deve esistere da
+		// qualche parte in questa catena.
+		return fModuleEnv && fModuleEnv->PreserveResizeArray(name, newDims, outError);
+	}
+
+	const std::vector<int>& oldDims = it->second.dims;
+	if (oldDims.size() != newDims.size())
+	{
+		*outError = "\"ReDim Preserve\" non puo' cambiare il numero di dimensioni ("
+			+ std::to_string(oldDims.size()) + " prima, " + std::to_string(newDims.size()) + " ora)";
+		return false;
+	}
+	for (size_t i = 0; i + 1 < oldDims.size(); i++)
+	{
+		if (oldDims[i] != newDims[i])
+		{
+			*outError = "\"ReDim Preserve\" puo' modificare solo l'ULTIMA dimensione "
+				"(la " + std::to_string(i + 1) + "a e' cambiata)";
+			return false;
+		}
+	}
+
+	// Tutte le dimensioni tranne l'ultima sono IDENTICHE (appena
+	// verificato sopra): il "blocco" di elementi per ogni combinazione
+	// delle dimensioni precedenti resta nella stessa posizione relativa
+	// sia nel vecchio sia nel nuovo storage, solo la sua LUNGHEZZA
+	// (l'ultima dimensione) cambia -- copiare blocco per blocco, fino al
+	// minimo fra vecchia/nuova lunghezza, riproduce esattamente il vero
+	// comportamento di "ReDim Preserve" (troncato se si restringe,
+	// nuove celle a 0.0/Empty se si allarga, mai un accesso fuori dai
+	// limiti di nessuno dei due vettori).
+	size_t prefixCount = 1;
+	for (size_t i = 0; i + 1 < oldDims.size(); i++)
+		prefixCount *= (size_t)oldDims[i];
+	size_t oldLast = oldDims.empty() ? 0 : (size_t)oldDims.back();
+	size_t newLast = newDims.empty() ? 0 : (size_t)newDims.back();
+	size_t copyLast = oldLast < newLast ? oldLast : newLast;
+
+	std::vector<Value> newElements(prefixCount * newLast, Value(0.0));
+	for (size_t p = 0; p < prefixCount; p++)
+	{
+		for (size_t j = 0; j < copyLast; j++)
+			newElements[p * newLast + j] = it->second.elements[p * oldLast + j];
+	}
+	it->second.dims = newDims;
+	it->second.elements = newElements;
+	return true;
+}
+
 bool VbaEnvironment::OpenBinaryFileForReading(int fileNumber, const std::string& path,
 	std::string* outError)
 {

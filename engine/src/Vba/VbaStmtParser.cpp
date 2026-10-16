@@ -1456,23 +1456,24 @@ private:
 		return stmt;
 	}
 
-	// Fase 6g: "ReDim nomeArray(limite[, limite...])" -- ogni "limite"
-	// e' "espressione" (limite inferiore 0 implicito) oppure "0 To
-	// espressione" (limite inferiore 0 ESPLICITO, mai un altro numero
-	// -- vedi vbaStmtReDim in VbaAst.h). "Preserve" e' un errore di
-	// sintassi chiaro, non un limite silenziosamente ignorato: questo
-	// sottoinsieme ridimensiona SEMPRE azzerando, stesso comportamento
-	// di un secondo "Dim" sullo stesso nome (Fase 6c).
+	// Fase 6g (poi estesa con "Preserve"): "ReDim [Preserve]
+	// nomeArray(limite[, limite...])" -- ogni "limite" e' "espressione"
+	// (limite inferiore 0 implicito) oppure "0 To espressione" (limite
+	// inferiore 0 ESPLICITO, mai un altro numero -- vedi vbaStmtReDim
+	// in VbaAst.h). "Preserve" non e' una parola chiave di questo
+	// lessico (tokenizza come un identificatore qualunque, stessa
+	// tecnica di "Is" in Select Case/"Binary"/"Access"/"Read" in
+	// "Open"): riconosciuta per TESTO, qui, nell'UNICA posizione dove
+	// il vero VBA la riconoscerebbe anch'esso.
 	std::unique_ptr<VbaStmt> ParseReDim()
 	{
 		int line = Current().line;
 		Advance(); // "ReDim"
+		bool preserve = false;
 		if (Current().type == vbaTokIdentifier && EqualsNoCase(Current().text, "preserve"))
 		{
-			SetError("\"ReDim Preserve\" non e' supportato in questo sottoinsieme (un "
-				"ridimensionamento azzera sempre l'array, stesso limite di un secondo "
-				"\"Dim\" sullo stesso nome -- vedi ROADMAP.md)");
-			return nullptr;
+			preserve = true;
+			Advance();
 		}
 		if (Current().type != vbaTokIdentifier)
 		{
@@ -1523,6 +1524,7 @@ private:
 		auto stmt = std::unique_ptr<VbaStmt>(new VbaStmt(vbaStmtReDim));
 		stmt->varName = varName;
 		stmt->reDimDims = std::move(dims);
+		stmt->reDimPreserve = preserve;
 		stmt->line = line;
 		if (!ExpectStatementEnd())
 			return nullptr;

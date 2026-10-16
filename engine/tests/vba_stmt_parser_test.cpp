@@ -139,7 +139,8 @@ static std::string DumpStmt(const VbaStmt* s)
 					dims += ", ";
 				dims += DumpExpr(s->reDimDims[i].get());
 			}
-			return "ReDim " + s->varName + "(" + dims + ")";
+			return std::string("ReDim ") + (s->reDimPreserve ? "Preserve " : "") + s->varName
+				+ "(" + dims + ")";
 		}
 	}
 	return "?";
@@ -427,10 +428,8 @@ int main()
 		Check(r.substr(0, 8) == "<errore ", "\"Open ... For Output\" (un modo diverso da "
 			"Binary/Read) produce un errore chiaro, non un dato sbagliato silenzioso");
 	}
-	{
-		std::string r = ParseAndDump("Sub Foo()\r\nReDim Preserve rom(10)\r\nEnd Sub\r\n");
-		Check(r.substr(0, 8) == "<errore ", "\"ReDim Preserve\" non e' supportato, errore chiaro");
-	}
+	CheckSub("Sub Foo()\r\nReDim Preserve rom(10)\r\nEnd Sub\r\n", "Sub Foo() [ReDim Preserve rom(10)]");
+	CheckSub("Sub Foo()\r\nReDim Preserve V(0 To n)\r\nEnd Sub\r\n", "Sub Foo() [ReDim Preserve V(n)]");
 	{
 		std::string r = ParseAndDump("Sub Foo()\r\nReDim rom(1 To n)\r\nEnd Sub\r\n");
 		Check(r.substr(0, 8) == "<errore ", "\"ReDim\" con un limite inferiore diverso da zero "

@@ -241,6 +241,23 @@ public:
 	// dichiarato (stesso fallback sul modulo di IsArray sopra).
 	bool GetArrayDims(const std::string& name, std::vector<int>* outDims) const;
 
+	// "ReDim Preserve": a differenza di DeclareArray sopra (azzera
+	// sempre), ridimensiona un array GIA' dichiarato mantenendo il
+	// contenuto esistente -- vero comportamento del vero VBA, che
+	// richiede lo STESSO numero di dimensioni di prima e lascia
+	// invariate tutte tranne l'ULTIMA (un errore chiaro altrimenti, non
+	// un dato silenziosamente troncato a caso). L'ultima dimensione
+	// puo' crescere (le nuove celle nascono a 0.0/Empty, come
+	// DeclareArray) o restringersi (i valori oltre il nuovo limite si
+	// perdono, esattamente come il vero VBA). Il CHIAMANTE
+	// (VbaExecutor.cpp::ExecuteReDim) gestisce a parte il caso "l'array
+	// non esiste ancora" (ricade su DeclareArray, niente da
+	// preservare) -- questo metodo assume che "name" sia GIA' un array,
+	// vedi IsArray sopra. Falso con "outError" popolato se il numero di
+	// dimensioni cambia o se una dimensione DIVERSA dall'ultima cambia.
+	bool PreserveResizeArray(const std::string& name, const std::vector<int>& newDims,
+		std::string* outError);
+
 	// Fase 6d: il registro dei Type del MODULO a cui appartiene questa
 	// esecuzione -- stesso principio di fModuleTokens (puntatore in
 	// prestito, costruito una volta da ExecuteVbaMacro scandendo il

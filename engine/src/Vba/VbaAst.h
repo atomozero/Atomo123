@@ -135,10 +135,12 @@ enum VbaStmtKind {
 	                     // e' l'array di BYTE di destinazione (l'INTERO array, mai un elemento
 	                     // singolo -- "Get" senza parentesi dopo il nome, a differenza di
 	                     // "nomeArray(indice)").
-	vbaStmtReDim,      // ReDim varName(limiti) -- SOLO "0 To espressione" (o "espressione" da
-	                     // sola, stesso limite inferiore 0 implicito) per asse, mai "Preserve"
-	                     // (un secondo "ReDim" azzera l'array, stesso comportamento di un secondo
-	                     // "Dim" sullo stesso nome, Fase 6c) -- vedi "reDimDims" sotto.
+	vbaStmtReDim,      // ReDim [Preserve] varName(limiti) -- SOLO "0 To espressione" (o
+	                     // "espressione" da sola, stesso limite inferiore 0 implicito) per asse.
+	                     // Senza "Preserve" azzera sempre l'array (stesso comportamento di un
+	                     // secondo "Dim" sullo stesso nome, Fase 6c) -- CON "Preserve" mantiene
+	                     // il contenuto esistente, vedi "reDimPreserve"/VbaEnvironment::
+	                     // PreserveResizeArray sotto.
 };
 
 struct VbaStmt; // completa piu' sotto -- serve solo per unique_ptr<VbaStmt> qui
@@ -227,6 +229,12 @@ struct VbaStmt {
 	// differenza di "arrayDims" sopra, che e' sempre un letterale fissato al momento del
 	// parsing) -- e' esattamente questa la differenza fra Dim e ReDim in questo sottoinsieme.
 	std::vector<std::unique_ptr<VbaExpr>> reDimDims;
+	// Solo ReDim -- "ReDim Preserve" scritto (vero VBA: mantiene il
+	// contenuto esistente, troncato/azzerato secondo il caso, SOLO
+	// l'ultima dimensione puo' cambiare rispetto a prima) invece del
+	// comportamento di default (azzera sempre, stesso di un secondo
+	// "Dim" sullo stesso nome) -- vedi VbaEnvironment::PreserveResizeArray.
+	bool reDimPreserve = false;
 	int line;
 
 	VbaStmt(VbaStmtKind k) : kind(k), doIsPreTest(true), doIsUntil(false), line(0) {}

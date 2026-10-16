@@ -816,6 +816,46 @@ static std::vector<uint8> BuildArrayProject()
 		"Sub ReadOutOfBounds()\r\n"
 		"    Dim V(3) As Byte\r\n"
 		"    Cells(1, 1).Value = V(10)\r\n"
+		"End Sub\r\n"
+		"Sub GrowPreserve()\r\n"
+		"    Dim V(3) As Byte\r\n"
+		"    V(0) = 10\r\n"
+		"    V(3) = 40\r\n"
+		"    ReDim Preserve V(6)\r\n"
+		"    Cells(1, 1).Value = V(0)\r\n"
+		"    Cells(2, 1).Value = V(3)\r\n"
+		"    Cells(3, 1).Value = V(6)\r\n"
+		"    Cells(4, 1).Value = UBound(V)\r\n"
+		"End Sub\r\n"
+		"Sub ShrinkPreserve()\r\n"
+		"    Dim V(5) As Byte\r\n"
+		"    V(0) = 10\r\n"
+		"    V(1) = 20\r\n"
+		"    ReDim Preserve V(1)\r\n"
+		"    Cells(1, 1).Value = V(0)\r\n"
+		"    Cells(2, 1).Value = V(1)\r\n"
+		"    Cells(3, 1).Value = UBound(V)\r\n"
+		"End Sub\r\n"
+		"Sub Grow2DLastAxisPreserve()\r\n"
+		"    Dim Screen(1, 1) As Byte\r\n"
+		"    Screen(0, 0) = 11\r\n"
+		"    Screen(1, 1) = 22\r\n"
+		"    ReDim Preserve Screen(1, 3)\r\n"
+		"    Cells(1, 1).Value = Screen(0, 0)\r\n"
+		"    Cells(2, 1).Value = Screen(1, 1)\r\n"
+		"End Sub\r\n"
+		"Sub PreserveNeverDimmed()\r\n"
+		"    ReDim Preserve V(3)\r\n"
+		"    V(0) = 77\r\n"
+		"    Cells(1, 1).Value = V(0)\r\n"
+		"End Sub\r\n"
+		"Sub PreserveRankMismatch()\r\n"
+		"    Dim V(3) As Byte\r\n"
+		"    ReDim Preserve V(1, 1)\r\n"
+		"End Sub\r\n"
+		"Sub PreserveNonLastAxis()\r\n"
+		"    Dim Screen(1, 1) As Byte\r\n"
+		"    ReDim Preserve Screen(2, 1)\r\n"
 		"End Sub\r\n";
 
 	std::vector<uint8> fakePCache(8, 0xCC);
@@ -869,6 +909,85 @@ static void TestArrays()
 			"leggere V(10) su un array di 4 elementi produce un errore chiaro, "
 			"non un accesso fuori dai limiti del vettore sottostante");
 		doc3->Release();
+	}
+
+	// ---- "ReDim Preserve": il contenuto esistente sopravvive ----
+	{
+		CContainer* doc4 = new CContainer(NULL, NULL);
+		VbaRuntimeError err4;
+		Check(ExecuteVbaMacro(&project[0], project.size(), "GrowPreserve", doc4, &err4),
+			"\"GrowPreserve\" (ReDim Preserve che ALLARGA un array 1D) esegue senza errori");
+		Value g1, g2, g3, g4;
+		doc4->GetValue(cell(1, 1), g1);
+		doc4->GetValue(cell(1, 2), g2);
+		doc4->GetValue(cell(1, 3), g3);
+		doc4->GetValue(cell(1, 4), g4);
+		Check((double)g1 == 10.0, "V(0)=10 sopravvive DAVVERO a \"ReDim Preserve V(6)\" (allargando)");
+		Check((double)g2 == 40.0, "V(3)=40 (l'ultimo elemento del vecchio array) sopravvive anch'esso");
+		Check((double)g3 == 0.0, "V(6) (una cella NUOVA creata dall'allargamento) nasce a 0, non spazzatura");
+		Check((double)g4 == 6.0, "UBound(V) riflette DAVVERO la nuova dimensione (6) dopo \"ReDim Preserve\"");
+		doc4->Release();
+	}
+	{
+		CContainer* doc5 = new CContainer(NULL, NULL);
+		VbaRuntimeError err5;
+		Check(ExecuteVbaMacro(&project[0], project.size(), "ShrinkPreserve", doc5, &err5),
+			"\"ShrinkPreserve\" (ReDim Preserve che RESTRINGE un array 1D) esegue senza errori");
+		Value s1, s2, s3;
+		doc5->GetValue(cell(1, 1), s1);
+		doc5->GetValue(cell(1, 2), s2);
+		doc5->GetValue(cell(1, 3), s3);
+		Check((double)s1 == 10.0 && (double)s2 == 20.0,
+			"V(0)/V(1) sopravvivono DAVVERO a \"ReDim Preserve V(1)\" (restringendo da 6 a 2 elementi)");
+		Check((double)s3 == 1.0, "UBound(V) riflette DAVVERO la nuova dimensione (1) dopo il restringimento");
+		doc5->Release();
+	}
+	{
+		// Un array 2D: SOLO l'ultima dimensione (la seconda qui) puo'
+		// crescere con "Preserve", stesso limite del vero VBA.
+		CContainer* doc6 = new CContainer(NULL, NULL);
+		VbaRuntimeError err6;
+		Check(ExecuteVbaMacro(&project[0], project.size(), "Grow2DLastAxisPreserve", doc6, &err6),
+			"\"Grow2DLastAxisPreserve\" (ReDim Preserve che allarga SOLO l'ultima dimensione "
+			"di un array 2D) esegue senza errori");
+		Value d1, d2;
+		doc6->GetValue(cell(1, 1), d1);
+		doc6->GetValue(cell(1, 2), d2);
+		Check((double)d1 == 11.0 && (double)d2 == 22.0,
+			"Screen(0,0)/Screen(1,1) sopravvivono DAVVERO dopo \"ReDim Preserve\" sulla sola "
+			"ultima dimensione di un array 2D");
+		doc6->Release();
+	}
+	{
+		// "ReDim Preserve" su un nome MAI dimensionato prima: niente da
+		// preservare, si comporta come un ReDim normale, non un errore
+		// (stesso principio onesto gia' documentato in
+		// VbaExecutor.cpp::ExecuteReDim).
+		CContainer* doc7 = new CContainer(NULL, NULL);
+		VbaRuntimeError err7;
+		Check(ExecuteVbaMacro(&project[0], project.size(), "PreserveNeverDimmed", doc7, &err7),
+			"\"ReDim Preserve\" su un array MAI dimensionato prima esegue senza errori "
+			"(niente da preservare, si comporta come un ReDim normale)");
+		Value u1;
+		doc7->GetValue(cell(1, 1), u1);
+		Check((double)u1 == 77.0, "il nuovo array funziona normalmente dopo quel primo \"ReDim Preserve\"");
+		doc7->Release();
+	}
+	{
+		CContainer* doc8 = new CContainer(NULL, NULL);
+		VbaRuntimeError err8;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "PreserveRankMismatch", doc8, &err8),
+			"\"ReDim Preserve\" che cambia il NUMERO di dimensioni (da 1D a 2D) produce un errore "
+			"chiaro, come nel vero VBA");
+		doc8->Release();
+	}
+	{
+		CContainer* doc9 = new CContainer(NULL, NULL);
+		VbaRuntimeError err9;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "PreserveNonLastAxis", doc9, &err9),
+			"\"ReDim Preserve\" che cambia una dimensione DIVERSA dall'ultima (la prima, qui) "
+			"di un array 2D produce un errore chiaro, come nel vero VBA");
+		doc9->Release();
 	}
 }
 
