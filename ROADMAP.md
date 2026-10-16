@@ -797,8 +797,8 @@ before it:
   are ordinary/paren-less builtins; `Close [#n]` (bare form closes
   every open file, matching real VBA); `ReDim name(0 To expr)` (or
   `expr` alone, lower bound always 0) reuses `DeclareArray` under the
-  hood — same "second Dim always re-zeros" behavior as 6c, no
-  `Preserve`, a clear parse error if written. `Dim name() As Type`
+  hood — same "second Dim always re-zeros" behavior as 6c (`Preserve`
+  added later, see the entry near the end of this section). `Dim name() As Type`
   (empty parens) is now valid syntax, indistinguishable from a scalar
   Dim until a real `ReDim` sizes it — no new storage needed, `IsArray`
   is already checked before any scalar fallback everywhere that
@@ -1115,6 +1115,26 @@ caller even across a module boundary, correct for the common
 same-module case, not yet resolved for a callee needing a different
 module's own `Type` declarations (narrower, separate from name
 resolution itself, not attempted here).
+
+**`ReDim Preserve`: shipped.** Closes the gap Fase 6g explicitly
+deferred when `ReDim` first shipped (a clear parse error rather than
+silently mishandled). `"Preserve"` isn't a reserved keyword in this
+lexicon (tokenizes as an ordinary identifier, same technique as `Is`/
+`Binary`/`Access`/`Read` elsewhere) — recognized by text right after
+`ReDim`. New `VbaEnvironment::PreserveResizeArray` enforces the real
+VBA restriction properly (not just copying blindly): the array must
+keep the SAME number of dimensions, and only the LAST axis may change
+size — a clear runtime error otherwise, not silent data corruption.
+Copying is a block-wise operation (every axis but the last is
+identical between old/new storage, so each "prefix" block just gets
+truncated or zero-extended to the new last-axis length), not a naive
+linear copy, which would scramble a 2-D (or higher) array's contents
+the moment the last axis's length changed. `ReDim Preserve` on a name
+never dimensioned before falls back to an ordinary `ReDim` (nothing to
+preserve, not an error — matches how `Dim name()` with empty parens
+already works in this subset). Verified with grow/shrink/2-D-last-
+axis-only/never-dimmed/rank-mismatch/non-last-axis-changed cases
+against a real `CContainer`, not just parse-level.
 
 ## Path to 100% XLSX standard compatibility
 

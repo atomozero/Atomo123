@@ -5,6 +5,20 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Added `ReDim Preserve`, closing the gap Phase 6g explicitly deferred
+  when `ReDim` first shipped (a clear parse error rather than silently
+  mishandled). New `VbaEnvironment::PreserveResizeArray` enforces the
+  real VBA restriction: the array must keep the same number of
+  dimensions, and only the LAST axis may change size — a clear error
+  otherwise, not silent data corruption. Copying is block-wise (every
+  axis but the last is identical between old/new storage, so each
+  "prefix" block just gets truncated or zero-extended), not a naive
+  linear copy, which would scramble a 2-D+ array's contents the moment
+  the last axis's length changed. `ReDim Preserve` on a name never
+  dimensioned before falls back to an ordinary `ReDim` (nothing to
+  preserve, not an error). Verified with grow/shrink/2-D-last-axis-
+  only/never-dimmed/rank-mismatch/non-last-axis-changed cases against
+  a real `CContainer`, not just parse-level.
 - Added cross-module VBA Sub/Function calls, closing the gap Phase 6a
   explicitly flagged when sibling-call support first shipped ("a
   sibling call only resolves within the SAME module"). `VbaEnvironment`
