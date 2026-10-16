@@ -679,6 +679,33 @@ void VbaSetOnTimeHook(VbaOnTimeFn fn)
 	gOnTimeHook = fn;
 }
 
+// Stesso principio di gOpenFileDialogHook/gOnTimeHook sopra, per
+// VbaSetControlCaptionFn/VbaSetControlCaptionHook (vedi VbaEvaluator.h)
+// -- usato da VbaExecutor.cpp (ExecuteAssignOrSet), non da questo file,
+// ma vive qui insieme agli altri ganci per restare facile da trovare.
+static VbaSetControlCaptionFn gSetControlCaptionHook = NULL;
+
+void VbaSetControlCaptionHook(VbaSetControlCaptionFn fn)
+{
+	gSetControlCaptionHook = fn;
+}
+
+// Wrapper non-statico attorno a gSetControlCaptionHook (file-locale,
+// invisibile da VbaExecutor.cpp come gli altri ganci): a differenza di
+// VbaSetFontProperty/VbaWriteRangeValue sopra, qui serve distinguere
+// "nessun gancio installato affatto" (nessuna interfaccia collegata,
+// es. engine/tests) da "gancio installato ma nessun controllo con
+// questo nome" -- due errori onesti diversi, non uno generico --
+// quindi "outHookInstalled" invece di un semplice bool di ritorno.
+bool VbaSetControlCaption(void* hostContext, const std::string& controlName,
+	const std::string& caption, bool* outHookInstalled)
+{
+	*outHookInstalled = (gSetControlCaptionHook != NULL);
+	if (!gSetControlCaptionHook)
+		return false;
+	return gSetControlCaptionHook(hostContext, controlName, caption);
+}
+
 // Cerca "name" come Sub/Function PRIMA nel modulo corrente
 // (env->GetModuleTokens()), poi -- se non trovata li' -- in ogni ALTRO
 // modulo dello stesso progetto (env->GetAllModules(), collegato da
@@ -1569,6 +1596,19 @@ private:
 				// cosi' "Inner" vede/modifica le STESSE variabili di
 				// modulo di "Outer", come nel vero VBA.
 				childEnv.SetModuleEnvironment(fEnv->GetModuleEnvironment());
+				// Bug reale trovato implementando la scrittura di
+				// "NomeControllo.Caption" (controlli ActiveX): senza
+				// questo, QUALUNQUE gancio legato a "hostContext" (vedi
+				// VbaOnTimeFn/VbaSetControlCaptionFn in VbaEvaluator.h)
+				// smette di funzionare non appena invocato da una Sub
+				// chiamata come SORELLA invece che come macro di primo
+				// livello -- es. "CommandButton2_Click" che chiama
+				// "VMSetRunning" come sorella, la quale scrive
+				// ".Caption": "childEnv" partiva sempre con
+				// "fHostContext" a NULL (il costruttore di default),
+				// mai propagato dal chiamante come gli altri campi
+				// sopra.
+				childEnv.SetHostContext(fEnv->GetHostContext());
 				for (size_t i = 0; i < args.size(); i++)
 				{
 					// SOLO ByVal in questo sottoinsieme (vedi VbaAst.h):

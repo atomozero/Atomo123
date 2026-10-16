@@ -438,6 +438,32 @@ private:
 				}
 				return execNormal;
 			}
+
+			// "NomeControllo.Caption = valore" (controlli ActiveX
+			// incorporati nel foglio, es. "CommandButton2.Caption =
+			// ...") -- a differenza dei due blocchi sopra, "innerTarget"
+			// qui e' un nome NUDO (vbaExprVariable, es.
+			// "CommandButton2"), mai una vera variabile VBA dichiarata
+			// (fEnv->Find fallirebbe con "usata prima di essere
+			// assegnata"): il nome stesso E' il riferimento implicito a
+			// un controllo del foglio attivo, niente da valutare prima.
+			if (outerName == "caption" && innerTarget->kind == vbaExprVariable)
+			{
+				std::string caption = VbaToText(rhs);
+				bool hookInstalled = false;
+				if (!VbaSetControlCaption(fEnv->GetHostContext(), innerTarget->name, caption,
+						&hookInstalled))
+				{
+					if (!hookInstalled)
+						SetError("nessun controllo ActiveX disponibile in questo contesto "
+							"(nessuna interfaccia collegata)", stmt->line);
+					else
+						SetError("controllo \"" + innerTarget->name + "\" non trovato sul foglio attivo",
+							stmt->line);
+					return execError;
+				}
+				return execNormal;
+			}
 		}
 
 		// Il target e' un riferimento al modello a oggetti Excel: una

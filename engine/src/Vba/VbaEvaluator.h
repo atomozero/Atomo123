@@ -201,4 +201,34 @@ typedef void (*VbaOnTimeFn)(void* hostContext, double delaySeconds,
 	const std::string& macroName);
 void VbaSetOnTimeHook(VbaOnTimeFn fn);
 
+// "NomeControllo.Caption = valore" -- una SCRITTURA sulla proprieta'
+// Caption di un controllo ActiveX (Forms 2.0 CommandButton, vedi
+// EmbeddedControl.h) incorporato nel foglio ATTIVO, riferito nel vero
+// VBA da un nome NUDO (es. "CommandButton2.Caption = ..."), mai da una
+// variabile dichiarata. Stesso principio esatto di VbaOnTimeFn sopra:
+// ui/ (MainWindow.cpp) e' l'unico posto che sa quale foglio e' attivo
+// e quale SheetView ridisegnare, un vero layering che engine/ non puo'
+// attraversare direttamente -- gancio libero installato una volta da
+// ui/, "hostContext" lo stesso puntatore opaco di VbaOnTimeFn (sempre
+// un "MainWindow*", mai dereferenziato qui). Restituisce vero SOLO se
+// un controllo con quel nome esiste davvero sul foglio attivo --
+// VbaExecutor.cpp (che lo chiama) segnala un vero errore VBA quando
+// falso, non un'assegnazione silenziosamente ignorata. NULL finche'
+// ui/ non lo imposta, stesso comportamento onesto "nessun effetto" di
+// VbaOpenFileDialogFn/VbaOnTimeFn in contesti senza UI collegata (es.
+// engine/tests): l'assegnazione fallisce con un errore chiaro invece
+// di un crash o un no-op silenzioso.
+typedef bool (*VbaSetControlCaptionFn)(void* hostContext,
+	const std::string& controlName, const std::string& caption);
+void VbaSetControlCaptionHook(VbaSetControlCaptionFn fn);
+
+// Wrapper chiamabile da VbaExecutor.cpp (il gancio vero e proprio sopra
+// resta file-locale a VbaEvaluator.cpp, stesso principio di
+// gOpenFileDialogHook/gOnTimeHook li'). "*outHookInstalled" distingue
+// "nessuna interfaccia collegata affatto" da "interfaccia collegata ma
+// nessun controllo con questo nome sul foglio attivo" -- due errori
+// VBA onesti diversi, non uno generico.
+bool VbaSetControlCaption(void* hostContext, const std::string& controlName,
+	const std::string& caption, bool* outHookInstalled);
+
 #endif

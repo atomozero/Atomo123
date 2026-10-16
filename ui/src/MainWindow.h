@@ -674,6 +674,16 @@ public:
 	// (quella funzione non e' un metodo, non puo' toccare un privato).
 	// Vedi fVbaOnTimeRunner sotto per i dettagli del timer stesso.
 	void ScheduleVbaOnTime(double delaySeconds, const std::string& macroName);
+	// Chiamata dal gancio libero SetControlCaptionVbaHook (MainWindow.cpp,
+	// installato via VbaSetControlCaptionHook) quando una macro VBA
+	// scrive "NomeControllo.Caption = ..." su un controllo ActiveX
+	// incorporato nel foglio ATTIVO (fControls, non fSheets[i].controls
+	// di un altro foglio -- stesso ambito di RunControlEvent sopra). Vero
+	// solo se un controllo con quel nome esiste davvero: VbaExecutor.cpp
+	// segnala un vero errore VBA quando falso, non un'assegnazione
+	// silenziosamente ignorata (diverso da RunControlEvent, dove
+	// l'ASSENZA di un gestore e' normale).
+	bool SetControlCaptionFromVba(const std::string& controlName, const std::string& caption);
 
 	// Formattazione condizionale VIVA (Fase 13): a differenza di
 	// SetCellValidation sopra (un primitivo per singola cella), qui

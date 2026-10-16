@@ -434,6 +434,12 @@ static bool ShowVbaOpenFilePanel(std::string* outPath);
 static void ScheduleVbaOnTimeHook(void* hostContext, double delaySeconds,
 	const std::string& macroName);
 
+// Stesso principio, per il gancio di "NomeControllo.Caption = valore"
+// sui controlli ActiveX -- il corpo (vicino a ScheduleVbaOnTime) chiama
+// MainWindow::SetControlCaptionFromVba via "hostContext".
+static bool SetControlCaptionVbaHook(void* hostContext, const std::string& controlName,
+	const std::string& caption);
+
 // Le etichette qui sotto sono marcate con B_TRANSLATE_MARK (identita' a
 // tempo di compilazione, vedi Catalog.h) invece che tradotte sul posto
 // con B_TRANSLATE: queste tabelle sono oggetti "static" a livello di
@@ -1653,6 +1659,9 @@ MainWindow::MainWindow()
 	// Fase 6h: stesso principio, per "Application.OnTime" -- vedi
 	// ScheduleVbaOnTimeHook sotto.
 	VbaSetOnTimeHook(&ScheduleVbaOnTimeHook);
+	// Stesso principio, per "NomeControllo.Caption = valore" sui
+	// controlli ActiveX -- vedi SetControlCaptionVbaHook sotto.
+	VbaSetControlCaptionHook(&SetControlCaptionVbaHook);
 	fFindWindow = NULL;
 	fChartWindow = NULL;
 	fPivotWindow = NULL;
@@ -6489,6 +6498,29 @@ void MainWindow::ScheduleVbaOnTime(double delaySeconds, const std::string& macro
 	msg->AddString("macroName", macroName.c_str());
 	fVbaOnTimeRunner = new BMessageRunner(BMessenger(this), msg,
 		(bigtime_t)(delaySeconds * 1000000.0), 1);
+}
+
+// Il vero gancio installato in VbaSetControlCaptionHook (VbaEvaluator.h)
+// -- stessa forma esatta di ScheduleVbaOnTimeHook sopra, nessun "this".
+static bool SetControlCaptionVbaHook(void* hostContext, const std::string& controlName,
+	const std::string& caption)
+{
+	if (!hostContext)
+		return false;
+	return ((MainWindow*)hostContext)->SetControlCaptionFromVba(controlName, caption);
+}
+
+bool MainWindow::SetControlCaptionFromVba(const std::string& controlName, const std::string& caption)
+{
+	for (size_t i = 0; i < fControls.size(); i++)
+	{
+		if (fControls[i].name != controlName)
+			continue;
+		fControls[i].caption = caption;
+		fSheetView->Invalidate();
+		return true;
+	}
+	return false;
 }
 
 // "type" e' l'indice posizionale del menu di ConditionalFormatWindow
