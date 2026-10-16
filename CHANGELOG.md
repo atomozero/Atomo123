@@ -5,6 +5,21 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Fixed a real text-clipping bug: a cell with a large font but no
+  word-wrap (e.g. a 28pt bold title) kept the default 20px row height
+  regardless of its own font size, clipping the top of its ascenders
+  against the cell boundary — it looked smaller than it really was,
+  not just mispositioned. `SheetView::RecalculateWrappedRowHeights`
+  (despite its name, already the one place that grows row height
+  beyond the default) now also considers a cell's own single-line font
+  height, not just wrapped-text line counts, using the same real
+  ascent/descent/leading math `DrawCellBand` already uses to position
+  text — the row-height side of a fix that, until now, only had its
+  drawing-position half. Wrapped-text row growth itself is untouched
+  (still a fixed per-line height), so already-tested behavior there
+  doesn't change. Found opening a real third-party file
+  (doom-in-excel, github.com/hmalinski/doom-in-excel) in Atomo123 —
+  its README's own title was clipped exactly like this.
 - Closed the real CHIP-8-in-VBA file's last known boundary: writing to
   an embedded ActiveX `CommandButton`'s `.Caption` property from VBA
   (`CommandButton2.Caption = "..."`, used by the real file's
