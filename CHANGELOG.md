@@ -5,6 +5,17 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Added `Select Case` range/relational forms (`Case 1 To 5`/`Case
+  Is > 5`), closing the gap Phase 5a explicitly deferred when
+  `Select Case` first shipped. `VbaCaseClause` now holds a tagged
+  `VbaCaseMatch` per comma-separated value (equality/range/relational)
+  instead of a flat expression list, so all three forms mix freely in
+  the same `Case` line, matching real VBA (`Case 1, 3, 5 To 10, Is >
+  100`). `Case lo To hi` compares against the min/max of the two
+  written values rather than requiring `lo <= hi` — real VBA accepts
+  `Case 5 To 1` too, verified against real behavior rather than
+  assumed. `Case Is <op>` reuses the same `VbaCompareValues` table
+  every other comparison operator in this interpreter already shares.
 - Added VBA `.Font.Bold`/`.Font.Italic`/`.Font.Size`/`.Font.Name`
   support on a single-cell `Range`/`Cells`, closing the last item of
   VBA Phase 6f (`.Interior.Color`/`.ColorIndex` shipped earlier,

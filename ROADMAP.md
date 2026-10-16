@@ -346,15 +346,15 @@ separate, later decision, same as noted after Phase 3.
 **Progress — Phase 5 (widening the explicit subset for real-world
 macro compatibility) is underway.** `Select Case` (5a) is done: one
 of the most common VBA constructs that the interpreter couldn't parse
-at all before this. Scoped to equality comparison — "`Case v1, v2,
-...`" (comma-separated values, compared like "`=`") and a trailing
-"`Case Else`" — with "`Case 1 To 5`"/"`Case Is > 5`" explicitly
-rejected as a clear parse error rather than silently mishandled; the
-range/relational `Case` forms are a real, honestly-flagged gap, not
-pretended support. The equality rule itself was already duplicated
-inline inside the `=` operator; extracted into a shared
-`VbaCompareValues` (`VbaEvaluator.h`) so `Select Case` reuses the
-exact same rule instead of risking a second copy drifting from it.
+at all before this. "`Case v1, v2, ...`" (comma-separated values,
+compared like "`=`") and a trailing "`Case Else`". The equality rule
+itself was already duplicated inline inside the `=` operator;
+extracted into a shared `VbaCompareValues` (`VbaEvaluator.h`) so
+`Select Case` reuses the exact same rule instead of risking a second
+copy drifting from it. **`Case 1 To 5`/`Case Is > 5` (range/relational
+forms) later added too** (see Phase 6f-adjacent entry below) — all
+three forms can mix freely in the same comma-separated list, matching
+real VBA (`Case 1, 3, 5 To 10, Is > 100`).
 
 `For Each ... Next` (5b) is done too: another construct common in
 real macros that touch every cell in a selection or table column.
@@ -1082,6 +1082,19 @@ its live-file test, and the real uninitialized-pointer startup crash
 found along the way. `Image`/`Label` control types still import
 (name/anchor only) but are not rendered or clickable — explicit scope
 cut, not an oversight.
+
+**`Select Case` range/relational forms (`Case 1 To 5`/`Case Is > 5`):
+shipped.** Closes the gap Phase 5a explicitly flagged and deferred.
+`VbaCaseClause` now holds a `VbaCaseMatch` per comma-separated value
+instead of a flat expression list — one of three kinds (equality,
+range, relational) chosen at parse time, freely mixable in the same
+`Case` line exactly like real VBA (`Case 1, 3, 5 To 10, Is > 100`).
+`Case lo To hi` compares against `min(lo, hi)`/`max(lo, hi)` rather
+than requiring `lo <= hi` textually — real VBA accepts `Case 5 To 1`
+too, same odd-but-real behavior, verified rather than assumed. `Case
+Is <op>` reuses the exact same `VbaCompareValues` table every other
+comparison operator in this interpreter already shares, so a text
+`Case Is <> "a"` behaves identically to the existing `<>` operator.
 
 ## Path to 100% XLSX standard compatibility
 
