@@ -5,6 +5,26 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Fixed a real file-association bug: double-clicking an `.xlsx`,
+  `.xlsm`, or `.ods` file opened an archive manager instead of
+  Atomo123. All three formats are ZIP containers with no prior
+  sniffer rule of their own, so Haiku's built-in generic ZIP
+  recognition always won. `App::RegisterFileTypes` now registers a
+  content-sniffing rule and extension for each, scoped to only these
+  three zip-colliding types (`.ascd`/`.xls`/`.csv` need no change) and
+  following the same "never override an existing choice" discipline
+  already used for `SetPreferredApp`/`SetIcon` in that function. XLSX
+  and XLSM share the identical rule (`xl/workbook.xml`, an internal
+  entry name no plain ZIP has) because they share the same OOXML
+  structure near the start of the file; `vbaProject.bin`, the one
+  marker that would actually distinguish XLSM from XLSX, lives too far
+  into a real file for Haiku's MIME sniffer to reach — confirmed via a
+  controlled offset sweep that Haiku only reads roughly the first
+  8-10 KB of a file's content for sniffing, regardless of the byte
+  range declared in the rule. The file extension remains the only
+  practical XLSM-vs-XLSX signal. ODS sniffs on its own internal
+  `mimetype` entry, which OpenDocument always stores first and
+  uncompressed, so it lands reliably within the read window.
 - Added `ReDim Preserve`, closing the gap Phase 6g explicitly deferred
   when `ReDim` first shipped (a clear parse error rather than silently
   mishandled). New `VbaEnvironment::PreserveResizeArray` enforces the
