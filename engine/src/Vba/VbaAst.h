@@ -96,10 +96,9 @@ enum VbaStmtKind {
 	vbaStmtExitFor,
 	vbaStmtExitSub,
 	vbaStmtSelectCase, // Select Case expr [Case v1, v2, ...  body]... [Case Else elseBody] End Select
-	                     // -- vedi "cases"/"elseBody" sotto. SOLO confronto per uguaglianza
-	                     // (come "="), NIENTE "Case 1 To 5" o "Case Is > 5" in questo
-	                     // sottoinsieme (limite onesto, non un dato sbagliato silenzioso: il
-	                     // parser rifiuta "To"/"Is" dopo "Case" con un errore chiaro).
+	                     // -- vedi "cases"/"elseBody" sotto. Ogni valore di un "Case" (separati
+	                     // da virgola) puo' essere un'uguaglianza semplice, un intervallo
+	                     // ("1 To 5") o un confronto ("Is > 5") -- vedi VbaCaseMatch sotto.
 	vbaStmtDoLoop,     // Do [While|Until expr] body Loop  -- oppure --  Do body Loop [While|Until expr]
 	                     // -- vedi doIsPreTest/doIsUntil sotto. "expr" nullptr = nessuna
 	                     // condizione affatto ("Do ... Loop" nudo, esce solo con Exit Do/Exit
@@ -144,16 +143,38 @@ enum VbaStmtKind {
 
 struct VbaStmt; // completa piu' sotto -- serve solo per unique_ptr<VbaStmt> qui
 
+// Le tre forme di un singolo valore dentro un "Case" (separati da
+// virgola, possono mescolarsi liberamente nello stesso elenco, come
+// nel vero VBA: "Case 1, 3, 5 To 10, Is > 100"):
+//  - vbaCaseEquals: un valore singolo, confrontato con "=" (VbaCompareValues)
+//  - vbaCaseRange: "lo To hi" (estremi INCLUSI, come il vero VBA)
+//  - vbaCaseRelational: "Is <op> value" -- "<op>" e' uno dei sei
+//    operatori di confronto gia' tokenizzati altrove in questo lessico
+//    ("=","<>","<",">","<=",">="), riusati qui alla lettera.
+enum VbaCaseMatchKind {
+	vbaCaseEquals,
+	vbaCaseRange,
+	vbaCaseRelational,
+};
+
+struct VbaCaseMatch {
+	VbaCaseMatchKind kind;
+	// vbaCaseEquals: il valore. vbaCaseRange: l'estremo basso ("lo").
+	// vbaCaseRelational: il valore a destra dell'operatore.
+	std::unique_ptr<VbaExpr> value;
+	std::unique_ptr<VbaExpr> rangeHigh; // SOLO vbaCaseRange: l'estremo alto ("hi")
+	std::string relOp;                  // SOLO vbaCaseRelational: "=","<>","<",">","<=",">="
+};
+
 // Un singolo "Case v1, v2, ..." di un Select Case (vedi vbaStmtSelectCase
-// sopra): zero o piu' valori di confronto (separati da virgola, come
-// VBA vero) piu' il corpo da eseguire se uno qualunque combacia con
-// l'espressione del Select Case (stesso confronto di "=", vedi
-// VbaExecutor.cpp). "Case Else" si rappresenta a parte, in
+// sopra): zero o piu' valori di confronto (vedi VbaCaseMatch sopra)
+// piu' il corpo da eseguire se uno qualunque combacia con l'espressione
+// del Select Case. "Case Else" si rappresenta a parte, in
 // VbaStmt::elseBody, non come un elemento di questa lista (deve
 // sempre essere l'ultimo, come nel vero VBA, e un corpo senza nessun
 // valore di confronto qui dentro non avrebbe senso).
 struct VbaCaseClause {
-	std::vector<std::unique_ptr<VbaExpr>> matchValues;
+	std::vector<VbaCaseMatch> matches;
 	std::vector<std::unique_ptr<VbaStmt>> body;
 	int line;
 

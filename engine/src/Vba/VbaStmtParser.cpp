@@ -1054,16 +1054,13 @@ private:
 				continue;
 			}
 
-			if (IsKeyword("To") || IsKeyword("Is"))
+			if (IsKeyword("To"))
 			{
-				// "Is" non e' nemmeno una parola chiave di questo
-				// lessico (tokenizza come un identificatore), quindi
-				// questo ramo intercetta solo "Case To ..." (un errore
-				// comunque) -- il vero "Case Is > 5"/"Case 1 To 5" e'
-				// gestito dal messaggio sotto, dopo aver letto almeno
-				// un valore, per un errore piu' chiaro.
-				SetError("\"Case To\"/\"Case Is\" (un intervallo o un confronto) non e' "
-					"supportato in questa fase: solo un elenco di valori separati da virgola");
+				// "To" non puo' comparire qui PRIMA di aver letto un
+				// primo valore (sarebbe "Case To ..."), un errore
+				// comunque -- il vero "Case 1 To 5" si legge DENTRO il
+				// ciclo sotto, dopo il primo valore.
+				SetError("\"Case To\" senza un valore prima non e' valido");
 				return nullptr;
 			}
 
@@ -1071,21 +1068,77 @@ private:
 			clause.line = caseLine;
 			for (;;)
 			{
-				auto value = ParseVbaExpression(fTokens, fPos, fError);
-				if (!value)
-				{
-					fFailed = true;
-					return nullptr;
-				}
-				clause.matchValues.push_back(std::move(value));
+				VbaCaseMatch match;
 
-				if (IsKeyword("To") || (Current().type == vbaTokIdentifier && Current().text == "Is"))
+				// "Case Is > 5" -- "Is" non e' una parola chiave di
+				// questo lessico (tokenizza come un identificatore
+				// qualunque), quindi si riconosce per TESTO, stessa
+				// tecnica gia' usata per "Binary"/"Access"/"Read" in
+				// "Open" (Fase 6g).
+				if (Current().type == vbaTokIdentifier && Current().text == "Is")
 				{
-					SetError("\"Case 1 To 5\"/\"Case Is > 5\" (un intervallo o un confronto) "
-						"non e' supportato in questa fase: solo un elenco di valori separati "
-						"da virgola");
-					return nullptr;
+					Advance(); // "Is"
+					static const char* const kRelOps[] = { "<=", ">=", "<>", "<", ">", "=" };
+					std::string relOp;
+					for (size_t k = 0; k < 6; k++)
+					{
+						if (IsOp(kRelOps[k]))
+						{
+							relOp = kRelOps[k];
+							break;
+						}
+					}
+					if (relOp.empty())
+					{
+						SetError("\"Case Is\" deve essere seguito da un operatore di confronto "
+							"(=, <>, <, >, <=, >=)");
+						return nullptr;
+					}
+					Advance(); // l'operatore
+					auto rhs = ParseVbaExpression(fTokens, fPos, fError);
+					if (!rhs)
+					{
+						fFailed = true;
+						return nullptr;
+					}
+					match.kind = vbaCaseRelational;
+					match.relOp = relOp;
+					match.value = std::move(rhs);
 				}
+				else
+				{
+					auto first = ParseVbaExpression(fTokens, fPos, fError);
+					if (!first)
+					{
+						fFailed = true;
+						return nullptr;
+					}
+					if (IsKeyword("To"))
+					{
+						// "Case 1 To 5" -- gli estremi sono entrambi
+						// espressioni qualunque (non solo letterali
+						// numerici), valutati a runtime come il vero
+						// VBA farebbe.
+						Advance(); // "To"
+						auto high = ParseVbaExpression(fTokens, fPos, fError);
+						if (!high)
+						{
+							fFailed = true;
+							return nullptr;
+						}
+						match.kind = vbaCaseRange;
+						match.value = std::move(first);
+						match.rangeHigh = std::move(high);
+					}
+					else
+					{
+						match.kind = vbaCaseEquals;
+						match.value = std::move(first);
+					}
+				}
+
+				clause.matches.push_back(std::move(match));
+
 				if (IsOp(","))
 				{
 					Advance();

@@ -5,12 +5,11 @@
 	VBA/macro execution, Fase 3b dell'interprete, con l'aggiunta
 	successiva di Select Case alla Fase 4 -- vedi ROADMAP.md): Dim,
 	assegnazione/Set, If/ElseIf/Else, For/Next con Step (anche
-	negativo), Exit For/Exit Sub, Select Case (solo confronto per
-	uguaglianza, niente "Case 1 To 5"/"Case Is > 5" -- limite onesto,
-	verificato qui come un errore chiaro). Ancora nessun modello a
-	oggetti Excel (Range/Cells), vedi Fase 3c -- un target di
-	assegnazione che lo richiede produce un errore chiaro, verificato
-	qui.
+	negativo), Exit For/Exit Sub, Select Case (uguaglianza, "Case 1 To
+	5"/"Case Is > 5", e le tre forme mescolate nello stesso elenco).
+	Ancora nessun modello a oggetti Excel (Range/Cells), vedi Fase 3c --
+	un target di assegnazione che lo richiede produce un errore chiaro,
+	verificato qui.
 
 	Copyright (c) 2026 Andrea Bernardi. Licenza MIT (vedi LICENSE alla
 	radice del repository).
@@ -345,6 +344,35 @@ int main()
 		"Case 2\ny = y & \"b\"\nCase Else\ny = y & \"c\"\nEnd Select\nNext\nEnd Sub",
 		"y", "\"abc\"");
 
+	// ---- Select Case: "Case lo To hi" (estremi INCLUSI) ----
+	CheckVar("Sub T()\nx = 5\nSelect Case x\nCase 1 To 5\ny = \"basso\"\nCase 6 To 10\n"
+		"y = \"alto\"\nEnd Select\nEnd Sub", "y", "\"basso\""); // estremo alto incluso
+	CheckVar("Sub T()\nx = 1\nSelect Case x\nCase 1 To 5\ny = \"basso\"\nEnd Select\nEnd Sub",
+		"y", "\"basso\""); // estremo basso incluso
+	CheckVar("Sub T()\nx = 11\ny = 0\nSelect Case x\nCase 1 To 5\ny = 1\nCase 6 To 10\ny = 2\n"
+		"End Select\nEnd Sub", "y", "0"); // fuori da entrambi gli intervalli: nessun Case combacia
+	// "Case 5 To 1" (estremi scritti al contrario): il vero VBA accetta comunque,
+	// confrontando contro il minimo/massimo dei due, non un errore di sintassi.
+	CheckVar("Sub T()\nx = 3\nSelect Case x\nCase 5 To 1\ny = \"dentro\"\nEnd Select\nEnd Sub",
+		"y", "\"dentro\"");
+
+	// ---- Select Case: "Case Is <op> valore" (confronto esplicito) ----
+	CheckVar("Sub T()\nx = 10\nSelect Case x\nCase Is > 5\ny = \"grande\"\nCase Else\n"
+		"y = \"piccolo\"\nEnd Select\nEnd Sub", "y", "\"grande\"");
+	CheckVar("Sub T()\nx = 3\nSelect Case x\nCase Is > 5\ny = \"grande\"\nCase Else\n"
+		"y = \"piccolo\"\nEnd Select\nEnd Sub", "y", "\"piccolo\"");
+	CheckVar("Sub T()\nx = 5\nSelect Case x\nCase Is <= 5\ny = 1\nEnd Select\nEnd Sub", "y", "1");
+	CheckVar("Sub T()\nx = \"z\"\nSelect Case x\nCase Is <> \"a\"\ny = 1\nEnd Select\nEnd Sub",
+		"y", "1"); // confronto come testo, stessa regola di "<>" su stringhe
+
+	// ---- Select Case: le tre forme mescolate nello STESSO elenco, come il vero VBA ----
+	CheckVar("Sub T()\nx = 7\nSelect Case x\nCase 1, 3, 5 To 6, Is > 6\ny = \"combacia\"\n"
+		"Case Else\ny = \"nessuno\"\nEnd Select\nEnd Sub", "y", "\"combacia\""); // combacia su "Is > 6"
+	CheckVar("Sub T()\nx = 5\nSelect Case x\nCase 1, 3, 5 To 6, Is > 6\ny = \"combacia\"\n"
+		"Case Else\ny = \"nessuno\"\nEnd Select\nEnd Sub", "y", "\"combacia\""); // combacia su "5 To 6"
+	CheckVar("Sub T()\nx = 2\nSelect Case x\nCase 1, 3, 5 To 6, Is > 6\ny = \"combacia\"\n"
+		"Case Else\ny = \"nessuno\"\nEnd Select\nEnd Sub", "y", "\"nessuno\"");
+
 	// ---- Do While/Until ... Loop: controllo PRIMA, puo' non girare mai ----
 	CheckVar("Sub T()\ni = 1\ntotal = 0\nDo While i <= 5\ntotal = total + i\ni = i + 1\nLoop\n"
 		"End Sub", "total", "15");
@@ -417,12 +445,12 @@ int main()
 		"un errore di valutazione nella condizione di un Do While si propaga come errore della Sub");
 
 	// ---- Errori di sintassi: un messaggio chiaro, mai un "If" o un Select silenziosamente incompleto ----
-	CheckError("Sub T()\nSelect Case x\nCase 1 To 5\ny = 1\nEnd Select\nEnd Sub",
-		"\"Case 1 To 5\" (un intervallo) non e' supportato in questa fase, produce un errore chiaro");
-	CheckError("Sub T()\nSelect Case x\nCase Is > 5\ny = 1\nEnd Select\nEnd Sub",
-		"\"Case Is > 5\" (un confronto) non e' supportato in questa fase, produce un errore chiaro");
 	CheckError("Sub T()\nSelect Case x\nCase Else\ny = 1\nCase 2\ny = 2\nEnd Select\nEnd Sub",
 		"un \"Case\" dopo \"Case Else\" produce un errore di sintassi, come nel vero VBA");
+	CheckError("Sub T()\nSelect Case x\nCase Is\ny = 1\nEnd Select\nEnd Sub",
+		"\"Case Is\" senza un operatore di confronto dopo produce un errore chiaro");
+	CheckError("Sub T()\nSelect Case x\nCase To 5\ny = 1\nEnd Select\nEnd Sub",
+		"\"Case To\" senza un valore prima produce un errore chiaro");
 
 	// ---- Errori di esecuzione: un messaggio chiaro, mai un crash ----
 	CheckError("Sub T()\ny = x + 1\nEnd Sub",

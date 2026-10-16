@@ -786,12 +786,18 @@ private:
 	}
 
 	// Valuta "stmt->expr" UNA sola volta, poi confronta con ogni
-	// valore di ogni "Case" nell'ordine scritto (VbaCompareValues,
-	// stessa regola di "=") -- il primo che combacia esegue il suo
-	// corpo e basta, come il vero Select Case (nessun fallthrough).
-	// Nessun Case combacia e "Case Else" c'e': esegue quello
-	// (stmt->elseBody). Nessuno dei due: nessun corpo eseguito, non e'
-	// un errore (come il vero VBA).
+	// valore di ogni "Case" nell'ordine scritto -- il primo che
+	// combacia esegue il suo corpo e basta, come il vero Select Case
+	// (nessun fallthrough). Nessun Case combacia e "Case Else" c'e':
+	// esegue quello (stmt->elseBody). Nessuno dei due: nessun corpo
+	// eseguito, non e' un errore (come il vero VBA). Tre forme di
+	// confronto per ogni valore (vedi VbaCaseMatch in VbaAst.h):
+	// uguaglianza semplice (VbaCompareValues, stessa regola di "="),
+	// intervallo ("lo To hi", ESTREMI INCLUSI: lo<=test<=hi, nessun
+	// ordine richiesto fra lo/hi, come il vero VBA accetta comunque
+	// "Case 5 To 1"), confronto esplicito ("Is <op> value", stessa
+	// identica tabella di VbaCompareValues gia' usata da EvalBinary
+	// per "=","<>","<",">","<=",">=").
 	ExecResult ExecuteSelectCase(const VbaStmt* stmt)
 	{
 		Value testValue;
@@ -801,12 +807,47 @@ private:
 		for (size_t i = 0; i < stmt->cases.size(); i++)
 		{
 			const VbaCaseClause& clause = stmt->cases[i];
-			for (size_t j = 0; j < clause.matchValues.size(); j++)
+			for (size_t j = 0; j < clause.matches.size(); j++)
 			{
-				Value matchValue;
-				if (!Eval(clause.matchValues[j].get(), &matchValue))
-					return execError;
-				if (VbaCompareValues(testValue, matchValue) == 0)
+				const VbaCaseMatch& match = clause.matches[j];
+				bool matched = false;
+
+				if (match.kind == vbaCaseEquals)
+				{
+					Value matchValue;
+					if (!Eval(match.value.get(), &matchValue))
+						return execError;
+					matched = VbaCompareValues(testValue, matchValue) == 0;
+				}
+				else if (match.kind == vbaCaseRange)
+				{
+					Value lo, hi;
+					if (!Eval(match.value.get(), &lo) || !Eval(match.rangeHigh.get(), &hi))
+						return execError;
+					// Nessun ordine richiesto fra "lo"/"hi": si confronta
+					// sempre contro il minimo/massimo dei due, come il
+					// vero VBA accetta anche "Case 5 To 1".
+					int cmpLoHi = VbaCompareValues(lo, hi);
+					const Value& realLo = (cmpLoHi <= 0) ? lo : hi;
+					const Value& realHi = (cmpLoHi <= 0) ? hi : lo;
+					matched = VbaCompareValues(testValue, realLo) >= 0
+						&& VbaCompareValues(testValue, realHi) <= 0;
+				}
+				else // vbaCaseRelational
+				{
+					Value rhs;
+					if (!Eval(match.value.get(), &rhs))
+						return execError;
+					int cmp = VbaCompareValues(testValue, rhs);
+					if (match.relOp == "=") matched = cmp == 0;
+					else if (match.relOp == "<>") matched = cmp != 0;
+					else if (match.relOp == "<") matched = cmp < 0;
+					else if (match.relOp == ">") matched = cmp > 0;
+					else if (match.relOp == "<=") matched = cmp <= 0;
+					else matched = cmp >= 0; // ">="
+				}
+
+				if (matched)
 					return ExecuteStmtList(clause.body);
 			}
 		}
