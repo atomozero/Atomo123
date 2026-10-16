@@ -430,20 +430,12 @@ scope/approach being reviewed first:
   session's other Phase 5 additions stayed inside one file's dispatch
   plus a focused executor change; `With` is a different shape of
   work, not just a bigger version of the same shape.
-- **Deeper `Range` property coverage** (`.Font.Bold`,
-  `.Interior.Color`, …). Investigated by finding how the app's own
-  Bold/Italic toolbar buttons actually mutate a cell
-  (`MainWindow::ToggleBold`, `ui/src/MainWindow.cpp`): real font
-  changes go through `GetCellFontInfo`/`ApplyFontToRange`, both
-  **UI-layer** helpers, not `CContainer`/engine methods —
-  `CellStyle::fFont` is only an index into a font table those
-  UI-layer functions resolve. Since `engine/src/Vba` (where
-  `VbaEvaluator.cpp` lives) cannot depend on `ui/` — a real,
-  deliberate architectural boundary in this codebase, not an
-  oversight — reaching real font/fill formatting from VBA would mean
-  first relocating that font-table logic down into the engine layer,
-  a separate refactor with its own blast radius, not something to
-  start as a side effect of a VBA increment.
+- **Deeper `Range` property coverage** (`.Font.Bold`, `.Interior.Color`,
+  …) — **done, see Phase 6f below.** This note originally assumed a
+  real relocation refactor was needed (`CellStyle::fFont` is only an
+  index, resolved via `ui/`'s `GetCellFontInfo`/`ApplyFontToRange`) —
+  turned out wrong once actually checked: the font-ID table underneath
+  those UI wrappers was already engine-layer the whole time.
 
 **Phase 6 (underway) — widening the subset toward general-purpose VBA
 programs.** Triggered by checking a real third-party macro (a CHIP-8
@@ -674,13 +666,30 @@ before it:
   source), nested `With` blocks, `With` on `Cells(...)`, and both
   error boundaries — all passing, no regressions anywhere else in the
   VBA suite.
-- **(6f) Deeper `Range`/`Cells` formatting** (`.Interior.Color`/
-  `.ColorIndex`, `.Font.Bold`). Also already scoped in Phase 5's
-  deferred note: blocked on relocating `GetCellFontInfo`/
-  `ApplyFontToRange` out of `ui/` and into the engine layer first,
-  since `engine/src/Vba` can't depend on `ui/` by design. That
-  relocation is its own refactor, with its own review, before any
-  VBA-side work here starts.
+- **(6f) Deeper `Range`/`Cells` formatting — done.** `.Interior.Color`/
+  `.ColorIndex` shipped earlier (commit 2e683b0) since `CellStyle::
+  fLowColor` is already a raw `rgb_color`, no indirection at all.
+  `.Font.Bold`/`.Font.Italic`/`.Font.Size`/`.Font.Name` turned out to
+  need NO relocation either, despite the deferred note above: the
+  font-ID table (`gFontSizeTable`, `engine/src/Cell/FontMetrics.h`)
+  was already engine-layer the whole time, already used by
+  `Container.cpp` for the identical purpose on import — `ui/`'s
+  `GetCellFontInfo`/`ApplyFontToRange` are thin wrappers around that
+  same table, not the table itself. `VbaGetFontProperty`/
+  `VbaSetFontProperty` (`VbaEvaluator.cpp`) mirror `VbaGetInteriorColor`/
+  `VbaSetInteriorColor`'s exact shape: resolve the single-cell `Range`,
+  read/recompose the style string ("Bold"/"Italic"/"Bold Italic"/
+  "Regular", same logic as `MainWindow::ToggleBold`/`ToggleItalic` but
+  generalized to an explicit value instead of a toggle) via
+  `gFontSizeTable.GetFontInfo`/`GetFontID`. One real gotcha found
+  writing the test: `gFontSizeTable.GetFontID()` makes a genuine
+  `BFont::SetFamilyAndStyle()` app_server IPC call — hangs forever
+  without a registered `BApplication`, same root cause already
+  documented at the top of `ui/tests/test_ascd_io.cpp` for
+  `BFont::StringWidth`. `engine/tests/vba_macro_runner_test.cpp` never
+  needed one before (first engine-level VBA test to touch real font
+  resolution) — fixed by constructing one in `main()`, same as that
+  precedent.
 - **Two gaps found by actually checking the real trigger macro against
   everything 6a-6f shipped, both fixed.** With 6a-6f done, the natural
   next check was: does the *real* `chip-8-vba` source

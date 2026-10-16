@@ -5,6 +5,26 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Added VBA `.Font.Bold`/`.Font.Italic`/`.Font.Size`/`.Font.Name`
+  support on a single-cell `Range`/`Cells`, closing the last item of
+  VBA Phase 6f (`.Interior.Color`/`.ColorIndex` shipped earlier,
+  commit 2e683b0). A prior roadmap note assumed this needed relocating
+  `ui/`'s `GetCellFontInfo`/`ApplyFontToRange` into the engine layer
+  first — checking found that was wrong: the font-ID table underneath
+  those UI wrappers (`gFontSizeTable`, `engine/src/Cell/FontMetrics.h`)
+  was already engine-layer, already used by `Container.cpp` for the
+  same purpose on import. `VbaGetFontProperty`/`VbaSetFontProperty`
+  (`VbaEvaluator.cpp`) mirror the existing `.Interior.Color` dispatch
+  shape exactly: resolve the cell, read or recompose the style string
+  ("Bold"/"Italic"/"Bold Italic"/"Regular", same logic as `MainWindow::
+  ToggleBold`/`ToggleItalic` but for an explicit value instead of a
+  toggle) through `gFontSizeTable`. One real gotcha found writing the
+  test: `GetFontID()` makes a genuine `BFont::SetFamilyAndStyle()`
+  app_server call that hangs forever without a registered
+  `BApplication` — the same root cause already known from
+  `ui/tests/test_ascd_io.cpp`'s `BFont::StringWidth`, but new to
+  `engine/tests/` (the first engine-level VBA test to touch real font
+  resolution) — fixed by constructing one in the test's `main()`.
 - Added full support for ActiveX `CommandButton` controls embedded on
   a worksheet (Forms 2.0, classid `{D7053240-CE69-11CD-A777-
   00DD01143C57}`) — the last piece needed for the real CHIP-8-in-VBA
