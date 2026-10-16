@@ -270,6 +270,41 @@ int App::RestoreSession()
 	return opened;
 }
 
+// XLSX/XLSM/ODS sono tutti e tre, fisicamente, archivi ZIP -- senza
+// una regola di riconoscimento DEDICATA, Haiku vede solo "e' uno ZIP"
+// (un sniffer generico gia' incorporato nel registrar, mai una regola
+// nel database che si possa scavalcare con priorita' piu' alta da
+// sola) e apre un doppio clic con un programma di gestione archivi
+// invece che con Atomo123 -- bug reale segnalato dall'utente. La
+// stringa cercata e' un marcatore interno che SOLO quel formato porta
+// (il nome di una vera voce dell'archivio, mai un'intestazione ZIP
+// generica): "xl/workbook.xml" per XLSX/XLSM (OOXML Excel, entrambi
+// usano la stessa struttura interna -- XLSM non e' distinguibile da
+// XLSX per solo contenuto entro il raggio che il sniffer legge
+// davvero, qualche KB iniziale: "vbaProject.bin", il marcatore che LO
+// distinguerebbe per davvero, si trova quasi sempre troppo lontano
+// nel file, verificato a mano su un file reale a 20 controlli ActiveX
+// -- l'estensione del nome file resta l'unico modo pratico di
+// distinguerli, da qui SetFileExtensions sotto) e il "mimetype"
+// interno (sempre il PRIMISSIMo elemento dell'archivio, MAI
+// compresso, per convenzione OpenDocument) per ODS. "0.7" e' una
+// priorita' qualunque maggiore di zero ma non assoluta: non deve
+// vincere su una regola ancora piu' specifica che un domani si
+// aggiungesse.
+struct ZipLikeSnifferRule {
+	const char* mimeType;
+	const char* snifferRule;
+	const char* extension;
+};
+static const ZipLikeSnifferRule kZipLikeSnifferRules[] = {
+	{ "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"0.7 [0:4096] ('xl/workbook.xml')", "xlsx" },
+	{ "application/vnd.ms-excel.sheet.macroenabled.12",
+		"0.7 [0:4096] ('xl/workbook.xml')", "xlsm" },
+	{ "application/vnd.oasis.opendocument.spreadsheet",
+		"0.7 [0:512] ('application/vnd.oasis.opendocument.spreadsheet')", "ods" },
+};
+
 void App::RegisterFileTypes()
 {
 	for (int i = 0; kSupportedTypes[i]; i++)
@@ -313,6 +348,30 @@ void App::RegisterFileTypes()
 				type.SetIcon(icon->bytes, icon->length);
 			else
 				free(existing);
+		}
+
+		// Regola di riconoscimento + estensione (vedi il commento su
+		// kZipLikeSnifferRules sopra): SOLO per i tre formati zip-like,
+		// stesso principio "non scavalcare mai una scelta gia' fatta"
+		// degli altri campi sopra -- una regola/estensione gia'
+		// presenti (magari impostate a mano, o da una sessione
+		// precedente di questo stesso programma) restano quelle che
+		// c'erano.
+		for (size_t z = 0; z < sizeof(kZipLikeSnifferRules) / sizeof(kZipLikeSnifferRules[0]); z++)
+		{
+			if (strcmp(kSupportedTypes[i], kZipLikeSnifferRules[z].mimeType) != 0)
+				continue;
+			BString existingRule;
+			if (type.GetSnifferRule(&existingRule) != B_OK || existingRule.Length() == 0)
+				type.SetSnifferRule(kZipLikeSnifferRules[z].snifferRule);
+			BMessage existingExt;
+			if (type.GetFileExtensions(&existingExt) != B_OK || existingExt.IsEmpty())
+			{
+				BMessage ext;
+				ext.AddString("extensions", kZipLikeSnifferRules[z].extension);
+				type.SetFileExtensions(&ext);
+			}
+			break;
 		}
 	}
 } // App::RegisterFileTypes
