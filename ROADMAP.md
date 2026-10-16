@@ -123,6 +123,21 @@ is already done too, see below).
 closing the last open item in "Path to full Excel parity" Tier 2 — see
 below for the full detail.
 
+**Suspected, not yet confirmed**: while live-testing against real third-
+party files (chip-8-vba, doom-in-excel) via Pippo (GUI automation, see
+memory), floating-utility windows (`MacroListWindow`/"Esegui macro",
+`GoToWindow`/"Vai a") repeatedly failed to close via a synthetic click
+on their own close box, even with coordinates re-measured from a fresh
+screenshot each time — a real document window's close box and every
+`BAlert` closed normally in the same sessions. Never root-caused: could
+be a genuine hit-testing/focus bug specific to `B_FLOATING_WINDOW_LOOK`
+windows in this app, or a Pippo-side synthetic-click limitation
+unrelated to Atomo123 itself (both floating windows are owned by
+`MainWindow`, `B_FLOATING_APP_WINDOW_FEEL`). Worth a dedicated look
+next time a floating window needs GUI verification — reproduce with a
+real mouse click first to rule out the Pippo-side explanation before
+assuming it's an app bug.
+
 ## Next: v3.0 "Consolidation" and v4.0 "Scripting"
 
 **v3.0 is functionally complete** as of the array formulas item above
