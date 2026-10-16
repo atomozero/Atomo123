@@ -5,6 +5,34 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Closed the real CHIP-8-in-VBA file's last known boundary: writing to
+  an embedded ActiveX `CommandButton`'s `.Caption` property from VBA
+  (`CommandButton2.Caption = "..."`, used by the real file's
+  `VMSetRunning` to swap a Start/Pause label) previously failed with
+  "assignment to property Caption is not supported at this stage of
+  the interpreter" — reproduced live in the real app. `ExecuteAssignOrSet`
+  (`VbaExecutor.cpp`) now recognizes a bare, undeclared name followed
+  by `.Caption` as an implicit reference to a worksheet ActiveX control
+  (same "the name itself is the reference, nothing to evaluate first"
+  shape as `Range(...).Interior`/`.Font` above it), and resolves the
+  write through a new free-function hook (`VbaSetControlCaptionHook`,
+  `VbaEvaluator.h`) — the same `ui/`-installs-a-callback pattern
+  `Application.OnTime` already uses, since `engine/` can't link
+  `MainWindow` directly. `MainWindow::SetControlCaptionFromVba` finds
+  the matching `EmbeddedControl` in the active sheet's `fControls` and
+  invalidates `SheetView` to repaint it. A second, more consequential
+  bug surfaced building this: `VbaEvaluator.cpp`'s sibling-call site
+  built a fresh `VbaEnvironment` for the callee but never propagated
+  `fHostContext` to it — any hook relying on host context (this one,
+  and `Application.OnTime`) silently failed the moment it was reached
+  through a nested Sub call instead of the top-level invoked macro,
+  exactly the CHIP-8 file's own `CommandButton2_Click` → `VMSetRunning`
+  shape. One-line fix alongside the existing `SetModuleEnvironment`
+  propagation on the same line. Verified with a standalone diagnostic
+  (not a GUI click — a direct `ExecuteVbaMacro("CommandButton2_Click")`
+  call against the real file's actual `vbaProject.bin`, with a stub
+  hook recording calls) confirming both the write succeeds and the
+  caption toggles correctly across two clicks.
 - Fixed a real file-association bug: double-clicking an `.xlsx`,
   `.xlsm`, or `.ods` file opened an archive manager instead of
   Atomo123. All three formats are ZIP containers with no prior
