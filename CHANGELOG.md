@@ -5,6 +5,54 @@ along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
 What shipped since v0.7.0 (in progress):
+- Added full support for ActiveX `CommandButton` controls embedded on
+  a worksheet (Forms 2.0, classid `{D7053240-CE69-11CD-A777-
+  00DD01143C57}`) — the last piece needed for the real CHIP-8-in-VBA
+  trigger file's 4x4 on-sheet hex keypad to run end to end, closing
+  the gap flagged in Phase 6 above. Full round trip: XLSX import
+  (`<controls>` in the worksheet body, resolved through `xl/activeX/*`
+  to a classid and a best-effort [MS-OFORMS] caption heuristic), XLSX
+  export (writes the same parts back, including a minimal
+  self-consistent `.bin` stream — not full [MS-OFORMS] fidelity, same
+  honest-subset framing as every other declared limit in this
+  project), native `.ascd` persistence, `SheetView` rendering
+  (hand-drawn chrome, consistent with every other object this view
+  draws itself) with full drag/resize/click-vs-drag threshold
+  disambiguation (mirrors `EmbeddedImage`, with one deliberate
+  asymmetry: `_MouseDown` fires immediately on press, `_MouseUp`/
+  `_Click` only resolve on release, matching how the real keypad's
+  `_MouseDown`/`_MouseUp` pair needs the exact press moment), and VBA
+  event dispatch (`<name>_Click`/`_MouseDown`/`_MouseUp`, silently
+  skipped if no handler exists — only a real error inside an existing
+  handler shows the usual alert).
+  - Two real translator bugs found and fixed writing the live-file
+    test against the actual 20-button CHIP-8 file: (1) the control
+    that resolves to `xl/activeX/activeXN.xml` is the OUTER
+    `<control>` element's own `r:id`, not `<controlPr>`'s (which
+    actually points to the legacy VML image) — backwards from the
+    first reading of the OOXML structure, verified on all 20 real
+    controls, not just one; (2) the `.bin`'s own path was built as
+    `"xl/" + target` (copying the sheet-level `_rels` pattern) instead
+    of resolving relative to the `.xml`'s own directory, silently
+    dropping the `activeX/` folder — `ReadEntry` failed every time
+    with no visible error, so every caption fell back to its control's
+    name even though the heuristic itself was correct. Both bugs were
+    invisible to synthetic unit tests; only a real file with real
+    `.rels` chains caught them.
+  - A separate, unrelated, real crash found live-testing this feature
+    through the actual compiled app (not just headless tests):
+    `MainWindow::fPersistentVbaModuleEnv` was never zeroed in the
+    constructor before `ResetWorkbook()`'s unconditional `delete
+    fPersistentVbaModuleEnv` — every other pointer member without an
+    initializer gets this same explicit zeroing right before
+    `ResetWorkbook()`, this one was missed. Deleting an uninitialized
+    pointer only crashes if the memory it points to isn't already
+    zero, which is why this had gone unnoticed — fixed by adding it to
+    the existing zeroing block. Also added `EnsureFunctionsInitialized()`
+    to `App::OpenOneRef` (shared by `RefsReceived`/`ArgvReceived`),
+    extending the same already-known startup-race guard (previously
+    only covering the background file-loading thread) to window
+    construction itself.
 - Fixed another real, pre-existing VBA engine bug, found continuing the
   same live investigation: `Range("$A$1")` (an absolute, formula-style
   reference) failed with "invalid range reference", even though it's

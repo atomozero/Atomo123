@@ -1063,18 +1063,16 @@ before it:
   harnesses — the live `BMessageRunner` round-trip itself still awaits
   a session with interactive GUI access to click past that dialog.
 
-**Deliberately not in Phase 6, flagged as its own future decision**:
-ActiveX controls embedded directly on a worksheet (`CommandButton`,
-and `Image`/`Label` controls wired up as a 4x4 on-sheet keypad via
-`_Click`/`_MouseDown`/`_MouseUp` event subs — exactly how the trigger
-macro's keyboard works). This isn't a VBA-interpreter gap at all; it's
-new UI surface — placing, rendering, and hit-testing floating controls
-on `SheetView`, then routing input events into named event-sub
-lookups — closer in shape to the chart/image-object work already done
-than to anything in `engine/src/Vba`. Even after every other sub-phase
-above ships, the specific trigger macro still wouldn't run end to end
-without this, same honest framing as `With`/deeper `Range` properties
-being flagged in Phase 5 rather than silently treated as covered.
+**ActiveX `CommandButton` controls on worksheets: shipped.** Flagged
+above as deliberately out of VBA Phase 6 (new `SheetView` UI surface,
+not an interpreter gap) — full import/export/render/drag/resize/VBA
+event dispatch for Forms 2.0 `CommandButton` now exists; the real
+CHIP-8 trigger file's 4x4 keypad runs end to end. See CHANGELOG.md for
+the implementation detail, the two real translator bugs found writing
+its live-file test, and the real uninitialized-pointer startup crash
+found along the way. `Image`/`Label` control types still import
+(name/anchor only) but are not rendered or clickable — explicit scope
+cut, not an oversight.
 
 ## Path to 100% XLSX standard compatibility
 
