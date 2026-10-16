@@ -23,6 +23,8 @@
 #include "FontMetrics.h"
 #include "VbaExecutor.h"
 #include "VbaMacroRunner.h"
+#include "VbaModuleSource.h"
+#include "VbaToken.h"
 
 // ---------------------------------------------------------------------
 // Conversioni di tipo stile VBA (Variant): piu' permissive del C++,
@@ -677,6 +679,48 @@ void VbaSetOnTimeHook(VbaOnTimeFn fn)
 	gOnTimeHook = fn;
 }
 
+// Cerca "name" come Sub/Function PRIMA nel modulo corrente
+// (env->GetModuleTokens()), poi -- se non trovata li' -- in ogni ALTRO
+// modulo dello stesso progetto (env->GetAllModules(), collegato da
+// ExecuteVbaMacro). Chiude un gap noto esplicitamente della Fase 6a
+// ("una chiamata sorella risolve solo nello STESSO modulo, una Sub di
+// un modulo diverso e' un gap separato"). "scratchTokens" e' di
+// proprieta' del CHIAMANTE (mai di questa funzione): quando la Sub
+// trovata viene da un modulo DIVERSO da quello corrente, il suo
+// sorgente si ri-tokenizza al volo dentro "scratchTokens" (nessuna
+// estrazione CFB ripetuta, il sorgente e' gia' in GetAllModules()) --
+// il puntatore restituito punta li', valido per tutta la durata della
+// chiamata (lo stesso principio di fModuleTokens, mai un puntatore a
+// un temporaneo che sparisce subito dopo). Riprovare lo stesso modulo
+// corrente una seconda volta dentro GetAllModules() (se ce lo
+// restituisce) e' innocuo, solo ridondante -- FindVbaSubByName e'
+// gia' fallita la prima volta, fallisce di nuovo identica. NULL
+// (outSub invariato) se nessun modulo (corrente o altro) la contiene.
+static const std::vector<VbaToken>* FindVbaSubAcrossModules(VbaEnvironment* env,
+	const std::string& name, std::unique_ptr<VbaSub>* outSub,
+	std::vector<VbaToken>* scratchTokens)
+{
+	if (env->GetModuleTokens())
+	{
+		VbaParseError err;
+		if (FindVbaSubByName(*env->GetModuleTokens(), name, outSub, &err))
+			return env->GetModuleTokens();
+	}
+	if (env->GetAllModules())
+	{
+		for (size_t m = 0; m < env->GetAllModules()->size(); m++)
+		{
+			const VbaModuleSource& mod = (*env->GetAllModules())[m];
+			scratchTokens->clear();
+			TokenizeVba(mod.sourceText, scratchTokens);
+			VbaParseError err;
+			if (FindVbaSubByName(*scratchTokens, name, outSub, &err))
+				return scratchTokens;
+		}
+	}
+	return NULL;
+}
+
 namespace {
 
 class Evaluator {
@@ -829,11 +873,15 @@ private:
 			// quell'errore, non un comportamento diverso per sbaglio --
 			// "FindVbaSubByName" fallisce pulito in quel caso, si cade
 			// attraverso senza alcun effetto collaterale.
-			if (fEnv->GetModuleTokens())
 			{
+				// Solo un controllo di ESISTENZA qui (in qualunque
+				// modulo, vedi FindVbaSubAcrossModules sopra) -- la
+				// vera risoluzione/esecuzione la rifa' EvalCall sotto
+				// con la sua propria "scratchTokens", "callee"/
+				// "scratch" qui sono scartati apposta.
 				std::unique_ptr<VbaSub> callee;
-				VbaParseError parseErr;
-				if (FindVbaSubByName(*fEnv->GetModuleTokens(), expr->name, &callee, &parseErr))
+				std::vector<VbaToken> scratch;
+				if (FindVbaSubAcrossModules(fEnv, expr->name, &callee, &scratch))
 				{
 					VbaExpr syntheticCall(vbaExprCall);
 					syntheticCall.name = expr->name;
@@ -1453,20 +1501,26 @@ private:
 		}
 
 		// Fase 6a: non e' una funzione predefinita -- prova a
-		// risolverla come chiamata a una Sub SORELLA dello stesso
-		// modulo (es. "DrawSprite(a, x, y, n)" dentro un'altra Sub).
-		// "args" e' gia' valutato sopra, con le stesse regole di
-		// qualunque altra chiamata. Richiede che l'esecuzione sia
-		// legata a un modulo vero (VbaEnvironment::SetModuleTokens,
-		// collegato da ExecuteVbaMacro) -- fEnv->GetModuleTokens() e'
-		// NULL nei test che costruiscono una Sub a mano, dove questo
-		// ramo semplicemente non si applica e si cade nell'errore
-		// "funzione sconosciuta" sotto, come prima di questa fase.
+		// risolverla come chiamata a una Sub sorella, PRIMA nello
+		// stesso modulo (es. "DrawSprite(a, x, y, n)" dentro un'altra
+		// Sub), poi -- se non trovata li' -- in ogni ALTRO modulo dello
+		// stesso progetto (FindVbaSubAcrossModules sopra, chiude il gap
+		// esplicitamente noto di questa stessa Fase: "una Sub di un
+		// modulo diverso e' un gap separato"). "args" e' gia' valutato
+		// sopra, con le stesse regole di qualunque altra chiamata.
+		// Richiede che l'esecuzione sia legata a un modulo vero
+		// (VbaEnvironment::SetModuleTokens, collegato da
+		// ExecuteVbaMacro) -- fEnv->GetModuleTokens() e' NULL nei test
+		// che costruiscono una Sub a mano, dove questo ramo
+		// semplicemente non si applica e si cade nell'errore "funzione
+		// sconosciuta" sotto, come prima di questa fase.
 		if (fEnv->GetModuleTokens())
 		{
 			std::unique_ptr<VbaSub> callee;
-			VbaParseError parseErr;
-			if (FindVbaSubByName(*fEnv->GetModuleTokens(), expr->name, &callee, &parseErr))
+			std::vector<VbaToken> scratchTokens; // vedi il commento su FindVbaSubAcrossModules
+			const std::vector<VbaToken>* calleeTokens =
+				FindVbaSubAcrossModules(fEnv, expr->name, &callee, &scratchTokens);
+			if (calleeTokens)
 			{
 				if (callee->params.size() != args.size())
 				{
@@ -1489,8 +1543,21 @@ private:
 				}
 				VbaEnvironment childEnv;
 				childEnv.SetActiveDocument(fEnv->GetActiveDocument());
-				childEnv.SetModuleTokens(fEnv->GetModuleTokens());
+				// "calleeTokens" (non sempre fEnv->GetModuleTokens()):
+				// se "callee" viene da un modulo DIVERSO, una SUA
+				// eventuale chiamata sorella deve risolvere nel SUO
+				// modulo, mai in quello del chiamante originale.
+				childEnv.SetModuleTokens(calleeTokens);
+				childEnv.SetAllModules(fEnv->GetAllModules());
 				childEnv.SetCallDepth(fEnv->GetCallDepth() + 1);
+				// Fase 6d: il registro dei Type e' per-modulo nel vero
+				// VBA, ma qui si propaga sempre quello del CHIAMANTE --
+				// corretto per una chiamata sorella nello STESSO
+				// modulo (il caso comune), un limite onesto non ancora
+				// risolto per una Sub di un modulo DIVERSO coi suoi
+				// propri Type: fuori scopo per questa chiusura del gap
+				// (che riguarda la RISOLUZIONE del nome, non il
+				// modello a oggetti Type per modulo).
 				childEnv.SetTypeRegistry(fEnv->GetTypeRegistry()); // Fase 6d
 				// Senza questo, una Sub/Function sorella non vedrebbe
 				// NESSUNA variabile/Const/struct di MODULO (es. "ThisVM"

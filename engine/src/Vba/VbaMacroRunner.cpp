@@ -317,6 +317,13 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 		// tutta la durata di questa chiamata sincrona, anche attraverso
 		// chiamate a Sub annidate.
 		env.SetModuleTokens(&tokens);
+		// Chiude il gap noto della Fase 6a ("una chiamata sorella
+		// risolve solo nello STESSO modulo"): "modules" (il sorgente
+		// di OGNI modulo, gia' in scope qui) resta valido per tutta la
+		// durata di questa chiamata sincrona, stesso principio esatto
+		// di "tokens" appena sopra -- vedi FindVbaSubAcrossModules in
+		// VbaEvaluator.cpp.
+		env.SetAllModules(&modules);
 		env.SetTypeRegistry(&types); // Fase 6d, stesso principio di SetModuleTokens
 		env.SetCallDepth(0);
 

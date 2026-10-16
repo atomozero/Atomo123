@@ -38,6 +38,7 @@
 class CContainer;
 struct VbaToken;
 struct VbaTypeDecl;
+struct VbaModuleSource;
 
 // Fase 6d: un'istanza di un tipo definito dall'utente ("Private Type
 // ... End Type", VbaAst.h) -- una mappa nome-campo normalizzato (come
@@ -123,8 +124,8 @@ struct VbaOpenFile {
 class VbaEnvironment {
 public:
 	VbaEnvironment()
-		: fActiveDoc(NULL), fHostContext(NULL), fModuleTokens(NULL), fCallDepth(0),
-		  fTypeRegistry(NULL), fModuleEnv(NULL) {}
+		: fActiveDoc(NULL), fHostContext(NULL), fModuleTokens(NULL), fAllModules(NULL),
+		  fCallDepth(0), fTypeRegistry(NULL), fModuleEnv(NULL) {}
 
 	// Il foglio di calcolo (CContainer) su cui questa esecuzione lavora
 	// -- Fase 3c, modello a oggetti Excel: Range/Cells lo usano per
@@ -183,6 +184,19 @@ public:
 	// errore "funzione sconosciuta", come prima di questa fase.
 	void SetModuleTokens(const std::vector<VbaToken>* tokens) { fModuleTokens = tokens; }
 	const std::vector<VbaToken>* GetModuleTokens() const { return fModuleTokens; }
+
+	// Sorgente di OGNI modulo del progetto (non solo quello corrente,
+	// vedi fModuleTokens sopra) -- un puntatore in prestito, collegato
+	// da ExecuteVbaMacro, mai posseduto. Chiude un gap noto
+	// esplicitamente della Fase 6a ("una chiamata sorella risolve solo
+	// nello STESSO modulo, una Sub di un modulo diverso e' un gap
+	// separato"): FindVbaSubAcrossModules (VbaEvaluator.cpp) lo usa
+	// come ripiego quando il nome non si trova nel modulo corrente,
+	// ri-tokenizzando al volo ogni ALTRO modulo (il sorgente e' gia'
+	// qui, nessuna estrazione CFB ripetuta). NULL nei test che
+	// costruiscono una Sub a mano, stesso principio di fModuleTokens.
+	void SetAllModules(const std::vector<VbaModuleSource>* modules) { fAllModules = modules; }
+	const std::vector<VbaModuleSource>* GetAllModules() const { return fAllModules; }
 
 	// Quante chiamate a Sub annidate hanno portato a QUESTA esecuzione
 	// (0 per la macro top-level lanciata da ExecuteVbaMacro) -- cresce
@@ -356,6 +370,7 @@ private:
 	CContainer* fActiveDoc;
 	void* fHostContext;
 	const std::vector<VbaToken>* fModuleTokens;
+	const std::vector<VbaModuleSource>* fAllModules;
 	int fCallDepth;
 	const std::map<std::string, VbaTypeDecl>* fTypeRegistry;
 	std::vector<VbaWithTarget> fWithStack;

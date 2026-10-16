@@ -1407,6 +1407,122 @@ static void TestFontProperties()
 }
 
 // =======================================================================
+// Parte 2g-ter: chiamata a una Sub/Function sorella di un modulo
+// DIVERSO -- chiude il gap esplicitamente noto della Fase 6a ("una
+// chiamata sorella risolve solo nello STESSO modulo"). Stesso schema a
+// due moduli di BuildTwoModuleProject sopra (Fase 3), qui con una
+// chiamata REALE fra i due invece di una semplice ricerca per nome.
+// =======================================================================
+
+static std::vector<uint8> BuildCrossModuleCallProject()
+{
+	const char* module1Source =
+		"Sub Caller()\r\n"
+		"    CallSibling 5\r\n"
+		"    total = CallFunc(10)\r\n"
+		"    Cells(2, 1).Value = total\r\n"
+		"End Sub\r\n"
+		"Sub SameNameBoth()\r\n"
+		"    Cells(3, 1).Value = 1\r\n"
+		"End Sub\r\n"
+		"Sub CheckPriority()\r\n"
+		"    SameNameBoth\r\n"
+		"End Sub\r\n"
+		"Sub CallUnknown()\r\n"
+		"    ThisNameExistsNowhere\r\n"
+		"End Sub\r\n";
+	const char* module2Source =
+		"Sub CallSibling(n)\r\n"
+		"    Cells(1, 1).Value = n * 2\r\n"
+		"End Sub\r\n"
+		"Function CallFunc(n)\r\n"
+		"    CallFunc = n + 100\r\n"
+		"End Function\r\n"
+		"Sub SameNameBoth()\r\n"
+		"    Cells(3, 1).Value = 2\r\n"
+		"End Sub\r\n";
+
+	std::vector<uint8> fakePCache1(5, 0xCC);
+	std::vector<uint8> fakePCache2(9, 0xDD);
+	std::vector<uint8> module1Compressed = CompressStr(module1Source);
+	std::vector<uint8> module2Compressed = CompressStr(module2Source);
+
+	std::vector<uint8> module1Stream = fakePCache1;
+	module1Stream.insert(module1Stream.end(), module1Compressed.begin(), module1Compressed.end());
+	std::vector<uint8> module2Stream = fakePCache2;
+	module2Stream.insert(module2Stream.end(), module2Compressed.begin(), module2Compressed.end());
+
+	std::vector<uint8> dirRaw;
+	AppendModuleRecord(dirRaw, "Module1", "Module1", (uint32)fakePCache1.size());
+	AppendModuleRecord(dirRaw, "Module2", "Module2", (uint32)fakePCache2.size());
+	std::vector<uint8> dirCompressed = CompressLiteralOnly(dirRaw);
+
+	std::vector<TestStream> streams;
+	streams.push_back(TestStream{"PROJECT",
+		std::vector<uint8>((const uint8*)"ID=\"test\"\r\n", (const uint8*)"ID=\"test\"\r\n" + 11)});
+	streams.push_back(TestStream{"dir", dirCompressed});
+	streams.push_back(TestStream{"Module1", module1Stream});
+	streams.push_back(TestStream{"Module2", module2Stream});
+	return BuildTestCfb(streams);
+}
+
+static void TestCrossModuleCall()
+{
+	std::vector<uint8> project = BuildCrossModuleCallProject();
+	Check(!project.empty(), "il vbaProject.bin sintetico per la chiamata fra moduli si costruisce");
+
+	{
+		CContainer* doc = new CContainer(NULL, NULL);
+		VbaRuntimeError err;
+		bool ok = ExecuteVbaMacro(&project[0], project.size(), "Caller", doc, &err);
+		Check(ok, ("\"Caller\" (Module1) chiama \"CallSibling\"/\"CallFunc\" (Module2) senza errori: "
+			+ err.message).c_str());
+
+		Value v1, v2;
+		doc->GetValue(cell(1, 1), v1);
+		doc->GetValue(cell(1, 2), v2);
+		Check((double)v1 == 10.0,
+			"\"CallSibling 5\" (Sub di Module2, UN argomento) ha scritto DAVVERO 5*2=10 nella cella vera");
+		Check((double)v2 == 110.0,
+			"\"CallFunc(10)\" (Function di Module2) ha restituito DAVVERO 10+100=110, letto in \"total\" "
+			"e scritto nella cella vera");
+		doc->Release();
+	}
+
+	{
+		// Lo stesso nome esiste in ENTRAMBI i moduli: una chiamata da
+		// Module1 deve risolvere alla versione DI Module1 (ricerca nel
+		// modulo corrente PRIMA di guardare altrove, vedi
+		// FindVbaSubAcrossModules in VbaEvaluator.cpp), mai a quella di
+		// Module2 solo perche' l'elenco "tutti i moduli" la trova anche
+		// li'.
+		CContainer* doc2 = new CContainer(NULL, NULL);
+		VbaRuntimeError err2;
+		bool ok2 = ExecuteVbaMacro(&project[0], project.size(), "CheckPriority", doc2, &err2);
+		Check(ok2, "\"CheckPriority\" (Module1) chiama \"SameNameBoth\" senza errori");
+		Value v3;
+		doc2->GetValue(cell(1, 3), v3);
+		Check((double)v3 == 1.0,
+			"\"SameNameBoth\", chiamata da DENTRO Module1, risolve alla versione DI Module1 (scrive 1), "
+			"non a quella di Module2 (scriverebbe 2) solo perche' esiste anche li'");
+		doc2->Release();
+	}
+
+	{
+		// Nessun modulo (ne' quello corrente ne' nessun altro) definisce
+		// questo nome: un errore chiaro, mai un crash o un blocco
+		// indefinito -- la stessa identica ricerca che ha appena trovato
+		// "CallSibling"/"CallFunc" in un modulo diverso deve anche saper
+		// dire "non c'e' da nessuna parte", non solo "c'e'".
+		CContainer* doc3 = new CContainer(NULL, NULL);
+		VbaRuntimeError err3;
+		Check(!ExecuteVbaMacro(&project[0], project.size(), "CallUnknown", doc3, &err3),
+			"chiamare un nome che non esiste in NESSUN modulo produce un errore chiaro, non un crash");
+		doc3->Release();
+	}
+}
+
+// =======================================================================
 // Parte 2h: stato di modulo PERSISTENTE -- trovato controllando il
 // sorgente reale del CHIP-8 (github.com/rndtrash/chip-8-vba), che
 // dichiara "Dim ThisVM As VM" a LIVELLO DI MODULO, condiviso da ogni
@@ -1853,6 +1969,7 @@ int main()
 	TestWith();
 	TestInteriorColor();
 	TestFontProperties();
+	TestCrossModuleCall();
 	TestPersistentModuleState();
 	TestModuleLevelConstAndOnTime();
 	TestSiblingCallSeesModuleVariable();
