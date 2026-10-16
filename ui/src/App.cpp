@@ -345,6 +345,21 @@ void App::OpenOneRef(const entry_ref& ref, MainWindow** reusable)
 		*reusable = NULL;
 	else
 	{
+		// Bug reale (crash dal vivo, Fase "ActiveX controls"): sia
+		// App::RefsReceived SIA App::ArgvReceived possono arrivare
+		// PRIMA di App::ReadyToRun (ordine non garantito, vedi il
+		// commento li' sopra) -- "new MainWindow()" costruisce subito
+		// un CContainer vero (MainWindow::ResetWorkbook), che tocca le
+		// stesse tabelle globali dell'engine protette altrove da
+		// EnsureFunctionsInitialized() (vedi il commento gemello in
+		// OpenFileThreadEntry) -- senza questa chiamata qui, un
+		// `atomo123 file.xlsm` da riga di comando segfaultava SEMPRE
+		// nel distruttore di Value dentro ResetWorkbook, perche' quella
+		// guardia copriva solo il thread di CARICAMENTO file (avviato
+		// DOPO che la finestra esiste gia'), mai la costruzione della
+		// finestra stessa. Idempotente, vedi sInitLock in
+		// FunctionUtils.cpp.
+		EnsureFunctionsInitialized();
 		target = new MainWindow();
 		target->Show();
 	}

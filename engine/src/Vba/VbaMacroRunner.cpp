@@ -385,3 +385,23 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 	outError->line = 0;
 	return false;
 }
+
+bool VbaSubExists(const uint8* vbaProjectData, size_t vbaProjectLen, const std::string& macroName)
+{
+	std::vector<VbaModuleSource> modules;
+	if (!ExtractVbaModuleSources(vbaProjectData, vbaProjectLen, &modules))
+		return false;
+
+	for (size_t i = 0; i < modules.size(); i++)
+	{
+		std::vector<VbaToken> tokens;
+		TokenizeVba(modules[i].sourceText.c_str(), &tokens);
+
+		std::unique_ptr<VbaSub> sub;
+		VbaParseError parseError;
+		if (FindVbaSubByName(tokens, macroName, &sub, &parseError))
+			return true;
+	}
+
+	return false;
+}

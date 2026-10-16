@@ -31,6 +31,7 @@
 #include "CellStyle.h"
 #include "Chart.h"
 #include "Container.h"
+#include "EmbeddedControl.h"
 #include "EmbeddedImage.h"
 #include "Range.h"
 #include "Slicer.h"
@@ -205,6 +206,11 @@ public:
 	// Stesso principio esatto di SaveChartUndoState sopra, per il
 	// trascinamento/ridimensionamento di uno slicer (Tier 4).
 	void SaveSlicerUndoState(int slicerIndex, BRect beforeFrame);
+	// Stesso principio esatto di SaveImageUndoState sopra, per il
+	// trascinamento/ridimensionamento di un controllo ActiveX
+	// incorporato (vedi EmbeddedControl.h).
+	void SaveControlUndoState(int controlIndex, float beforeOffsetX, float beforeOffsetY,
+		float beforeWidth, float beforeHeight);
 	// Stesso principio di SaveImageUndoState sopra, per convalida dati
 	// e formattazione condizionale (Fase 15, bug reale: erano gli
 	// unici comandi mutanti mai annullabili -- vedi il commento su
@@ -555,6 +561,18 @@ public:
 	bool HasSelectedImage() const { return fSelectedImageIndex >= 0; }
 	int SelectedImageIndex() const { return fSelectedImageIndex; }
 
+	// Elenco dei controlli ActiveX incorporati (CommandButton, vedi
+	// EmbeddedControl.h) da disegnare sopra la griglia -- stesso
+	// principio esatto di SetImages sopra (di proprieta' di MainWindow,
+	// mai una copia; ancorati a una cella + scarto, non un BRect
+	// assoluto): trascinare/ridimensionare un controllo scrive
+	// direttamente offsetX/offsetY/width/height sull'elemento del
+	// vettore.
+	void SetControls(std::vector<EmbeddedControl>* controls)
+		{ fControls = controls; fSelectedControlIndex = -1; }
+	bool HasSelectedControl() const { return fSelectedControlIndex >= 0; }
+	int SelectedControlIndex() const { return fSelectedControlIndex; }
+
 	// Elenco degli slicer (Tier 4, vedi Slicer.h) da disegnare sopra la
 	// griglia -- stesso principio esatto di SetCharts sopra (di proprieta'
 	// di MainWindow, mai una copia): trascinare/ridimensionare uno slicer
@@ -662,6 +680,14 @@ public:
 	// colonna: senza un indizio visivo permanente l'interazione non
 	// sarebbe scopribile guardando lo schermo.
 	BRect ImageResizeHandle(const EmbeddedImage& img) const;
+	// Rettangolo a schermo di un controllo ActiveX incorporato (vedi
+	// EmbeddedControl.h): stesso principio esatto di ImageFrame sopra
+	// (ancora + scarto, un solo posto per la formula usato sia da
+	// Draw() che da MouseDown/MouseMoved).
+	BRect ControlFrame(const EmbeddedControl& ctrl) const;
+	// Maniglia di ridimensionamento di un controllo ActiveX: stesso
+	// principio esatto di ImageResizeHandle sopra.
+	BRect ControlResizeHandle(const EmbeddedControl& ctrl) const;
 	// Maniglia di ridimensionamento di un grafico incorporato (Fase 20,
 	// richiesta esplicita dell'utente): stesso principio esatto di
 	// ImageResizeHandle sopra, un piccolo quadrato nell'angolo in basso
@@ -1120,6 +1146,12 @@ private:
 		bool isSlicerDeleteSnapshot = false;
 		int deletedSlicerIndex = -1;
 		SlicerObject deletedSlicer;
+		// Trascinamento/ridimensionamento di un controllo ActiveX
+		// incorporato (vedi SaveControlUndoState): stesso principio
+		// esatto di imageIndex/imageOffsetX/... sopra.
+		int controlIndex = -1;
+		float controlOffsetX = 0, controlOffsetY = 0;
+		float controlWidth = 0, controlHeight = 0;
 	};
 	std::vector<UndoSnapshot> fUndoStack;
 	std::vector<UndoSnapshot> fRedoStack;
@@ -1132,6 +1164,7 @@ private:
 	UndoSnapshot CaptureSlicerSnapshot(int slicerIndex) const;
 	UndoSnapshot CaptureSlicerDeleteSnapshot(int slicerIndex) const;
 	UndoSnapshot CaptureMergeSnapshot() const;
+	UndoSnapshot CaptureControlSnapshot(int controlIndex) const;
 	// Imposta fSelectedImageIndex e invalida sia il vecchio che il
 	// nuovo riquadro di selezione (se diversi da -1) -- un solo posto
 	// per questa logica, usato da MouseDown sia per il ridimensionamento
@@ -1247,6 +1280,37 @@ private:
 	// fotogramma del trascinamento).
 	int fExportingImageIndex;
 	void StartImageExportDrag(int index);
+
+	// Controlli ActiveX incorporati (CommandButton, vedi
+	// EmbeddedControl.h): stesso schema esatto di fDraggingImageIndex/
+	// fResizingImageIndex/fSelectedImageIndex sopra, PIU' uno stato
+	// intermedio "armato" (fPendingControlIndex) che le immagini non
+	// hanno -- un clic su un controllo deve poter diventare O un
+	// comando VBA (click senza trascinare: "_MouseUp"/"_Click") O uno
+	// spostamento (trascinamento oltre la soglia), e il MouseDown da
+	// solo non puo' ancora saperlo. A differenza delle immagini pero',
+	// "_MouseDown" parte SUBITO al MouseDown (non solo al rilascio):
+	// il vero tastierino esadecimale del file reale usa "_MouseDown"/
+	// "_MouseUp" separati, serve sapere il momento esatto in cui il
+	// tasto viene premuto, non solo quando il clic si conclude.
+	std::vector<EmbeddedControl>* fControls;
+	int fSelectedControlIndex;
+	int fPendingControlIndex;
+	BPoint fControlClickStart;
+	float fDragControlStartOffsetX, fDragControlStartOffsetY;
+	int fDraggingControlIndex;
+	int fResizingControlIndex;
+	BPoint fResizeControlStart;
+	float fResizeControlStartWidth, fResizeControlStartHeight;
+	void SelectControl(int index);
+	// Richiama MainWindow::RunControlEvent (il percorso VERO, stesso
+	// identico utilizzato da "Esegui macro") per "<controlName>_
+	// <eventSuffix>" -- vedi il commento su MainWindow::RunControlEvent
+	// sul perche' restituisce bool (un gestore esisteva davvero ed e'
+	// stato invocato, non solo "una MainWindow e' stata trovata").
+	// Falso anche se "Window()" non e' affatto una MainWindow (non
+	// dovrebbe mai capitare in pratica, ma mai un crash).
+	bool DispatchControlEvent(const char* controlName, const char* eventSuffix);
 
 	// AutoFilter: vedi SetAutoFilter/SetColumnValueHidden ecc. sopra.
 	// fFilterHiddenValues e' per-colonna (indice di colonna 1-based),

@@ -153,7 +153,8 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<SlicerObject>* slicers,
 	const std::vector<Scenario>* scenarios,
 	const NamedStyleTable* namedStyles,
-	const ThemePalette* themePalette)
+	const ThemePalette* themePalette,
+	const std::vector<EmbeddedControl>* controls)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData, es. appena
@@ -1858,6 +1859,43 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione controlli ActiveX incorporati, in coda (ultima sezione):
+	// stesso principio esatto della sezione immagini incorporate sopra
+	// -- un elenco di record a lunghezza variabile, qui tre stringhe
+	// (nome/didascalia/classid) con prefisso di lunghezza invece di un
+	// blob PNG, vedi EmbeddedControl.h.
+	{
+		int32 controlCount = controls ? (int32)controls->size() : 0;
+		if (dest->Write(&controlCount, sizeof(controlCount)) != (ssize_t)sizeof(controlCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < controlCount; i++)
+		{
+			const EmbeddedControl& ctrl = (*controls)[i];
+			int16 row = ctrl.anchor.v, col = ctrl.anchor.h;
+			float geom[4] = { ctrl.offsetX, ctrl.offsetY, ctrl.width, ctrl.height };
+			int32 nameLen = (int32)ctrl.name.size();
+			int32 captionLen = (int32)ctrl.caption.size();
+			int32 classidLen = (int32)ctrl.classid.size();
+
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
+				|| dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+				return B_IO_ERROR;
+			if (nameLen > 0 && dest->Write(ctrl.name.data(), nameLen) != nameLen)
+				return B_IO_ERROR;
+			if (dest->Write(&captionLen, sizeof(captionLen)) != (ssize_t)sizeof(captionLen))
+				return B_IO_ERROR;
+			if (captionLen > 0 && dest->Write(ctrl.caption.data(), captionLen) != captionLen)
+				return B_IO_ERROR;
+			if (dest->Write(&classidLen, sizeof(classidLen)) != (ssize_t)sizeof(classidLen))
+				return B_IO_ERROR;
+			if (classidLen > 0 && dest->Write(ctrl.classid.data(), classidLen) != classidLen)
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1882,7 +1920,8 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	std::vector<SlicerObject>* slicers,
 	std::vector<Scenario>* scenarios,
 	bool* hasNamedStyles, NamedStyleTable* namedStyles,
-	bool* hasThemePalette, ThemePalette* themePalette)
+	bool* hasThemePalette, ThemePalette* themePalette,
+	std::vector<EmbeddedControl>* controls)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -4282,6 +4321,80 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione controlli ActiveX incorporati, in coda (ultima sezione):
+	// vedi il commento in SaveASCD. Stesso principio "got != 0" delle
+	// sezioni sopra; le tre stringhe hanno un tetto molto piu' piccolo
+	// del PNG delle immagini (sono nomi/didascalie brevi, non blob
+	// binari) -- 4 KiB scelto apposta, non riuso del tetto da 200 MiB.
+	{
+		std::vector<EmbeddedControl> discardedControls;
+		std::vector<EmbeddedControl>* out = controls ? controls : &discardedControls;
+		out->clear();
+
+		int32 controlCount = 0;
+		ssize_t got = source->Read(&controlCount, sizeof(controlCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(controlCount))
+				return B_BAD_DATA;
+
+			const int32 kMaxStringLen = 4096;
+			for (int32 i = 0; i < controlCount; i++)
+			{
+				int16 row, col;
+				float geom[4];
+				int32 nameLen, captionLen, classidLen;
+
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
+					|| source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_BAD_DATA;
+				if (!cell(col, row).IsValid())
+					return B_BAD_DATA; // "col"/"row" grezzi dal file, non ancora validati
+				if (nameLen < 0 || nameLen > kMaxStringLen)
+					return B_BAD_DATA;
+
+				EmbeddedControl ctrl;
+				ctrl.anchor = cell(col, row);
+				ctrl.offsetX = geom[0];
+				ctrl.offsetY = geom[1];
+				ctrl.width = geom[2];
+				ctrl.height = geom[3];
+				if (nameLen > 0)
+				{
+					ctrl.name.resize(nameLen);
+					if (source->Read(&ctrl.name[0], nameLen) != nameLen)
+						return B_BAD_DATA;
+				}
+
+				if (source->Read(&captionLen, sizeof(captionLen)) != (ssize_t)sizeof(captionLen))
+					return B_BAD_DATA;
+				if (captionLen < 0 || captionLen > kMaxStringLen)
+					return B_BAD_DATA;
+				if (captionLen > 0)
+				{
+					ctrl.caption.resize(captionLen);
+					if (source->Read(&ctrl.caption[0], captionLen) != captionLen)
+						return B_BAD_DATA;
+				}
+
+				if (source->Read(&classidLen, sizeof(classidLen)) != (ssize_t)sizeof(classidLen))
+					return B_BAD_DATA;
+				if (classidLen < 0 || classidLen > kMaxStringLen)
+					return B_BAD_DATA;
+				if (classidLen > 0)
+				{
+					ctrl.classid.resize(classidLen);
+					if (source->Read(&ctrl.classid[0], classidLen) != classidLen)
+						return B_BAD_DATA;
+				}
+
+				out->push_back(ctrl);
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -4922,7 +5035,8 @@ status_t SaveASCDBook(const std::vector<AscdSheet>& sheets, BPositionIO* dest)
 			// salvataggio) -- NULL per ogni altro, stesso principio di
 			// come SaveASCD stesso decide se scrivere la sezione.
 			sheet.hasNamedStyles ? &sheet.namedStyles : NULL,
-			sheet.hasThemePalette ? &sheet.themePalette : NULL);
+			sheet.hasThemePalette ? &sheet.themePalette : NULL,
+			&sheet.controls);
 		if (err != B_OK)
 			return err;
 
@@ -5039,7 +5153,8 @@ status_t LoadASCDBook(BPositionIO* source, std::vector<AscdSheet>* outSheets,
 				// scritto DAVVERO nel file per QUESTO foglio (di norma
 				// solo il primo).
 				&sheet.hasNamedStyles, &sheet.namedStyles,
-				&sheet.hasThemePalette, &sheet.themePalette);
+				&sheet.hasThemePalette, &sheet.themePalette,
+				&sheet.controls);
 		}
 		if (err != B_OK)
 		{

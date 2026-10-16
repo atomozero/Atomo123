@@ -316,6 +316,11 @@ SheetView::SheetView(CContainer* doc)
 	fSelectedImageIndex(-1),
 	fPendingExportImageIndex(-1),
 	fExportingImageIndex(-1),
+	fControls(NULL),
+	fSelectedControlIndex(-1),
+	fPendingControlIndex(-1),
+	fDraggingControlIndex(-1),
+	fResizingControlIndex(-1),
 	fHasAutoFilter(false),
 	fEditor(NULL),
 	fEditingCell(1, 1),
@@ -2107,6 +2112,21 @@ SheetView::UndoSnapshot SheetView::CaptureImageSnapshot(int imageIndex) const
 	return snap;
 }
 
+SheetView::UndoSnapshot SheetView::CaptureControlSnapshot(int controlIndex) const
+{
+	UndoSnapshot snap;
+	snap.controlIndex = controlIndex;
+	if (fControls && controlIndex >= 0 && controlIndex < (int)fControls->size())
+	{
+		const EmbeddedControl& ctrl = (*fControls)[controlIndex];
+		snap.controlOffsetX = ctrl.offsetX;
+		snap.controlOffsetY = ctrl.offsetY;
+		snap.controlWidth = ctrl.width;
+		snap.controlHeight = ctrl.height;
+	}
+	return snap;
+}
+
 SheetView::UndoSnapshot SheetView::CaptureChartSnapshot(int chartIndex) const
 {
 	UndoSnapshot snap;
@@ -2138,6 +2158,8 @@ void SheetView::SelectImage(int index)
 		SelectChart(-1);
 	if (index >= 0 && fSelectedSlicerIndex >= 0)
 		SelectSlicer(-1);
+	if (index >= 0 && fSelectedControlIndex >= 0)
+		SelectControl(-1);
 
 	if (index == fSelectedImageIndex)
 		return;
@@ -2221,6 +2243,8 @@ void SheetView::SelectChart(int index)
 		SelectImage(-1);
 	if (index >= 0 && fSelectedSlicerIndex >= 0)
 		SelectSlicer(-1);
+	if (index >= 0 && fSelectedControlIndex >= 0)
+		SelectControl(-1);
 
 	if (index == fSelectedChartIndex)
 		return;
@@ -2259,6 +2283,8 @@ void SheetView::SelectSlicer(int index)
 		SelectImage(-1);
 	if (index >= 0 && fSelectedChartIndex >= 0)
 		SelectChart(-1);
+	if (index >= 0 && fSelectedControlIndex >= 0)
+		SelectControl(-1);
 
 	if (index == fSelectedSlicerIndex)
 		return;
@@ -2287,6 +2313,38 @@ void SheetView::DeleteSelectedSlicer()
 
 	Invalidate(dirty);
 	NotifyDocumentChanged();
+}
+
+// Stesso principio esatto di SelectImage/SelectChart/SelectSlicer
+// sopra, simmetrico in ogni direzione.
+void SheetView::SelectControl(int index)
+{
+	if (index >= 0 && fSelectedImageIndex >= 0)
+		SelectImage(-1);
+	if (index >= 0 && fSelectedChartIndex >= 0)
+		SelectChart(-1);
+	if (index >= 0 && fSelectedSlicerIndex >= 0)
+		SelectSlicer(-1);
+
+	if (index == fSelectedControlIndex)
+		return;
+
+	if (fSelectedControlIndex >= 0 && fControls && fSelectedControlIndex < (int)fControls->size())
+		Invalidate(ControlFrame((*fControls)[fSelectedControlIndex]));
+
+	fSelectedControlIndex = index;
+
+	if (fSelectedControlIndex >= 0 && fControls && fSelectedControlIndex < (int)fControls->size())
+		Invalidate(ControlFrame((*fControls)[fSelectedControlIndex]));
+}
+
+bool SheetView::DispatchControlEvent(const char* controlName, const char* eventSuffix)
+{
+	MainWindow* win = dynamic_cast<MainWindow*>(Window());
+	if (!win)
+		return false;
+
+	return win->RunControlEvent(controlName, eventSuffix);
 }
 
 SheetView::UndoSnapshot SheetView::CaptureValidationSnapshot(range r) const
@@ -2353,6 +2411,22 @@ void SheetView::ApplySnapshot(const UndoSnapshot& snap)
 	{
 		if (fSlicers && snap.slicerIndex < (int)fSlicers->size())
 			(*fSlicers)[snap.slicerIndex].frame = snap.slicerFrameBefore;
+		return;
+	}
+
+	// Istantanea di un controllo ActiveX incorporato (vedi
+	// SaveControlUndoState): stesso principio esatto della sezione
+	// immagini sopra.
+	if (snap.controlIndex >= 0)
+	{
+		if (fControls && snap.controlIndex < (int)fControls->size())
+		{
+			EmbeddedControl& ctrl = (*fControls)[snap.controlIndex];
+			ctrl.offsetX = snap.controlOffsetX;
+			ctrl.offsetY = snap.controlOffsetY;
+			ctrl.width = snap.controlWidth;
+			ctrl.height = snap.controlHeight;
+		}
 		return;
 	}
 
@@ -2507,6 +2581,17 @@ void SheetView::Undo()
 	if (toRestore.slicerIndex >= 0)
 	{
 		fRedoStack.push_back(CaptureSlicerSnapshot(toRestore.slicerIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
+
+	// Istantanea di un controllo ActiveX incorporato: stesso scambio
+	// simmetrico dei rami sopra.
+	if (toRestore.controlIndex >= 0)
+	{
+		fRedoStack.push_back(CaptureControlSnapshot(toRestore.controlIndex));
 		ApplySnapshot(toRestore);
 		Invalidate();
 		NotifyDocumentChanged();
@@ -2670,6 +2755,15 @@ void SheetView::Redo()
 		NotifyDocumentChanged();
 		return;
 	}
+	// Vedi il commento nel ramo equivalente di Undo() sopra.
+	if (toRestore.controlIndex >= 0)
+	{
+		fUndoStack.push_back(CaptureControlSnapshot(toRestore.controlIndex));
+		ApplySnapshot(toRestore);
+		Invalidate();
+		NotifyDocumentChanged();
+		return;
+	}
 	// Vedi il commento nel ramo equivalente di Undo() sopra: qui
 	// l'immagine e' stata REINSERITA da quell'Undo, quindi ricancellarla
 	// e' identica alla cancellazione originale -- si cattura di nuovo
@@ -2789,6 +2883,24 @@ void SheetView::SaveImageUndoState(int imageIndex, float beforeOffsetX, float be
 	snap.imageHeight = beforeHeight;
 	fUndoStack.push_back(snap);
 	// Vedi il motivo nell'omonimo SaveUndoState(range) sopra.
+	fRedoStack.clear();
+}
+
+// Stesso principio esatto di SaveImageUndoState sopra, per un
+// controllo ActiveX incorporato (vedi EmbeddedControl.h).
+void SheetView::SaveControlUndoState(int controlIndex, float beforeOffsetX, float beforeOffsetY,
+	float beforeWidth, float beforeHeight)
+{
+	if (!fControls || controlIndex < 0 || controlIndex >= (int)fControls->size())
+		return;
+
+	UndoSnapshot snap;
+	snap.controlIndex = controlIndex;
+	snap.controlOffsetX = beforeOffsetX;
+	snap.controlOffsetY = beforeOffsetY;
+	snap.controlWidth = beforeWidth;
+	snap.controlHeight = beforeHeight;
+	fUndoStack.push_back(snap);
 	fRedoStack.clear();
 }
 
@@ -3924,6 +4036,26 @@ BRect SheetView::ImageResizeHandle(const EmbeddedImage& img) const
 		frame.right, frame.bottom);
 }
 
+// Stesso principio esatto di ImageFrame sopra (ancora + scarto, un
+// solo posto per la formula usato sia da Draw() che da MouseDown/
+// MouseMoved), ma su EmbeddedControl (vedi EmbeddedControl.h).
+BRect SheetView::ControlFrame(const EmbeddedControl& ctrl) const
+{
+	BRect anchorRect = CellRect(ctrl.anchor);
+	return BRect(anchorRect.left + ctrl.offsetX, anchorRect.top + ctrl.offsetY,
+		anchorRect.left + ctrl.offsetX + ctrl.width - 1,
+		anchorRect.top + ctrl.offsetY + ctrl.height - 1);
+}
+
+// Stesso principio esatto di ImageResizeHandle sopra.
+BRect SheetView::ControlResizeHandle(const EmbeddedControl& ctrl) const
+{
+	BRect frame = ControlFrame(ctrl);
+	const float kHandleSize = 8;
+	return BRect(frame.right - kHandleSize, frame.bottom - kHandleSize,
+		frame.right, frame.bottom);
+}
+
 // Stesso principio esatto di ImageResizeHandle sopra, ma su
 // ChartObject::frame (gia' un BRect assoluto, non ancora+scarto come
 // le immagini) invece di ImageFrame.
@@ -4599,6 +4731,56 @@ void SheetView::Draw(BRect updateRect)
 		}
 	}
 
+	// Controlli ActiveX incorporati (CommandButton, vedi
+	// EmbeddedControl.h): stesso principio di ancoraggio delle immagini
+	// sopra (anchor+scarto, non un BRect assoluto). A differenza delle
+	// immagini (un bitmap decodificato), qui non c'e' alcun contenuto
+	// da decodificare -- il pulsante si disegna a mano con le stesse
+	// primitive BView usate da tutto il resto di questo Draw(), NON un
+	// vero BButton figlio (coerente con lo stile del resto della vista,
+	// che non ha mai child view per gli oggetti incorporati): un
+	// rettangolo di sfondo neutro, un bordo "in rilievo" a due toni (lo
+	// stesso trucco visivo usato da qualunque widget non piatto, non
+	// uno sforzo di imitare pixel-per-pixel un vero BButton) e la
+	// didascalia centrata.
+	if (fControls && fDoc)
+	{
+		for (size_t i = 0; i < fControls->size(); i++)
+		{
+			const EmbeddedControl& ctrl = (*fControls)[i];
+			BRect frame = ControlFrame(ctrl);
+			if (!frame.Intersects(updateRect))
+				continue;
+
+			SetHighColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+			FillRect(frame);
+			SetHighColor(255, 255, 255);
+			StrokeLine(frame.LeftTop(), frame.RightTop());
+			StrokeLine(frame.LeftTop(), frame.LeftBottom());
+			SetHighColor(100, 100, 100);
+			StrokeLine(frame.RightTop(), frame.RightBottom());
+			StrokeLine(frame.LeftBottom(), frame.RightBottom());
+
+			SetHighColor(0, 0, 0);
+			BString caption(ctrl.caption.c_str());
+			float textWidth = StringWidth(caption.String());
+			font_height fh;
+			GetFontHeight(&fh);
+			DrawString(caption.String(),
+				BPoint(frame.left + (frame.Width() - textWidth) / 2,
+					frame.top + (frame.Height() + fh.ascent - fh.descent) / 2));
+
+			SetHighColor(80, 80, 80);
+			FillRect(ControlResizeHandle(ctrl));
+
+			if ((int)i == fSelectedControlIndex)
+			{
+				SetHighColor(30, 100, 200);
+				StrokeRect(frame);
+			}
+		}
+	}
+
 	// Testo di intestazione pagina ("Imposta pagina", con codici &P/&N/
 	// &D): banda congelata in cima alla pagina, SOPRA le lettere di
 	// colonna -- copre di bianco la coda della pagina precedente che
@@ -5020,6 +5202,61 @@ void SheetView::MouseDown(BPoint where)
 		}
 	}
 
+	// Ridimensionamento di un controllo ActiveX incorporato: stessa
+	// precedenza/stesso ciclo all'indietro di ImageResizeHandle sotto,
+	// ma controllato PRIMA (i controlli sono la superficie interattiva
+	// primaria del file reale che ha richiesto questa fase, hanno
+	// sempre precedenza su un'immagine che capitasse a sovrapporsi).
+	if (fControls)
+	{
+		for (int i = (int)fControls->size() - 1; i >= 0; i--)
+		{
+			const EmbeddedControl& ctrl = (*fControls)[i];
+			if (ControlResizeHandle(ctrl).Contains(where))
+			{
+				fResizingControlIndex = i;
+				fResizeControlStart = where;
+				fResizeControlStartWidth = ctrl.width;
+				fResizeControlStartHeight = ctrl.height;
+				SelectControl(i);
+				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+				return;
+			}
+		}
+	}
+
+	// Clic/trascinamento su un controllo ActiveX: ARMATO qui (non
+	// eseguito subito), stesso principio di soglia di spostamento di
+	// fPendingExportImageIndex (vedi piu' sotto) -- un clic SENZA
+	// superare la soglia invoca il/i gestore/i evento VBA (MouseUp
+	// sotto), un trascinamento oltre la soglia lo sposta invece
+	// (MouseMoved sotto). "_MouseDown" pero' parte SUBITO qui (non
+	// aspetta l'esito soglia/MouseUp): il vero tastierino esadecimale
+	// del file reale ("cb0"-"cbF") usa "_MouseDown"/"_MouseUp"
+	// separati, serve sapere il momento esatto in cui il tasto viene
+	// premuto -- a differenza di "_MouseUp"/"_Click" (MouseUp sotto),
+	// che DEVONO invece aspettare di sapere se e' stato un clic o un
+	// trascinamento prima di scegliere quale dei due inviare (o
+	// nessuno, se e' diventato un trascinamento vero).
+	if (fControls)
+	{
+		for (int i = (int)fControls->size() - 1; i >= 0; i--)
+		{
+			const EmbeddedControl& ctrl = (*fControls)[i];
+			if (ControlFrame(ctrl).Contains(where))
+			{
+				fPendingControlIndex = i;
+				fControlClickStart = where;
+				fDragControlStartOffsetX = ctrl.offsetX;
+				fDragControlStartOffsetY = ctrl.offsetY;
+				SelectControl(i);
+				DispatchControlEvent(ctrl.name.c_str(), "MouseDown");
+				SetMouseEventMask(B_POINTER_EVENTS, B_LOCK_WINDOW_FOCUS);
+				return;
+			}
+		}
+	}
+
 	// Ridimensionamento di un'immagine incorporata: la maniglia
 	// (ImageResizeHandle, angolo in basso a destra) e' un bersaglio piu'
 	// piccolo e piu' specifico del corpo dell'immagine, quindi va
@@ -5297,6 +5534,66 @@ void SheetView::MouseUp(BPoint where)
 	}
 	fResizingImageIndex = -1;
 
+	// Ridimensionamento di un controllo ActiveX incorporato: stesso
+	// principio esatto del blocco immagine sopra.
+	if (fResizingControlIndex >= 0)
+	{
+		if (fControls && fResizingControlIndex < (int)fControls->size())
+		{
+			const EmbeddedControl& ctrl = (*fControls)[fResizingControlIndex];
+			if (ctrl.width != fResizeControlStartWidth || ctrl.height != fResizeControlStartHeight)
+			{
+				SaveControlUndoState(fResizingControlIndex, ctrl.offsetX, ctrl.offsetY,
+					fResizeControlStartWidth, fResizeControlStartHeight);
+			}
+		}
+		NotifyDocumentChanged();
+	}
+	fResizingControlIndex = -1;
+
+	// Trascinamento di un controllo ActiveX incorporato: stesso principio
+	// esatto del blocco immagine sopra, ma qui va anche inviato
+	// "_MouseUp" (se esiste) INCONDIZIONATAMENTE al rilascio -- a
+	// differenza di un'immagine, un controllo trascinato e' comunque un
+	// tasto che e' stato rilasciato (il vero tastierino esadecimale del
+	// file reale deve sapere che il tasto non e' piu' premuto anche se il
+	// rilascio e' avvenuto fuori dalla posizione di partenza).
+	if (fDraggingControlIndex >= 0)
+	{
+		if (fControls && fDraggingControlIndex < (int)fControls->size())
+		{
+			const EmbeddedControl& ctrl = (*fControls)[fDraggingControlIndex];
+			if (ctrl.offsetX != fDragControlStartOffsetX || ctrl.offsetY != fDragControlStartOffsetY)
+			{
+				SaveControlUndoState(fDraggingControlIndex, fDragControlStartOffsetX,
+					fDragControlStartOffsetY, ctrl.width, ctrl.height);
+			}
+			DispatchControlEvent(ctrl.name.c_str(), "MouseUp");
+		}
+		NotifyDocumentChanged();
+	}
+	fDraggingControlIndex = -1;
+
+	// Clic su un controllo ActiveX SENZA superare la soglia di
+	// trascinamento (vedi MouseMoved): e' un vero clic, non uno
+	// spostamento -- invia "_MouseUp" se quel gestore esiste, altrimenti
+	// ricade su "_Click" (il file reale non definisce mai entrambi sullo
+	// stesso controllo, ma la ricaduta resta corretta anche se lo
+	// facesse). DispatchControlEvent restituisce true solo se un
+	// gestore esisteva davvero ed e' stato eseguito (vedi
+	// MainWindow::RunControlEvent), e' quello il segnale per decidere se
+	// provare "_Click" di ricaduta.
+	if (fPendingControlIndex >= 0)
+	{
+		if (fControls && fPendingControlIndex < (int)fControls->size())
+		{
+			const EmbeddedControl& ctrl = (*fControls)[fPendingControlIndex];
+			if (!DispatchControlEvent(ctrl.name.c_str(), "MouseUp"))
+				DispatchControlEvent(ctrl.name.c_str(), "Click");
+		}
+	}
+	fPendingControlIndex = -1;
+
 	// Riempimento automatico (Fase 29): se il trascinamento e' uscito
 	// davvero dalla selezione di partenza, applica GenerateAutoFillSequence
 	// colonna per colonna (riempimento verticale) o riga per riga
@@ -5420,6 +5717,54 @@ void SheetView::MouseMoved(BPoint where, uint32 code, const BMessage* dragMessag
 			fPendingExportImageIndex = -1;
 			StartImageExportDrag(index);
 		}
+		return;
+	}
+
+	// Clic/trascinamento armato su un controllo ActiveX (vedi il commento
+	// in MouseDown): sotto la soglia resta armato senza fare nulla (un
+	// clic che diventera' "_MouseUp"/"_Click" in MouseUp), sopra la
+	// soglia diventa un vero trascinamento -- da qui in poi niente evento
+	// VBA di clic verra' piu' inviato per questa pressione (solo
+	// "_MouseUp" incondizionato in MouseUp, vedi il commento li').
+	if (fPendingControlIndex >= 0)
+	{
+		const float kControlDragThreshold = 10.0f;
+		float dx = where.x - fControlClickStart.x;
+		float dy = where.y - fControlClickStart.y;
+		if (dx * dx + dy * dy < kControlDragThreshold * kControlDragThreshold)
+			return;
+		fDraggingControlIndex = fPendingControlIndex;
+		fPendingControlIndex = -1;
+	}
+
+	// Ridimensionamento di un controllo ActiveX incorporato in corso
+	// (armato da MouseDown tramite ControlResizeHandle): stesso principio
+	// esatto del ridimensionamento immagine sotto.
+	if (fResizingControlIndex >= 0 && fControls
+		&& fResizingControlIndex < (int)fControls->size())
+	{
+		const float kMinControlSize = 10;
+		EmbeddedControl& ctrl = (*fControls)[fResizingControlIndex];
+		float newWidth = fResizeControlStartWidth + (where.x - fResizeControlStart.x);
+		float newHeight = fResizeControlStartHeight + (where.y - fResizeControlStart.y);
+		ctrl.width = std::max(kMinControlSize, newWidth);
+		ctrl.height = std::max(kMinControlSize, newHeight);
+		ScrollToShowRect(ControlFrame(ctrl));
+		Invalidate();
+		return;
+	}
+
+	// Trascinamento di un controllo ActiveX incorporato in corso (promosso
+	// da fPendingControlIndex sopra una volta superata la soglia): stesso
+	// principio esatto dello spostamento immagine sotto.
+	if (fDraggingControlIndex >= 0 && fControls
+		&& fDraggingControlIndex < (int)fControls->size())
+	{
+		EmbeddedControl& ctrl = (*fControls)[fDraggingControlIndex];
+		ctrl.offsetX = fDragControlStartOffsetX + (where.x - fControlClickStart.x);
+		ctrl.offsetY = fDragControlStartOffsetY + (where.y - fControlClickStart.y);
+		ScrollToShowRect(ControlFrame(ctrl));
+		Invalidate();
 		return;
 	}
 

@@ -655,6 +655,19 @@ public:
 	// questa implementazione. In caso di errore, un solo BAlert con il
 	// messaggio di VbaRuntimeError.
 	void RunVbaMacro(const char* name);
+	// Fase 7 (controlli ActiveX incorporati): inoltra a RunVbaMacro sopra
+	// l'evento "<controlName>_<eventSuffix>" (es. "CommandButton1_Click")
+	// di un controllo disegnato su SheetView -- SOLO se il progetto VBA
+	// e' fidato E quella Sub esiste davvero (VbaSubExists, senza
+	// eseguirla), altrimenti non fa nulla e non mostra alcun messaggio:
+	// un controllo senza quel gestore e' normale (il vero file reale ne
+	// usa "_Click" per alcuni, "_MouseDown"/"_MouseUp" per altri), non un
+	// errore. Vero solo se un gestore esisteva davvero ed e' stato
+	// invocato -- SheetView::MouseUp usa questo per decidere se ricadere
+	// su "_Click" quando "_MouseUp" non esiste (vedi il commento li').
+	// Un vero errore DENTRO un gestore che esiste invece mostra comunque
+	// il solito BAlert di RunVbaMacro -- solo l'ASSENZA e' silenziosa.
+	bool RunControlEvent(const char* controlName, const char* eventSuffix);
 	// Fase 6h: chiamata dal gancio libero ScheduleVbaOnTimeHook
 	// (MainWindow.cpp, installato via VbaSetOnTimeHook) quando
 	// "Application.OnTime" viene valutato -- pubblica per questo
@@ -1017,6 +1030,11 @@ private:
 	PageSetupWindow* fPageSetupWindow;
 	std::vector<ChartObject> fCharts;
 	std::vector<EmbeddedImage> fImages;
+	// Controlli ActiveX incorporati (CommandButton), vedi
+	// EmbeddedControl.h -- stesso principio esatto di fCharts/fImages
+	// sopra, copia di lavoro del foglio attivo, risincronizzata con
+	// fSheets[fActiveSheetIndex].controls agli stessi punti.
+	std::vector<EmbeddedControl> fControls;
 	// Slicer (Tier 4, vedi Slicer.h): stesso principio esatto di
 	// fCharts/fImages sopra -- copia di lavoro del foglio attivo,
 	// risincronizzata con fSheets[fActiveSheetIndex].slicers agli stessi

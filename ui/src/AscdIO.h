@@ -30,6 +30,7 @@
 
 #include "Chart.h"
 #include "Container.h"
+#include "EmbeddedControl.h"
 #include "EmbeddedImage.h"
 #include "NamedStyle.h"
 #include "Scenario.h"
@@ -284,7 +285,13 @@ status_t LoadASCD(BPositionIO* source, CContainer* doc,
 	// false = non raccolti/non presenti (il comportamento di sempre per
 	// ogni chiamante esistente).
 	bool* hasNamedStyles = NULL, NamedStyleTable* namedStyles = NULL,
-	bool* hasThemePalette = NULL, ThemePalette* themePalette = NULL);
+	bool* hasThemePalette = NULL, ThemePalette* themePalette = NULL,
+	// Controlli ActiveX incorporati (CommandButton, vedi
+	// EmbeddedControl.h): stesso principio opzionale/append-only di
+	// "images" sopra -- ultimo parametro per lo stesso motivo di ogni
+	// altro campo aggiunto in coda qui. NULL/non raccolto = nessun
+	// controllo, il comportamento di sempre per ogni chiamante esistente.
+	std::vector<EmbeddedControl>* controls = NULL);
 status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<ChartObject>* charts = NULL,
 	const std::vector<std::pair<int, float> >* colWidths = NULL,
@@ -310,7 +317,9 @@ status_t SaveASCD(CContainer* doc, BPositionIO* dest,
 	const std::vector<Scenario>* scenarios = NULL,
 	// Vedi il commento gemello sopra in LoadASCD.
 	const NamedStyleTable* namedStyles = NULL,
-	const ThemePalette* themePalette = NULL);
+	const ThemePalette* themePalette = NULL,
+	// Vedi il commento gemello sopra in LoadASCD.
+	const std::vector<EmbeddedControl>* controls = NULL);
 
 // Vero solo se "source" comincia con la firma nativa ASCD (riporta
 // la posizione di lettura a dove si trovava prima di controllare).
@@ -340,6 +349,9 @@ struct AscdSheet {
 	int frozenCols = 0;
 	// Fase 12: vedi il commento sopra LoadASCD/SaveASCD.
 	std::vector<EmbeddedImage> images;
+	// Controlli ActiveX incorporati (CommandButton), vedi
+	// EmbeddedControl.h -- stesso principio esatto di "images" sopra.
+	std::vector<EmbeddedControl> controls;
 	// Visibilita' della griglia: era una preferenza GLOBALE dell'app
 	// (gPrefs, un solo interruttore per tutti i documenti) finche' un
 	// file reale confrontato con Excel non ha mostrato il problema --

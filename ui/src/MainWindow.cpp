@@ -1026,6 +1026,15 @@ MainWindow::MainWindow()
 	fAutoSaveDir = gPrefs ? gPrefs->GetPrefString("autoSaveDir", "") : "";
 	fAutoSaveRunner = NULL;
 	fVbaOnTimeRunner = NULL;
+	// Bug reale (crash dal vivo, Fase "ActiveX controls"): mancava da
+	// questo stesso elenco di azzeramento esplicito, stesso motivo di
+	// fSheetView/fVbaOnTimeRunner sopra -- "delete fPersistentVbaModuleEnv"
+	// dentro ResetWorkbook() (chiamato subito sotto) leggeva spazzatura
+	// indeterminata invece di NULL, "delete" su un puntatore a caso
+	// segfaultava nel distruttore di VbaEnvironment (Value::~Value()
+	// sui suoi membri) -- non sempre, solo quando quella zona di memoria
+	// non capitava gia' azzerata dall'allocatore, da qui l'incostanza.
+	fPersistentVbaModuleEnv = NULL;
 	fActiveSheetIndex = -1; // ResetWorkbook() sotto lo imposta a 0
 	ResetWorkbook("Foglio1");
 	fModified = false;
@@ -1529,6 +1538,7 @@ MainWindow::MainWindow()
 	fSheetView = new SheetView(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetImages(&fImages);
+	fSheetView->SetControls(&fControls);
 	fSheetView->SetSlicers(&fSlicers);
 
 	// horizontal=false, vertical=false: NON le barre automatiche di
@@ -1877,6 +1887,7 @@ void MainWindow::ResetWorkbook(const char* name)
 		fSheetView->SetDocument(fDoc);
 		fSheetView->SetCharts(&fCharts);
 		fSheetView->SetImages(&fImages);
+		fSheetView->SetControls(&fControls);
 		fSheetView->SetSlicers(&fSlicers);
 		fSheetView->SetColumnWidths(fSheets[0].colWidths);
 		fSheetView->SetRowHeights(fSheets[0].rowHeights);
@@ -2066,6 +2077,7 @@ void MainWindow::SwitchToSheet(int index)
 	// risincronizzati esplicitamente in entrambe le direzioni.
 	fSheets[fActiveSheetIndex].charts = fCharts;
 	fSheets[fActiveSheetIndex].images = fImages;
+	fSheets[fActiveSheetIndex].controls = fControls;
 	fSheets[fActiveSheetIndex].slicers = fSlicers;
 	fSheets[fActiveSheetIndex].scenarios = fScenarios;
 	fSheets[fActiveSheetIndex].colWidths = fSheetView->CustomColumnWidths();
@@ -2091,6 +2103,7 @@ void MainWindow::SwitchToSheet(int index)
 	fDoc = fSheets[index].doc;
 	fCharts = fSheets[index].charts;
 	fImages = fSheets[index].images;
+	fControls = fSheets[index].controls;
 	fSlicers = fSheets[index].slicers;
 	fScenarios = fSheets[index].scenarios;
 
@@ -2851,11 +2864,13 @@ void MainWindow::OpenFile(const entry_ref& ref)
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
 	fImages = fSheets[0].images;
+	fControls = fSheets[0].controls;
 	fSlicers = fSheets[0].slicers;
 	fScenarios = fSheets[0].scenarios;
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetImages(&fImages);
+	fSheetView->SetControls(&fControls);
 	fSheetView->SetSlicers(&fSlicers);
 	fSheetView->SetColumnWidths(fSheets[0].colWidths);
 	fSheetView->SetRowHeights(fSheets[0].rowHeights);
@@ -3194,11 +3209,13 @@ void MainWindow::HandleFileLoadResult(BMessage* message)
 	fDoc = fSheets[0].doc;
 	fCharts = fSheets[0].charts;
 	fImages = fSheets[0].images;
+	fControls = fSheets[0].controls;
 	fSlicers = fSheets[0].slicers;
 	fScenarios = fSheets[0].scenarios;
 	fSheetView->SetDocument(fDoc);
 	fSheetView->SetCharts(&fCharts);
 	fSheetView->SetImages(&fImages);
+	fSheetView->SetControls(&fControls);
 	fSheetView->SetSlicers(&fSlicers);
 	fSheetView->SetColumnWidths(fSheets[0].colWidths);
 	fSheetView->SetRowHeights(fSheets[0].rowHeights);
@@ -3426,6 +3443,7 @@ void MainWindow::SaveToFile(const entry_ref& dir, const char* name)
 		// larghezze di colonna del foglio attivo non verrebbe salvata.
 		fSheets[fActiveSheetIndex].charts = fCharts;
 		fSheets[fActiveSheetIndex].images = fImages;
+		fSheets[fActiveSheetIndex].controls = fControls;
 		fSheets[fActiveSheetIndex].slicers = fSlicers;
 		fSheets[fActiveSheetIndex].scenarios = fScenarios;
 		// Stili con nome + tema (Tier 4, vedi NamedStyle.h): concetto di
@@ -3643,6 +3661,7 @@ void MainWindow::AutoSaveBackup()
 	{
 		fSheets[fActiveSheetIndex].charts = fCharts;
 		fSheets[fActiveSheetIndex].images = fImages;
+		fSheets[fActiveSheetIndex].controls = fControls;
 		fSheets[fActiveSheetIndex].slicers = fSlicers;
 		fSheets[fActiveSheetIndex].scenarios = fScenarios;
 		// Stili con nome + tema (Tier 4, vedi NamedStyle.h): concetto di
@@ -6423,6 +6442,20 @@ void MainWindow::RunVbaMacro(const char* name)
 	fModified = true;
 	UpdateTitle();
 	fSheetView->Invalidate();
+}
+
+bool MainWindow::RunControlEvent(const char* controlName, const char* eventSuffix)
+{
+	const std::vector<unsigned char>* vbaProject = WorkbookVbaProject();
+	if (!vbaProject || vbaProject->empty() || !fMacrosTrustedThisSession)
+		return false; // niente progetto VBA o macro non ancora fidate: silenzioso, non un errore
+
+	std::string subName = std::string(controlName) + "_" + eventSuffix;
+	if (!VbaSubExists(&(*vbaProject)[0], vbaProject->size(), subName))
+		return false; // nessun gestore per questo evento su questo controllo: normale, silenzioso
+
+	RunVbaMacro(subName.c_str());
+	return true;
 }
 
 // Il vero gancio installato in VbaSetOnTimeHook (VbaEvaluator.h, Fase

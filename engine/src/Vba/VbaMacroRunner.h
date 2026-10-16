@@ -103,6 +103,22 @@ bool ExecuteVbaMacro(const uint8* vbaProjectData, size_t vbaProjectLen,
 	const std::string& macroName, CContainer* doc, VbaRuntimeError* outError,
 	VbaEnvironment* persistentModuleEnv = NULL);
 
+// Fase 7 (controlli ActiveX incorporati): la prima meta' esatta della
+// scansione multi-modulo di ExecuteVbaMacro sopra (FindVbaSubByName su
+// ogni modulo finche' uno non la trova), ma SENZA mai eseguirla --
+// serve a MainWindow::RunControlEvent per decidere in anticipo se
+// "<nome>_MouseUp" esiste prima di ricadere su "<nome>_Click" (vedi
+// SheetView::MouseUp), senza il costo/gli effetti collaterali di una
+// vera esecuzione solo per scoprire che la Sub non c'e'. Volutamente
+// NON un refactor di ExecuteVbaMacro (che resta cosi' com'e', gia'
+// testato) -- una piccola duplicazione mirata, piu' sicura di un
+// parametro "solo controlla" dentro una funzione che fa ben altro.
+// Vero se "macroName" esiste in un qualunque modulo ed e' analizzabile
+// per intero (stesso limite noto di FindVbaSubByName); falso altrimenti
+// -- compreso un "vbaProjectData" non valido, mai un crash.
+bool VbaSubExists(const uint8* vbaProjectData, size_t vbaProjectLen,
+	const std::string& macroName);
+
 // Elenca ogni Sub "eseguibile" (vedi sotto) di ogni modulo del
 // progetto, nell'ordine in cui compaiono -- per un elenco a scelta
 // nella UI (Fase 4, "Esegui macro..."), MAI per eseguirle: a

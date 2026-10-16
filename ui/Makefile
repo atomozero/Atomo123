@@ -253,6 +253,35 @@ test-translator-multisheet: $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -ltranslation
 	./tests/test_translator_multisheet_import
 
+# Import reale dei controlli ActiveX (Fase "ActiveX controls"), stesso
+# principio di test-translator-multisheet sopra (passa DAVVERO per il
+# translator installato, l'unico modo per rilevare un disallineamento
+# fra il formato ASCD duplicato dal translator e quello vero) -- qui
+# su un vero file con 20 Forms 2.0 CommandButton reali, vedi il
+# commento in cima a test_activex_controls_import.cpp.
+test-activex-controls-import: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_activex_controls_import.cpp -o tests/test_activex_controls_import.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/AscdIO.cpp -o tests/AscdIO_activex_controls.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_activex_controls_import \
+		tests/test_activex_controls_import.o tests/AscdIO_activex_controls.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -ltranslation
+	./tests/test_activex_controls_import
+
+# Round-trip completo di ESPORTAZIONE dei controlli ActiveX (Fase
+# "ActiveX controls", Phase 2): stesso principio di
+# test-activex-controls-import sopra, ma XLSX -> XLSX (ri-esportazione,
+# WriteXLSX) -> ASCD (ri-importazione) sullo stesso vero file -- vedi
+# il commento in cima a test_activex_controls_export.cpp.
+test-activex-controls-export: $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_activex_controls_export.cpp -o tests/test_activex_controls_export.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -c src/AscdIO.cpp -o tests/AscdIO_activex_controls_export.o $(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_activex_controls_export \
+		tests/test_activex_controls_export.o tests/AscdIO_activex_controls_export.o \
+		$(INCLUDES) $(CXXFLAGS) -L$(ENGINE_DIR) -lengine -lbe -ltranslation
+	./tests/test_activex_controls_export
+
 # Profiling reale di Translate()/LoadASCDBook (post -O2/NewCell, post
 # grafo delle dipendenze) su un foglio sintetico grande -- vedi il
 # commento in testa al file per il perche' di un solo foglio grande
@@ -787,6 +816,39 @@ test-image-resize: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_image_resize
 
+# Test dello spostamento con il mouse di un controllo ActiveX
+# incorporato (Fase 7): stessa ragione di test-image-drag (BScrollView
+# reale), ma sul corpo di un controllo -- che a differenza di
+# un'immagine resta solo ARMATO sotto la soglia di trascinamento
+# (kControlDragThreshold, SheetView.cpp), vedi il commento in cima a
+# tests/test_control_drag.cpp.
+test-control-drag: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_control_drag.cpp -o tests/test_control_drag.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_control_drag tests/test_control_drag.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o src/MacroListWindow.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_control_drag
+
+# Test del ridimensionamento con il mouse di un controllo ActiveX
+# incorporato (Fase 7): stessa ragione di test-image-resize, sulla
+# maniglia (senza nessuna soglia, a differenza del corpo sopra).
+test-control-resize: $(OBJECTS) $(ENGINE_DIR)/libengine.a
+	$(CXX) -c tests/test_control_resize.cpp -o tests/test_control_resize.o \
+		$(INCLUDES) $(CXXFLAGS)
+	$(CXX) -o tests/test_control_resize tests/test_control_resize.o \
+		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
+		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
+		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o src/MacroListWindow.o \
+		$(INCLUDES) $(CXXFLAGS) $(LIBS)
+	./tests/test_control_resize
+
 # Test della cancellazione (Canc/Backspace) di un'immagine incorporata
 # selezionata: stessa ragione di test-image-drag (BScrollView reale).
 test-image-delete: $(OBJECTS) $(ENGINE_DIR)/libengine.a
@@ -1181,7 +1243,7 @@ test-chart-export-xlsx: $(OBJECTS) $(ENGINE_DIR)/libengine.a $(RSRC)
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
 		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
-		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
+		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o src/MacroListWindow.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	xres -o tests/test_chart_export_xlsx $(RSRC)
 	./tests/test_chart_export_xlsx
@@ -1815,7 +1877,7 @@ clean:
 		examples/atomo123_demo.ascd \
 		$(CATKEYS_DIR)/atomo123.pre $(CATKEYS_DIR)/it.catkeys
 
-.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-autosum test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-font-toolbar test-scripting test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection test-slicer test-whatif test-goal-seek test-circular-reference test-point-mode test-autocomplete test-chart-antialiasing test-edit-chart test-chart-row-orientation test-chart-series-colors test-chart-range-picker test-scenario-manager test-named-styles test-chart-trendlines test-dependency-graph-build test-dependency-graph-recalc test-recalc-seeding clean
+.PHONY: all run catkeys demo test test-ascd-book test-chart test-range-ref test-print-layout test-chart-resize test-chart-delete test-pivot test-clipboard test-scroll test-editing test-real-input-edit test-navigation test-selection test-image-alpha test-fill test-sort test-undo test-paste-range test-insert-delete test-unsaved-changes test-resize test-autofilter test-image-drag test-image-resize test-control-drag test-control-resize test-activex-controls-import test-activex-controls-export test-image-delete test-image-export-drag test-image-autoscroll test-chart-drag test-merge-click test-multisheet test-xsheet-formulas test-xlsx-named-functions-dynamic test-locale-catalog test-export-formats test-sheet-tabs test-toolbar-view test-multiwindow test-argv-open test-names test-paste-special test-goto test-sheet-management test-find-replace test-insert-chart test-comments test-autosum test-hyperlinks test-validation test-condformat test-formula-display test-formula-auditing test-selection-stats test-scrollbars-visible test-freeze test-format test-format-toolbar test-font-toolbar test-scripting test-preferences test-persistence test-borders test-overflow test-currency-format test-clear-keeps-style test-plain-save test-autosave test-chart-export-xlsx test-xlsm-macro-preservation test-cell-protection test-slicer test-whatif test-goal-seek test-circular-reference test-point-mode test-autocomplete test-chart-antialiasing test-edit-chart test-chart-row-orientation test-chart-series-colors test-chart-range-picker test-scenario-manager test-named-styles test-chart-trendlines test-dependency-graph-build test-dependency-graph-recalc test-recalc-seeding clean
 
 # Include i file di dipendenza generati da -MMD/-MP (vedi CXXFLAGS in
 # cima) -- src/*.d per la build principale, tests/*.d per ogni target

@@ -45,6 +45,7 @@
 #include "CellParser.h"
 #include "CellStyle.h"
 #include "Constants.h"
+#include "EmbeddedControl.h"
 #include "EmbeddedImage.h"
 #include "Formatter.h"
 #include "FontMetrics.h"
@@ -225,7 +226,11 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 	// filterHiddenValues e il commento gemello in ui/src/AscdIO.h.
 	// Ultimo parametro per lo stesso motivo di ogni altro campo aggiunto
 	// in coda a questa funzione.
-	const std::map<int, std::vector<BString> >* filterHiddenValues = NULL)
+	const std::map<int, std::vector<BString> >* filterHiddenValues = NULL,
+	// Controlli ActiveX incorporati (vedi EmbeddedControl.h e il
+	// commento gemello in ui/src/AscdIO.h) -- ultimo parametro per lo
+	// stesso motivo di ogni altro campo aggiunto in coda qui.
+	const std::vector<EmbeddedControl>* controls = NULL)
 {
 	// Range completo invece dei limiti di GetBounds: una cella con
 	// formula non ancora calcolata (mType eNoData) verrebbe esclusa
@@ -1591,6 +1596,44 @@ static status_t WriteASCD(CContainer* doc, BPositionIO* dest,
 		}
 	}
 
+	// Sezione controlli ActiveX incorporati, in coda (ultima sezione):
+	// stesso identico formato byte-per-byte della sezione gemella in
+	// ui/src/AscdIO.cpp::SaveASCD (i due scrittori DEVONO restare
+	// sincronizzati -- questo e' il buffer interno che LoadASCDBook
+	// rilegge piu' tardi, vedi il commento su "parsed.doc" piu' sotto
+	// nel ciclo per-foglio chiamante).
+	{
+		int32 controlCount = controls ? (int32)controls->size() : 0;
+		if (dest->Write(&controlCount, sizeof(controlCount)) != (ssize_t)sizeof(controlCount))
+			return B_IO_ERROR;
+
+		for (int32 i = 0; i < controlCount; i++)
+		{
+			const EmbeddedControl& ctrl = (*controls)[i];
+			int16 row = ctrl.anchor.v, col = ctrl.anchor.h;
+			float geom[4] = { ctrl.offsetX, ctrl.offsetY, ctrl.width, ctrl.height };
+			int32 nameLen = (int32)ctrl.name.size();
+			int32 captionLen = (int32)ctrl.caption.size();
+			int32 classidLen = (int32)ctrl.classid.size();
+
+			if (dest->Write(&row, sizeof(row)) != (ssize_t)sizeof(row)
+				|| dest->Write(&col, sizeof(col)) != (ssize_t)sizeof(col)
+				|| dest->Write(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
+				|| dest->Write(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+				return B_IO_ERROR;
+			if (nameLen > 0 && dest->Write(ctrl.name.data(), nameLen) != nameLen)
+				return B_IO_ERROR;
+			if (dest->Write(&captionLen, sizeof(captionLen)) != (ssize_t)sizeof(captionLen))
+				return B_IO_ERROR;
+			if (captionLen > 0 && dest->Write(ctrl.caption.data(), captionLen) != captionLen)
+				return B_IO_ERROR;
+			if (dest->Write(&classidLen, sizeof(classidLen)) != (ssize_t)sizeof(classidLen))
+				return B_IO_ERROR;
+			if (classidLen > 0 && dest->Write(ctrl.classid.data(), classidLen) != classidLen)
+				return B_IO_ERROR;
+		}
+	}
+
 	return B_OK;
 }
 
@@ -1652,7 +1695,13 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 	// "Salva con nome" in .xlsx): questa sezione veniva gia' letta per
 	// restare allineata col resto del formato (vedi il blocco poco
 	// sotto), ma MAI catturata, solo scartata.
-	std::vector<std::pair<int, float> >* outColWidths = NULL)
+	std::vector<std::pair<int, float> >* outColWidths = NULL,
+	// Controlli ActiveX incorporati (Fase "ActiveX controls", Phase 2):
+	// stesso principio di outColWidths sopra, servono all'esportazione
+	// ASCD -> XLSX per riscrivere <controls>/xl/activeX/* (vedi
+	// WriteXLSX) -- NULL di default, come ogni altro parametro
+	// opzionale qui sopra.
+	std::vector<EmbeddedControl>* outControls = NULL)
 {
 	char magic[4];
 	if (source->Read(magic, 4) != 4)
@@ -3562,6 +3611,63 @@ static status_t ReadASCD(BPositionIO* source, CContainer* doc,
 		}
 	}
 
+	// Sezione controlli ActiveX incorporati, in coda (ultima sezione,
+	// Fase "ActiveX controls", Phase 2): stesso identico formato
+	// byte-per-byte della sezione gemella scritta da WriteASCD piu' in
+	// alto in questo stesso file (i due DEVONO restare sincronizzati) --
+	// serve a WriteXLSX per riscrivere <controls>/xl/activeX/* nel
+	// giro ASCD -> XLSX.
+	{
+		int32 controlCount = 0;
+		ssize_t got = source->Read(&controlCount, sizeof(controlCount));
+		if (got != 0)
+		{
+			if (got != (ssize_t)sizeof(controlCount) || controlCount < 0 || controlCount > 100000)
+				return B_BAD_DATA;
+			for (int32 i = 0; i < controlCount; i++)
+			{
+				int16 row, col; float geom[4];
+				int32 nameLen, captionLen, classidLen;
+				if (source->Read(&row, sizeof(row)) != (ssize_t)sizeof(row)
+					|| source->Read(&col, sizeof(col)) != (ssize_t)sizeof(col)
+					|| source->Read(geom, sizeof(geom)) != (ssize_t)sizeof(geom)
+					|| source->Read(&nameLen, sizeof(nameLen)) != (ssize_t)sizeof(nameLen))
+					return B_BAD_DATA;
+				if (nameLen < 0 || nameLen > 4096)
+					return B_BAD_DATA;
+				std::string name(nameLen, '\0');
+				if (nameLen > 0 && source->Read(&name[0], nameLen) != nameLen)
+					return B_BAD_DATA;
+				if (source->Read(&captionLen, sizeof(captionLen)) != (ssize_t)sizeof(captionLen))
+					return B_BAD_DATA;
+				if (captionLen < 0 || captionLen > 4096)
+					return B_BAD_DATA;
+				std::string caption(captionLen, '\0');
+				if (captionLen > 0 && source->Read(&caption[0], captionLen) != captionLen)
+					return B_BAD_DATA;
+				if (source->Read(&classidLen, sizeof(classidLen)) != (ssize_t)sizeof(classidLen))
+					return B_BAD_DATA;
+				if (classidLen < 0 || classidLen > 4096)
+					return B_BAD_DATA;
+				std::string classid(classidLen, '\0');
+				if (classidLen > 0 && source->Read(&classid[0], classidLen) != classidLen)
+					return B_BAD_DATA;
+
+				if (outControls)
+				{
+					EmbeddedControl ctrl;
+					ctrl.anchor = cell(col, row);
+					ctrl.offsetX = geom[0]; ctrl.offsetY = geom[1];
+					ctrl.width = geom[2]; ctrl.height = geom[3];
+					ctrl.name = name;
+					ctrl.caption = caption;
+					ctrl.classid = classid;
+					outControls->push_back(ctrl);
+				}
+			}
+		}
+	}
+
 	return B_OK;
 }
 
@@ -4132,6 +4238,21 @@ static std::string BuildStylesXml(CContainer* doc, std::map<std::string, int>* o
 // raccogliere i valori unici, complessita' non necessaria per i
 // fogli tipici esportati da questo programma, ed e' comunque sintassi
 // OOXML valida (Excel/LibreOffice la leggono correttamente).
+// DrawingML, 96 DPI (predefinito Excel) -- usata sia in importazione
+// (piu' sotto) sia in esportazione (WriteXLSX, Fase "ActiveX controls"),
+// definita qui (prima di entrambe) per evitare una dichiarazione in
+// avanti separata per ciascuna.
+static const double kEmuPerPixel = 9525.0;
+
+// Dichiarazioni in avanti (le definizioni vere restano piu' sotto, nel
+// ramo di importazione dove sono nate): servono anche a WriteXLSX
+// (esportazione dei controlli ActiveX, Fase "ActiveX controls"), che in
+// questo file viene PRIMA della loro definizione.
+static float SumColumnWidths(int col0based, const std::vector<std::pair<int, float> >& colWidths,
+	float defaultWidth);
+static float SumRowHeights(int row0based, const std::vector<std::pair<int, float> >& rowHeights,
+	float defaultHeight);
+
 static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtected,
 	// Gia' pronto da WriteXLSX sopra: <dataValidations>...</dataValidations>
 	// seguito da <hyperlinks>...</hyperlinks> (100% XLSX standard
@@ -4175,7 +4296,18 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// da WriteXLSX sotto -- va DOPO <sheetViews>, PRIMA di <sheetData>
 	// per lo schema OOXML (CT_Worksheet); vuoto quando non c'e' nessuna
 	// colonna ridimensionata da scrivere.
-	const std::string& colsXml = std::string())
+	const std::string& colsXml = std::string(),
+	// <controls>...</controls> (Fase "ActiveX controls"), gia' pronto
+	// da WriteXLSX sotto -- va DOPO <drawing>, fratello di <sheetData>
+	// (stesso principio di <drawing> sopra), verificato sull'ordine
+	// reale di un vero file (github.com/rndtrash/chip-8-vba): DOPO
+	// <drawing>/<legacyDrawing> (che qui non scriviamo mai, vedi
+	// il commento su WriteXLSX sotto sul perche' il VML legacy e'
+	// omesso di proposito). Vuoto quando non c'e' nessun controllo da
+	// scrivere -- in quel caso le dichiarazioni xmlns:xdr/x14/mc extra
+	// sotto non servono nemmeno, il tag <worksheet> resta identico a
+	// prima di questa fase.
+	const std::string& controlsXml = std::string())
 {
 	range bounds;
 	doc->GetBounds(bounds);
@@ -4184,9 +4316,17 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	xml += "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
 	// xmlns:r sempre presente (anche senza grafici): serve solo per
 	// l'attributo r:id di <drawing> sotto, innocuo da dichiarare anche
-	// quando non usato.
+	// quando non usato. xmlns:xdr/x14/mc servono SOLO in presenza di
+	// controlli (per <anchor>/<xdr:col> dentro <controlPr> e per
+	// l'involucro mc:AlternateContent/mc:Choice Requires="x14" -- vedi
+	// controlsXml sotto), verificato sul vero file reale citato sopra.
 	xml += "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
-		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">";
+		"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"";
+	if (!controlsXml.empty())
+		xml += " xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "
+			"xmlns:x14=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\" "
+			"xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\"";
+	xml += ">";
 	xml += sheetPrXml;
 	xml += sheetViewsXml;
 	xml += colsXml;
@@ -4352,6 +4492,10 @@ static std::string BuildSheetXml(CContainer* doc, bool hasDrawing, bool isProtec
 	// foglio puo' avere (vedi il rels scritto in WriteXLSX sotto).
 	if (hasDrawing)
 		xml += "<drawing r:id=\"rId1\"/>";
+	// <controls> e' un fratello di <drawing>/<sheetData> (mai al loro
+	// interno), DOPO <drawing> nello schema OOXML -- stesso principio
+	// del commento sopra, verificato sull'ordine reale di un vero file.
+	xml += controlsXml;
 	xml += "</worksheet>";
 	return xml;
 }
@@ -5829,6 +5973,120 @@ static double PixelsToExcelColWidth(float pixels)
 	return (256.0 * pixels / kMDW - n) / 256.0;
 }
 
+// Inversa di SumColumnWidths/SumRowHeights sopra (Fase "ActiveX
+// controls", esportazione): dato uno scarto assoluto in pixel dal
+// margine sinistro/superiore del foglio, trova la colonna/riga 0-based
+// in cui cade e lo scarto residuo dentro quella colonna/riga, in EMU --
+// serve a ricostruire l'ancoraggio <to> (due celle) di un controllo a
+// partire dal suo rettangolo in pixel (EmbeddedControl::offsetX/Y/
+// width/height), l'esatto contrario della matematica di importazione
+// vicino a ParseWorksheetControls. Una guardia su "col"/"row" evita un
+// ciclo infinito se "colWidths"/defaultWidth fosse mai zero o negativo
+// (non dovrebbe mai succedere in pratica, ma costa poco essere onesti).
+static void PixelToColOffset(float pixelX, const std::vector<std::pair<int, float> >& colWidths,
+	float defaultWidth, int* outCol0based, long* outOffEmu)
+{
+	int col = 0;
+	float remaining = pixelX;
+	while (remaining >= 1.0f && col < 100000)
+	{
+		float w = defaultWidth;
+		for (size_t i = 0; i < colWidths.size(); i++)
+		{
+			if (colWidths[i].first - 1 == col)
+			{
+				w = colWidths[i].second;
+				break;
+			}
+		}
+		if (w <= 0 || remaining < w)
+			break;
+		remaining -= w;
+		col++;
+	}
+	*outCol0based = col;
+	*outOffEmu = (long)(remaining * kEmuPerPixel);
+}
+
+static void PixelToRowOffset(float pixelY, float defaultHeight, int* outRow0based, long* outOffEmu)
+{
+	int row = (int)(pixelY / defaultHeight);
+	if (row < 0)
+		row = 0;
+	float remaining = pixelY - row * defaultHeight;
+	*outRow0based = row;
+	*outOffEmu = (long)(remaining * kEmuPerPixel);
+}
+
+// Flusso binario MS-OFORMS minimo, scritto apposta per essere
+// riletto dalla NOSTRA euristica di importazione (ScanActiveXCaptionHeuristic
+// sopra), NON per conformita' piena alla specifica [MS-OFORMS] -- stesso
+// principio onesto del commento su quella funzione: 16 byte di GUID
+// classid (lo stesso valore dell'attributo "ax:classid" in activeXN.xml,
+// quindi ridondante ma richiesto dalla stessa euristica che lo salta)
+// seguiti da UN dword lunghezza/compressione e la didascalia in
+// UTF-16LE (non compressa, cosi' funziona per qualunque didascalia,
+// non solo ASCII) -- nessun altro campo (PropMask, font, posizione...)
+// scritto, mai letto da nessuno di questo codice. Un vero Excel/
+// LibreOffice che aprisse questo file vedrebbe comunque il controllo
+// (l'XML stesso ha gia' tutto il necessario per il rendering), solo
+// una ri-ESPORTAZIONE da parte loro potrebbe non conservare questa
+// scorciatoia -- rischio noto, non ancora verificato dal vivo (vedi
+// ROADMAP.md).
+static void BuildActiveXBin(const std::string& classidGuidString, const std::string& caption,
+	std::vector<unsigned char>* out)
+{
+	out->clear();
+
+	// 16 byte del GUID in forma binaria COM standard (Data1 LE, Data2 LE,
+	// Data3 LE, Data4 byte-order preservato) -- SOLO il classid Forms 2.0
+	// CommandButton e' davvero prodotto qui (vedi il chiamante sotto),
+	// quindi questi 16 byte fissi bastano senza un parser GUID generico.
+	static const unsigned char kCommandButtonGuidBytes[16] = {
+		0x40, 0x32, 0x05, 0xD7, 0x69, 0xCE, 0xCD, 0x11,
+		0xA7, 0x77, 0x00, 0xDD, 0x01, 0x14, 0x3C, 0x57
+	};
+	(void)classidGuidString; // solo CommandButton arriva qui, vedi sopra
+	out->insert(out->end(), kCommandButtonGuidBytes, kCommandButtonGuidBytes + 16);
+
+	size_t charCount = 0;
+	std::vector<unsigned char> utf16;
+	// UTF-8 (CContainer/std::string, sempre) -> UTF-16LE: stesso
+	// decoder minimo di Utf16LEToUtf8 sopra ma nell'altro senso, solo i
+	// tre casi 1/2/3 byte (nessun carattere oltre il BMP e' plausibile
+	// in una didascalia di pulsante).
+	for (size_t i = 0; i < caption.size();)
+	{
+		unsigned char c0 = (unsigned char)caption[i];
+		uint16 u;
+		if (c0 < 0x80) { u = c0; i += 1; }
+		else if ((c0 & 0xE0) == 0xC0 && i + 1 < caption.size())
+		{
+			u = (uint16)((c0 & 0x1F) << 6) | (uint16)((unsigned char)caption[i + 1] & 0x3F);
+			i += 2;
+		}
+		else if ((c0 & 0xF0) == 0xE0 && i + 2 < caption.size())
+		{
+			u = (uint16)((c0 & 0x0F) << 12) | (uint16)(((unsigned char)caption[i + 1] & 0x3F) << 6)
+				| (uint16)((unsigned char)caption[i + 2] & 0x3F);
+			i += 3;
+		}
+		else { i += 1; continue; } // byte non plausibile: saltato, mai un crash
+		utf16.push_back((unsigned char)(u & 0xFF));
+		utf16.push_back((unsigned char)(u >> 8));
+		charCount++;
+	}
+	if (charCount > 0x7FFFFFFF)
+		charCount = 0x7FFFFFFF; // guardia, mai raggiunta in pratica (didascalie corte)
+
+	uint32 lenDword = (uint32)charCount; // bit 31 libero: non compresso, 2 byte/carattere
+	out->push_back((unsigned char)(lenDword & 0xFF));
+	out->push_back((unsigned char)((lenDword >> 8) & 0xFF));
+	out->push_back((unsigned char)((lenDword >> 16) & 0xFF));
+	out->push_back((unsigned char)((lenDword >> 24) & 0xFF));
+	out->insert(out->end(), utf16.begin(), utf16.end());
+}
+
 static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& charts, BPositionIO* dest,
 	const std::vector<unsigned char>& vbaProject = std::vector<unsigned char>(),
 	// Protezione foglio (Fase 32): vedi il commento gemello in
@@ -5865,7 +6123,20 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	// compatibility): (colonna 1-based, larghezza in pixel), stesso
 	// formato di AscdSheet::colWidths in ui/src/AscdIO.h -- vuoto di
 	// default, come ogni altro parametro opzionale qui sopra.
-	const std::vector<std::pair<int, float> >& colWidths = std::vector<std::pair<int, float> >())
+	const std::vector<std::pair<int, float> >& colWidths = std::vector<std::pair<int, float> >(),
+	// Controlli ActiveX incorporati (Fase "ActiveX controls", round-trip
+	// completo): vuoto di default, come ogni altro parametro opzionale
+	// qui sopra. Ogni controllo scrive sempre <control>/<controlPr>/
+	// <anchor> (ancoraggio/nome) PIU' xl/activeX/activeXN.xml col suo
+	// classid -- simmetrico all'importazione, che risolve il classid
+	// per qualunque tipo di controllo, non solo CommandButton. SOLO per
+	// il classid Forms 2.0 CommandButton (l'unico tipo davvero
+	// renderizzato/gestito da questo programma, vedi EmbeddedControl::
+	// classid) si scrive anche activeXN.bin con la didascalia -- un
+	// controllo di un altro tipo importato (ma mai disegnato/cliccabile
+	// in questo programma) si limita a sopravvivere al giro completo
+	// senza nessuna didascalia propria da riscrivere.
+	const std::vector<EmbeddedControl>& controls = std::vector<EmbeddedControl>())
 {
 	// Presenza di un progetto VBA (XLSM, Fase 31): un file .xlsx puro
 	// non ha mai xl/vbaProject.bin, quindi "hasMacros" e' sempre false
@@ -6023,6 +6294,7 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 	}
 
 	bool hasDrawing = !chartXmls.empty();
+	bool hasControls = !controls.empty(); // vedi il blocco "Controlli ActiveX" piu' sotto
 
 	// xl/comments1.xml (100% XLSX standard compatibility, Tier 2):
 	// CContainer::GetComments() -> un solo <author> generico (questo
@@ -6140,6 +6412,82 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 			hyperlinksXml += "\"/>";
 		}
 		hyperlinksXml += "</hyperlinks>";
+	}
+
+	// Controlli ActiveX incorporati (Fase "ActiveX controls", Phase 2 --
+	// esportazione): "controlsXml" e' il corpo completo di <controls>
+	// dentro <worksheet> (BuildSheetXml sotto lo inserisce dopo
+	// <drawing>, vedi quella funzione) -- costruito SOLO qui, dopo
+	// "hyperlinkRidStart" sopra, perche' ogni controllo ha bisogno di
+	// un r:id VERO (nel .rels del foglio sotto) allocato DOPO
+	// drawing/commenti/link/tabelle pivot, stesso principio "rId
+	// successivo libero" di quelli. Omesso di proposito il VML legacy
+	// (mc:Fallback/l'r:id opzionale di <controlPr>): Excel/LibreOffice
+	// moderni renderizzano da mc:Choice Requires="x14", quel fallback
+	// serve solo a Excel pre-2010 -- rischio noto non ancora verificato
+	// dal vivo, vedi ROADMAP.md.
+	int controlRidStart = hyperlinkRidStart + (int)links.size() + (hasPivots ? (int)pivotParts.size() : 0);
+	std::string controlsXml;
+	std::vector<int> controlRids; // uno per controllo, stesso ordine di "controls"
+	std::vector<std::string> controlActiveXXmls;
+	std::vector<std::vector<unsigned char> > controlActiveXBins; // vuoto se non CommandButton
+	if (hasControls)
+	{
+		static const float kCtrlDefColWidth = 80.0f, kCtrlDefRowHeight = 20.0f;
+		static const char* kCommandButtonClassid = "{D7053240-CE69-11CD-A777-00DD01143C57}";
+		controlsXml = "<controls>";
+		for (size_t ci = 0; ci < controls.size(); ci++)
+		{
+			const EmbeddedControl& ctrl = controls[ci];
+			int rid = controlRidStart + (int)ci;
+			controlRids.push_back(rid);
+
+			int fromCol0 = ctrl.anchor.h - 1, fromRow0 = ctrl.anchor.v - 1;
+			long fromColOffEmu = (long)(ctrl.offsetX * kEmuPerPixel);
+			long fromRowOffEmu = (long)(ctrl.offsetY * kEmuPerPixel);
+
+			float rightPixel = SumColumnWidths(fromCol0, colWidths, kCtrlDefColWidth)
+				+ ctrl.offsetX + ctrl.width;
+			float bottomPixel = SumRowHeights(fromRow0, std::vector<std::pair<int, float> >(),
+				kCtrlDefRowHeight) + ctrl.offsetY + ctrl.height;
+			int toCol0, toRow0;
+			long toColOffEmu, toRowOffEmu;
+			PixelToColOffset(rightPixel, colWidths, kCtrlDefColWidth, &toCol0, &toColOffEmu);
+			PixelToRowOffset(bottomPixel, kCtrlDefRowHeight, &toRow0, &toRowOffEmu);
+
+			char buf[512];
+			snprintf(buf, sizeof(buf),
+				"<mc:AlternateContent><mc:Choice Requires=\"x14\">"
+				"<control shapeId=\"%d\" r:id=\"rId%d\" name=\"",
+				(int)(2000 + ci), rid);
+			controlsXml += buf;
+			AppendXmlEscaped(controlsXml, ctrl.name.c_str());
+			controlsXml += "\"><controlPr autoLine=\"0\"><anchor moveWithCells=\"1\"><from>";
+			snprintf(buf, sizeof(buf), "<xdr:col>%d</xdr:col><xdr:colOff>%ld</xdr:colOff>"
+				"<xdr:row>%d</xdr:row><xdr:rowOff>%ld</xdr:rowOff>",
+				fromCol0, fromColOffEmu, fromRow0, fromRowOffEmu);
+			controlsXml += buf;
+			controlsXml += "</from><to>";
+			snprintf(buf, sizeof(buf), "<xdr:col>%d</xdr:col><xdr:colOff>%ld</xdr:colOff>"
+				"<xdr:row>%d</xdr:row><xdr:rowOff>%ld</xdr:rowOff>",
+				toCol0, toColOffEmu, toRow0, toRowOffEmu);
+			controlsXml += buf;
+			controlsXml += "</to></anchor></controlPr></control></mc:Choice></mc:AlternateContent>";
+
+			std::string axXml = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n"
+				"<ax:ocx ax:classid=\"";
+			AppendXmlEscaped(axXml, ctrl.classid.c_str());
+			axXml += "\" ax:persistence=\"persistStreamInit\" r:id=\"rId1\" "
+				"xmlns:ax=\"http://schemas.microsoft.com/office/2006/activeX\" "
+				"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"/>";
+			controlActiveXXmls.push_back(axXml);
+
+			std::vector<unsigned char> bin;
+			if (ctrl.classid == kCommandButtonClassid)
+				BuildActiveXBin(ctrl.classid, ctrl.caption, &bin);
+			controlActiveXBins.push_back(bin);
+		}
+		controlsXml += "</controls>";
 	}
 
 	// <sheetViews><sheetView><pane .../></sheetView></sheetViews> (100%
@@ -6261,7 +6609,7 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 		&xfIndexForStyle, conditionalFormattingXml,
 		protectionHasPassword, protectionIsModernHash, protectionLegacyPassword,
 		protectionAlgorithmName, protectionHashValue, protectionSaltValue, protectionSpinCount,
-		colsXml);
+		colsXml, controlsXml);
 
 	// docProps/core.xml e docProps/app.xml (Tier 4 "100% XLSX standard
 	// compatibility", cosmetico -- vedi ROADMAP.md): questo export non
@@ -6354,6 +6702,29 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 			contentTypes += buf;
 		}
 	}
+	if (hasControls)
+	{
+		// Verificato a mano sul vero file reale citato piu' sopra:
+		// SIA activeXN.xml SIA activeXN.bin sono un Override per-file,
+		// mai un Default per estensione (a differenza di "bin" per
+		// vbaProject.bin sopra) -- i due hanno content-type diversi
+		// anche se condividono l'estensione ".bin".
+		for (size_t ci = 0; ci < controls.size(); ci++)
+		{
+			char buf[224];
+			snprintf(buf, sizeof(buf),
+				"<Override PartName=\"/xl/activeX/activeX%zu.xml\" "
+				"ContentType=\"application/vnd.ms-office.activeX+xml\"/>\n", ci + 1);
+			contentTypes += buf;
+			if (!controlActiveXBins[ci].empty())
+			{
+				snprintf(buf, sizeof(buf),
+					"<Override PartName=\"/xl/activeX/activeX%zu.bin\" "
+					"ContentType=\"application/vnd.ms-office.activeX\"/>\n", ci + 1);
+				contentTypes += buf;
+			}
+		}
+	}
 	contentTypes += "</Types>\n";
 
 	CZipWriter zip;
@@ -6382,7 +6753,7 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 			return B_IO_ERROR;
 	}
 
-	if (hasDrawing || hasComments || hasHyperlinks || hasPivots)
+	if (hasDrawing || hasComments || hasHyperlinks || hasPivots || hasControls)
 	{
 		// Il foglio si collega al drawing tramite rId1 (vedi
 		// <drawing r:id="rId1"/> scritto da BuildSheetXml sopra, solo in
@@ -6440,6 +6811,24 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 					"<Relationship Id=\"rId%d\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable\" "
 					"Target=\"../pivotTables/pivotTable%zu.xml\"/>\n",
 					rid, i + 1);
+				sheetRels += buf;
+			}
+		}
+		// Controlli ActiveX (Fase "ActiveX controls", Phase 2): gli
+		// stessi rId calcolati in "controlRids" sopra (controlRidStart
+		// in poi, DOPO le tabelle pivot) -- ogni controllo si collega a
+		// xl/activeX/activeXN.xml (N = 1-based, stesso ordine di
+		// "controls"), MAI al VML legacy (omesso di proposito, vedi il
+		// commento su controlsXml sopra).
+		if (hasControls)
+		{
+			for (size_t ci = 0; ci < controls.size(); ci++)
+			{
+				char buf[256];
+				snprintf(buf, sizeof(buf),
+					"<Relationship Id=\"rId%d\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/control\" "
+					"Target=\"../activeX/activeX%zu.xml\"/>\n",
+					controlRids[ci], ci + 1);
 				sheetRels += buf;
 			}
 		}
@@ -6521,6 +6910,40 @@ static status_t WriteXLSX(CContainer* doc, const std::vector<XlsxChartInfo>& cha
 			snprintf(name, sizeof(name), "xl/charts/chart%zu.xml", i + 1);
 			if (!zip.AddEntry(name, chartXmls[i].data(), chartXmls[i].size()))
 				return B_IO_ERROR;
+		}
+	}
+
+	// Le parti xl/activeX/* per ogni controllo ActiveX davvero
+	// esportato (Fase "ActiveX controls", Phase 2): activeXN.xml
+	// sempre, il suo .rels + activeXN.bin SOLO quando c'e' davvero una
+	// didascalia da scrivere (BuildActiveXBin sopra, solo CommandButton
+	// -- vedi "controlActiveXBins" sopra, vuoto per ogni altro tipo).
+	if (hasControls)
+	{
+		for (size_t ci = 0; ci < controls.size(); ci++)
+		{
+			char name[64];
+			snprintf(name, sizeof(name), "xl/activeX/activeX%zu.xml", ci + 1);
+			if (!zip.AddEntry(name, controlActiveXXmls[ci].data(), controlActiveXXmls[ci].size()))
+				return B_IO_ERROR;
+
+			if (!controlActiveXBins[ci].empty())
+			{
+				char relsXml[384];
+				snprintf(relsXml, sizeof(relsXml),
+					"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+					"<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">\n"
+					"<Relationship Id=\"rId1\" Type=\"http://schemas.microsoft.com/office/2006/relationships/activeXControlBinary\" "
+					"Target=\"activeX%zu.bin\"/>\n</Relationships>\n",
+					ci + 1);
+				snprintf(name, sizeof(name), "xl/activeX/_rels/activeX%zu.xml.rels", ci + 1);
+				if (!zip.AddEntry(name, relsXml, strlen(relsXml)))
+					return B_IO_ERROR;
+
+				snprintf(name, sizeof(name), "xl/activeX/activeX%zu.bin", ci + 1);
+				if (!zip.AddEntry(name, controlActiveXBins[ci].data(), controlActiveXBins[ci].size()))
+					return B_IO_ERROR;
+			}
 		}
 	}
 
@@ -10104,6 +10527,381 @@ static bool ParseDrawing(const std::vector<unsigned char>& xml, std::vector<Draw
 	return true;
 }
 
+// Controlli ActiveX incorporati (Fase "ActiveX controls", vedi
+// EmbeddedControl.h): a differenza di immagini/grafici sopra, l'elenco
+// vero vive in xl/worksheets/sheetN.xml <controls> (il corpo del
+// foglio stesso, lo stesso buffer passato a ParseSheet), MAI in
+// xl/drawings/drawingN.xml -- quel file porta solo segnaposto vuoti,
+// nascosti ("hidden=\"1\"", xfrm 0x0), per questi stessi controlli,
+// verificato a mano su un file reale. "controlRelId" (il r:id
+// dell'elemento <control> ESTERNO) e' quello che risolve verso
+// xl/activeX/activeXN.xml -- il r:id di <controlPr>, nonostante il
+// nome, punta invece all'immagine VML legacy (il contrario di quanto
+// una prima lettura della documentazione lascerebbe credere): verificato
+// a mano su un vero file (github.com/rndtrash/chip-8-vba, tutti e 20 i
+// controlli), non solo ipotizzato. Risolto DOPO il parsing, tramite i
+// _rels del foglio (sheetRelTargets, gia' in scope nel ciclo chiamante).
+struct RawWorksheetControl {
+	std::string name;
+	std::string controlRelId;
+	int fromCol, fromRow; // 0-based, stesso significato di DrawingPic
+	long fromColOffEmu, fromRowOffEmu;
+	bool hasTo;
+	int toCol, toRow;
+	long toColOffEmu, toRowOffEmu;
+
+	RawWorksheetControl() : fromCol(0), fromRow(0), fromColOffEmu(0), fromRowOffEmu(0),
+		hasTo(false), toCol(0), toRow(0), toColOffEmu(0), toRowOffEmu(0) {}
+};
+
+struct WorksheetControlsContext {
+	std::vector<RawWorksheetControl> controls;
+	RawWorksheetControl current;
+	bool inChoice;      // dentro <mc:Choice Requires="x14">, mai <mc:Fallback>
+	bool inControl;
+	bool inControlPr;
+	bool inAnchor;
+	bool inFrom;
+	bool inTo;
+	bool captureNum;
+	std::string numText;
+
+	WorksheetControlsContext() : inChoice(false), inControl(false), inControlPr(false),
+		inAnchor(false), inFrom(false), inTo(false), captureNum(false) {}
+};
+
+static void XMLCALL WorksheetControlsStart(void* userData, const char* name, const char** atts)
+{
+	WorksheetControlsContext* ctx = (WorksheetControlsContext*)userData;
+
+	// "mc:Choice"/"mc:Fallback" non hanno un prefisso di base coerente
+	// col resto di questo file (sono gia' scritti letteralmente con
+	// "mc:" nel file reale, mai senza prefisso) -- confronto diretto,
+	// nessuna QualifyElementName qui serve.
+	if (strcmp(name, "mc:Choice") == 0)
+	{
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "Requires") == 0 && strcmp(atts[i + 1], "x14") == 0)
+				ctx->inChoice = true;
+		}
+		return;
+	}
+	if (strcmp(name, "mc:Fallback") == 0)
+	{
+		ctx->inChoice = false; // sicurezza: non dovrebbe mai essere vero qui, ma mai scambiarle
+		return;
+	}
+	if (!ctx->inChoice)
+		return; // dentro <mc:Fallback> (o fuori da entrambi): ignora, duplica solo name/VML
+
+	if (strcmp(name, "control") == 0)
+	{
+		ctx->inControl = true;
+		ctx->current = RawWorksheetControl();
+		for (int i = 0; atts[i]; i += 2)
+		{
+			if (strcmp(atts[i], "name") == 0)
+				ctx->current.name = atts[i + 1];
+			else if (strcmp(atts[i], "r:id") == 0)
+				ctx->current.controlRelId = atts[i + 1]; // vedi il commento su RawWorksheetControl
+		}
+		return;
+	}
+	if (!ctx->inControl)
+		return;
+
+	if (strcmp(name, "controlPr") == 0)
+	{
+		ctx->inControlPr = true;
+		return;
+	}
+	if (!ctx->inControlPr)
+		return;
+
+	if (strcmp(name, "anchor") == 0)
+	{
+		ctx->inAnchor = true;
+		return;
+	}
+	if (!ctx->inAnchor)
+		return;
+
+	// <from>/<to> qui sono SENZA prefisso "xdr:" sull'elemento stesso
+	// (il file reale scrive "<from><xdr:col>...") -- solo i LORO figli
+	// (xdr:col/xdr:colOff/xdr:row/xdr:rowOff) portano il prefisso,
+	// verificato a mano sul file reale.
+	if (strcmp(name, "from") == 0)
+		ctx->inFrom = true;
+	else if (strcmp(name, "to") == 0)
+	{
+		ctx->inTo = true;
+		ctx->current.hasTo = true;
+	}
+	else if ((ctx->inFrom || ctx->inTo) && (strcmp(name, "xdr:col") == 0
+		|| strcmp(name, "xdr:colOff") == 0 || strcmp(name, "xdr:row") == 0
+		|| strcmp(name, "xdr:rowOff") == 0))
+	{
+		ctx->numText.clear();
+		ctx->captureNum = true;
+	}
+}
+
+static void XMLCALL WorksheetControlsEnd(void* userData, const char* name)
+{
+	WorksheetControlsContext* ctx = (WorksheetControlsContext*)userData;
+
+	if (strcmp(name, "mc:Choice") == 0)
+	{
+		ctx->inChoice = false;
+		return;
+	}
+	if (strcmp(name, "mc:Fallback") == 0)
+		return;
+	if (!ctx->inChoice && !ctx->inControl)
+		return;
+
+	if (strcmp(name, "control") == 0)
+	{
+		ctx->inControl = false;
+		if (!ctx->current.name.empty() && !ctx->current.controlRelId.empty())
+			ctx->controls.push_back(ctx->current);
+		return;
+	}
+	if (strcmp(name, "controlPr") == 0)
+	{
+		ctx->inControlPr = false;
+		return;
+	}
+	if (strcmp(name, "anchor") == 0)
+	{
+		ctx->inAnchor = false;
+		return;
+	}
+	if (strcmp(name, "from") == 0)
+	{
+		ctx->inFrom = false;
+		return;
+	}
+	if (strcmp(name, "to") == 0)
+	{
+		ctx->inTo = false;
+		return;
+	}
+	if (ctx->captureNum)
+	{
+		long value = atol(ctx->numText.c_str());
+		if (ctx->inFrom)
+		{
+			if (strcmp(name, "xdr:col") == 0)
+				ctx->current.fromCol = (int)value;
+			else if (strcmp(name, "xdr:colOff") == 0)
+				ctx->current.fromColOffEmu = value;
+			else if (strcmp(name, "xdr:row") == 0)
+				ctx->current.fromRow = (int)value;
+			else if (strcmp(name, "xdr:rowOff") == 0)
+				ctx->current.fromRowOffEmu = value;
+		}
+		else if (ctx->inTo)
+		{
+			if (strcmp(name, "xdr:col") == 0)
+				ctx->current.toCol = (int)value;
+			else if (strcmp(name, "xdr:colOff") == 0)
+				ctx->current.toColOffEmu = value;
+			else if (strcmp(name, "xdr:row") == 0)
+				ctx->current.toRow = (int)value;
+			else if (strcmp(name, "xdr:rowOff") == 0)
+				ctx->current.toRowOffEmu = value;
+		}
+		ctx->captureNum = false;
+	}
+}
+
+static void XMLCALL WorksheetControlsChars(void* userData, const char* s, int len)
+{
+	WorksheetControlsContext* ctx = (WorksheetControlsContext*)userData;
+	if (ctx->captureNum)
+		ctx->numText.append(s, len);
+}
+
+// Scandisce <controls> nel corpo XML del foglio (lo STESSO buffer
+// passato a ParseSheet, non un file separato) -- vero anche su un
+// foglio senza alcun controllo ActiveX (out resta vuoto, non un
+// errore, stesso principio di ParseDrawing su un drawing senza
+// immagini/grafici).
+static bool ParseWorksheetControls(const std::vector<unsigned char>& xml,
+	std::vector<RawWorksheetControl>* out)
+{
+	if (xml.empty())
+		return true; // nessun contenuto da leggere, non e' un errore
+
+	WorksheetControlsContext ctx;
+
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, WorksheetControlsStart, WorksheetControlsEnd);
+	XML_SetCharacterDataHandler(parser, WorksheetControlsChars);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), (int)xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK)
+		return false;
+
+	*out = ctx.controls;
+	return true;
+}
+
+// Legge il solo attributo ax:classid del blob xl/activeX/activeXN.xml
+// (sempre un'unica riga, "<ax:ocx ax:classid=\"{...}\" .../>") -- un
+// vero parser expat qui invece di una ricerca di sottostringa e'
+// deliberatamente piu' robusto a variazioni di ordine degli attributi/
+// spaziatura, stesso principio del resto di questo file.
+struct ActiveXOcxContext {
+	std::string classid;
+};
+
+static void XMLCALL ActiveXOcxStart(void* userData, const char* name, const char** atts)
+{
+	ActiveXOcxContext* ctx = (ActiveXOcxContext*)userData;
+	if (strcmp(name, "ax:ocx") != 0)
+		return;
+	for (int i = 0; atts[i]; i += 2)
+	{
+		if (strcmp(atts[i], "ax:classid") == 0)
+			ctx->classid = atts[i + 1];
+	}
+}
+
+static bool ParseActiveXOcx(const std::vector<unsigned char>& xml, std::string* outClassid)
+{
+	if (xml.empty())
+		return false;
+
+	ActiveXOcxContext ctx;
+	XML_Parser parser = XML_ParserCreate(NULL);
+	XML_SetUserData(parser, &ctx);
+	XML_SetElementHandler(parser, ActiveXOcxStart, NULL);
+
+	XML_Status status = XML_Parse(parser, (const char*)xml.data(), (int)xml.size(), 1);
+	XML_ParserFree(parser);
+
+	if (status != XML_STATUS_OK || ctx.classid.empty())
+		return false;
+
+	*outClassid = ctx.classid;
+	return true;
+}
+
+// Euristica best-effort per estrarre "Caption" da uno stream binario
+// MS-OFORMS ("f", persistStreamInit) di un CommandButton Forms 2.0 --
+// NON conformita' piena alla specifica [MS-OFORMS]: quella specifica
+// definisce un formato posizionale preciso (PropMask bit a bit, campi
+// opzionali in un ordine fisso) che questo codice non implementa.
+// Scandisce "bin" (saltando i primi 16 byte, il GUID del classid, gia'
+// ridondante con l'XML) BYTE PER BYTE (non solo agli offset allineati
+// a 4: i due campioni reali verificati a mano cadono a offset 0x1C e
+// 0x18, non entrambi allineati a 4 rispetto a un'origine comune)
+// cercando il PRIMO dword little-endian che, interpretato come
+// "lunghezza+compressione" (bit 31 = 0x80000000 impostato: compresso,
+// 1 byte/carattere; bit 31 libero: non compresso, 2 byte/carattere
+// UTF-16LE; i 31 bit bassi = conteggio caratteri), punta a un
+// intervallo di byte (a) interamente dentro il buffer e (b) composto
+// solo da caratteri plausibili (ASCII stampabile, o unita' di codice
+// UTF-16LE in un intervallo ragionevole) di lunghezza 1..80 caratteri
+// -- il PRIMO riscontro del genere e' la Caption. Verificato a mano su
+// due campioni MS-OFORMS reali: un dword 0x0000001C (28, non
+// compresso) seguito da 28 byte UTF-16LE cirillici; un dword
+// 0x80000001 (compresso, 1 carattere) seguito da 0x41 ('A'). Il nome
+// del font ("Calibri\0", ASCII con terminatore nullo piu' avanti nello
+// stream) non si legge affatto: non serve per visualizzare una
+// didascalia. Nessun riscontro plausibile nel buffer: l'uscita resta
+// vuota, il CHIAMANTE ricade sul nome del controllo (vedi
+// EmbeddedControl::caption in EmbeddedControl.h).
+static bool IsPlausibleCompressedByte(uint8 b)
+{
+	return b >= 0x20 && b < 0x7F; // ASCII stampabile
+}
+
+static bool IsPlausibleUtf16Unit(uint16 u)
+{
+	// Esclude i surrogati isolati (0xD800-0xDFFF, rari per una
+	// didascalia di pulsante vera) e il controllo C0 (0x00-0x1F) salvo
+	// nessuno in pratica -- un filtro permissivo apposta, serve solo a
+	// scartare rumore binario casuale, non a validare Unicode sul serio.
+	return u >= 0x20 && u < 0xD800;
+}
+
+static void Utf16LEToUtf8(const std::vector<unsigned char>& bin, size_t start, size_t count,
+	std::string* out)
+{
+	out->clear();
+	for (size_t i = 0; i < count; i++)
+	{
+		uint16 u = (uint16)bin[start + i * 2] | ((uint16)bin[start + i * 2 + 1] << 8);
+		if (u < 0x80)
+			out->push_back((char)u);
+		else if (u < 0x800)
+		{
+			out->push_back((char)(0xC0 | (u >> 6)));
+			out->push_back((char)(0x80 | (u & 0x3F)));
+		}
+		else
+		{
+			out->push_back((char)(0xE0 | (u >> 12)));
+			out->push_back((char)(0x80 | ((u >> 6) & 0x3F)));
+			out->push_back((char)(0x80 | (u & 0x3F)));
+		}
+	}
+}
+
+static bool ScanActiveXCaptionHeuristic(const std::vector<unsigned char>& bin,
+	std::string* outCaption)
+{
+	if (bin.size() < 20)
+		return false;
+
+	for (size_t i = 16; i + 4 <= bin.size(); i++)
+	{
+		uint32 raw = (uint32)bin[i] | ((uint32)bin[i + 1] << 8)
+			| ((uint32)bin[i + 2] << 16) | ((uint32)bin[i + 3] << 24);
+		bool compressed = (raw & 0x80000000) != 0;
+		uint32 count = raw & 0x7FFFFFFF;
+		if (count < 1 || count > 80)
+			continue;
+
+		size_t dataStart = i + 4;
+		size_t byteLen = compressed ? count : (size_t)count * 2;
+		if (dataStart + byteLen > bin.size())
+			continue;
+
+		if (compressed)
+		{
+			bool allPlausible = true;
+			for (size_t c = 0; c < count && allPlausible; c++)
+				allPlausible = IsPlausibleCompressedByte(bin[dataStart + c]);
+			if (!allPlausible)
+				continue;
+			outCaption->assign((const char*)&bin[dataStart], count);
+		}
+		else
+		{
+			bool allPlausible = true;
+			for (size_t c = 0; c < count && allPlausible; c++)
+			{
+				uint16 u = (uint16)bin[dataStart + c * 2]
+					| ((uint16)bin[dataStart + c * 2 + 1] << 8);
+				allPlausible = IsPlausibleUtf16Unit(u);
+			}
+			if (!allPlausible)
+				continue;
+			Utf16LEToUtf8(bin, dataStart, count, outCaption);
+		}
+		return true;
+	}
+	return false;
+}
+
 // Un <comment> di xl/comments{N}.xml (100% XLSX standard compatibility,
 // Tier 2): "ref" e' un riferimento stile "A1" (attributo diretto, non
 // un ancoraggio disegno come per immagini/grafici sopra), "text" e' la
@@ -10312,8 +11110,6 @@ static bool PngDimensions(const std::vector<unsigned char>& data, uint32* outW, 
 	*outH = ((uint32)data[20] << 24) | ((uint32)data[21] << 16) | ((uint32)data[22] << 8) | data[23];
 	return true;
 }
-
-static const double kEmuPerPixel = 9525.0; // DrawingML, 96 DPI (predefinito Excel)
 
 // Somma le larghezze VERE (da <col> esplicite nel file XLSX,
 // ParsedSheet::colWidths -- gia' in pixel, vedi ExcelColWidthToPixels)
@@ -11274,6 +12070,11 @@ struct ParsedSheet {
 	std::vector<std::pair<int, float> > colWidths;
 	std::vector<std::pair<int, float> > rowHeights;
 	std::vector<EmbeddedImage> images;
+	// Controlli ActiveX incorporati (Forms 2.0 CommandButton): da
+	// xl/worksheets/sheetN.xml <controls>, vedi ParseWorksheetControls
+	// e il commento su EmbeddedControl in EmbeddedControl.h sul perche'
+	// NON viene da xl/drawings/drawingN.xml come immagini/grafici sopra.
+	std::vector<EmbeddedControl> controls;
 	bool showGrid = true;
 	bool hasTabColor = false;
 	rgb_color tabColor = { 0, 0, 0, 255 };
@@ -11459,7 +12260,8 @@ static status_t WriteASCDBook(const std::vector<ParsedSheet>& sheets, BPositionI
 			&sheets[i].protectionHasPassword, &sheets[i].protectionIsModernHash,
 			&sheets[i].protectionLegacyPassword, &sheets[i].protectionAlgorithmName,
 			&sheets[i].protectionHashValue, &sheets[i].protectionSaltValue,
-			&sheets[i].protectionSpinCount, &sheets[i].filterHiddenValues);
+			&sheets[i].protectionSpinCount, &sheets[i].filterHiddenValues,
+			&sheets[i].controls);
 		if (err != B_OK)
 			return err;
 
@@ -11575,13 +12377,14 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 		std::string protectionHashValue, protectionSaltValue;
 		int32 protectionSpinCount = 0;
 		std::vector<std::pair<int, float> > colWidths;
+		std::vector<EmbeddedControl> controls;
 		status_t err = ReadASCD(source, doc, &charts, &vbaProject, &isProtected,
 			&frozenRows, &frozenCols,
 			&hasPrintSettings, &marginTopCm, &marginBottomCm, &marginLeftCm, &marginRightCm,
 			&scaleMode, &scalePercent, &hasPrintArea, &printArea,
 			&protectionHasPassword, &protectionIsModernHash, &protectionLegacyPassword,
 			&protectionAlgorithmName, &protectionHashValue, &protectionSaltValue,
-			&protectionSpinCount, &colWidths);
+			&protectionSpinCount, &colWidths, &controls);
 		if (err == B_OK)
 			err = (outType == kAtomoNativeFormat) ? WriteASCD(doc, destination)
 				: WriteXLSX(doc, charts, destination, vbaProject, isProtected,
@@ -11590,7 +12393,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 					scaleMode, scalePercent, hasPrintArea, printArea,
 					protectionHasPassword, protectionIsModernHash, protectionLegacyPassword,
 					protectionAlgorithmName, protectionHashValue, protectionSaltValue,
-					protectionSpinCount, colWidths);
+					protectionSpinCount, colWidths, controls);
 		doc->Release();
 		return err;
 	}
@@ -11739,6 +12542,16 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 			err = B_BAD_DATA;
 			break;
 		}
+
+		// Controlli ActiveX (vedi EmbeddedControl.h): letti ORA dallo
+		// STESSO buffer "sheetXml" appena usato da ParseSheet sopra --
+		// mai vero, sempre innocuo, un foglio senza <controls> (vedi
+		// ParseWorksheetControls). "rawControls" si risolve in
+		// EmbeddedControl piu' sotto, dentro il blocco con
+		// "sheetRelTargets" gia' in scope, dove si conosce il percorso
+		// di xl/activeX/activeXN.xml per ciascuno.
+		std::vector<RawWorksheetControl> rawControls;
+		ParseWorksheetControls(sheetXml, &rawControls);
 
 		// Collegamenti ipertestuali INTERNI (100% XLSX standard
 		// compatibility, Tier 2): "location" e' gia' il riferimento
@@ -12264,6 +13077,118 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 						}
 					}
 				}
+
+				// Risoluzione dei controlli ActiveX raccolti sopra
+				// (rawControls, da <controls> nel corpo del foglio) --
+				// qui, non nel ciclo su sheetRelTargets sopra, perche'
+				// ogni controllo si cerca per IL SUO r:id specifico (un
+				// solo map::find a testa), non per prefisso di percorso
+				// come tabelle/commenti/disegni.
+				static const float kCtrlDefColWidth = 80.0f, kCtrlDefRowHeight = 20.0f;
+				for (size_t ci = 0; ci < rawControls.size(); ci++)
+				{
+					const RawWorksheetControl& rc = rawControls[ci];
+					std::map<std::string, std::string>::iterator rit =
+						sheetRelTargets.find(rc.controlRelId);
+					if (rit == sheetRelTargets.end())
+						continue;
+
+					std::string activeXTarget = rit->second;
+					if (activeXTarget.compare(0, 3, "../") == 0)
+						activeXTarget = activeXTarget.substr(3);
+					std::string activeXPath = "xl/" + activeXTarget;
+
+					std::vector<unsigned char> activeXXml;
+					std::string classid;
+					if (!zip.ReadEntry(activeXPath.c_str(), activeXXml)
+						|| !ParseActiveXOcx(activeXXml, &classid))
+						continue;
+
+					EmbeddedControl ctrl;
+					ctrl.anchor = cell(rc.fromCol + 1, rc.fromRow + 1);
+					ctrl.offsetX = (float)(rc.fromColOffEmu / kEmuPerPixel);
+					ctrl.offsetY = (float)(rc.fromRowOffEmu / kEmuPerPixel);
+					if (rc.hasTo)
+					{
+						// Stessa matematica del ramo grafici a due celle
+						// sopra (SumColumnWidths/SumRowHeights sulla
+						// colonna/riga "to" meno "from", lo scarto di
+						// intestazione si cancella nella sottrazione
+						// quindi non serve includerlo qui) -- vedi il
+						// commento su quel ramo per il bug reale che
+						// questa stessa formula ha gia' corretto una
+						// volta (colonne non standard).
+						float left = SumColumnWidths(rc.fromCol, parsed.colWidths, kCtrlDefColWidth)
+							+ (float)(rc.fromColOffEmu / kEmuPerPixel);
+						float top = SumRowHeights(rc.fromRow, parsed.rowHeights, kCtrlDefRowHeight)
+							+ (float)(rc.fromRowOffEmu / kEmuPerPixel);
+						float right = SumColumnWidths(rc.toCol, parsed.colWidths, kCtrlDefColWidth)
+							+ (float)(rc.toColOffEmu / kEmuPerPixel);
+						float bottom = SumRowHeights(rc.toRow, parsed.rowHeights, kCtrlDefRowHeight)
+							+ (float)(rc.toRowOffEmu / kEmuPerPixel);
+						ctrl.width = right - left;
+						ctrl.height = bottom - top;
+					}
+					ctrl.name = rc.name;
+					ctrl.classid = classid;
+					ctrl.caption = rc.name; // ripiego, sovrascritto sotto se l'euristica riesce
+
+					// Fase "ActiveX controls": SOLO CommandButton (Forms
+					// 2.0) risolve davvero il proprio .bin per la
+					// didascalia -- un classid diverso si importa
+					// comunque (ancoraggio/nome gia' impostati sopra),
+					// vedi il commento su EmbeddedControl::classid.
+					if (classid == "{D7053240-CE69-11CD-A777-00DD01143C57}")
+					{
+						size_t aSlash = activeXPath.find_last_of('/');
+						std::string aDir = aSlash == std::string::npos ? ""
+							: activeXPath.substr(0, aSlash);
+						std::string aFile = aSlash == std::string::npos ? activeXPath
+							: activeXPath.substr(aSlash + 1);
+						std::string activeXRelsPath = aDir + "/_rels/" + aFile + ".rels";
+
+						std::vector<unsigned char> activeXRelsXml;
+						std::map<std::string, std::string> activeXRelTargets;
+						if (zip.ReadEntry(activeXRelsPath.c_str(), activeXRelsXml)
+							&& ParseRelationships(activeXRelsXml, activeXRelTargets)
+							&& !activeXRelTargets.empty())
+						{
+							// Un solo rId per il blob binario in pratica
+							// (rId1 nel file reale) -- si prende
+							// semplicemente il primo/unico target, un
+							// activeXN.xml non ha altre relazioni oltre
+							// al proprio .bin. A differenza dei _rels del
+							// FOGLIO (un livello sopra, da cui "../"),
+							// questo target e' relativo alla STESSA
+							// cartella di activeXN.xml stesso ("activeX1.bin",
+							// mai "../..." -- verificato a mano su un file
+							// reale): risolverlo con "xl/" + target (come
+							// sopra per sheetRelTargets) perderebbe la
+							// cartella "activeX/" e punterebbe a un percorso
+							// inesistente, facendo fallire SEMPRE
+							// ReadEntry sotto senza nessun errore visibile
+							// (ScanActiveXCaptionHeuristic semplicemente non
+							// viene mai chiamata) -- bug reale trovato
+							// scrivendo il test con un vero file a 20
+							// controlli, dove ogni didascalia ricadeva
+							// silenziosamente sul nome.
+							std::string binTarget = activeXRelTargets.begin()->second;
+							std::string binPath = binTarget.compare(0, 3, "../") == 0
+								? "xl/" + binTarget.substr(3)
+								: aDir + "/" + binTarget;
+
+							std::vector<unsigned char> binBytes;
+							std::string heuristicCaption;
+							if (zip.ReadEntry(binPath.c_str(), binBytes)
+								&& ScanActiveXCaptionHeuristic(binBytes, &heuristicCaption)
+								&& !heuristicCaption.empty())
+								ctrl.caption = heuristicCaption;
+						}
+					}
+
+					if (ctrl.width > 0 && ctrl.height > 0)
+						parsed.controls.push_back(ctrl);
+				}
 			}
 		}
 
@@ -12309,7 +13234,7 @@ status_t CXlsxTranslator::Translate(BPositionIO* source,
 				sheets[0].protectionHasPassword, sheets[0].protectionIsModernHash,
 				sheets[0].protectionLegacyPassword, sheets[0].protectionAlgorithmName,
 				sheets[0].protectionHashValue, sheets[0].protectionSaltValue,
-				sheets[0].protectionSpinCount, sheets[0].colWidths);
+				sheets[0].protectionSpinCount, sheets[0].colWidths, sheets[0].controls);
 	}
 
 	if (err == B_OK && extension != NULL && !unsupportedCharts.empty())
