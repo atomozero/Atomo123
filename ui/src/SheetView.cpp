@@ -1151,7 +1151,7 @@ void SheetView::RecalculateWrappedRowHeights()
 	if (!fDoc)
 		return;
 
-	std::vector<int> neededLines(kRowCount + 1, 0); // 1-based, indice 0 inutilizzato
+	std::vector<float> neededHeight(kRowCount + 1, 0); // 1-based, indice 0 inutilizzato
 
 	CCellIterator iter(fDoc, NULL);
 	cell c;
@@ -1177,8 +1177,6 @@ void SheetView::RecalculateWrappedRowHeights()
 
 		CellStyle cs;
 		fDoc->GetCellStyle(c, cs);
-		if (!cs.fWrapText)
-			continue;
 
 		char text[4096];
 		fDoc->GetCellResult(c, text, sizeof(text), true);
@@ -1186,35 +1184,76 @@ void SheetView::RecalculateWrappedRowHeights()
 			continue;
 
 		// Stesso font della cella per una misura coerente con Draw()
-		// (StringWidth dipende dal font attivo sulla view).
+		// (StringWidth/GetFontHeight dipendono dal font attivo sulla
+		// view).
 		gFontSizeTable.SetFontID(this, cs.fFont);
 
-		float width;
-		if (isMerged)
+		float needed;
+		if (cs.fWrapText)
 		{
-			width = 0;
-			for (int col = mergedRange.left; col <= mergedRange.right; col++)
-				width += fColWidths[col - 1];
+			// Invariato rispetto a prima: kRowHeight fisso per riga,
+			// non l'altezza vera del font -- cambiarlo altererebbe
+			// anche l'altezza gia' corretta/testata di ogni cella A
+			// CAPO a dimensione di font predefinita (vedi i test in
+			// test_borders.cpp che assumono proprio kRowHeight per
+			// riga), un rischio non necessario per il bug qui sotto
+			// (mai capitato su una cella A CAPO nella pratica).
+			float width;
+			if (isMerged)
+			{
+				width = 0;
+				for (int col = mergedRange.left; col <= mergedRange.right; col++)
+					width += fColWidths[col - 1];
+			}
+			else
+				width = fColWidths[c.h - 1];
+			width -= 6;
+
+			int lines = (int)WrapTextLines(this, text, width).size();
+			needed = lines * kRowHeight;
 		}
 		else
-			width = fColWidths[c.h - 1];
-		width -= 6;
+		{
+			// Fase successiva: una cella SENZA a capo automatico
+			// restava comunque alta kRowHeight (20px, il valore
+			// predefinito) qualunque fosse il suo font -- un titolo a
+			// 28pt (una sola riga, mai andata a capo) aveva quindi la
+			// parte alta dei suoi ascendenti tagliata contro il bordo
+			// della cella, visibile come un testo apparentemente piu'
+			// piccolo del vero invece che semplicemente posizionato
+			// male: bug reale trovato aprendo doom-in-excel
+			// (github.com/hmalinski/doom-in-excel) in Atomo123 (il
+			// titolo "DOOM" della scheda README, Calibri 28pt
+			// grassetto). DrawCellBand (sotto) gia' posiziona la base
+			// del testo con l'altezza vera del font invece di
+			// kRowHeight fisso (stesso motivo, trovato su un altro
+			// file reale) -- qui serve lo stesso calcolo per far
+			// crescere la riga di conseguenza, altrimenti quel
+			// posizionamento corretto scrive comunque fuori da un
+			// rettangolo di cella troppo basso. Mai piu' piccola di
+			// kRowHeight, cosi' la stragrande maggioranza delle celle
+			// (gia' nella dimensione di font predefinita) non cambia
+			// affatto.
+			font_height fh;
+			GetFontHeight(&fh);
+			needed = fh.ascent + fh.descent + fh.leading;
+			if (needed < kRowHeight)
+				needed = kRowHeight;
+		}
 
-		int lines = (int)WrapTextLines(this, text, width).size();
-		if (lines > neededLines[c.v])
-			neededLines[c.v] = lines;
+		if (needed > neededHeight[c.v])
+			neededHeight[c.v] = needed;
 	}
 	SetFont(be_plain_font);
 
 	bool changed = false;
 	for (int row = 1; row <= kRowCount; row++)
 	{
-		if (neededLines[row] == 0)
+		if (neededHeight[row] == 0)
 			continue;
-		float needed = neededLines[row] * kRowHeight;
-		if (needed > fRowHeights[row - 1])
+		if (neededHeight[row] > fRowHeights[row - 1])
 		{
-			fRowHeights[row - 1] = needed;
+			fRowHeights[row - 1] = neededHeight[row];
 			changed = true;
 		}
 	}

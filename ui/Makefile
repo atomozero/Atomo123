@@ -309,7 +309,7 @@ test-borders: $(OBJECTS) $(ENGINE_DIR)/libengine.a
 		src/MainWindow.o src/SheetView.o src/SheetTabView.o src/ToolbarView.o src/AscdIO.o src/FindWindow.o \
 		src/ChartWindow.o src/ChartSeriesOptionsWindow.o src/ChartView.o src/Chart.o \
 		src/PivotWindow.o src/Pivot.o src/RangeRef.o src/PrintLayout.o src/IconCatalog.o src/IconData.o src/AutoFill.o src/FileTypeIcons.o src/FooterProgressBar.o \
-		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
+		src/NameWindow.o src/ScenarioWindow.o src/NamedStyleWindow.o src/WatchWindow.o src/PasteSpecialWindow.o src/GoToWindow.o src/RenameSheetWindow.o src/CommentWindow.o src/HyperlinkWindow.o src/ValidationWindow.o src/WhatIfWindow.o src/GoalSeekWindow.o src/MacroListWindow.o src/ConditionalFormatWindow.o src/PasswordWindow.o src/ColorWindow.o \
 		src/PreferencesWindow.o src/AboutWindow.o src/ClickableStringView.o src/BorderWindow.o src/PageSetupWindow.o src/PrintPreviewView.o \
 		$(INCLUDES) $(CXXFLAGS) $(LIBS)
 	./tests/test_borders
