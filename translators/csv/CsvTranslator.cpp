@@ -467,6 +467,16 @@ status_t CCsvTranslator::Identify(BPositionIO* source,
 	const translation_format* format, BMessage* extension,
 	translator_info* info, uint32 outType)
 {
+	// Il dato va rivendicato solo se chi chiama vuole uno dei formati che
+	// questo traduttore sa produrre. Senza questo controllo qualunque file
+	// di testo veniva rivendicato per qualunque uscita: StyledEdit chiede
+	// B_STYLED_TEXT_FORMAT, CsvTranslator vinceva con qualita' 0.6 contro lo
+	// 0.4 di STXTTranslator, poi non sapeva tradurre, e ogni file di testo
+	// falliva con "Unsupported format".
+	if (outType != 0 && outType != kAtomoCsvFormat
+		&& outType != kAtomoNativeFormat)
+		return B_NO_TRANSLATOR;
+
 	off_t pos = source->Position();
 	char header[4];
 	ssize_t read = source->Read(header, 4);

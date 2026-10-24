@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include <DataIO.h>
+#include <TranslatorFormats.h>
 
 #include "CsvTranslator.h"
 
@@ -121,6 +122,28 @@ int main()
 		status_t nulErr = translator->Identify(&nulIn, NULL, NULL, &nulInfo, 0);
 		Check(nulErr != B_OK,
 			"Identify rifiuta un contenuto con un byte NUL, mai presente in un CSV genuino");
+	}
+
+	// Identify non deve rivendicare un testo qualunque quando chi chiama
+	// vuole un formato che questo traduttore non produce (bug reale:
+	// StyledEdit chiede B_STYLED_TEXT_FORMAT, CsvTranslator vinceva su
+	// STXTTranslator e ogni file di testo falliva con "Unsupported
+	// format"). Senza formato richiesto il testo resta "forse CSV".
+	{
+		const char plainText[] = "mkdir -p /boot/home/test\ncp a b\n";
+		BMemoryIO textIn(plainText, sizeof(plainText) - 1);
+		translator_info textInfo;
+		status_t styledErr = translator->Identify(&textIn, NULL, NULL,
+			&textInfo, B_STYLED_TEXT_FORMAT);
+		Check(styledErr == B_NO_TRANSLATOR,
+			"Identify non rivendica un testo quando si chiede B_STYLED_TEXT_FORMAT");
+		status_t textErr = translator->Identify(&textIn, NULL, NULL,
+			&textInfo, B_TRANSLATOR_TEXT);
+		Check(textErr == B_NO_TRANSLATOR,
+			"Identify non rivendica un testo quando si chiede B_TRANSLATOR_TEXT");
+		status_t anyErr = translator->Identify(&textIn, NULL, NULL, &textInfo, 0);
+		Check(anyErr == B_OK && textInfo.type == kAtomoCsvFormat,
+			"Senza formato richiesto un testo resta riconosciuto come CSV");
 	}
 
 	translator->Release();
