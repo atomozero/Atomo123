@@ -282,7 +282,7 @@ void Value::operator|=(Value &v)
 //	return result;
 //}
 
-static const char kCompareTypes[7][7] = 
+static const signed char kCompareTypes[7][7] = 
 {
 	{ 0, 1, 1, 1, 1, 1, 1 },
 	{ -1, 0, -1, -1, -1, -1, -1 },
