@@ -82,8 +82,14 @@ $(FUNC_TEST_RSRC): $(REZ) $(BSL) $(ENGINE_DIR)/resources/funcs_by_nr.r
 	rm -f $(FUNC_TEST_RSRC)
 	$(REZ) -o $(FUNC_TEST_RSRC) $(ENGINE_DIR)/resources/funcs_by_nr.r
 
+# -Wl,-Bsymbolic: ogni traduttore incorpora la propria copia statica del
+# motore (libengine.a) e ne esporta i simboli. Caricati insieme nello
+# stesso processo (translate, Atomo123, ogni app che apre un file) le
+# chiamate di un traduttore finivano sulla copia di un altro, e una CErr
+# lanciata li' non trovava piu' il proprio catch: std::terminate. Con
+# -Bsymbolic ogni traduttore usa la sua copia.
 $(ADDON): $(SOURCES) $(ENGINE_DIR)/libengine.a $(EN_CATKEYS) $(KO_CATKEYS) $(JA_CATKEYS) $(ES_CATKEYS) $(FR_CATKEYS) $(DE_CATKEYS) $(PT_CATKEYS) $(ZH_CATKEYS) $(RU_CATKEYS) $(AR_CATKEYS)
-	$(CXX) -shared -o $(ADDON) $(SOURCES) $(INCLUDES) $(CXXFLAGS) $(LIBS)
+	$(CXX) -shared -Wl,-Bsymbolic -o $(ADDON) $(SOURCES) $(INCLUDES) $(CXXFLAGS) $(LIBS)
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l en $(EN_CATKEYS)
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ko $(KO_CATKEYS)
 	linkcatkeys -o $(ADDON) -s $(CATALOG_SIG) -tr -l ja $(JA_CATKEYS)
