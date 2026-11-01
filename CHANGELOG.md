@@ -4,7 +4,45 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
-What shipped since v0.7.0 (in progress):
+What shipped in v0.9.0, on top of v0.8.0:
+- Running VBA macros. A macro-enabled XLSX (`.xlsm`) keeps its
+  `vbaProject.bin`, and its modules can now be read and run: the
+  container is opened with the existing CFB reader, its streams
+  decompressed ([MS-OVBA] 2.4.1, checked against Microsoft's own test
+  vectors), the `dir` stream enumerates the modules, and a lexer,
+  parser and interpreter run an explicit subset of VBA: `Dim`,
+  assignment, `Set`, `If`/`ElseIf`/`Else`, `For`/`Next` with `Step`,
+  `For Each` over a range, `Do While`/`Until`...`Loop`, `Select Case`
+  (equality cases and `Case Else`), `Exit For`/`Exit Sub`, common
+  built-in functions, and `Range(...)`/`Cells(r, c)` with `.Value` on
+  the active sheet. Anything outside the subset is a clear error, not
+  a silent guess. Data -> "Run Macro..." lists the macros; a document
+  with macros asks once per session before any of them can run
+  (Excel's trust-bar behavior), "Disable" is the default, and the
+  decision is never saved. The new strings are translated into every
+  supported locale. Still out of scope: `With`, `Sub` parameters,
+  deeper properties such as `.Font.Bold`.
+- Real bug, found on Haiku ARM (Toshiba AC100): with Atomo123
+  installed, StyledEdit could no longer open any text file
+  ("Unsupported format"). CsvTranslator's `Identify()` ignored the
+  requested output type and claimed every text file as "maybe CSV"
+  with a higher quality than the system's text translator, then could
+  not produce styled text. It now declines output types other than CSV
+  and the native format; tests cover both cases.
+- Real bug, found building for ARM: the table that orders values of
+  different types (`kCompareTypes`, values -1/0/1) was a plain `char`
+  table, unsigned on ARM, where -1 became 255 and every comparison
+  between a number and a text, say, went the wrong way. It is a
+  `signed char` table now.
+- Real bug, found testing the packages: every translator links its own
+  copy of the engine and exported its symbols, so with the four
+  installed side by side a call from one could land in another's copy,
+  and an error thrown there skipped the `catch` around it: "translate"
+  aborted converting a CSV file to the native format. The translators
+  are linked with `-Wl,-Bsymbolic` now, each on its own copy.
+- First packages for 32-bit ARM (ARMv7, VFPv3-D16), next to x86_64.
+
+What shipped in v0.8.0, on top of v0.7.0:
 - Real BMessage scripting (explicit user request, after checking that
   `hey Atomo123 get Suites of Window 0` only showed the generic
   BWindow/BView/BMenu suites every Haiku app gets for free — nothing
