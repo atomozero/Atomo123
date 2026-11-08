@@ -445,6 +445,191 @@ scope/approach being reviewed first:
   a separate refactor with its own blast radius, not something to
   start as a side effect of a VBA increment.
 
+## Function library: Excel parity and localized names
+
+Plan agreed on 2026-11-08. Atomo123 knows 152 worksheet functions; a
+comparison with GridCraft (an MIT/Apache-2.0 spreadsheet in Rust, 515
+functions, https://github.com/airos-works/gridcraft) shows 389 Excel
+functions missing. The most important finding is not LAMBDA: several
+everyday Excel functions are not recognized at all — `AVERAGE`, `PRODUCT`,
+`ISNUMBER`, `TRUNC`, `RAND`, `WEEKDAY`, `CHAR` — because only the Sum-It
+names exist (`AVG`, `ISNUM`, `CHR`, `DOW`, ...). A real file with
+`=AVERAGE(B2:B10)` is expected to fail there (to confirm with a real file),
+and the XLSX export has to be checked for writing `AVG(` too.
+
+The function names live in the binary 'Func' resource inherited from Sum-It,
+with names of at most 9 characters (hence `SUMPROD`, `AVGIFS`, `NETDAYS`,
+`SUBST`); the Excel names are mapped one by one in `GetFunctionNr()`
+(`engine/src/Utils/Utils.cpp`) whenever a real file broke.
+
+### Phase 0 — a function registry, and localized names
+
+- One registry entry per function: canonical Excel name (no length limit),
+  aliases (Sum-It names kept), minimum/maximum arguments, category, a
+  one-line description, volatile flag (`RAND`, `NOW`, `TODAY`, ...), and
+  which arguments take a single value (for automatic array lifting).
+- `funcNr` stays stable forever: the native `.ascd` format stores
+  functions by number. New functions get new numbers.
+- **Localized names**, as Excel does: files always store the English
+  (canonical) name; the user types and reads formulas in the language of
+  the interface (`=MEDIA(B2:B10)` is `AVERAGE`). Localized together with
+  the names: the argument separator (`;` where the decimal separator is
+  `,`, taken from the Locale Kit), `TRUE`/`FALSE` (`VERO`/`FALSO`), and the
+  error codes (`#NOME?`, `#VALORE!`, `#RIF!`, `#N/D`, ...).
+- The names per language are curated tables that match Excel exactly
+  (Microsoft's list of localized function names, cross-checked with
+  LibreOffice), not Locale Kit catalogs: a free translation would not be
+  what users of Excel know. The descriptions of functions and arguments do
+  go through the catalogs.
+- An option "Use English function names" (as in LibreOffice); English
+  names are accepted as input in every language anyway.
+- At load time, a check that no localized name collides with another
+  function or with a cell reference.
+- Languages: English and Italian first, then German, French, Spanish;
+  more are just tables.
+
+### Phase 1 — the Excel names of functions that exist
+
+Aliases, once the semantics are verified to match:
+
+| Excel | Sum-It | Note |
+|---|---|---|
+| `AVERAGE` | `AVG` |  |
+| `STDEV` | `STDDEV` | sample (n-1), checked |
+| `STDEV.S` | `STDDEV` | sample (n-1), checked |
+| `VAR` | `VARIANCE` | sample (n-1), checked |
+| `VAR.S` | `VARIANCE` | sample (n-1), checked |
+| `ISNUMBER` | `ISNUM` |  |
+| `CHAR` | `CHR` | check the code page (Excel: Windows-1252) |
+| `WEEKDAY` | `DOW` | only return type 1; DOW goes through time_t (dates before 1970?) |
+
+Not aliases, different semantics: `RANDOM()` returns an integer (`RAND()`
+is 0 to 1), `IFERR(x,t,f)` takes three arguments (`IFERROR(x,v)` two),
+`ERR()` is not `NA()`. Export to XLSX/ODS always writes the Excel name.
+
+### Phase 2 — everyday functions (61)
+
+  `PRODUCT`, `TRUNC`, `RAND`, `RANDBETWEEN`, `WEEKNUM`, `ISOWEEKNUM`,
+  `DATEVALUE`, `TIMEVALUE`, `DAYS`, `DAYS360`, `YEARFRAC`,
+  `NETWORKDAYS.INTL`, `WORKDAY.INTL`, `CODE`, `CLEAN`, `T`, `N`,
+  `FIXED`, `DOLLAR`, `NUMBERVALUE`, `UNICHAR`, `UNICODE`, `ISEVEN`,
+  `ISODD`, `ISERR`, `ISLOGICAL`, `ISNONTEXT`, `ERROR.TYPE`, `TYPE`,
+  `COUNTBLANK`, `SUMSQ`, `MROUND`, `EVEN`, `ODD`, `FACT`, `GCD`, `LCM`,
+  `QUOTIENT`, `COMBIN`, `PERMUT`, `DEGREES`, `RADIANS`, `RANK.EQ`,
+  `RANK.AVG`, `PERCENTILE.INC`, `PERCENTILE.EXC`, `QUARTILE.INC`,
+  `QUARTILE.EXC`, `MODE.SNGL`, `MAXA`, `MINA`, `AVERAGEA`, `GEOMEAN`,
+  `HARMEAN`, `STDEV.P`, `VAR.P`, `LOOKUP`, `TRANSPOSE`,
+  `CEILING.PRECISE`, `FLOOR.MATH`, `FLOOR.PRECISE`
+
+### Phase 3 — modern array functions (23)
+
+They build on the spilled arrays that `FILTER`/`SORT`/`UNIQUE` already use.
+
+  `TEXTSPLIT`, `TEXTBEFORE`, `TEXTAFTER`, `VSTACK`, `HSTACK`, `TAKE`,
+  `DROP`, `CHOOSECOLS`, `CHOOSEROWS`, `TOCOL`, `TOROW`, `WRAPCOLS`,
+  `WRAPROWS`, `EXPAND`, `RANDARRAY`, `ARRAYTOTEXT`, `VALUETOTEXT`,
+  `REGEXTEST`, `REGEXEXTRACT`, `REGEXREPLACE`, `GROUPBY`, `PIVOTBY`,
+  `TRIMRANGE`
+
+### Phase 4 — LET, then LAMBDA (9)
+
+The only part that changes the evaluator: names defined inside a formula,
+and functions as values. `LET` first (simpler, already common in recent
+files); `LAMBDA` and its helpers need a plan of their own.
+
+  `LET`, `LAMBDA`, `MAP`, `REDUCE`, `SCAN`, `BYROW`, `BYCOL`,
+  `MAKEARRAY`, `ISOMITTED`
+
+### Phase 5 — the specialist blocks
+
+Voluminous but repetitive; the hard part is numeric precision (the same
+result as Excel to the last digit).
+
+**Statistical** (78):
+
+  `AVEDEV`, `BETA.DIST`, `BETA.INV`, `BINOM.DIST`, `BINOM.DIST.RANGE`,
+  `BINOM.INV`, `CHISQ.DIST`, `CHISQ.DIST.RT`, `CHISQ.INV`,
+  `CHISQ.INV.RT`, `CHISQ.TEST`, `CONFIDENCE.NORM`, `CONFIDENCE.T`,
+  `CORREL`, `COVARIANCE.P`, `COVARIANCE.S`, `DEVSQ`, `EXPON.DIST`,
+  `F.DIST`, `F.DIST.RT`, `F.INV`, `F.INV.RT`, `F.TEST`, `FISHER`,
+  `FISHERINV`, `FORECAST.ETS`, `FORECAST.ETS.CONFINT`,
+  `FORECAST.ETS.SEASONALITY`, `FORECAST.ETS.STAT`, `FORECAST.LINEAR`,
+  `FREQUENCY`, `GAMMA`, `GAMMA.DIST`, `GAMMA.INV`, `GAMMALN`,
+  `GAMMALN.PRECISE`, `GAUSS`, `GROWTH`, `HYPGEOM.DIST`, `INTERCEPT`,
+  `KURT`, `LINEST`, `LOGEST`, `LOGNORM.DIST`, `LOGNORM.INV`,
+  `MODE.MULT`, `NEGBINOM.DIST`, `NORM.DIST`, `NORM.INV`, `NORM.S.DIST`,
+  `NORM.S.INV`, `PEARSON`, `PERCENTRANK.EXC`, `PERCENTRANK.INC`,
+  `PERMUTATIONA`, `PHI`, `POISSON.DIST`, `PROB`, `RSQ`, `SKEW`,
+  `SKEW.P`, `SLOPE`, `STANDARDIZE`, `STDEVA`, `STDEVPA`, `STEYX`,
+  `T.DIST`, `T.DIST.2T`, `T.DIST.RT`, `T.INV`, `T.INV.2T`, `T.TEST`,
+  `TREND`, `TRIMMEAN`, `VARA`, `VARPA`, `WEIBULL.DIST`, `Z.TEST`
+
+**Engineering** (53):
+
+  `BESSELI`, `BESSELJ`, `BESSELK`, `BESSELY`, `BIN2DEC`, `BIN2HEX`,
+  `BIN2OCT`, `BITAND`, `BITLSHIFT`, `BITOR`, `BITRSHIFT`, `BITXOR`,
+  `COMPLEX`, `CONVERT`, `DEC2BIN`, `DEC2OCT`, `DELTA`, `ERF`,
+  `ERF.PRECISE`, `ERFC`, `ERFC.PRECISE`, `GESTEP`, `HEX2BIN`, `HEX2DEC`,
+  `HEX2OCT`, `IMABS`, `IMAGINARY`, `IMARGUMENT`, `IMCONJUGATE`, `IMCOS`,
+  `IMCOSH`, `IMCOT`, `IMCSC`, `IMCSCH`, `IMDIV`, `IMEXP`, `IMLN`,
+  `IMLOG10`, `IMLOG2`, `IMPOWER`, `IMPRODUCT`, `IMREAL`, `IMSEC`,
+  `IMSECH`, `IMSIN`, `IMSINH`, `IMSQRT`, `IMSUB`, `IMSUM`, `IMTAN`,
+  `OCT2BIN`, `OCT2DEC`, `OCT2HEX`
+
+**Financial** (48):
+
+  `ACCRINT`, `ACCRINTM`, `AMORDEGRC`, `AMORLINC`, `COUPDAYBS`,
+  `COUPDAYS`, `COUPDAYSNC`, `COUPNCD`, `COUPNUM`, `COUPPCD`, `CUMIPMT`,
+  `CUMPRINC`, `DDB`, `DISC`, `DOLLARDE`, `DOLLARFR`, `DURATION`,
+  `EFFECT`, `FVSCHEDULE`, `INTRATE`, `IPMT`, `ISPMT`, `MDURATION`,
+  `MIRR`, `NOMINAL`, `NPER`, `ODDFPRICE`, `ODDFYIELD`, `ODDLPRICE`,
+  `ODDLYIELD`, `PDURATION`, `PPMT`, `PRICE`, `PRICEDISC`, `PRICEMAT`,
+  `RECEIVED`, `RRI`, `SLN`, `SYD`, `TBILLEQ`, `TBILLPRICE`,
+  `TBILLYIELD`, `VDB`, `XIRR`, `XNPV`, `YIELD`, `YIELDDISC`, `YIELDMAT`
+
+**Compatibility** (37):
+
+  `BETADIST`, `BETAINV`, `BINOMDIST`, `CHIDIST`, `CHIINV`, `CHITEST`,
+  `CONFIDENCE`, `COVAR`, `CRITBINOM`, `ECMA.CEILING`, `EXPONDIST`,
+  `FDIST`, `FINV`, `FORECAST`, `FTEST`, `GAMMADIST`, `GAMMAINV`,
+  `HYPGEOMDIST`, `LOGINV`, `LOGNORMDIST`, `NEGBINOMDIST`, `NORMDIST`,
+  `NORMINV`, `NORMSDIST`, `NORMSINV`, `PERCENTILE`, `PERCENTRANK`,
+  `POISSON`, `QUARTILE`, `STDEVP`, `TDIST`, `TINV`, `TTEST`, `USDOLLAR`,
+  `VARP`, `WEIBULL`, `ZTEST`
+
+**MathTrig** (32):
+
+  `ACOSH`, `ACOT`, `ACOTH`, `ADD2`, `ARABIC`, `ASINH`, `ATANH`, `BASE`,
+  `COMBINA`, `COSH`, `COTH`, `CSC`, `CSCH`, `DECIMAL`, `FACTDOUBLE`,
+  `ISO.CEILING`, `MDETERM`, `MINVERSE`, `MMULT`, `MULTINOMIAL`, `MUNIT`,
+  `PERCENTOF`, `ROMAN`, `SEC`, `SECH`, `SERIESSUM`, `SINH`, `SQRTPI`,
+  `SUMX2MY2`, `SUMX2PY2`, `SUMXMY2`, `TANH`
+
+**Database** (12):
+
+  `DAVERAGE`, `DCOUNT`, `DCOUNTA`, `DGET`, `DMAX`, `DMIN`, `DPRODUCT`,
+  `DSTDEV`, `DSTDEVP`, `DSUM`, `DVAR`, `DVARP`
+
+**Special** (5):
+
+  `AGGREGATE`, `FORMULATEXT`, `ISREF`, `SHEET`, `SHEETS`
+
+**Information** (1):
+
+  `INFO`
+
+### Not planned
+
+Cube functions (need an OLAP server), Web functions (`WEBSERVICE`,
+`FILTERXML`, `ENCODEURL`), the double-byte text functions (`JIS`,
+`PHONETIC`, `LEFTB`, ...), `BAHTTEXT`, `EUROCONVERT` (22 in all).
+
+### How each function is checked
+
+GridCraft's test cases (inputs and expected results, MIT/Apache-2.0) as
+automatic tests, with attribution; its code is not reused (Rust). LibreOffice
+as a second reference; where the two disagree, Excel decides.
+
 ## Path to 100% XLSX standard compatibility
 
 This is a different axis from "Path to full Excel parity" below: that
