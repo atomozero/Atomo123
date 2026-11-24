@@ -34,7 +34,7 @@ static const char* kAppSignature = "application/x-vnd.Atomo-Atomo123";
 static const uint32 kMsgShowMainWindow = 'shmw';
 // Quanto restare sullo splash prima che compaia la MainWindow (chiesto
 // dall'utente): lo splash stesso resta a schermo piu' a lungo di
-// cosi' (AtomGLView::kVisibleDuration + kFadeOutDuration, circa 8s) e
+// cosi' (AtomGLView::kVisibleDuration + kFadeOutDuration, 5s) e
 // continua la propria animazione/dissolvenza per conto suo, la
 // MainWindow compare sotto di lui a meta' di quella durata.
 static const bigtime_t kSplashDelay = 3000000; // 3s
@@ -235,8 +235,8 @@ void App::ShowMainWindowIfNeeded()
 	// commento in SplashWindow.cpp sul perche' non e' B_FLOATING_APP_
 	// WINDOW_FEEL): riattivare lo splash qui lo rimette in primo piano,
 	// dove resta finche' non si chiude da solo (AtomGLView::_Tick()) --
-	// ancora vivo di sicuro a questo punto, la sua durata totale (circa
-	// 8s) e' piu' lunga di kSplashDelay (3s).
+	// ancora vivo di sicuro a questo punto, la sua durata totale (5s)
+	// e' piu' lunga di kSplashDelay (3s).
 	if (fSplashWindow)
 		fSplashWindow->Activate();
 }

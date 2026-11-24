@@ -28,7 +28,7 @@ static const uint32 kMsgTick = 'tick';
 static const float kTextFadeDuration = 1.6f;	// secondi, ingresso testo
 static const float kBandHeight = 100.0f;		// striscia inferiore, senza stelle
 static const float kBandPadding = 28.0f;		// margine sinistro del testo
-static const float kVisibleDuration = 7.0f;	// secondi a schermo intero prima della dissolvenza
+static const float kVisibleDuration = 4.0f;	// secondi a schermo intero prima della dissolvenza
 static const float kFadeOutDuration = 1.0f;	// secondi di dissolvenza a nero
 
 static inline void
