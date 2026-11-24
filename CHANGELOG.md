@@ -4,6 +4,16 @@ Detailed, per-release history of what shipped and the real bugs found
 along the way. This is a diary, not a plan — for current status and
 what's next, see `ROADMAP.md`.
 
+What shipped in v0.9.1, on top of v0.9.0:
+- The splash screen lasts five seconds in all: four on screen, then a
+  one-second fade. The main window still appears under it after three.
+- Real bug, found on Haiku ARM (Toshiba AC100): the splash never went
+  away. Its animation asks for a frame every 16 ms, but with software
+  OpenGL on a slow CPU a frame takes much longer: the timer's ticks
+  queued up without end, and the quit request posted at the end of the
+  splash, behind them, was never handled. Each frame now drops the ticks
+  already queued and draws only the latest moment.
+
 What shipped in v0.9.0, on top of v0.8.0:
 - Running VBA macros. A macro-enabled XLSX (`.xlsm`) keeps its
   `vbaProject.bin`, and its modules can now be read and run: the
