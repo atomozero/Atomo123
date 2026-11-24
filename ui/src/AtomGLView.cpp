@@ -14,6 +14,7 @@
 #include <Catalog.h>
 #include <File.h>
 #include <Message.h>
+#include <MessageQueue.h>
 #include <Window.h>
 
 #include <math.h>
@@ -155,6 +156,19 @@ void
 AtomGLView::MessageReceived(BMessage* message)
 {
 	if (message->what == kMsgTick) {
+		// Un fotogramma puo' durare piu' dei 16 ms del timer (OpenGL
+		// software su una CPU lenta): i tick arretrati andrebbero in coda
+		// senza fine, e la B_QUIT_REQUESTED di fine splash dietro di loro
+		// non arriverebbe mai. Basta disegnare l'ultimo istante: si
+		// scartano i tick gia' in coda.
+		BMessageQueue* queue = Looper()->MessageQueue();
+		if (queue != NULL && queue->Lock()) {
+			while (BMessage* pending = queue->FindMessage(kMsgTick, 0)) {
+				queue->RemoveMessage(pending);
+				delete pending;
+			}
+			queue->Unlock();
+		}
 		_Tick();
 		_Repaint();
 		return;
